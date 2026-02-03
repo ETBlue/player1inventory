@@ -3,7 +3,6 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus, Trash2, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -14,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { TagBadge } from '@/components/TagBadge'
 import { getContrastTextColor } from '@/lib/utils'
 import {
   useTagTypes,
@@ -32,26 +32,6 @@ import type { Tag, TagType } from '@/types/index'
 export const Route = createFileRoute('/settings/tags')({
   component: TagSettings,
 })
-
-// TagBadge component that shows item count
-function TagBadge({ tag, tagType, onClick }: { tag: Tag; tagType: TagType; onClick: () => void }) {
-  const { data: itemCount = 0 } = useItemCountByTag(tag.id)
-  const backgroundColor = tagType.color || '#3b82f6'
-  const textColor = getContrastTextColor(backgroundColor)
-
-  return (
-    <Badge
-      style={{
-        backgroundColor,
-        color: textColor,
-      }}
-      className="cursor-pointer"
-      onClick={onClick}
-    >
-      {tag.name} ({itemCount})
-    </Badge>
-  )
-}
 
 // TagDetailDialog component
 function TagDetailDialog({
