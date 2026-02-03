@@ -2,9 +2,11 @@
 
 **Goal:** Document all UI components in Storybook for easy visual refinement and access.
 
-**Scope:** All 20 components - 8 UI primitives + 12 domain components.
+**Scope:** 15 visual components - 8 UI primitives + 7 domain components.
 
 **Architecture:** Storybook with React + Vite integration, dark mode toggle, layer-based organization.
+
+**Status:** ✅ Implemented
 
 ---
 
@@ -57,15 +59,15 @@ Components
 ├── AddTagDialog
 ├── EditTagTypeDialog
 ├── ItemCard
-├── ItemForm
-├── Layout
-├── Navigation
-├── PantryItem
 ├── ShoppingItemCard
-├── ShoppingItemWithQuantity
 ├── TagBadge
 └── TagDetailDialog
 ```
+
+**Not documented (wrapper/composite components):**
+- Layout, Navigation - Structural wrappers without visual elements
+- ItemForm - Complex form composite (uses documented primitives)
+- PantryItem, ShoppingItemWithQuantity - Data-fetching wrappers
 
 ---
 
@@ -114,23 +116,23 @@ export const Variants: Story = {
 
 | Component Type | Stories |
 |----------------|---------|
-| Button | Default, Variants, Sizes, Disabled |
+| Button | Default, Variants, Sizes, Disabled, Loading |
 | Card | Default, With Header/Content/Footer |
 | Input | Default, Placeholder, Disabled |
 | Badge | Default, Colors |
+| Label | Default, Required |
 | Dialog/AlertDialog | Open state with content |
-| ItemCard | Default, Low stock, Due soon |
-| TagBadge | Default, Different colors |
-| *Dialogs | Open state showing form |
+| ConfirmDialog | Open state with actions |
+| ItemCard | Default, Low stock, Expiring soon, Multiple tags |
+| ShoppingItemCard | Default, With tags |
+| TagBadge | Default, Different colors, Click handler |
+| AddQuantityDialog | Open state with form |
+| AddTagDialog | Open state with form |
+| EditTagTypeDialog | Open state with form |
+| TagDetailDialog | Open state with details |
 
-**Total:** ~20 story files, ~40-50 individual stories
+**Total:** 15 story files, ~45 individual stories
 
----
-
-## Implementation Order
-
-1. Install Storybook dependencies
-2. Initialize Storybook with Vite
-3. Configure dark mode toggle
-4. Create stories for UI primitives (8 files)
-5. Create stories for domain components (12 files)
+**Technical notes:**
+- Components using TanStack Router Link require custom RouterWrapper decorator
+- Components using React Query hooks require QueryClientProvider decorator
