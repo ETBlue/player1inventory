@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ShoppingCart, X, Minus, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShoppingItemCard } from '@/components/ShoppingItemCard'
+import { ShoppingItemWithQuantity } from '@/components/ShoppingItemWithQuantity'
 import {
   useItems,
   useActiveCart,
@@ -13,9 +13,6 @@ import {
   useCheckout,
   useAbandonCart,
 } from '@/hooks'
-import { getCurrentQuantity } from '@/db/operations'
-import { useQuery } from '@tanstack/react-query'
-import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
   component: Shopping,
@@ -129,7 +126,7 @@ function Shopping() {
             <ShoppingItemWithQuantity
               key={item.id}
               item={item}
-              cartItem={foundCartItem}
+              {...(foundCartItem ? { cartItem: foundCartItem } : {})}
               onAddToCart={() => {
                 if (cart) {
                   addToCart.mutate({
@@ -157,35 +154,5 @@ function Shopping() {
         </div>
       </div>
     </div>
-  )
-}
-
-function ShoppingItemWithQuantity({
-  item,
-  cartItem,
-  onAddToCart,
-  onUpdateQuantity,
-  onRemove,
-}: {
-  item: Item
-  cartItem: { id: string; cartId: string; itemId: string; quantity: number } | undefined
-  onAddToCart: () => void
-  onUpdateQuantity: (qty: number) => void
-  onRemove: () => void
-}) {
-  const { data: quantity = 0 } = useQuery({
-    queryKey: ['items', item.id, 'quantity'],
-    queryFn: () => getCurrentQuantity(item.id),
-  })
-
-  return (
-    <ShoppingItemCard
-      item={item}
-      currentQuantity={quantity}
-      onAddToCart={onAddToCart}
-      onUpdateQuantity={onUpdateQuantity}
-      onRemove={onRemove}
-      {...(cartItem ? { cartItem } : {})}
-    />
   )
 }

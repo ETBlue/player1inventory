@@ -3,17 +3,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus, Trash2, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { TagBadge } from '@/components/TagBadge'
+import { TagDetailDialog } from '@/components/TagDetailDialog'
+import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
+import { AddTagDialog } from '@/components/AddTagDialog'
 import { getContrastTextColor } from '@/lib/utils'
 import {
   useTagTypes,
@@ -24,7 +20,6 @@ import {
   useDeleteTag,
   useUpdateTagType,
   useUpdateTag,
-  useItemCountByTag,
 } from '@/hooks/useTags'
 import { migrateTagColorsToTypes } from '@/db/operations'
 import type { Tag, TagType } from '@/types/index'
@@ -32,84 +27,6 @@ import type { Tag, TagType } from '@/types/index'
 export const Route = createFileRoute('/settings/tags')({
   component: TagSettings,
 })
-
-// TagBadge component that shows item count
-function TagBadge({ tag, tagType, onClick }: { tag: Tag; tagType: TagType; onClick: () => void }) {
-  const { data: itemCount = 0 } = useItemCountByTag(tag.id)
-  const backgroundColor = tagType.color || '#3b82f6'
-  const textColor = getContrastTextColor(backgroundColor)
-
-  return (
-    <Badge
-      style={{
-        backgroundColor,
-        color: textColor,
-      }}
-      className="cursor-pointer"
-      onClick={onClick}
-    >
-      {tag.name} ({itemCount})
-    </Badge>
-  )
-}
-
-// TagDetailDialog component
-function TagDetailDialog({
-  tag,
-  tagName,
-  onTagNameChange,
-  onSave,
-  onDelete,
-  onClose,
-}: {
-  tag: Tag
-  tagName: string
-  onTagNameChange: (name: string) => void
-  onSave: () => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const { data: itemCount = 0 } = useItemCountByTag(tag.id)
-
-  return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Tag Details</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="editTagName">Name</Label>
-            <Input
-              id="editTagName"
-              value={tagName}
-              onChange={(e) => onTagNameChange(e.target.value)}
-              placeholder="e.g., Dairy"
-              onKeyDown={(e) => e.key === 'Enter' && onSave()}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Item count</Label>
-            <p className="text-sm text-muted-foreground">
-              {itemCount} items using this tag
-            </p>
-          </div>
-        </div>
-        <DialogFooter className="flex justify-between">
-          <Button variant="destructive" onClick={onDelete}>
-            Delete
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button onClick={onSave}>Save</Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 function TagSettings() {
   const navigate = useNavigate()
@@ -326,87 +243,24 @@ function TagSettings() {
       })}
 
       {/* Add Tag Dialog */}
-      <Dialog open={!!addTagDialog} onOpenChange={(open) => !open && setAddTagDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Tag</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="tagName">Name</Label>
-              <Input
-                id="tagName"
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                placeholder="e.g., Dairy, Frozen"
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddTagDialog(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddTag}>Add Tag</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddTagDialog
+        open={!!addTagDialog}
+        tagName={newTagName}
+        onTagNameChange={setNewTagName}
+        onAdd={handleAddTag}
+        onClose={() => setAddTagDialog(null)}
+      />
 
       {/* Edit TagType Dialog */}
-      <Dialog open={!!editTagType} onOpenChange={(open) => !open && setEditTagType(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Tag Type</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="editTagTypeName">Name</Label>
-              <Input
-                id="editTagTypeName"
-                value={editTagTypeName}
-                onChange={(e) => setEditTagTypeName(e.target.value)}
-                placeholder="e.g., Ingredient type"
-                onKeyDown={(e) => e.key === 'Enter' && handleEditTagType()}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editTagTypeColor">Color</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="editTagTypeColor"
-                  type="color"
-                  value={editTagTypeColor}
-                  onChange={(e) => setEditTagTypeColor(e.target.value)}
-                  className="w-16 h-10 p-1"
-                />
-                <Input
-                  value={editTagTypeColor}
-                  onChange={(e) => setEditTagTypeColor(e.target.value)}
-                  placeholder="#3b82f6"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Preview</Label>
-              <div
-                className="h-10 rounded-md flex items-center justify-center font-medium text-sm"
-                style={{
-                  backgroundColor: editTagTypeColor,
-                  color: getContrastTextColor(editTagTypeColor),
-                }}
-              >
-                Example Tag
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditTagType(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditTagType}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EditTagTypeDialog
+        tagType={editTagType}
+        name={editTagTypeName}
+        color={editTagTypeColor}
+        onNameChange={setEditTagTypeName}
+        onColorChange={setEditTagTypeColor}
+        onSave={handleEditTagType}
+        onClose={() => setEditTagType(null)}
+      />
 
       {/* Tag Detail Dialog */}
       {editTag && (
