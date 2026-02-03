@@ -157,11 +157,19 @@ describe('Tag operations', () => {
 
   it('creates a tag', async () => {
     const tagType = await createTagType({ name: 'Ingredient type' })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id, color: '#3b82f6' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
 
     expect(tag.id).toBeDefined()
     expect(tag.name).toBe('Dairy')
     expect(tag.typeId).toBe(tagType.id)
+  })
+
+  it('creates a tag type with color', async () => {
+    const tagType = await createTagType({ name: 'Ingredient type', color: '#3b82f6' })
+
+    expect(tagType.id).toBeDefined()
+    expect(tagType.name).toBe('Ingredient type')
+    expect(tagType.color).toBe('#3b82f6')
   })
 
   it('gets tags by type', async () => {
