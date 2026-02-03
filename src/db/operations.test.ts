@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from './index'
-import { createItem, getItem, getAllItems, updateItem, deleteItem } from './operations'
+import {
+  createItem,
+  getItem,
+  getAllItems,
+  updateItem,
+  deleteItem,
+  addInventoryLog,
+  getItemLogs,
+  getCurrentQuantity,
+  getLastPurchaseDate,
+} from './operations'
 
 describe('Item operations', () => {
   beforeEach(async () => {
@@ -58,5 +68,58 @@ describe('Item operations', () => {
 
     const retrieved = await getItem(item.id)
     expect(retrieved).toBeUndefined()
+  })
+})
+
+describe('InventoryLog operations', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.inventoryLogs.clear()
+  })
+
+  it('adds an inventory log', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+
+    const log = await addInventoryLog({
+      itemId: item.id,
+      delta: 2,
+      occurredAt: new Date(),
+    })
+
+    expect(log.id).toBeDefined()
+    expect(log.delta).toBe(2)
+    expect(log.quantity).toBe(2)
+  })
+
+  it('calculates current quantity from logs', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+
+    await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
+    await addInventoryLog({ itemId: item.id, delta: -2, occurredAt: new Date() })
+
+    const quantity = await getCurrentQuantity(item.id)
+    expect(quantity).toBe(3)
+  })
+
+  it('gets logs for an item', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+
+    await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
+    await addInventoryLog({ itemId: item.id, delta: -1, occurredAt: new Date() })
+
+    const logs = await getItemLogs(item.id)
+    expect(logs).toHaveLength(2)
+  })
+
+  it('gets last purchase date', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const purchaseDate = new Date('2026-02-01')
+
+    await addInventoryLog({ itemId: item.id, delta: -1, occurredAt: new Date('2026-01-15') })
+    await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: purchaseDate })
+    await addInventoryLog({ itemId: item.id, delta: -2, occurredAt: new Date('2026-02-02') })
+
+    const lastPurchase = await getLastPurchaseDate(item.id)
+    expect(lastPurchase?.getTime()).toBe(purchaseDate.getTime())
   })
 })
