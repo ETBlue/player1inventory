@@ -2,12 +2,10 @@ import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ItemCard } from '@/components/ItemCard'
+import { PantryItem } from '@/components/PantryItem'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { useItems, useAddInventoryLog } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
-import { getCurrentQuantity, getLastPurchaseDate } from '@/db/operations'
-import { useQuery } from '@tanstack/react-query'
 import type { Item } from '@/types'
 
 export const Route = createFileRoute('/')({
@@ -80,56 +78,4 @@ function PantryView() {
       />
     </div>
   )
-}
-
-function PantryItem({
-  item,
-  tags,
-  tagTypes,
-  onConsume,
-  onAdd,
-}: {
-  item: Item
-  tags: Array<{ id: string; name: string; typeId: string }>
-  tagTypes: Array<{ id: string; name: string; color?: string }>
-  onConsume: () => void
-  onAdd: () => void
-}) {
-  const { data: quantity = 0 } = useQuery({
-    queryKey: ['items', item.id, 'quantity'],
-    queryFn: () => getCurrentQuantity(item.id),
-  })
-
-  const { data: lastPurchase } = useQuery({
-    queryKey: ['items', item.id, 'lastPurchase'],
-    queryFn: () => getLastPurchaseDate(item.id),
-  })
-
-  const estimatedDueDate =
-    item.estimatedDueDays && lastPurchase
-      ? new Date(lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000)
-      : item.dueDate
-
-  const cardProps: {
-    item: Item
-    quantity: number
-    tags: Array<{ id: string; name: string; typeId: string }>
-    tagTypes: Array<{ id: string; name: string; color?: string }>
-    estimatedDueDate?: Date
-    onConsume: () => void
-    onAdd: () => void
-  } = {
-    item,
-    quantity,
-    tags,
-    tagTypes,
-    onConsume,
-    onAdd,
-  }
-
-  if (estimatedDueDate) {
-    cardProps.estimatedDueDate = estimatedDueDate
-  }
-
-  return <ItemCard {...cardProps} />
 }
