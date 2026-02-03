@@ -6,6 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Player 1 Inventory — a real-life asset management system for players. Designed by ETBlue.
 
-## Status
+## Worktrees
 
-Newly initialized repository. No source code, build system, or tests exist yet.
+Use `.worktrees/` directory for git worktrees (project-local, hidden).
