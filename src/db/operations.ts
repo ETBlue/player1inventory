@@ -137,6 +137,11 @@ export async function deleteTag(id: string): Promise<void> {
   await db.tags.delete(id)
 }
 
+export async function getItemCountByTag(tagId: string): Promise<number> {
+  const items = await db.items.filter(item => item.tagIds.includes(tagId)).count()
+  return items
+}
+
 // ShoppingCart operations
 export async function getOrCreateActiveCart(): Promise<ShoppingCart> {
   const existing = await db.shoppingCarts.where('status').equals('active').first()

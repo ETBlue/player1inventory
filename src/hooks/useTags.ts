@@ -9,6 +9,7 @@ import {
   createTag,
   updateTag,
   deleteTag,
+  getItemCountByTag,
 } from '@/db/operations'
 import type { Tag, TagType } from '@/types'
 
@@ -100,5 +101,13 @@ export function useDeleteTag() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
     },
+  })
+}
+
+export function useItemCountByTag(tagId: string) {
+  return useQuery({
+    queryKey: ['items', 'countByTag', tagId],
+    queryFn: () => getItemCountByTag(tagId),
+    enabled: !!tagId,
   })
 }
