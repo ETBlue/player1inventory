@@ -3,13 +3,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Minus, Plus, AlertTriangle } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import type { Item, Tag } from '@/types'
+import { cn, getContrastTextColor } from '@/lib/utils'
+import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
   item: Item
   quantity: number
   tags: Tag[]
+  tagTypes: TagType[]
   estimatedDueDate?: Date
   onConsume: () => void
   onAdd: () => void
@@ -19,6 +20,7 @@ export function ItemCard({
   item,
   quantity,
   tags,
+  tagTypes,
   estimatedDueDate,
   onConsume,
   onAdd,
@@ -52,16 +54,20 @@ export function ItemCard({
             )}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
-                {tags.slice(0, 3).map(tag => (
-                  <Badge
-                    key={tag.id}
-                    variant="secondary"
-                    className="text-xs"
-                    style={tag.color ? { backgroundColor: tag.color, color: 'white' } : undefined}
-                  >
-                    {tag.name}
-                  </Badge>
-                ))}
+                {tags.slice(0, 3).map(tag => {
+                  const tagType = tagTypes.find(t => t.id === tag.typeId)
+                  const bgColor = tagType?.color
+                  return (
+                    <Badge
+                      key={tag.id}
+                      variant="secondary"
+                      className="text-xs"
+                      style={bgColor ? { backgroundColor: bgColor, color: getContrastTextColor(bgColor) } : undefined}
+                    >
+                      {tag.name}
+                    </Badge>
+                  )
+                })}
                 {tags.length > 3 && (
                   <Badge variant="outline" className="text-xs">
                     +{tags.length - 3}

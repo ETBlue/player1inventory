@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ItemCard } from '@/components/ItemCard'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { useItems, useAddInventoryLog } from '@/hooks'
-import { useTags } from '@/hooks/useTags'
+import { useTags, useTagTypes } from '@/hooks/useTags'
 import { getCurrentQuantity, getLastPurchaseDate } from '@/db/operations'
 import { useQuery } from '@tanstack/react-query'
 import type { Item } from '@/types'
@@ -17,6 +17,7 @@ export const Route = createFileRoute('/')({
 function PantryView() {
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
+  const { data: tagTypes = [] } = useTagTypes()
   const addLog = useAddInventoryLog()
 
   const [addDialogItem, setAddDialogItem] = useState<Item | null>(null)
@@ -49,6 +50,7 @@ function PantryView() {
               key={item.id}
               item={item}
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
+              tagTypes={tagTypes}
               onConsume={() => {
                 addLog.mutate({
                   itemId: item.id,
@@ -83,11 +85,13 @@ function PantryView() {
 function PantryItem({
   item,
   tags,
+  tagTypes,
   onConsume,
   onAdd,
 }: {
   item: Item
-  tags: Array<{ id: string; name: string; color?: string; typeId: string }>
+  tags: Array<{ id: string; name: string; typeId: string }>
+  tagTypes: Array<{ id: string; name: string; color?: string }>
   onConsume: () => void
   onAdd: () => void
 }) {
@@ -109,7 +113,8 @@ function PantryItem({
   const cardProps: {
     item: Item
     quantity: number
-    tags: Array<{ id: string; name: string; color?: string; typeId: string }>
+    tags: Array<{ id: string; name: string; typeId: string }>
+    tagTypes: Array<{ id: string; name: string; color?: string }>
     estimatedDueDate?: Date
     onConsume: () => void
     onAdd: () => void
@@ -117,6 +122,7 @@ function PantryItem({
     item,
     quantity,
     tags,
+    tagTypes,
     onConsume,
     onAdd,
   }

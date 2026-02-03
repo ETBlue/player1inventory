@@ -223,12 +223,15 @@ export async function migrateTagColorsToTypes(): Promise<void> {
     // Skip if TagType already has a color
     if (tagType.color) continue
 
-    // Find the first tag of this type that has a color
+    // Find the first tag of this type that has a color (from old data)
     const tags = await getTagsByType(tagType.id)
-    const tagWithColor = tags.find((tag: Tag & { color?: string }) => tag.color)
+    const tagWithColor = tags.find((tag: Tag & { color?: string }) => (tag as Tag & { color?: string }).color)
 
-    if (tagWithColor && (tagWithColor as Tag & { color?: string }).color) {
-      await updateTagType(tagType.id, { color: (tagWithColor as Tag & { color?: string }).color })
+    if (tagWithColor) {
+      const color = (tagWithColor as Tag & { color?: string }).color
+      if (color) {
+        await updateTagType(tagType.id, { color })
+      }
     }
   }
 }

@@ -24,7 +24,7 @@ export function useCreateTagType() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string }) => createTagType(input),
+    mutationFn: (input: { name: string; color?: string }) => createTagType(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
     },
