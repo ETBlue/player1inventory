@@ -1,5 +1,5 @@
 import { db } from './index'
-import type { Item, InventoryLog } from '@/types'
+import type { Item, InventoryLog, Tag, TagType } from '@/types'
 
 // Item operations
 type CreateItemInput = Omit<Item, 'id' | 'createdAt' | 'updatedAt'>
@@ -86,4 +86,54 @@ export async function getLastPurchaseDate(itemId: string): Promise<Date | null> 
     a.occurredAt > b.occurredAt ? a : b
   )
   return latest.occurredAt
+}
+
+// TagType operations
+export async function createTagType(input: { name: string }): Promise<TagType> {
+  const tagType: TagType = {
+    id: crypto.randomUUID(),
+    name: input.name,
+  }
+  await db.tagTypes.add(tagType)
+  return tagType
+}
+
+export async function getAllTagTypes(): Promise<TagType[]> {
+  return db.tagTypes.toArray()
+}
+
+export async function updateTagType(id: string, updates: Partial<Omit<TagType, 'id'>>): Promise<void> {
+  await db.tagTypes.update(id, updates)
+}
+
+export async function deleteTagType(id: string): Promise<void> {
+  await db.tagTypes.delete(id)
+}
+
+// Tag operations
+type CreateTagInput = Omit<Tag, 'id'>
+
+export async function createTag(input: CreateTagInput): Promise<Tag> {
+  const tag: Tag = {
+    ...input,
+    id: crypto.randomUUID(),
+  }
+  await db.tags.add(tag)
+  return tag
+}
+
+export async function getAllTags(): Promise<Tag[]> {
+  return db.tags.toArray()
+}
+
+export async function getTagsByType(typeId: string): Promise<Tag[]> {
+  return db.tags.where('typeId').equals(typeId).toArray()
+}
+
+export async function updateTag(id: string, updates: Partial<Omit<Tag, 'id'>>): Promise<void> {
+  await db.tags.update(id, updates)
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  await db.tags.delete(id)
 }

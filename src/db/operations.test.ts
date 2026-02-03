@@ -10,6 +10,15 @@ import {
   getItemLogs,
   getCurrentQuantity,
   getLastPurchaseDate,
+  createTagType,
+  getAllTagTypes,
+  updateTagType,
+  deleteTagType,
+  createTag,
+  getTagsByType,
+  getAllTags,
+  updateTag,
+  deleteTag,
 } from './operations'
 
 describe('Item operations', () => {
@@ -121,5 +130,48 @@ describe('InventoryLog operations', () => {
 
     const lastPurchase = await getLastPurchaseDate(item.id)
     expect(lastPurchase?.getTime()).toBe(purchaseDate.getTime())
+  })
+})
+
+describe('Tag operations', () => {
+  beforeEach(async () => {
+    await db.tags.clear()
+    await db.tagTypes.clear()
+  })
+
+  it('creates a tag type', async () => {
+    const tagType = await createTagType({ name: 'Ingredient type' })
+
+    expect(tagType.id).toBeDefined()
+    expect(tagType.name).toBe('Ingredient type')
+  })
+
+  it('lists all tag types', async () => {
+    await createTagType({ name: 'Ingredient type' })
+    await createTagType({ name: 'Storage method' })
+
+    const types = await getAllTagTypes()
+    expect(types).toHaveLength(2)
+  })
+
+  it('creates a tag', async () => {
+    const tagType = await createTagType({ name: 'Ingredient type' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id, color: '#3b82f6' })
+
+    expect(tag.id).toBeDefined()
+    expect(tag.name).toBe('Dairy')
+    expect(tag.typeId).toBe(tagType.id)
+  })
+
+  it('gets tags by type', async () => {
+    const type1 = await createTagType({ name: 'Ingredient type' })
+    const type2 = await createTagType({ name: 'Storage method' })
+
+    await createTag({ name: 'Dairy', typeId: type1.id })
+    await createTag({ name: 'Produce', typeId: type1.id })
+    await createTag({ name: 'Refrigerated', typeId: type2.id })
+
+    const ingredientTags = await getTagsByType(type1.id)
+    expect(ingredientTags).toHaveLength(2)
   })
 })
