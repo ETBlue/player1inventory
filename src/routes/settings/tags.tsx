@@ -242,6 +242,18 @@ function TagSettings() {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>Preview</Label>
+              <div
+                className="h-10 rounded-md flex items-center justify-center font-medium text-sm"
+                style={{
+                  backgroundColor: newTagTypeColor,
+                  color: getContrastTextColor(newTagTypeColor),
+                }}
+              >
+                Example Tag
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -372,6 +384,18 @@ function TagSettings() {
                   onChange={(e) => setEditTagTypeColor(e.target.value)}
                   placeholder="#3b82f6"
                 />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Preview</Label>
+              <div
+                className="h-10 rounded-md flex items-center justify-center font-medium text-sm"
+                style={{
+                  backgroundColor: editTagTypeColor,
+                  color: getContrastTextColor(editTagTypeColor),
+                }}
+              >
+                Example Tag
               </div>
             </div>
           </div>
