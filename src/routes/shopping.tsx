@@ -126,7 +126,7 @@ function Shopping() {
             <ShoppingItemWithQuantity
               key={item.id}
               item={item}
-              cartItem={foundCartItem}
+              {...(foundCartItem ? { cartItem: foundCartItem } : {})}
               onAddToCart={() => {
                 if (cart) {
                   addToCart.mutate({
