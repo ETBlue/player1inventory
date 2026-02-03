@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { TagBadge } from '@/components/TagBadge'
 import { TagDetailDialog } from '@/components/TagDetailDialog'
+import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { getContrastTextColor } from '@/lib/utils'
 import {
   useTagTypes,
@@ -275,60 +276,15 @@ function TagSettings() {
       </Dialog>
 
       {/* Edit TagType Dialog */}
-      <Dialog open={!!editTagType} onOpenChange={(open) => !open && setEditTagType(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Tag Type</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="editTagTypeName">Name</Label>
-              <Input
-                id="editTagTypeName"
-                value={editTagTypeName}
-                onChange={(e) => setEditTagTypeName(e.target.value)}
-                placeholder="e.g., Ingredient type"
-                onKeyDown={(e) => e.key === 'Enter' && handleEditTagType()}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editTagTypeColor">Color</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="editTagTypeColor"
-                  type="color"
-                  value={editTagTypeColor}
-                  onChange={(e) => setEditTagTypeColor(e.target.value)}
-                  className="w-16 h-10 p-1"
-                />
-                <Input
-                  value={editTagTypeColor}
-                  onChange={(e) => setEditTagTypeColor(e.target.value)}
-                  placeholder="#3b82f6"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Preview</Label>
-              <div
-                className="h-10 rounded-md flex items-center justify-center font-medium text-sm"
-                style={{
-                  backgroundColor: editTagTypeColor,
-                  color: getContrastTextColor(editTagTypeColor),
-                }}
-              >
-                Example Tag
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditTagType(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditTagType}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EditTagTypeDialog
+        tagType={editTagType}
+        name={editTagTypeName}
+        color={editTagTypeColor}
+        onNameChange={setEditTagTypeName}
+        onColorChange={setEditTagTypeColor}
+        onSave={handleEditTagType}
+        onClose={() => setEditTagType(null)}
+      />
 
       {/* Tag Detail Dialog */}
       {editTag && (
