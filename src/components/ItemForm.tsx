@@ -28,14 +28,15 @@ export function ItemForm({ initialData, onSubmit, submitLabel }: ItemFormProps) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit({
+    const data: ItemFormData = {
       name,
-      unit: unit || undefined,
       targetQuantity,
       refillThreshold,
-      estimatedDueDays: estimatedDueDays ? Number(estimatedDueDays) : undefined,
       tagIds,
-    })
+    }
+    if (unit) data.unit = unit
+    if (estimatedDueDays) data.estimatedDueDays = Number(estimatedDueDays)
+    onSubmit(data)
   }
 
   const toggleTag = (tagId: string) => {

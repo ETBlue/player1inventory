@@ -24,12 +24,16 @@ export function AddQuantityDialog({
   onConfirm,
 }: AddQuantityDialogProps) {
   const [quantity, setQuantity] = useState(1)
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]!)
+  const [date, setDate] = useState(() => {
+    const [dateStr] = new Date().toISOString().split('T')
+    return dateStr ?? ''
+  })
 
   const handleConfirm = () => {
     onConfirm(quantity, new Date(date))
     setQuantity(1)
-    setDate(new Date().toISOString().split('T')[0]!)
+    const [dateStr] = new Date().toISOString().split('T')
+    setDate(dateStr ?? '')
     onOpenChange(false)
   }
 

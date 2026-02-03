@@ -123,11 +123,13 @@ function Shopping() {
       <div>
         <h2 className="font-medium text-muted-foreground mb-2">Suggested Items</h2>
         <div className="space-y-2">
-          {itemsNeedingRefill.map((item) => (
+          {itemsNeedingRefill.map((item) => {
+            const foundCartItem = cartItems.find((ci) => ci.itemId === item.id)
+            return (
             <ShoppingItemWithQuantity
               key={item.id}
               item={item}
-              cartItem={cartItems.find((ci) => ci.itemId === item.id)}
+              cartItem={foundCartItem}
               onAddToCart={() => {
                 if (cart) {
                   addToCart.mutate({
@@ -150,7 +152,8 @@ function Shopping() {
                 }
               }}
             />
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
@@ -165,7 +168,7 @@ function ShoppingItemWithQuantity({
   onRemove,
 }: {
   item: Item
-  cartItem?: { id: string; quantity: number }
+  cartItem: { id: string; cartId: string; itemId: string; quantity: number } | undefined
   onAddToCart: () => void
   onUpdateQuantity: (qty: number) => void
   onRemove: () => void
@@ -179,10 +182,10 @@ function ShoppingItemWithQuantity({
     <ShoppingItemCard
       item={item}
       currentQuantity={quantity}
-      cartItem={cartItem as any}
       onAddToCart={onAddToCart}
       onUpdateQuantity={onUpdateQuantity}
       onRemove={onRemove}
+      {...(cartItem ? { cartItem } : {})}
     />
   )
 }

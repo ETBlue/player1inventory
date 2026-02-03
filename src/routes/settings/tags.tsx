@@ -114,7 +114,9 @@ function TagSettings() {
                     className="h-8 w-8 text-destructive"
                     onClick={() => {
                       if (confirm(`Delete "${tagType.name}" and all its tags?`)) {
-                        typeTags.forEach((t) => deleteTag.mutate(t.id))
+                        for (const t of typeTags) {
+                          deleteTag.mutate(t.id)
+                        }
                         deleteTagType.mutate(tagType.id)
                       }
                     }}

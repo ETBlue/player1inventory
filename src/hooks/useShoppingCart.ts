@@ -19,7 +19,10 @@ export function useActiveCart() {
 export function useCartItems(cartId: string | undefined) {
   return useQuery({
     queryKey: ['cart', cartId, 'items'],
-    queryFn: () => getCartItems(cartId!),
+    queryFn: () => {
+      if (!cartId) throw new Error('cartId required')
+      return getCartItems(cartId)
+    },
     enabled: !!cartId,
   })
 }

@@ -49,10 +49,10 @@ export async function addInventoryLog(input: CreateLogInput): Promise<InventoryL
     itemId: input.itemId,
     delta: input.delta,
     quantity: currentQty + input.delta,
-    note: input.note,
     occurredAt: input.occurredAt,
     createdAt: now,
   }
+  if (input.note) log.note = input.note
 
   await db.inventoryLogs.add(log)
   return log
@@ -66,11 +66,9 @@ export async function getCurrentQuantity(itemId: string): Promise<number> {
   const logs = await db.inventoryLogs
     .where('itemId')
     .equals(itemId)
-    .sortBy('createdAt')
+    .toArray()
 
-  if (logs.length === 0) return 0
-
-  return logs[logs.length - 1].quantity
+  return logs.reduce((sum, log) => sum + log.delta, 0)
 }
 
 export async function getLastPurchaseDate(itemId: string): Promise<Date | null> {
