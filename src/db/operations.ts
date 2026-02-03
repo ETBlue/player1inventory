@@ -1,5 +1,5 @@
 import { db } from './index'
-import type { Item, InventoryLog, Tag, TagType } from '@/types'
+import type { Item, InventoryLog, Tag, TagType, ShoppingCart, CartItem } from '@/types'
 
 // Item operations
 type CreateItemInput = Omit<Item, 'id' | 'createdAt' | 'updatedAt'>
@@ -136,4 +136,77 @@ export async function updateTag(id: string, updates: Partial<Omit<Tag, 'id'>>): 
 
 export async function deleteTag(id: string): Promise<void> {
   await db.tags.delete(id)
+}
+
+// ShoppingCart operations
+export async function getOrCreateActiveCart(): Promise<ShoppingCart> {
+  const existing = await db.shoppingCarts.where('status').equals('active').first()
+  if (existing) return existing
+
+  const cart: ShoppingCart = {
+    id: crypto.randomUUID(),
+    status: 'active',
+    createdAt: new Date(),
+  }
+  await db.shoppingCarts.add(cart)
+  return cart
+}
+
+export async function addToCart(cartId: string, itemId: string, quantity: number): Promise<CartItem> {
+  const existing = await db.cartItems
+    .where('cartId')
+    .equals(cartId)
+    .filter(ci => ci.itemId === itemId)
+    .first()
+
+  if (existing) {
+    await db.cartItems.update(existing.id, { quantity: existing.quantity + quantity })
+    return { ...existing, quantity: existing.quantity + quantity }
+  }
+
+  const cartItem: CartItem = {
+    id: crypto.randomUUID(),
+    cartId,
+    itemId,
+    quantity,
+  }
+  await db.cartItems.add(cartItem)
+  return cartItem
+}
+
+export async function updateCartItem(cartItemId: string, quantity: number): Promise<void> {
+  await db.cartItems.update(cartItemId, { quantity })
+}
+
+export async function removeFromCart(cartItemId: string): Promise<void> {
+  await db.cartItems.delete(cartItemId)
+}
+
+export async function getCartItems(cartId: string): Promise<CartItem[]> {
+  return db.cartItems.where('cartId').equals(cartId).toArray()
+}
+
+export async function checkout(cartId: string): Promise<void> {
+  const cartItems = await getCartItems(cartId)
+  const now = new Date()
+
+  for (const cartItem of cartItems) {
+    await addInventoryLog({
+      itemId: cartItem.itemId,
+      delta: cartItem.quantity,
+      occurredAt: now,
+    })
+  }
+
+  await db.shoppingCarts.update(cartId, {
+    status: 'completed',
+    completedAt: now,
+  })
+
+  await db.cartItems.where('cartId').equals(cartId).delete()
+}
+
+export async function abandonCart(cartId: string): Promise<void> {
+  await db.shoppingCarts.update(cartId, { status: 'abandoned' })
+  await db.cartItems.where('cartId').equals(cartId).delete()
 }

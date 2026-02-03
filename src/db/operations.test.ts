@@ -19,6 +19,13 @@ import {
   getAllTags,
   updateTag,
   deleteTag,
+  getOrCreateActiveCart,
+  addToCart,
+  updateCartItem,
+  removeFromCart,
+  getCartItems,
+  checkout,
+  abandonCart,
 } from './operations'
 
 describe('Item operations', () => {
@@ -173,5 +180,76 @@ describe('Tag operations', () => {
 
     const ingredientTags = await getTagsByType(type1.id)
     expect(ingredientTags).toHaveLength(2)
+  })
+})
+
+describe('ShoppingCart operations', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.inventoryLogs.clear()
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
+  })
+
+  it('creates an active cart if none exists', async () => {
+    const cart = await getOrCreateActiveCart()
+
+    expect(cart.id).toBeDefined()
+    expect(cart.status).toBe('active')
+  })
+
+  it('reuses existing active cart', async () => {
+    const cart1 = await getOrCreateActiveCart()
+    const cart2 = await getOrCreateActiveCart()
+
+    expect(cart1.id).toBe(cart2.id)
+  })
+
+  it('adds item to cart', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const cart = await getOrCreateActiveCart()
+
+    const cartItem = await addToCart(cart.id, item.id, 2)
+
+    expect(cartItem.quantity).toBe(2)
+  })
+
+  it('updates cart item quantity', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const cart = await getOrCreateActiveCart()
+    const cartItem = await addToCart(cart.id, item.id, 2)
+
+    await updateCartItem(cartItem.id, 5)
+
+    const items = await getCartItems(cart.id)
+    expect(items[0]?.quantity).toBe(5)
+  })
+
+  it('checks out cart and creates inventory logs', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 3)
+
+    await checkout(cart.id)
+
+    const quantity = await getCurrentQuantity(item.id)
+    expect(quantity).toBe(3)
+
+    const updatedCart = await db.shoppingCarts.get(cart.id)
+    expect(updatedCart?.status).toBe('completed')
+  })
+
+  it('abandons cart without creating logs', async () => {
+    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 3)
+
+    await abandonCart(cart.id)
+
+    const quantity = await getCurrentQuantity(item.id)
+    expect(quantity).toBe(0)
+
+    const updatedCart = await db.shoppingCarts.get(cart.id)
+    expect(updatedCart?.status).toBe('abandoned')
   })
 })
