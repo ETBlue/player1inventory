@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { TagBadge } from '@/components/TagBadge'
 import { TagDetailDialog } from '@/components/TagDetailDialog'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
+import { AddTagDialog } from '@/components/AddTagDialog'
 import { getContrastTextColor } from '@/lib/utils'
 import {
   useTagTypes,
@@ -249,31 +250,13 @@ function TagSettings() {
       })}
 
       {/* Add Tag Dialog */}
-      <Dialog open={!!addTagDialog} onOpenChange={(open) => !open && setAddTagDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Tag</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="tagName">Name</Label>
-              <Input
-                id="tagName"
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                placeholder="e.g., Dairy, Frozen"
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddTagDialog(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddTag}>Add Tag</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddTagDialog
+        open={!!addTagDialog}
+        tagName={newTagName}
+        onTagNameChange={setNewTagName}
+        onAdd={handleAddTag}
+        onClose={() => setAddTagDialog(null)}
+      />
 
       {/* Edit TagType Dialog */}
       <EditTagTypeDialog
