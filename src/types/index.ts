@@ -15,12 +15,12 @@ export interface Tag {
   id: string
   name: string
   typeId: string
-  color?: string
 }
 
 export interface TagType {
   id: string
   name: string
+  color?: string
 }
 
 export interface InventoryLog {

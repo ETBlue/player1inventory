@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { X } from 'lucide-react'
 import { useTagTypes, useTags } from '@/hooks/useTags'
+import { getContrastTextColor } from '@/lib/utils'
 import type { Item } from '@/types'
 
 type ItemFormData = Omit<Item, 'id' | 'createdAt' | 'updatedAt'>
@@ -123,14 +124,15 @@ export function ItemForm({ initialData, onSubmit, submitLabel }: ItemFormProps) 
                   <div className="flex flex-wrap gap-2">
                     {typeTags.map((tag) => {
                       const isSelected = tagIds.includes(tag.id)
+                      const bgColor = tagType.color
                       return (
                         <Badge
                           key={tag.id}
                           variant={isSelected ? 'default' : 'outline'}
                           className="cursor-pointer"
                           style={
-                            isSelected && tag.color
-                              ? { backgroundColor: tag.color }
+                            isSelected && bgColor
+                              ? { backgroundColor: bgColor, color: getContrastTextColor(bgColor) }
                               : undefined
                           }
                           onClick={() => toggleTag(tag.id)}

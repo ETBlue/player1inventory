@@ -9,6 +9,7 @@ import {
   createTag,
   updateTag,
   deleteTag,
+  getItemCountByTag,
 } from '@/db/operations'
 import type { Tag, TagType } from '@/types'
 
@@ -23,7 +24,7 @@ export function useCreateTagType() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string }) => createTagType(input),
+    mutationFn: (input: { name: string; color?: string }) => createTagType(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
     },
@@ -100,5 +101,13 @@ export function useDeleteTag() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
     },
+  })
+}
+
+export function useItemCountByTag(tagId: string) {
+  return useQuery({
+    queryKey: ['items', 'countByTag', tagId],
+    queryFn: () => getItemCountByTag(tagId),
+    enabled: !!tagId,
   })
 }

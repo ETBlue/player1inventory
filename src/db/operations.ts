@@ -87,11 +87,12 @@ export async function getLastPurchaseDate(itemId: string): Promise<Date | null> 
 }
 
 // TagType operations
-export async function createTagType(input: { name: string }): Promise<TagType> {
+export async function createTagType(input: { name: string; color?: string }): Promise<TagType> {
   const tagType: TagType = {
     id: crypto.randomUUID(),
     name: input.name,
   }
+  if (input.color) tagType.color = input.color
   await db.tagTypes.add(tagType)
   return tagType
 }
@@ -134,6 +135,11 @@ export async function updateTag(id: string, updates: Partial<Omit<Tag, 'id'>>): 
 
 export async function deleteTag(id: string): Promise<void> {
   await db.tags.delete(id)
+}
+
+export async function getItemCountByTag(tagId: string): Promise<number> {
+  const items = await db.items.filter(item => item.tagIds.includes(tagId)).count()
+  return items
 }
 
 // ShoppingCart operations
@@ -207,4 +213,25 @@ export async function checkout(cartId: string): Promise<void> {
 export async function abandonCart(cartId: string): Promise<void> {
   await db.shoppingCarts.update(cartId, { status: 'abandoned' })
   await db.cartItems.where('cartId').equals(cartId).delete()
+}
+
+// Migration helper: move color from Tags to TagTypes
+export async function migrateTagColorsToTypes(): Promise<void> {
+  const tagTypes = await getAllTagTypes()
+
+  for (const tagType of tagTypes) {
+    // Skip if TagType already has a color
+    if (tagType.color) continue
+
+    // Find the first tag of this type that has a color (from old data)
+    const tags = await getTagsByType(tagType.id)
+    const tagWithColor = tags.find((tag: Tag & { color?: string }) => (tag as Tag & { color?: string }).color)
+
+    if (tagWithColor) {
+      const color = (tagWithColor as Tag & { color?: string }).color
+      if (color) {
+        await updateTagType(tagType.id, { color })
+      }
+    }
+  }
 }
