@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShoppingRouteImport } from './routes/shopping'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsTagsRouteImport } from './routes/settings/tags'
 import { Route as ItemsNewRouteImport } from './routes/items/new'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTagsRoute = SettingsTagsRouteImport.update({
+  id: '/settings/tags',
+  path: '/settings/tags',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ItemsNewRoute = ItemsNewRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
+  '/settings/tags': typeof SettingsTagsRoute
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
+  '/settings/tags': typeof SettingsTagsRoute
   '/settings': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
+  '/settings/tags': typeof SettingsTagsRoute
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/items/$id'
     | '/items/new'
+    | '/settings/tags'
     | '/settings/'
     | '/items/$id/log'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/items/$id'
     | '/items/new'
+    | '/settings/tags'
     | '/settings'
     | '/items/$id/log'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/items/$id'
     | '/items/new'
+    | '/settings/tags'
     | '/settings/'
     | '/items/$id/log'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   ShoppingRoute: typeof ShoppingRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   ItemsNewRoute: typeof ItemsNewRoute
+  SettingsTagsRoute: typeof SettingsTagsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/tags': {
+      id: '/settings/tags'
+      path: '/settings/tags'
+      fullPath: '/settings/tags'
+      preLoaderRoute: typeof SettingsTagsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/items/new': {
@@ -170,6 +190,7 @@ const rootRouteChildren: RootRouteChildren = {
   ShoppingRoute: ShoppingRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
   ItemsNewRoute: ItemsNewRoute,
+  SettingsTagsRoute: SettingsTagsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 export const routeTree = rootRouteImport
