@@ -1,19 +1,44 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { useState } from 'react'
 import { ItemCard } from './ItemCard'
 
-// Simple wrapper that mocks Link behavior for Storybook
-// The Link in ItemCard will still work (navigates nowhere in Storybook)
+// Create a router that renders an Outlet (which will render our story)
+const createStoryRouter = (storyComponent: React.ComponentType) => {
+  const rootRoute = createRootRoute({
+    component: storyComponent,
+  })
+
+  return createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+}
+
+// Wrapper component that sets up router context
+function RouterWrapper({ children }: { children: React.ReactNode }) {
+  const [router] = useState(() => createStoryRouter(() => <>{children}</>))
+
+  return <RouterProvider router={router} />
+}
+
 const meta: Meta<typeof ItemCard> = {
   title: 'Components/ItemCard',
   component: ItemCard,
   decorators: [
     (Story) => (
-      <div className="max-w-md">
-        <Story />
-      </div>
+      <RouterWrapper>
+        <div className="max-w-md">
+          <Story />
+        </div>
+      </RouterWrapper>
     ),
   ],
-  // Provide default args that satisfy required props
   args: {
     onConsume: () => console.log('Consume'),
     onAdd: () => console.log('Add'),
@@ -35,7 +60,6 @@ const mockItem = {
 }
 
 export const Default: Story = {
-  render: (args) => <ItemCard {...args} />,
   args: {
     item: mockItem,
     quantity: 2,
@@ -45,7 +69,6 @@ export const Default: Story = {
 }
 
 export const LowStock: Story = {
-  render: (args) => <ItemCard {...args} />,
   args: {
     item: mockItem,
     quantity: 0,
@@ -55,7 +78,6 @@ export const LowStock: Story = {
 }
 
 export const ExpiringSoon: Story = {
-  render: (args) => <ItemCard {...args} />,
   args: {
     item: mockItem,
     quantity: 1,
@@ -66,7 +88,6 @@ export const ExpiringSoon: Story = {
 }
 
 export const MultipleTags: Story = {
-  render: (args) => <ItemCard {...args} />,
   args: {
     item: { ...mockItem, tagIds: ['tag-1', 'tag-2', 'tag-3', 'tag-4'] },
     quantity: 2,
