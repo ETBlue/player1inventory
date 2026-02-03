@@ -1,49 +1,23 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
 import { ItemCard } from './ItemCard'
 
-// Create a minimal router for Storybook
-const rootRoute = createRootRoute()
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  component: () => null,
-})
-const itemRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/items/$id',
-  component: () => null,
-})
-
-const routeTree = rootRoute.addChildren([indexRoute, itemRoute])
-
-const createTestRouter = () =>
-  createRouter({
-    routeTree,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
-
+// Simple wrapper that mocks Link behavior for Storybook
+// The Link in ItemCard will still work (navigates nowhere in Storybook)
 const meta: Meta<typeof ItemCard> = {
   title: 'Components/ItemCard',
   component: ItemCard,
   decorators: [
-    (Story) => {
-      const router = createTestRouter()
-      return (
-        <RouterProvider router={router}>
-          <div className="max-w-md">
-            <Story />
-          </div>
-        </RouterProvider>
-      )
-    },
+    (Story) => (
+      <div className="max-w-md">
+        <Story />
+      </div>
+    ),
   ],
+  // Provide default args that satisfy required props
+  args: {
+    onConsume: () => console.log('Consume'),
+    onAdd: () => console.log('Add'),
+  },
 }
 
 export default meta
@@ -61,40 +35,38 @@ const mockItem = {
 }
 
 export const Default: Story = {
+  render: (args) => <ItemCard {...args} />,
   args: {
     item: mockItem,
     quantity: 2,
     tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
     tagTypes: [{ id: 'type-1', name: 'Category', color: '#3b82f6' }],
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
   },
 }
 
 export const LowStock: Story = {
+  render: (args) => <ItemCard {...args} />,
   args: {
     item: mockItem,
     quantity: 0,
     tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
     tagTypes: [{ id: 'type-1', name: 'Category', color: '#3b82f6' }],
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
   },
 }
 
 export const ExpiringSoon: Story = {
+  render: (args) => <ItemCard {...args} />,
   args: {
     item: mockItem,
     quantity: 1,
     tags: [],
     tagTypes: [],
     estimatedDueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
   },
 }
 
 export const MultipleTags: Story = {
+  render: (args) => <ItemCard {...args} />,
   args: {
     item: { ...mockItem, tagIds: ['tag-1', 'tag-2', 'tag-3', 'tag-4'] },
     quantity: 2,
@@ -110,7 +82,5 @@ export const MultipleTags: Story = {
       { id: 'type-3', name: 'Source', color: '#f59e0b' },
       { id: 'type-4', name: 'Price', color: '#ef4444' },
     ],
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
   },
 }
