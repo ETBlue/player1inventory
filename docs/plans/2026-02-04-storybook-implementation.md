@@ -30,7 +30,7 @@ Expected: Creates `.storybook/` folder with config files
 
 Run:
 ```bash
-npm install
+pnpm install
 ```
 
 Expected: All Storybook packages installed
@@ -39,7 +39,7 @@ Expected: All Storybook packages installed
 
 Run:
 ```bash
-npm install -D @storybook/addon-themes
+pnpm install -D @storybook/addon-themes
 ```
 
 Expected: Theme addon installed
@@ -48,7 +48,7 @@ Expected: Theme addon installed
 
 Run:
 ```bash
-npm run storybook
+pnpmstorybook
 ```
 
 Expected: Storybook opens at http://localhost:6006
@@ -123,7 +123,7 @@ export default config
 
 **Step 3: Test dark mode toggle**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: Theme toggle appears in toolbar, switching applies `dark` class to preview
 
 **Step 4: Commit**
@@ -197,7 +197,7 @@ export const Disabled: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/Button appears with 4 stories
 
 **Step 3: Commit**
@@ -261,7 +261,7 @@ export const CustomColors: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/Badge appears with 3 stories
 
 **Step 3: Commit**
@@ -335,7 +335,7 @@ export const HeaderOnly: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/Card appears with 3 stories
 
 **Step 3: Commit**
@@ -402,7 +402,7 @@ export const WithValue: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/Input appears with 4 stories
 
 **Step 3: Commit**
@@ -455,7 +455,7 @@ export const WithInput: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/Label appears with 2 stories
 
 **Step 3: Commit**
@@ -559,7 +559,7 @@ export const WithForm: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/Dialog appears with 2 stories
 
 **Step 3: Commit**
@@ -653,7 +653,7 @@ export const Destructive: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/AlertDialog appears with 2 stories
 
 **Step 3: Commit**
@@ -732,7 +732,7 @@ export const Destructive: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: UI/ConfirmDialog appears with 2 stories
 
 **Step 3: Commit**
@@ -808,7 +808,7 @@ export const DifferentColors: Story = {
 
 **Step 2: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: Components/TagBadge appears with 2 stories
 
 **Step 3: Commit**
@@ -1041,7 +1041,7 @@ export const MultipleTags: Story = {
 
 **Step 3: Verify in Storybook**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 Expected: Components/ItemCard appears with 4 stories
 
 **Step 4: Commit**
@@ -1179,7 +1179,7 @@ git commit -m "docs: add remaining component stories"
 
 **Step 1: Run Storybook and verify all stories**
 
-Run: `npm run storybook`
+Run: `pnpmstorybook`
 
 Verify sidebar shows:
 - UI/ (8 components)
@@ -1191,7 +1191,7 @@ Click theme toggle in toolbar, verify all components render correctly in both mo
 
 **Step 3: Run build to ensure no errors**
 
-Run: `npm run build-storybook`
+Run: `pnpmbuild-storybook`
 Expected: Build completes successfully
 
 **Step 4: Final commit**
@@ -1215,5 +1215,5 @@ git commit -m "chore: finalize Storybook setup"
 **Files created:** ~20 story files + Storybook config
 
 **Commands:**
-- `npm run storybook` - Development server on port 6006
-- `npm run build-storybook` - Static build for deployment
+- `pnpmstorybook` - Development server on port 6006
+- `pnpmbuild-storybook` - Static build for deployment

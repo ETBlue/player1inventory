@@ -25,7 +25,7 @@
 
 Run:
 ```bash
-npm create vite@latest . -- --template react-ts
+pnpm create vite@latest . -- --template react-ts
 ```
 
 Select: Overwrite existing files if prompted (only CLAUDE.md, README.md, docs/ exist)
@@ -34,14 +34,14 @@ Select: Overwrite existing files if prompted (only CLAUDE.md, README.md, docs/ e
 
 Run:
 ```bash
-npm install
+pnpm install
 ```
 
 **Step 3: Verify dev server starts**
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 Expected: Server starts at localhost:5173, shows Vite + React page
@@ -141,7 +141,7 @@ git commit -m "chore: configure strict TypeScript with path aliases"
 
 Run:
 ```bash
-npm install --save-dev @biomejs/biome
+pnpm install --save-dev @biomejs/biome
 ```
 
 **Step 2: Create biome.json**
@@ -193,14 +193,14 @@ npm uninstall eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser 
 
 Run:
 ```bash
-npm run format
+pnpmformat
 ```
 
 **Step 6: Verify lint passes**
 
 Run:
 ```bash
-npm run lint
+pnpmlint
 ```
 
 Expected: No errors
@@ -225,7 +225,7 @@ git commit -m "chore: replace ESLint with Biome"
 
 Run:
 ```bash
-npm install --save-dev vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom @types/node
+pnpm install --save-dev vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom @types/node
 ```
 
 **Step 2: Create vitest.config.ts**
@@ -288,7 +288,7 @@ describe('App', () => {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: 1 test passes
@@ -313,7 +313,7 @@ git commit -m "chore: set up Vitest with React Testing Library"
 
 Run:
 ```bash
-npm install tailwindcss @tailwindcss/vite
+pnpm install tailwindcss @tailwindcss/vite
 ```
 
 **Step 2: Update vite.config.ts**
@@ -367,7 +367,7 @@ export default App
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 Expected: See styled heading with blue text on gray background
@@ -392,7 +392,7 @@ git commit -m "chore: set up Tailwind CSS v4"
 
 Run:
 ```bash
-npm install class-variance-authority clsx tailwind-merge lucide-react
+pnpm install class-variance-authority clsx tailwind-merge lucide-react
 ```
 
 **Step 2: Create lib/utils.ts**
@@ -523,7 +523,7 @@ export default App
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 Expected: Styled button appears
@@ -550,7 +550,7 @@ git commit -m "chore: set up shadcn/ui with Button component"
 
 Run:
 ```bash
-npm install dexie
+pnpm install dexie
 ```
 
 **Step 2: Create TypeScript types**
@@ -734,7 +734,7 @@ describe('Item operations', () => {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: FAIL - operations module not found
@@ -783,7 +783,7 @@ export async function deleteItem(id: string): Promise<void> {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: All tests pass
@@ -878,7 +878,7 @@ describe('InventoryLog operations', () => {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: FAIL - functions not found
@@ -948,7 +948,7 @@ export async function getLastPurchaseDate(itemId: string): Promise<Date | null> 
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: All tests pass
@@ -1030,7 +1030,7 @@ describe('Tag operations', () => {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: FAIL - functions not found
@@ -1095,7 +1095,7 @@ export async function deleteTag(id: string): Promise<void> {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: All tests pass
@@ -1207,7 +1207,7 @@ describe('ShoppingCart operations', () => {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: FAIL - functions not found
@@ -1295,7 +1295,7 @@ export async function abandonCart(cartId: string): Promise<void> {
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: All tests pass
@@ -1323,7 +1323,7 @@ git commit -m "feat: add shopping cart operations with tests"
 
 Run:
 ```bash
-npm install @tanstack/react-router @tanstack/router-plugin @tanstack/router-devtools
+pnpm install @tanstack/react-router @tanstack/router-plugin @tanstack/router-devtools
 ```
 
 **Step 2: Update vite.config.ts**
@@ -1417,7 +1417,7 @@ if (rootElement) {
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 This auto-generates `src/routeTree.gen.ts`
@@ -1445,7 +1445,7 @@ git commit -m "feat: set up TanStack Router with file-based routing"
 
 Run:
 ```bash
-npm install @tanstack/react-query @tanstack/react-query-devtools
+pnpm install @tanstack/react-query @tanstack/react-query-devtools
 ```
 
 **Step 2: Update main.tsx with QueryClient**
@@ -1975,7 +1975,7 @@ export const Route = createRootRoute({
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 Expected: Bottom navigation bar with Pantry, Shop, Settings
@@ -2344,7 +2344,7 @@ function PantryItem({
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 Expected: Empty pantry view with "Add Item" button
@@ -2580,7 +2580,7 @@ function NewItem() {
 
 Run:
 ```bash
-npm run dev
+pnpmdev
 ```
 
 Navigate to /items/new. Expected: Item form with fields
@@ -3410,7 +3410,7 @@ git commit -m "docs: update CLAUDE.md with development info"
 
 Run:
 ```bash
-npm test
+pnpm test
 ```
 
 Expected: All tests pass
@@ -3428,7 +3428,7 @@ Expected: No errors
 
 Run:
 ```bash
-npm run lint
+pnpmlint
 ```
 
 Expected: No errors
