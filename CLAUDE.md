@@ -9,13 +9,14 @@ Player 1 Inventory — a grocery and pantry management app. Designed by ETBlue.
 ## Commands
 
 ```bash
-npm run dev       # Start development server (Vite)
-npm run build     # Build for production
-npm test          # Run tests (Vitest)
-npm run test:watch # Run tests in watch mode
-npm run lint      # Lint with Biome
-npm run format    # Format with Biome
-npm run check     # Run all Biome checks
+pnpm dev          # Start development server (Vite)
+pnpm build        # Build for production
+pnpm test         # Run tests (Vitest)
+pnpm test:watch   # Run tests in watch mode
+pnpm lint         # Lint with Biome
+pnpm format       # Format with Biome
+pnpm check        # Run all Biome checks
+pnpm storybook    # Start Storybook
 ```
 
 ## Tech Stack

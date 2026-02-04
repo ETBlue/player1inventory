@@ -62,7 +62,7 @@ In `src/routes/settings/tags.tsx`:
 
 **Step 3: Verify TypeScript**
 
-Run: `npm run typecheck`
+Run: `pnpmtypecheck`
 Expected: No errors
 
 **Step 4: Commit**
@@ -164,7 +164,7 @@ In `src/routes/settings/tags.tsx`:
 
 **Step 3: Verify TypeScript**
 
-Run: `npm run typecheck`
+Run: `pnpmtypecheck`
 Expected: No errors
 
 **Step 4: Commit**
@@ -296,7 +296,7 @@ In `src/routes/settings/tags.tsx`:
 
 **Step 3: Verify TypeScript**
 
-Run: `npm run typecheck`
+Run: `pnpmtypecheck`
 Expected: No errors
 
 **Step 4: Commit**
@@ -391,7 +391,7 @@ In `src/routes/settings/tags.tsx`:
 
 **Step 3: Verify TypeScript**
 
-Run: `npm run typecheck`
+Run: `pnpmtypecheck`
 Expected: No errors
 
 **Step 4: Commit**
@@ -481,7 +481,7 @@ In `src/routes/index.tsx`:
 
 **Step 3: Verify TypeScript**
 
-Run: `npm run typecheck`
+Run: `pnpmtypecheck`
 Expected: No errors
 
 **Step 4: Commit**
@@ -548,7 +548,7 @@ In `src/routes/shopping.tsx`:
 
 **Step 3: Verify TypeScript**
 
-Run: `npm run typecheck`
+Run: `pnpmtypecheck`
 Expected: No errors
 
 **Step 4: Commit**
@@ -566,16 +566,16 @@ git commit -m "refactor: extract ShoppingItemWithQuantity component"
 
 ```bash
 npm test
-npm run lint
-npm run typecheck
-npm run build
+pnpmlint
+pnpmtypecheck
+pnpmbuild
 ```
 
 Expected: All pass, no errors
 
 **Step 2: Visual verification**
 
-Run: `npm run dev`
+Run: `pnpmdev`
 
 Test in browser:
 - Navigate to Settings > Tags - verify tag management works
