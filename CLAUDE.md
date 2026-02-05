@@ -58,6 +58,39 @@ src/
 - **Query hooks** wrap database operations and handle cache invalidation
 - **Routes** auto-generate `src/routeTree.gen.ts` on dev server start
 
+## Design Tokens
+
+Token system for colors, shadows, borders, and states:
+
+```
+src/design-tokens/
+  ├── colors.css     # Tag colors, primitives
+  ├── shadows.css    # Shadow scale
+  ├── borders.css    # Border definitions
+  ├── states.css     # Global + inventory states
+  ├── index.css      # Imports all
+  └── index.ts       # TypeScript exports
+```
+
+**Usage:**
+```tsx
+import { tagColors, tagTextColors } from '@/design-tokens'
+
+<Badge style={{
+  backgroundColor: tagColors.red.default,
+  color: tagTextColors.default
+}}>
+  Tag
+</Badge>
+```
+
+**Token categories:**
+- **Tag colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
+- **Variants**: default (light tint) / inverse (bold)
+- **States**: Global (normal, ok, warning, error, inactive) → Inventory (low-stock, expiring, in-stock, out-of-stock)
+- **Shadows**: sm, md, lg
+- **Borders**: default (1px), thick (2px)
+
 ## Worktrees
 
 Use `.worktrees/` directory for git worktrees (project-local, hidden).
