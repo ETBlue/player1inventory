@@ -11,7 +11,7 @@ import { ItemCard } from './ItemCard'
 // Create a router that renders an Outlet (which will render our story)
 const createStoryRouter = (storyComponent: React.ComponentType) => {
   const rootRoute = createRootRoute({
-    component: storyComponent,
+    component: storyComponent as () => React.ReactNode,
   })
 
   return createRouter({
