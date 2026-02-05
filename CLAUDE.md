@@ -122,6 +122,63 @@ Before creating a PR, update all relevant documentation:
 - Final decision/recommendation
 - Rationale and trade-offs discussed
 
+### Workflow
+
+**Branch Management:**
+
+After completing a brainstorming session and before documenting the results, create a new branch. This branch will contain all related work:
+- The brainstorming log itself
+- Any design documents produced
+- Implementation plans
+- The actual code implementation
+
+The timing is important: create the branch after brainstorming is complete but before writing the design document. This keeps all related work isolated and makes it easy to review the complete feature or change in one PR.
+
+**Branch Naming:**
+
+Choose the branch prefix based on the primary purpose of the work:
+- `docs/` - for documentation-heavy changes
+- `feature/` - for new functionality
+- `refactor/` - for code restructuring
+- `chore/` - for maintenance tasks
+- `fix/` - for bug fixes
+- Other prefixes as appropriate to the mission
+
+Use descriptive names: `docs/design-tokens`, `feature/dark-mode`, `refactor/component-extraction`
+
+**Branch Cleanup:**
+
+Always delete branches after their PR is merged. This keeps the repository clean and prevents confusion about which branches are active.
+
+Recommended approach using GitHub CLI:
+```bash
+gh pr merge <number> --merge --delete-branch
+```
+
+This automatically deletes the remote branch after merging. Alternative approaches are fine as long as the branch gets deleted.
+
+Local cleanup after the remote branch is deleted:
+```bash
+git branch -d <branch-name>
+```
+
+If working in a git worktree, remove it as well:
+```bash
+git worktree remove <worktree-path>
+```
+
+**Exceptions:**
+
+For minor changes that don't require brainstorming, ask the user whether to create a branch or commit directly to main. This applies to:
+- Small bug fixes
+- Typo corrections
+- Simple configuration changes
+- Other trivial updates
+
+Quick documentation fixes (like fixing a typo in CLAUDE.md) can go directly to main without asking.
+
+**General Rule:** If the work involves brainstorming, design decisions, or implementation planning, it should go through the full branch workflow. If it's a quick fix or minor adjustment, check with the user about their preference.
+
 ### Test Format
 
 **Feature/integration tests** - Use "user can ..." naming with Given-When-Then comments:
@@ -149,14 +206,6 @@ Always include scope in commit messages:
 - `feat(cart): add checkout confirmation`
 - `fix(tags): prevent duplicate tag names`
 - `docs(readme): update setup instructions`
-
-### Branches
-
-Use prefixes:
-
-- `feature/` - New features (e.g., `feature/cart-checkout`)
-- `fix/` - Bug fixes (e.g., `fix/tag-duplication`)
-- `docs/` - Documentation only (e.g., `docs/api-reference`)
 
 ### Pull Requests
 
