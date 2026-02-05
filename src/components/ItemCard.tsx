@@ -3,7 +3,7 @@ import { AlertTriangle, Minus, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { cn, getContrastTextColor } from '@/lib/utils'
+import { getContrastTextColor } from '@/lib/utils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -31,7 +31,7 @@ export function ItemCard({
     estimatedDueDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000 // 3 days
 
   return (
-    <Card className={cn(needsRefill && 'border-orange-300 bg-orange-50')}>
+    <Card variant={needsRefill ? 'warning' : 'default'}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
           <Link
