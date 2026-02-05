@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './design-tokens/index.css';
 
 :root {
   --background: 0 0% 100%;
