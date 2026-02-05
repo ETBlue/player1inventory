@@ -71,6 +71,23 @@ Before creating a PR, update all relevant documentation:
 1. **CLAUDE.md** - Update if architecture, commands, or patterns change
 2. **Design docs** (`docs/plans/*`) - Update if implementation diverges from plan
 3. **Inline comments** - Ensure code comments reflect the changes
+4. **Brainstorming logs** (`docs/brainstorming-logs/*`) - Create when brainstorming leads to decisions
+
+### Brainstorming Logs
+
+**When to create:**
+- When brainstorming leads to implementation/design decisions
+- Not needed for exploratory discussions without decisions
+
+**Format:**
+- Location: `docs/brainstorming-logs/`
+- Naming: `YYYY-MM-DD-brainstorming-<topic>.md`
+- Date: Session date (when brainstorming occurred)
+
+**Content:**
+- Questions asked and user answers
+- Final decision/recommendation
+- Rationale and trade-offs discussed
 
 ### Test Format
 
