@@ -1,7 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-// biome-ignore lint/correctness/noUnusedImports: React needed for JSX in mock
-import type React from 'react'
+import type * as React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock TanStack Router Link component
