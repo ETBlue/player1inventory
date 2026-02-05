@@ -1,0 +1,21 @@
+@theme {
+  /* Global semantic states (primitives) */
+  --color-state-normal: hsl(0 0% 64%);
+  --color-state-ok: #22c55e;
+  --color-state-warning: #f59e0b;
+  --color-state-error: #ef4444;
+  --color-state-inactive: hsl(0 0% 83%);
+}
+
+:root {
+  /* Inventory states (semantic, reference global) */
+  --color-inventory-low-stock: var(--color-state-warning);
+  --color-inventory-expiring: var(--color-state-error);
+  --color-inventory-in-stock: var(--color-state-ok);
+  --color-inventory-out-of-stock: var(--color-state-inactive);
+}
+
+.dark {
+  /* Adjust inactive for dark mode */
+  --color-state-inactive: hsl(0 0% 40%);
+}
