@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Home, ShoppingCart, Settings } from 'lucide-react'
+import { Home, Settings, ShoppingCart } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -15,7 +15,8 @@ export function Navigation() {
     <nav className="fixed bottom-0 left-0 right-0 border-t bg-background">
       <div className="flex justify-around py-2">
         {navItems.map(({ to, label, icon: Icon }) => {
-          const isActive = location.pathname === to ||
+          const isActive =
+            location.pathname === to ||
             (to !== '/' && location.pathname.startsWith(to))
 
           return (
@@ -24,7 +25,7 @@ export function Navigation() {
               to={to}
               className={cn(
                 'flex flex-col items-center gap-1 px-4 py-2 text-sm',
-                isActive ? 'text-primary' : 'text-muted-foreground'
+                isActive ? 'text-primary' : 'text-muted-foreground',
               )}
             >
               <Icon className="h-5 w-5" />

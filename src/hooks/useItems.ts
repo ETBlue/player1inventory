@@ -1,12 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getAllItems,
-  getItem,
   createItem,
-  updateItem,
   deleteItem,
+  getAllItems,
   getCurrentQuantity,
+  getItem,
   getLastPurchaseDate,
+  updateItem,
 } from '@/db/operations'
 import type { Item } from '@/types'
 
@@ -50,7 +50,8 @@ export function useCreateItem() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) => createItem(input),
+    mutationFn: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) =>
+      createItem(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
     },

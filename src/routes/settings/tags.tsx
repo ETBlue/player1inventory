@@ -1,27 +1,27 @@
-import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Plus, Trash2, Pencil } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AddTagDialog } from '@/components/AddTagDialog'
+import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { TagBadge } from '@/components/TagBadge'
 import { TagDetailDialog } from '@/components/TagDetailDialog'
-import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
-import { AddTagDialog } from '@/components/AddTagDialog'
-import { getContrastTextColor } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { migrateTagColorsToTypes } from '@/db/operations'
 import {
-  useTagTypes,
+  useCreateTag,
   useCreateTagType,
+  useDeleteTag,
   useDeleteTagType,
   useTags,
-  useCreateTag,
-  useDeleteTag,
-  useUpdateTagType,
+  useTagTypes,
   useUpdateTag,
+  useUpdateTagType,
 } from '@/hooks/useTags'
-import { migrateTagColorsToTypes } from '@/db/operations'
+import { getContrastTextColor } from '@/lib/utils'
 import type { Tag, TagType } from '@/types/index'
 
 export const Route = createFileRoute('/settings/tags')({
@@ -57,7 +57,10 @@ function TagSettings() {
 
   const handleAddTagType = () => {
     if (newTagTypeName.trim()) {
-      createTagType.mutate({ name: newTagTypeName.trim(), color: newTagTypeColor })
+      createTagType.mutate({
+        name: newTagTypeName.trim(),
+        color: newTagTypeColor,
+      })
       setNewTagTypeName('')
       setNewTagTypeColor('#3b82f6')
     }

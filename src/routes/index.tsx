@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { PantryItem } from '@/components/PantryItem'
+import { useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
-import { useItems, useAddInventoryLog } from '@/hooks'
+import { PantryItem } from '@/components/PantryItem'
+import { Button } from '@/components/ui/button'
+import { useAddInventoryLog, useItems } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import type { Item } from '@/types'
 
@@ -39,7 +39,9 @@ function PantryView() {
       {items.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p>No items yet.</p>
-          <p className="text-sm mt-1">Add your first pantry item to get started.</p>
+          <p className="text-sm mt-1">
+            Add your first pantry item to get started.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

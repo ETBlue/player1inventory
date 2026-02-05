@@ -1,5 +1,12 @@
+import type {
+  CartItem,
+  InventoryLog,
+  Item,
+  ShoppingCart,
+  Tag,
+  TagType,
+} from '@/types'
 import { db } from './index'
-import type { Item, InventoryLog, Tag, TagType, ShoppingCart, CartItem } from '@/types'
 
 // Item operations
 type CreateItemInput = Omit<Item, 'id' | 'createdAt' | 'updatedAt'>
@@ -24,7 +31,10 @@ export async function getAllItems(): Promise<Item[]> {
   return db.items.toArray()
 }
 
-export async function updateItem(id: string, updates: Partial<Omit<Item, 'id' | 'createdAt'>>): Promise<void> {
+export async function updateItem(
+  id: string,
+  updates: Partial<Omit<Item, 'id' | 'createdAt'>>,
+): Promise<void> {
   await db.items.update(id, { ...updates, updatedAt: new Date() })
 }
 
@@ -40,7 +50,9 @@ type CreateLogInput = {
   note?: string
 }
 
-export async function addInventoryLog(input: CreateLogInput): Promise<InventoryLog> {
+export async function addInventoryLog(
+  input: CreateLogInput,
+): Promise<InventoryLog> {
   const currentQty = await getCurrentQuantity(input.itemId)
   const now = new Date()
 
@@ -63,31 +75,31 @@ export async function getItemLogs(itemId: string): Promise<InventoryLog[]> {
 }
 
 export async function getCurrentQuantity(itemId: string): Promise<number> {
-  const logs = await db.inventoryLogs
-    .where('itemId')
-    .equals(itemId)
-    .toArray()
+  const logs = await db.inventoryLogs.where('itemId').equals(itemId).toArray()
 
   return logs.reduce((sum, log) => sum + log.delta, 0)
 }
 
-export async function getLastPurchaseDate(itemId: string): Promise<Date | null> {
+export async function getLastPurchaseDate(
+  itemId: string,
+): Promise<Date | null> {
   const logs = await db.inventoryLogs
     .where('itemId')
     .equals(itemId)
-    .filter(log => log.delta > 0)
+    .filter((log) => log.delta > 0)
     .toArray()
 
   if (logs.length === 0) return null
 
-  const latest = logs.reduce((a, b) =>
-    a.occurredAt > b.occurredAt ? a : b
-  )
+  const latest = logs.reduce((a, b) => (a.occurredAt > b.occurredAt ? a : b))
   return latest.occurredAt
 }
 
 // TagType operations
-export async function createTagType(input: { name: string; color?: string }): Promise<TagType> {
+export async function createTagType(input: {
+  name: string
+  color?: string
+}): Promise<TagType> {
   const tagType: TagType = {
     id: crypto.randomUUID(),
     name: input.name,
@@ -101,7 +113,10 @@ export async function getAllTagTypes(): Promise<TagType[]> {
   return db.tagTypes.toArray()
 }
 
-export async function updateTagType(id: string, updates: Partial<Omit<TagType, 'id'>>): Promise<void> {
+export async function updateTagType(
+  id: string,
+  updates: Partial<Omit<TagType, 'id'>>,
+): Promise<void> {
   await db.tagTypes.update(id, updates)
 }
 
@@ -129,7 +144,10 @@ export async function getTagsByType(typeId: string): Promise<Tag[]> {
   return db.tags.where('typeId').equals(typeId).toArray()
 }
 
-export async function updateTag(id: string, updates: Partial<Omit<Tag, 'id'>>): Promise<void> {
+export async function updateTag(
+  id: string,
+  updates: Partial<Omit<Tag, 'id'>>,
+): Promise<void> {
   await db.tags.update(id, updates)
 }
 
@@ -138,13 +156,18 @@ export async function deleteTag(id: string): Promise<void> {
 }
 
 export async function getItemCountByTag(tagId: string): Promise<number> {
-  const items = await db.items.filter(item => item.tagIds.includes(tagId)).count()
+  const items = await db.items
+    .filter((item) => item.tagIds.includes(tagId))
+    .count()
   return items
 }
 
 // ShoppingCart operations
 export async function getOrCreateActiveCart(): Promise<ShoppingCart> {
-  const existing = await db.shoppingCarts.where('status').equals('active').first()
+  const existing = await db.shoppingCarts
+    .where('status')
+    .equals('active')
+    .first()
   if (existing) return existing
 
   const cart: ShoppingCart = {
@@ -156,15 +179,21 @@ export async function getOrCreateActiveCart(): Promise<ShoppingCart> {
   return cart
 }
 
-export async function addToCart(cartId: string, itemId: string, quantity: number): Promise<CartItem> {
+export async function addToCart(
+  cartId: string,
+  itemId: string,
+  quantity: number,
+): Promise<CartItem> {
   const existing = await db.cartItems
     .where('cartId')
     .equals(cartId)
-    .filter(ci => ci.itemId === itemId)
+    .filter((ci) => ci.itemId === itemId)
     .first()
 
   if (existing) {
-    await db.cartItems.update(existing.id, { quantity: existing.quantity + quantity })
+    await db.cartItems.update(existing.id, {
+      quantity: existing.quantity + quantity,
+    })
     return { ...existing, quantity: existing.quantity + quantity }
   }
 
@@ -178,7 +207,10 @@ export async function addToCart(cartId: string, itemId: string, quantity: number
   return cartItem
 }
 
-export async function updateCartItem(cartItemId: string, quantity: number): Promise<void> {
+export async function updateCartItem(
+  cartItemId: string,
+  quantity: number,
+): Promise<void> {
   await db.cartItems.update(cartItemId, { quantity })
 }
 
@@ -225,7 +257,10 @@ export async function migrateTagColorsToTypes(): Promise<void> {
 
     // Find the first tag of this type that has a color (from old data)
     const tags = await getTagsByType(tagType.id)
-    const tagWithColor = tags.find((tag: Tag & { color?: string }) => (tag as Tag & { color?: string }).color)
+    const tagWithColor = tags.find(
+      (tag: Tag & { color?: string }) =>
+        (tag as Tag & { color?: string }).color,
+    )
 
     if (tagWithColor) {
       const color = (tagWithColor as Tag & { color?: string }).color

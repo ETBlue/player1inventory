@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ShoppingItemCard } from '@/components/ShoppingItemCard'
 import { getCurrentQuantity } from '@/db/operations'
-import type { Item, CartItem } from '@/types'
+import type { CartItem, Item } from '@/types'
 
 interface ShoppingItemWithQuantityProps {
   item: Item

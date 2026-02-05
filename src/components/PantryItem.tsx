@@ -30,7 +30,9 @@ export function PantryItem({
 
   const estimatedDueDate =
     item.estimatedDueDays && lastPurchase
-      ? new Date(lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000)
+      ? new Date(
+          lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000,
+        )
       : item.dueDate
 
   return (

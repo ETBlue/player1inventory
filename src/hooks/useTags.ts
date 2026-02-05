@@ -1,15 +1,15 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getAllTagTypes,
+  createTag,
   createTagType,
-  updateTagType,
+  deleteTag,
   deleteTagType,
   getAllTags,
-  getTagsByType,
-  createTag,
-  updateTag,
-  deleteTag,
+  getAllTagTypes,
   getItemCountByTag,
+  getTagsByType,
+  updateTag,
+  updateTagType,
 } from '@/db/operations'
 import type { Tag, TagType } from '@/types'
 
@@ -24,7 +24,8 @@ export function useCreateTagType() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string; color?: string }) => createTagType(input),
+    mutationFn: (input: { name: string; color?: string }) =>
+      createTagType(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
     },

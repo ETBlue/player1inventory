@@ -1,17 +1,17 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ShoppingCart, X, Minus, Plus } from 'lucide-react'
+import { Minus, Plus, ShoppingCart, X } from 'lucide-react'
+import { ShoppingItemWithQuantity } from '@/components/ShoppingItemWithQuantity'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShoppingItemWithQuantity } from '@/components/ShoppingItemWithQuantity'
 import {
-  useItems,
-  useActiveCart,
-  useCartItems,
-  useAddToCart,
-  useUpdateCartItem,
-  useRemoveFromCart,
-  useCheckout,
   useAbandonCart,
+  useActiveCart,
+  useAddToCart,
+  useCartItems,
+  useCheckout,
+  useItems,
+  useRemoveFromCart,
+  useUpdateCartItem,
 } from '@/hooks'
 
 export const Route = createFileRoute('/shopping')({
@@ -71,7 +71,10 @@ function Shopping() {
               const item = items.find((i) => i.id === cartItem.itemId)
               if (!item) return null
               return (
-                <div key={cartItem.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div
+                  key={cartItem.id}
+                  className="flex items-center justify-between py-2 border-b last:border-0"
+                >
                   <span>{item.name}</span>
                   <div className="flex items-center gap-1">
                     <Button
@@ -82,18 +85,28 @@ function Shopping() {
                         if (cartItem.quantity <= 1) {
                           removeFromCart.mutate(cartItem.id)
                         } else {
-                          updateCartItem.mutate({ cartItemId: cartItem.id, quantity: cartItem.quantity - 1 })
+                          updateCartItem.mutate({
+                            cartItemId: cartItem.id,
+                            quantity: cartItem.quantity - 1,
+                          })
                         }
                       }}
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-6 text-center text-sm">{cartItem.quantity}</span>
+                    <span className="w-6 text-center text-sm">
+                      {cartItem.quantity}
+                    </span>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      onClick={() => updateCartItem.mutate({ cartItemId: cartItem.id, quantity: cartItem.quantity + 1 })}
+                      onClick={() =>
+                        updateCartItem.mutate({
+                          cartItemId: cartItem.id,
+                          quantity: cartItem.quantity + 1,
+                        })
+                      }
                     >
                       <Plus className="h-3 w-3" />
                     </Button>
@@ -118,37 +131,42 @@ function Shopping() {
       )}
 
       <div>
-        <h2 className="font-medium text-muted-foreground mb-2">Suggested Items</h2>
+        <h2 className="font-medium text-muted-foreground mb-2">
+          Suggested Items
+        </h2>
         <div className="space-y-2">
           {itemsNeedingRefill.map((item) => {
             const foundCartItem = cartItems.find((ci) => ci.itemId === item.id)
             return (
-            <ShoppingItemWithQuantity
-              key={item.id}
-              item={item}
-              {...(foundCartItem ? { cartItem: foundCartItem } : {})}
-              onAddToCart={() => {
-                if (cart) {
-                  addToCart.mutate({
-                    cartId: cart.id,
-                    itemId: item.id,
-                    quantity: Math.max(1, item.targetQuantity - item.refillThreshold),
-                  })
-                }
-              }}
-              onUpdateQuantity={(qty) => {
-                const ci = cartItems.find((c) => c.itemId === item.id)
-                if (ci) {
-                  updateCartItem.mutate({ cartItemId: ci.id, quantity: qty })
-                }
-              }}
-              onRemove={() => {
-                const ci = cartItems.find((c) => c.itemId === item.id)
-                if (ci) {
-                  removeFromCart.mutate(ci.id)
-                }
-              }}
-            />
+              <ShoppingItemWithQuantity
+                key={item.id}
+                item={item}
+                {...(foundCartItem ? { cartItem: foundCartItem } : {})}
+                onAddToCart={() => {
+                  if (cart) {
+                    addToCart.mutate({
+                      cartId: cart.id,
+                      itemId: item.id,
+                      quantity: Math.max(
+                        1,
+                        item.targetQuantity - item.refillThreshold,
+                      ),
+                    })
+                  }
+                }}
+                onUpdateQuantity={(qty) => {
+                  const ci = cartItems.find((c) => c.itemId === item.id)
+                  if (ci) {
+                    updateCartItem.mutate({ cartItemId: ci.id, quantity: qty })
+                  }
+                }}
+                onRemove={() => {
+                  const ci = cartItems.find((c) => c.itemId === item.id)
+                  if (ci) {
+                    removeFromCart.mutate(ci.id)
+                  }
+                }}
+              />
             )
           })}
         </div>

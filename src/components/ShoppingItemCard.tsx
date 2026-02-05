@@ -1,8 +1,8 @@
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Minus, Plus } from 'lucide-react'
-import type { Item, CartItem } from '@/types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import type { CartItem, Item } from '@/types'
 
 interface ShoppingItemCardProps {
   item: Item
@@ -56,7 +56,9 @@ export function ShoppingItemCard({
               >
                 <Minus className="h-4 w-4" />
               </Button>
-              <span className="w-8 text-center font-medium">{cartItem.quantity}</span>
+              <span className="w-8 text-center font-medium">
+                {cartItem.quantity}
+              </span>
               <Button
                 variant="outline"
                 size="icon"
