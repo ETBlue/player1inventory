@@ -1,0 +1,7 @@
+@theme {
+  --border-width-default: 1px;
+  --border-width-thick: 2px;
+
+  --border-default: var(--border-width-default) solid hsl(var(--border));
+  --border-thick: var(--border-width-thick) solid hsl(var(--border));
+}
