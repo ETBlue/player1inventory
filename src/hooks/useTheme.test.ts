@@ -291,4 +291,30 @@ describe('useTheme', () => {
     // Then listener is cleaned up (verified by no memory leaks)
     expect(true).toBe(true) // Placeholder - actual cleanup verified by no errors
   })
+
+  it('prioritizes localStorage over stale __THEME_INIT__ after preference change', () => {
+    // Given __THEME_INIT__ with light preference
+    window.__THEME_INIT__ = {
+      preference: 'light',
+      applied: 'light',
+    }
+
+    // When hook initializes and user changes to dark
+    const { result, unmount } = renderHook(() => useTheme())
+
+    act(() => {
+      result.current.setPreference('dark')
+    })
+
+    // Then localStorage is updated
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+
+    // When component unmounts and remounts (simulating navigation)
+    unmount()
+    const { result: result2 } = renderHook(() => useTheme())
+
+    // Then new mount reads from localStorage, not stale __THEME_INIT__
+    expect(result2.current.preference).toBe('dark')
+    expect(result2.current.theme).toBe('dark')
+  })
 })

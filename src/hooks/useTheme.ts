@@ -7,22 +7,35 @@ import {
 } from '@/lib/theme'
 
 export function useTheme() {
-  // Initialize from window.__THEME_INIT__ or localStorage or default
+  // Initialize from localStorage or window.__THEME_INIT__ or default
+  // Note: localStorage is checked first because it's the source of truth after React hydrates
+  // __THEME_INIT__ is only used for initial page load to prevent flash
   const getInitialPreference = (): ThemePreference => {
-    if (window.__THEME_INIT__) {
-      return window.__THEME_INIT__.preference
-    }
     const stored = localStorage.getItem(
       THEME_STORAGE_KEY,
     ) as ThemePreference | null
-    return stored || DEFAULT_PREFERENCE
+    if (stored) {
+      return stored
+    }
+    if (window.__THEME_INIT__) {
+      return window.__THEME_INIT__.preference
+    }
+    return DEFAULT_PREFERENCE
   }
 
   const getInitialTheme = (): Theme => {
-    if (window.__THEME_INIT__) {
+    const preference = getInitialPreference()
+
+    // If we have __THEME_INIT__ and preference matches, use its applied theme
+    // This prevents recalculating system preference on mount
+    if (
+      window.__THEME_INIT__ &&
+      window.__THEME_INIT__.preference === preference
+    ) {
       return window.__THEME_INIT__.applied
     }
-    const preference = getInitialPreference()
+
+    // Otherwise calculate theme from preference
     if (preference === 'light' || preference === 'dark') {
       return preference
     }
