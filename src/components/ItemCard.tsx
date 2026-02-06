@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { Card, CardContent } from '@/components/ui/card'
+import { AlertTriangle, Minus, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Minus, Plus, AlertTriangle } from 'lucide-react'
-import { cn, getContrastTextColor } from '@/lib/utils'
+import { Card, CardContent } from '@/components/ui/card'
+import { getContrastTextColor } from '@/lib/utils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -26,11 +26,12 @@ export function ItemCard({
   onAdd,
 }: ItemCardProps) {
   const needsRefill = quantity < item.refillThreshold
-  const isExpiringSoon = estimatedDueDate &&
+  const isExpiringSoon =
+    estimatedDueDate &&
     estimatedDueDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000 // 3 days
 
   return (
-    <Card className={cn(needsRefill && 'border-orange-300 bg-orange-50')}>
+    <Card variant={needsRefill ? 'warning' : 'default'}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
           <Link
@@ -54,15 +55,22 @@ export function ItemCard({
             )}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
-                {tags.slice(0, 3).map(tag => {
-                  const tagType = tagTypes.find(t => t.id === tag.typeId)
+                {tags.slice(0, 3).map((tag) => {
+                  const tagType = tagTypes.find((t) => t.id === tag.typeId)
                   const bgColor = tagType?.color
                   return (
                     <Badge
                       key={tag.id}
                       variant="secondary"
                       className="text-xs"
-                      style={bgColor ? { backgroundColor: bgColor, color: getContrastTextColor(bgColor) } : undefined}
+                      style={
+                        bgColor
+                          ? {
+                              backgroundColor: bgColor,
+                              color: getContrastTextColor(bgColor),
+                            }
+                          : undefined
+                      }
                     >
                       {tag.name}
                     </Badge>

@@ -91,6 +91,42 @@ import { tagColors, tagTextColors } from '@/design-tokens'
 - **Shadows**: sm, md, lg
 - **Borders**: default (1px), thick (2px)
 
+## Theme System
+
+Three-state theme system (light/dark/system) with automatic OS preference detection and manual override.
+
+**Hook:**
+```tsx
+import { useTheme } from '@/hooks/useTheme'
+
+function MyComponent() {
+  const { preference, theme, setPreference } = useTheme()
+  // preference: 'light' | 'dark' | 'system' (user's choice)
+  // theme: 'light' | 'dark' (actual applied theme)
+  // setPreference: (pref) => void (updates localStorage and DOM)
+}
+```
+
+**How it works:**
+- Inline script in `index.html` applies theme before React loads (prevents flash)
+- Theme stored in localStorage as `theme-preference`
+- System preference detected via `matchMedia('(prefers-color-scheme: dark)')`
+- `dark` class applied to `<html>` element when dark theme active
+- Existing `:root` and `.dark` CSS variables in `src/index.css` handle colors
+
+**Component variants:**
+```tsx
+// Card component supports theme-aware variants
+<Card variant="warning">  // orange border for warnings
+<Card variant="default">  // standard bg-card background
+```
+
+**Guidelines:**
+- Use semantic Tailwind colors (`bg-card`, `text-foreground`, etc.) that adapt to theme
+- Avoid hardcoded colors like `bg-white` or `bg-gray-900`
+- Test components in both light and dark modes
+- Use `dark:` prefix for dark-mode-specific styles when needed
+
 ## Worktrees
 
 Use `.worktrees/` directory for git worktrees (project-local, hidden).

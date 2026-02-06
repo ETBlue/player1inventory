@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge'
-import { getContrastTextColor } from '@/lib/utils'
 import { useItemCountByTag } from '@/hooks/useTags'
+import { getContrastTextColor } from '@/lib/utils'
 import type { Tag, TagType } from '@/types'
 
 interface TagBadgeProps {

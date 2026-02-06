@@ -1,5 +1,12 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Item, Tag, TagType, InventoryLog, ShoppingCart, CartItem } from '@/types'
+import type {
+  CartItem,
+  InventoryLog,
+  Item,
+  ShoppingCart,
+  Tag,
+  TagType,
+} from '@/types'
 
 const db = new Dexie('Player1Inventory') as Dexie & {
   items: EntityTable<Item, 'id'>

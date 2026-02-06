@@ -1,12 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getOrCreateActiveCart,
-  getCartItems,
-  addToCart,
-  updateCartItem,
-  removeFromCart,
-  checkout,
   abandonCart,
+  addToCart,
+  checkout,
+  getCartItems,
+  getOrCreateActiveCart,
+  removeFromCart,
+  updateCartItem,
 } from '@/db/operations'
 
 export function useActiveCart() {
@@ -31,8 +31,15 @@ export function useAddToCart() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ cartId, itemId, quantity }: { cartId: string; itemId: string; quantity: number }) =>
-      addToCart(cartId, itemId, quantity),
+    mutationFn: ({
+      cartId,
+      itemId,
+      quantity,
+    }: {
+      cartId: string
+      itemId: string
+      quantity: number
+    }) => addToCart(cartId, itemId, quantity),
     onSuccess: (_, { cartId }) => {
       queryClient.invalidateQueries({ queryKey: ['cart', cartId, 'items'] })
     },
@@ -43,8 +50,13 @@ export function useUpdateCartItem() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ cartItemId, quantity }: { cartItemId: string; quantity: number }) =>
-      updateCartItem(cartItemId, quantity),
+    mutationFn: ({
+      cartItemId,
+      quantity,
+    }: {
+      cartItemId: string
+      quantity: number
+    }) => updateCartItem(cartItemId, quantity),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cart'] })
     },

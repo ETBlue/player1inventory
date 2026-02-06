@@ -1,10 +1,10 @@
+import { X } from 'lucide-react'
 import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { X } from 'lucide-react'
-import { useTagTypes, useTags } from '@/hooks/useTags'
+import { useTags, useTagTypes } from '@/hooks/useTags'
 import { getContrastTextColor } from '@/lib/utils'
 import type { Item } from '@/types'
 
@@ -16,15 +16,25 @@ interface ItemFormProps {
   submitLabel: string
 }
 
-export function ItemForm({ initialData, onSubmit, submitLabel }: ItemFormProps) {
+export function ItemForm({
+  initialData,
+  onSubmit,
+  submitLabel,
+}: ItemFormProps) {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: allTags = [] } = useTags()
 
   const [name, setName] = useState(initialData?.name ?? '')
   const [unit, setUnit] = useState(initialData?.unit ?? '')
-  const [targetQuantity, setTargetQuantity] = useState(initialData?.targetQuantity ?? 1)
-  const [refillThreshold, setRefillThreshold] = useState(initialData?.refillThreshold ?? 1)
-  const [estimatedDueDays, setEstimatedDueDays] = useState(initialData?.estimatedDueDays ?? '')
+  const [targetQuantity, setTargetQuantity] = useState(
+    initialData?.targetQuantity ?? 1,
+  )
+  const [refillThreshold, setRefillThreshold] = useState(
+    initialData?.refillThreshold ?? 1,
+  )
+  const [estimatedDueDays, setEstimatedDueDays] = useState(
+    initialData?.estimatedDueDays ?? '',
+  )
   const [tagIds, setTagIds] = useState<string[]>(initialData?.tagIds ?? [])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -42,7 +52,9 @@ export function ItemForm({ initialData, onSubmit, submitLabel }: ItemFormProps) 
 
   const toggleTag = (tagId: string) => {
     setTagIds((prev) =>
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+      prev.includes(tagId)
+        ? prev.filter((id) => id !== tagId)
+        : [...prev, tagId],
     )
   }
 
@@ -132,7 +144,10 @@ export function ItemForm({ initialData, onSubmit, submitLabel }: ItemFormProps) 
                           className="cursor-pointer"
                           style={
                             isSelected && bgColor
-                              ? { backgroundColor: bgColor, color: getContrastTextColor(bgColor) }
+                              ? {
+                                  backgroundColor: bgColor,
+                                  color: getContrastTextColor(bgColor),
+                                }
                               : undefined
                           }
                           onClick={() => toggleTag(tag.id)}

@@ -1,8 +1,8 @@
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-import { ArrowLeft, Trash2, History } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, History, Trash2 } from 'lucide-react'
 import { ItemForm } from '@/components/ItemForm'
-import { useItem, useUpdateItem, useDeleteItem } from '@/hooks'
+import { Button } from '@/components/ui/button'
+import { useDeleteItem, useItem, useUpdateItem } from '@/hooks'
 
 export const Route = createFileRoute('/items/$id')({
   component: ItemDetail,
@@ -27,7 +27,11 @@ function ItemDetail() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/' })}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate({ to: '/' })}
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-2xl font-bold">{item.name}</h1>
@@ -60,7 +64,7 @@ function ItemDetail() {
         onSubmit={(data) => {
           updateItem.mutate(
             { id, updates: data },
-            { onSuccess: () => navigate({ to: '/' }) }
+            { onSuccess: () => navigate({ to: '/' }) },
           )
         }}
       />

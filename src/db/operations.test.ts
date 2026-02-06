@@ -1,25 +1,25 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './index'
 import {
-  createItem,
-  getItem,
-  getAllItems,
-  updateItem,
-  deleteItem,
-  addInventoryLog,
-  getItemLogs,
-  getCurrentQuantity,
-  getLastPurchaseDate,
-  createTagType,
-  getAllTagTypes,
-  createTag,
-  getTagsByType,
-  getOrCreateActiveCart,
-  addToCart,
-  updateCartItem,
-  getCartItems,
-  checkout,
   abandonCart,
+  addInventoryLog,
+  addToCart,
+  checkout,
+  createItem,
+  createTag,
+  createTagType,
+  deleteItem,
+  getAllItems,
+  getAllTagTypes,
+  getCartItems,
+  getCurrentQuantity,
+  getItem,
+  getItemLogs,
+  getLastPurchaseDate,
+  getOrCreateActiveCart,
+  getTagsByType,
+  updateCartItem,
+  updateItem,
 } from './operations'
 
 describe('Item operations', () => {
@@ -55,15 +55,30 @@ describe('Item operations', () => {
   })
 
   it('lists all items', async () => {
-    await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
-    await createItem({ name: 'Eggs', tagIds: [], targetQuantity: 12, refillThreshold: 6 })
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    await createItem({
+      name: 'Eggs',
+      tagIds: [],
+      targetQuantity: 12,
+      refillThreshold: 6,
+    })
 
     const items = await getAllItems()
     expect(items).toHaveLength(2)
   })
 
   it('updates an item', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
 
     await updateItem(item.id, { name: 'Whole Milk' })
 
@@ -72,7 +87,12 @@ describe('Item operations', () => {
   })
 
   it('deletes an item', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
 
     await deleteItem(item.id)
 
@@ -88,7 +108,12 @@ describe('InventoryLog operations', () => {
   })
 
   it('adds an inventory log', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
 
     const log = await addInventoryLog({
       itemId: item.id,
@@ -102,32 +127,67 @@ describe('InventoryLog operations', () => {
   })
 
   it('calculates current quantity from logs', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
 
     await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
-    await addInventoryLog({ itemId: item.id, delta: -2, occurredAt: new Date() })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: -2,
+      occurredAt: new Date(),
+    })
 
     const quantity = await getCurrentQuantity(item.id)
     expect(quantity).toBe(3)
   })
 
   it('gets logs for an item', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
 
     await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
-    await addInventoryLog({ itemId: item.id, delta: -1, occurredAt: new Date() })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: -1,
+      occurredAt: new Date(),
+    })
 
     const logs = await getItemLogs(item.id)
     expect(logs).toHaveLength(2)
   })
 
   it('gets last purchase date', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
     const purchaseDate = new Date('2026-02-01')
 
-    await addInventoryLog({ itemId: item.id, delta: -1, occurredAt: new Date('2026-01-15') })
-    await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: purchaseDate })
-    await addInventoryLog({ itemId: item.id, delta: -2, occurredAt: new Date('2026-02-02') })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: -1,
+      occurredAt: new Date('2026-01-15'),
+    })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: 5,
+      occurredAt: purchaseDate,
+    })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: -2,
+      occurredAt: new Date('2026-02-02'),
+    })
 
     const lastPurchase = await getLastPurchaseDate(item.id)
     expect(lastPurchase?.getTime()).toBe(purchaseDate.getTime())
@@ -165,7 +225,10 @@ describe('Tag operations', () => {
   })
 
   it('creates a tag type with color', async () => {
-    const tagType = await createTagType({ name: 'Ingredient type', color: '#3b82f6' })
+    const tagType = await createTagType({
+      name: 'Ingredient type',
+      color: '#3b82f6',
+    })
 
     expect(tagType.id).toBeDefined()
     expect(tagType.name).toBe('Ingredient type')
@@ -208,7 +271,12 @@ describe('ShoppingCart operations', () => {
   })
 
   it('adds item to cart', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
     const cart = await getOrCreateActiveCart()
 
     const cartItem = await addToCart(cart.id, item.id, 2)
@@ -217,7 +285,12 @@ describe('ShoppingCart operations', () => {
   })
 
   it('updates cart item quantity', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
     const cart = await getOrCreateActiveCart()
     const cartItem = await addToCart(cart.id, item.id, 2)
 
@@ -228,7 +301,12 @@ describe('ShoppingCart operations', () => {
   })
 
   it('checks out cart and creates inventory logs', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
     const cart = await getOrCreateActiveCart()
     await addToCart(cart.id, item.id, 3)
 
@@ -242,7 +320,12 @@ describe('ShoppingCart operations', () => {
   })
 
   it('abandons cart without creating logs', async () => {
-    const item = await createItem({ name: 'Milk', tagIds: [], targetQuantity: 2, refillThreshold: 1 })
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
     const cart = await getOrCreateActiveCart()
     await addToCart(cart.id, item.id, 3)
 
