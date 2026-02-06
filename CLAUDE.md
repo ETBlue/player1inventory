@@ -127,10 +127,6 @@ function MyComponent() {
 - Test components in both light and dark modes
 - Use `dark:` prefix for dark-mode-specific styles when needed
 
-## Worktrees
-
-Use `.worktrees/` directory for git worktrees (project-local, hidden).
-
 ## AI Agent SOP
 
 ### Documentation Updates
@@ -170,6 +166,14 @@ After completing a brainstorming session and before documenting the results, cre
 
 The timing is important: create the branch after brainstorming is complete but before writing the design document. This keeps all related work isolated and makes it easy to review the complete feature or change in one PR.
 
+**Recommended Approach: Regular Branches**
+
+Use regular git branches for feature work. This approach works with all git tools including GitHub Desktop, VS Code, and CLI.
+
+**Advanced Alternative: Git Worktrees**
+
+CLI users may optionally use git worktrees for parallel work isolation. Create worktrees in `.worktrees/` directory (project-local, hidden). See "Advanced: Git Worktrees" section below for details.
+
 **Branch Naming:**
 
 Choose the branch prefix based on the primary purpose of the work:
@@ -198,7 +202,7 @@ Local cleanup after the remote branch is deleted:
 git branch -d <branch-name>
 ```
 
-If working in a git worktree, remove it as well:
+If using git worktrees, also remove the worktree:
 ```bash
 git worktree remove <worktree-path>
 ```
@@ -214,6 +218,28 @@ For minor changes that don't require brainstorming, ask the user whether to crea
 Quick documentation fixes (like fixing a typo in CLAUDE.md) can go directly to main without asking.
 
 **General Rule:** If the work involves brainstorming, design decisions, or implementation planning, it should go through the full branch workflow. If it's a quick fix or minor adjustment, check with the user about their preference.
+
+**Advanced: Git Worktrees**
+
+For CLI users who want to work on multiple branches simultaneously without switching, git worktrees provide isolated workspaces.
+
+**Setup:**
+```bash
+# Create worktree in .worktrees/ directory
+git worktree add .worktrees/<branch-name> -b <branch-name>
+cd .worktrees/<branch-name>
+```
+
+**Directory Convention:**
+Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`.
+
+**Cleanup:**
+```bash
+# After branch is merged and deleted
+git worktree remove .worktrees/<branch-name>
+```
+
+**Note:** Git worktrees are not supported in GitHub Desktop. If you use GUI tools, stick with regular branches.
 
 ### Test Format
 
