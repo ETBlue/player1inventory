@@ -60,20 +60,31 @@ src/
 
 ## Design Tokens
 
-Token system for colors, shadows, borders, and states:
+Token system for theme, colors, shadows, and borders:
 
 ```
 src/design-tokens/
-  ├── colors.css     # Tag colors, primitives
+  ├── theme.css      # Shadcn semantic colors (background, primary, etc.)
+  ├── colors.css     # Tag colors + state colors
   ├── shadows.css    # Shadow scale
   ├── borders.css    # Border definitions
-  ├── states.css     # Global + inventory states
   ├── index.css      # Imports all
   └── index.ts       # TypeScript exports
 ```
 
+**Theme system:**
+- `:root` defines HSL values for light mode semantic colors
+- `.dark` overrides for dark mode
+- `@theme inline` maps CSS variables to Tailwind utilities (bg-background, text-foreground, etc.)
+- Two-layer approach preserves theming flexibility
+
 **Usage:**
 ```tsx
+// Theme colors (from theme.css)
+<div className="bg-background text-foreground">
+<Button className="bg-primary text-primary-foreground">
+
+// Tag colors (from colors.css)
 import { tagColors, tagTextColors } from '@/design-tokens'
 
 <Badge style={{
@@ -85,9 +96,10 @@ import { tagColors, tagTextColors } from '@/design-tokens'
 ```
 
 **Token categories:**
+- **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.)
 - **Tag colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
-- **Variants**: default (light tint) / inverse (bold)
-- **States**: Global (normal, ok, warning, error, inactive) → Inventory (low-stock, expiring, in-stock, out-of-stock)
+- **Tag variants**: default (light tint) / inverse (bold)
+- **State colors**: Global states + inventory mappings (low-stock, expiring, in-stock, out-of-stock)
 - **Shadows**: sm, md, lg
 - **Borders**: default (1px), thick (2px)
 
