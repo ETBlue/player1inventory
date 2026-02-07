@@ -26,4 +26,24 @@
   /* Tag text colors */
   --color-tag-text-bold: #ffffff;
   --color-tag-text-default: #18181b;
+
+  /* Global state colors */
+  --color-state-normal: hsl(0 0% 64%);
+  --color-state-ok: #22c55e;
+  --color-state-warning: #f59e0b;
+  --color-state-error: #ef4444;
+  --color-state-inactive: hsl(0 0% 83%);
+}
+
+/* Inventory-specific state mappings */
+:root {
+  --color-inventory-low-stock: var(--color-state-warning);
+  --color-inventory-expiring: var(--color-state-error);
+  --color-inventory-in-stock: var(--color-state-ok);
+  --color-inventory-out-of-stock: var(--color-state-inactive);
+}
+
+/* Dark mode state override */
+.dark {
+  --color-state-inactive: hsl(0 0% 40%);
 }
