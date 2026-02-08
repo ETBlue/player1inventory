@@ -64,6 +64,8 @@
 /* Map to Tailwind utilities */
 @theme inline {
   --color-background: hsl(var(--background));
+  --color-background-surface: hsl(var(--background-surface));
+  --color-background-elevated: hsl(var(--background-elevated));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
