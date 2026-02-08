@@ -1,0 +1,77 @@
+/* Style Docs page background when dark theme is active */
+.dark #storybook-docs  {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.dark #storybook-docs .sbdocs {
+  background: none;
+}
+
+.dark #storybook-docs h1,
+.dark #storybook-docs h2,
+.dark #storybook-docs h3,
+.dark #storybook-docs h4,
+.dark #storybook-docs h5,
+.dark #storybook-docs h6 {
+  color: hsl(var(--foreground));
+}
+
+.dark #storybook-docs a,
+.dark #storybook-docs button {
+  color: hsl(var(--foreground)/0.75);
+}
+
+.dark #storybook-docs input,
+.dark #storybook-docs select,
+.dark #storybook-docs textarea {
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  box-shadow: hsl(var(--foreground)/0.25) 0 0 0 1px inset;
+}
+
+/* preview */
+
+.dark #storybook-docs .sbdocs.sbdocs-preview {
+  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+}
+
+.dark #storybook-docs .sbdocs.sbdocs-preview [role*="toolbar"] {
+  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+  background: hsl(var(--background));
+}
+
+.dark #storybook-docs .sbdocs.sbdocs-preview .docs-story + div {
+  background: hsl(var(--background-elevated));
+  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+}
+
+.dark #storybook-docs .sbdocs.sbdocs-preview .docs-story > :has(button) {
+  background: none;
+}
+
+.dark #storybook-docs .sbdocs.sbdocs-preview .docs-story button.docblock-code-toggle {
+  background: hsl(var(--background));
+  border-color: hsl(var(--foreground)/0.25);
+}
+
+/* args table */
+
+.dark #storybook-docs .docblock-argstable thead th {
+  color: hsl(var(--foreground)/0.75);
+}
+.dark #storybook-docs .docblock-argstable tbody {
+  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+  filter: none;
+}
+
+.dark #storybook-docs .docblock-argstable tbody td {
+  background: hsl(var(--background));
+}
+
+.dark #storybook-docs .docblock-argstable tbody td span {
+  color: hsl(var(--foreground));
+  background: hsl(var(--background-elevated));
+  border-color: hsl(var(--foreground)/0.25);
+}
+
