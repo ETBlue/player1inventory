@@ -1,9 +1,16 @@
 /* Base theme variables (light mode) */
 :root {
-  --background: 0 0% 100%;
+  /* Background layers */
+  --background-base: 0 0% 100%;        /* Base page (white) */
+  --background-surface: 0 0% 95%;      /* Cards, panels (light gray) */
+  --background-elevated: 0 0% 90%;     /* Toolbars, raised elements (subtle gray) */
+
+  /* Aliases for backward compatibility */
+  --background: var(--background-base);
+  --card: var(--background-surface);
+
+  /* Other semantic colors */
   --foreground: 0 0% 3.9%;
-  --background-elevated: 0 0% 95%;
-  --card: 0 0% 100%;
   --card-foreground: 0 0% 3.9%;
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 3.9%;
@@ -25,10 +32,17 @@
 
 /* Dark mode overrides */
 .dark {
-  --background: 0 0% 3.9%;
+  /* Background layers */
+  --background-base: 0 0% 3.9%;        /* Base page (very dark) */
+  --background-surface: 0 0% 10%;      /* Cards, panels (lighter) */
+  --background-elevated: 0 0% 15%;     /* Toolbars, raised elements (subtle lighter) */
+
+  /* Aliases for backward compatibility */
+  --background: var(--background-base);
+  --card: var(--background-surface);
+
+  /* Other semantic colors */
   --foreground: 0 0% 98%;
-  --background-elevated: 0 0% 10%;
-  --card: 0 0% 3.9%;
   --card-foreground: 0 0% 98%;
   --popover: 0 0% 3.9%;
   --popover-foreground: 0 0% 98%;
@@ -50,6 +64,8 @@
 /* Map to Tailwind utilities */
 @theme inline {
   --color-background: hsl(var(--background));
+  --color-background-surface: hsl(var(--background-surface));
+  --color-background-elevated: hsl(var(--background-elevated));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));

@@ -78,11 +78,29 @@ src/design-tokens/
 - `@theme inline` maps CSS variables to Tailwind utilities (bg-background, text-foreground, etc.)
 - Two-layer approach preserves theming flexibility
 
+**Background layers:**
+Three-level system for surface elevation hierarchy:
+- `--background-base` / `bg-background`: Base page background
+- `--background-surface` / `bg-background-surface` / `bg-card`: Cards, panels, list items
+- `--background-elevated` / `bg-background-elevated`: Toolbars, headers, elevated elements
+
+Light mode: 100% → 95% → 90% (progressively darker)
+Dark mode: 3.9% → 10% → 15% (progressively lighter)
+
 **Usage:**
 ```tsx
 // Theme colors (from theme.css)
 <div className="bg-background text-foreground">
 <Button className="bg-primary text-primary-foreground">
+
+// Background layers
+<div className="bg-background"> {/* Page base */}
+  <Card> {/* Uses bg-card internally (alias for surface layer) */}
+    <CardHeader className="bg-background-elevated">
+      Toolbar
+    </CardHeader>
+  </Card>
+</div>
 
 // Tag colors (from colors.css)
 import { tagColors, tagTextColors } from '@/design-tokens'
@@ -97,7 +115,7 @@ import { tagColors, tagTextColors } from '@/design-tokens'
 
 **Token categories:**
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.)
-  - `background-elevated`: For elevated surfaces (toolbars, tables, code blocks)
+- **Background layers**: base (page) / surface (cards) / elevated (toolbars)
 - **Tag colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
 - **Tag variants**: default (light tint) / inverse (bold)
 - **State colors**: Global states + inventory mappings (low-stock, expiring, in-stock, out-of-stock)
