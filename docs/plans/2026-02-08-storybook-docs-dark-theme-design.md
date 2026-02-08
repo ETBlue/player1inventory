@@ -123,9 +123,31 @@ When building theme-aware components, developers can now rapidly browse through 
 
 ## Implementation Scope
 
-**Files to modify:**
+**Files modified:**
 - `.storybook/preview.tsx` - Add imports, create decorator, update configuration
+- `.storybook/docs-theme.css` - New file with theme-specific styles
+- `src/design-tokens/theme.css` - Add `--background-elevated` token
 
-**No additional dependencies required** - uses existing `@storybook/theming` package
+**No additional dependencies required** - uses existing `storybook/theming` package (note: Storybook 10 uses `storybook/theming`, not `@storybook/theming`)
 
-**Estimated complexity:** Simple - single file change with ~10 lines of new code
+**Actual complexity:** Moderate - required custom CSS approach instead of Storybook's theme API
+
+## Implementation Notes
+
+**Approach changed during implementation:**
+- Original plan to use `context.parameters.docs.theme` didn't work dynamically in Storybook 10
+- Switched to custom CSS approach with decorator applying `dark` class to `body` element
+- Created `docs-theme.css` targeting Storybook Docs elements with design token variables
+- Added new `--background-elevated` token for elevated surfaces (tables, toolbars, code blocks)
+- Used `box-shadow` instead of borders for softer visual hierarchy
+- Scoped all CSS with `.dark #storybook-docs` for specificity
+
+**Files structure:**
+```
+.storybook/
+  ├── preview.tsx       # Decorator that applies dark class to body
+  └── docs-theme.css    # Theme-aware styles using design tokens
+
+src/design-tokens/
+  └── theme.css         # Added --background-elevated token
+```

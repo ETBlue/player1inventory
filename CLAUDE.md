@@ -97,6 +97,7 @@ import { tagColors, tagTextColors } from '@/design-tokens'
 
 **Token categories:**
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.)
+  - `background-elevated`: For elevated surfaces (toolbars, tables, code blocks)
 - **Tag colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
 - **Tag variants**: default (light tint) / inverse (bold)
 - **State colors**: Global states + inventory mappings (low-stock, expiring, in-stock, out-of-stock)
