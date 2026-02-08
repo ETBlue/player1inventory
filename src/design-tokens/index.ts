@@ -80,3 +80,19 @@ export const inventoryStates = {
   inStock: 'var(--color-inventory-in-stock)',
   outOfStock: 'var(--color-inventory-out-of-stock)',
 } as const
+
+// Background layers (CSS variable names for programmatic use)
+export const backgroundLayers = {
+  base: 'var(--background-base)',
+  surface: 'var(--background-surface)',
+  elevated: 'var(--background-elevated)',
+} as const
+
+// Aliases for backward compatibility
+export const backgroundAliases = {
+  background: 'var(--background)',
+  card: 'var(--card)',
+} as const
+
+export type BackgroundLayer = keyof typeof backgroundLayers
+export type BackgroundAlias = keyof typeof backgroundAliases
