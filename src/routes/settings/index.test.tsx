@@ -168,19 +168,19 @@ describe('Settings Page', () => {
 
     renderSettings()
 
-    // Then dark button has default variant (bg-primary, no border)
-    // and light/system buttons have outline variant (border, no bg-primary)
+    // Then dark button has neutral variant (filled background)
+    // and light/system buttons have neutral-outline variant (outlined)
     const darkButton = screen.getByRole('button', { name: 'Dark' })
     const lightButton = screen.getByRole('button', { name: 'Light' })
     const systemButton = screen.getByRole('button', { name: 'System' })
 
     // Check distinguishing classes between variants
-    // Default variant has bg-primary, outline variant has border
-    expect(darkButton.className).toContain('bg-primary')
-    expect(darkButton.className).not.toContain('border')
-    expect(lightButton.className).toContain('border')
-    expect(lightButton.className).not.toContain('bg-primary')
-    expect(systemButton.className).toContain('border')
-    expect(systemButton.className).not.toContain('bg-primary')
+    // Neutral variant has bg-neutral, outline variant has border-neutral
+    expect(darkButton.className).toContain('bg-neutral')
+    expect(darkButton.className).toContain('border-transparent')
+    expect(lightButton.className).toContain('border-neutral')
+    expect(lightButton.className).not.toContain('bg-neutral')
+    expect(systemButton.className).toContain('border-neutral')
+    expect(systemButton.className).not.toContain('bg-neutral')
   })
 })

@@ -25,7 +25,7 @@ export const Default: Story = {
   render: () => (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline">Open Dialog</Button>
+        <Button variant="neutral-outline">Open Dialog</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -38,7 +38,7 @@ export const Default: Story = {
           <p>Dialog content goes here.</p>
         </div>
         <DialogFooter>
-          <Button variant="outline">Cancel</Button>
+          <Button variant="neutral-outline">Cancel</Button>
           <Button>Save</Button>
         </DialogFooter>
       </DialogContent>

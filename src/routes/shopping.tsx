@@ -78,7 +78,7 @@ function Shopping() {
                   <span>{item.name}</span>
                   <div className="flex items-center gap-1">
                     <Button
-                      variant="ghost"
+                      variant="neutral-ghost"
                       size="icon"
                       className="h-6 w-6"
                       onClick={() => {
@@ -98,7 +98,7 @@ function Shopping() {
                       {cartItem.quantity}
                     </span>
                     <Button
-                      variant="ghost"
+                      variant="neutral-ghost"
                       size="icon"
                       className="h-6 w-6"
                       onClick={() =>

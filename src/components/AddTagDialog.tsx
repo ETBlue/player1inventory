@@ -43,7 +43,7 @@ export function AddTagDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="neutral-ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button onClick={onAdd}>Add Tag</Button>

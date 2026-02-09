@@ -35,21 +35,23 @@ function Settings() {
 
             <div className="flex gap-2">
               <Button
-                variant={preference === 'light' ? 'default' : 'outline'}
+                variant={preference === 'light' ? 'neutral' : 'neutral-outline'}
                 onClick={() => setPreference('light')}
                 className="flex-1"
               >
                 Light
               </Button>
               <Button
-                variant={preference === 'system' ? 'default' : 'outline'}
+                variant={
+                  preference === 'system' ? 'neutral' : 'neutral-outline'
+                }
                 onClick={() => setPreference('system')}
                 className="flex-1"
               >
                 System
               </Button>
               <Button
-                variant={preference === 'dark' ? 'default' : 'outline'}
+                variant={preference === 'dark' ? 'neutral' : 'neutral-outline'}
                 onClick={() => setPreference('dark')}
                 className="flex-1"
               >

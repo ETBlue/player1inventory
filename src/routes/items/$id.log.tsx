@@ -22,7 +22,7 @@ function ItemHistory() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Button
-          variant="ghost"
+          variant="neutral-ghost"
           size="icon"
           onClick={() => navigate({ to: '/items/$id', params: { id } })}
         >

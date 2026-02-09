@@ -43,7 +43,7 @@ export function ShoppingItemCard({
           {inCart ? (
             <div className="flex items-center gap-1">
               <Button
-                variant="outline"
+                variant="neutral-outline"
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
@@ -60,7 +60,7 @@ export function ShoppingItemCard({
                 {cartItem.quantity}
               </span>
               <Button
-                variant="outline"
+                variant="neutral-outline"
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => onUpdateQuantity(cartItem.quantity + 1)}

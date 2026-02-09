@@ -86,7 +86,7 @@ export function ItemCard({
           </Link>
           <div className="flex items-center gap-1">
             <Button
-              variant="outline"
+              variant="neutral-outline"
               size="icon"
               className="h-8 w-8"
               onClick={(e) => {
@@ -99,7 +99,7 @@ export function ItemCard({
             </Button>
             <span className="w-8 text-center font-medium">{quantity}</span>
             <Button
-              variant="outline"
+              variant="neutral-outline"
               size="icon"
               className="h-8 w-8"
               onClick={(e) => {

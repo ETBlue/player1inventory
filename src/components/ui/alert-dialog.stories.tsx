@@ -25,7 +25,7 @@ export const Default: Story = {
   render: () => (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="outline">Open Alert</Button>
+        <Button variant="neutral-outline">Open Alert</Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
