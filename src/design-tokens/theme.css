@@ -43,7 +43,7 @@
   --importance-secondary: 180 30% 50%;
   --importance-tertiary: 180 10% 50%;
   --importance-destructive: 330 80% 60%;
-  --importance-neutral: 45 10% 50%;
+  --importance-neutral: 45 20% 60%;
 }
 
 /* Map to Tailwind utilities */
