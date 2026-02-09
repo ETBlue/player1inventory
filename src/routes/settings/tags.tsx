@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AddTagDialog } from '@/components/AddTagDialog'
+import { ColorSelect } from '@/components/ColorSelect'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { TagBadge } from '@/components/TagBadge'
 import { TagDetailDialog } from '@/components/TagDetailDialog'
@@ -146,18 +147,11 @@ function TagSettings() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="newTagTypeColor">Color</Label>
-              <select
+              <ColorSelect
                 id="newTagTypeColor"
                 value={newTagTypeColor}
-                onChange={(e) => setNewTagTypeColor(e.target.value as TagColor)}
-                className="flex h-10 w-full rounded-sm px-3 py-2 text-foreground-default bg-background-surface border border-accessory-default focus:outline-none focus:border-accessory-emphasized disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-              >
-                {Object.values(TagColor).map((color) => (
-                  <option key={color} value={color}>
-                    {color}
-                  </option>
-                ))}
-              </select>
+                onChange={setNewTagTypeColor}
+              />
             </div>
           </div>
         </CardContent>

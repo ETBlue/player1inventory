@@ -1,3 +1,4 @@
+import { ColorSelect } from '@/components/ColorSelect'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { TagColor, type TagType } from '@/types'
+import type { TagColor, TagType } from '@/types'
 
 interface EditTagTypeDialogProps {
   tagType: TagType | null
@@ -48,18 +49,11 @@ export function EditTagTypeDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="editTagTypeColor">Color</Label>
-            <select
+            <ColorSelect
               id="editTagTypeColor"
               value={color}
-              onChange={(e) => onColorChange(e.target.value as TagColor)}
-              className="flex h-10 w-full rounded-sm px-3 py-2 text-foreground-default bg-background-surface border border-accessory-default focus:outline-none focus:border-accessory-emphasized disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-            >
-              {Object.values(TagColor).map((colorOption) => (
-                <option key={colorOption} value={colorOption}>
-                  {colorOption}
-                </option>
-              ))}
-            </select>
+              onChange={onColorChange}
+            />
           </div>
         </div>
         <DialogFooter>
