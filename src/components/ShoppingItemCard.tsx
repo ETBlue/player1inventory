@@ -34,7 +34,7 @@ export function ShoppingItemCard({
               Have: {currentQuantity} / Need: {item.targetQuantity}
             </p>
             {suggestedQuantity > 0 && !inCart && (
-              <Badge variant="outline" className="mt-1">
+              <Badge variant="neutral-outline" className="mt-1">
                 Suggested: +{suggestedQuantity}
               </Badge>
             )}

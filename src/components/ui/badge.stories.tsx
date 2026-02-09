@@ -17,26 +17,52 @@ export const Default: Story = {
 }
 
 export const Variants: Story = {
-  render: () => (
-    <div className="flex gap-2">
-      <Badge variant="default">Default</Badge>
-      <Badge variant="secondary">Secondary</Badge>
-      <Badge variant="destructive">Destructive</Badge>
-      <Badge variant="outline">Outline</Badge>
-    </div>
-  ),
-}
+  render: () => {
+    const hueColors = [
+      'red',
+      'orange',
+      'amber',
+      'yellow',
+      'green',
+      'teal',
+      'blue',
+      'indigo',
+      'purple',
+      'pink',
+    ] as const
 
-export const CustomColors: Story = {
-  render: () => (
-    <div className="flex gap-2">
-      <Badge style={{ backgroundColor: '#22c55e', color: 'white' }}>
-        Green
-      </Badge>
-      <Badge style={{ backgroundColor: '#3b82f6', color: 'white' }}>Blue</Badge>
-      <Badge style={{ backgroundColor: '#f59e0b', color: 'black' }}>
-        Amber
-      </Badge>
-    </div>
-  ),
+    const statusAndImportanceColors = [
+      'ok',
+      'warning',
+      'error',
+      'inactive',
+      'primary',
+      'secondary',
+      'tertiary',
+      'destructive',
+      'neutral',
+    ] as const
+
+    return (
+      <div className="inline-grid grid-cols-[auto_auto] justify-items-start gap-2">
+        {hueColors.map((color) => (
+          <>
+            <Badge variant={color}>{color}</Badge>
+            <Badge variant={`${color}-tint` as `${typeof color}-tint`}>
+              {`${color}-tint`}
+            </Badge>
+          </>
+        ))}
+
+        {statusAndImportanceColors.map((color) => (
+          <>
+            <Badge variant={color}>{color}</Badge>
+            <Badge variant={`${color}-outline` as `${typeof color}-outline`}>
+              {`${color}-outline`}
+            </Badge>
+          </>
+        ))}
+      </div>
+    )
+  },
 }

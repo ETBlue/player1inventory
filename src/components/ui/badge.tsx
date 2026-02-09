@@ -4,21 +4,59 @@ import type * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+  `inline-flex items-center 
+  rounded-full px-2 py-0.25 border
+  text-xs capitalize whitespace-nowrap`,
   {
     variants: {
       variant: {
-        default:
-          'border-transparent bg-primary text-primary-foreground hover:bg-primary/80',
-        secondary:
-          'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        destructive:
-          'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
-        outline: 'text-foreground',
+        red: `bg-red border-transparent text-tint`,
+        orange: `bg-orange border-transparent text-tint`,
+        amber: `bg-amber border-transparent text-tint`,
+        yellow: `bg-yellow border-transparent text-tint`,
+        green: `bg-green border-transparent text-tint`,
+        teal: `bg-teal border-transparent text-tint`,
+        blue: `bg-blue border-transparent text-tint`,
+        indigo: `bg-indigo border-transparent text-tint`,
+        purple: `bg-purple border-transparent text-tint`,
+        pink: `bg-pink border-transparent text-tint`,
+
+        ok: `bg-ok border-transparent text-tint`,
+        warning: `bg-warning border-transparent text-tint`,
+        error: `bg-error border-transparent text-tint`,
+        inactive: `bg-inactive border-transparent text-tint`,
+
+        primary: `bg-primary border-transparent text-tint`,
+        secondary: `bg-secondary border-transparent text-tint`,
+        tertiary: `bg-tertiary border-transparent text-tint`,
+        destructive: `bg-destructive border-transparent text-tint`,
+        neutral: `bg-neutral border-transparent text-tint`,
+
+        'red-tint': `bg-red-tint border-red text-dark`,
+        'orange-tint': `bg-orange-tint border-orange text-dark`,
+        'amber-tint': `bg-amber-tint border-amber text-dark`,
+        'yellow-tint': `bg-yellow-tint border-yellow text-dark`,
+        'green-tint': `bg-green-tint border-green text-dark`,
+        'teal-tint': `bg-teal-tint border-teal text-dark`,
+        'blue-tint': `bg-blue-tint border-blue text-dark`,
+        'indigo-tint': `bg-indigo-tint border-indigo text-dark`,
+        'purple-tint': `bg-purple-tint border-purple text-dark`,
+        'pink-tint': `bg-pink-tint border-pink text-dark`,
+
+        'ok-outline': `border-ok text-ok`,
+        'warning-outline': `border-warning text-warning`,
+        'error-outline': `border-error text-error`,
+        'inactive-outline': `border-inactive text-inactive`,
+
+        'primary-outline': `border-primary text-primary`,
+        'secondary-outline': `border-secondary text-secondary`,
+        'tertiary-outline': `border-tertiary text-tertiary`,
+        'destructive-outline': `border-destructive text-destructive`,
+        'neutral-outline': `border-neutral text-neutral`,
       },
     },
     defaultVariants: {
-      variant: 'default',
+      variant: 'teal',
     },
   },
 )
