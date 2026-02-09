@@ -21,8 +21,7 @@ import {
   useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
-import { getContrastTextColor } from '@/lib/utils'
-import type { Tag, TagType } from '@/types/index'
+import { type Tag, TagColor, type TagType } from '@/types/index'
 
 export const Route = createFileRoute('/settings/tags')({
   component: TagSettings,
@@ -40,14 +39,14 @@ function TagSettings() {
   const deleteTag = useDeleteTag()
 
   const [newTagTypeName, setNewTagTypeName] = useState('')
-  const [newTagTypeColor, setNewTagTypeColor] = useState('#3b82f6')
+  const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [editTagType, setEditTagType] = useState<TagType | null>(null)
   const [editTag, setEditTag] = useState<Tag | null>(null)
   const [tagTypeToDelete, setTagTypeToDelete] = useState<TagType | null>(null)
   const [editTagTypeName, setEditTagTypeName] = useState('')
-  const [editTagTypeColor, setEditTagTypeColor] = useState('#3b82f6')
+  const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
   const [editTagName, setEditTagName] = useState('')
 
   // Run migration on mount
@@ -62,7 +61,7 @@ function TagSettings() {
         color: newTagTypeColor,
       })
       setNewTagTypeName('')
-      setNewTagTypeColor('#3b82f6')
+      setNewTagTypeColor(TagColor.blue)
     }
   }
 
@@ -119,7 +118,7 @@ function TagSettings() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Button
-          variant="ghost"
+          variant="neutral-ghost"
           size="icon"
           onClick={() => navigate({ to: '/settings' })}
         >
@@ -147,32 +146,18 @@ function TagSettings() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="newTagTypeColor">Color</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="newTagTypeColor"
-                  type="color"
-                  value={newTagTypeColor}
-                  onChange={(e) => setNewTagTypeColor(e.target.value)}
-                  className="w-16 h-10 p-1"
-                />
-                <Input
-                  value={newTagTypeColor}
-                  onChange={(e) => setNewTagTypeColor(e.target.value)}
-                  placeholder="#3b82f6"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Preview</Label>
-              <div
-                className="h-10 rounded-md flex items-center justify-center font-medium text-sm"
-                style={{
-                  backgroundColor: newTagTypeColor,
-                  color: getContrastTextColor(newTagTypeColor),
-                }}
+              <select
+                id="newTagTypeColor"
+                value={newTagTypeColor}
+                onChange={(e) => setNewTagTypeColor(e.target.value as TagColor)}
+                className="flex h-10 w-full rounded-sm px-3 py-2 text-foreground-default bg-background-surface border border-accessory-default focus:outline-none focus:border-accessory-emphasized disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
               >
-                Example Tag
-              </div>
+                {Object.values(TagColor).map((color) => (
+                  <option key={color} value={color}>
+                    {color}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </CardContent>
@@ -180,7 +165,7 @@ function TagSettings() {
 
       {tagTypes.map((tagType) => {
         const typeTags = tags.filter((t) => t.typeId === tagType.id)
-        const tagTypeColor = tagType.color || '#3b82f6'
+        const tagTypeColor = tagType.color || TagColor.blue
 
         return (
           <Card key={tagType.id}>
@@ -195,7 +180,7 @@ function TagSettings() {
                 </div>
                 <div className="flex gap-1">
                   <Button
-                    variant="ghost"
+                    variant="neutral-ghost"
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => {
@@ -207,7 +192,7 @@ function TagSettings() {
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant="neutral-ghost"
                     size="icon"
                     className="h-8 w-8 text-destructive"
                     onClick={() => setTagTypeToDelete(tagType)}
@@ -231,7 +216,7 @@ function TagSettings() {
                   />
                 ))}
                 <Button
-                  variant="outline"
+                  variant="neutral-ghost"
                   size="sm"
                   className="h-6 px-2 text-xs"
                   onClick={() => setAddTagDialog(tagType.id)}

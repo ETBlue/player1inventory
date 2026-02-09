@@ -8,15 +8,14 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getContrastTextColor } from '@/lib/utils'
-import type { TagType } from '@/types'
+import { TagColor, type TagType } from '@/types'
 
 interface EditTagTypeDialogProps {
   tagType: TagType | null
   name: string
-  color: string
+  color: TagColor
   onNameChange: (name: string) => void
-  onColorChange: (color: string) => void
+  onColorChange: (color: TagColor) => void
   onSave: () => void
   onClose: () => void
 }
@@ -49,36 +48,22 @@ export function EditTagTypeDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="editTagTypeColor">Color</Label>
-            <div className="flex gap-2">
-              <Input
-                id="editTagTypeColor"
-                type="color"
-                value={color}
-                onChange={(e) => onColorChange(e.target.value)}
-                className="w-16 h-10 p-1"
-              />
-              <Input
-                value={color}
-                onChange={(e) => onColorChange(e.target.value)}
-                placeholder="#3b82f6"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Preview</Label>
-            <div
-              className="h-10 rounded-md flex items-center justify-center font-medium text-sm"
-              style={{
-                backgroundColor: color,
-                color: getContrastTextColor(color),
-              }}
+            <select
+              id="editTagTypeColor"
+              value={color}
+              onChange={(e) => onColorChange(e.target.value as TagColor)}
+              className="flex h-10 w-full rounded-sm px-3 py-2 text-foreground-default bg-background-surface border border-accessory-default focus:outline-none focus:border-accessory-emphasized disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
             >
-              Example Tag
-            </div>
+              {Object.values(TagColor).map((colorOption) => (
+                <option key={colorOption} value={colorOption}>
+                  {colorOption}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="neutral-ghost" onClick={onClose}>
             Cancel
           </Button>
           <Button onClick={onSave}>Save</Button>
