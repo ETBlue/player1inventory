@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { TagColor } from '@/types'
 import { Badge } from './badge'
 
 const meta: Meta<typeof Badge> = {
@@ -18,18 +19,8 @@ export const Default: Story = {
 
 export const Variants: Story = {
   render: () => {
-    const hueColors = [
-      'red',
-      'orange',
-      'amber',
-      'yellow',
-      'green',
-      'teal',
-      'blue',
-      'indigo',
-      'purple',
-      'pink',
-    ] as const
+    const tagColors = Object.values(TagColor) as TagColor[]
+    const hueColors = tagColors.filter((t) => !t.match(/tint/))
 
     const statusAndImportanceColors = [
       'ok',
@@ -48,7 +39,7 @@ export const Variants: Story = {
         {hueColors.map((color) => (
           <>
             <Badge variant={color}>{color}</Badge>
-            <Badge variant={`${color}-tint` as `${typeof color}-tint`}>
+            <Badge variant={`${color}-tint` as TagColor}>
               {`${color}-tint`}
             </Badge>
           </>
