@@ -177,6 +177,28 @@ Before creating a PR, update all relevant documentation:
 3. **Inline comments** - Ensure code comments reflect the changes
 4. **Brainstorming logs** (`docs/brainstorming-logs/*`) - Create when brainstorming leads to decisions
 
+### CSS Variable Renames
+
+When you detect or perform a CSS variable rename:
+
+1. **Search the entire project** for all occurrences of the obsolete CSS variable
+2. **Replace all instances** with the new variable name
+3. **Check all file types**:
+   - CSS files (`.css`)
+   - TypeScript/TSX files (`.ts`, `.tsx`)
+   - Test files (`.test.ts`, `.test.tsx`)
+   - Storybook files (`.stories.tsx`)
+   - Current documentation (`.md`) - CLAUDE.md, README.md, etc.
+   - **Do NOT update** historical docs in `docs/plans/` or `docs/brainstorming-logs/`
+
+Use Grep to find all references:
+```bash
+# Example: search for old variable name
+grep --pattern="--old-var-name" --glob="**/*.{css,ts,tsx,md}"
+```
+
+This ensures the design token system remains consistent across the entire codebase.
+
 ### Brainstorming Logs
 
 **When to create:**
