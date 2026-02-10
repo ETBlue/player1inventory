@@ -16,6 +16,8 @@ interface TagTypeDropdownProps {
   tags: Tag[]
   selectedTagIds: string[]
   tagCounts: number[]
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   onToggleTag: (tagId: string) => void
   onClear: () => void
 }
@@ -25,6 +27,8 @@ export function TagTypeDropdown({
   tags,
   selectedTagIds,
   tagCounts,
+  open,
+  onOpenChange,
   onToggleTag,
   onClear,
 }: TagTypeDropdownProps) {
@@ -32,7 +36,7 @@ export function TagTypeDropdown({
   const tagTypeColor = colors[tagType.color as keyof typeof colors]?.default
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="neutral-outline"
