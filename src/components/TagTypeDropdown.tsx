@@ -33,8 +33,8 @@ export function TagTypeDropdown({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant={hasSelection ? 'neutral' : 'neutral-outline'}
-          size="sm"
+          variant={hasSelection ? tagType.color : 'neutral-outline'}
+          size="mini"
         >
           {tagType.name}
           <ChevronDown className="ml-1 h-4 w-4" />

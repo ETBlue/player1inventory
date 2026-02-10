@@ -120,6 +120,20 @@ import { colors, colorUtils } from '@/design-tokens'
 </Badge>
 ```
 
+**Button color variants:**
+
+The Button component supports 20 color variants matching the Badge color palette:
+- Solid variants (10): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink
+- Tint variants (10): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint
+
+Usage:
+```tsx
+<Button variant="teal-tint">Teal Button</Button>
+<Button variant="red">Red Button</Button>
+```
+
+These variants are used in tag type filter triggers (`TagTypeDropdown`) to display tag type colors when filters are selected.
+
 **Token categories:**
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.)
 - **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark)
