@@ -195,4 +195,44 @@ describe('ItemFilters', () => {
 
     expect(onFilterChange).toHaveBeenCalledWith({})
   })
+
+  it('switches between dropdowns with single click', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ItemFilters
+        tagTypes={tagTypes}
+        tags={tags}
+        items={items}
+        filterState={{}}
+        filteredCount={2}
+        totalCount={2}
+        onFilterChange={vi.fn()}
+      />,
+    )
+
+    // Get both button references before opening any dropdown
+    const categoryButton = screen.getByRole('button', { name: /category/i })
+    const locationButton = screen.getByRole('button', { name: /location/i })
+
+    // Open Category dropdown
+    await user.click(categoryButton)
+
+    // Verify Category dropdown content is visible
+    expect(screen.getByText(/vegetables/i)).toBeInTheDocument()
+
+    // Verify both buttons are present and enabled
+    expect(categoryButton).toBeInTheDocument()
+    expect(locationButton).toBeInTheDocument()
+    expect(locationButton).toBeEnabled()
+
+    // Click Location dropdown trigger (should close Category and open Location)
+    await user.click(locationButton)
+
+    // Verify Location dropdown content is visible
+    expect(screen.getByText(/fridge/i)).toBeInTheDocument()
+
+    // Verify Category dropdown content is no longer visible
+    expect(screen.queryByText(/vegetables/i)).not.toBeInTheDocument()
+  })
 })

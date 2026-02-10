@@ -36,7 +36,7 @@ export function TagTypeDropdown({
   const tagTypeColor = colors[tagType.color as keyof typeof colors]?.default
 
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="neutral-outline"

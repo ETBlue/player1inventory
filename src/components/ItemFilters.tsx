@@ -84,7 +84,14 @@ export function ItemFilters({
               selectedTagIds={selectedTagIds}
               tagCounts={tagCounts}
               open={openDropdown === tagTypeId}
-              onOpenChange={(open) => setOpenDropdown(open ? tagTypeId : null)}
+              onOpenChange={(open) => {
+                // Only clear if this dropdown is requesting to close and is currently open
+                if (!open && openDropdown === tagTypeId) {
+                  setOpenDropdown(null)
+                } else if (open) {
+                  setOpenDropdown(tagTypeId)
+                }
+              }}
               onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
               onClear={() => handleClearTagType(tagTypeId)}
             />
