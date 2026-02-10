@@ -66,10 +66,10 @@ export const borders = {
 
 // Status colors
 export const statusColors = {
-  ok: 'var(--color-ok)',
-  warning: 'var(--color-warning)',
-  error: 'var(--color-error)',
-  inactive: 'var(--color-inactive)',
+  ok: 'var(--color-status-ok)',
+  warning: 'var(--color-status-warning)',
+  error: 'var(--color-status-error)',
+  inactive: 'var(--color-status-inactive)',
 } as const
 
 // Inventory states

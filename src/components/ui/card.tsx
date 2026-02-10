@@ -7,7 +7,7 @@ const cardVariants = cva('border text-foreground-default shadow-md', {
   variants: {
     variant: {
       default: 'bg-background-surface border-transparent',
-      warning: 'bg-background-surface border-warning',
+      warning: 'bg-background-surface border-status-warning',
     },
   },
   defaultVariants: {

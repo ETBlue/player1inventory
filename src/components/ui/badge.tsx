@@ -21,10 +21,10 @@ const badgeVariants = cva(
         purple: `bg-purple border-transparent text-tint`,
         pink: `bg-pink border-transparent text-tint`,
 
-        ok: `bg-ok border-transparent text-tint`,
-        warning: `bg-warning border-transparent text-tint`,
-        error: `bg-error border-transparent text-tint`,
-        inactive: `bg-inactive border-transparent text-tint`,
+        ok: `bg-status-ok border-transparent text-tint`,
+        warning: `bg-status-warning border-transparent text-tint`,
+        error: `bg-status-error border-transparent text-tint`,
+        inactive: `bg-status-inactive border-transparent text-tint`,
 
         primary: `bg-primary border-transparent text-tint`,
         secondary: `bg-secondary border-transparent text-tint`,
@@ -43,10 +43,10 @@ const badgeVariants = cva(
         'purple-tint': `bg-purple-tint border-purple text-dark`,
         'pink-tint': `bg-pink-tint border-pink text-dark`,
 
-        'ok-outline': `border-ok text-ok`,
-        'warning-outline': `border-warning text-warning`,
-        'error-outline': `border-error text-error`,
-        'inactive-outline': `border-inactive text-inactive`,
+        'ok-outline': `border-status-ok text-status-ok`,
+        'warning-outline': `border-status-warning text-status-warning`,
+        'error-outline': `border-status-error text-status-error`,
+        'inactive-outline': `border-status-inactive text-status-inactive`,
 
         'primary-outline': `border-primary text-primary`,
         'secondary-outline': `border-secondary text-secondary`,
