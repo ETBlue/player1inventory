@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { Plus, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { PantryItem } from '@/components/PantryItem'
@@ -13,6 +13,7 @@ export const Route = createFileRoute('/')({
 })
 
 function PantryView() {
+  const navigate = useNavigate()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -28,12 +29,22 @@ function PantryView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Pantry</h1>
-        <Link to="/items/new">
-          <Button size="sm">
-            <Plus className="h-4 w-4 mr-1" />
-            Add Item
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="neutral-outline"
+            onClick={() => navigate({ to: '/settings/tags' })}
+          >
+            <Tags className="h-4 w-4 mr-1" />
+            Tags
           </Button>
-        </Link>
+          <Link to="/items/new">
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              Add Item
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {items.length === 0 ? (
