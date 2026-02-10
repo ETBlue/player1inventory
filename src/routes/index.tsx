@@ -45,7 +45,7 @@ function PantryView() {
 
     setFilterState((prev) => {
       // Check if this tag is already in the filter
-      const existingTags = prev.tags[tagType.id] || []
+      const existingTags = prev[tagType.id] || []
       if (existingTags.includes(tagId)) {
         return prev // Already filtered
       }
@@ -53,10 +53,7 @@ function PantryView() {
       // Add tag to filter
       return {
         ...prev,
-        tags: {
-          ...prev.tags,
-          [tagType.id]: [...existingTags, tagId],
-        },
+        [tagType.id]: [...existingTags, tagId],
       }
     })
   }
