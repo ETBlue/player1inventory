@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { ChevronDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -44,6 +44,7 @@ export function TagTypeDropdown({
         >
           {tagType.name}
           {hasSelection && <span className="ml-1">•</span>}
+          <ChevronDown className="ml-1 h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
