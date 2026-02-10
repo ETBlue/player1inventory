@@ -52,7 +52,7 @@
   --color-background-base: hsl(var(--background-base));
   --color-background-surface: hsl(var(--background-surface));
   --color-background-elevated: hsl(var(--background-elevated));
-  
+
   /* for foregrounds */
   --color-foreground-muted: hsl(var(--foreground-muted));
   --color-foreground: hsl(var(--foreground-default));
@@ -80,6 +80,10 @@
   --color-importance-destructive: hsl(var(--importance-destructive));
   --color-neutral: hsl(var(--importance-neutral));
   --color-importance-neutral: hsl(var(--importance-neutral));
+
+  /* shadcn compatibility - popover (dropdowns, tooltips) */
+  --color-popover: hsl(var(--background-elevated));
+  --color-popover-foreground: hsl(var(--foreground-default));
 }
 
 body {

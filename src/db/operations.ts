@@ -6,6 +6,7 @@ import type {
   Tag,
   TagType,
 } from '@/types'
+import { TagColor } from '@/types'
 import { db } from './index'
 
 // Item operations
@@ -98,13 +99,13 @@ export async function getLastPurchaseDate(
 // TagType operations
 export async function createTagType(input: {
   name: string
-  color?: string
+  color?: TagColor
 }): Promise<TagType> {
   const tagType: TagType = {
     id: crypto.randomUUID(),
     name: input.name,
+    color: input.color || TagColor.blue,
   }
-  if (input.color) tagType.color = input.color
   await db.tagTypes.add(tagType)
   return tagType
 }
@@ -258,12 +259,12 @@ export async function migrateTagColorsToTypes(): Promise<void> {
     // Find the first tag of this type that has a color (from old data)
     const tags = await getTagsByType(tagType.id)
     const tagWithColor = tags.find(
-      (tag: Tag & { color?: string }) =>
-        (tag as Tag & { color?: string }).color,
+      (tag: Tag & { color?: TagColor }) =>
+        (tag as Tag & { color?: TagColor }).color,
     )
 
     if (tagWithColor) {
-      const color = (tagWithColor as Tag & { color?: string }).color
+      const color = (tagWithColor as Tag & { color?: TagColor }).color
       if (color) {
         await updateTagType(tagType.id, { color })
       }

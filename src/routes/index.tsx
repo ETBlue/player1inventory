@@ -1,11 +1,14 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Plus, Tags } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
+import { ItemFilters } from '@/components/ItemFilters'
 import { PantryItem } from '@/components/PantryItem'
 import { Button } from '@/components/ui/button'
 import { useAddInventoryLog, useItems } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
+import { type FilterState, filterItems } from '@/lib/filterUtils'
+import { loadFilters, saveFilters } from '@/lib/sessionStorage'
 import type { Item } from '@/types'
 
 export const Route = createFileRoute('/')({
@@ -20,6 +23,40 @@ function PantryView() {
   const addLog = useAddInventoryLog()
 
   const [addDialogItem, setAddDialogItem] = useState<Item | null>(null)
+  const [filterState, setFilterState] = useState<FilterState>(() =>
+    loadFilters(),
+  )
+
+  // Save filter state to sessionStorage whenever it changes
+  useEffect(() => {
+    saveFilters(filterState)
+  }, [filterState])
+
+  // Apply filters to items
+  const filteredItems = filterItems(items, filterState)
+
+  // Handle tag click - find tag type and add tag to filter
+  const handleTagClick = (tagId: string) => {
+    const tag = tags.find((t) => t.id === tagId)
+    if (!tag) return
+
+    const tagType = tagTypes.find((t) => t.id === tag.typeId)
+    if (!tagType) return
+
+    setFilterState((prev) => {
+      // Check if this tag is already in the filter
+      const existingTags = prev[tagType.id] || []
+      if (existingTags.includes(tagId)) {
+        return prev // Already filtered
+      }
+
+      // Add tag to filter
+      return {
+        ...prev,
+        [tagType.id]: [...existingTags, tagId],
+      }
+    })
+  }
 
   if (isLoading) {
     return <div className="p-4">Loading...</div>
@@ -47,6 +84,16 @@ function PantryView() {
         </div>
       </div>
 
+      <ItemFilters
+        tagTypes={tagTypes}
+        tags={tags}
+        items={items}
+        filterState={filterState}
+        filteredCount={filteredItems.length}
+        totalCount={items.length}
+        onFilterChange={setFilterState}
+      />
+
       {items.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p>No items yet.</p>
@@ -54,9 +101,16 @@ function PantryView() {
             Add your first pantry item to get started.
           </p>
         </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <p>No items match the current filters.</p>
+          <p className="text-sm mt-1">
+            Try adjusting or clearing your filters.
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <PantryItem
               key={item.id}
               item={item}
@@ -70,6 +124,7 @@ function PantryView() {
                 })
               }}
               onAdd={() => setAddDialogItem(item)}
+              onTagClick={handleTagClick}
             />
           ))}
         </div>
