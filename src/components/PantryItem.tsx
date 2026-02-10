@@ -46,7 +46,7 @@ export function PantryItem({
       {...(estimatedDueDate ? { estimatedDueDate } : {})}
       onConsume={onConsume}
       onAdd={onAdd}
-      onTagClick={onTagClick}
+      {...(onTagClick ? { onTagClick } : {})}
     />
   )
 }

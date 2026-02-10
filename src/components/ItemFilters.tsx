@@ -84,7 +84,7 @@ export function ItemFilters({
           )
         })}
         {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={handleClearAll}>
+          <Button variant="neutral-ghost" size="sm" onClick={handleClearAll}>
             <X className="h-4 w-4 mr-1" />
             Clear all
           </Button>

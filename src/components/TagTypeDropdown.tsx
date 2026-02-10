@@ -35,7 +35,7 @@ export function TagTypeDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant="neutral-outline"
           size="sm"
           style={{
             borderColor: tagTypeColor,

@@ -11,7 +11,7 @@ import {
   updateTag,
   updateTagType,
 } from '@/db/operations'
-import type { Tag, TagType } from '@/types'
+import type { Tag, TagColor, TagType } from '@/types'
 
 export function useTagTypes() {
   return useQuery({
@@ -24,7 +24,7 @@ export function useCreateTagType() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { name: string; color?: string }) =>
+    mutationFn: (input: { name: string; color?: TagColor }) =>
       createTagType(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })

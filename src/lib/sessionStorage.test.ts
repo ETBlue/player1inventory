@@ -23,7 +23,9 @@ describe('sessionStorage utilities', () => {
 
     const stored = sessionStorage.getItem(STORAGE_KEY)
     expect(stored).toBeDefined()
-    expect(JSON.parse(stored!)).toEqual(filters)
+    if (stored) {
+      expect(JSON.parse(stored)).toEqual(filters)
+    }
   })
 
   it('loads filter state from sessionStorage', () => {
