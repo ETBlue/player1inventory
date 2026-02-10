@@ -27,22 +27,72 @@ export const Variants: Story = {
       'neutral',
     ] as const
 
+    const colors = [
+      'red',
+      'orange',
+      'amber',
+      'yellow',
+      'green',
+      'teal',
+      'blue',
+      'indigo',
+      'purple',
+      'pink',
+    ] as const
+
     return (
-      <div className="inline-grid grid-cols-4 gap-2">
-        {baseVariants.map((base) => (
-          <>
-            <Button variant={base}>{base}</Button>
-            <Button variant={`${base}-outline` as `${typeof base}-outline`}>
-              {`${base}-outline`}
-            </Button>
-            <Button variant={`${base}-ghost` as `${typeof base}-ghost`}>
-              {`${base}-ghost`}
-            </Button>
-            <Button variant={`${base}-link` as `${typeof base}-link`}>
-              {`${base}-link`}
-            </Button>
-          </>
-        ))}
+      <div className="space-y-8">
+        {/* Semantic Variants */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3">Semantic Variants</h3>
+          <div className="inline-grid grid-cols-4 gap-2">
+            {baseVariants.map((base) => (
+              <>
+                <Button variant={base}>{base}</Button>
+                <Button variant={`${base}-outline` as `${typeof base}-outline`}>
+                  {`${base}-outline`}
+                </Button>
+                <Button variant={`${base}-ghost` as `${typeof base}-ghost`}>
+                  {`${base}-ghost`}
+                </Button>
+                <Button variant={`${base}-link` as `${typeof base}-link`}>
+                  {`${base}-link`}
+                </Button>
+              </>
+            ))}
+          </div>
+        </div>
+
+        {/* Color Variants */}
+        <div>
+          <h3 className="text-sm font-semibold mb-3">Color Variants</h3>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-xs font-medium mb-2 text-muted-foreground">
+                Solid
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {colors.map((color) => (
+                  <Button key={color} variant={color}>
+                    {color}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-medium mb-2 text-muted-foreground">
+                Tint
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {colors.map((color) => (
+                  <Button key={`${color}-tint`} variant={`${color}-tint`}>
+                    {color}-tint
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     )
   },
