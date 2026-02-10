@@ -12,7 +12,7 @@ export function Navigation() {
   const location = useLocation()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t bg-background">
+    <nav className="fixed bottom-0 left-0 right-0 border-t bg-background-elevated">
       <div className="flex justify-around py-2">
         {navItems.map(({ to, label, icon: Icon }) => {
           const isActive =
