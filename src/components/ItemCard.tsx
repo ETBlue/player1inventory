@@ -13,6 +13,7 @@ interface ItemCardProps {
   estimatedDueDate?: Date
   onConsume: () => void
   onAdd: () => void
+  onTagClick?: (tagId: string) => void
 }
 
 export function ItemCard({
@@ -23,6 +24,7 @@ export function ItemCard({
   estimatedDueDate,
   onConsume,
   onAdd,
+  onTagClick,
 }: ItemCardProps) {
   const needsRefill = quantity < item.refillThreshold
   const isExpiringSoon =
@@ -58,7 +60,18 @@ export function ItemCard({
                   const tagType = tagTypes.find((t) => t.id === tag.typeId)
                   const bgColor = tagType?.color
                   return (
-                    <Badge key={tag.id} variant={bgColor} className="text-xs">
+                    <Badge
+                      key={tag.id}
+                      variant={bgColor}
+                      className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
+                      onClick={(e) => {
+                        if (onTagClick) {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          onTagClick(tag.id)
+                        }
+                      }}
+                    >
                       {tag.name}
                     </Badge>
                   )

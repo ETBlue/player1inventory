@@ -35,6 +35,32 @@ function PantryView() {
   // Apply filters to items
   const filteredItems = filterItems(items, filterState)
 
+  // Handle tag click - find tag type and add tag to filter
+  const handleTagClick = (tagId: string) => {
+    const tag = tags.find((t) => t.id === tagId)
+    if (!tag) return
+
+    const tagType = tagTypes.find((t) => t.id === tag.typeId)
+    if (!tagType) return
+
+    setFilterState((prev) => {
+      // Check if this tag is already in the filter
+      const existingTags = prev.tags[tagType.id] || []
+      if (existingTags.includes(tagId)) {
+        return prev // Already filtered
+      }
+
+      // Add tag to filter
+      return {
+        ...prev,
+        tags: {
+          ...prev.tags,
+          [tagType.id]: [...existingTags, tagId],
+        },
+      }
+    })
+  }
+
   if (isLoading) {
     return <div className="p-4">Loading...</div>
   }
@@ -101,6 +127,7 @@ function PantryView() {
                 })
               }}
               onAdd={() => setAddDialogItem(item)}
+              onTagClick={handleTagClick}
             />
           ))}
         </div>
