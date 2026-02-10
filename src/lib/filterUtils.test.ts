@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '@/types'
-import { filterItems } from './filterUtils'
+import { calculateTagCount, filterItems } from './filterUtils'
 
 describe('filterItems', () => {
   const items: Item[] = [
@@ -93,5 +93,64 @@ describe('filterItems', () => {
       'type-location': ['tag-fridge'],
     })
     expect(result).toHaveLength(2)
+  })
+})
+
+describe('calculateTagCount', () => {
+  const items: Item[] = [
+    {
+      id: '1',
+      name: 'Tomatoes',
+      tagIds: ['tag-veg', 'tag-fridge'],
+      targetQuantity: 5,
+      refillThreshold: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: '2',
+      name: 'Apples',
+      tagIds: ['tag-fruit', 'tag-fridge'],
+      targetQuantity: 10,
+      refillThreshold: 3,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      id: '3',
+      name: 'Pasta',
+      tagIds: ['tag-grain', 'tag-pantry'],
+      targetQuantity: 3,
+      refillThreshold: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ]
+
+  it('calculates count with no other filters', () => {
+    const count = calculateTagCount('tag-fridge', 'type-location', items, {})
+    expect(count).toBe(2)
+  })
+
+  it('calculates count considering other active filters', () => {
+    const count = calculateTagCount('tag-veg', 'type-category', items, {
+      'type-location': ['tag-fridge'],
+    })
+    expect(count).toBe(1) // Only tomatoes (veg + fridge)
+  })
+
+  it('returns 0 when no items would match', () => {
+    const count = calculateTagCount('tag-grain', 'type-category', items, {
+      'type-location': ['tag-fridge'],
+    })
+    expect(count).toBe(0) // No grain in fridge
+  })
+
+  it('handles tag already selected in same type', () => {
+    const count = calculateTagCount('tag-veg', 'type-category', items, {
+      'type-category': ['tag-fruit'],
+      'type-location': ['tag-fridge'],
+    })
+    expect(count).toBe(2) // Both veg and fruit in fridge (OR within type)
   })
 })

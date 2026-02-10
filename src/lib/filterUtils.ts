@@ -23,3 +23,17 @@ export function filterItems(items: Item[], filterState: FilterState): Item[] {
     // All tag types must match (AND logic across types)
   })
 }
+
+export function calculateTagCount(
+  tagId: string,
+  tagTypeId: string,
+  items: Item[],
+  currentFilters: FilterState,
+): number {
+  // Simulate selecting this tag with other active filters
+  const simulatedFilters = {
+    ...currentFilters,
+    [tagTypeId]: [...(currentFilters[tagTypeId] || []), tagId],
+  }
+  return filterItems(items, simulatedFilters).length
+}
