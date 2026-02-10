@@ -8,7 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { colors } from '@/design-tokens'
 import type { Tag, TagType } from '@/types'
 
 interface TagTypeDropdownProps {
@@ -29,21 +28,15 @@ export function TagTypeDropdown({
   onClear,
 }: TagTypeDropdownProps) {
   const hasSelection = selectedTagIds.length > 0
-  const tagTypeColor = colors[tagType.color as keyof typeof colors]?.default
 
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="neutral-outline"
+          variant={hasSelection ? 'neutral' : 'neutral-outline'}
           size="sm"
-          style={{
-            borderColor: tagTypeColor,
-            color: tagTypeColor,
-          }}
         >
           {tagType.name}
-          {hasSelection && <span className="ml-1">•</span>}
           <ChevronDown className="ml-1 h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>

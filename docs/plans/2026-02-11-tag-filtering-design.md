@@ -13,8 +13,8 @@ Add tag-based filtering to the home page, allowing users to filter the pantry it
 
 Multiple dropdown menus appear between the page header and item list - one dropdown per tag type. Each dropdown:
 
-- Shows the tag type name styled with the tag type's color
-- Displays a visual indicator (dot or highlight) when filters are active for that type
+- Shows the tag type name as the button label
+- Changes button appearance when filters are active (from outline to solid variant)
 - Contains checkboxes for multi-selecting tags within that type
 - Shows dynamic counts next to each tag: `☑ Vegetables (12)`
 - Includes an individual "Clear" option when selections exist
@@ -95,8 +95,7 @@ interface FilterState {
 
 **TagTypeDropdown Component:**
 - Built with shadcn/ui `<DropdownMenu>`
-- Trigger button styled with tag type color
-- Shows visual indicator when active (dot or highlight)
+- Trigger button changes variant when active (outline → solid)
 - Multi-select checkboxes with dynamic counts
 - Menu stays open after clicking checkbox
 - Individual "Clear" option at top when selections exist

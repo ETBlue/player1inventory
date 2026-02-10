@@ -43,7 +43,21 @@ describe('TagTypeDropdown', () => {
   })
 
   it('shows visual indicator when filters active', () => {
-    render(
+    const { rerender } = render(
+      <TagTypeDropdown
+        tagType={tagType}
+        tags={tags}
+        selectedTagIds={[]}
+        tagCounts={[5, 3]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: /category/i })
+    const inactiveClasses = button.className
+
+    rerender(
       <TagTypeDropdown
         tagType={tagType}
         tags={tags}
@@ -54,8 +68,8 @@ describe('TagTypeDropdown', () => {
       />,
     )
 
-    const button = screen.getByRole('button', { name: /category/i })
-    expect(button.textContent).toContain('•')
+    const activeClasses = button.className
+    expect(activeClasses).not.toBe(inactiveClasses)
   })
 
   it('displays tags with counts in dropdown', async () => {

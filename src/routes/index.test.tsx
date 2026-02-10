@@ -186,8 +186,8 @@ describe('Home page filtering integration', () => {
       expect(screen.queryByText('Apples')).not.toBeInTheDocument()
     })
 
-    // And Category dropdown shows active state
+    // And Category dropdown shows active state (variant changes from outline to solid)
     const categoryButton = screen.getByRole('button', { name: /category/i })
-    expect(categoryButton.textContent).toContain('•')
+    expect(categoryButton.className).toContain('neutral')
   })
 })
