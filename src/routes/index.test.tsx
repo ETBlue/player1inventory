@@ -188,6 +188,6 @@ describe('Home page filtering integration', () => {
 
     // And Category dropdown shows active state (variant changes from outline to solid)
     const categoryButton = screen.getByRole('button', { name: /category/i })
-    expect(categoryButton.className).toContain('neutral')
+    expect(categoryButton.className).toContain('blue')
   })
 })
