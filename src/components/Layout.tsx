@@ -7,7 +7,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background-base pb-20">
       <main className="container mx-auto px-4 py-4">{children}</main>
       <Navigation />
     </div>
