@@ -1,7 +1,6 @@
 // src/components/ItemFilters.tsx
 
 import { X } from 'lucide-react'
-import { useState } from 'react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import { calculateTagCount, type FilterState } from '@/lib/filterUtils'
@@ -26,9 +25,6 @@ export function ItemFilters({
   totalCount,
   onFilterChange,
 }: ItemFiltersProps) {
-  // Track which dropdown is currently open
-  const [_openDropdown, _setOpenDropdown] = useState<string | null>(null)
-
   // Filter to only tag types that have tags
   const tagTypesWithTags = tagTypes.filter((tagType) =>
     tags.some((tag) => tag.typeId === tagType.id),

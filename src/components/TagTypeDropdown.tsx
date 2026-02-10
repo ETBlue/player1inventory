@@ -16,11 +16,8 @@ interface TagTypeDropdownProps {
   tags: Tag[]
   selectedTagIds: string[]
   tagCounts: number[]
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
   onToggleTag: (tagId: string) => void
   onClear: () => void
-  onInteractOutside?: () => void
 }
 
 export function TagTypeDropdown({
@@ -28,8 +25,6 @@ export function TagTypeDropdown({
   tags,
   selectedTagIds,
   tagCounts,
-  open,
-  onOpenChange,
   onToggleTag,
   onClear,
 }: TagTypeDropdownProps) {
