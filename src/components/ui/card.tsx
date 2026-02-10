@@ -3,11 +3,11 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-const cardVariants = cva('rounded-lg border text-card-foreground shadow-sm', {
+const cardVariants = cva('border text-foreground-default shadow-md', {
   variants: {
     variant: {
-      default: 'bg-card',
-      warning: 'bg-card border-orange-500',
+      default: 'bg-background-surface border-transparent',
+      warning: 'bg-background-surface border-status-warning',
     },
   },
   defaultVariants: {

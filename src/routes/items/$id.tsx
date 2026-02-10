@@ -28,7 +28,7 @@ function ItemDetail() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button
-            variant="ghost"
+            variant="neutral-ghost"
             size="icon"
             onClick={() => navigate({ to: '/' })}
           >
@@ -38,7 +38,7 @@ function ItemDetail() {
         </div>
         <div className="flex gap-2">
           <Link to="/items/$id/log" params={{ id }}>
-            <Button variant="outline" size="icon">
+            <Button variant="neutral-ghost" size="icon">
               <History className="h-5 w-5" />
             </Button>
           </Link>

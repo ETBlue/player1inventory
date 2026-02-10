@@ -103,22 +103,30 @@ Dark mode: 3.9% → 10% → 15% (progressively lighter)
 </div>
 
 // Tag colors (from colors.css)
-import { tagColors, tagTextColors } from '@/design-tokens'
+import { colors, colorUtils } from '@/design-tokens'
 
 <Badge style={{
-  backgroundColor: tagColors.red.default,
-  color: tagTextColors.default
+  backgroundColor: colors.red.tint,
+  color: colorUtils.dark
 }}>
-  Tag
+  Tag (light tint)
+</Badge>
+
+<Badge style={{
+  backgroundColor: colors.red.default,
+  color: colorUtils.tint
+}}>
+  Tag (bold)
 </Badge>
 ```
 
 **Token categories:**
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.)
-- **Background layers**: base (page) / surface (cards) / elevated (toolbars)
-- **Tag colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
-- **Tag variants**: default (light tint) / inverse (bold)
-- **State colors**: Global states + inventory mappings (low-stock, expiring, in-stock, out-of-stock)
+- **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark)
+- **Colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
+- **Color variants**: tint (light background) / default (bold, high contrast)
+- **Status colors**: ok, warning, error, inactive
+- **Inventory states**: lowStock, expiring, inStock, outOfStock
 - **Shadows**: sm, md, lg
 - **Borders**: default (1px), thick (2px)
 

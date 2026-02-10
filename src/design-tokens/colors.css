@@ -1,49 +1,42 @@
 @theme {
-  /* Tag base colors (bold backgrounds) */
-  --color-tag-red: #ef4444;
-  --color-tag-orange: #f97316;
-  --color-tag-amber: #f59e0b;
-  --color-tag-yellow: #eab308;
-  --color-tag-green: #22c55e;
-  --color-tag-teal: #14b8a6;
-  --color-tag-blue: #3b82f6;
-  --color-tag-indigo: #6366f1;
-  --color-tag-purple: #a855f7;
-  --color-tag-pink: #ec4899;
+  /* by hue */
+  --color-red: #ef4444;
+  --color-orange: #f97316;
+  --color-amber: #f59e0b;
+  --color-yellow: #eab308;
+  --color-green: #22c55e;
+  --color-teal: #14b8a6;
+  --color-blue: #3b82f6;
+  --color-indigo: #6366f1;
+  --color-purple: #a855f7;
+  --color-pink: #ec4899;
+  --color-red-tint: #fee2e2;
+  --color-orange-tint: #ffedd5;
+  --color-amber-tint: #fef3c7;
+  --color-yellow-tint: #fef9c3;
+  --color-green-tint: #dcfce7;
+  --color-teal-tint: #ccfbf1;
+  --color-blue-tint: #dbeafe;
+  --color-indigo-tint: #e0e7ff;
+  --color-purple-tint: #f3e8ff;
+  --color-pink-tint: #fce7f3;
 
-  /* Tag light tints (default backgrounds) */
-  --color-tag-red-light: #fee2e2;
-  --color-tag-orange-light: #ffedd5;
-  --color-tag-amber-light: #fef3c7;
-  --color-tag-yellow-light: #fef9c3;
-  --color-tag-green-light: #dcfce7;
-  --color-tag-teal-light: #ccfbf1;
-  --color-tag-blue-light: #dbeafe;
-  --color-tag-indigo-light: #e0e7ff;
-  --color-tag-purple-light: #f3e8ff;
-  --color-tag-pink-light: #fce7f3;
+  /* by brightness */
+  --color-tint: hsl(45 5% 100%);
+  --color-dark: hsl(45 5% 20%);
 
-  /* Tag text colors */
-  --color-tag-text-bold: #ffffff;
-  --color-tag-text-default: #18181b;
-
-  /* Global state colors */
-  --color-state-normal: hsl(0 0% 64%);
-  --color-state-ok: #22c55e;
-  --color-state-warning: #f59e0b;
-  --color-state-error: #ef4444;
-  --color-state-inactive: hsl(0 0% 83%);
+  /* by status */
+  --color-status-ok: hsl(75 60% 45%);
+  --color-status-warning: hsl(45 75% 45%);
+  --color-status-error: hsl(0 60% 60%);
+  --color-status-inactive: hsl(45 2.5% 60%);
 }
 
 /* Inventory-specific state mappings */
 :root {
-  --color-inventory-low-stock: var(--color-state-warning);
-  --color-inventory-expiring: var(--color-state-error);
-  --color-inventory-in-stock: var(--color-state-ok);
-  --color-inventory-out-of-stock: var(--color-state-inactive);
+  --color-inventory-low-stock: var(--color-status-warning);
+  --color-inventory-expiring: var(--color-status-error);
+  --color-inventory-in-stock: var(--color-status-ok);
+  --color-inventory-out-of-stock: var(--color-status-inactive);
 }
 
-/* Dark mode state override */
-.dark {
-  --color-state-inactive: hsl(0 0% 40%);
-}

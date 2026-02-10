@@ -1,77 +1,76 @@
-/* Style Docs page background when dark theme is active */
-.dark #storybook-docs  {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+#storybook-docs  {
+  background: var(--color-background-base);
+  color: var(--color-foreground-default);
 }
 
-.dark #storybook-docs .sbdocs {
+#storybook-docs .sbdocs {
   background: none;
 }
 
-.dark #storybook-docs h1,
-.dark #storybook-docs h2,
-.dark #storybook-docs h3,
-.dark #storybook-docs h4,
-.dark #storybook-docs h5,
-.dark #storybook-docs h6 {
-  color: hsl(var(--foreground));
+#storybook-docs .sbdocs-title,
+#storybook-docs h1,
+#storybook-docs h2,
+#storybook-docs h3,
+#storybook-docs h4,
+#storybook-docs h5,
+#storybook-docs h6,
+#storybook-docs th {
+  color: var(--color-foreground-default);
 }
 
-.dark #storybook-docs a,
-.dark #storybook-docs button {
-  color: hsl(var(--foreground)/0.75);
-}
 
-.dark #storybook-docs input,
-.dark #storybook-docs select,
-.dark #storybook-docs textarea {
-  color: hsl(var(--foreground));
-  background: hsl(var(--background));
-  box-shadow: hsl(var(--foreground)/0.25) 0 0 0 1px inset;
+#storybook-docs .docblock-argstable input,
+#storybook-docs .docblock-argstable select,
+#storybook-docs .docblock-argstable textarea {
+  color: var(--color-foreground-default);
+  background: var(--color-background-surface);
+  box-shadow: color-mix(in srgb, var(--color-accessory-default) 25%, transparent) 0 0 0 1px inset;
 }
 
 /* preview */
 
-.dark #storybook-docs .sbdocs.sbdocs-preview {
-  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+#storybook-docs .sbdocs.sbdocs-preview {
+  box-shadow: var(--color-accessory-default) 0 0 0 1px;
 }
 
-.dark #storybook-docs .sbdocs.sbdocs-preview [role*="toolbar"] {
-  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
-  background: hsl(var(--background));
+#storybook-docs .sbdocs.sbdocs-preview [role*="toolbar"] {
+  box-shadow: var(--color-accessory-default) 0 0 0 1px;
+  background: var(--color-background-base);
 }
 
-.dark #storybook-docs .sbdocs.sbdocs-preview .docs-story + div {
-  background: hsl(var(--background-elevated));
-  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+#storybook-docs .sbdocs.sbdocs-preview [role='toolbar'] a,
+#storybook-docs .sbdocs.sbdocs-preview [role='toolbar'] button {
+  color: var(--color-foreground-muted);
 }
 
-.dark #storybook-docs .sbdocs.sbdocs-preview .docs-story > :has(button) {
+#storybook-docs .sbdocs.sbdocs-preview .docs-story + div {
+  background: var(--color-background-elevated);
+  box-shadow: var(--color-accessory-default) 0 0 0 1px;
+}
+
+#storybook-docs .sbdocs.sbdocs-preview .docs-story > :has(button) {
   background: none;
 }
 
-.dark #storybook-docs .sbdocs.sbdocs-preview .docs-story button.docblock-code-toggle {
-  background: hsl(var(--background));
-  border-color: hsl(var(--foreground)/0.25);
+#storybook-docs .sbdocs.sbdocs-preview .docs-story button.docblock-code-toggle {
+  color: var(--color-foreground-muted);
+  background: var(--color-background-base);
+  border-color: var(--color-accessory-default);
 }
 
 /* args table */
 
-.dark #storybook-docs .docblock-argstable thead th {
-  color: hsl(var(--foreground)/0.75);
-}
-.dark #storybook-docs .docblock-argstable tbody {
-  box-shadow: hsl(var(--foreground)/0.75) 0 0 3px;
+#storybook-docs .docblock-argstable tbody {
+  box-shadow: var(--color-accessory-default) 0 0 0 1px;
   filter: none;
 }
 
-.dark #storybook-docs .docblock-argstable tbody td {
-  background: hsl(var(--background));
+#storybook-docs .docblock-argstable tbody td {
+  background: var(--color-background-base);
 }
 
-.dark #storybook-docs .docblock-argstable tbody td span {
-  color: hsl(var(--foreground));
-  background: hsl(var(--background-elevated));
-  border-color: hsl(var(--foreground)/0.25);
+#storybook-docs .docblock-argstable tbody td span {
+  color: var(--color-foreground-default);
+  border-color: var(--color-accessory-default);
 }
 

@@ -3,7 +3,6 @@ import { AlertTriangle, Minus, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { getContrastTextColor } from '@/lib/utils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -59,25 +58,13 @@ export function ItemCard({
                   const tagType = tagTypes.find((t) => t.id === tag.typeId)
                   const bgColor = tagType?.color
                   return (
-                    <Badge
-                      key={tag.id}
-                      variant="secondary"
-                      className="text-xs"
-                      style={
-                        bgColor
-                          ? {
-                              backgroundColor: bgColor,
-                              color: getContrastTextColor(bgColor),
-                            }
-                          : undefined
-                      }
-                    >
+                    <Badge key={tag.id} variant={bgColor} className="text-xs">
                       {tag.name}
                     </Badge>
                   )
                 })}
                 {tags.length > 3 && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="neutral-outline" className="text-xs">
                     +{tags.length - 3}
                   </Badge>
                 )}
@@ -86,7 +73,7 @@ export function ItemCard({
           </Link>
           <div className="flex items-center gap-1">
             <Button
-              variant="outline"
+              variant="neutral-outline"
               size="icon"
               className="h-8 w-8"
               onClick={(e) => {
@@ -99,7 +86,7 @@ export function ItemCard({
             </Button>
             <span className="w-8 text-center font-medium">{quantity}</span>
             <Button
-              variant="outline"
+              variant="neutral-outline"
               size="icon"
               className="h-8 w-8"
               onClick={(e) => {

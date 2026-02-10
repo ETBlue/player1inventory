@@ -59,7 +59,7 @@ export function TagDetailDialog({
             Delete
           </Button>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="neutral-ghost" onClick={onClose}>
               Cancel
             </Button>
             <Button onClick={onSave}>Save</Button>

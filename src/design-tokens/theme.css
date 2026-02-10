@@ -1,93 +1,93 @@
 /* Base theme variables (light mode) */
 :root {
-  /* Background layers */
-  --background-base: 0 0% 100%;        /* Base page (white) */
-  --background-surface: 0 0% 95%;      /* Cards, panels (light gray) */
-  --background-elevated: 0 0% 90%;     /* Toolbars, raised elements (subtle gray) */
+  --background-base: 45 50% 90%;
+  --background-surface: 45 50% 95%;
+  --background-elevated: 45 50% 97%;
 
-  /* Aliases for backward compatibility */
-  --background: var(--background-base);
-  --card: var(--background-surface);
+  --foreground-muted: 45 20% 40%;
+  --foreground-default: 45 50% 20%;
+  --foreground-emphasized: 45 50% 10%;
 
-  /* Other semantic colors */
-  --foreground: 0 0% 3.9%;
-  --card-foreground: 0 0% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 3.9%;
-  --primary: 0 0% 9%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 0 0% 3.9%;
-  --radius: 0.5rem;
+  --accessory-muted: 45 20% 85%;
+  --accessory-default: 45 20% 75%;
+  --accessory-emphasized: 45 20% 60%;
+
+  --overlay: 45 5% 50%;
+  --outline: 200 50% 50%;
+
+  --importance-primary: 180 90% 30%;
+  --importance-secondary: 180 40% 45%;
+  --importance-tertiary: 180 10% 60%;
+  --importance-destructive: 330 40% 50%;
+  --importance-neutral: 45 5% 40%;
 }
 
 /* Dark mode overrides */
 .dark {
-  /* Background layers */
-  --background-base: 0 0% 3.9%;        /* Base page (very dark) */
-  --background-surface: 0 0% 10%;      /* Cards, panels (lighter) */
-  --background-elevated: 0 0% 15%;     /* Toolbars, raised elements (subtle lighter) */
+  --background-base: 45 30% 10%;
+  --background-surface: 45 10% 20%;
+  --background-elevated: 45 10% 30%;
 
-  /* Aliases for backward compatibility */
-  --background: var(--background-base);
-  --card: var(--background-surface);
+  --foreground-muted: 45 5% 60%;
+  --foreground-default: 45 10% 80%;
+  --foreground-emphasized: 45 50% 90%;
 
-  /* Other semantic colors */
-  --foreground: 0 0% 98%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 0 0% 9%;
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
-  --accent: 0 0% 14.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 0 0% 83.1%;
+  --accessory-muted: 45 5% 20%;
+  --accessory-default: 45 5% 30%;
+  --accessory-emphasized: 45 10% 40%;
+
+  --overlay: 45 10% 90%;
+  --outline: 200 50% 50%;
+
+  --importance-primary: 180 60% 50%;
+  --importance-secondary: 180 30% 50%;
+  --importance-tertiary: 180 10% 50%;
+  --importance-destructive: 330 80% 60%;
+  --importance-neutral: 45 20% 60%;
 }
 
 /* Map to Tailwind utilities */
 @theme inline {
-  --color-background: hsl(var(--background));
+  /* for backgrounds */
+  --color-background-base: hsl(var(--background-base));
   --color-background-surface: hsl(var(--background-surface));
   --color-background-elevated: hsl(var(--background-elevated));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  
+  /* for foregrounds */
+  --color-foreground-muted: hsl(var(--foreground-muted));
+  --color-foreground: hsl(var(--foreground-default));
+  --color-foreground-default: hsl(var(--foreground-default));
+  --color-foreground-emphasized: hsl(var(--foreground-emphasized));
+
+  /* for accessories */
+  --color-accessory-muted: hsl(var(--accessory-muted));
+  --color-accessory: hsl(var(--accessory-default));
+  --color-accessory-default: hsl(var(--accessory-default));
+  --color-accessory-emphasized: hsl(var(--accessory-emphasized));
+
+  /* for other items */
+  --color-overlay: hsl(var(--overlay));
+  --color-outline: hsl(var(--outline));
+
+  /* by importance */
+  --color-primary: hsl(var(--importance-primary));
+  --color-importance-primary: hsl(var(--importance-primary));
+  --color-secondary: hsl(var(--importance-secondary));
+  --color-importance-secondary: hsl(var(--importance-secondary));
+  --color-tertiary: hsl(var(--importance-tertiary));
+  --color-importance-tertiary: hsl(var(--importance-tertiary));
+  --color-destructive: hsl(var(--importance-destructive));
+  --color-importance-destructive: hsl(var(--importance-destructive));
+  --color-neutral: hsl(var(--importance-neutral));
+  --color-importance-neutral: hsl(var(--importance-neutral));
 }
 
-/* Apply base colors to body */
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background-color: var(--color-background-base);
+  color: var(--color-foreground-default);
 }
+
+:focus-visible {
+  outline: 2px dashed var(--color-outline);
+}
+

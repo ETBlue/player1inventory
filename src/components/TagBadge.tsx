@@ -1,6 +1,5 @@
 import { Badge } from '@/components/ui/badge'
 import { useItemCountByTag } from '@/hooks/useTags'
-import { getContrastTextColor } from '@/lib/utils'
 import type { Tag, TagType } from '@/types'
 
 interface TagBadgeProps {
@@ -11,18 +10,9 @@ interface TagBadgeProps {
 
 export function TagBadge({ tag, tagType, onClick }: TagBadgeProps) {
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
-  const backgroundColor = tagType.color || '#3b82f6'
-  const textColor = getContrastTextColor(backgroundColor)
 
   return (
-    <Badge
-      style={{
-        backgroundColor,
-        color: textColor,
-      }}
-      className="cursor-pointer"
-      onClick={onClick}
-    >
+    <Badge variant={tagType.color} className="cursor-pointer" onClick={onClick}>
       {tag.name} ({itemCount})
     </Badge>
   )

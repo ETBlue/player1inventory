@@ -1,54 +1,54 @@
-// Tag colors with default/inverse variants
-export const tagColors = {
+// Colors with tint/default variants
+export const colors = {
   red: {
-    default: 'var(--color-tag-red-light)',
-    inverse: 'var(--color-tag-red)',
+    tint: 'var(--color-red-tint)',
+    default: 'var(--color-red)',
   },
   orange: {
-    default: 'var(--color-tag-orange-light)',
-    inverse: 'var(--color-tag-orange)',
+    tint: 'var(--color-orange-tint)',
+    default: 'var(--color-orange)',
   },
   amber: {
-    default: 'var(--color-tag-amber-light)',
-    inverse: 'var(--color-tag-amber)',
+    tint: 'var(--color-amber-tint)',
+    default: 'var(--color-amber)',
   },
   yellow: {
-    default: 'var(--color-tag-yellow-light)',
-    inverse: 'var(--color-tag-yellow)',
+    tint: 'var(--color-yellow-tint)',
+    default: 'var(--color-yellow)',
   },
   green: {
-    default: 'var(--color-tag-green-light)',
-    inverse: 'var(--color-tag-green)',
+    tint: 'var(--color-green-tint)',
+    default: 'var(--color-green)',
   },
   teal: {
-    default: 'var(--color-tag-teal-light)',
-    inverse: 'var(--color-tag-teal)',
+    tint: 'var(--color-teal-tint)',
+    default: 'var(--color-teal)',
   },
   blue: {
-    default: 'var(--color-tag-blue-light)',
-    inverse: 'var(--color-tag-blue)',
+    tint: 'var(--color-blue-tint)',
+    default: 'var(--color-blue)',
   },
   indigo: {
-    default: 'var(--color-tag-indigo-light)',
-    inverse: 'var(--color-tag-indigo)',
+    tint: 'var(--color-indigo-tint)',
+    default: 'var(--color-indigo)',
   },
   purple: {
-    default: 'var(--color-tag-purple-light)',
-    inverse: 'var(--color-tag-purple)',
+    tint: 'var(--color-purple-tint)',
+    default: 'var(--color-purple)',
   },
   pink: {
-    default: 'var(--color-tag-pink-light)',
-    inverse: 'var(--color-tag-pink)',
+    tint: 'var(--color-pink-tint)',
+    default: 'var(--color-pink)',
   },
 } as const
 
-export type TagColorName = keyof typeof tagColors
-export type TagColorVariant = 'default' | 'inverse'
+export type ColorName = keyof typeof colors
+export type ColorVariant = 'tint' | 'default'
 
-// Tag text colors
-export const tagTextColors = {
-  default: 'var(--color-tag-text-default)',
-  inverse: 'var(--color-tag-text-bold)',
+// Generic color utilities
+export const colorUtils = {
+  tint: 'var(--color-tint)',
+  dark: 'var(--color-dark)',
 } as const
 
 // Shadows
@@ -64,13 +64,12 @@ export const borders = {
   thick: 'var(--border-thick)',
 } as const
 
-// Global states
-export const globalStates = {
-  normal: 'var(--color-state-normal)',
-  ok: 'var(--color-state-ok)',
-  warning: 'var(--color-state-warning)',
-  error: 'var(--color-state-error)',
-  inactive: 'var(--color-state-inactive)',
+// Status colors
+export const statusColors = {
+  ok: 'var(--color-status-ok)',
+  warning: 'var(--color-status-warning)',
+  error: 'var(--color-status-error)',
+  inactive: 'var(--color-status-inactive)',
 } as const
 
 // Inventory states
@@ -88,11 +87,4 @@ export const backgroundLayers = {
   elevated: 'var(--background-elevated)',
 } as const
 
-// Aliases for backward compatibility
-export const backgroundAliases = {
-  background: 'var(--background)',
-  card: 'var(--card)',
-} as const
-
 export type BackgroundLayer = keyof typeof backgroundLayers
-export type BackgroundAlias = keyof typeof backgroundAliases
