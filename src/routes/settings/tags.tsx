@@ -162,14 +162,13 @@ function TagSettings() {
         const tagTypeColor = tagType.color || TagColor.blue
 
         return (
-          <Card key={tagType.id}>
+          <Card key={tagType.id} className="relative">
+            <div
+              className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
+            />
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="w-4 h-4 rounded-full"
-                    style={{ backgroundColor: tagTypeColor }}
-                  />
                   <CardTitle className="text-lg">{tagType.name}</CardTitle>
                 </div>
                 <div className="flex gap-1">
