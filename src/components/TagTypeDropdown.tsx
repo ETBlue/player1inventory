@@ -20,6 +20,7 @@ interface TagTypeDropdownProps {
   onOpenChange?: (open: boolean) => void
   onToggleTag: (tagId: string) => void
   onClear: () => void
+  onInteractOutside?: () => void
 }
 
 export function TagTypeDropdown({
@@ -36,7 +37,7 @@ export function TagTypeDropdown({
   const tagTypeColor = colors[tagType.color as keyof typeof colors]?.default
 
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="neutral-outline"

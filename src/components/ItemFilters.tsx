@@ -27,7 +27,7 @@ export function ItemFilters({
   onFilterChange,
 }: ItemFiltersProps) {
   // Track which dropdown is currently open
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
+  const [_openDropdown, _setOpenDropdown] = useState<string | null>(null)
 
   // Filter to only tag types that have tags
   const tagTypesWithTags = tagTypes.filter((tagType) =>
@@ -83,15 +83,6 @@ export function ItemFilters({
               tags={typeTags}
               selectedTagIds={selectedTagIds}
               tagCounts={tagCounts}
-              open={openDropdown === tagTypeId}
-              onOpenChange={(open) => {
-                // Only clear if this dropdown is requesting to close and is currently open
-                if (!open && openDropdown === tagTypeId) {
-                  setOpenDropdown(null)
-                } else if (open) {
-                  setOpenDropdown(tagTypeId)
-                }
-              }}
               onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
               onClear={() => handleClearTagType(tagTypeId)}
             />
