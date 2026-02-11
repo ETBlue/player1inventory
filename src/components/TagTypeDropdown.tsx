@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { Tag, TagType } from '@/types'
+import { Badge } from './ui/badge'
 
 interface TagTypeDropdownProps {
   tagType: TagType
@@ -38,19 +39,10 @@ export function TagTypeDropdown({
           className="capitalize"
         >
           {tagType.name}
-          <ChevronDown className="ml-1 h-4 w-4" />
+          <ChevronDown />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        {hasSelection && (
-          <>
-            <DropdownMenuItem onClick={onClear}>
-              <X className="mr-2 h-4 w-4" />
-              Clear
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
         {tags.map((tag, index) => {
           const isChecked = selectedTagIds.includes(tag.id)
           return (
@@ -61,7 +53,7 @@ export function TagTypeDropdown({
               onSelect={(e) => e.preventDefault()} // Keep menu open
             >
               <div className="flex items-center justify-between w-full">
-                <span>{tag.name}</span>
+                <Badge variant={tagType.color}>{tag.name}</Badge>
                 <span className="text-foreground-muted text-xs ml-2">
                   ({tagCounts[index]})
                 </span>
@@ -69,6 +61,15 @@ export function TagTypeDropdown({
             </DropdownMenuCheckboxItem>
           )
         })}
+        {hasSelection && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onClear}>
+              <X className="h-4 w-4" />
+              <span className=" text-xs">Clear</span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
