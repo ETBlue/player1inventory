@@ -49,7 +49,7 @@ export function TagDetailDialog({
           </div>
           <div className="space-y-2">
             <Label>Item count</Label>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-foreground-muted">
               {itemCount} items using this tag
             </p>
           </div>

@@ -131,7 +131,7 @@ function Shopping() {
       )}
 
       <div>
-        <h2 className="font-medium text-muted-foreground mb-2">
+        <h2 className="font-medium text-foreground-muted mb-2">
           Suggested Items
         </h2>
         <div className="space-y-2">

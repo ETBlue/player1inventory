@@ -61,7 +61,7 @@ export function TagTypeDropdown({
             >
               <div className="flex items-center justify-between w-full">
                 <span>{tag.name}</span>
-                <span className="text-muted-foreground text-xs ml-2">
+                <span className="text-foreground-muted text-xs ml-2">
                   ({tagCounts[index]})
                 </span>
               </div>

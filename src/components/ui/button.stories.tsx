@@ -68,7 +68,7 @@ export const Variants: Story = {
           <h3 className="text-sm font-semibold mb-3">Color Variants</h3>
           <div className="space-y-4">
             <div>
-              <h4 className="text-xs font-medium mb-2 text-muted-foreground">
+              <h4 className="text-xs font-medium mb-2 text-foreground-muted">
                 Solid
               </h4>
               <div className="flex flex-wrap gap-2">
@@ -80,7 +80,7 @@ export const Variants: Story = {
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-medium mb-2 text-muted-foreground">
+              <h4 className="text-xs font-medium mb-2 text-foreground-muted">
                 Tint
               </h4>
               <div className="flex flex-wrap gap-2">

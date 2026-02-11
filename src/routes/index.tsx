@@ -95,14 +95,14 @@ function PantryView() {
       />
 
       {items.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-12 text-foreground-muted">
           <p>No items yet.</p>
           <p className="text-sm mt-1">
             Add your first pantry item to get started.
           </p>
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-12 text-foreground-muted">
           <p>No items match the current filters.</p>
           <p className="text-sm mt-1">
             Try adjusting or clearing your filters.

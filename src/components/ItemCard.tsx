@@ -46,7 +46,7 @@ export function ItemCard({
                 <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
               )}
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-foreground-muted">
               {quantity} {item.unit ?? 'units'} / {item.targetQuantity} target
             </p>
             {isExpiringSoon && (
