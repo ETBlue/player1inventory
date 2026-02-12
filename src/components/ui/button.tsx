@@ -7,10 +7,10 @@ import { cn } from '@/lib/utils'
 const buttonVariants = cva(
   `inline-flex items-center justify-center gap-2 
   whitespace-nowrap border rounded-sm 
-  text-sm font-medium 
+  font-medium 
   cursor-pointer disabled:pointer-events-none 
   opacity-90 hover:opacity-100 disabled:opacity-50
-  [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0`,
+  [&_svg]:pointer-events-none [&_svg]:size-[1.2em] [&_svg]:shrink-0`,
   {
     variants: {
       variant: {
@@ -56,14 +56,14 @@ const buttonVariants = cva(
         'pink-tint': `bg-pink-tint border-pink text-dark shadow-sm hover:shadow-md`,
       },
       size: {
-        mini: 'h-6 px-2 text-xs',
+        xs: 'h-6 px-2 text-xs',
         sm: 'h-7 px-3 text-xs',
-        default: 'h-8 px-4',
-        lg: 'h-9 px-5 text-lg',
-        'icon-mini': 'h-6 w-6',
-        'icon-sm': 'h-7 w-7',
-        icon: 'h-8 w-8',
-        'icon-lg': 'h-9 w-9',
+        default: 'h-8 px-4 text-sm',
+        lg: 'h-9 px-5 text-base',
+        'icon-xs': 'h-6 w-6 text-xs',
+        'icon-sm': 'h-7 w-7 text-xs',
+        icon: 'h-8 w-8 text-sm',
+        'icon-lg': 'h-9 w-9 text-base',
       },
     },
     defaultVariants: {
