@@ -24,19 +24,4 @@
   /* by brightness */
   --color-tint: hsl(45 5% 100%);
   --color-dark: hsl(45 5% 20%);
-
-  /* by status */
-  --color-status-ok: hsl(75 60% 45%);
-  --color-status-warning: hsl(45 75% 45%);
-  --color-status-error: hsl(0 60% 60%);
-  --color-status-inactive: hsl(45 2.5% 60%);
 }
-
-/* Inventory-specific state mappings */
-:root {
-  --color-inventory-low-stock: var(--color-status-warning);
-  --color-inventory-expiring: var(--color-status-error);
-  --color-inventory-in-stock: var(--color-status-ok);
-  --color-inventory-out-of-stock: var(--color-status-inactive);
-}
-

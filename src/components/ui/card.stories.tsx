@@ -96,6 +96,16 @@ export const Variants: Story = {
           <p>Red tint background with status indicator bar</p>
         </CardContent>
       </Card>
+
+      <Card variant="inactive" className="w-[350px]">
+        <CardHeader>
+          <CardTitle>Inactive Status</CardTitle>
+          <CardDescription>Disabled item</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Inactive tint background with status indicator bar</p>
+        </CardContent>
+      </Card>
     </div>
   ),
 }

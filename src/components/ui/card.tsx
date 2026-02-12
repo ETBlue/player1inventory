@@ -10,6 +10,7 @@ const cardVariants = cva('text-foreground-default', {
       ok: 'bg-status-ok-tint',
       warning: 'bg-status-warning-tint',
       error: 'bg-status-error-tint',
+      inactive: 'bg-status-inactive-tint',
     },
   },
   defaultVariants: {
@@ -25,16 +26,22 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant, children, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn(cardVariants({ variant }), 'relative p-3', className)}
+      className={cn(
+        cardVariants({ variant }),
+        'relative p-3',
+        variant === 'inactive' && 'opacity-50',
+        className,
+      )}
       {...props}
     >
-      {variant && ['ok', 'warning', 'error'].includes(variant) && (
+      {variant && ['ok', 'warning', 'error', 'inactive'].includes(variant) && (
         <div
           className={cn(
             'absolute left-0 top-0 bottom-0 w-1',
             variant === 'ok' && 'bg-status-ok',
             variant === 'warning' && 'bg-status-warning',
             variant === 'error' && 'bg-status-error',
+            variant === 'inactive' && 'bg-status-inactive',
           )}
         />
       )}
