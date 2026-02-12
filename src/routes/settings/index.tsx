@@ -21,13 +21,13 @@ function Settings() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3 mb-3">
               {theme === 'dark' ? (
-                <Moon className="h-5 w-5 text-muted-foreground" />
+                <Moon className="h-5 w-5 text-foreground-muted" />
               ) : (
-                <Sun className="h-5 w-5 text-muted-foreground" />
+                <Sun className="h-5 w-5 text-foreground-muted" />
               )}
               <div>
                 <p className="font-medium">Theme</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-foreground-muted">
                   Choose light, dark, or system theme
                 </p>
               </div>
@@ -63,18 +63,18 @@ function Settings() {
 
         {/* Tags Card */}
         <Link to="/settings/tags">
-          <Card className="hover:bg-muted/50 transition-colors">
+          <Card className="hover:bg-background-surface/50 transition-colors">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Tags className="h-5 w-5 text-muted-foreground" />
+                <Tags className="h-5 w-5 text-foreground-muted" />
                 <div>
                   <p className="font-medium">Tags</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-foreground-muted">
                     Manage tag types and tags
                   </p>
                 </div>
               </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              <ChevronRight className="h-5 w-5 text-foreground-muted" />
             </CardContent>
           </Card>
         </Link>

@@ -32,7 +32,7 @@ function ItemHistory() {
       </div>
 
       {logs.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-12 text-foreground-muted">
           <p>No history yet.</p>
         </div>
       ) : (
@@ -47,12 +47,12 @@ function ItemHistory() {
                       {log.delta} → {log.quantity} {item?.unit ?? 'units'}
                     </p>
                     {log.note && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-foreground-muted">
                         {log.note}
                       </p>
                     )}
                   </div>
-                  <div className="text-right text-sm text-muted-foreground">
+                  <div className="text-right text-sm text-foreground-muted">
                     <p>{log.occurredAt.toLocaleDateString()}</p>
                     <p>{log.occurredAt.toLocaleTimeString()}</p>
                   </div>

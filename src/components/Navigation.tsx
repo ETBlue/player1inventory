@@ -25,7 +25,7 @@ export function Navigation() {
               to={to}
               className={cn(
                 'flex flex-col items-center gap-1 px-4 py-2 text-sm',
-                isActive ? 'text-primary' : 'text-muted-foreground',
+                isActive ? 'text-primary' : 'text-foreground-muted',
               )}
             >
               <Icon className="h-5 w-5" />

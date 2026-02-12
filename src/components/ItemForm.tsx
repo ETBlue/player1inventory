@@ -118,7 +118,7 @@ export function ItemForm({
       <div className="space-y-2">
         <Label>Tags</Label>
         {tagTypes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-foreground-muted">
             No tags yet. Create tags in Settings.
           </p>
         ) : (
@@ -129,7 +129,7 @@ export function ItemForm({
 
               return (
                 <div key={tagType.id}>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">
+                  <p className="text-sm font-medium text-foreground-muted mb-1">
                     {tagType.name}
                   </p>
                   <div className="flex flex-wrap gap-2">

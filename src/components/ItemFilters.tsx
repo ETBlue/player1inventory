@@ -91,7 +91,7 @@ export function ItemFilters({
           </Button>
         )}
       </div>
-      <div className="text-sm text-muted-foreground">
+      <div className="text-sm text-foreground-muted">
         Showing {filteredCount} of {totalCount} items
       </div>
     </div>

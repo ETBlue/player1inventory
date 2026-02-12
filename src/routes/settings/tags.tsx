@@ -169,7 +169,9 @@ function TagSettings() {
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CardTitle className="text-lg">{tagType.name}</CardTitle>
+                  <CardTitle className="text-lg capitalize">
+                    {tagType.name}
+                  </CardTitle>
                 </div>
                 <div className="flex gap-1">
                   <Button
