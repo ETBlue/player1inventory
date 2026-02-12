@@ -53,3 +53,49 @@ export const HeaderOnly: Story = {
     </Card>
   ),
 }
+
+export const Variants: Story = {
+  render: () => (
+    <div className="flex flex-col gap-4">
+      <Card variant="default" className="w-[350px]">
+        <CardHeader>
+          <CardTitle>Default Card</CardTitle>
+          <CardDescription>Uses background-elevated color</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Standard card without status indicator</p>
+        </CardContent>
+      </Card>
+
+      <Card variant="ok" className="w-[350px]">
+        <CardHeader>
+          <CardTitle>OK Status</CardTitle>
+          <CardDescription>Everything is good</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Green tint background with status indicator bar</p>
+        </CardContent>
+      </Card>
+
+      <Card variant="warning" className="w-[350px]">
+        <CardHeader>
+          <CardTitle>Warning Status</CardTitle>
+          <CardDescription>Needs attention</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Orange tint background with status indicator bar</p>
+        </CardContent>
+      </Card>
+
+      <Card variant="error" className="w-[350px]">
+        <CardHeader>
+          <CardTitle>Error Status</CardTitle>
+          <CardDescription>Critical issue</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Red tint background with status indicator bar</p>
+        </CardContent>
+      </Card>
+    </div>
+  ),
+}
