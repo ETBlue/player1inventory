@@ -135,14 +135,14 @@ Usage:
 These variants are used in tag type filter triggers (`TagTypeDropdown`) to display tag type colors when filters are selected.
 
 **Token categories:**
-- **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.)
-- **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark)
-- **Colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink)
+- **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.) - defined in theme.css
+- **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark) - defined in theme.css
+- **Status colors**: ok, warning, error, inactive (with tint variants) - defined in theme.css
+- **Colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink) - defined in colors.css
 - **Color variants**: tint (light background) / default (bold, high contrast)
-- **Status colors**: ok, warning, error, inactive
-- **Inventory states**: lowStock, expiring, inStock, outOfStock
-- **Shadows**: sm, md, lg
-- **Borders**: default (1px), thick (2px)
+- **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in colors.css
+- **Shadows**: sm, md, lg - defined in shadows.css
+- **Borders**: default (1px), thick (2px) - defined in borders.css
 
 ## Theme System
 
@@ -169,9 +169,12 @@ function MyComponent() {
 
 **Component variants:**
 ```tsx
-// Card component supports theme-aware variants
-<Card variant="warning">  // orange border for warnings
-<Card variant="default">  // standard bg-card background
+// Card component supports status-aware variants with left indicator bar
+<Card variant="default">   // elevated background, no status indicator
+<Card variant="ok">        // green tint background with green left bar
+<Card variant="warning">   // orange tint background with orange left bar
+<Card variant="error">     // red tint background with red left bar
+<Card variant="inactive">  // gray tint background with gray left bar
 ```
 
 **Guidelines:**
