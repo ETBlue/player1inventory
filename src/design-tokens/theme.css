@@ -1,94 +1,131 @@
 /* Base theme variables (light mode) */
 :root {
-  --background-base: 45 50% 90%;
-  --background-surface: 45 50% 95%;
-  --background-elevated: 45 50% 97%;
+  --background-base: hsl(45 10% 85%);
+  --background-surface: hsl(45 20% 92.5%);
+  --background-elevated: hsl(45 30% 97.5%);
 
-  --foreground-muted: 45 20% 40%;
-  --foreground-default: 45 50% 20%;
-  --foreground-emphasized: 45 50% 10%;
+  --foreground-muted: hsl(45 20% 40%);
+  --foreground-default: hsl(45 50% 20%);
+  --foreground-emphasized: hsl(45 50% 10%);
 
-  --accessory-muted: 45 20% 85%;
-  --accessory-default: 45 20% 75%;
-  --accessory-emphasized: 45 20% 60%;
+  --accessory-muted: hsl(45 20% 85%);
+  --accessory-default: hsl(45 20% 75%);
+  --accessory-emphasized: hsl(45 20% 60%);
 
-  --overlay: 45 5% 50%;
-  --outline: 200 50% 50%;
+  --overlay: hsl(45 5% 50%);
+  --outline: hsl(200 50% 50%);
 
-  --importance-primary: 180 90% 30%;
-  --importance-secondary: 180 40% 45%;
-  --importance-tertiary: 180 10% 60%;
-  --importance-destructive: 330 40% 50%;
-  --importance-neutral: 45 5% 40%;
+  --importance-primary: hsl(180 90% 30%);
+  --importance-secondary: hsl(180 40% 45%);
+  --importance-tertiary: hsl(180 10% 60%);
+  --importance-destructive: hsl(330 40% 50%);
+  --importance-neutral: hsl(45 5% 40%);
+
+  --status-ok: hsl(75 60% 45%);
+  --status-warning: hsl(45 75% 45%);
+  --status-error: hsl(0 60% 60%);
+  --status-inactive: hsl(45 2.5% 60%);
+  --status-ok-tint: hsl(75 95% 92.5%);
+  --status-warning-tint: hsl(45 95% 92.5%);
+  --status-error-tint: hsl(0 95% 92.5%);
+  --status-inactive-tint: hsl(45 2.5% 95%);
 }
 
 /* Dark mode overrides */
 .dark {
-  --background-base: 45 30% 10%;
-  --background-surface: 45 10% 20%;
-  --background-elevated: 45 10% 30%;
+  --background-base: hsl(45 5% 10%);
+  --background-surface: hsl(45 5% 20%);
+  --background-elevated: hsl(45 5% 30%);
 
-  --foreground-muted: 45 5% 60%;
-  --foreground-default: 45 10% 80%;
-  --foreground-emphasized: 45 50% 90%;
+  --foreground-muted: hsl(45 5% 70%);
+  --foreground-default: hsl(45 10% 90%);
+  --foreground-emphasized: hsl(45 50% 97.5%);
 
-  --accessory-muted: 45 5% 20%;
-  --accessory-default: 45 5% 30%;
-  --accessory-emphasized: 45 10% 40%;
+  --accessory-muted: hsl(45 5% 40%);
+  --accessory-default: hsl(45 10% 50%);
+  --accessory-emphasized: hsl(45 20% 70%);
 
-  --overlay: 45 10% 90%;
-  --outline: 200 50% 50%;
+  --overlay: hsl(45 10% 90%);
+  --outline: hsl(200 50% 50%);
 
-  --importance-primary: 180 60% 50%;
-  --importance-secondary: 180 30% 50%;
-  --importance-tertiary: 180 10% 50%;
-  --importance-destructive: 330 80% 60%;
-  --importance-neutral: 45 20% 60%;
+  --importance-primary: hsl(180 60% 50%);
+  --importance-secondary: hsl(180 30% 50%);
+  --importance-tertiary: hsl(180 10% 50%);
+  --importance-destructive: hsl(330 80% 60%);
+  --importance-neutral: hsl(45 20% 60%);
+
+  --status-ok: hsl(75 60% 45%);
+  --status-warning: hsl(45 75% 45%);
+  --status-error: hsl(0 60% 60%);
+  --status-inactive: hsl(45 2.5% 60%);
+  --status-ok-tint: hsl(75 20% 40%);
+  --status-warning-tint: hsl(45 20% 40%);
+  --status-error-tint: hsl(0 20% 40%);
+  --status-inactive-tint: hsl(45 0% 30%);
 }
 
 /* Map to Tailwind utilities */
 @theme inline {
   /* for backgrounds */
-  --color-background-base: hsl(var(--background-base));
-  --color-background-surface: hsl(var(--background-surface));
-  --color-background-elevated: hsl(var(--background-elevated));
+  --color-background-base: var(--background-base);
+  --color-background-surface: var(--background-surface);
+  --color-background-elevated: var(--background-elevated);
 
   /* for foregrounds */
-  --color-foreground-muted: hsl(var(--foreground-muted));
-  --color-foreground: hsl(var(--foreground-default));
-  --color-foreground-default: hsl(var(--foreground-default));
-  --color-foreground-emphasized: hsl(var(--foreground-emphasized));
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground: var(--foreground-default);
+  --color-foreground-default: var(--foreground-default);
+  --color-foreground-emphasized: var(--foreground-emphasized);
 
   /* for accessories */
-  --color-accessory-muted: hsl(var(--accessory-muted));
-  --color-accessory: hsl(var(--accessory-default));
-  --color-accessory-default: hsl(var(--accessory-default));
-  --color-accessory-emphasized: hsl(var(--accessory-emphasized));
+  --color-accessory-muted: var(--accessory-muted);
+  --color-accessory: var(--accessory-default);
+  --color-accessory-default: var(--accessory-default);
+  --color-accessory-emphasized: var(--accessory-emphasized);
 
   /* for other items */
-  --color-overlay: hsl(var(--overlay));
-  --color-outline: hsl(var(--outline));
+  --color-overlay: var(--overlay);
+  --color-outline: var(--outline);
 
   /* by importance */
-  --color-primary: hsl(var(--importance-primary));
-  --color-importance-primary: hsl(var(--importance-primary));
-  --color-secondary: hsl(var(--importance-secondary));
-  --color-importance-secondary: hsl(var(--importance-secondary));
-  --color-tertiary: hsl(var(--importance-tertiary));
-  --color-importance-tertiary: hsl(var(--importance-tertiary));
-  --color-destructive: hsl(var(--importance-destructive));
-  --color-importance-destructive: hsl(var(--importance-destructive));
-  --color-neutral: hsl(var(--importance-neutral));
-  --color-importance-neutral: hsl(var(--importance-neutral));
+  --color-primary: var(--importance-primary);
+  --color-importance-primary: var(--importance-primary);
+  --color-secondary: var(--importance-secondary);
+  --color-importance-secondary: var(--importance-secondary);
+  --color-tertiary: var(--importance-tertiary);
+  --color-importance-tertiary: var(--importance-tertiary);
+  --color-destructive: var(--importance-destructive);
+  --color-importance-destructive: var(--importance-destructive);
+  --color-neutral: var(--importance-neutral);
+  --color-importance-neutral: var(--importance-neutral);
 
   /* shadcn compatibility - popover (dropdowns, tooltips) */
-  --color-popover: hsl(var(--background-elevated));
-  --color-popover-foreground: hsl(var(--foreground-default));
+  --color-popover: var(--background-elevated);
+  --color-popover-foreground: var(--foreground-default);
+
+  /* by status */
+  --color-status-ok: var(--status-ok);
+  --color-status-warning: var(--status-warning);
+  --color-status-error: var(--status-error);
+  --color-status-inactive: var(--status-inactive);
+  --color-status-ok-tint: var(--status-ok-tint);
+  --color-status-warning-tint: var(--status-warning-tint);
+  --color-status-error-tint: var(--status-error-tint);
+  --color-status-inactive-tint: var(--status-inactive-tint);
+}
+
+/* Inventory-specific state mappings */
+:root {
+  --color-inventory-low-stock: var(--color-status-warning);
+  --color-inventory-expiring: var(--color-status-error);
+  --color-inventory-in-stock: var(--color-status-ok);
+  --color-inventory-out-of-stock: var(--color-status-inactive);
 }
 
 body {
   background-color: var(--color-background-base);
   color: var(--color-foreground-default);
+  line-height: 1em;
 }
 
 :focus-visible {

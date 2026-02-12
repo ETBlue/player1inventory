@@ -135,8 +135,8 @@ describe('Home page filtering integration', () => {
     // Close Location dropdown
     await user.keyboard('{Escape}')
 
-    // When user clicks Clear all
-    await user.click(screen.getByRole('button', { name: /clear all/i }))
+    // When user clicks clear filter
+    await user.click(screen.getByRole('button', { name: /clear filter/i }))
 
     // Then all items shown again
     await waitFor(() => {

@@ -1,6 +1,7 @@
 // src/components/ItemFilters.tsx
 
-import { X } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Pencil, X } from 'lucide-react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import { calculateTagCount, type FilterState } from '@/lib/filterUtils'
@@ -60,8 +61,8 @@ export function ItemFilters({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1 mx-1">
         {tagTypesWithTags.map((tagType) => {
           const tagTypeId = tagType.id
           const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
@@ -84,15 +85,24 @@ export function ItemFilters({
             />
           )
         })}
+        <Link to="/settings/tags">
+          <Button size="xs" variant="neutral-ghost">
+            <Pencil />
+            Edit
+          </Button>
+        </Link>
+      </div>
+      <div className="flex items-center h-6">
+        <div className="ml-3 text-xs text-foreground-muted">
+          Showing {filteredCount} of {totalCount} items
+        </div>
+        <div className="flex-1" />
         {hasActiveFilters && (
-          <Button variant="neutral-ghost" size="sm" onClick={handleClearAll}>
-            <X className="h-4 w-4 mr-1" />
-            Clear all
+          <Button variant="neutral-ghost" size="xs" onClick={handleClearAll}>
+            <X />
+            Clear filter
           </Button>
         )}
-      </div>
-      <div className="text-sm text-foreground-muted">
-        Showing {filteredCount} of {totalCount} items
       </div>
     </div>
   )

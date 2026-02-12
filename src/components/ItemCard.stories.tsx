@@ -98,10 +98,37 @@ export const MultipleTags: Story = {
       { id: 'tag-4', name: 'Sale', typeId: 'type-4' },
     ],
     tagTypes: [
-      { id: 'type-1', name: 'Category', color: '#3b82f6' },
-      { id: 'type-2', name: 'Quality', color: '#22c55e' },
-      { id: 'type-3', name: 'Source', color: '#f59e0b' },
-      { id: 'type-4', name: 'Price', color: '#ef4444' },
+      { id: 'type-1', name: 'Category', color: 'blue' },
+      { id: 'type-2', name: 'Quality', color: 'green' },
+      { id: 'type-3', name: 'Source', color: 'amber' },
+      { id: 'type-4', name: 'Price', color: 'red' },
     ],
+  },
+}
+
+export const StatusOK: Story = {
+  args: {
+    item: mockItem,
+    quantity: 2,
+    tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
+    tagTypes: [{ id: 'type-1', name: 'Category', color: 'teal' }],
+  },
+}
+
+export const StatusWarning: Story = {
+  args: {
+    item: mockItem,
+    quantity: 1, // equals refillThreshold
+    tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
+    tagTypes: [{ id: 'type-1', name: 'Category', color: 'teal' }],
+  },
+}
+
+export const StatusError: Story = {
+  args: {
+    item: mockItem,
+    quantity: 0, // below refillThreshold
+    tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
+    tagTypes: [{ id: 'type-1', name: 'Category', color: 'teal' }],
   },
 }

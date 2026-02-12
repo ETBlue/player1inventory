@@ -101,11 +101,11 @@ export const Variants: Story = {
 export const Sizes: Story = {
   render: () => (
     <div className="flex items-center gap-2">
-      <Button size="mini">mini</Button>
+      <Button size="xs">XSmall</Button>
       <Button size="sm">Small</Button>
       <Button size="default">Default</Button>
       <Button size="lg">Large</Button>
-      <Button size="icon-mini">
+      <Button size="icon-xs">
         <PlusIcon />
       </Button>
       <Button size="icon-sm">

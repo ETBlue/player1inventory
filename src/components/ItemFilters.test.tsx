@@ -1,4 +1,11 @@
 // src/components/ItemFilters.test.tsx
+
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,6 +14,22 @@ import type { Item, Tag, TagType } from '@/types'
 import { ItemFilters } from './ItemFilters'
 
 describe('ItemFilters', () => {
+  // Helper to wrap component with router context
+  const renderWithRouter = async (ui: React.ReactElement) => {
+    const Wrapper = () => ui
+    const rootRoute = createRootRoute({
+      component: Wrapper,
+    })
+    const router = createRouter({
+      routeTree: rootRoute,
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    })
+    const result = render(<RouterProvider router={router} />)
+    // Wait for router to finish initial navigation
+    await router.load()
+    return result
+  }
+
   const tagTypes: TagType[] = [
     {
       id: 'type-1',
@@ -69,8 +92,8 @@ describe('ItemFilters', () => {
     },
   ]
 
-  it('renders dropdowns for tag types with tags', () => {
-    render(
+  it('renders dropdowns for tag types with tags', async () => {
+    await renderWithRouter(
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
@@ -90,7 +113,7 @@ describe('ItemFilters', () => {
     ).toBeInTheDocument()
   })
 
-  it('does not render dropdown for tag type with no tags', () => {
+  it('does not render dropdown for tag type with no tags', async () => {
     const emptyTagType: TagType = {
       id: 'type-empty',
       name: 'Empty',
@@ -99,7 +122,7 @@ describe('ItemFilters', () => {
       updatedAt: new Date(),
     }
 
-    render(
+    renderWithRouter(
       <ItemFilters
         tagTypes={[...tagTypes, emptyTagType]}
         tags={tags}
@@ -116,8 +139,8 @@ describe('ItemFilters', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('displays item count', () => {
-    render(
+  it('displays item count', async () => {
+    await renderWithRouter(
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
@@ -132,12 +155,12 @@ describe('ItemFilters', () => {
     expect(screen.getByText(/showing 2 of 5 items/i)).toBeInTheDocument()
   })
 
-  it('shows clear all button when filters active', () => {
+  it('shows clear filter button when filters active', async () => {
     const filterState: FilterState = {
       'type-1': ['tag-1'],
     }
 
-    render(
+    await renderWithRouter(
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
@@ -150,12 +173,12 @@ describe('ItemFilters', () => {
     )
 
     expect(
-      screen.getByRole('button', { name: /clear all/i }),
+      screen.getByRole('button', { name: /clear filter/i }),
     ).toBeInTheDocument()
   })
 
-  it('hides clear all button when no filters active', () => {
-    render(
+  it('hides clear filter button when no filters active', async () => {
+    await renderWithRouter(
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
@@ -168,18 +191,18 @@ describe('ItemFilters', () => {
     )
 
     expect(
-      screen.queryByRole('button', { name: /clear all/i }),
+      screen.queryByRole('button', { name: /clear filter/i }),
     ).not.toBeInTheDocument()
   })
 
-  it('calls onFilterChange when clear all clicked', async () => {
+  it('calls onFilterChange when clear filter clicked', async () => {
     const onFilterChange = vi.fn()
     const user = userEvent.setup()
     const filterState: FilterState = {
       'type-1': ['tag-1'],
     }
 
-    render(
+    await renderWithRouter(
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
@@ -191,7 +214,7 @@ describe('ItemFilters', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /clear all/i }))
+    await user.click(screen.getByRole('button', { name: /clear filter/i }))
 
     expect(onFilterChange).toHaveBeenCalledWith({})
   })
@@ -199,7 +222,7 @@ describe('ItemFilters', () => {
   it('switches between dropdowns with single click', async () => {
     const user = userEvent.setup()
 
-    render(
+    await renderWithRouter(
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
