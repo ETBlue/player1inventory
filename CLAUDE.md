@@ -194,6 +194,23 @@ Before creating a PR, update all relevant documentation:
 3. **Inline comments** - Ensure code comments reflect the changes
 4. **Brainstorming logs** (`docs/brainstorming-logs/*`) - Create when brainstorming leads to decisions
 
+### Component Development
+
+**Always create Storybook stories for new components:**
+- Every new component should have a corresponding `.stories.tsx` file
+- Include multiple stories showing different states and variants
+- Use realistic data that demonstrates the component's purpose
+
+**Before committing feature code:**
+1. **Check Storybook** - Update existing stories if component API changed
+2. **Check Tests** - Update or add tests for new functionality
+3. **Verify both pass** - Run `pnpm storybook` and `pnpm test` to ensure no breakage
+
+**Commit together:**
+- Commit feature code, Storybook stories, and tests in the same commit when possible
+- This keeps the codebase in a consistent state where stories and tests match the code
+- Exception: Large refactors may need separate commits, but stories/tests should follow immediately
+
 ### CSS Variable Renames
 
 When you detect or perform a CSS variable rename:
