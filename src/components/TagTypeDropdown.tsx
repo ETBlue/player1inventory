@@ -36,7 +36,7 @@ export function TagTypeDropdown({
         <Button
           variant={hasSelection ? tagType.color : 'neutral-outline'}
           size="mini"
-          className="capitalize"
+          className="capitalize gap-1"
         >
           {tagType.name}
           <ChevronDown />

@@ -61,7 +61,7 @@ export function ItemFilters({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1">
         {tagTypesWithTags.map((tagType) => {
           const tagTypeId = tagType.id
           const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
@@ -85,7 +85,12 @@ export function ItemFilters({
           )
         })}
         {hasActiveFilters && (
-          <Button variant="neutral-ghost" size="sm" onClick={handleClearAll}>
+          <Button
+            variant="neutral-ghost"
+            size="sm"
+            className="gap-1"
+            onClick={handleClearAll}
+          >
             <X className="h-4 w-4 mr-1" />
             Clear all
           </Button>

@@ -89,6 +89,7 @@
 body {
   background-color: var(--color-background-base);
   color: var(--color-foreground-default);
+  line-height: 1em;
 }
 
 :focus-visible {
