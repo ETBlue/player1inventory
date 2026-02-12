@@ -1,9 +1,33 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { useState } from 'react'
 import { TagColor } from '@/types'
 import { ItemFilters } from './ItemFilters'
 
 const queryClient = new QueryClient()
+
+// Create a router for storybook
+const createStoryRouter = (storyComponent: React.ComponentType) => {
+  const rootRoute = createRootRoute({
+    component: storyComponent as () => React.ReactNode,
+  })
+
+  return createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+}
+
+function RouterWrapper({ children }: { children: React.ReactNode }) {
+  const [router] = useState(() => createStoryRouter(() => <>{children}</>))
+  return <RouterProvider router={router} />
+}
 
 const meta: Meta<typeof ItemFilters> = {
   title: 'Components/ItemFilters',
@@ -11,7 +35,9 @@ const meta: Meta<typeof ItemFilters> = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <Story />
+        <RouterWrapper>
+          <Story />
+        </RouterWrapper>
       </QueryClientProvider>
     ),
   ],

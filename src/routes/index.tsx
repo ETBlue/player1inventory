@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Plus, Tags } from 'lucide-react'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { ItemFilters } from '@/components/ItemFilters'
@@ -16,7 +16,6 @@ export const Route = createFileRoute('/')({
 })
 
 function PantryView() {
-  const navigate = useNavigate()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -73,27 +72,17 @@ function PantryView() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pantry</h1>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="neutral-outline"
-            onClick={() => navigate({ to: '/settings/tags' })}
-          >
-            <Tags className="h-4 w-4 mr-1" />
-            Tags
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-accessory-default bg-background-surface">
+        <h1 className="text-xl font-bold">Pantry</h1>
+        <span className="flex-1" />
+        <Link to="/items/new">
+          <Button>
+            <Plus />
+            Add item
           </Button>
-          <Link to="/items/new">
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-1" />
-              Add Item
-            </Button>
-          </Link>
-        </div>
+        </Link>
       </div>
-
       <ItemFilters
         tagTypes={tagTypes}
         tags={tags}
@@ -119,7 +108,7 @@ function PantryView() {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="bg-background-base py-px flex flex-col gap-px">
           {filteredItems.map((item) => (
             <PantryItem
               key={item.id}

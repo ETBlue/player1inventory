@@ -34,8 +34,8 @@ export function TagTypeDropdown({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant={hasSelection ? tagType.color : 'neutral-outline'}
-          size="mini"
+          variant={hasSelection ? tagType.color : 'neutral-ghost'}
+          size="xs"
           className="capitalize gap-1"
         >
           {tagType.name}

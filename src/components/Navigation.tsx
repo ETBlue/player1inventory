@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Pantry', icon: Home },
-  { to: '/shopping', label: 'Shop', icon: ShoppingCart },
+  { to: '/shopping', label: 'Cart', icon: ShoppingCart },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 
@@ -12,9 +12,9 @@ export function Navigation() {
   const location = useLocation()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t bg-background-elevated">
+    <nav className="fixed bottom-0 left-0 right-0 border-t border-accessory-default bg-background-surface">
       <div className="flex justify-around py-2">
-        {navItems.map(({ to, label, icon: Icon }) => {
+        {navItems.map(({ to, icon: Icon }) => {
           const isActive =
             location.pathname === to ||
             (to !== '/' && location.pathname.startsWith(to))
@@ -29,7 +29,6 @@ export function Navigation() {
               )}
             >
               <Icon className="h-5 w-5" />
-              <span>{label}</span>
             </Link>
           )
         })}
