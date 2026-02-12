@@ -35,7 +35,7 @@ function PantryView() {
   // Apply filters to items
   const filteredItems = filterItems(items, filterState)
 
-  // Handle tag click - find tag type and add tag to filter
+  // Handle tag click - toggle tag in filter
   const handleTagClick = (tagId: string) => {
     const tag = tags.find((t) => t.id === tagId)
     if (!tag) return
@@ -44,13 +44,23 @@ function PantryView() {
     if (!tagType) return
 
     setFilterState((prev) => {
-      // Check if this tag is already in the filter
       const existingTags = prev[tagType.id] || []
+
+      // If tag is already in filter, remove it (toggle off)
       if (existingTags.includes(tagId)) {
-        return prev // Already filtered
+        const newTags = existingTags.filter((id) => id !== tagId)
+        if (newTags.length === 0) {
+          // Remove tag type from filter if no tags left
+          const { [tagType.id]: _, ...rest } = prev
+          return rest
+        }
+        return {
+          ...prev,
+          [tagType.id]: newTags,
+        }
       }
 
-      // Add tag to filter
+      // Otherwise add it (toggle on)
       return {
         ...prev,
         [tagType.id]: [...existingTags, tagId],

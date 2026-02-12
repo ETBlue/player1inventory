@@ -56,7 +56,7 @@ export function ItemCard({
             )}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
-                {tags.slice(0, 3).map((tag) => {
+                {tags.map((tag) => {
                   const tagType = tagTypes.find((t) => t.id === tag.typeId)
                   const bgColor = tagType?.color
                   return (
@@ -76,11 +76,6 @@ export function ItemCard({
                     </Badge>
                   )
                 })}
-                {tags.length > 3 && (
-                  <Badge variant="neutral-outline" className="text-xs">
-                    +{tags.length - 3}
-                  </Badge>
-                )}
               </div>
             )}
           </Link>
