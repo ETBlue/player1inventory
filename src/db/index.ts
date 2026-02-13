@@ -17,13 +17,13 @@ const db = new Dexie('Player1Inventory') as Dexie & {
   cartItems: EntityTable<CartItem, 'id'>
 }
 
-db.version(1).stores({
-  items: 'id, name, *tagIds, createdAt',
-  tags: 'id, name, typeId',
-  tagTypes: 'id, name',
-  inventoryLogs: 'id, itemId, occurredAt, createdAt',
-  shoppingCarts: 'id, status, createdAt',
-  cartItems: 'id, cartId, itemId',
+db.version(2).stores({
+  items: '++id, name, targetUnit, createdAt, updatedAt',
+  tags: '++id, name, typeId',
+  tagTypes: '++id, name',
+  inventoryLogs: '++id, itemId, occurredAt, createdAt',
+  shoppingCarts: '++id, status, createdAt, completedAt',
+  cartItems: '++id, itemId, cartId',
 })
 
 export { db }

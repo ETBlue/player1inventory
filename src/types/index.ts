@@ -1,12 +1,28 @@
 export interface Item {
   id: string
   name: string
-  unit?: string
   tagIds: string[]
+
+  // Dual-unit tracking
+  packageUnit?: string
+  measurementUnit?: string
+  amountPerPackage?: number
+
+  // Quantity tracking
+  targetUnit: 'package' | 'measurement'
   targetQuantity: number
   refillThreshold: number
+  packedQuantity: number
+  unpackedQuantity: number
+
+  // Consumption
+  consumeAmount: number
+
+  // Expiration
   dueDate?: Date
   estimatedDueDays?: number
+
+  // Metadata
   createdAt: Date
   updatedAt: Date
 }
