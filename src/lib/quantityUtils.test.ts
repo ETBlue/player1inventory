@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '@/types'
 import {
+  addItem,
   consumeItem,
   getCurrentQuantity,
   normalizeUnpacked,
@@ -193,5 +194,80 @@ describe('consumeItem', () => {
 
     expect(item.packedQuantity).toBe(0)
     expect(item.unpackedQuantity).toBe(0)
+  })
+})
+
+describe('addItem', () => {
+  it('adds 1 to packed quantity', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+    }
+
+    addItem(item as Item)
+
+    expect(item.packedQuantity).toBe(3)
+    expect(item.unpackedQuantity).toBe(0.5)
+  })
+
+  it('works in simple mode', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'dozen',
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+    }
+
+    addItem(item as Item)
+
+    expect(item.packedQuantity).toBe(4)
+  })
+
+  it('recalculates dueDate when adding to empty item with estimatedDueDays', () => {
+    const now = new Date('2026-02-14')
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      estimatedDueDays: 7,
+    }
+
+    addItem(item as Item, now)
+
+    expect(item.packedQuantity).toBe(1)
+    expect(item.dueDate).toEqual(new Date('2026-02-21'))
+  })
+
+  it('does not set dueDate when no estimatedDueDays', () => {
+    const now = new Date('2026-02-14')
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    }
+
+    addItem(item as Item, now)
+
+    expect(item.packedQuantity).toBe(1)
+    expect(item.dueDate).toBeUndefined()
+  })
+
+  it('does not overwrite existing dueDate', () => {
+    const now = new Date('2026-02-14')
+    const existingDate = new Date('2026-02-20')
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      dueDate: existingDate,
+      estimatedDueDays: 7,
+    }
+
+    addItem(item as Item, now)
+
+    expect(item.packedQuantity).toBe(2)
+    expect(item.dueDate).toEqual(existingDate) // Unchanged
   })
 })

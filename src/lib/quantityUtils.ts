@@ -56,3 +56,14 @@ export function consumeItem(item: Item, amount: number): void {
     item.dueDate = undefined
   }
 }
+
+export function addItem(item: Item, purchaseDate: Date = new Date()): void {
+  item.packedQuantity += 1
+
+  // Recalculate dueDate if quantity was 0 and estimatedDueDays exists
+  if (item.estimatedDueDays && !item.dueDate && getCurrentQuantity(item) > 0) {
+    const expirationMs =
+      purchaseDate.getTime() + item.estimatedDueDays * 86400000
+    item.dueDate = new Date(expirationMs)
+  }
+}
