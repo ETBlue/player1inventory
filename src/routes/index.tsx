@@ -13,6 +13,7 @@ import {
   addItem,
   consumeItem,
   getCurrentQuantity,
+  isInactive,
   normalizeUnpacked,
 } from '@/lib/quantityUtils'
 import {
@@ -55,6 +56,7 @@ function PantryView() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     () => loadSortPrefs().sortDirection,
   )
+  const [showInactive, setShowInactive] = useState(false)
 
   // Save filter state to sessionStorage whenever it changes
   useEffect(() => {
@@ -115,6 +117,10 @@ function PantryView() {
     sortBy,
     sortDirection,
   )
+
+  // Separate active and inactive items
+  const activeItems = sortedItems.filter((item) => !isInactive(item))
+  const inactiveItems = sortedItems.filter((item) => isInactive(item))
 
   // Handle tag click - toggle tag in filter
   const handleTagClick = (tagId: string) => {
@@ -195,7 +201,7 @@ function PantryView() {
         </div>
       ) : (
         <div className="bg-background-base flex flex-col gap-px">
-          {sortedItems.map((item) => (
+          {activeItems.map((item) => (
             <PantryItem
               key={item.id}
               item={item}
@@ -253,6 +259,80 @@ function PantryView() {
               onTagClick={handleTagClick}
             />
           ))}
+
+          {inactiveItems.length > 0 && (
+            <div className="bg-background-surface">
+              <button
+                type="button"
+                onClick={() => setShowInactive(!showInactive)}
+                className="w-full px-3 py-2 text-sm text-foreground-muted hover:text-foreground"
+              >
+                {showInactive ? 'Hide' : 'Show'} {inactiveItems.length} inactive
+                item{inactiveItems.length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
+
+          {showInactive &&
+            inactiveItems.map((item) => (
+              <div key={item.id} className="opacity-50">
+                <PantryItem
+                  item={item}
+                  tags={tags.filter((t) => item.tagIds.includes(t.id))}
+                  tagTypes={tagTypes}
+                  showTags={tagsVisible}
+                  onConsume={async () => {
+                    // Apply consume logic
+                    const updatedItem = { ...item }
+                    consumeItem(updatedItem, updatedItem.consumeAmount)
+
+                    // Update database
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        dueDate: updatedItem.dueDate,
+                      },
+                    })
+
+                    // Log inventory change
+                    addLog.mutate({
+                      itemId: item.id,
+                      delta: -updatedItem.consumeAmount,
+                      occurredAt: new Date(),
+                    })
+                  }}
+                  onAdd={async () => {
+                    // Apply add logic
+                    const updatedItem = { ...item }
+                    const purchaseDate = new Date()
+                    addItem(updatedItem, purchaseDate)
+
+                    // Normalize unpacked (convert excess to packed)
+                    normalizeUnpacked(updatedItem)
+
+                    // Update database
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        dueDate: updatedItem.dueDate,
+                      },
+                    })
+
+                    // Log inventory change
+                    addLog.mutate({
+                      itemId: item.id,
+                      delta: 1, // Always adds 1 package
+                      occurredAt: purchaseDate,
+                    })
+                  }}
+                  onTagClick={handleTagClick}
+                />
+              </div>
+            ))}
         </div>
       )}
 
