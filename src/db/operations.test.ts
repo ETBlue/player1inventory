@@ -46,12 +46,57 @@ describe('Item operations', () => {
     expect(item.createdAt).toBeInstanceOf(Date)
   })
 
+  it('creates item with dual-unit tracking', async () => {
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
+      targetQuantity: 2,
+      refillThreshold: 0.5,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 0.25,
+      tagIds: [],
+    })
+
+    expect(item.packageUnit).toBe('bottle')
+    expect(item.measurementUnit).toBe('L')
+    expect(item.amountPerPackage).toBe(1)
+    expect(item.targetUnit).toBe('measurement')
+    expect(item.consumeAmount).toBe(0.25)
+  })
+
+  it('creates item with simple tracking', async () => {
+    const item = await createItem({
+      name: 'Eggs',
+      packageUnit: 'dozen',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    expect(item.packageUnit).toBe('dozen')
+    expect(item.measurementUnit).toBeUndefined()
+    expect(item.packedQuantity).toBe(1)
+  })
+
   it('retrieves an item by id', async () => {
     const created = await createItem({
       name: 'Eggs',
+      packageUnit: 'dozen',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 12,
       refillThreshold: 6,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     const retrieved = await getItem(created.id)
@@ -61,15 +106,25 @@ describe('Item operations', () => {
   it('lists all items', async () => {
     await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
     await createItem({
       name: 'Eggs',
+      packageUnit: 'dozen',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 12,
       refillThreshold: 6,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     const items = await getAllItems()
@@ -79,9 +134,14 @@ describe('Item operations', () => {
   it('updates an item', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     await updateItem(item.id, { name: 'Whole Milk' })
@@ -93,9 +153,14 @@ describe('Item operations', () => {
   it('deletes an item', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     await deleteItem(item.id)
@@ -114,9 +179,14 @@ describe('InventoryLog operations', () => {
   it('adds an inventory log', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     const log = await addInventoryLog({
@@ -133,9 +203,14 @@ describe('InventoryLog operations', () => {
   it('calculates current quantity from logs', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
@@ -152,9 +227,14 @@ describe('InventoryLog operations', () => {
   it('gets logs for an item', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
@@ -171,9 +251,14 @@ describe('InventoryLog operations', () => {
   it('gets last purchase date', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
     const purchaseDate = new Date('2026-02-01')
 
@@ -277,9 +362,14 @@ describe('ShoppingCart operations', () => {
   it('adds item to cart', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
     const cart = await getOrCreateActiveCart()
 
@@ -291,9 +381,14 @@ describe('ShoppingCart operations', () => {
   it('updates cart item quantity', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
     const cart = await getOrCreateActiveCart()
     const cartItem = await addToCart(cart.id, item.id, 2)
@@ -307,9 +402,14 @@ describe('ShoppingCart operations', () => {
   it('checks out cart and creates inventory logs', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
     const cart = await getOrCreateActiveCart()
     await addToCart(cart.id, item.id, 3)
@@ -326,9 +426,14 @@ describe('ShoppingCart operations', () => {
   it('abandons cart without creating logs', async () => {
     const item = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
     const cart = await getOrCreateActiveCart()
     await addToCart(cart.id, item.id, 3)
