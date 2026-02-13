@@ -132,3 +132,10 @@ export const StatusError: Story = {
     tagTypes: [{ id: 'type-1', name: 'Category', color: 'teal' }],
   },
 }
+
+export const TagsHidden: Story = {
+  args: {
+    ...Default.args,
+    showTags: false,
+  },
+}

@@ -10,6 +10,7 @@ interface PantryItemProps {
   onConsume: () => void
   onAdd: () => void
   onTagClick?: (tagId: string) => void
+  showTags?: boolean
 }
 
 export function PantryItem({
@@ -19,6 +20,7 @@ export function PantryItem({
   onConsume,
   onAdd,
   onTagClick,
+  showTags = true,
 }: PantryItemProps) {
   const { data: quantity = 0 } = useQuery({
     queryKey: ['items', item.id, 'quantity'],
@@ -43,6 +45,7 @@ export function PantryItem({
       quantity={quantity}
       tags={tags}
       tagTypes={tagTypes}
+      showTags={showTags}
       {...(estimatedDueDate ? { estimatedDueDate } : {})}
       onConsume={onConsume}
       onAdd={onAdd}

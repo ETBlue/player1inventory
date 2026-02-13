@@ -15,6 +15,7 @@ interface ItemCardProps {
   onConsume: () => void
   onAdd: () => void
   onTagClick?: (tagId: string) => void
+  showTags?: boolean
 }
 
 export function ItemCard({
@@ -26,6 +27,7 @@ export function ItemCard({
   onConsume,
   onAdd,
   onTagClick,
+  showTags = true,
 }: ItemCardProps) {
   const status =
     item.refillThreshold > 0 && quantity === item.refillThreshold
@@ -56,12 +58,6 @@ export function ItemCard({
             target={item.targetQuantity}
             status={status}
           />
-          {isExpiringSoon && (
-            <p className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
-              <TriangleAlert className="w-4 h-4" />
-              Expires {estimatedDueDate.toLocaleDateString()}
-            </p>
-          )}
         </Link>
         <div className="flex items-center">
           <Button
@@ -90,7 +86,20 @@ export function ItemCard({
         </div>
       </CardHeader>
       <CardContent>
-        {tags.length > 0 && (
+        <div className="flex items-center gap-2 -mb-1">
+          {isExpiringSoon && (
+            <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
+              <TriangleAlert className="w-4 h-4" />
+              Expires {estimatedDueDate.toLocaleDateString()}
+            </span>
+          )}
+          {tags.length > 0 && !showTags && (
+            <span className="text-xs text-foreground-muted">
+              {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
+            </span>
+          )}
+        </div>
+        {tags.length > 0 && showTags && (
           <div className="flex flex-wrap gap-1 mt-2">
             {tags.map((tag) => {
               const tagType = tagTypes.find((t) => t.id === tag.typeId)

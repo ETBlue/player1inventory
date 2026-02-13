@@ -1,7 +1,14 @@
 // src/lib/sessionStorage.test.ts
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { FilterState } from './filterUtils'
-import { loadFilters, saveFilters } from './sessionStorage'
+import {
+  loadFilters,
+  loadSortPrefs,
+  loadUiPrefs,
+  saveFilters,
+  saveSortPrefs,
+  saveUiPrefs,
+} from './sessionStorage'
 
 describe('sessionStorage utilities', () => {
   const STORAGE_KEY = 'pantry-filters'
@@ -55,5 +62,51 @@ describe('sessionStorage utilities', () => {
 
     const loaded = loadFilters()
     expect(loaded).toEqual({})
+  })
+})
+
+describe('UI preferences storage', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('saves and loads UI preferences', () => {
+    saveUiPrefs({ filtersVisible: true, tagsVisible: false })
+    const loaded = loadUiPrefs()
+    expect(loaded).toEqual({ filtersVisible: true, tagsVisible: false })
+  })
+
+  it('returns defaults when no stored preferences', () => {
+    const loaded = loadUiPrefs()
+    expect(loaded).toEqual({ filtersVisible: false, tagsVisible: false })
+  })
+
+  it('returns defaults when sessionStorage contains invalid data', () => {
+    sessionStorage.setItem('pantry-ui-prefs', 'invalid json')
+    const loaded = loadUiPrefs()
+    expect(loaded).toEqual({ filtersVisible: false, tagsVisible: false })
+  })
+})
+
+describe('Sort preferences storage', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('saves and loads sort preferences', () => {
+    saveSortPrefs({ sortBy: 'name', sortDirection: 'desc' })
+    const loaded = loadSortPrefs()
+    expect(loaded).toEqual({ sortBy: 'name', sortDirection: 'desc' })
+  })
+
+  it('returns defaults when no stored preferences', () => {
+    const loaded = loadSortPrefs()
+    expect(loaded).toEqual({ sortBy: 'expiring', sortDirection: 'asc' })
+  })
+
+  it('returns defaults when localStorage contains invalid data', () => {
+    localStorage.setItem('pantry-sort-prefs', 'invalid json')
+    const loaded = loadSortPrefs()
+    expect(loaded).toEqual({ sortBy: 'expiring', sortDirection: 'asc' })
   })
 })
