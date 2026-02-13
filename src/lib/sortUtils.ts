@@ -1,11 +1,6 @@
 import type { Item } from '@/types'
 
-export type SortField =
-  | 'name'
-  | 'quantity'
-  | 'status'
-  | 'updatedAt'
-  | 'expiring'
+export type SortField = 'name' | 'quantity' | 'stock' | 'updatedAt' | 'expiring'
 export type SortDirection = 'asc' | 'desc'
 
 type StatusValue = 'error' | 'warning' | 'ok'
@@ -40,7 +35,7 @@ export function sortItems(
         break
       }
 
-      case 'status': {
+      case 'stock': {
         const statusOrder: Record<StatusValue, number> = {
           error: 0,
           warning: 1,

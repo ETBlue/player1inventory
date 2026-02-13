@@ -65,13 +65,13 @@ describe('sortItems', () => {
     expect(sorted.map((i) => i.id)).toEqual(['2', '1', '3'])
   })
 
-  it('sorts by status ascending (error -> warning -> ok)', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'status', 'asc')
+  it('sorts by stock ascending (error -> warning -> ok)', () => {
+    const sorted = sortItems(items, quantities, expiryDates, 'stock', 'asc')
     expect(sorted.map((i) => i.id)).toEqual(['1', '3', '2'])
   })
 
-  it('sorts by status descending (ok -> warning -> error)', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'status', 'desc')
+  it('sorts by stock descending (ok -> warning -> error)', () => {
+    const sorted = sortItems(items, quantities, expiryDates, 'stock', 'desc')
     expect(sorted.map((i) => i.id)).toEqual(['2', '3', '1'])
   })
 

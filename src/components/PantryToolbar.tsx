@@ -1,5 +1,12 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, Filter, Plus, Tags } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Filter,
+  Plus,
+  Tags,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -23,7 +30,7 @@ const sortLabels: Record<SortField, string> = {
   expiring: 'Expiring',
   name: 'Name',
   quantity: 'Quantity',
-  status: 'Status',
+  stock: 'Stock',
   updatedAt: 'Updated',
 }
 
@@ -71,7 +78,9 @@ export function PantryToolbar({
               size="default"
               variant="neutral-ghost"
               aria-label="Sort by criteria"
+              className="px-2"
             >
+              <ArrowUpDown />
               {sortLabels[sortBy]}
             </Button>
           </DropdownMenuTrigger>
@@ -95,10 +104,10 @@ export function PantryToolbar({
               Quantity
             </DropdownMenuItem>
             <DropdownMenuItem
-              className={sortBy === 'status' ? 'bg-background-base' : ''}
-              onClick={() => handleCriteriaChange('status')}
+              className={sortBy === 'stock' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('stock')}
             >
-              Status
+              Stock
             </DropdownMenuItem>
             <DropdownMenuItem
               className={sortBy === 'updatedAt' ? 'bg-background-base' : ''}
