@@ -24,7 +24,7 @@ export function ItemForm({
   const { data: allTags = [] } = useTags()
 
   const [name, setName] = useState(initialData?.name ?? '')
-  const [unit, setUnit] = useState(initialData?.unit ?? '')
+  const [unit, setUnit] = useState(initialData?.packageUnit ?? '')
   const [targetQuantity, setTargetQuantity] = useState(
     initialData?.targetQuantity ?? 1,
   )
@@ -43,8 +43,12 @@ export function ItemForm({
       targetQuantity,
       refillThreshold,
       tagIds,
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     }
-    if (unit) data.unit = unit
+    if (unit) data.packageUnit = unit
     if (estimatedDueDays) data.estimatedDueDays = Number(estimatedDueDays)
     onSubmit(data)
   }

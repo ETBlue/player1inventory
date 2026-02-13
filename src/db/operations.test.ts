@@ -31,10 +31,14 @@ describe('Item operations', () => {
   it('creates an item', async () => {
     const item = await createItem({
       name: 'Milk',
-      unit: 'gallon',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
       tagIds: [],
       targetQuantity: 2,
       refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
     })
 
     expect(item.id).toBeDefined()

@@ -51,10 +51,14 @@ type Story = StoryObj<typeof ItemCard>
 const mockItem = {
   id: '1',
   name: 'Milk',
-  unit: 'gallons',
+  packageUnit: 'gallon',
+  targetUnit: 'package' as const,
   tagIds: ['tag-1'],
   targetQuantity: 2,
   refillThreshold: 1,
+  packedQuantity: 0,
+  unpackedQuantity: 0,
+  consumeAmount: 1,
   createdAt: new Date(),
   updatedAt: new Date(),
 }
