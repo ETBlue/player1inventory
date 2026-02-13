@@ -348,4 +348,59 @@ describe('Home page filtering integration', () => {
       expect(items[0]).toHaveTextContent('Zucchini')
     })
   })
+
+  it('shows inactive items when toggle clicked', async () => {
+    const user = userEvent.setup()
+
+    // Create inactive item (target = 0, current = 0)
+    await createItem({
+      name: 'Inactive Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // Create active item
+    await createItem({
+      name: 'Active Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderApp()
+
+    // Inactive item should not be visible initially
+    await waitFor(() => {
+      expect(screen.getByText('Active Item')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Inactive Item')).not.toBeInTheDocument()
+
+    // Should show toggle button
+    const toggleButton = screen.getByRole('button', { name: /show.*inactive/i })
+    expect(toggleButton).toBeInTheDocument()
+
+    // Click to show inactive
+    await user.click(toggleButton)
+
+    // Now inactive item should be visible
+    await waitFor(() => {
+      expect(screen.getByText('Inactive Item')).toBeInTheDocument()
+    })
+
+    // Button text should change to "Hide"
+    expect(
+      screen.getByRole('button', { name: /hide.*inactive/i }),
+    ).toBeInTheDocument()
+  })
 })
