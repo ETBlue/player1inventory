@@ -20,3 +20,39 @@ export function normalizeUnpacked(item: Item): void {
     item.unpackedQuantity -= item.amountPerPackage
   }
 }
+
+export function consumeItem(item: Item, amount: number): void {
+  if (item.packageUnit && item.amountPerPackage) {
+    // Consume from unpacked first
+    if (item.unpackedQuantity >= amount) {
+      item.unpackedQuantity -= amount
+    } else {
+      // Need to break into packed
+      const remaining = amount - item.unpackedQuantity
+      item.unpackedQuantity = 0
+
+      const packagesToOpen = Math.ceil(remaining / item.amountPerPackage)
+      item.packedQuantity -= packagesToOpen
+
+      // Calculate leftover from opened packages
+      item.unpackedQuantity = packagesToOpen * item.amountPerPackage - remaining
+
+      // Prevent negative quantities
+      if (item.packedQuantity < 0) {
+        item.packedQuantity = 0
+        item.unpackedQuantity = 0
+      }
+    }
+  } else {
+    // Simple mode
+    item.packedQuantity -= amount
+    if (item.packedQuantity < 0) {
+      item.packedQuantity = 0
+    }
+  }
+
+  // Clear expiration date when quantity reaches 0
+  if (getCurrentQuantity(item) === 0) {
+    item.dueDate = undefined
+  }
+}
