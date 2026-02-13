@@ -8,32 +8,48 @@ interface ProgressBarProps {
 }
 
 function SegmentedProgressBar({ current, target, status }: ProgressBarProps) {
-  return (
-    <div className="flex gap-0.5">
-      {Array.from({ length: target }, (_, i) => {
-        const isFilled = i < current
-        const fillColor =
-          status === 'ok'
-            ? 'bg-status-ok'
-            : status === 'warning'
-              ? 'bg-status-warning'
-              : status === 'error'
-                ? 'bg-status-error'
-                : 'bg-accessory-emphasized'
+  const segments = Array.from({ length: target }, (_, i) => {
+    const segmentStart = i
+    const segmentEnd = i + 1
 
-        return (
+    let fillPercentage = 0
+    if (current >= segmentEnd) {
+      fillPercentage = 100
+    } else if (current > segmentStart) {
+      fillPercentage = (current - segmentStart) * 100
+    }
+
+    const fillColor =
+      status === 'ok'
+        ? 'bg-status-ok'
+        : status === 'warning'
+          ? 'bg-status-warning'
+          : status === 'error'
+            ? 'bg-status-error'
+            : 'bg-accessory-emphasized'
+
+    return (
+      <div
+        // biome-ignore lint/suspicious/noArrayIndexKey: segments are static presentational elements
+        key={i}
+        data-segment={i}
+        data-fill={fillPercentage}
+        className={cn(
+          'h-2 flex-1 rounded-xs relative overflow-hidden',
+          fillPercentage === 0 && 'border border-accessory-emphasized',
+        )}
+      >
+        {fillPercentage > 0 && (
           <div
-            // biome-ignore lint/suspicious/noArrayIndexKey: segments are static presentational elements
-            key={i}
-            className={cn(
-              'h-2 flex-1 rounded-xs',
-              isFilled ? fillColor : 'border border-accessory-emphasized',
-            )}
+            className={cn('h-full', fillColor)}
+            style={{ width: `${fillPercentage}%` }}
           />
-        )
-      })}
-    </div>
-  )
+        )}
+      </div>
+    )
+  })
+
+  return <div className="flex gap-0.5">{segments}</div>
 }
 
 function ContinuousProgressBar({ current, target, status }: ProgressBarProps) {
