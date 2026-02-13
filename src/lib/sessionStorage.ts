@@ -35,7 +35,7 @@ export function loadFilters(): FilterState {
 }
 
 // UI preferences (sessionStorage)
-interface UiPreferences {
+export interface UiPreferences {
   filtersVisible: boolean
   tagsVisible: boolean
 }
@@ -78,7 +78,7 @@ export type SortField =
   | 'expiring'
 export type SortDirection = 'asc' | 'desc'
 
-interface SortPreferences {
+export interface SortPreferences {
   sortBy: SortField
   sortDirection: SortDirection
 }
