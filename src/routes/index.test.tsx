@@ -403,4 +403,125 @@ describe('Home page filtering integration', () => {
       screen.getByRole('button', { name: /hide.*inactive/i }),
     ).toBeInTheDocument()
   })
+
+  it('logs correct delta when adding item tracking in packages', async () => {
+    const user = userEvent.setup()
+
+    // Create item tracking in packages (simple mode)
+    const item = await createItem({
+      name: 'Simple Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Simple Item')).toBeInTheDocument()
+    })
+
+    // Click add button
+    const addButton = screen.getByLabelText('Add Simple Item')
+    await user.click(addButton)
+
+    // Wait for mutation to complete
+    await waitFor(async () => {
+      const logs = await db.inventoryLogs
+        .where('itemId')
+        .equals(item.id)
+        .toArray()
+
+      // Should have logged delta = 1 (1 package added)
+      const lastLog = logs[logs.length - 1]
+      expect(lastLog.delta).toBe(1)
+    })
+  })
+
+  it('logs correct delta when adding item tracking in measurement units', async () => {
+    const user = userEvent.setup()
+
+    // Create item tracking in measurement units with dual-unit (1L bottles)
+    const item = await createItem({
+      name: 'Dual Unit Item',
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 0.5,
+      tagIds: [],
+    })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Dual Unit Item')).toBeInTheDocument()
+    })
+
+    // Click add button
+    const addButton = screen.getByLabelText('Add Dual Unit Item')
+    await user.click(addButton)
+
+    // Wait for mutation to complete
+    await waitFor(async () => {
+      const logs = await db.inventoryLogs
+        .where('itemId')
+        .equals(item.id)
+        .toArray()
+
+      // Should have logged delta = 1 (1L added, not 1 package)
+      const lastLog = logs[logs.length - 1]
+      expect(lastLog.delta).toBe(1) // 1 bottle = 1L
+    })
+  })
+
+  it('logs correct delta when consuming item with dual-unit tracking', async () => {
+    const user = userEvent.setup()
+
+    // Create item with dual-unit tracking (consumeAmount = 0.25L)
+    const item = await createItem({
+      name: 'Consume Test Item',
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+      consumeAmount: 0.25,
+      tagIds: [],
+    })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Consume Test Item')).toBeInTheDocument()
+    })
+
+    // Click consume button
+    const consumeButton = screen.getByLabelText('Consume Consume Test Item')
+    await user.click(consumeButton)
+
+    // Wait for mutation to complete
+    await waitFor(async () => {
+      const logs = await db.inventoryLogs
+        .where('itemId')
+        .equals(item.id)
+        .toArray()
+
+      // Should have logged delta = -0.25 (consumed 0.25L)
+      const lastLog = logs[logs.length - 1]
+      expect(lastLog.delta).toBe(-0.25)
+    })
+  })
 })

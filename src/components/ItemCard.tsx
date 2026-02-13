@@ -71,6 +71,7 @@ export function ItemCard({
               onConsume()
             }}
             disabled={quantity <= 0}
+            aria-label={`Consume ${item.name}`}
           >
             <Minus className="h-4 w-4" />
           </Button>
@@ -82,6 +83,7 @@ export function ItemCard({
               e.preventDefault()
               onAdd()
             }}
+            aria-label={`Add ${item.name}`}
           >
             <Plus className="h-4 w-4" />
           </Button>
