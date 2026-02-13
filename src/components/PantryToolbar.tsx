@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowUpDown, Filter, Plus, Tags } from 'lucide-react'
+import { Filter, Plus, Tags } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -49,7 +49,7 @@ export function PantryToolbar({
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b border-accessory-default bg-background-surface">
       <Button
-        size="icon-xs"
+        size="icon"
         variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
         onClick={onToggleFilters}
         aria-label="Toggle filters"
@@ -58,7 +58,7 @@ export function PantryToolbar({
       </Button>
 
       <Button
-        size="icon-xs"
+        size="icon"
         variant={tagsVisible ? 'neutral' : 'neutral-ghost'}
         onClick={onToggleTags}
         aria-label="Toggle tags"
@@ -68,26 +68,40 @@ export function PantryToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="xs" variant="neutral-ghost">
-            <ArrowUpDown />
+          <Button size="default" variant="neutral-ghost">
             {sortLabels[sortBy]} {sortDirection === 'asc' ? '↑' : '↓'}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => handleSort('expiring')}>
-            {sortBy === 'expiring' && '✓ '}Expiring soon
+          <DropdownMenuItem
+            className={sortBy === 'expiring' ? 'bg-background-base' : ''}
+            onClick={() => handleSort('expiring')}
+          >
+            Expiring soon {sortBy !== 'expiring' ? '↑' : '↓'}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleSort('name')}>
-            {sortBy === 'name' && '✓ '}Name
+          <DropdownMenuItem
+            className={sortBy === 'name' ? 'bg-background-base' : ''}
+            onClick={() => handleSort('name')}
+          >
+            Name {sortBy !== 'name' ? '↑' : '↓'}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleSort('quantity')}>
-            {sortBy === 'quantity' && '✓ '}Quantity
+          <DropdownMenuItem
+            className={sortBy === 'quantity' ? 'bg-background-base' : ''}
+            onClick={() => handleSort('quantity')}
+          >
+            Quantity {sortBy !== 'quantity' ? '↑' : '↓'}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleSort('status')}>
-            {sortBy === 'status' && '✓ '}Status
+          <DropdownMenuItem
+            className={sortBy === 'status' ? 'bg-background-base' : ''}
+            onClick={() => handleSort('status')}
+          >
+            Status {sortBy !== 'status' ? '↑' : '↓'}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleSort('updatedAt')}>
-            {sortBy === 'updatedAt' && '✓ '}Last updated
+          <DropdownMenuItem
+            className={sortBy === 'updatedAt' ? 'bg-background-base' : ''}
+            onClick={() => handleSort('updatedAt')}
+          >
+            Last updated {sortBy !== 'updatedAt' ? '↑' : '↓'}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

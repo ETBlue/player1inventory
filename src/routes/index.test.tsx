@@ -301,7 +301,7 @@ describe('Home page filtering integration', () => {
     await user.click(screen.getByRole('button', { name: /expiring/i }))
 
     // Select Name
-    await user.click(screen.getByRole('menuitem', { name: /^name$/i }))
+    await user.click(screen.getByRole('menuitem', { name: /name.*↑/i }))
 
     // Items now alphabetical
     await waitFor(() => {
@@ -330,7 +330,7 @@ describe('Home page filtering integration', () => {
 
     // Sort by name ascending
     await user.click(screen.getByRole('button', { name: /expiring/i }))
-    await user.click(screen.getByRole('menuitem', { name: /^name$/i }))
+    await user.click(screen.getByRole('menuitem', { name: /name.*↑/i }))
 
     await waitFor(() => {
       const items = screen.getAllByRole('heading', { level: 3 })
@@ -339,7 +339,7 @@ describe('Home page filtering integration', () => {
 
     // Click name again to reverse
     await user.click(screen.getByRole('button', { name: /name.*↑/i }))
-    await user.click(screen.getByRole('menuitem', { name: /^✓ name$/i }))
+    await user.click(screen.getByRole('menuitem', { name: /name.*↓/i }))
 
     // Now descending
     await waitFor(() => {

@@ -100,7 +100,7 @@ describe('PantryToolbar', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /expiring/i }))
-    await user.click(screen.getByRole('menuitem', { name: /^name$/i }))
+    await user.click(screen.getByRole('menuitem', { name: /name.*↑/i }))
 
     expect(onSortChange).toHaveBeenCalledWith('name', 'asc')
   })
@@ -118,7 +118,7 @@ describe('PantryToolbar', () => {
     )
 
     await user.click(screen.getByRole('button', { name: /name/i }))
-    await user.click(screen.getByRole('menuitem', { name: /^✓ name$/i }))
+    await user.click(screen.getByRole('menuitem', { name: /name.*↓/i }))
 
     expect(onSortChange).toHaveBeenCalledWith('name', 'desc')
   })
