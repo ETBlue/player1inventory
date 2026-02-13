@@ -88,7 +88,14 @@ describe('Home page filtering integration', () => {
     const user = userEvent.setup()
     renderApp()
 
-    // When user opens Category dropdown
+    // When user enables filters visibility
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+    const filtersButton = screen.getByRole('button', { name: /filters/i })
+    await user.click(filtersButton)
+
+    // And opens Category dropdown
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /category/i }),
@@ -173,10 +180,14 @@ describe('Home page filtering integration', () => {
     const user = userEvent.setup()
     renderApp()
 
-    // When user clicks Vegetables tag badge on Tomatoes card
+    // When user enables tag visibility
     await waitFor(() => {
       expect(screen.getByText('Tomatoes')).toBeInTheDocument()
     })
+    const tagsButton = screen.getByRole('button', { name: /tags/i })
+    await user.click(tagsButton)
+
+    // And clicks Vegetables tag badge on Tomatoes card
     const vegBadge = screen.getByText('Vegetables')
     await user.click(vegBadge)
 
@@ -186,7 +197,11 @@ describe('Home page filtering integration', () => {
       expect(screen.queryByText('Apples')).not.toBeInTheDocument()
     })
 
-    // And Category dropdown shows active state (variant changes from outline to solid)
+    // When user enables filters visibility to see the dropdown
+    const filtersButton = screen.getByRole('button', { name: /filters/i })
+    await user.click(filtersButton)
+
+    // Then Category dropdown shows active state (variant changes from outline to solid)
     const categoryButton = screen.getByRole('button', { name: /category/i })
     expect(categoryButton.className).toContain('blue')
   })
