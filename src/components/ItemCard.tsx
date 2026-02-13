@@ -90,7 +90,7 @@ export function ItemCard({
           {isExpiringSoon && (
             <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
               <TriangleAlert className="w-4 h-4" />
-              Expires {estimatedDueDate.toLocaleDateString()}
+              Expires on {estimatedDueDate.toISOString().split('T')[0]}
             </span>
           )}
           {tags.length > 0 && !showTags && (
