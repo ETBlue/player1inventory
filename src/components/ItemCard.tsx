@@ -4,6 +4,7 @@ import { ItemProgressBar } from '@/components/ItemProgressBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -29,13 +30,14 @@ export function ItemCard({
   onTagClick,
   showTags = true,
 }: ItemCardProps) {
+  const currentQuantity = getCurrentQuantity(item)
   const status =
     item.refillThreshold > 0 && quantity === item.refillThreshold
       ? 'warning'
       : quantity < item.refillThreshold
         ? 'error'
         : 'ok'
-  const isExpiringSoon =
+  const _isExpiringSoon =
     estimatedDueDate &&
     estimatedDueDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000 // 3 days
 
@@ -87,10 +89,21 @@ export function ItemCard({
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-2 -mb-1">
-          {isExpiringSoon && (
+          {currentQuantity > 0 && estimatedDueDate && (
             <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
               <TriangleAlert className="w-4 h-4" />
-              Expires on {estimatedDueDate.toISOString().split('T')[0]}
+              {item.estimatedDueDays
+                ? // Relative mode: show "Expires in X days"
+                  (() => {
+                    const daysUntilExpiration = Math.ceil(
+                      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+                    )
+                    return daysUntilExpiration >= 0
+                      ? `Expires in ${daysUntilExpiration} days`
+                      : `Expired ${Math.abs(daysUntilExpiration)} days ago`
+                  })()
+                : // Explicit mode: show "Expires on YYYY-MM-DD"
+                  `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
             </span>
           )}
           {tags.length > 0 && !showTags && (
