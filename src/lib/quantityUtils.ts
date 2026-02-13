@@ -67,3 +67,7 @@ export function addItem(item: Item, purchaseDate: Date = new Date()): void {
     item.dueDate = new Date(expirationMs)
   }
 }
+
+export function isInactive(item: Item): boolean {
+  return item.targetQuantity === 0 && getCurrentQuantity(item) === 0
+}

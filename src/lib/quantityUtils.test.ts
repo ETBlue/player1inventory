@@ -4,6 +4,7 @@ import {
   addItem,
   consumeItem,
   getCurrentQuantity,
+  isInactive,
   normalizeUnpacked,
 } from './quantityUtils'
 
@@ -269,5 +270,53 @@ describe('addItem', () => {
 
     expect(item.packedQuantity).toBe(2)
     expect(item.dueDate).toEqual(existingDate) // Unchanged
+  })
+})
+
+describe('isInactive', () => {
+  it('returns true when both target and current are 0', () => {
+    const item: Partial<Item> = {
+      targetQuantity: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    }
+
+    expect(isInactive(item as Item)).toBe(true)
+  })
+
+  it('returns false when target > 0', () => {
+    const item: Partial<Item> = {
+      targetQuantity: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    }
+
+    expect(isInactive(item as Item)).toBe(false)
+  })
+
+  it('returns false when current > 0', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetQuantity: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+    }
+
+    expect(isInactive(item as Item)).toBe(false)
+  })
+
+  it('returns false when unpacked > 0', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetQuantity: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0.5,
+    }
+
+    expect(isInactive(item as Item)).toBe(false)
   })
 })
