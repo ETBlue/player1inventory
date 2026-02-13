@@ -15,6 +15,7 @@ interface ItemCardProps {
   onConsume: () => void
   onAdd: () => void
   onTagClick?: (tagId: string) => void
+  showTags?: boolean
 }
 
 export function ItemCard({
@@ -26,6 +27,7 @@ export function ItemCard({
   onConsume,
   onAdd,
   onTagClick,
+  showTags = true,
 }: ItemCardProps) {
   const status =
     item.refillThreshold > 0 && quantity === item.refillThreshold
@@ -90,30 +92,35 @@ export function ItemCard({
         </div>
       </CardHeader>
       <CardContent>
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {tags.map((tag) => {
-              const tagType = tagTypes.find((t) => t.id === tag.typeId)
-              const bgColor = tagType?.color
-              return (
-                <Badge
-                  key={tag.id}
-                  variant={bgColor}
-                  className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
-                  onClick={(e) => {
-                    if (onTagClick) {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      onTagClick(tag.id)
-                    }
-                  }}
-                >
-                  {tag.name}
-                </Badge>
-              )
-            })}
-          </div>
-        )}
+        {tags.length > 0 &&
+          (showTags ? (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {tags.map((tag) => {
+                const tagType = tagTypes.find((t) => t.id === tag.typeId)
+                const bgColor = tagType?.color
+                return (
+                  <Badge
+                    key={tag.id}
+                    variant={bgColor}
+                    className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
+                    onClick={(e) => {
+                      if (onTagClick) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onTagClick(tag.id)
+                      }
+                    }}
+                  >
+                    {tag.name}
+                  </Badge>
+                )
+              })}
+            </div>
+          ) : (
+            <span className="text-xs text-foreground-muted">
+              {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
+            </span>
+          ))}
       </CardContent>
     </Card>
   )
