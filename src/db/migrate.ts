@@ -10,6 +10,7 @@ export async function migrateItemsToV2(): Promise<void> {
     }
 
     // Migrate from v1 schema
+    // biome-ignore lint/suspicious/noExplicitAny: Migration code needs to handle old schema data
     const updates: any = {
       targetUnit: 'package',
       packedQuantity: item.targetQuantity || 0,

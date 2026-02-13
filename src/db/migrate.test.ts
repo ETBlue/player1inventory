@@ -23,6 +23,7 @@ describe('migrateItemsToV2', () => {
       refillThreshold: 2,
       createdAt: new Date(),
       updatedAt: new Date(),
+      // biome-ignore lint/suspicious/noExplicitAny: Testing migration of old schema data
     } as any)
 
     await migrateItemsToV2()
