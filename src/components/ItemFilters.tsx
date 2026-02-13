@@ -61,7 +61,7 @@ export function ItemFilters({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 py-1">
       <div className="flex flex-wrap items-center gap-1 mx-1">
         {tagTypesWithTags.map((tagType) => {
           const tagTypeId = tagType.id

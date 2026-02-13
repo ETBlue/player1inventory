@@ -147,7 +147,7 @@ function PantryView() {
   }
 
   return (
-    <div className="space-y-1">
+    <div>
       <PantryToolbar
         filtersVisible={filtersVisible}
         tagsVisible={tagsVisible}
@@ -187,7 +187,7 @@ function PantryView() {
           </p>
         </div>
       ) : (
-        <div className="bg-background-base py-px flex flex-col gap-px">
+        <div className="bg-background-base flex flex-col gap-px">
           {sortedItems.map((item) => (
             <PantryItem
               key={item.id}
