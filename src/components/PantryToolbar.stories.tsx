@@ -83,7 +83,7 @@ export const SortByName: Story = {
   args: {
     ...Default.args,
     sortBy: 'name',
-    sortDirection: 'desc',
+    sortDirection: 'asc',
   },
 }
 
@@ -92,5 +92,21 @@ export const SortByQuantity: Story = {
     ...Default.args,
     sortBy: 'quantity',
     sortDirection: 'asc',
+  },
+}
+
+export const NameDescending: Story = {
+  args: {
+    ...Default.args,
+    sortBy: 'name',
+    sortDirection: 'desc',
+  },
+}
+
+export const QuantityDescending: Story = {
+  args: {
+    ...Default.args,
+    sortBy: 'quantity',
+    sortDirection: 'desc',
   },
 }
