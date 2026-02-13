@@ -209,9 +209,16 @@ function PantryView() {
               tagTypes={tagTypes}
               showTags={tagsVisible}
               onConsume={async () => {
+                // Calculate quantity before consuming
+                const quantityBefore = getCurrentQuantity(item)
+
                 // Apply consume logic
                 const updatedItem = { ...item }
                 consumeItem(updatedItem, updatedItem.consumeAmount)
+
+                // Calculate quantity after consuming
+                const quantityAfter = getCurrentQuantity(updatedItem)
+                const actualDelta = quantityAfter - quantityBefore
 
                 // Update database
                 await updateItem.mutateAsync({
@@ -226,11 +233,14 @@ function PantryView() {
                 // Log inventory change
                 addLog.mutate({
                   itemId: item.id,
-                  delta: -updatedItem.consumeAmount,
+                  delta: actualDelta,
                   occurredAt: new Date(),
                 })
               }}
               onAdd={async () => {
+                // Calculate quantity before adding
+                const quantityBefore = getCurrentQuantity(item)
+
                 // Apply add logic
                 const updatedItem = { ...item }
                 const purchaseDate = new Date()
@@ -239,6 +249,10 @@ function PantryView() {
                 // Normalize unpacked (convert excess to packed)
                 normalizeUnpacked(updatedItem)
 
+                // Calculate quantity after adding
+                const quantityAfter = getCurrentQuantity(updatedItem)
+                const actualDelta = quantityAfter - quantityBefore
+
                 // Update database
                 await updateItem.mutateAsync({
                   id: item.id,
@@ -252,7 +266,7 @@ function PantryView() {
                 // Log inventory change
                 addLog.mutate({
                   itemId: item.id,
-                  delta: 1, // Always adds 1 package
+                  delta: actualDelta,
                   occurredAt: purchaseDate,
                 })
               }}
@@ -282,9 +296,16 @@ function PantryView() {
                   tagTypes={tagTypes}
                   showTags={tagsVisible}
                   onConsume={async () => {
+                    // Calculate quantity before consuming
+                    const quantityBefore = getCurrentQuantity(item)
+
                     // Apply consume logic
                     const updatedItem = { ...item }
                     consumeItem(updatedItem, updatedItem.consumeAmount)
+
+                    // Calculate quantity after consuming
+                    const quantityAfter = getCurrentQuantity(updatedItem)
+                    const actualDelta = quantityAfter - quantityBefore
 
                     // Update database
                     await updateItem.mutateAsync({
@@ -299,11 +320,14 @@ function PantryView() {
                     // Log inventory change
                     addLog.mutate({
                       itemId: item.id,
-                      delta: -updatedItem.consumeAmount,
+                      delta: actualDelta,
                       occurredAt: new Date(),
                     })
                   }}
                   onAdd={async () => {
+                    // Calculate quantity before adding
+                    const quantityBefore = getCurrentQuantity(item)
+
                     // Apply add logic
                     const updatedItem = { ...item }
                     const purchaseDate = new Date()
@@ -312,6 +336,10 @@ function PantryView() {
                     // Normalize unpacked (convert excess to packed)
                     normalizeUnpacked(updatedItem)
 
+                    // Calculate quantity after adding
+                    const quantityAfter = getCurrentQuantity(updatedItem)
+                    const actualDelta = quantityAfter - quantityBefore
+
                     // Update database
                     await updateItem.mutateAsync({
                       id: item.id,
@@ -325,7 +353,7 @@ function PantryView() {
                     // Log inventory change
                     addLog.mutate({
                       itemId: item.id,
-                      delta: 1, // Always adds 1 package
+                      delta: actualDelta,
                       occurredAt: purchaseDate,
                     })
                   }}
