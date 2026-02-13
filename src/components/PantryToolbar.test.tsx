@@ -33,13 +33,17 @@ describe('PantryToolbar', () => {
     onSortChange: vi.fn(),
   }
 
-  it('renders three control buttons', async () => {
+  it('renders five control buttons', async () => {
     await renderWithRouter(<PantryToolbar {...defaultProps} />)
     expect(screen.getByRole('button', { name: /filter/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /tags/i })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /expiring/i }),
+      screen.getByRole('button', { name: /sort by criteria/i }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /toggle sort direction/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /add item/i })).toBeInTheDocument()
   })
 
   it('shows active variant when filters visible', async () => {
@@ -85,11 +89,68 @@ describe('PantryToolbar', () => {
     expect(onToggle).toHaveBeenCalledOnce()
   })
 
-  it('displays current sort criteria with direction', async () => {
+  it('displays current sort criteria as text', async () => {
+    await renderWithRouter(<PantryToolbar {...defaultProps} sortBy="name" />)
+    expect(
+      screen.getByRole('button', { name: /sort by criteria/i }),
+    ).toHaveTextContent('Name')
+  })
+
+  it('displays ArrowUp icon when direction is asc', async () => {
     await renderWithRouter(
-      <PantryToolbar {...defaultProps} sortBy="name" sortDirection="desc" />,
+      <PantryToolbar {...defaultProps} sortDirection="asc" />,
     )
-    expect(screen.getByText(/name.*↓/i)).toBeInTheDocument()
+    const directionBtn = screen.getByRole('button', {
+      name: /toggle sort direction/i,
+    })
+    expect(directionBtn.querySelector('svg')).toBeInTheDocument()
+    // ArrowUp icon has specific class or data attribute
+  })
+
+  it('displays ArrowDown icon when direction is desc', async () => {
+    await renderWithRouter(
+      <PantryToolbar {...defaultProps} sortDirection="desc" />,
+    )
+    const directionBtn = screen.getByRole('button', {
+      name: /toggle sort direction/i,
+    })
+    expect(directionBtn.querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('calls onSortChange preserving direction when criteria changed', async () => {
+    const user = userEvent.setup()
+    const onSortChange = vi.fn()
+    await renderWithRouter(
+      <PantryToolbar
+        {...defaultProps}
+        sortDirection="desc"
+        onSortChange={onSortChange}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /sort by criteria/i }))
+    await user.click(screen.getByRole('menuitem', { name: /name/i }))
+
+    expect(onSortChange).toHaveBeenCalledWith('name', 'desc')
+  })
+
+  it('calls onSortChange preserving criteria when direction toggled', async () => {
+    const user = userEvent.setup()
+    const onSortChange = vi.fn()
+    await renderWithRouter(
+      <PantryToolbar
+        {...defaultProps}
+        sortBy="quantity"
+        sortDirection="asc"
+        onSortChange={onSortChange}
+      />,
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: /toggle sort direction/i }),
+    )
+
+    expect(onSortChange).toHaveBeenCalledWith('quantity', 'desc')
   })
 
   it('calls onSortChange with new field when different sort selected', async () => {
@@ -99,28 +160,10 @@ describe('PantryToolbar', () => {
       <PantryToolbar {...defaultProps} onSortChange={onSortChange} />,
     )
 
-    await user.click(screen.getByRole('button', { name: /expiring/i }))
-    await user.click(screen.getByRole('menuitem', { name: /name.*↑/i }))
+    await user.click(screen.getByRole('button', { name: /sort by criteria/i }))
+    await user.click(screen.getByRole('menuitem', { name: /^name$/i }))
 
     expect(onSortChange).toHaveBeenCalledWith('name', 'asc')
-  })
-
-  it('toggles direction when same sort field clicked', async () => {
-    const user = userEvent.setup()
-    const onSortChange = vi.fn()
-    await renderWithRouter(
-      <PantryToolbar
-        {...defaultProps}
-        sortBy="name"
-        sortDirection="asc"
-        onSortChange={onSortChange}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: /name/i }))
-    await user.click(screen.getByRole('menuitem', { name: /name.*↓/i }))
-
-    expect(onSortChange).toHaveBeenCalledWith('name', 'desc')
   })
 
   it('renders add item button with link to new item form', async () => {

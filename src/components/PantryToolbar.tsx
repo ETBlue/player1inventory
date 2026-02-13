@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Filter, Plus, Tags } from 'lucide-react'
+import { ArrowDown, ArrowUp, Filter, Plus, Tags } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -36,14 +36,12 @@ export function PantryToolbar({
   onToggleTags,
   onSortChange,
 }: PantryToolbarProps) {
-  const handleSort = (field: SortField) => {
-    if (field === sortBy) {
-      // Toggle direction
-      onSortChange(field, sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      // New field, start with ascending
-      onSortChange(field, 'asc')
-    }
+  const handleCriteriaChange = (field: SortField) => {
+    onSortChange(field, sortDirection)
+  }
+
+  const handleDirectionToggle = () => {
+    onSortChange(sortBy, sortDirection === 'asc' ? 'desc' : 'asc')
   }
 
   return (
@@ -66,45 +64,60 @@ export function PantryToolbar({
         <Tags />
       </Button>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button size="default" variant="neutral-ghost">
-            {sortLabels[sortBy]} {sortDirection === 'asc' ? '↑' : '↓'}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem
-            className={sortBy === 'expiring' ? 'bg-background-base' : ''}
-            onClick={() => handleSort('expiring')}
-          >
-            Expiring soon {sortBy !== 'expiring' ? '↑' : '↓'}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={sortBy === 'name' ? 'bg-background-base' : ''}
-            onClick={() => handleSort('name')}
-          >
-            Name {sortBy !== 'name' ? '↑' : '↓'}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={sortBy === 'quantity' ? 'bg-background-base' : ''}
-            onClick={() => handleSort('quantity')}
-          >
-            Quantity {sortBy !== 'quantity' ? '↑' : '↓'}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={sortBy === 'status' ? 'bg-background-base' : ''}
-            onClick={() => handleSort('status')}
-          >
-            Status {sortBy !== 'status' ? '↑' : '↓'}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={sortBy === 'updatedAt' ? 'bg-background-base' : ''}
-            onClick={() => handleSort('updatedAt')}
-          >
-            Last updated {sortBy !== 'updatedAt' ? '↑' : '↓'}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="flex items-center gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="default"
+              variant="neutral-ghost"
+              aria-label="Sort by criteria"
+            >
+              {sortLabels[sortBy]}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              className={sortBy === 'expiring' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('expiring')}
+            >
+              Expiring soon
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortBy === 'name' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('name')}
+            >
+              Name
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortBy === 'quantity' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('quantity')}
+            >
+              Quantity
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortBy === 'status' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('status')}
+            >
+              Status
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sortBy === 'updatedAt' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('updatedAt')}
+            >
+              Last updated
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Button
+          size="icon"
+          variant="neutral-ghost"
+          onClick={handleDirectionToggle}
+          aria-label="Toggle sort direction"
+        >
+          {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
+        </Button>
+      </div>
 
       <span className="flex-1" />
 
