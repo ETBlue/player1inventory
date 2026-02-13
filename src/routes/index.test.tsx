@@ -21,6 +21,7 @@ describe('Home page filtering integration', () => {
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
     sessionStorage.clear()
+    localStorage.clear()
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -204,5 +205,146 @@ describe('Home page filtering integration', () => {
     // Then Category dropdown shows active state (variant changes from outline to solid)
     const categoryButton = screen.getByRole('button', { name: /category/i })
     expect(categoryButton.className).toContain('blue')
+  })
+
+  it('user can toggle filters visibility', async () => {
+    const user = userEvent.setup()
+
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({ name: 'Tomatoes', tagIds: [vegTag.id] })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // Initially filters hidden (default)
+    expect(
+      screen.queryByRole('button', { name: /category/i }),
+    ).not.toBeInTheDocument()
+
+    // Click filter button to show
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // Filters now visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /category/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can toggle tag visibility', async () => {
+    const user = userEvent.setup()
+
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [vegTag.id],
+      targetQuantity: 5,
+      refillThreshold: 2,
+    })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // Initially tags hidden - shows count
+    expect(screen.getByText('1 tag')).toBeInTheDocument()
+    expect(screen.queryByText('Vegetables')).not.toBeInTheDocument()
+
+    // Click tags button to show
+    await user.click(screen.getByRole('button', { name: /toggle tags/i }))
+
+    // Now shows individual badges
+    await waitFor(() => {
+      expect(screen.queryByText('1 tag')).not.toBeInTheDocument()
+      expect(screen.getByText('Vegetables')).toBeInTheDocument()
+    })
+  })
+
+  it('user can sort items by name', async () => {
+    const user = userEvent.setup()
+
+    await createItem({
+      name: 'Tomatoes',
+      targetQuantity: 5,
+      refillThreshold: 2,
+    })
+    await createItem({ name: 'Apples', targetQuantity: 10, refillThreshold: 3 })
+    await createItem({ name: 'Pasta', targetQuantity: 3, refillThreshold: 1 })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // Open sort menu
+    await user.click(screen.getByRole('button', { name: /expiring/i }))
+
+    // Select Name
+    await user.click(screen.getByRole('menuitem', { name: /^name$/i }))
+
+    // Items now alphabetical
+    await waitFor(() => {
+      const items = screen.getAllByRole('heading', { level: 3 })
+      expect(items[0]).toHaveTextContent('Apples')
+      expect(items[1]).toHaveTextContent('Pasta')
+      expect(items[2]).toHaveTextContent('Tomatoes')
+    })
+  })
+
+  it('user can toggle sort direction', async () => {
+    const user = userEvent.setup()
+
+    await createItem({ name: 'Apples', targetQuantity: 10, refillThreshold: 3 })
+    await createItem({
+      name: 'Zucchini',
+      targetQuantity: 5,
+      refillThreshold: 2,
+    })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Apples')).toBeInTheDocument()
+    })
+
+    // Sort by name ascending
+    await user.click(screen.getByRole('button', { name: /expiring/i }))
+    await user.click(screen.getByRole('menuitem', { name: /^name$/i }))
+
+    await waitFor(() => {
+      const items = screen.getAllByRole('heading', { level: 3 })
+      expect(items[0]).toHaveTextContent('Apples')
+    })
+
+    // Click name again to reverse
+    await user.click(screen.getByRole('button', { name: /name.*↑/i }))
+    await user.click(screen.getByRole('menuitem', { name: /^✓ name$/i }))
+
+    // Now descending
+    await waitFor(() => {
+      const items = screen.getAllByRole('heading', { level: 3 })
+      expect(items[0]).toHaveTextContent('Zucchini')
+    })
   })
 })
