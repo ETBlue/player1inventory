@@ -10,6 +10,15 @@ export function getCurrentQuantity(item: Item): number {
   return item.packedQuantity
 }
 
+export function getDisplayQuantity(item: Item): number {
+  if (item.targetUnit === 'package') {
+    // When tracking in packages, show package count
+    return item.packedQuantity
+  }
+  // When tracking in measurement units, show total measurement
+  return getCurrentQuantity(item)
+}
+
 export function normalizeUnpacked(item: Item): void {
   if (!item.packageUnit || !item.measurementUnit || !item.amountPerPackage) {
     return

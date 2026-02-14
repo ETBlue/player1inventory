@@ -36,7 +36,7 @@ function SegmentedProgressBar({ current, target, status }: ProgressBarProps) {
         data-fill={fillPercentage}
         className={cn(
           'h-2 flex-1 rounded-xs relative overflow-hidden',
-          fillPercentage === 0 && 'border border-accessory-emphasized',
+          'border border-accessory-emphasized',
         )}
       >
         {fillPercentage > 0 && (

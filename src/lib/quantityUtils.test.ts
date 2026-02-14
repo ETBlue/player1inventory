@@ -4,6 +4,7 @@ import {
   addItem,
   consumeItem,
   getCurrentQuantity,
+  getDisplayQuantity,
   isInactive,
   normalizeUnpacked,
 } from './quantityUtils'
@@ -318,5 +319,44 @@ describe('isInactive', () => {
     }
 
     expect(isInactive(item as Item)).toBe(false)
+  })
+})
+
+describe('getDisplayQuantity', () => {
+  it('returns packed quantity when tracking in packages', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'package',
+      packedQuantity: 3,
+      unpackedQuantity: 0.5,
+    }
+
+    expect(getDisplayQuantity(item as Item)).toBe(3)
+  })
+
+  it('returns total measurement when tracking in measurement units', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+    }
+
+    expect(getDisplayQuantity(item as Item)).toBe(2.5)
+  })
+
+  it('returns packed quantity for simple mode', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+    }
+
+    expect(getDisplayQuantity(item as Item)).toBe(5)
   })
 })

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ItemCard } from '@/components/ItemCard'
 import { getLastPurchaseDate } from '@/db/operations'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { getDisplayQuantity } from '@/lib/quantityUtils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface PantryItemProps {
@@ -23,7 +23,7 @@ export function PantryItem({
   onTagClick,
   showTags = true,
 }: PantryItemProps) {
-  const quantity = getCurrentQuantity(item)
+  const quantity = getDisplayQuantity(item)
 
   const { data: lastPurchase } = useQuery({
     queryKey: ['items', item.id, 'lastPurchase'],
