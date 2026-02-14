@@ -107,8 +107,25 @@ export function ItemForm({
   // Sync form state when initialData changes (e.g., after consume/add actions)
   useEffect(() => {
     if (initialData) {
-      setPackedQuantity(initialData.packedQuantity ?? 0)
-      setUnpackedQuantity(initialData.unpackedQuantity ?? 0)
+      const packed = initialData.packedQuantity ?? 0
+      const unpacked = initialData.unpackedQuantity ?? 0
+
+      // Normalize: packed quantity should always be an integer
+      const packedInteger = Math.floor(packed)
+      const packedDecimal = packed - packedInteger
+
+      // Convert decimal part to unpacked quantity if needed
+      if (packedDecimal > 0 && initialData.amountPerPackage) {
+        setPackedQuantity(packedInteger)
+        setUnpackedQuantity(
+          Math.round(
+            (unpacked + packedDecimal * initialData.amountPerPackage) * 1000,
+          ) / 1000,
+        )
+      } else {
+        setPackedQuantity(packed)
+        setUnpackedQuantity(unpacked)
+      }
     }
   }, [initialData?.packedQuantity, initialData?.unpackedQuantity, initialData])
 
@@ -138,13 +155,25 @@ export function ItemForm({
 
     setErrors({})
 
+    // Normalize: packed quantity must be an integer
+    const packedInteger = Math.floor(packedQuantity)
+    const packedDecimal = packedQuantity - packedInteger
+    const normalizedPacked = packedInteger
+    const normalizedUnpacked =
+      packedDecimal > 0 && amountPerPackage
+        ? Math.round(
+            (unpackedQuantity + packedDecimal * Number(amountPerPackage)) *
+              1000,
+          ) / 1000
+        : unpackedQuantity
+
     const data: ItemFormData = {
       name,
       targetUnit,
       targetQuantity,
       refillThreshold,
-      packedQuantity,
-      unpackedQuantity,
+      packedQuantity: normalizedPacked,
+      unpackedQuantity: normalizedUnpacked,
       consumeAmount,
       tagIds,
     }

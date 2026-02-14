@@ -845,3 +845,149 @@ describe('ItemForm - State Synchronization', () => {
     expect(unpackedInput.value).toBe('1.5')
   })
 })
+
+describe('ItemForm - Packed Quantity Normalization', () => {
+  it('normalizes decimal packed quantity to integer on load with amountPerPackage', () => {
+    const onSubmit = vi.fn()
+    const { container } = render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          measurementUnit: 'g',
+          amountPerPackage: 100,
+          packedQuantity: 1.2,
+          unpackedQuantity: 50,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Packed should be floored to 1, unpacked should be 50 + (0.2 * 100) = 70
+    const packedInput = container.querySelector(
+      '#packedQuantity',
+    ) as HTMLInputElement
+    const unpackedInput = container.querySelector(
+      '#unpackedQuantity',
+    ) as HTMLInputElement
+
+    expect(packedInput.value).toBe('1')
+    expect(unpackedInput.value).toBe('70')
+  })
+
+  it('keeps decimal packed quantity when no amountPerPackage', () => {
+    const onSubmit = vi.fn()
+    const { container } = render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packedQuantity: 1.5,
+          unpackedQuantity: 0,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Without amountPerPackage, keep the decimal
+    const packedInput = container.querySelector(
+      '#packedQuantity',
+    ) as HTMLInputElement
+
+    expect(packedInput.value).toBe('1.5')
+  })
+
+  it('normalizes decimal packed quantity on submit with amountPerPackage', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          measurementUnit: 'g',
+          amountPerPackage: 100,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const user = userEvent.setup()
+
+    // Fill in form with decimal packed quantity
+    await user.type(screen.getByLabelText(/name/i), 'Test')
+    await user.clear(screen.getByLabelText(/target quantity/i))
+    await user.type(screen.getByLabelText(/target quantity/i), '5')
+    await user.clear(screen.getByLabelText(/refill when below/i))
+    await user.type(screen.getByLabelText(/refill when below/i), '2')
+
+    const packedInput = screen.getByRole('spinbutton', {
+      name: /^Packed Quantity$/i,
+    }) as HTMLInputElement
+    const unpackedInput = screen.getByRole('spinbutton', {
+      name: /^Unpacked Quantity$/i,
+    }) as HTMLInputElement
+
+    await user.clear(packedInput)
+    await user.type(packedInput, '2.3')
+    await user.clear(unpackedInput)
+    await user.type(unpackedInput, '25')
+
+    // Submit form
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Should normalize: packed=2, unpacked=25 + (0.3 * 100) = 55
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        packedQuantity: 2,
+        unpackedQuantity: 55,
+      }),
+    )
+  })
+
+  it('keeps integer packed quantity on submit', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          measurementUnit: 'g',
+          amountPerPackage: 100,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const user = userEvent.setup()
+
+    // Fill in form with integer packed quantity
+    await user.type(screen.getByLabelText(/name/i), 'Test')
+    await user.clear(screen.getByLabelText(/target quantity/i))
+    await user.type(screen.getByLabelText(/target quantity/i), '5')
+    await user.clear(screen.getByLabelText(/refill when below/i))
+    await user.type(screen.getByLabelText(/refill when below/i), '2')
+
+    const packedInput = screen.getByRole('spinbutton', {
+      name: /^Packed Quantity$/i,
+    }) as HTMLInputElement
+    const unpackedInput = screen.getByRole('spinbutton', {
+      name: /^Unpacked Quantity$/i,
+    }) as HTMLInputElement
+
+    await user.clear(packedInput)
+    await user.type(packedInput, '3')
+    await user.clear(unpackedInput)
+    await user.type(unpackedInput, '50')
+
+    // Submit form
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Should keep integer values
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        packedQuantity: 3,
+        unpackedQuantity: 50,
+      }),
+    )
+  })
+})
