@@ -524,4 +524,171 @@ describe('Home page filtering integration', () => {
       expect(lastLog.delta).toBe(-0.25)
     })
   })
+
+  it('shows ItemFilters when toggle is on', async () => {
+    const user = userEvent.setup()
+
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({ name: 'Tomatoes', tagIds: [vegTag.id] })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // Click filter button to show ItemFilters
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // ItemFilters should render with dropdowns
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /category/i }),
+      ).toBeInTheDocument()
+    })
+
+    // Status bar should also be visible
+    expect(screen.getByText('Showing 1 of 1 items')).toBeInTheDocument()
+  })
+
+  it('shows FilterStatus when filters active but toggle off', async () => {
+    const user = userEvent.setup()
+
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({ name: 'Tomatoes', tagIds: [vegTag.id] })
+    await createItem({ name: 'Apples', tagIds: [] })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // Enable filters and select a tag
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+    await user.click(screen.getByRole('button', { name: /category/i }))
+    await user.click(
+      screen.getByRole('menuitemcheckbox', { name: /vegetables/i }),
+    )
+
+    // Verify filter is active - only Tomatoes shown
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+      expect(screen.queryByText('Apples')).not.toBeInTheDocument()
+    })
+
+    // Close dropdown
+    await user.keyboard('{Escape}')
+
+    // Toggle filters OFF
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // FilterStatus should be visible (compact view)
+    await waitFor(() => {
+      expect(screen.getByText('Showing 1 of 2 items')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /clear filter/i }),
+      ).toBeInTheDocument()
+    })
+
+    // Tag dropdowns should NOT be visible
+    expect(
+      screen.queryByRole('button', { name: /category/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides FilterStatus when no filters active and toggle off', async () => {
+    const _user = userEvent.setup()
+
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({ name: 'Tomatoes', tagIds: [vegTag.id] })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // With filters toggle OFF and no active filters
+    // FilterStatus should NOT be visible
+    expect(screen.queryByText(/showing.*items/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /clear filter/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('clears filters when clear button clicked in FilterStatus', async () => {
+    const user = userEvent.setup()
+
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({ name: 'Tomatoes', tagIds: [vegTag.id] })
+    await createItem({ name: 'Apples', tagIds: [] })
+
+    renderApp()
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+    })
+
+    // Enable filters and select a tag
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+    await user.click(screen.getByRole('button', { name: /category/i }))
+    await user.click(
+      screen.getByRole('menuitemcheckbox', { name: /vegetables/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+      expect(screen.queryByText('Apples')).not.toBeInTheDocument()
+    })
+
+    // Close dropdown and toggle filters OFF
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // FilterStatus should be visible
+    await waitFor(() => {
+      expect(screen.getByText('Showing 1 of 2 items')).toBeInTheDocument()
+    })
+
+    // Click clear button in FilterStatus
+    await user.click(screen.getByRole('button', { name: /clear filter/i }))
+
+    // Filters should be cleared - all items shown
+    await waitFor(() => {
+      expect(screen.getByText('Tomatoes')).toBeInTheDocument()
+      expect(screen.getByText('Apples')).toBeInTheDocument()
+    })
+
+    // FilterStatus should disappear
+    expect(screen.queryByText(/showing.*items/i)).not.toBeInTheDocument()
+  })
 })
