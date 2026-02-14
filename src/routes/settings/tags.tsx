@@ -22,6 +22,7 @@ import {
   useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
+import { sortTagsByName } from '@/lib/tagSortUtils'
 import { type Tag, TagColor, type TagType } from '@/types/index'
 
 export const Route = createFileRoute('/settings/tags')({
@@ -159,6 +160,7 @@ function TagSettings() {
 
       {tagTypes.map((tagType) => {
         const typeTags = tags.filter((t) => t.typeId === tagType.id)
+        const sortedTypeTags = sortTagsByName(typeTags)
         const tagTypeColor = tagType.color || TagColor.blue
 
         return (
@@ -199,7 +201,7 @@ function TagSettings() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {typeTags.map((tag) => (
+                {sortedTypeTags.map((tag) => (
                   <TagBadge
                     key={tag.id}
                     tag={tag}
