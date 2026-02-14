@@ -137,9 +137,12 @@ export function ItemForm({
       consumeAmount,
       tagIds,
     }
-    if (packageUnit) data.packageUnit = packageUnit
-    if (measurementUnit) data.measurementUnit = measurementUnit
-    if (amountPerPackage) data.amountPerPackage = Number(amountPerPackage)
+    // Set optional fields explicitly to undefined when empty to clear them
+    data.packageUnit = packageUnit || undefined
+    data.measurementUnit = measurementUnit || undefined
+    data.amountPerPackage = amountPerPackage
+      ? Number(amountPerPackage)
+      : undefined
     if (expirationMode === 'date' && dueDate) {
       data.dueDate = new Date(dueDate)
     } else if (expirationMode === 'days' && estimatedDueDays) {

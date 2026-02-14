@@ -174,6 +174,100 @@ describe('ItemForm - Validation', () => {
     expect(screen.getByText(/should be less than 1 L/i)).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
   })
+
+  it('sets packageUnit to undefined when cleared', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Clear the package unit field
+    const packageUnitInput = screen.getByLabelText(/package unit/i)
+    await user.clear(packageUnitInput)
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Verify packageUnit is undefined in submitted data
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        packageUnit: undefined,
+      }),
+    )
+  })
+
+  it('sets measurementUnit to undefined when cleared', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Clear the measurement unit field
+    const measurementUnitInput = screen.getByLabelText(/measurement unit/i)
+    await user.clear(measurementUnitInput)
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Verify measurementUnit is undefined in submitted data
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        measurementUnit: undefined,
+      }),
+    )
+  })
+
+  it('sets amountPerPackage to undefined when cleared', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          amountPerPackage: 1,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Clear the amount per package field
+    const amountInput = screen.getByLabelText(/amount per package/i)
+    await user.clear(amountInput)
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Verify amountPerPackage is undefined in submitted data
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountPerPackage: undefined,
+      }),
+    )
+  })
 })
 
 describe('ItemForm - Step Attribute', () => {
