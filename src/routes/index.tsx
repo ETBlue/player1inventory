@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
+import { FilterStatus } from '@/components/FilterStatus'
 import { ItemFilters } from '@/components/ItemFilters'
 import { PantryItem } from '@/components/PantryItem'
 import { PantryToolbar } from '@/components/PantryToolbar'
@@ -57,6 +58,11 @@ function PantryView() {
     () => loadSortPrefs().sortDirection,
   )
   const [showInactive, setShowInactive] = useState(false)
+
+  // Calculate if any filters are active
+  const hasActiveFilters = Object.values(filterState).some(
+    (tagIds) => tagIds.length > 0,
+  )
 
   // Save filter state to sessionStorage whenever it changes
   useEffect(() => {
@@ -173,7 +179,7 @@ function PantryView() {
           setSortDirection(direction)
         }}
       />
-      {filtersVisible && (
+      {filtersVisible ? (
         <ItemFilters
           tagTypes={tagTypes}
           tags={tags}
@@ -183,7 +189,14 @@ function PantryView() {
           totalCount={items.length}
           onFilterChange={setFilterState}
         />
-      )}
+      ) : hasActiveFilters ? (
+        <FilterStatus
+          filteredCount={sortedItems.length}
+          totalCount={items.length}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={() => setFilterState({})}
+        />
+      ) : null}
 
       {items.length === 0 ? (
         <div className="text-center py-12 text-foreground-muted">
