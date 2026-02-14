@@ -53,6 +53,9 @@ export function ItemForm({
     initialData?.estimatedDueDays ?? '',
   )
   const [tagIds, setTagIds] = useState<string[]>(initialData?.tagIds ?? [])
+  const [packedQuantity, setPackedQuantity] = useState(
+    initialData?.packedQuantity ?? 0,
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,7 +64,7 @@ export function ItemForm({
       targetUnit,
       targetQuantity,
       refillThreshold,
-      packedQuantity: 0,
+      packedQuantity,
       unpackedQuantity: 0,
       consumeAmount,
       tagIds,
@@ -217,6 +220,24 @@ export function ItemForm({
         <p className="text-xs text-foreground-muted">
           Amount removed with each consume click
         </p>
+      </div>
+
+      <div className="border-t pt-6 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="packedQuantity">Packed Quantity</Label>
+          <Input
+            id="packedQuantity"
+            type="number"
+            min={0}
+            step={1}
+            value={packedQuantity}
+            onChange={(e) => setPackedQuantity(Number(e.target.value))}
+            placeholder="0"
+          />
+          <p className="text-xs text-foreground-muted">
+            Number of whole packages currently in stock
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">
