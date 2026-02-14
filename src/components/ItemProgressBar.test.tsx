@@ -37,9 +37,9 @@ describe('ItemProgressBar with partial segments', () => {
     expect(segments[4]).toHaveAttribute('data-fill', '0')
   })
 
-  it('uses continuous mode for target > 15', () => {
+  it('uses continuous mode for target > SEGMENTED_MODE_MAX_TARGET', () => {
     const { container } = render(
-      <ItemProgressBar current={10.5} target={20} status="ok" />,
+      <ItemProgressBar current={20} target={40} status="ok" />,
     )
 
     // Should use Progress component, not segments
@@ -138,16 +138,16 @@ describe('ItemProgressBar with partial segments', () => {
   it('shows packed and unpacked in continuous mode for simple items', () => {
     const { container } = render(
       <ItemProgressBar
-        current={18.5}
-        target={20}
+        current={36}
+        target={40}
         status="ok"
         targetUnit="package"
-        packed={18}
-        unpacked={0.5}
+        packed={35}
+        unpacked={1}
       />,
     )
 
-    // Should use continuous mode (target > 15)
+    // Should use continuous mode (target > SEGMENTED_MODE_MAX_TARGET)
     expect(container.querySelector('[role="progressbar"]')).toBeNull()
     // Should have layered divs for packed and unpacked
     const progressDivs = container.querySelectorAll('.h-2 > div')
