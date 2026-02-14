@@ -13,8 +13,8 @@ describe('migrateItemsToV2', () => {
   })
 
   it('migrates old items with unit field', async () => {
-    // Manually add old-style item (simulating v1 data)
-    const oldItemId = await db.items.add({
+    // Manually add old-style item (simulating v1 data) using put() to specify ID
+    await db.items.put({
       id: '1',
       name: 'Old Item',
       unit: 'bottle',
@@ -28,7 +28,7 @@ describe('migrateItemsToV2', () => {
 
     await migrateItemsToV2()
 
-    const item = await db.items.get(oldItemId)
+    const item = await db.items.get('1')
     expect(item).toBeDefined()
     expect(item?.packageUnit).toBe('bottle')
     expect(item?.measurementUnit).toBeUndefined()
@@ -39,7 +39,9 @@ describe('migrateItemsToV2', () => {
   })
 
   it('does not modify already migrated items', async () => {
-    const newItem = await db.items.add({
+    const itemId = '2'
+    await db.items.add({
+      id: itemId,
       name: 'New Item',
       packageUnit: 'bottle',
       measurementUnit: 'L',
@@ -57,7 +59,7 @@ describe('migrateItemsToV2', () => {
 
     await migrateItemsToV2()
 
-    const item = await db.items.get(newItem)
+    const item = await db.items.get(itemId)
     expect(item?.packageUnit).toBe('bottle')
     expect(item?.packedQuantity).toBe(1)
     expect(item?.unpackedQuantity).toBe(0.5)

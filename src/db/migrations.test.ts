@@ -12,7 +12,8 @@ describe('Item schema migration', () => {
   })
 
   it('allows creating item with dual-unit fields', async () => {
-    const item = await db.items.add({
+    const itemId = await db.items.add({
+      id: crypto.randomUUID(),
       name: 'Milk',
       packageUnit: 'bottle',
       measurementUnit: 'L',
@@ -28,11 +29,19 @@ describe('Item schema migration', () => {
       updatedAt: new Date(),
     })
 
+    expect(itemId).toBeDefined()
+
+    const item = await db.items.get(itemId)
     expect(item).toBeDefined()
+    expect(item?.packageUnit).toBe('bottle')
+    expect(item?.measurementUnit).toBe('L')
+    expect(item?.packedQuantity).toBe(1)
+    expect(item?.unpackedQuantity).toBe(0.5)
   })
 
   it('allows creating item with simple tracking (no measurement unit)', async () => {
-    const item = await db.items.add({
+    const itemId = await db.items.add({
+      id: crypto.randomUUID(),
       name: 'Eggs',
       packageUnit: 'dozen',
       targetUnit: 'package',
@@ -46,6 +55,13 @@ describe('Item schema migration', () => {
       updatedAt: new Date(),
     })
 
+    expect(itemId).toBeDefined()
+
+    const item = await db.items.get(itemId)
     expect(item).toBeDefined()
+    expect(item?.packageUnit).toBe('dozen')
+    expect(item?.measurementUnit).toBeUndefined()
+    expect(item?.packedQuantity).toBe(1)
+    expect(item?.unpackedQuantity).toBe(0)
   })
 })
