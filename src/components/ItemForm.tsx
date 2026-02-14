@@ -44,7 +44,7 @@ export function ItemForm({
     initialData?.consumeAmount ?? 1,
   )
   const [expirationMode, setExpirationMode] = useState<'date' | 'days'>(
-    initialData?.dueDate ? 'date' : 'days',
+    initialData?.estimatedDueDays ? 'days' : 'date',
   )
   const [dueDate, setDueDate] = useState(
     initialData?.dueDate ? initialData.dueDate.toISOString().split('T')[0] : '',

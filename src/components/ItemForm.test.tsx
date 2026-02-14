@@ -750,4 +750,48 @@ describe('ItemForm - Expiration Threshold', () => {
       }),
     )
   })
+
+  it('initializes expiration mode to "days" when estimatedDueDays is set', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          estimatedDueDays: 7,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // The estimatedDueDays input should be visible (not the date input)
+    expect(
+      screen.queryByPlaceholderText(/leave empty if no expiration/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText(/due date/i)).not.toBeInTheDocument()
+  })
+
+  it('initializes expiration mode to "date" when only dueDate is set', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          dueDate: new Date('2026-02-20'),
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // The dueDate input should be visible (not the days input)
+    const dueDateInput = screen.getByDisplayValue(
+      '2026-02-20',
+    ) as HTMLInputElement
+    expect(dueDateInput).toBeInTheDocument()
+    expect(dueDateInput.type).toBe('date')
+    expect(
+      screen.queryByPlaceholderText(/leave empty if no expiration/i),
+    ).not.toBeInTheDocument()
+  })
 })
