@@ -249,7 +249,14 @@ export function ItemForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="targetQuantity">Target Quantity</Label>
+          <Label htmlFor="targetQuantity">
+            Target Quantity
+            {targetUnit === 'measurement' && measurementUnit
+              ? ` (${measurementUnit})`
+              : packageUnit
+                ? ` (${packageUnit})`
+                : ''}
+          </Label>
           <Input
             id="targetQuantity"
             type="number"
@@ -263,7 +270,14 @@ export function ItemForm({
           </p>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="refillThreshold">Refill When Below</Label>
+          <Label htmlFor="refillThreshold">
+            Refill When Below
+            {targetUnit === 'measurement' && measurementUnit
+              ? ` (${measurementUnit})`
+              : packageUnit
+                ? ` (${packageUnit})`
+                : ''}
+          </Label>
           <Input
             id="refillThreshold"
             type="number"
@@ -276,7 +290,14 @@ export function ItemForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="consumeAmount">Amount per Consume</Label>
+        <Label htmlFor="consumeAmount">
+          Amount per Consume
+          {targetUnit === 'measurement' && measurementUnit
+            ? ` (${measurementUnit})`
+            : packageUnit
+              ? ` (${packageUnit})`
+              : ''}
+        </Label>
         <Input
           id="consumeAmount"
           type="number"
