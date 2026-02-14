@@ -37,19 +37,27 @@ export function normalizeUnpacked(item: Item): void {
 
 export function consumeItem(item: Item, amount: number): void {
   if (item.measurementUnit && item.amountPerPackage) {
+    // Convert amount to measurement units if tracking in packages
+    const amountInMeasurement =
+      item.targetUnit === 'package' ? amount * item.amountPerPackage : amount
+
     // Measurement tracking: consume from unpacked first
-    if (item.unpackedQuantity >= amount) {
-      item.unpackedQuantity -= amount
+    if (item.unpackedQuantity >= amountInMeasurement) {
+      item.unpackedQuantity =
+        Math.round((item.unpackedQuantity - amountInMeasurement) * 1000) / 1000
     } else {
       // Need to break into packed
-      const remaining = amount - item.unpackedQuantity
+      const remaining = amountInMeasurement - item.unpackedQuantity
       item.unpackedQuantity = 0
 
       const packagesToOpen = Math.ceil(remaining / item.amountPerPackage)
       item.packedQuantity -= packagesToOpen
 
       // Calculate leftover from opened packages
-      item.unpackedQuantity = packagesToOpen * item.amountPerPackage - remaining
+      item.unpackedQuantity =
+        Math.round(
+          (packagesToOpen * item.amountPerPackage - remaining) * 1000,
+        ) / 1000
 
       // Prevent negative quantities
       if (item.packedQuantity < 0) {

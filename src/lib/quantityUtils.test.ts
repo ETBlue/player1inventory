@@ -133,11 +133,12 @@ describe('normalizeUnpacked', () => {
 })
 
 describe('consumeItem', () => {
-  it('consumes from unpacked first', () => {
+  it('consumes from unpacked first in measurement mode', () => {
     const item: Partial<Item> = {
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,
+      targetUnit: 'measurement',
       packedQuantity: 2,
       unpackedQuantity: 0.5,
     }
@@ -148,11 +149,12 @@ describe('consumeItem', () => {
     expect(item.unpackedQuantity).toBe(0.25)
   })
 
-  it('breaks package when unpacked insufficient', () => {
+  it('breaks package when unpacked insufficient in measurement mode', () => {
     const item: Partial<Item> = {
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,
+      targetUnit: 'measurement',
       packedQuantity: 2,
       unpackedQuantity: 0.3,
     }
@@ -163,11 +165,12 @@ describe('consumeItem', () => {
     expect(item.unpackedQuantity).toBe(0.8)
   })
 
-  it('handles consuming exactly unpacked amount', () => {
+  it('handles consuming exactly unpacked amount in measurement mode', () => {
     const item: Partial<Item> = {
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,
+      targetUnit: 'measurement',
       packedQuantity: 2,
       unpackedQuantity: 0.5,
     }
@@ -181,6 +184,7 @@ describe('consumeItem', () => {
   it('consumes from packed in simple mode', () => {
     const item: Partial<Item> = {
       packageUnit: 'dozen',
+      targetUnit: 'package',
       packedQuantity: 3,
       unpackedQuantity: 0,
     }
@@ -196,6 +200,7 @@ describe('consumeItem', () => {
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,
+      targetUnit: 'measurement',
       packedQuantity: 0,
       unpackedQuantity: 0.5,
       dueDate: new Date('2026-02-20'),
@@ -215,6 +220,7 @@ describe('consumeItem', () => {
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,
+      targetUnit: 'measurement',
       packedQuantity: 0,
       unpackedQuantity: 0.3,
     }
@@ -229,6 +235,7 @@ describe('consumeItem', () => {
     const item: Partial<Item> = {
       measurementUnit: 'g',
       amountPerPackage: 100,
+      targetUnit: 'measurement',
       packedQuantity: 3,
       unpackedQuantity: 50,
     }
@@ -238,6 +245,23 @@ describe('consumeItem', () => {
 
     expect(item.packedQuantity).toBe(2)
     expect(item.unpackedQuantity).toBe(70) // 100g - 30g = 70g leftover
+  })
+
+  it('consumes in package mode with conversion', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      targetUnit: 'package',
+      packedQuantity: 1,
+      unpackedQuantity: 50,
+    }
+
+    // Consume 0.2 packages = 20g
+    consumeItem(item as Item, 0.2)
+
+    expect(item.packedQuantity).toBe(1)
+    expect(item.unpackedQuantity).toBe(30) // 50g - 20g = 30g
   })
 })
 
