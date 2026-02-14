@@ -197,54 +197,54 @@ export function ItemForm({
       </div>
 
       {packageUnit && measurementUnit && (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="amountPerPackage">Amount per Package *</Label>
-            <Input
-              id="amountPerPackage"
-              type="number"
-              step="1"
-              min={1}
-              value={amountPerPackage}
-              onChange={(e) => setAmountPerPackage(e.target.value)}
-              placeholder="e.g., 1 (for 1L per bottle)"
-              required
-            />
-            <p className="text-xs text-foreground-muted">
-              How much {measurementUnit} in each {packageUnit}
-            </p>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="amountPerPackage">Amount per Package *</Label>
+          <Input
+            id="amountPerPackage"
+            type="number"
+            step="1"
+            min={1}
+            value={amountPerPackage}
+            onChange={(e) => setAmountPerPackage(e.target.value)}
+            placeholder="e.g., 1 (for 1L per bottle)"
+            required
+          />
+          <p className="text-xs text-foreground-muted">
+            How much {measurementUnit} in each {packageUnit}
+          </p>
+        </div>
+      )}
 
-          <div className="space-y-2">
-            <Label>Track Target In</Label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="targetUnit"
-                  value="package"
-                  checked={targetUnit === 'package'}
-                  onChange={(e) =>
-                    setTargetUnit(e.target.value as 'package' | 'measurement')
-                  }
-                />
-                <span>Packages ({packageUnit})</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="targetUnit"
-                  value="measurement"
-                  checked={targetUnit === 'measurement'}
-                  onChange={(e) =>
-                    setTargetUnit(e.target.value as 'package' | 'measurement')
-                  }
-                />
-                <span>Measurement ({measurementUnit})</span>
-              </label>
-            </div>
+      {measurementUnit && (
+        <div className="space-y-2">
+          <Label>Track Target In</Label>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="targetUnit"
+                value="package"
+                checked={targetUnit === 'package'}
+                onChange={(e) =>
+                  setTargetUnit(e.target.value as 'package' | 'measurement')
+                }
+              />
+              <span>Packages{packageUnit ? ` (${packageUnit})` : ''}</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="targetUnit"
+                value="measurement"
+                checked={targetUnit === 'measurement'}
+                onChange={(e) =>
+                  setTargetUnit(e.target.value as 'package' | 'measurement')
+                }
+              />
+              <span>Measurement ({measurementUnit})</span>
+            </label>
           </div>
-        </>
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-4">
