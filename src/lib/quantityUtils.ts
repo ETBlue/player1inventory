@@ -12,7 +12,12 @@ export function getCurrentQuantity(item: Item): number {
 
 export function getDisplayQuantity(item: Item): number {
   if (item.targetUnit === 'package') {
-    // When tracking in packages, show package count
+    // When tracking in packages, convert unpacked to packages if dual-unit
+    if (item.measurementUnit && item.amountPerPackage) {
+      const unpackedInPackages = item.unpackedQuantity / item.amountPerPackage
+      return item.packedQuantity + unpackedInPackages
+    }
+    // Simple mode: just packed
     return item.packedQuantity
   }
   // When tracking in measurement units, show total measurement

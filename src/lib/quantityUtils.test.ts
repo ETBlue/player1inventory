@@ -386,7 +386,7 @@ describe('isInactive', () => {
 })
 
 describe('getDisplayQuantity', () => {
-  it('returns packed quantity when tracking in packages', () => {
+  it('returns total in packages when tracking in packages with dual-unit', () => {
     const item: Partial<Item> = {
       packageUnit: 'bottle',
       measurementUnit: 'L',
@@ -396,7 +396,8 @@ describe('getDisplayQuantity', () => {
       unpackedQuantity: 0.5,
     }
 
-    expect(getDisplayQuantity(item as Item)).toBe(3)
+    // 3 packed + (0.5 unpacked / 1 amountPerPackage) = 3.5 packages
+    expect(getDisplayQuantity(item as Item)).toBe(3.5)
   })
 
   it('returns total measurement when tracking in measurement units', () => {
@@ -421,5 +422,18 @@ describe('getDisplayQuantity', () => {
     }
 
     expect(getDisplayQuantity(item as Item)).toBe(5)
+  })
+
+  it('correctly converts large unpacked quantity to packages', () => {
+    const item: Partial<Item> = {
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      targetUnit: 'package',
+      packedQuantity: 1.2,
+      unpackedQuantity: 198.4,
+    }
+
+    // 1.2 packed + (198.4 unpacked / 100 amountPerPackage) = 1.2 + 1.984 = 3.184
+    expect(getDisplayQuantity(item as Item)).toBe(3.184)
   })
 })
