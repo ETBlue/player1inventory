@@ -148,4 +148,33 @@ describe('ItemForm - Validation', () => {
       expect(screen.getByText('Must be 0 or greater')).toBeInTheDocument()
     })
   })
+
+  it('shows warning when unpacked quantity exceeds amountPerPackage', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          amountPerPackage: 1,
+          targetUnit: 'measurement',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(/unpacked quantity/i)
+    await user.clear(input)
+    await user.type(input, '1.5')
+
+    // Trigger validation by attempting to submit
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    expect(screen.getByText(/should be less than 1 L/i)).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
 })

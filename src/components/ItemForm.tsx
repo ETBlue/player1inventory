@@ -75,6 +75,15 @@ export function ItemForm({
       newErrors.unpackedQuantity = 'Must be 0 or greater'
     }
 
+    // Check for excess unpacked quantity
+    if (
+      targetUnit === 'measurement' &&
+      amountPerPackage &&
+      unpackedQuantity >= Number(amountPerPackage)
+    ) {
+      newErrors.unpackedQuantity = `Should be less than ${amountPerPackage} ${measurementUnit}. Consider adding to packed quantity.`
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
