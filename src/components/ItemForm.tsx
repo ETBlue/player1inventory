@@ -56,6 +56,9 @@ export function ItemForm({
   const [packedQuantity, setPackedQuantity] = useState(
     initialData?.packedQuantity ?? 0,
   )
+  const [unpackedQuantity, setUnpackedQuantity] = useState(
+    initialData?.unpackedQuantity ?? 0,
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,7 +68,7 @@ export function ItemForm({
       targetQuantity,
       refillThreshold,
       packedQuantity,
-      unpackedQuantity: 0,
+      unpackedQuantity,
       consumeAmount,
       tagIds,
     }
@@ -238,6 +241,24 @@ export function ItemForm({
             Number of whole packages currently in stock
           </p>
         </div>
+
+        {targetUnit === 'measurement' && measurementUnit && (
+          <div className="space-y-2">
+            <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
+            <Input
+              id="unpackedQuantity"
+              type="number"
+              min={0}
+              step={0.01}
+              value={unpackedQuantity}
+              onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
+              placeholder="0"
+            />
+            <p className="text-xs text-foreground-muted">
+              Loose amount ({measurementUnit}) from opened package
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
