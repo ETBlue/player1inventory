@@ -338,6 +338,29 @@ Quick documentation fixes (like fixing a typo in CLAUDE.md) can go directly to m
 
 **General Rule:** If the work involves brainstorming, design decisions, or implementation planning, it should go through the full branch workflow. If it's a quick fix or minor adjustment, check with the user about their preference.
 
+**Before Finishing a Branch:**
+
+Always check for uncommitted changes before completing work:
+
+```bash
+git status
+```
+
+**If there are uncommitted changes:**
+1. Review what's uncommitted - common culprits:
+   - Design documents in `docs/plans/`
+   - Brainstorming logs in `docs/brainstorming-logs/`
+   - Implementation plans
+   - Test files or Storybook stories
+2. Commit all relevant changes with appropriate commit messages
+3. Verify `git status` shows a clean working tree
+4. Only then proceed with merge/PR/cleanup
+
+**Why this matters:**
+- Uncommitted work can be lost during branch cleanup
+- Design docs and plans are part of the feature and should be in the PR
+- A clean working tree ensures nothing is left behind
+
 **Advanced: Git Worktrees**
 
 For CLI users who want to work on multiple branches simultaneously without switching, git worktrees provide isolated workspaces.
