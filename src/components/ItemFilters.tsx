@@ -5,6 +5,7 @@ import { Pencil, X } from 'lucide-react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import { calculateTagCount, type FilterState } from '@/lib/filterUtils'
+import { sortTagsByName } from '@/lib/tagSortUtils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemFiltersProps {
@@ -66,10 +67,11 @@ export function ItemFilters({
         {tagTypesWithTags.map((tagType) => {
           const tagTypeId = tagType.id
           const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
+          const sortedTypeTags = sortTagsByName(typeTags)
           const selectedTagIds = filterState[tagTypeId] || []
 
           // Calculate dynamic counts for each tag
-          const tagCounts = typeTags.map((tag) =>
+          const tagCounts = sortedTypeTags.map((tag) =>
             calculateTagCount(tag.id, tagTypeId, items, filterState),
           )
 
@@ -77,7 +79,7 @@ export function ItemFilters({
             <TagTypeDropdown
               key={tagTypeId}
               tagType={tagType}
-              tags={typeTags}
+              tags={sortedTypeTags}
               selectedTagIds={selectedTagIds}
               tagCounts={tagCounts}
               onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
