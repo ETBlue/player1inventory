@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { fn } from '@storybook/test'
 import { FilterStatus } from './FilterStatus'
 
 const meta = {
@@ -10,7 +9,7 @@ const meta = {
   },
   tags: ['autodocs'],
   args: {
-    onClearAll: fn(),
+    onClearAll: () => console.log('Clear all filters'),
   },
 } satisfies Meta<typeof FilterStatus>
 

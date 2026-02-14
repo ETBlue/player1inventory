@@ -1,9 +1,16 @@
-import { X } from 'lucide-react'
+import { Calendar, Clock, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { sortTagsByName } from '@/lib/tagSortUtils'
@@ -228,35 +235,29 @@ export function ItemForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="packageUnit">Package Unit</Label>
-        <Input
-          id="packageUnit"
-          value={packageUnit}
-          onChange={(e) => setPackageUnit(e.target.value)}
-          placeholder="e.g., bottle, pack, box"
-        />
-        <p className="text-xs text-foreground-muted">
-          The unit for whole packages (e.g., "bottle" for milk)
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="measurementUnit">Measurement Unit (optional)</Label>
-        <Input
-          id="measurementUnit"
-          value={measurementUnit}
-          onChange={(e) => setMeasurementUnit(e.target.value)}
-          placeholder="e.g., L, ml, cups, 根"
-        />
-        <p className="text-xs text-foreground-muted">
-          For tracking partial packages (leave empty for simple counting)
-        </p>
-      </div>
-
-      {measurementUnit && (
+      <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="amountPerPackage">Amount per Package *</Label>
+          <Label htmlFor="packageUnit">Package Unit</Label>
+          <Input
+            id="packageUnit"
+            value={packageUnit}
+            onChange={(e) => setPackageUnit(e.target.value)}
+            placeholder="e.g., bottle, pack, box"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="measurementUnit">Measurement Unit</Label>
+          <Input
+            id="measurementUnit"
+            value={measurementUnit}
+            onChange={(e) => setMeasurementUnit(e.target.value)}
+            placeholder="e.g., L, ml, cups, 根"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="amountPerPackage">Amount per Package</Label>
           <Input
             id="amountPerPackage"
             type="number"
@@ -264,15 +265,26 @@ export function ItemForm({
             min={1}
             value={amountPerPackage}
             onChange={(e) => setAmountPerPackage(e.target.value)}
-            placeholder="e.g., 1 (for 1L per bottle)"
-            required
+            placeholder="e.g., 1"
+            disabled={!measurementUnit}
           />
-          <p className="text-xs text-foreground-muted">
-            How much {measurementUnit} in each
-            {packageUnit ? ` ${packageUnit}` : ' package'}
-          </p>
         </div>
-      )}
+      </div>
+
+      {/* Helper text row */}
+      <div className="grid grid-cols-3 gap-4 -mt-4">
+        <p className="text-xs text-foreground-muted">Unit for whole packages</p>
+        <p className="text-xs text-foreground-muted">
+          For tracking partial packages
+        </p>
+        <p className="text-xs text-foreground-muted">
+          {measurementUnit && packageUnit
+            ? `${measurementUnit} per ${packageUnit}`
+            : measurementUnit
+              ? `${measurementUnit} per package`
+              : 'Optional'}
+        </p>
+      </div>
 
       {measurementUnit && (
         <div className="space-y-2">
@@ -296,7 +308,7 @@ export function ItemForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="targetQuantity">
             Target Quantity
@@ -314,10 +326,8 @@ export function ItemForm({
             value={targetQuantity}
             onChange={(e) => setTargetQuantity(Number(e.target.value))}
           />
-          <p className="text-xs text-foreground-muted">
-            Set to 0 to mark as inactive
-          </p>
         </div>
+
         <div className="space-y-2">
           <Label htmlFor="refillThreshold">
             Refill When Below
@@ -336,70 +346,85 @@ export function ItemForm({
             onChange={(e) => setRefillThreshold(Number(e.target.value))}
           />
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="consumeAmount">
+            Amount per Consume
+            {targetUnit === 'measurement' && measurementUnit
+              ? ` (${measurementUnit})`
+              : packageUnit
+                ? ` (${packageUnit})`
+                : ''}
+          </Label>
+          <Input
+            id="consumeAmount"
+            type="number"
+            step="0.001"
+            min={0.001}
+            value={consumeAmount}
+            onChange={(e) => setConsumeAmount(Number(e.target.value))}
+            required
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="consumeAmount">
-          Amount per Consume
-          {targetUnit === 'measurement' && measurementUnit
-            ? ` (${measurementUnit})`
-            : packageUnit
-              ? ` (${packageUnit})`
-              : ''}
-        </Label>
-        <Input
-          id="consumeAmount"
-          type="number"
-          step="0.001"
-          min={0.001}
-          value={consumeAmount}
-          onChange={(e) => setConsumeAmount(Number(e.target.value))}
-          required
-        />
+      {/* Helper text row */}
+      <div className="grid grid-cols-3 gap-4 -mt-4">
         <p className="text-xs text-foreground-muted">
-          Amount removed with each consume click
+          Set to 0 to mark as inactive
+        </p>
+        <p className="text-xs text-foreground-muted">
+          Triggers low stock warning
+        </p>
+        <p className="text-xs text-foreground-muted">
+          Amount removed per consume click
         </p>
       </div>
 
       <div className="border-t pt-6 space-y-4">
-        <h3 className="text-sm font-medium text-foreground-muted">
-          Current Inventory
-        </h3>
-        <div className="space-y-2">
-          <Label htmlFor="packedQuantity">Packed Quantity</Label>
-          <Input
-            id="packedQuantity"
-            type="number"
-            min={0}
-            step={1}
-            value={packedQuantity}
-            onChange={(e) => setPackedQuantity(Number(e.target.value))}
-            placeholder="0"
-          />
-          {errors.packedQuantity && (
-            <p className="text-xs text-status-error">{errors.packedQuantity}</p>
-          )}
-          <p className="text-xs text-foreground-muted">
-            Number of whole packages currently in stock
-          </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="packedQuantity">Packed Quantity</Label>
+            <Input
+              id="packedQuantity"
+              type="number"
+              min={0}
+              step={1}
+              value={packedQuantity}
+              onChange={(e) => setPackedQuantity(Number(e.target.value))}
+              placeholder="0"
+            />
+            {errors.packedQuantity && (
+              <p className="text-xs text-status-error">
+                {errors.packedQuantity}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
+            <Input
+              id="unpackedQuantity"
+              type="number"
+              min={0}
+              step={consumeAmount || 1}
+              value={unpackedQuantity}
+              onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
+              placeholder="0"
+            />
+            {errors.unpackedQuantity && (
+              <p className="text-xs text-status-error">
+                {errors.unpackedQuantity}
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
-          <Input
-            id="unpackedQuantity"
-            type="number"
-            min={0}
-            step={consumeAmount || 1}
-            value={unpackedQuantity}
-            onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
-            placeholder="0"
-          />
-          {errors.unpackedQuantity && (
-            <p className="text-xs text-status-error">
-              {errors.unpackedQuantity}
-            </p>
-          )}
+        {/* Helper text row */}
+        <div className="grid grid-cols-2 gap-4 -mt-2">
+          <p className="text-xs text-foreground-muted">
+            Number of whole packages in stock
+          </p>
           <p className="text-xs text-foreground-muted">
             Loose amount{measurementUnit ? ` (${measurementUnit})` : ''} from
             opened package
@@ -407,74 +432,88 @@ export function ItemForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>Expiration (optional)</Label>
-        <div className="flex gap-2 mb-2">
-          <Button
-            type="button"
-            variant={expirationMode === 'date' ? 'default' : 'neutral-outline'}
-            size="sm"
-            onClick={() => setExpirationMode('date')}
-          >
-            📅 Specific Date
-          </Button>
-          <Button
-            type="button"
-            variant={expirationMode === 'days' ? 'default' : 'neutral-outline'}
-            size="sm"
-            onClick={() => setExpirationMode('days')}
-          >
-            🔢 Days from Purchase
-          </Button>
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="expirationMode">Expiration Mode</Label>
+            <Select
+              value={expirationMode}
+              onValueChange={(value: 'date' | 'days') =>
+                setExpirationMode(value)
+              }
+            >
+              <SelectTrigger id="expirationMode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>Specific Date</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="days">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span>Days from Purchase</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="expirationValue">
+              {expirationMode === 'date'
+                ? 'Expiration Date'
+                : 'Days Until Expiration'}
+            </Label>
+            {expirationMode === 'date' ? (
+              <Input
+                id="expirationValue"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            ) : (
+              <Input
+                id="expirationValue"
+                type="number"
+                min={1}
+                value={estimatedDueDays}
+                onChange={(e) => setEstimatedDueDays(e.target.value)}
+                placeholder="Leave empty if no expiration"
+              />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="expirationThreshold">
+              Warning Threshold (days)
+            </Label>
+            <Input
+              id="expirationThreshold"
+              type="number"
+              min={0}
+              value={expirationThreshold}
+              onChange={(e) => setExpirationThreshold(e.target.value)}
+              placeholder="e.g., 3"
+            />
+          </div>
         </div>
 
-        {expirationMode === 'date' && (
-          <>
-            <Input
-              id="dueDate"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-            <p className="text-xs text-foreground-muted">
-              Set a specific expiration date
-            </p>
-          </>
-        )}
-
-        {expirationMode === 'days' && (
-          <>
-            <Input
-              id="estimatedDueDays"
-              type="number"
-              min={1}
-              value={estimatedDueDays}
-              onChange={(e) => setEstimatedDueDays(e.target.value)}
-              placeholder="Leave empty if no expiration"
-            />
-            <p className="text-xs text-foreground-muted">
-              Auto-calculate expiration based on purchase date
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="expirationThreshold">
-          Expiration Warning Threshold (days)
-        </Label>
-        <Input
-          id="expirationThreshold"
-          type="number"
-          min={0}
-          value={expirationThreshold}
-          onChange={(e) => setExpirationThreshold(e.target.value)}
-          placeholder="e.g., 3 (show warning 3 days before expiration)"
-        />
-        <p className="text-xs text-foreground-muted">
-          Show expiration warning when item expires within this many days. Leave
-          empty to always show.
-        </p>
+        {/* Helper text row */}
+        <div className="grid grid-cols-3 gap-4 -mt-2">
+          <p className="text-xs text-foreground-muted">Choose tracking mode</p>
+          <p className="text-xs text-foreground-muted">
+            {expirationMode === 'date'
+              ? 'Set specific expiration date'
+              : 'Auto-calculate from purchase date'}
+          </p>
+          <p className="text-xs text-foreground-muted">
+            Shows warning N days before expiration
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">
