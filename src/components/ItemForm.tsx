@@ -151,9 +151,13 @@ export function ItemForm({
       newErrors.unpackedQuantity = 'Must be 0 or greater'
     }
 
-    // Check for excess unpacked quantity
-    if (amountPerPackage && unpackedQuantity >= Number(amountPerPackage)) {
-      newErrors.unpackedQuantity = `Should be less than ${amountPerPackage}${measurementUnit ? ` ${measurementUnit}` : ''}. Consider adding to packed quantity.`
+    // Check for excess unpacked quantity (only in dual-unit mode, not simple mode)
+    if (
+      measurementUnit &&
+      amountPerPackage &&
+      unpackedQuantity >= Number(amountPerPackage)
+    ) {
+      newErrors.unpackedQuantity = `Should be less than ${amountPerPackage} ${measurementUnit}. Consider adding to packed quantity.`
     }
 
     if (Object.keys(newErrors).length > 0) {

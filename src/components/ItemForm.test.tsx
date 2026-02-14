@@ -146,7 +146,7 @@ describe('ItemForm - Validation', () => {
     })
   })
 
-  it('shows warning when unpacked quantity exceeds amountPerPackage', async () => {
+  it('shows warning when unpacked quantity exceeds amountPerPackage in dual-unit mode', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     render(
@@ -173,6 +173,39 @@ describe('ItemForm - Validation', () => {
 
     expect(screen.getByText(/should be less than 1 L/i)).toBeInTheDocument()
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('allows any unpacked quantity in simple mode', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'pack',
+          // No measurementUnit = simple mode
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Set large unpacked quantity (would fail in dual-unit mode)
+    const unpackedInput = screen.getByLabelText(/unpacked quantity/i)
+    await user.clear(unpackedInput)
+    await user.type(unpackedInput, '5.5')
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Should succeed without validation error
+    expect(screen.queryByText(/should be less than/i)).not.toBeInTheDocument()
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unpackedQuantity: 5.5,
+      }),
+    )
   })
 
   it('sets packageUnit to undefined when cleared', async () => {
