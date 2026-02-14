@@ -546,4 +546,49 @@ describe('ItemForm - Tracking Unit Conversion', () => {
     // Even if we could switch modes, values should stay the same
     // (In reality, the radio buttons won't appear without dual-unit setup)
   })
+
+  it('converts values in measurement-only mode (no packageUnit)', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          measurementUnit: 'g',
+          amountPerPackage: 100,
+          targetUnit: 'package',
+          targetQuantity: 3,
+          refillThreshold: 1,
+          consumeAmount: 1,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Verify initial values
+    expect(
+      (screen.getByLabelText(/target quantity/i) as HTMLInputElement).value,
+    ).toBe('3')
+    expect(
+      (screen.getByLabelText(/refill when below/i) as HTMLInputElement).value,
+    ).toBe('1')
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('1')
+
+    // Switch to measurement tracking
+    const measurementRadio = screen.getByLabelText(/measurement \(g\)/i)
+    await user.click(measurementRadio)
+
+    // Values should be converted even without packageUnit
+    expect(
+      (screen.getByLabelText(/target quantity/i) as HTMLInputElement).value,
+    ).toBe('300')
+    expect(
+      (screen.getByLabelText(/refill when below/i) as HTMLInputElement).value,
+    ).toBe('100')
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('100')
+  })
 })

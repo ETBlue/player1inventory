@@ -66,10 +66,9 @@ export function ItemForm({
 
   // Convert values when switching between package and measurement tracking
   useEffect(() => {
-    // Only convert if we have dual-unit setup and targetUnit actually changed
+    // Only convert if we have conversion ratio and targetUnit actually changed
     if (
       !amountPerPackage ||
-      !packageUnit ||
       !measurementUnit ||
       prevTargetUnit.current === targetUnit
     ) {
@@ -100,7 +99,7 @@ export function ItemForm({
     }
 
     prevTargetUnit.current = targetUnit
-  }, [targetUnit, amountPerPackage, packageUnit, measurementUnit])
+  }, [targetUnit, amountPerPackage, measurementUnit])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
