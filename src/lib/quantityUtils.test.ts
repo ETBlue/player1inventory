@@ -200,29 +200,47 @@ describe('consumeItem', () => {
 })
 
 describe('addItem', () => {
-  it('adds 1 to packed quantity', () => {
+  it('adds to unpacked quantity when tracking in measurement', () => {
     const item: Partial<Item> = {
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,
+      targetUnit: 'measurement',
       packedQuantity: 2,
       unpackedQuantity: 0.5,
     }
 
-    addItem(item as Item)
+    addItem(item as Item, 0.25)
+
+    expect(item.packedQuantity).toBe(2)
+    expect(item.unpackedQuantity).toBe(0.75)
+  })
+
+  it('adds to packed quantity when tracking in packages', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'package',
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+    }
+
+    addItem(item as Item, 1)
 
     expect(item.packedQuantity).toBe(3)
     expect(item.unpackedQuantity).toBe(0.5)
   })
 
-  it('works in simple mode', () => {
+  it('adds to packed quantity in simple mode', () => {
     const item: Partial<Item> = {
       packageUnit: 'dozen',
+      targetUnit: 'package',
       packedQuantity: 3,
       unpackedQuantity: 0,
     }
 
-    addItem(item as Item)
+    addItem(item as Item, 1)
 
     expect(item.packedQuantity).toBe(4)
   })
@@ -231,12 +249,13 @@ describe('addItem', () => {
     const now = new Date('2026-02-14')
     const item: Partial<Item> = {
       packageUnit: 'bottle',
+      targetUnit: 'package',
       packedQuantity: 0,
       unpackedQuantity: 0,
       estimatedDueDays: 7,
     }
 
-    addItem(item as Item, now)
+    addItem(item as Item, 1, now)
 
     expect(item.packedQuantity).toBe(1)
     expect(item.dueDate).toEqual(new Date('2026-02-21'))
@@ -246,11 +265,12 @@ describe('addItem', () => {
     const now = new Date('2026-02-14')
     const item: Partial<Item> = {
       packageUnit: 'bottle',
+      targetUnit: 'package',
       packedQuantity: 0,
       unpackedQuantity: 0,
     }
 
-    addItem(item as Item, now)
+    addItem(item as Item, 1, now)
 
     expect(item.packedQuantity).toBe(1)
     expect(item.dueDate).toBeUndefined()
@@ -261,13 +281,14 @@ describe('addItem', () => {
     const existingDate = new Date('2026-02-20')
     const item: Partial<Item> = {
       packageUnit: 'bottle',
+      targetUnit: 'package',
       packedQuantity: 1,
       unpackedQuantity: 0,
       dueDate: existingDate,
       estimatedDueDays: 7,
     }
 
-    addItem(item as Item, now)
+    addItem(item as Item, 1, now)
 
     expect(item.packedQuantity).toBe(2)
     expect(item.dueDate).toEqual(existingDate) // Unchanged

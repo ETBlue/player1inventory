@@ -478,9 +478,9 @@ describe('Home page filtering integration', () => {
         .equals(item.id)
         .toArray()
 
-      // Should have logged delta = 1 (1L added, not 1 package)
+      // Should have logged delta = 0.5 (consumeAmount in measurement units)
       const lastLog = logs[logs.length - 1]
-      expect(lastLog.delta).toBe(1) // 1 bottle = 1L
+      expect(lastLog.delta).toBe(0.5)
     })
   })
 

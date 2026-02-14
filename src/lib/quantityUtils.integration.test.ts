@@ -31,17 +31,18 @@ describe('Dual-unit tracking integration', () => {
       tagIds: [],
     })
 
-    // Add 2 bottles
-    addItem(item)
-    addItem(item)
-    expect(item.packedQuantity).toBe(2)
+    // Add 2L (tracking in measurement, so adds to unpacked)
+    addItem(item, 1)
+    addItem(item, 1)
+    expect(item.packedQuantity).toBe(0)
+    expect(item.unpackedQuantity).toBe(2)
     expect(getCurrentQuantity(item)).toBe(2)
     expect(item.dueDate).toBeDefined()
 
-    // Consume 0.25L (breaks first package)
+    // Consume 0.25L (from unpacked)
     consumeItem(item, 0.25)
-    expect(item.packedQuantity).toBe(1)
-    expect(item.unpackedQuantity).toBe(0.75)
+    expect(item.packedQuantity).toBe(0)
+    expect(item.unpackedQuantity).toBe(1.75)
 
     // Consume 1.75L more (empties all)
     consumeItem(item, 1.75)

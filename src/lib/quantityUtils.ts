@@ -66,8 +66,18 @@ export function consumeItem(item: Item, amount: number): void {
   }
 }
 
-export function addItem(item: Item, purchaseDate: Date = new Date()): void {
-  item.packedQuantity += 1
+export function addItem(
+  item: Item,
+  amount: number,
+  purchaseDate: Date = new Date(),
+): void {
+  if (item.targetUnit === 'measurement') {
+    // When tracking in measurement units: add to unpacked
+    item.unpackedQuantity += amount
+  } else {
+    // When tracking in packages (or simple mode): add to packed
+    item.packedQuantity += amount
+  }
 
   // Recalculate dueDate if quantity was 0 and estimatedDueDays exists
   if (item.estimatedDueDays && !item.dueDate && getCurrentQuantity(item) > 0) {

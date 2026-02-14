@@ -244,7 +244,7 @@ function PantryView() {
                 // Apply add logic
                 const updatedItem = { ...item }
                 const purchaseDate = new Date()
-                addItem(updatedItem, purchaseDate)
+                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
 
                 // Normalize unpacked (convert excess to packed)
                 normalizeUnpacked(updatedItem)
@@ -331,7 +331,11 @@ function PantryView() {
                     // Apply add logic
                     const updatedItem = { ...item }
                     const purchaseDate = new Date()
-                    addItem(updatedItem, purchaseDate)
+                    addItem(
+                      updatedItem,
+                      updatedItem.consumeAmount,
+                      purchaseDate,
+                    )
 
                     // Normalize unpacked (convert excess to packed)
                     normalizeUnpacked(updatedItem)

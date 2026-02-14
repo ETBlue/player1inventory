@@ -59,7 +59,7 @@ function ContinuousProgressBar({ current, target, status }: ProgressBarProps) {
     <Progress
       value={percentage}
       className={cn(
-        '[&>div]:transition-all [&>div]:duration-300',
+        'h-2 [&>div]:transition-all [&>div]:duration-300',
         status === 'ok'
           ? '[&>div]:bg-status-ok'
           : status === 'warning'
