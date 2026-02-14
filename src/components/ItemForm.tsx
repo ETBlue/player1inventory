@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import type { Item } from '@/types'
 
@@ -263,34 +264,23 @@ export function ItemForm({
 
       {measurementUnit && (
         <div className="space-y-2">
-          <Label>Track Target In</Label>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-foreground-muted">
-              Packages{packageUnit ? ` (${packageUnit})` : ''}
-            </span>
-            <Button
-              type="button"
-              variant={
-                targetUnit === 'measurement' ? 'default' : 'neutral-outline'
+          <div className="flex items-center gap-3">
+            <Switch
+              id="targetUnit"
+              checked={targetUnit === 'measurement'}
+              onCheckedChange={(checked) =>
+                setTargetUnit(checked ? 'measurement' : 'package')
               }
-              size="sm"
-              onClick={() =>
-                setTargetUnit(
-                  targetUnit === 'measurement' ? 'package' : 'measurement',
-                )
-              }
-              className="px-3"
-            >
-              {targetUnit === 'measurement' ? 'ON' : 'OFF'}
-            </Button>
-            <span className="text-sm text-foreground-muted">
-              Measurement ({measurementUnit})
-            </span>
+            />
+            <Label htmlFor="targetUnit" className="cursor-pointer">
+              Track target in measurement ({measurementUnit})
+            </Label>
           </div>
-          <p className="text-xs text-foreground-muted">
-            Toggle ON to track in {measurementUnit}, OFF to track in{' '}
-            {packageUnit || 'packages'}
-          </p>
+          {targetUnit === 'package' && (
+            <p className="text-xs text-foreground-muted">
+              Currently tracking in {packageUnit || 'packages'}
+            </p>
+          )}
         </div>
       )}
 
