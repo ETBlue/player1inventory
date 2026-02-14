@@ -52,7 +52,11 @@ export function ItemCard({
           <CardTitle className="flex gap-1">
             <h3 className="truncate">{item.name}</h3>
             <span className="text-xs font-normal">
-              ({item.packageUnit ?? 'units'})
+              (
+              {item.targetUnit === 'measurement' && item.measurementUnit
+                ? item.measurementUnit
+                : (item.packageUnit ?? 'units')}
+              )
             </span>
           </CardTitle>
           <ItemProgressBar
