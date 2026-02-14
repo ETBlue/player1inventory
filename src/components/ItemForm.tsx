@@ -228,35 +228,29 @@ export function ItemForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="packageUnit">Package Unit</Label>
-        <Input
-          id="packageUnit"
-          value={packageUnit}
-          onChange={(e) => setPackageUnit(e.target.value)}
-          placeholder="e.g., bottle, pack, box"
-        />
-        <p className="text-xs text-foreground-muted">
-          The unit for whole packages (e.g., "bottle" for milk)
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="measurementUnit">Measurement Unit (optional)</Label>
-        <Input
-          id="measurementUnit"
-          value={measurementUnit}
-          onChange={(e) => setMeasurementUnit(e.target.value)}
-          placeholder="e.g., L, ml, cups, 根"
-        />
-        <p className="text-xs text-foreground-muted">
-          For tracking partial packages (leave empty for simple counting)
-        </p>
-      </div>
-
-      {measurementUnit && (
+      <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="amountPerPackage">Amount per Package *</Label>
+          <Label htmlFor="packageUnit">Package Unit</Label>
+          <Input
+            id="packageUnit"
+            value={packageUnit}
+            onChange={(e) => setPackageUnit(e.target.value)}
+            placeholder="e.g., bottle, pack, box"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="measurementUnit">Measurement Unit</Label>
+          <Input
+            id="measurementUnit"
+            value={measurementUnit}
+            onChange={(e) => setMeasurementUnit(e.target.value)}
+            placeholder="e.g., L, ml, cups, 根"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="amountPerPackage">Amount per Package</Label>
           <Input
             id="amountPerPackage"
             type="number"
@@ -264,15 +258,26 @@ export function ItemForm({
             min={1}
             value={amountPerPackage}
             onChange={(e) => setAmountPerPackage(e.target.value)}
-            placeholder="e.g., 1 (for 1L per bottle)"
-            required
+            placeholder="e.g., 1"
+            disabled={!measurementUnit}
           />
-          <p className="text-xs text-foreground-muted">
-            How much {measurementUnit} in each
-            {packageUnit ? ` ${packageUnit}` : ' package'}
-          </p>
         </div>
-      )}
+      </div>
+
+      {/* Helper text row */}
+      <div className="grid grid-cols-3 gap-4 -mt-4">
+        <p className="text-xs text-foreground-muted">Unit for whole packages</p>
+        <p className="text-xs text-foreground-muted">
+          For tracking partial packages
+        </p>
+        <p className="text-xs text-foreground-muted">
+          {measurementUnit && packageUnit
+            ? `${measurementUnit} per ${packageUnit}`
+            : measurementUnit
+              ? `${measurementUnit} per package`
+              : 'Optional'}
+        </p>
+      </div>
 
       {measurementUnit && (
         <div className="space-y-2">
