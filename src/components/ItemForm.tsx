@@ -52,6 +52,9 @@ export function ItemForm({
   const [estimatedDueDays, setEstimatedDueDays] = useState(
     initialData?.estimatedDueDays ?? '',
   )
+  const [expirationThreshold, setExpirationThreshold] = useState(
+    initialData?.expirationThreshold ?? '',
+  )
   const [tagIds, setTagIds] = useState<string[]>(initialData?.tagIds ?? [])
   const [packedQuantity, setPackedQuantity] = useState(
     initialData?.packedQuantity ?? 0,
@@ -148,6 +151,9 @@ export function ItemForm({
     } else if (expirationMode === 'days' && estimatedDueDays) {
       data.estimatedDueDays = Number(estimatedDueDays)
     }
+    data.expirationThreshold = expirationThreshold
+      ? Number(expirationThreshold)
+      : undefined
     onSubmit(data)
   }
 
@@ -411,6 +417,24 @@ export function ItemForm({
             </p>
           </>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="expirationThreshold">
+          Expiration Warning Threshold (days)
+        </Label>
+        <Input
+          id="expirationThreshold"
+          type="number"
+          min={0}
+          value={expirationThreshold}
+          onChange={(e) => setExpirationThreshold(e.target.value)}
+          placeholder="e.g., 3 (show warning 3 days before expiration)"
+        />
+        <p className="text-xs text-foreground-muted">
+          Show expiration warning when item expires within this many days. Leave
+          empty to always show.
+        </p>
       </div>
 
       <div className="space-y-2">

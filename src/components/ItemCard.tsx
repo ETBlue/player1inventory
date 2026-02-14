@@ -96,23 +96,29 @@ export function ItemCard({
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-2 -mb-1">
-          {currentQuantity > 0 && estimatedDueDate && (
-            <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
-              <TriangleAlert className="w-4 h-4" />
-              {item.estimatedDueDays
-                ? // Relative mode: show "Expires in X days"
-                  (() => {
-                    const daysUntilExpiration = Math.ceil(
-                      (estimatedDueDate.getTime() - Date.now()) / 86400000,
-                    )
-                    return daysUntilExpiration >= 0
+          {currentQuantity > 0 &&
+            estimatedDueDate &&
+            (() => {
+              const daysUntilExpiration = Math.ceil(
+                (estimatedDueDate.getTime() - Date.now()) / 86400000,
+              )
+              const threshold =
+                item.expirationThreshold ?? Number.POSITIVE_INFINITY
+              const shouldShowWarning = daysUntilExpiration <= threshold
+
+              return shouldShowWarning ? (
+                <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
+                  <TriangleAlert className="w-4 h-4" />
+                  {item.estimatedDueDays
+                    ? // Relative mode: show "Expires in X days"
+                      daysUntilExpiration >= 0
                       ? `Expires in ${daysUntilExpiration} days`
                       : `Expired ${Math.abs(daysUntilExpiration)} days ago`
-                  })()
-                : // Explicit mode: show "Expires on YYYY-MM-DD"
-                  `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
-            </span>
-          )}
+                    : // Explicit mode: show "Expires on YYYY-MM-DD"
+                      `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
+                </span>
+              ) : null
+            })()}
           {tags.length > 0 && !showTags && (
             <span className="text-xs text-foreground-muted">
               {tags.length} {tags.length === 1 ? 'tag' : 'tags'}

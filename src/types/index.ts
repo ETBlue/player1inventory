@@ -21,6 +21,7 @@ export interface Item {
   // Expiration
   dueDate?: Date
   estimatedDueDays?: number
+  expirationThreshold?: number // Days before expiration to show warning
 
   // Metadata
   createdAt: Date

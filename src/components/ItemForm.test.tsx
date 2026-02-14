@@ -686,3 +686,68 @@ describe('ItemForm - Tracking Unit Conversion', () => {
     ).toBe('100')
   })
 })
+
+describe('ItemForm - Expiration Threshold', () => {
+  it('includes expirationThreshold in submitted data when set', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Set expiration threshold
+    const thresholdInput = screen.getByLabelText(
+      /expiration warning threshold/i,
+    )
+    await user.type(thresholdInput, '3')
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Verify expirationThreshold is included
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expirationThreshold: 3,
+      }),
+    )
+  })
+
+  it('sets expirationThreshold to undefined when empty', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          expirationThreshold: 5,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Clear the threshold field
+    const thresholdInput = screen.getByLabelText(
+      /expiration warning threshold/i,
+    )
+    await user.clear(thresholdInput)
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Verify expirationThreshold is undefined
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expirationThreshold: undefined,
+      }),
+    )
+  })
+})

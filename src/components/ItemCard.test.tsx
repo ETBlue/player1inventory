@@ -59,3 +59,65 @@ describe('ItemCard - Unit Display Logic', () => {
     expect(displayUnit).toBe('units')
   })
 })
+
+describe('ItemCard - Expiration Warning Logic', () => {
+  it('shows warning when within threshold', () => {
+    const estimatedDueDate = new Date(Date.now() + 2 * 86400000) // 2 days from now
+    const item: Partial<Item> = {
+      expirationThreshold: 3,
+    }
+
+    const daysUntilExpiration = Math.ceil(
+      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+    )
+    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
+    const shouldShowWarning = daysUntilExpiration <= threshold
+
+    expect(shouldShowWarning).toBe(true)
+  })
+
+  it('hides warning when outside threshold', () => {
+    const estimatedDueDate = new Date(Date.now() + 5 * 86400000) // 5 days from now
+    const item: Partial<Item> = {
+      expirationThreshold: 3,
+    }
+
+    const daysUntilExpiration = Math.ceil(
+      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+    )
+    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
+    const shouldShowWarning = daysUntilExpiration <= threshold
+
+    expect(shouldShowWarning).toBe(false)
+  })
+
+  it('always shows warning when no threshold set', () => {
+    const estimatedDueDate = new Date(Date.now() + 10 * 86400000) // 10 days from now
+    const item: Partial<Item> = {
+      expirationThreshold: undefined,
+    }
+
+    const daysUntilExpiration = Math.ceil(
+      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+    )
+    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
+    const shouldShowWarning = daysUntilExpiration <= threshold
+
+    expect(shouldShowWarning).toBe(true)
+  })
+
+  it('shows warning when already expired', () => {
+    const estimatedDueDate = new Date(Date.now() - 2 * 86400000) // 2 days ago
+    const item: Partial<Item> = {
+      expirationThreshold: 3,
+    }
+
+    const daysUntilExpiration = Math.ceil(
+      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+    )
+    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
+    const shouldShowWarning = daysUntilExpiration <= threshold
+
+    expect(shouldShowWarning).toBe(true)
+  })
+})
