@@ -217,7 +217,7 @@ export function ItemForm({
             id="targetQuantity"
             type="number"
             min={0}
-            step={targetUnit === 'package' ? 1 : 0.01}
+            step={targetUnit === 'package' ? 1 : consumeAmount || 1}
             value={targetQuantity}
             onChange={(e) => setTargetQuantity(Number(e.target.value))}
           />
@@ -231,7 +231,7 @@ export function ItemForm({
             id="refillThreshold"
             type="number"
             min={0}
-            step={targetUnit === 'package' ? 1 : 0.01}
+            step={targetUnit === 'package' ? 1 : consumeAmount || 1}
             value={refillThreshold}
             onChange={(e) => setRefillThreshold(Number(e.target.value))}
           />
