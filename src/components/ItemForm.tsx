@@ -1,9 +1,16 @@
-import { X } from 'lucide-react'
+import { Calendar, Clock, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { sortTagsByName } from '@/lib/tagSortUtils'
@@ -425,74 +432,88 @@ export function ItemForm({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>Expiration (optional)</Label>
-        <div className="flex gap-2 mb-2">
-          <Button
-            type="button"
-            variant={expirationMode === 'date' ? 'default' : 'neutral-outline'}
-            size="sm"
-            onClick={() => setExpirationMode('date')}
-          >
-            📅 Specific Date
-          </Button>
-          <Button
-            type="button"
-            variant={expirationMode === 'days' ? 'default' : 'neutral-outline'}
-            size="sm"
-            onClick={() => setExpirationMode('days')}
-          >
-            🔢 Days from Purchase
-          </Button>
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="expirationMode">Expiration Mode</Label>
+            <Select
+              value={expirationMode}
+              onValueChange={(value: 'date' | 'days') =>
+                setExpirationMode(value)
+              }
+            >
+              <SelectTrigger id="expirationMode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>Specific Date</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="days">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span>Days from Purchase</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="expirationValue">
+              {expirationMode === 'date'
+                ? 'Expiration Date'
+                : 'Days Until Expiration'}
+            </Label>
+            {expirationMode === 'date' ? (
+              <Input
+                id="expirationValue"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            ) : (
+              <Input
+                id="expirationValue"
+                type="number"
+                min={1}
+                value={estimatedDueDays}
+                onChange={(e) => setEstimatedDueDays(e.target.value)}
+                placeholder="Leave empty if no expiration"
+              />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="expirationThreshold">
+              Warning Threshold (days)
+            </Label>
+            <Input
+              id="expirationThreshold"
+              type="number"
+              min={0}
+              value={expirationThreshold}
+              onChange={(e) => setExpirationThreshold(e.target.value)}
+              placeholder="e.g., 3"
+            />
+          </div>
         </div>
 
-        {expirationMode === 'date' && (
-          <>
-            <Input
-              id="dueDate"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-            <p className="text-xs text-foreground-muted">
-              Set a specific expiration date
-            </p>
-          </>
-        )}
-
-        {expirationMode === 'days' && (
-          <>
-            <Input
-              id="estimatedDueDays"
-              type="number"
-              min={1}
-              value={estimatedDueDays}
-              onChange={(e) => setEstimatedDueDays(e.target.value)}
-              placeholder="Leave empty if no expiration"
-            />
-            <p className="text-xs text-foreground-muted">
-              Auto-calculate expiration based on purchase date
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="expirationThreshold">
-          Expiration Warning Threshold (days)
-        </Label>
-        <Input
-          id="expirationThreshold"
-          type="number"
-          min={0}
-          value={expirationThreshold}
-          onChange={(e) => setExpirationThreshold(e.target.value)}
-          placeholder="e.g., 3 (show warning 3 days before expiration)"
-        />
-        <p className="text-xs text-foreground-muted">
-          Show expiration warning when item expires within this many days. Leave
-          empty to always show.
-        </p>
+        {/* Helper text row */}
+        <div className="grid grid-cols-3 gap-4 -mt-2">
+          <p className="text-xs text-foreground-muted">Choose tracking mode</p>
+          <p className="text-xs text-foreground-muted">
+            {expirationMode === 'date'
+              ? 'Set specific expiration date'
+              : 'Auto-calculate from purchase date'}
+          </p>
+          <p className="text-xs text-foreground-muted">
+            Show warning N days before expiration
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">
