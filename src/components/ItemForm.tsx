@@ -375,44 +375,49 @@ export function ItemForm({
       </div>
 
       <div className="border-t pt-6 space-y-4">
-        <h3 className="text-sm font-medium text-foreground-muted">
-          Current Inventory
-        </h3>
-        <div className="space-y-2">
-          <Label htmlFor="packedQuantity">Packed Quantity</Label>
-          <Input
-            id="packedQuantity"
-            type="number"
-            min={0}
-            step={1}
-            value={packedQuantity}
-            onChange={(e) => setPackedQuantity(Number(e.target.value))}
-            placeholder="0"
-          />
-          {errors.packedQuantity && (
-            <p className="text-xs text-status-error">{errors.packedQuantity}</p>
-          )}
-          <p className="text-xs text-foreground-muted">
-            Number of whole packages currently in stock
-          </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="packedQuantity">Packed Quantity</Label>
+            <Input
+              id="packedQuantity"
+              type="number"
+              min={0}
+              step={1}
+              value={packedQuantity}
+              onChange={(e) => setPackedQuantity(Number(e.target.value))}
+              placeholder="0"
+            />
+            {errors.packedQuantity && (
+              <p className="text-xs text-status-error">
+                {errors.packedQuantity}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
+            <Input
+              id="unpackedQuantity"
+              type="number"
+              min={0}
+              step={consumeAmount || 1}
+              value={unpackedQuantity}
+              onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
+              placeholder="0"
+            />
+            {errors.unpackedQuantity && (
+              <p className="text-xs text-status-error">
+                {errors.unpackedQuantity}
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
-          <Input
-            id="unpackedQuantity"
-            type="number"
-            min={0}
-            step={consumeAmount || 1}
-            value={unpackedQuantity}
-            onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
-            placeholder="0"
-          />
-          {errors.unpackedQuantity && (
-            <p className="text-xs text-status-error">
-              {errors.unpackedQuantity}
-            </p>
-          )}
+        {/* Helper text row */}
+        <div className="grid grid-cols-2 gap-4 -mt-2">
+          <p className="text-xs text-foreground-muted">
+            Number of whole packages in stock
+          </p>
           <p className="text-xs text-foreground-muted">
             Loose amount{measurementUnit ? ` (${measurementUnit})` : ''} from
             opened package
