@@ -255,6 +255,9 @@ export function ItemForm({
       </div>
 
       <div className="border-t pt-6 space-y-4">
+        <h3 className="text-sm font-medium text-foreground-muted">
+          Current Inventory
+        </h3>
         <div className="space-y-2">
           <Label htmlFor="packedQuantity">Packed Quantity</Label>
           <Input
