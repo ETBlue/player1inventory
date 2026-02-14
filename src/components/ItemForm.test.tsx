@@ -435,7 +435,7 @@ describe('ItemForm - Field Visibility', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('shows track target in radio when measurementUnit is set without packageUnit', () => {
+  it('shows track target in toggle when measurementUnit is set without packageUnit', () => {
     const onSubmit = vi.fn()
     render(
       <ItemForm
@@ -448,13 +448,13 @@ describe('ItemForm - Field Visibility', () => {
     )
 
     expect(screen.getByText(/track target in/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/packages/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/measurement \(g\)/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /off/i })).toBeInTheDocument()
+    expect(screen.getByText(/measurement \(g\)/i)).toBeInTheDocument()
   })
 
   it('shows package label without unit when packageUnit is not defined', () => {
     const onSubmit = vi.fn()
-    render(
+    const { container } = render(
       <ItemForm
         initialData={{
           measurementUnit: 'g',
@@ -464,14 +464,15 @@ describe('ItemForm - Field Visibility', () => {
       />,
     )
 
-    // Label should be just "Packages" without the unit
-    const packageLabel = screen.getByLabelText(/^packages$/i)
-    expect(packageLabel).toBeInTheDocument()
+    // Text should be just "Packages" without the unit in toggle area
+    const toggleArea = container.querySelector('.flex.items-center.gap-2')
+    expect(toggleArea?.textContent).toContain('Packages')
+    expect(toggleArea?.textContent).not.toContain('Packages (')
   })
 
   it('shows package label with unit when packageUnit is defined', () => {
     const onSubmit = vi.fn()
-    render(
+    const { container } = render(
       <ItemForm
         initialData={{
           packageUnit: 'bottle',
@@ -482,9 +483,9 @@ describe('ItemForm - Field Visibility', () => {
       />,
     )
 
-    // Label should include the unit
-    const packageLabel = screen.getByLabelText(/packages \(bottle\)/i)
-    expect(packageLabel).toBeInTheDocument()
+    // Text should include the unit in toggle area
+    const toggleArea = container.querySelector('.flex.items-center.gap-2')
+    expect(toggleArea?.textContent).toContain('Packages (bottle)')
   })
 
   it('shows helper text with package fallback when packageUnit is not defined', () => {
@@ -553,8 +554,8 @@ describe('ItemForm - Tracking Unit Conversion', () => {
     ).toBe('1')
 
     // Switch to measurement tracking
-    const measurementRadio = screen.getByLabelText(/measurement \(ml\)/i)
-    await user.click(measurementRadio)
+    const toggleButton = screen.getByRole('button', { name: /off/i })
+    await user.click(toggleButton)
 
     // Values should be converted (multiplied by amountPerPackage)
     expect(
@@ -599,8 +600,8 @@ describe('ItemForm - Tracking Unit Conversion', () => {
     ).toBe('250')
 
     // Switch to package tracking
-    const packageRadio = screen.getByLabelText(/packages \(bottle\)/i)
-    await user.click(packageRadio)
+    const toggleButton = screen.getByRole('button', { name: /on/i })
+    await user.click(toggleButton)
 
     // Values should be converted (divided by amountPerPackage)
     expect(
@@ -671,8 +672,8 @@ describe('ItemForm - Tracking Unit Conversion', () => {
     ).toBe('1')
 
     // Switch to measurement tracking
-    const measurementRadio = screen.getByLabelText(/measurement \(g\)/i)
-    await user.click(measurementRadio)
+    const toggleButton = screen.getByRole('button', { name: /off/i })
+    await user.click(toggleButton)
 
     // Values should be converted even without packageUnit
     expect(

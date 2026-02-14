@@ -264,32 +264,33 @@ export function ItemForm({
       {measurementUnit && (
         <div className="space-y-2">
           <Label>Track Target In</Label>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="targetUnit"
-                value="package"
-                checked={targetUnit === 'package'}
-                onChange={(e) =>
-                  setTargetUnit(e.target.value as 'package' | 'measurement')
-                }
-              />
-              <span>Packages{packageUnit ? ` (${packageUnit})` : ''}</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="targetUnit"
-                value="measurement"
-                checked={targetUnit === 'measurement'}
-                onChange={(e) =>
-                  setTargetUnit(e.target.value as 'package' | 'measurement')
-                }
-              />
-              <span>Measurement ({measurementUnit})</span>
-            </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-foreground-muted">
+              Packages{packageUnit ? ` (${packageUnit})` : ''}
+            </span>
+            <Button
+              type="button"
+              variant={
+                targetUnit === 'measurement' ? 'default' : 'neutral-outline'
+              }
+              size="sm"
+              onClick={() =>
+                setTargetUnit(
+                  targetUnit === 'measurement' ? 'package' : 'measurement',
+                )
+              }
+              className="px-3"
+            >
+              {targetUnit === 'measurement' ? 'ON' : 'OFF'}
+            </Button>
+            <span className="text-sm text-foreground-muted">
+              Measurement ({measurementUnit})
+            </span>
           </div>
+          <p className="text-xs text-foreground-muted">
+            Toggle ON to track in {measurementUnit}, OFF to track in{' '}
+            {packageUnit || 'packages'}
+          </p>
         </div>
       )}
 
