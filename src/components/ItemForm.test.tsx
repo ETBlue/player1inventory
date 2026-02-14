@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ItemForm } from './ItemForm'
@@ -93,17 +93,26 @@ describe('ItemForm - Validation', () => {
     const onSubmit = vi.fn()
     render(
       <ItemForm
-        initialData={{ name: 'Test Item', packedQuantity: -5 }}
+        initialData={{ name: 'Test Item' }}
         submitLabel="Save"
         onSubmit={onSubmit}
       />,
     )
+
+    const input = screen.getByLabelText(/packed quantity/i) as HTMLInputElement
+    // Simulate user typing negative value (bypassing HTML5 validation)
+    fireEvent.change(input, { target: { value: '-5' } })
 
     const submitButton = screen.getByRole('button', { name: /save/i })
     await user.click(submitButton)
 
     // Form should not submit with negative value
     expect(onSubmit).not.toHaveBeenCalled()
+
+    // Error message should display
+    await waitFor(() => {
+      expect(screen.getByText('Must be 0 or greater')).toBeInTheDocument()
+    })
   })
 
   it('prevents negative unpacked quantity', async () => {
@@ -116,17 +125,27 @@ describe('ItemForm - Validation', () => {
           packageUnit: 'bottle',
           measurementUnit: 'L',
           targetUnit: 'measurement',
-          unpackedQuantity: -0.5,
         }}
         submitLabel="Save"
         onSubmit={onSubmit}
       />,
     )
 
+    const input = screen.getByLabelText(
+      /unpacked quantity/i,
+    ) as HTMLInputElement
+    // Simulate user typing negative value (bypassing HTML5 validation)
+    fireEvent.change(input, { target: { value: '-0.5' } })
+
     const submitButton = screen.getByRole('button', { name: /save/i })
     await user.click(submitButton)
 
     // Form should not submit with negative value
     expect(onSubmit).not.toHaveBeenCalled()
+
+    // Error message should display
+    await waitFor(() => {
+      expect(screen.getByText('Must be 0 or greater')).toBeInTheDocument()
+    })
   })
 })
