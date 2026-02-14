@@ -795,3 +795,53 @@ describe('ItemForm - Expiration Threshold', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+describe('ItemForm - State Synchronization', () => {
+  it('updates packed and unpacked quantity when initialData changes', () => {
+    const onSubmit = vi.fn()
+    const { rerender, container } = render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packedQuantity: 5,
+          unpackedQuantity: 2,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Verify initial values using input ids
+    let packedInput = container.querySelector(
+      '#packedQuantity',
+    ) as HTMLInputElement
+    let unpackedInput = container.querySelector(
+      '#unpackedQuantity',
+    ) as HTMLInputElement
+    expect(packedInput.value).toBe('5')
+    expect(unpackedInput.value).toBe('2')
+
+    // Rerender with updated data (simulating consume action)
+    rerender(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packedQuantity: 4,
+          unpackedQuantity: 1.5,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Re-query inputs after rerender
+    packedInput = container.querySelector('#packedQuantity') as HTMLInputElement
+    unpackedInput = container.querySelector(
+      '#unpackedQuantity',
+    ) as HTMLInputElement
+
+    // Values should update
+    expect(packedInput.value).toBe('4')
+    expect(unpackedInput.value).toBe('1.5')
+  })
+})

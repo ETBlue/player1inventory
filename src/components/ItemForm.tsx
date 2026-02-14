@@ -104,6 +104,14 @@ export function ItemForm({
     prevTargetUnit.current = targetUnit
   }, [targetUnit, amountPerPackage, measurementUnit])
 
+  // Sync form state when initialData changes (e.g., after consume/add actions)
+  useEffect(() => {
+    if (initialData) {
+      setPackedQuantity(initialData.packedQuantity ?? 0)
+      setUnpackedQuantity(initialData.unpackedQuantity ?? 0)
+    }
+  }, [initialData?.packedQuantity, initialData?.unpackedQuantity, initialData])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
