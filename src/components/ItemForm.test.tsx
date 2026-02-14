@@ -604,7 +604,7 @@ describe('ItemForm - Tracking Unit Conversion', () => {
   it('converts values from package to measurement when switching targetUnit', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    const { rerender } = render(
+    render(
       <ItemForm
         initialData={{
           packageUnit: 'bottle',
