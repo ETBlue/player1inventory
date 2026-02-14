@@ -374,7 +374,7 @@ export function ItemForm({
           Set to 0 to mark as inactive
         </p>
         <p className="text-xs text-foreground-muted">
-          Trigger low stock warning
+          Triggers low stock warning
         </p>
         <p className="text-xs text-foreground-muted">
           Amount removed per consume click
@@ -511,7 +511,7 @@ export function ItemForm({
               : 'Auto-calculate from purchase date'}
           </p>
           <p className="text-xs text-foreground-muted">
-            Show warning N days before expiration
+            Shows warning N days before expiration
           </p>
         </div>
       </div>
