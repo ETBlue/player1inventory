@@ -178,3 +178,119 @@ describe('ItemForm - Validation', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })
+
+describe('ItemForm - Step Attribute', () => {
+  it('uses step=1 for target quantity when tracking in packages', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'pack',
+          targetUnit: 'package',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(/target quantity/i) as HTMLInputElement
+    expect(input.step).toBe('1')
+  })
+
+  it('uses step=1 for refill threshold when tracking in packages', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'pack',
+          targetUnit: 'package',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(
+      /refill when below/i,
+    ) as HTMLInputElement
+    expect(input.step).toBe('1')
+  })
+
+  it('uses step=consumeAmount for target quantity when tracking in measurement', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          targetUnit: 'measurement',
+          consumeAmount: 0.25,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(/target quantity/i) as HTMLInputElement
+    expect(input.step).toBe('0.25')
+  })
+
+  it('uses step=consumeAmount for refill threshold when tracking in measurement', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          targetUnit: 'measurement',
+          consumeAmount: 0.5,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(
+      /refill when below/i,
+    ) as HTMLInputElement
+    expect(input.step).toBe('0.5')
+  })
+
+  it('defaults to step=1 for target quantity when consumeAmount is not defined', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          targetUnit: 'measurement',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(/target quantity/i) as HTMLInputElement
+    expect(input.step).toBe('1')
+  })
+
+  it('defaults to step=1 for refill threshold when consumeAmount is not defined', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          targetUnit: 'measurement',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const input = screen.getByLabelText(
+      /refill when below/i,
+    ) as HTMLInputElement
+    expect(input.step).toBe('1')
+  })
+})
