@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,6 +60,47 @@ export function ItemForm({
     initialData?.unpackedQuantity ?? 0,
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Track previous targetUnit for conversion
+  const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
+
+  // Convert values when switching between package and measurement tracking
+  useEffect(() => {
+    // Only convert if we have dual-unit setup and targetUnit actually changed
+    if (
+      !amountPerPackage ||
+      !packageUnit ||
+      !measurementUnit ||
+      prevTargetUnit.current === targetUnit
+    ) {
+      prevTargetUnit.current = targetUnit
+      return
+    }
+
+    const amount = Number(amountPerPackage)
+    if (amount <= 0) {
+      prevTargetUnit.current = targetUnit
+      return
+    }
+
+    // Convert from package to measurement
+    if (prevTargetUnit.current === 'package' && targetUnit === 'measurement') {
+      setTargetQuantity((prev) => prev * amount)
+      setRefillThreshold((prev) => prev * amount)
+      setConsumeAmount((prev) => prev * amount)
+    }
+    // Convert from measurement to package
+    else if (
+      prevTargetUnit.current === 'measurement' &&
+      targetUnit === 'package'
+    ) {
+      setTargetQuantity((prev) => prev / amount)
+      setRefillThreshold((prev) => prev / amount)
+      setConsumeAmount((prev) => prev / amount)
+    }
+
+    prevTargetUnit.current = targetUnit
+  }, [targetUnit, amountPerPackage, packageUnit, measurementUnit])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

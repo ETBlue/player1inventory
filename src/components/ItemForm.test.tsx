@@ -291,3 +291,124 @@ describe('ItemForm - Step Attribute', () => {
     expect(input.step).toBe('1')
   })
 })
+
+describe('ItemForm - Tracking Unit Conversion', () => {
+  it('converts values from package to measurement when switching targetUnit', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    const { rerender } = render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'ml',
+          amountPerPackage: 500,
+          targetUnit: 'package',
+          targetQuantity: 2,
+          refillThreshold: 1,
+          consumeAmount: 1,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Verify initial values
+    expect(
+      (screen.getByLabelText(/target quantity/i) as HTMLInputElement).value,
+    ).toBe('2')
+    expect(
+      (screen.getByLabelText(/refill when below/i) as HTMLInputElement).value,
+    ).toBe('1')
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('1')
+
+    // Switch to measurement tracking
+    const measurementRadio = screen.getByLabelText(/measurement \(ml\)/i)
+    await user.click(measurementRadio)
+
+    // Values should be converted (multiplied by amountPerPackage)
+    expect(
+      (screen.getByLabelText(/target quantity/i) as HTMLInputElement).value,
+    ).toBe('1000')
+    expect(
+      (screen.getByLabelText(/refill when below/i) as HTMLInputElement).value,
+    ).toBe('500')
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('500')
+  })
+
+  it('converts values from measurement to package when switching targetUnit', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'ml',
+          amountPerPackage: 500,
+          targetUnit: 'measurement',
+          targetQuantity: 1000,
+          refillThreshold: 500,
+          consumeAmount: 250,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Verify initial values
+    expect(
+      (screen.getByLabelText(/target quantity/i) as HTMLInputElement).value,
+    ).toBe('1000')
+    expect(
+      (screen.getByLabelText(/refill when below/i) as HTMLInputElement).value,
+    ).toBe('500')
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('250')
+
+    // Switch to package tracking
+    const packageRadio = screen.getByLabelText(/packages \(bottle\)/i)
+    await user.click(packageRadio)
+
+    // Values should be converted (divided by amountPerPackage)
+    expect(
+      (screen.getByLabelText(/target quantity/i) as HTMLInputElement).value,
+    ).toBe('2')
+    expect(
+      (screen.getByLabelText(/refill when below/i) as HTMLInputElement).value,
+    ).toBe('1')
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('0.5')
+  })
+
+  it('does not convert when amountPerPackage is not set', async () => {
+    const _user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'pack',
+          targetUnit: 'package',
+          targetQuantity: 2,
+          refillThreshold: 1,
+          consumeAmount: 1,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Note: No dual-unit setup, so no conversion should happen
+    const targetInput = screen.getByLabelText(
+      /target quantity/i,
+    ) as HTMLInputElement
+    expect(targetInput.value).toBe('2')
+
+    // Even if we could switch modes, values should stay the same
+    // (In reality, the radio buttons won't appear without dual-unit setup)
+  })
+})
