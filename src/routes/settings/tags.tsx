@@ -22,6 +22,7 @@ import {
   useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
+import { sortTagsByName } from '@/lib/tagSortUtils'
 import { type Tag, TagColor, type TagType } from '@/types/index'
 
 export const Route = createFileRoute('/settings/tags')({
@@ -157,73 +158,78 @@ function TagSettings() {
         </CardContent>
       </Card>
 
-      {tagTypes.map((tagType) => {
-        const typeTags = tags.filter((t) => t.typeId === tagType.id)
-        const tagTypeColor = tagType.color || TagColor.blue
-
-        return (
-          <Card key={tagType.id} className="relative">
-            <div
-              className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
-            />
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-lg capitalize">
-                    {tagType.name}
-                  </CardTitle>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="neutral-ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => {
-                      setEditTagType(tagType)
-                      setEditTagTypeName(tagType.name)
-                      setEditTagTypeColor(tagTypeColor)
-                    }}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="neutral-ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive"
-                    onClick={() => setTagTypeToDelete(tagType)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {typeTags.map((tag) => (
-                  <TagBadge
-                    key={tag.id}
-                    tag={tag}
-                    tagType={tagType}
-                    onClick={() => {
-                      setEditTag(tag)
-                      setEditTagName(tag.name)
-                    }}
-                  />
-                ))}
-                <Button
-                  variant="neutral-ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setAddTagDialog(tagType.id)}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+      {[...tagTypes]
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
         )
-      })}
+        .map((tagType) => {
+          const typeTags = tags.filter((t) => t.typeId === tagType.id)
+          const sortedTypeTags = sortTagsByName(typeTags)
+          const tagTypeColor = tagType.color || TagColor.blue
+
+          return (
+            <Card key={tagType.id} className="relative">
+              <div
+                className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
+              />
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-lg capitalize">
+                      {tagType.name}
+                    </CardTitle>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="neutral-ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setEditTagType(tagType)
+                        setEditTagTypeName(tagType.name)
+                        setEditTagTypeColor(tagTypeColor)
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="neutral-ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      onClick={() => setTagTypeToDelete(tagType)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {sortedTypeTags.map((tag) => (
+                    <TagBadge
+                      key={tag.id}
+                      tag={tag}
+                      tagType={tagType}
+                      onClick={() => {
+                        setEditTag(tag)
+                        setEditTagName(tag.name)
+                      }}
+                    />
+                  ))}
+                  <Button
+                    variant="neutral-ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setAddTagDialog(tagType.id)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
 
       {/* Add Tag Dialog */}
       <AddTagDialog

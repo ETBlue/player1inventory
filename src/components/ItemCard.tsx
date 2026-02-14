@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -130,12 +131,13 @@ export function ItemCard({
         </div>
         {tags.length > 0 && showTags && (
           <div className="flex flex-wrap gap-1 mt-2">
-            {tags.map((tag) => {
+            {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
               const tagType = tagTypes.find((t) => t.id === tag.typeId)
               const bgColor = tagType?.color
               return (
                 <Badge
                   key={tag.id}
+                  data-testid={`tag-badge-${tag.name}`}
                   variant={bgColor}
                   className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
                   onClick={(e) => {
