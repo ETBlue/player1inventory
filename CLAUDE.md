@@ -13,6 +13,7 @@ pnpm dev          # Start development server (Vite)
 pnpm build        # Build for production
 pnpm test         # Run tests (Vitest)
 pnpm test:watch   # Run tests in watch mode
+pnpm test:ui      # Run tests with UI browser interface
 pnpm lint         # Lint with Biome
 pnpm format       # Format with Biome
 pnpm check        # Run all Biome checks
