@@ -84,7 +84,7 @@ function SegmentedProgressBar({
             ? 'bg-status-error'
             : 'bg-accessory-emphasized'
 
-    const unpackedColor = 'bg-accessory-emphasized'
+    const unpackedColor = 'bg-accessory-default'
 
     return (
       <div
@@ -157,7 +157,7 @@ function ContinuousProgressBar({
             ? 'bg-status-error'
             : 'bg-accessory-emphasized'
 
-    const unpackedColor = 'bg-accessory-emphasized'
+    const unpackedColor = 'bg-accessory-default'
 
     return (
       <div className="relative h-2 w-full overflow-hidden rounded-xs bg-accessory">
