@@ -6,8 +6,8 @@ export function getCurrentQuantity(item: Item): number {
     const packedInMeasurement = item.packedQuantity * item.amountPerPackage
     return packedInMeasurement + item.unpackedQuantity
   }
-  // Simple mode: just packed
-  return item.packedQuantity
+  // Simple mode: packed + unpacked
+  return item.packedQuantity + item.unpackedQuantity
 }
 
 export function getDisplayQuantity(item: Item): number {

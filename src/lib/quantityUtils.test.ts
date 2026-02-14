@@ -32,6 +32,16 @@ describe('getCurrentQuantity', () => {
     expect(getCurrentQuantity(item as Item)).toBe(3)
   })
 
+  it('returns packed + unpacked for simple tracking with unpacked', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'pack',
+      packedQuantity: 3,
+      unpackedQuantity: 0.5,
+    }
+
+    expect(getCurrentQuantity(item as Item)).toBe(3.5)
+  })
+
   it('handles zero quantities', () => {
     const item: Partial<Item> = {
       packageUnit: 'bottle',
