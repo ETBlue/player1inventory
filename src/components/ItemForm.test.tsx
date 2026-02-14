@@ -503,9 +503,9 @@ describe('ItemForm - Field Visibility', () => {
       />,
     )
 
-    expect(
-      screen.queryByLabelText(/amount per package/i),
-    ).not.toBeInTheDocument()
+    const amountInput = screen.getByLabelText(/amount per package/i)
+    expect(amountInput).toBeInTheDocument()
+    expect(amountInput).toBeDisabled()
   })
 
   it('shows track target switch when measurementUnit is set', () => {
@@ -578,8 +578,8 @@ describe('ItemForm - Field Visibility', () => {
       />,
     )
 
-    // Helper text should say "in each package" as fallback
-    expect(screen.getByText(/how much g in each package/i)).toBeInTheDocument()
+    // Helper text should say "g per package" as fallback
+    expect(screen.getByText(/g per package/i)).toBeInTheDocument()
   })
 
   it('shows helper text with packageUnit when defined', () => {
@@ -596,7 +596,7 @@ describe('ItemForm - Field Visibility', () => {
     )
 
     // Helper text should include the specific packageUnit
-    expect(screen.getByText(/how much L in each bottle/i)).toBeInTheDocument()
+    expect(screen.getByText(/L per bottle/i)).toBeInTheDocument()
   })
 })
 
@@ -781,9 +781,7 @@ describe('ItemForm - Expiration Threshold', () => {
     )
 
     // Set expiration threshold
-    const thresholdInput = screen.getByLabelText(
-      /expiration warning threshold/i,
-    )
+    const thresholdInput = screen.getByLabelText(/warning threshold \(days\)/i)
     await user.type(thresholdInput, '3')
 
     // Submit the form
@@ -813,9 +811,7 @@ describe('ItemForm - Expiration Threshold', () => {
     )
 
     // Clear the threshold field
-    const thresholdInput = screen.getByLabelText(
-      /expiration warning threshold/i,
-    )
+    const thresholdInput = screen.getByLabelText(/warning threshold \(days\)/i)
     await user.clear(thresholdInput)
 
     // Submit the form
