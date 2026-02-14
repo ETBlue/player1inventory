@@ -1,8 +1,8 @@
 import type { Item } from '@/types'
 
 export function getCurrentQuantity(item: Item): number {
-  if (item.packageUnit && item.measurementUnit && item.amountPerPackage) {
-    // Dual-unit mode: packed + unpacked
+  if (item.measurementUnit && item.amountPerPackage) {
+    // Measurement tracking: convert packed to measurement and add unpacked
     const packedInMeasurement = item.packedQuantity * item.amountPerPackage
     return packedInMeasurement + item.unpackedQuantity
   }
@@ -20,7 +20,7 @@ export function getDisplayQuantity(item: Item): number {
 }
 
 export function normalizeUnpacked(item: Item): void {
-  if (!item.packageUnit || !item.measurementUnit || !item.amountPerPackage) {
+  if (!item.measurementUnit || !item.amountPerPackage) {
     return
   }
 
@@ -31,8 +31,8 @@ export function normalizeUnpacked(item: Item): void {
 }
 
 export function consumeItem(item: Item, amount: number): void {
-  if (item.packageUnit && item.amountPerPackage) {
-    // Consume from unpacked first
+  if (item.measurementUnit && item.amountPerPackage) {
+    // Measurement tracking: consume from unpacked first
     if (item.unpackedQuantity >= amount) {
       item.unpackedQuantity -= amount
     } else {

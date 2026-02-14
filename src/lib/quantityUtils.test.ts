@@ -43,6 +43,18 @@ describe('getCurrentQuantity', () => {
 
     expect(getCurrentQuantity(item as Item)).toBe(0)
   })
+
+  it('calculates total for measurement-only mode (no packageUnit)', () => {
+    const item: Partial<Item> = {
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      packedQuantity: 3,
+      unpackedQuantity: 50,
+    }
+
+    // 3 * 100 + 50 = 350g
+    expect(getCurrentQuantity(item as Item)).toBe(350)
+  })
 })
 
 describe('normalizeUnpacked', () => {
@@ -102,6 +114,21 @@ describe('normalizeUnpacked', () => {
 
     expect(item.packedQuantity).toBe(3)
     expect(item.unpackedQuantity).toBe(0)
+  })
+
+  it('converts excess unpacked in measurement-only mode', () => {
+    const item: Partial<Item> = {
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      packedQuantity: 2,
+      unpackedQuantity: 250,
+    }
+
+    normalizeUnpacked(item as Item)
+
+    // 250g should convert to 2 full units (200g) with 50g remaining
+    expect(item.packedQuantity).toBe(4)
+    expect(item.unpackedQuantity).toBe(50)
   })
 })
 
@@ -196,6 +223,21 @@ describe('consumeItem', () => {
 
     expect(item.packedQuantity).toBe(0)
     expect(item.unpackedQuantity).toBe(0)
+  })
+
+  it('breaks package in measurement-only mode', () => {
+    const item: Partial<Item> = {
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      packedQuantity: 3,
+      unpackedQuantity: 50,
+    }
+
+    // Consume 80g (50 from unpacked + 30 from breaking a packed unit)
+    consumeItem(item as Item, 80)
+
+    expect(item.packedQuantity).toBe(2)
+    expect(item.unpackedQuantity).toBe(70) // 100g - 30g = 70g leftover
   })
 })
 
