@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useTags, useTagTypes } from '@/hooks/useTags'
+import { sortTagsByName } from '@/lib/tagSortUtils'
 import type { Item } from '@/types'
 
 type ItemFormData = Omit<Item, 'id' | 'createdAt' | 'updatedAt'>
@@ -484,37 +485,44 @@ export function ItemForm({
           </p>
         ) : (
           <div className="space-y-3">
-            {tagTypes.map((tagType) => {
-              const typeTags = allTags.filter((t) => t.typeId === tagType.id)
-              if (typeTags.length === 0) return null
-
-              return (
-                <div key={tagType.id}>
-                  <p className="text-sm font-medium text-foreground-muted mb-1">
-                    {tagType.name}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {typeTags.map((tag) => {
-                      const isSelected = tagIds.includes(tag.id)
-
-                      return (
-                        <Badge
-                          key={tag.id}
-                          variant={
-                            isSelected ? tagType.color : 'neutral-outline'
-                          }
-                          className="cursor-pointer"
-                          onClick={() => toggleTag(tag.id)}
-                        >
-                          {tag.name}
-                          {isSelected && <X className="ml-1 h-3 w-3" />}
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                </div>
+            {[...tagTypes]
+              .sort((a, b) =>
+                a.name.localeCompare(b.name, undefined, {
+                  sensitivity: 'base',
+                }),
               )
-            })}
+              .map((tagType) => {
+                const typeTags = allTags.filter((t) => t.typeId === tagType.id)
+                if (typeTags.length === 0) return null
+                const sortedTypeTags = sortTagsByName(typeTags)
+
+                return (
+                  <div key={tagType.id}>
+                    <p className="text-sm font-medium text-foreground-muted mb-1">
+                      {tagType.name}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {sortedTypeTags.map((tag) => {
+                        const isSelected = tagIds.includes(tag.id)
+
+                        return (
+                          <Badge
+                            key={tag.id}
+                            variant={
+                              isSelected ? tagType.color : 'neutral-outline'
+                            }
+                            className="cursor-pointer"
+                            onClick={() => toggleTag(tag.id)}
+                          >
+                            {tag.name}
+                            {isSelected && <X className="ml-1 h-3 w-3" />}
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
           </div>
         )}
       </div>

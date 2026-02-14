@@ -27,10 +27,12 @@ export function ItemFilters({
   totalCount,
   onFilterChange,
 }: ItemFiltersProps) {
-  // Filter to only tag types that have tags
-  const tagTypesWithTags = tagTypes.filter((tagType) =>
-    tags.some((tag) => tag.typeId === tagType.id),
-  )
+  // Filter to only tag types that have tags, then sort alphabetically
+  const tagTypesWithTags = tagTypes
+    .filter((tagType) => tags.some((tag) => tag.typeId === tagType.id))
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+    )
 
   // Don't render if no tag types with tags
   if (tagTypesWithTags.length === 0) return null
