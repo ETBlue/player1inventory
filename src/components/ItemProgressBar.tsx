@@ -2,7 +2,7 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 
 // Maximum target quantity for segmented mode (use continuous mode above this)
-const SEGMENTED_MODE_MAX_TARGET = 15
+const SEGMENTED_MODE_MAX_TARGET = 30
 
 interface ProgressBarProps {
   current: number
