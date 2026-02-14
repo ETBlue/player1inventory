@@ -64,6 +64,9 @@ export function ItemCard({
             target={item.targetQuantity}
             status={status}
             targetUnit={item.targetUnit}
+            packed={item.packedQuantity}
+            unpacked={item.unpackedQuantity}
+            measurementUnit={item.measurementUnit}
           />
         </Link>
         <div className="flex items-center">

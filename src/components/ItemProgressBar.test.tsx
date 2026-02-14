@@ -79,4 +79,59 @@ describe('ItemProgressBar with partial segments', () => {
     const segments = container.querySelectorAll('[data-segment]')
     expect(segments).toHaveLength(5)
   })
+
+  it('shows packed and unpacked separately in simple mode', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={3.5}
+        target={5}
+        status="ok"
+        targetUnit="package"
+        packed={3}
+        unpacked={0.5}
+      />,
+    )
+
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(5)
+
+    // First 3 segments should be 100% packed
+    expect(segments[0]).toHaveAttribute('data-packed', '100')
+    expect(segments[1]).toHaveAttribute('data-packed', '100')
+    expect(segments[2]).toHaveAttribute('data-packed', '100')
+
+    // 4th segment should be 50% unpacked
+    expect(segments[3]).toHaveAttribute('data-unpacked', '50')
+  })
+
+  it('displays count as "packed (+unpacked)/target" in simple mode', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={3.5}
+        target={5}
+        status="ok"
+        targetUnit="package"
+        packed={3}
+        unpacked={0.5}
+      />,
+    )
+
+    expect(container.textContent).toContain('3 (+0.5)/5')
+  })
+
+  it('displays normal count when unpacked is 0 in simple mode', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={3}
+        target={5}
+        status="ok"
+        targetUnit="package"
+        packed={3}
+        unpacked={0}
+      />,
+    )
+
+    expect(container.textContent).toContain('3/5')
+    expect(container.textContent).not.toContain('+')
+  })
 })
