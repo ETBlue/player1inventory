@@ -5,6 +5,7 @@ interface ProgressBarProps {
   current: number
   target: number
   status?: 'ok' | 'warning' | 'error'
+  targetUnit?: 'package' | 'measurement'
 }
 
 function SegmentedProgressBar({ current, target, status }: ProgressBarProps) {
@@ -72,18 +73,26 @@ function ContinuousProgressBar({ current, target, status }: ProgressBarProps) {
   )
 }
 
-export function ItemProgressBar({ current, target, status }: ProgressBarProps) {
+export function ItemProgressBar({
+  current,
+  target,
+  status,
+  targetUnit,
+}: ProgressBarProps) {
+  // Use continuous bar when tracking in measurement units
+  const useContinuous = targetUnit === 'measurement' || target > 15
+
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1">
-        {target <= 15 ? (
-          <SegmentedProgressBar
+        {useContinuous ? (
+          <ContinuousProgressBar
             current={current}
             target={target}
             status={status}
           />
         ) : (
-          <ContinuousProgressBar
+          <SegmentedProgressBar
             current={current}
             target={target}
             status={status}

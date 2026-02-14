@@ -45,4 +45,38 @@ describe('ItemProgressBar with partial segments', () => {
     // Should use Progress component, not segments
     expect(container.querySelector('[role="progressbar"]')).toBeInTheDocument()
   })
+
+  it('uses continuous mode when tracking in measurement units', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={3.5}
+        target={5}
+        status="ok"
+        targetUnit="measurement"
+      />,
+    )
+
+    // Should use Progress component, not segments
+    expect(container.querySelector('[role="progressbar"]')).toBeInTheDocument()
+    // Should not have segments
+    expect(container.querySelector('[data-segment]')).not.toBeInTheDocument()
+  })
+
+  it('uses segmented mode when tracking in packages with low target', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={3}
+        target={5}
+        status="ok"
+        targetUnit="package"
+      />,
+    )
+
+    // Should have segments, not progress bar
+    expect(
+      container.querySelector('[role="progressbar"]'),
+    ).not.toBeInTheDocument()
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(5)
+  })
 })

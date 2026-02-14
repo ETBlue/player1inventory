@@ -63,6 +63,7 @@ export function ItemCard({
             current={quantity}
             target={item.targetQuantity}
             status={status}
+            targetUnit={item.targetUnit}
           />
         </Link>
         <div className="flex items-center">
