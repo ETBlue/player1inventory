@@ -14,7 +14,7 @@ describe('ItemForm - Packed Quantity', () => {
     const onSubmit = vi.fn()
     render(<ItemForm submitLabel="Save" onSubmit={onSubmit} />)
 
-    expect(screen.getByLabelText(/packed quantity/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
   })
 
   it('initializes packed quantity from initialData', () => {
@@ -27,42 +27,37 @@ describe('ItemForm - Packed Quantity', () => {
       />,
     )
 
-    const input = screen.getByLabelText(/packed quantity/i) as HTMLInputElement
+    const input = screen.getByLabelText(
+      /^packed quantity$/i,
+    ) as HTMLInputElement
     expect(input.value).toBe('5')
   })
 })
 
 describe('ItemForm - Unpacked Quantity', () => {
-  it('hides unpacked quantity field for package-only items', () => {
+  it('renders unpacked quantity field', () => {
     const onSubmit = vi.fn()
-    render(
-      <ItemForm
-        initialData={{ targetUnit: 'package' }}
-        submitLabel="Save"
-        onSubmit={onSubmit}
-      />,
-    )
+    render(<ItemForm submitLabel="Save" onSubmit={onSubmit} />)
 
-    expect(
-      screen.queryByLabelText(/unpacked quantity/i),
-    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^unpacked quantity$/i)).toBeInTheDocument()
   })
 
-  it('shows unpacked quantity field for dual-unit items', () => {
+  it('uses consumeAmount as step for unpacked quantity', () => {
     const onSubmit = vi.fn()
     render(
       <ItemForm
         initialData={{
-          packageUnit: 'bottle',
-          measurementUnit: 'L',
-          targetUnit: 'measurement',
+          consumeAmount: 0.25,
         }}
         submitLabel="Save"
         onSubmit={onSubmit}
       />,
     )
 
-    expect(screen.getByLabelText(/unpacked quantity/i)).toBeInTheDocument()
+    const input = screen.getByLabelText(
+      /^unpacked quantity$/i,
+    ) as HTMLInputElement
+    expect(input.step).toBe('0.25')
   })
 
   it('initializes unpacked quantity from initialData', () => {
@@ -99,7 +94,9 @@ describe('ItemForm - Validation', () => {
       />,
     )
 
-    const input = screen.getByLabelText(/packed quantity/i) as HTMLInputElement
+    const input = screen.getByLabelText(
+      /^packed quantity$/i,
+    ) as HTMLInputElement
     // Simulate user typing negative value (bypassing HTML5 validation)
     fireEvent.change(input, { target: { value: '-5' } })
 

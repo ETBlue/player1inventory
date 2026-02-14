@@ -76,12 +76,8 @@ export function ItemForm({
     }
 
     // Check for excess unpacked quantity
-    if (
-      targetUnit === 'measurement' &&
-      amountPerPackage &&
-      unpackedQuantity >= Number(amountPerPackage)
-    ) {
-      newErrors.unpackedQuantity = `Should be less than ${amountPerPackage} ${measurementUnit}. Consider adding to packed quantity.`
+    if (amountPerPackage && unpackedQuantity >= Number(amountPerPackage)) {
+      newErrors.unpackedQuantity = `Should be less than ${amountPerPackage}${measurementUnit ? ` ${measurementUnit}` : ''}. Consider adding to packed quantity.`
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -277,28 +273,27 @@ export function ItemForm({
           </p>
         </div>
 
-        {targetUnit === 'measurement' && measurementUnit && (
-          <div className="space-y-2">
-            <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
-            <Input
-              id="unpackedQuantity"
-              type="number"
-              min={0}
-              step={0.01}
-              value={unpackedQuantity}
-              onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
-              placeholder="0"
-            />
-            {errors.unpackedQuantity && (
-              <p className="text-xs text-status-error">
-                {errors.unpackedQuantity}
-              </p>
-            )}
-            <p className="text-xs text-foreground-muted">
-              Loose amount ({measurementUnit}) from opened package
+        <div className="space-y-2">
+          <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
+          <Input
+            id="unpackedQuantity"
+            type="number"
+            min={0}
+            step={consumeAmount || 1}
+            value={unpackedQuantity}
+            onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
+            placeholder="0"
+          />
+          {errors.unpackedQuantity && (
+            <p className="text-xs text-status-error">
+              {errors.unpackedQuantity}
             </p>
-          </div>
-        )}
+          )}
+          <p className="text-xs text-foreground-muted">
+            Loose amount{measurementUnit ? ` (${measurementUnit})` : ''} from
+            opened package
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">

@@ -59,12 +59,12 @@ describe('Item detail page - manual quantity input', () => {
 
     // When user opens item detail page
     await waitFor(() => {
-      expect(screen.getByLabelText(/packed quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
     })
 
     // Initial value should be 2
     const packedInput = screen.getByLabelText(
-      /packed quantity/i,
+      /^packed quantity$/i,
     ) as HTMLInputElement
     expect(packedInput.value).toBe('2')
 
@@ -128,7 +128,7 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('hides unpacked quantity field for package-only items', async () => {
+  it('shows unpacked quantity field for all items', async () => {
     // Given a package-only item
     const item = await createItem({
       name: 'Rice',
@@ -145,12 +145,10 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/packed quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
     })
 
-    // Unpacked field should not be visible
-    expect(
-      screen.queryByLabelText(/unpacked quantity/i),
-    ).not.toBeInTheDocument()
+    // Unpacked field should always be visible
+    expect(screen.getByLabelText(/^unpacked quantity$/i)).toBeInTheDocument()
   })
 })
