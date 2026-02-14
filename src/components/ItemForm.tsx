@@ -196,7 +196,7 @@ export function ItemForm({
         </p>
       </div>
 
-      {packageUnit && measurementUnit && (
+      {measurementUnit && (
         <div className="space-y-2">
           <Label htmlFor="amountPerPackage">Amount per Package *</Label>
           <Input
@@ -210,7 +210,8 @@ export function ItemForm({
             required
           />
           <p className="text-xs text-foreground-muted">
-            How much {measurementUnit} in each {packageUnit}
+            How much {measurementUnit} in each
+            {packageUnit ? ` ${packageUnit}` : ' package'}
           </p>
         </div>
       )}
