@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ItemForm } from './ItemForm'
 
@@ -83,5 +84,49 @@ describe('ItemForm - Unpacked Quantity', () => {
       /unpacked quantity/i,
     ) as HTMLInputElement
     expect(input.value).toBe('0.5')
+  })
+})
+
+describe('ItemForm - Validation', () => {
+  it('prevents negative packed quantity', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{ name: 'Test Item', packedQuantity: -5 }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Form should not submit with negative value
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('prevents negative unpacked quantity', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          targetUnit: 'measurement',
+          unpackedQuantity: -0.5,
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Form should not submit with negative value
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })

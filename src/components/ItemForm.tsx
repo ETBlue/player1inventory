@@ -59,9 +59,29 @@ export function ItemForm({
   const [unpackedQuantity, setUnpackedQuantity] = useState(
     initialData?.unpackedQuantity ?? 0,
   )
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Validate
+    const newErrors: Record<string, string> = {}
+
+    if (packedQuantity < 0) {
+      newErrors.packedQuantity = 'Must be 0 or greater'
+    }
+
+    if (unpackedQuantity < 0) {
+      newErrors.unpackedQuantity = 'Must be 0 or greater'
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
+      return
+    }
+
+    setErrors({})
+
     const data: ItemFormData = {
       name,
       targetUnit,
@@ -237,6 +257,9 @@ export function ItemForm({
             onChange={(e) => setPackedQuantity(Number(e.target.value))}
             placeholder="0"
           />
+          {errors.packedQuantity && (
+            <p className="text-xs text-status-error">{errors.packedQuantity}</p>
+          )}
           <p className="text-xs text-foreground-muted">
             Number of whole packages currently in stock
           </p>
@@ -254,6 +277,11 @@ export function ItemForm({
               onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
               placeholder="0"
             />
+            {errors.unpackedQuantity && (
+              <p className="text-xs text-status-error">
+                {errors.unpackedQuantity}
+              </p>
+            )}
             <p className="text-xs text-foreground-muted">
               Loose amount ({measurementUnit}) from opened package
             </p>
