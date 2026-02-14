@@ -1,6 +1,9 @@
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 
+// Maximum target quantity for segmented mode (use continuous mode above this)
+const SEGMENTED_MODE_MAX_TARGET = 15
+
 interface ProgressBarProps {
   current: number
   target: number
@@ -160,7 +163,7 @@ function ContinuousProgressBar({
     const unpackedColor = 'bg-accessory-default'
 
     return (
-      <div className="relative h-2 w-full overflow-hidden rounded-xs bg-accessory">
+      <div className="relative h-2 w-full overflow-hidden rounded-xs border border-accessory-emphasized">
         {/* Packed portion */}
         <div
           className={cn(
@@ -211,7 +214,8 @@ export function ItemProgressBar({
   measurementUnit,
 }: ProgressBarProps) {
   // Use continuous bar when tracking in measurement units
-  const useContinuous = targetUnit === 'measurement' || target > 15
+  const useContinuous =
+    targetUnit === 'measurement' || target > SEGMENTED_MODE_MAX_TARGET
 
   // Format count display
   const isSimpleMode = !measurementUnit
