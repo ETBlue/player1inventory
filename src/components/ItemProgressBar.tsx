@@ -84,14 +84,7 @@ function SegmentedProgressBar({
             ? 'bg-status-error'
             : 'bg-accessory-emphasized'
 
-    const unpackedColor =
-      status === 'ok'
-        ? 'bg-status-ok-tint'
-        : status === 'warning'
-          ? 'bg-status-warning-tint'
-          : status === 'error'
-            ? 'bg-status-error-tint'
-            : 'bg-accessory'
+    const unpackedColor = 'bg-accessory-emphasized'
 
     return (
       <div
@@ -139,8 +132,57 @@ function SegmentedProgressBar({
   return <div className="flex gap-0.5">{segments}</div>
 }
 
-function ContinuousProgressBar({ current, target, status }: ProgressBarProps) {
+function ContinuousProgressBar({
+  current,
+  target,
+  status,
+  packed = 0,
+  unpacked = 0,
+  measurementUnit,
+}: ProgressBarProps) {
+  const isSimpleMode = !measurementUnit
   const percentage = Math.min((current / target) * 100, 100)
+
+  // For simple mode with unpacked, show layered bars
+  if (isSimpleMode && unpacked > 0) {
+    const packedPercentage = Math.min((packed / target) * 100, 100)
+    const totalPercentage = Math.min(((packed + unpacked) / target) * 100, 100)
+
+    const packedColor =
+      status === 'ok'
+        ? 'bg-status-ok'
+        : status === 'warning'
+          ? 'bg-status-warning'
+          : status === 'error'
+            ? 'bg-status-error'
+            : 'bg-accessory-emphasized'
+
+    const unpackedColor = 'bg-accessory-emphasized'
+
+    return (
+      <div className="relative h-2 w-full overflow-hidden rounded-xs bg-accessory">
+        {/* Packed portion */}
+        <div
+          className={cn(
+            'h-full absolute left-0 transition-all duration-300',
+            packedColor,
+          )}
+          style={{ width: `${packedPercentage}%` }}
+        />
+        {/* Unpacked portion (layered on top at the end) */}
+        <div
+          className={cn(
+            'h-full absolute transition-all duration-300',
+            unpackedColor,
+          )}
+          style={{
+            left: `${packedPercentage}%`,
+            width: `${totalPercentage - packedPercentage}%`,
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <Progress
@@ -186,6 +228,9 @@ export function ItemProgressBar({
             current={current}
             target={target}
             status={status}
+            packed={packed}
+            unpacked={unpacked}
+            measurementUnit={measurementUnit}
           />
         ) : (
           <SegmentedProgressBar

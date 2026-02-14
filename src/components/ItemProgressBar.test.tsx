@@ -134,4 +134,23 @@ describe('ItemProgressBar with partial segments', () => {
     expect(container.textContent).toContain('3/5')
     expect(container.textContent).not.toContain('+')
   })
+
+  it('shows packed and unpacked in continuous mode for simple items', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={18.5}
+        target={20}
+        status="ok"
+        targetUnit="package"
+        packed={18}
+        unpacked={0.5}
+      />,
+    )
+
+    // Should use continuous mode (target > 15)
+    expect(container.querySelector('[role="progressbar"]')).toBeNull()
+    // Should have layered divs for packed and unpacked
+    const progressDivs = container.querySelectorAll('.h-2 > div')
+    expect(progressDivs.length).toBeGreaterThanOrEqual(2)
+  })
 })
