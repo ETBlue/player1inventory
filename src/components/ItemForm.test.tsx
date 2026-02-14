@@ -292,6 +292,141 @@ describe('ItemForm - Step Attribute', () => {
   })
 })
 
+describe('ItemForm - Field Visibility', () => {
+  it('shows amount per package field when measurementUnit is set with packageUnit', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    expect(screen.getByLabelText(/amount per package/i)).toBeInTheDocument()
+  })
+
+  it('shows amount per package field when measurementUnit is set without packageUnit', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          measurementUnit: 'g',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    expect(screen.getByLabelText(/amount per package/i)).toBeInTheDocument()
+  })
+
+  it('does not show amount per package field when measurementUnit is not set', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'pack',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    expect(
+      screen.queryByLabelText(/amount per package/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows track target in radio when measurementUnit is set without packageUnit', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          measurementUnit: 'g',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    expect(screen.getByText(/track target in/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/packages/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/measurement \(g\)/i)).toBeInTheDocument()
+  })
+
+  it('shows package label without unit when packageUnit is not defined', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          measurementUnit: 'g',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Label should be just "Packages" without the unit
+    const packageLabel = screen.getByLabelText(/^packages$/i)
+    expect(packageLabel).toBeInTheDocument()
+  })
+
+  it('shows package label with unit when packageUnit is defined', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Label should include the unit
+    const packageLabel = screen.getByLabelText(/packages \(bottle\)/i)
+    expect(packageLabel).toBeInTheDocument()
+  })
+
+  it('shows helper text with package fallback when packageUnit is not defined', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          measurementUnit: 'g',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Helper text should say "in each package" as fallback
+    expect(screen.getByText(/how much g in each package/i)).toBeInTheDocument()
+  })
+
+  it('shows helper text with packageUnit when defined', () => {
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Helper text should include the specific packageUnit
+    expect(screen.getByText(/how much L in each bottle/i)).toBeInTheDocument()
+  })
+})
+
 describe('ItemForm - Tracking Unit Conversion', () => {
   it('converts values from package to measurement when switching targetUnit', async () => {
     const user = userEvent.setup()
