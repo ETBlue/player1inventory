@@ -3,21 +3,65 @@ import {
   Link,
   Outlet,
   useNavigate,
+  useRouter,
 } from '@tanstack/react-router'
 import { ArrowLeft, History, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { useDeleteItem, useItem } from '@/hooks'
-import { ItemLayoutProvider } from '@/hooks/useItemLayout'
+import { ItemLayoutProvider, useItemLayout } from '@/hooks/useItemLayout'
 
 export const Route = createFileRoute('/items/$id')({
   component: ItemLayout,
 })
 
-function ItemLayout() {
+function ItemLayoutInner() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
+  const router = useRouter()
   const { data: item, isLoading } = useItem(id)
   const deleteItem = useDeleteItem()
+  const { isDirty } = useItemLayout()
+
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(
+    null,
+  )
+
+  // Intercept tab navigation when dirty
+  const handleTabClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    path: string,
+  ) => {
+    if (isDirty && router.state.location.pathname !== path) {
+      e.preventDefault()
+      setPendingNavigation(path)
+      setShowDiscardDialog(true)
+    }
+  }
+
+  const confirmDiscard = () => {
+    if (pendingNavigation) {
+      setShowDiscardDialog(false)
+      navigate({ to: pendingNavigation })
+      setPendingNavigation(null)
+    }
+  }
+
+  const cancelDiscard = () => {
+    setShowDiscardDialog(false)
+    setPendingNavigation(null)
+  }
 
   if (isLoading) {
     return <div className="p-4">Loading...</div>
@@ -28,7 +72,7 @@ function ItemLayout() {
   }
 
   return (
-    <ItemLayoutProvider>
+    <>
       <div className="min-h-screen">
         {/* Fixed Top Bar */}
         <div className="fixed top-0 left-0 right-0 z-50 bg-background-elevated border-b">
@@ -56,6 +100,7 @@ function ItemLayout() {
                 activeProps={{
                   className: 'bg-background font-medium',
                 }}
+                onClick={(e) => handleTabClick(e, `/items/${id}`)}
               >
                 Stock
               </Link>
@@ -66,6 +111,7 @@ function ItemLayout() {
                 activeProps={{
                   className: 'bg-background font-medium',
                 }}
+                onClick={(e) => handleTabClick(e, `/items/${id}/info`)}
               >
                 Info
               </Link>
@@ -76,6 +122,7 @@ function ItemLayout() {
                 activeProps={{
                   className: 'bg-background font-medium',
                 }}
+                onClick={(e) => handleTabClick(e, `/items/${id}/tags`)}
               >
                 Tags
               </Link>
@@ -109,6 +156,34 @@ function ItemLayout() {
           <Outlet />
         </div>
       </div>
+
+      {/* Discard Confirmation Dialog */}
+      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Discard changes?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelDiscard}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscard}>
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+function ItemLayout() {
+  return (
+    <ItemLayoutProvider>
+      <ItemLayoutInner />
     </ItemLayoutProvider>
   )
 }
