@@ -3,11 +3,11 @@ import {
   createItem,
   deleteItem,
   getAllItems,
-  getCurrentQuantity,
   getItem,
   getLastPurchaseDate,
   updateItem,
 } from '@/db/operations'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
 export function useItems() {
@@ -27,11 +27,6 @@ export function useItem(id: string) {
 
 export function useItemWithQuantity(id: string) {
   const itemQuery = useItem(id)
-  const quantityQuery = useQuery({
-    queryKey: ['items', id, 'quantity'],
-    queryFn: () => getCurrentQuantity(id),
-    enabled: !!id,
-  })
   const lastPurchaseQuery = useQuery({
     queryKey: ['items', id, 'lastPurchase'],
     queryFn: () => getLastPurchaseDate(id),
@@ -40,9 +35,9 @@ export function useItemWithQuantity(id: string) {
 
   return {
     item: itemQuery.data,
-    quantity: quantityQuery.data ?? 0,
+    quantity: itemQuery.data ? getCurrentQuantity(itemQuery.data) : 0,
     lastPurchaseDate: lastPurchaseQuery.data,
-    isLoading: itemQuery.isLoading || quantityQuery.isLoading,
+    isLoading: itemQuery.isLoading,
   }
 }
 

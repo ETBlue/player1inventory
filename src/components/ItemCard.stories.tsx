@@ -51,10 +51,14 @@ type Story = StoryObj<typeof ItemCard>
 const mockItem = {
   id: '1',
   name: 'Milk',
-  unit: 'gallons',
+  packageUnit: 'gallon',
+  targetUnit: 'package' as const,
   tagIds: ['tag-1'],
   targetQuantity: 2,
   refillThreshold: 1,
+  packedQuantity: 0,
+  unpackedQuantity: 0,
+  consumeAmount: 1,
   createdAt: new Date(),
   updatedAt: new Date(),
 }
@@ -137,5 +141,61 @@ export const TagsHidden: Story = {
   args: {
     ...Default.args,
     showTags: false,
+  },
+}
+
+export const DualUnitWithPartial: Story = {
+  args: {
+    item: {
+      id: '1',
+      name: 'Milk',
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
+      targetQuantity: 2,
+      refillThreshold: 0.5,
+      packedQuantity: 1,
+      unpackedQuantity: 0.7,
+      consumeAmount: 0.25,
+      tagIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    quantity: 1.7,
+    tags: [],
+    tagTypes: [],
+  },
+}
+
+export const ExpiringRelativeMode: Story = {
+  args: {
+    item: {
+      ...mockItem,
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0.5,
+      estimatedDueDays: 2,
+    },
+    quantity: 1.5,
+    tags: [],
+    tagTypes: [],
+    estimatedDueDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000), // 1 day from now
+  },
+}
+
+export const InactiveItem: Story = {
+  args: {
+    item: {
+      ...mockItem,
+      targetQuantity: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    },
+    quantity: 0,
+    tags: [],
+    tagTypes: [],
   },
 }

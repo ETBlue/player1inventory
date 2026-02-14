@@ -44,7 +44,8 @@ function ItemHistory() {
                   <div>
                     <p className="font-medium">
                       {log.delta > 0 ? '+' : ''}
-                      {log.delta} → {log.quantity} {item?.unit ?? 'units'}
+                      {log.delta} → {log.quantity}{' '}
+                      {item?.packageUnit ?? 'units'}
                     </p>
                     {log.note && (
                       <p className="text-sm text-foreground-muted">

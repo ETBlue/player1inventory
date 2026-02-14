@@ -5,10 +5,17 @@ import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { ItemFilters } from '@/components/ItemFilters'
 import { PantryItem } from '@/components/PantryItem'
 import { PantryToolbar } from '@/components/PantryToolbar'
-import { getCurrentQuantity, getLastPurchaseDate } from '@/db/operations'
-import { useAddInventoryLog, useItems } from '@/hooks'
+import { getLastPurchaseDate } from '@/db/operations'
+import { useAddInventoryLog, useItems, useUpdateItem } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { type FilterState, filterItems } from '@/lib/filterUtils'
+import {
+  addItem,
+  consumeItem,
+  getCurrentQuantity,
+  isInactive,
+  normalizeUnpacked,
+} from '@/lib/quantityUtils'
 import {
   loadFilters,
   loadSortPrefs,
@@ -31,6 +38,7 @@ function PantryView() {
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const addLog = useAddInventoryLog()
+  const updateItem = useUpdateItem()
 
   const [addDialogItem, setAddDialogItem] = useState<Item | null>(null)
   const [filterState, setFilterState] = useState<FilterState>(() =>
@@ -48,6 +56,7 @@ function PantryView() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     () => loadSortPrefs().sortDirection,
   )
+  const [showInactive, setShowInactive] = useState(false)
 
   // Save filter state to sessionStorage whenever it changes
   useEffect(() => {
@@ -72,7 +81,7 @@ function PantryView() {
     queryFn: async () => {
       const map = new Map<string, number>()
       for (const item of items) {
-        map.set(item.id, await getCurrentQuantity(item.id))
+        map.set(item.id, getCurrentQuantity(item))
       }
       return map
     },
@@ -108,6 +117,10 @@ function PantryView() {
     sortBy,
     sortDirection,
   )
+
+  // Separate active and inactive items
+  const activeItems = sortedItems.filter((item) => !isInactive(item))
+  const inactiveItems = sortedItems.filter((item) => isInactive(item))
 
   // Handle tag click - toggle tag in filter
   const handleTagClick = (tagId: string) => {
@@ -188,24 +201,170 @@ function PantryView() {
         </div>
       ) : (
         <div className="bg-background-base flex flex-col gap-px">
-          {sortedItems.map((item) => (
+          {activeItems.map((item) => (
             <PantryItem
               key={item.id}
               item={item}
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
               showTags={tagsVisible}
-              onConsume={() => {
+              onConsume={async () => {
+                // Calculate quantity before consuming
+                const quantityBefore = getCurrentQuantity(item)
+
+                // Apply consume logic
+                const updatedItem = { ...item }
+                consumeItem(updatedItem, updatedItem.consumeAmount)
+
+                // Calculate quantity after consuming
+                const quantityAfter = getCurrentQuantity(updatedItem)
+                const actualDelta = quantityAfter - quantityBefore
+
+                // Update database
+                await updateItem.mutateAsync({
+                  id: item.id,
+                  updates: {
+                    packedQuantity: updatedItem.packedQuantity,
+                    unpackedQuantity: updatedItem.unpackedQuantity,
+                    dueDate: updatedItem.dueDate,
+                  },
+                })
+
+                // Log inventory change
                 addLog.mutate({
                   itemId: item.id,
-                  delta: -1,
+                  delta: actualDelta,
                   occurredAt: new Date(),
                 })
               }}
-              onAdd={() => setAddDialogItem(item)}
+              onAdd={async () => {
+                // Calculate quantity before adding
+                const quantityBefore = getCurrentQuantity(item)
+
+                // Apply add logic
+                const updatedItem = { ...item }
+                const purchaseDate = new Date()
+                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
+
+                // Normalize unpacked (convert excess to packed)
+                normalizeUnpacked(updatedItem)
+
+                // Calculate quantity after adding
+                const quantityAfter = getCurrentQuantity(updatedItem)
+                const actualDelta = quantityAfter - quantityBefore
+
+                // Update database
+                await updateItem.mutateAsync({
+                  id: item.id,
+                  updates: {
+                    packedQuantity: updatedItem.packedQuantity,
+                    unpackedQuantity: updatedItem.unpackedQuantity,
+                    dueDate: updatedItem.dueDate,
+                  },
+                })
+
+                // Log inventory change
+                addLog.mutate({
+                  itemId: item.id,
+                  delta: actualDelta,
+                  occurredAt: purchaseDate,
+                })
+              }}
               onTagClick={handleTagClick}
             />
           ))}
+
+          {inactiveItems.length > 0 && (
+            <div className="bg-background-surface">
+              <button
+                type="button"
+                onClick={() => setShowInactive(!showInactive)}
+                className="w-full px-3 py-2 text-sm text-foreground-muted hover:text-foreground"
+              >
+                {showInactive ? 'Hide' : 'Show'} {inactiveItems.length} inactive
+                item{inactiveItems.length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
+
+          {showInactive &&
+            inactiveItems.map((item) => (
+              <div key={item.id} className="opacity-50">
+                <PantryItem
+                  item={item}
+                  tags={tags.filter((t) => item.tagIds.includes(t.id))}
+                  tagTypes={tagTypes}
+                  showTags={tagsVisible}
+                  onConsume={async () => {
+                    // Calculate quantity before consuming
+                    const quantityBefore = getCurrentQuantity(item)
+
+                    // Apply consume logic
+                    const updatedItem = { ...item }
+                    consumeItem(updatedItem, updatedItem.consumeAmount)
+
+                    // Calculate quantity after consuming
+                    const quantityAfter = getCurrentQuantity(updatedItem)
+                    const actualDelta = quantityAfter - quantityBefore
+
+                    // Update database
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        dueDate: updatedItem.dueDate,
+                      },
+                    })
+
+                    // Log inventory change
+                    addLog.mutate({
+                      itemId: item.id,
+                      delta: actualDelta,
+                      occurredAt: new Date(),
+                    })
+                  }}
+                  onAdd={async () => {
+                    // Calculate quantity before adding
+                    const quantityBefore = getCurrentQuantity(item)
+
+                    // Apply add logic
+                    const updatedItem = { ...item }
+                    const purchaseDate = new Date()
+                    addItem(
+                      updatedItem,
+                      updatedItem.consumeAmount,
+                      purchaseDate,
+                    )
+
+                    // Normalize unpacked (convert excess to packed)
+                    normalizeUnpacked(updatedItem)
+
+                    // Calculate quantity after adding
+                    const quantityAfter = getCurrentQuantity(updatedItem)
+                    const actualDelta = quantityAfter - quantityBefore
+
+                    // Update database
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        dueDate: updatedItem.dueDate,
+                      },
+                    })
+
+                    // Log inventory change
+                    addLog.mutate({
+                      itemId: item.id,
+                      delta: actualDelta,
+                      occurredAt: purchaseDate,
+                    })
+                  }}
+                  onTagClick={handleTagClick}
+                />
+              </div>
+            ))}
         </div>
       )}
 

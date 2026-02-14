@@ -157,3 +157,47 @@ export const EdgeCases: Story = {
     </div>
   ),
 }
+
+export const PartialSegment: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">
+          Partial segment (1.7/2) - 70% fill in second segment
+        </p>
+        <ItemProgressBar current={1.7} target={2} status="ok" />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          Partial segment (0.3/1) - 30% fill in first segment
+        </p>
+        <ItemProgressBar current={0.3} target={1} status="warning" />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          Partial segment (4.5/5) - 50% fill in last segment
+        </p>
+        <ItemProgressBar current={4.5} target={5} status="ok" />
+      </div>
+    </div>
+  ),
+}
+
+export const MultiplePartials: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Multiple partials (2.3/5) - Warning</p>
+        <ItemProgressBar current={2.3} target={5} status="warning" />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Multiple partials (7.8/10) - OK</p>
+        <ItemProgressBar current={7.8} target={10} status="ok" />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Multiple partials (1.2/8) - Error</p>
+        <ItemProgressBar current={1.2} target={8} status="error" />
+      </div>
+    </div>
+  ),
+}

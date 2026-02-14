@@ -4,6 +4,7 @@ import { ItemProgressBar } from '@/components/ItemProgressBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -29,13 +30,14 @@ export function ItemCard({
   onTagClick,
   showTags = true,
 }: ItemCardProps) {
+  const currentQuantity = getCurrentQuantity(item)
   const status =
     item.refillThreshold > 0 && quantity === item.refillThreshold
       ? 'warning'
       : quantity < item.refillThreshold
         ? 'error'
         : 'ok'
-  const isExpiringSoon =
+  const _isExpiringSoon =
     estimatedDueDate &&
     estimatedDueDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000 // 3 days
 
@@ -50,13 +52,21 @@ export function ItemCard({
           <CardTitle className="flex gap-1">
             <h3 className="truncate">{item.name}</h3>
             <span className="text-xs font-normal">
-              ({item.unit ?? 'units'})
+              (
+              {item.targetUnit === 'measurement' && item.measurementUnit
+                ? item.measurementUnit
+                : (item.packageUnit ?? 'units')}
+              )
             </span>
           </CardTitle>
           <ItemProgressBar
             current={quantity}
             target={item.targetQuantity}
             status={status}
+            targetUnit={item.targetUnit}
+            packed={item.packedQuantity}
+            unpacked={item.unpackedQuantity}
+            measurementUnit={item.measurementUnit}
           />
         </Link>
         <div className="flex items-center">
@@ -69,6 +79,7 @@ export function ItemCard({
               onConsume()
             }}
             disabled={quantity <= 0}
+            aria-label={`Consume ${item.name}`}
           >
             <Minus className="h-4 w-4" />
           </Button>
@@ -80,6 +91,7 @@ export function ItemCard({
               e.preventDefault()
               onAdd()
             }}
+            aria-label={`Add ${item.name}`}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -87,12 +99,29 @@ export function ItemCard({
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-2 -mb-1">
-          {isExpiringSoon && (
-            <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
-              <TriangleAlert className="w-4 h-4" />
-              Expires {estimatedDueDate.toLocaleDateString()}
-            </span>
-          )}
+          {currentQuantity > 0 &&
+            estimatedDueDate &&
+            (() => {
+              const daysUntilExpiration = Math.ceil(
+                (estimatedDueDate.getTime() - Date.now()) / 86400000,
+              )
+              const threshold =
+                item.expirationThreshold ?? Number.POSITIVE_INFINITY
+              const shouldShowWarning = daysUntilExpiration <= threshold
+
+              return shouldShowWarning ? (
+                <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
+                  <TriangleAlert className="w-4 h-4" />
+                  {item.estimatedDueDays
+                    ? // Relative mode: show "Expires in X days"
+                      daysUntilExpiration >= 0
+                      ? `Expires in ${daysUntilExpiration} days`
+                      : `Expired ${Math.abs(daysUntilExpiration)} days ago`
+                    : // Explicit mode: show "Expires on YYYY-MM-DD"
+                      `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
+                </span>
+              ) : null
+            })()}
           {tags.length > 0 && !showTags && (
             <span className="text-xs text-foreground-muted">
               {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
