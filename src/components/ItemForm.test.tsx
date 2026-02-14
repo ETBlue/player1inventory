@@ -237,6 +237,46 @@ describe('ItemForm - Validation', () => {
     )
   })
 
+  it('auto-sets targetUnit to package when measurementUnit is cleared', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialData={{
+          name: 'Test Item',
+          packageUnit: 'bottle',
+          measurementUnit: 'L',
+          amountPerPackage: 1,
+          targetUnit: 'measurement',
+        }}
+        submitLabel="Save"
+        onSubmit={onSubmit}
+      />,
+    )
+
+    // Initially, the switch should be on (tracking in measurement)
+    const switchElement = screen.getByRole('switch')
+    expect(switchElement).toBeChecked()
+
+    // Clear the measurement unit field
+    const measurementUnitInput = screen.getByLabelText(/measurement unit/i)
+    await user.clear(measurementUnitInput)
+
+    // Switch should be gone (only shown when measurementUnit exists)
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+
+    // Submit the form
+    const submitButton = screen.getByRole('button', { name: /save/i })
+    await user.click(submitButton)
+
+    // Verify targetUnit is set to 'package'
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetUnit: 'package',
+      }),
+    )
+  })
+
   it('sets amountPerPackage to undefined when cleared', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()

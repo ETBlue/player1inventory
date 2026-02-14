@@ -105,6 +105,13 @@ export function ItemForm({
     prevTargetUnit.current = targetUnit
   }, [targetUnit, amountPerPackage, measurementUnit])
 
+  // Auto-set targetUnit to 'package' when measurementUnit is cleared
+  useEffect(() => {
+    if (!measurementUnit && targetUnit === 'measurement') {
+      setTargetUnit('package')
+    }
+  }, [measurementUnit, targetUnit])
+
   // Sync form state when initialData changes (e.g., after consume/add actions)
   useEffect(() => {
     if (initialData) {
