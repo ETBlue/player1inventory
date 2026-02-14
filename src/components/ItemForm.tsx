@@ -301,7 +301,7 @@ export function ItemForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="targetQuantity">
             Target Quantity
@@ -319,10 +319,8 @@ export function ItemForm({
             value={targetQuantity}
             onChange={(e) => setTargetQuantity(Number(e.target.value))}
           />
-          <p className="text-xs text-foreground-muted">
-            Set to 0 to mark as inactive
-          </p>
         </div>
+
         <div className="space-y-2">
           <Label htmlFor="refillThreshold">
             Refill When Below
@@ -341,28 +339,38 @@ export function ItemForm({
             onChange={(e) => setRefillThreshold(Number(e.target.value))}
           />
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="consumeAmount">
+            Amount per Consume
+            {targetUnit === 'measurement' && measurementUnit
+              ? ` (${measurementUnit})`
+              : packageUnit
+                ? ` (${packageUnit})`
+                : ''}
+          </Label>
+          <Input
+            id="consumeAmount"
+            type="number"
+            step="0.001"
+            min={0.001}
+            value={consumeAmount}
+            onChange={(e) => setConsumeAmount(Number(e.target.value))}
+            required
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="consumeAmount">
-          Amount per Consume
-          {targetUnit === 'measurement' && measurementUnit
-            ? ` (${measurementUnit})`
-            : packageUnit
-              ? ` (${packageUnit})`
-              : ''}
-        </Label>
-        <Input
-          id="consumeAmount"
-          type="number"
-          step="0.001"
-          min={0.001}
-          value={consumeAmount}
-          onChange={(e) => setConsumeAmount(Number(e.target.value))}
-          required
-        />
+      {/* Helper text row */}
+      <div className="grid grid-cols-3 gap-4 -mt-4">
         <p className="text-xs text-foreground-muted">
-          Amount removed with each consume click
+          Set to 0 to mark as inactive
+        </p>
+        <p className="text-xs text-foreground-muted">
+          Trigger low stock warning
+        </p>
+        <p className="text-xs text-foreground-muted">
+          Amount removed per consume click
         </p>
       </div>
 
