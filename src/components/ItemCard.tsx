@@ -137,6 +137,7 @@ export function ItemCard({
               return (
                 <Badge
                   key={tag.id}
+                  data-testid={`tag-badge-${tag.name}`}
                   variant={bgColor}
                   className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
                   onClick={(e) => {

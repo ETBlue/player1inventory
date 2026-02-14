@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import type { Item } from '@/types'
+import { screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { renderWithRouter } from '@/test/utils'
+import type { Item, Tag, TagType } from '@/types'
+import { TagColor } from '@/types'
+import { ItemCard } from './ItemCard'
 
 describe('ItemCard - Unit Display Logic', () => {
   it('returns package unit when tracking in packages', () => {
@@ -119,5 +123,61 @@ describe('ItemCard - Expiration Warning Logic', () => {
     const shouldShowWarning = daysUntilExpiration <= threshold
 
     expect(shouldShowWarning).toBe(true)
+  })
+})
+
+describe('ItemCard - Tag Sorting', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Test Item',
+    tagIds: ['1', '2', '3', '4'],
+    targetQuantity: 10,
+    refillThreshold: 3,
+    targetUnit: 'package',
+    packageUnit: 'bottle',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    packedQuantity: 0,
+  }
+
+  it('displays tags sorted by tag type name then tag name', async () => {
+    const tagTypes: TagType[] = [
+      { id: 'type1', name: 'Storage', color: TagColor.blue },
+      { id: 'type2', name: 'Category', color: TagColor.green },
+    ]
+
+    const tags: Tag[] = [
+      { id: '1', name: 'Pantry', typeId: 'type1' },
+      { id: '2', name: 'Vegetable', typeId: 'type2' },
+      { id: '3', name: 'Fridge', typeId: 'type1' },
+      { id: '4', name: 'Fruit', typeId: 'type2' },
+    ]
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={5}
+        tags={tags}
+        tagTypes={tagTypes}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        showTags={true}
+      />,
+    )
+
+    const badges = [
+      screen.getByTestId('tag-badge-Fruit'),
+      screen.getByTestId('tag-badge-Vegetable'),
+      screen.getByTestId('tag-badge-Fridge'),
+      screen.getByTestId('tag-badge-Pantry'),
+    ]
+
+    // Category type comes first (alphabetically before Storage)
+    // Within each type, tags are sorted alphabetically
+    expect(badges[0]).toHaveTextContent('Fruit')
+    expect(badges[1]).toHaveTextContent('Vegetable')
+    // Storage type comes second
+    expect(badges[2]).toHaveTextContent('Fridge')
+    expect(badges[3]).toHaveTextContent('Pantry')
   })
 })

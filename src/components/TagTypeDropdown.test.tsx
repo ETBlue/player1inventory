@@ -181,4 +181,42 @@ describe('TagTypeDropdown', () => {
       screen.getByRole('menuitemcheckbox', { name: /fruits/i }),
     ).toBeInTheDocument()
   })
+
+  it('displays tags in the order received from parent', async () => {
+    const mockTagType: TagType = {
+      id: 'type-1',
+      name: 'Category',
+      color: TagColor.blue,
+    }
+
+    // Parent component (ItemFilters) sorts tags before passing them.
+    // This test verifies TagTypeDropdown preserves that order without re-shuffling.
+    const tags: Tag[] = [
+      { id: '2', name: 'Apple', typeId: 'type-1' },
+      { id: '3', name: 'Mango', typeId: 'type-1' },
+      { id: '1', name: 'Zebra', typeId: 'type-1' },
+    ]
+
+    const user = userEvent.setup()
+    render(
+      <TagTypeDropdown
+        tagType={mockTagType}
+        tags={tags}
+        selectedTagIds={[]}
+        tagCounts={[1, 2, 3]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    // Open dropdown
+    await user.click(screen.getByRole('button', { name: /category/i }))
+
+    const menuItems = screen.getAllByRole('menuitemcheckbox')
+
+    // Verify order matches input order
+    expect(menuItems[0]).toHaveTextContent('Apple')
+    expect(menuItems[1]).toHaveTextContent('Mango')
+    expect(menuItems[2]).toHaveTextContent('Zebra')
+  })
 })
