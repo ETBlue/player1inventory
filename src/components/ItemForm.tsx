@@ -166,8 +166,8 @@ export function ItemForm({
             <Input
               id="amountPerPackage"
               type="number"
-              step="0.001"
-              min={0.001}
+              step="1"
+              min={1}
               value={amountPerPackage}
               onChange={(e) => setAmountPerPackage(e.target.value)}
               placeholder="e.g., 1 (for 1L per bottle)"
