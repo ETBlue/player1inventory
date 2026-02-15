@@ -207,19 +207,18 @@ function ItemDetailTab() {
             />
           </div>
 
-          {item.measurementUnit && (
-            <div className="space-y-2">
-              <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
-              <Input
-                id="unpackedQuantity"
-                type="number"
-                min={0}
-                step={item.consumeAmount || 1}
-                value={unpackedQuantity}
-                onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
-              />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
+            <Input
+              id="unpackedQuantity"
+              type="number"
+              min={0}
+              step={item.consumeAmount || 1}
+              value={unpackedQuantity}
+              onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
+              disabled={!item.measurementUnit}
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

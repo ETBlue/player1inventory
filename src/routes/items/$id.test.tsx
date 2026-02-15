@@ -128,7 +128,7 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('shows unpacked quantity field only for dual-unit items', async () => {
+  it('unpacked quantity field is enabled for dual-unit items', async () => {
     // Given a dual-unit item
     const item = await createItem({
       name: 'Milk',
@@ -150,7 +150,39 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
     })
 
-    // Unpacked field should be visible for dual-unit items
-    expect(screen.getByLabelText(/^unpacked quantity$/i)).toBeInTheDocument()
+    // Unpacked field should be visible and enabled
+    const unpackedInput = screen.getByLabelText(
+      /^unpacked quantity$/i,
+    ) as HTMLInputElement
+    expect(unpackedInput).toBeInTheDocument()
+    expect(unpackedInput).not.toBeDisabled()
+  })
+
+  it('unpacked quantity field is disabled for single-unit items', async () => {
+    // Given a single-unit item
+    const item = await createItem({
+      name: 'Eggs',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
+    })
+
+    // Unpacked field should be visible but disabled
+    const unpackedInput = screen.getByLabelText(
+      /^unpacked quantity$/i,
+    ) as HTMLInputElement
+    expect(unpackedInput).toBeInTheDocument()
+    expect(unpackedInput).toBeDisabled()
   })
 })
