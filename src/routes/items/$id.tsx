@@ -5,7 +5,14 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ArrowLeft, History, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  History,
+  Settings2,
+  Tags,
+  Trash2,
+  Warehouse,
+} from 'lucide-react'
 import { useState } from 'react'
 import {
   AlertDialog,
@@ -75,80 +82,82 @@ function ItemLayoutInner() {
     <>
       <div className="min-h-screen">
         {/* Fixed Top Bar */}
-        <div className="fixed top-0 left-0 right-0 z-50 bg-background-elevated border-b">
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="neutral-ghost"
-                size="icon"
-                onClick={() => navigate({ to: '/' })}
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h1 className="text-xl font-bold truncate max-w-[300px]">
-                {item.name}
-              </h1>
-            </div>
+        <div
+          className={`px-3 flex items-center gap-2
+          fixed top-0 left-0 right-0 z-50 
+          bg-background-elevated 
+          border-b-2 border-accessory-default`}
+        >
+          <Button
+            variant="neutral-ghost"
+            size="icon"
+            onClick={() => navigate({ to: '/' })}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-md font-regular truncate flex-1">{item.name}</h1>
 
-            {/* Tabs */}
-            <div className="flex gap-1">
-              <Link
-                to="/items/$id"
-                params={{ id }}
-                activeOptions={{ exact: true }}
-                className="px-4 py-2 rounded-md hover:bg-background transition-colors"
-                activeProps={{
-                  className: 'bg-background font-medium',
-                }}
-                onClick={(e) => handleTabClick(e, `/items/${id}`)}
-              >
-                Stock
-              </Link>
-              <Link
-                to="/items/$id/info"
-                params={{ id }}
-                className="px-4 py-2 rounded-md hover:bg-background transition-colors"
-                activeProps={{
-                  className: 'bg-background font-medium',
-                }}
-                onClick={(e) => handleTabClick(e, `/items/${id}/info`)}
-              >
-                Info
-              </Link>
-              <Link
-                to="/items/$id/tags"
-                params={{ id }}
-                className="px-4 py-2 rounded-md hover:bg-background transition-colors"
-                activeProps={{
-                  className: 'bg-background font-medium',
-                }}
-                onClick={(e) => handleTabClick(e, `/items/${id}/tags`)}
-              >
-                Tags
-              </Link>
-            </div>
-
-            <div className="flex gap-2">
-              <Link to="/items/$id/log" params={{ id }}>
-                <Button variant="neutral-ghost" size="icon">
-                  <History className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Button
-                variant="destructive"
-                size="icon"
-                onClick={() => {
-                  if (confirm('Delete this item?')) {
-                    deleteItem.mutate(id, {
-                      onSuccess: () => navigate({ to: '/' }),
-                    })
-                  }
-                }}
-              >
-                <Trash2 className="h-5 w-5" />
-              </Button>
-            </div>
+          {/* Tabs */}
+          <div className="flex items-center">
+            <Link
+              to="/items/$id"
+              params={{ id }}
+              activeOptions={{ exact: true }}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{
+                className: 'border-foreground-muted',
+              }}
+              onClick={(e) => handleTabClick(e, `/items/${id}`)}
+            >
+              <Warehouse className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/items/$id/info"
+              params={{ id }}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{
+                className: 'border-foreground-muted',
+              }}
+              onClick={(e) => handleTabClick(e, `/items/${id}/info`)}
+            >
+              <Settings2 className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/items/$id/tags"
+              params={{ id }}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{
+                className: 'border-foreground-muted',
+              }}
+              onClick={(e) => handleTabClick(e, `/items/${id}/tags`)}
+            >
+              <Tags className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/items/$id/log"
+              params={{ id }}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{
+                className: 'border-foreground-muted',
+              }}
+              onClick={(e) => handleTabClick(e, `/items/${id}/log`)}
+            >
+              <History className="h-4 w-4" />
+            </Link>
           </div>
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={() => {
+              if (confirm('Delete this item?')) {
+                deleteItem.mutate(id, {
+                  onSuccess: () => navigate({ to: '/' }),
+                })
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Main Content with padding to clear fixed bar */}

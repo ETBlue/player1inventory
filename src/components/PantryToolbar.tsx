@@ -52,7 +52,7 @@ export function PantryToolbar({
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-accessory-default bg-background-surface">
+    <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-accessory-default bg-background-surface">
       <Button
         size="icon"
         variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
