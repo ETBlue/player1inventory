@@ -59,12 +59,12 @@ describe('Item detail page - manual quantity input', () => {
 
     // When user opens item detail page
     await waitFor(() => {
-      expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed quantity/i)).toBeInTheDocument()
     })
 
     // Initial value should be 2
     const packedInput = screen.getByLabelText(
-      /^packed quantity$/i,
+      /^packed quantity/i,
     ) as HTMLInputElement
     expect(packedInput.value).toBe('2')
 
@@ -110,11 +110,11 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/unpacked quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^unpacked quantity/i)).toBeInTheDocument()
     })
 
     // When user sets unpacked quantity to 0.5
-    const unpackedInput = screen.getByLabelText(/unpacked quantity/i)
+    const unpackedInput = screen.getByLabelText(/^unpacked quantity/i)
     await user.clear(unpackedInput)
     await user.type(unpackedInput, '0.5')
 
@@ -147,12 +147,12 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed quantity/i)).toBeInTheDocument()
     })
 
     // Unpacked field should be visible and enabled
     const unpackedInput = screen.getByLabelText(
-      /^unpacked quantity$/i,
+      /^unpacked quantity/i,
     ) as HTMLInputElement
     expect(unpackedInput).toBeInTheDocument()
     expect(unpackedInput).not.toBeDisabled()
@@ -175,12 +175,12 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed quantity/i)).toBeInTheDocument()
     })
 
     // Unpacked field should be visible but disabled
     const unpackedInput = screen.getByLabelText(
-      /^unpacked quantity$/i,
+      /^unpacked quantity/i,
     ) as HTMLInputElement
     expect(unpackedInput).toBeInTheDocument()
     expect(unpackedInput).toBeDisabled()

@@ -196,7 +196,13 @@ function ItemDetailTab() {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="packedQuantity">Packed Quantity</Label>
+            <Label htmlFor="packedQuantity">
+              Packed Quantity
+              {packageUnit && ` `}
+              {packageUnit && (
+                <span className="text-xs font-normal">({packageUnit})</span>
+              )}
+            </Label>
             <Input
               id="packedQuantity"
               type="number"
@@ -208,7 +214,13 @@ function ItemDetailTab() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="unpackedQuantity">Unpacked Quantity</Label>
+            <Label htmlFor="unpackedQuantity">
+              Unpacked Quantity
+              {measurementUnit && ` `}
+              {measurementUnit && (
+                <span className="text-xs font-normal">({measurementUnit})</span>
+              )}
+            </Label>
             <Input
               id="unpackedQuantity"
               type="number"
@@ -221,40 +233,42 @@ function ItemDetailTab() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="expirationMode">Expiration Mode</Label>
+          <Select
+            value={expirationMode}
+            onValueChange={(value: 'date' | 'days') => setExpirationMode(value)}
+          >
+            <SelectTrigger id="expirationMode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <span>Specific Date</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="days">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <span>Days from Purchase</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="expirationMode">Expiration Mode</Label>
-            <Select
-              value={expirationMode}
-              onValueChange={(value: 'date' | 'days') =>
-                setExpirationMode(value)
-              }
-            >
-              <SelectTrigger id="expirationMode">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="date">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>Specific Date</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="days">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Days from Purchase</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="expirationValue">
-              {expirationMode === 'date'
-                ? 'Expiration Date'
-                : 'Days Until Expiration'}
+              {expirationMode === 'date' ? (
+                'Expiration Date'
+              ) : (
+                <>
+                  Until Expiration{' '}
+                  <span className="text-xs font-normal">(days)</span>
+                </>
+              )}
             </Label>
             {expirationMode === 'date' ? (
               <Input
@@ -273,13 +287,25 @@ function ItemDetailTab() {
               />
             )}
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="expirationThreshold">
+              Warning when expires in{' '}
+              <span className="text-xs font-normal">(days)</span>
+            </Label>
+            <Input
+              id="expirationThreshold"
+              type="number"
+              min={0}
+              value={expirationThreshold}
+              onChange={(e) => setExpirationThreshold(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
       {/* Item Info Section */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold border-b pb-2">Item Info</h2>
-
         <div className="space-y-2">
           <Label htmlFor="name">Name *</Label>
           <Input
@@ -289,17 +315,15 @@ function ItemDetailTab() {
             required
           />
         </div>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="packageUnit">Package Unit</Label>
-            <Input
-              id="packageUnit"
-              value={packageUnit}
-              onChange={(e) => setPackageUnit(e.target.value)}
-            />
-          </div>
-
+        <div className="space-y-2">
+          <Label htmlFor="packageUnit">Package Unit</Label>
+          <Input
+            id="packageUnit"
+            value={packageUnit}
+            onChange={(e) => setPackageUnit(e.target.value)}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="measurementUnit">Measurement Unit</Label>
             <Input
@@ -310,7 +334,13 @@ function ItemDetailTab() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="amountPerPackage">Amount per Package</Label>
+            <Label htmlFor="amountPerPackage">
+              Amount per Package
+              {measurementUnit && ` `}
+              {measurementUnit && (
+                <span className="text-xs font-normal">({measurementUnit})</span>
+              )}
+            </Label>
             <Input
               id="amountPerPackage"
               type="number"
@@ -322,7 +352,6 @@ function ItemDetailTab() {
             />
           </div>
         </div>
-
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <Switch
@@ -335,14 +364,25 @@ function ItemDetailTab() {
             />
             <Label htmlFor="targetUnit" className="cursor-pointer">
               Track target in measurement
-              {measurementUnit && ` (${measurementUnit})`}
+              {measurementUnit && ` `}
+              {measurementUnit && (
+                <span className="text-xs font-normal">({measurementUnit})</span>
+              )}
             </Label>
           </div>
         </div>
-
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="targetQuantity">Target Quantity</Label>
+            <Label htmlFor="targetQuantity">
+              Target Quantity
+              {(targetUnit === 'package' ? packageUnit : measurementUnit) &&
+                ` `}
+              {(targetUnit === 'package' ? packageUnit : measurementUnit) && (
+                <span className="text-xs font-normal">
+                  ({targetUnit === 'package' ? packageUnit : measurementUnit})
+                </span>
+              )}
+            </Label>
             <Input
               id="targetQuantity"
               type="number"
@@ -354,7 +394,16 @@ function ItemDetailTab() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="refillThreshold">Refill When Below</Label>
+            <Label htmlFor="refillThreshold">
+              Refill When Below
+              {(targetUnit === 'package' ? packageUnit : measurementUnit) &&
+                ` `}
+              {(targetUnit === 'package' ? packageUnit : measurementUnit) && (
+                <span className="text-xs font-normal">
+                  ({targetUnit === 'package' ? packageUnit : measurementUnit})
+                </span>
+              )}
+            </Label>
             <Input
               id="refillThreshold"
               type="number"
@@ -364,33 +413,27 @@ function ItemDetailTab() {
               onChange={(e) => setRefillThreshold(Number(e.target.value))}
             />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="consumeAmount">Amount per Consume</Label>
-            <Input
-              id="consumeAmount"
-              type="number"
-              step="0.001"
-              min={0.001}
-              value={consumeAmount}
-              onChange={(e) => setConsumeAmount(Number(e.target.value))}
-              required
-            />
-          </div>
         </div>
-
         <div className="space-y-2">
-          <Label htmlFor="expirationThreshold">
-            Expiration Warning Threshold (days)
+          <Label htmlFor="consumeAmount">
+            Amount per Consume
+            {(targetUnit === 'package' ? packageUnit : measurementUnit) && ` `}
+            {(targetUnit === 'package' ? packageUnit : measurementUnit) && (
+              <span className="text-xs font-normal">
+                ({targetUnit === 'package' ? packageUnit : measurementUnit})
+              </span>
+            )}
           </Label>
           <Input
-            id="expirationThreshold"
+            id="consumeAmount"
             type="number"
-            min={0}
-            value={expirationThreshold}
-            onChange={(e) => setExpirationThreshold(e.target.value)}
+            step="0.001"
+            min={0.001}
+            value={consumeAmount}
+            onChange={(e) => setConsumeAmount(Number(e.target.value))}
+            required
           />
-        </div>
+        </div>{' '}
       </div>
 
       <Button type="submit" disabled={!isDirty}>
