@@ -189,19 +189,22 @@ function ItemDetailTab() {
   if (!item) return null
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl">
+    <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl mx-auto">
       {/* Stock Section */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold border-b pb-2">Stock</h2>
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+          <div className="h-px bg-accessory-emphasized" />
+          <h2 className="text-sm font-medium uppercase">Stock Status</h2>
+          <div className="h-px bg-accessory-emphasized" />
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
+          <div className="">
             <Label htmlFor="packedQuantity">
-              Packed Quantity
-              {packageUnit && ` `}
-              {packageUnit && (
-                <span className="text-xs font-normal">({packageUnit})</span>
-              )}
+              Quantity{' '}
+              <span className="text-xs font-normal">
+                ({packageUnit ? packageUnit : 'pack'})
+              </span>
             </Label>
             <Input
               id="packedQuantity"
@@ -211,37 +214,38 @@ function ItemDetailTab() {
               value={packedQuantity}
               onChange={(e) => setPackedQuantity(Number(e.target.value))}
             />
-            <p className="text-sm text-foreground-muted">
+            <p className="text-xs text-foreground-muted">
               Number of whole packages in stock
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="">
             <Label htmlFor="unpackedQuantity">
-              Unpacked Quantity
-              {measurementUnit && ` `}
-              {measurementUnit && (
-                <span className="text-xs font-normal">({measurementUnit})</span>
-              )}
+              Unpacked Quantity{' '}
+              <span className="text-xs font-normal">
+                (
+                {targetUnit === 'measurement'
+                  ? measurementUnit
+                  : packageUnit || 'pack'}
+                )
+              </span>
             </Label>
             <Input
               id="unpackedQuantity"
               type="number"
               min={0}
-              step={item.consumeAmount || 1}
+              step={consumeAmount || 1}
               value={unpackedQuantity}
               onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
-              disabled={!item.measurementUnit}
             />
-            <p className="text-sm text-foreground-muted">
-              Loose amount {measurementUnit && `(${measurementUnit}) `}from
-              opened package
+            <p className="text-xs text-foreground-muted">
+              Loose amount from opened package(s)
             </p>
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="expirationMode">Expiration Mode</Label>
+        <div className="">
+          <Label htmlFor="expirationMode">Calculate Expiration based on</Label>
           <Select
             value={expirationMode}
             onValueChange={(value: 'date' | 'days') => setExpirationMode(value)}
@@ -264,17 +268,15 @@ function ItemDetailTab() {
               </SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-sm text-foreground-muted">Choose tracking mode</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
+          <div className="">
             <Label htmlFor="expirationValue">
               {expirationMode === 'date' ? (
-                'Expiration Date'
+                'Expires on'
               ) : (
                 <>
-                  Until Expiration{' '}
-                  <span className="text-xs font-normal">(days)</span>
+                  Expires in <span className="text-xs font-normal">(days)</span>
                 </>
               )}
             </Label>
@@ -294,16 +296,10 @@ function ItemDetailTab() {
                 onChange={(e) => setEstimatedDueDays(e.target.value)}
               />
             )}
-            <p className="text-sm text-foreground-muted">
-              {expirationMode === 'date'
-                ? 'Set specific expiration date'
-                : 'Auto-calculate from purchase date'}
-            </p>
           </div>
-          <div className="space-y-2">
+          <div className="">
             <Label htmlFor="expirationThreshold">
-              Warning when expires in{' '}
-              <span className="text-xs font-normal">(days)</span>
+              Warning in <span className="text-xs font-normal">(days)</span>
             </Label>
             <Input
               id="expirationThreshold"
@@ -312,17 +308,21 @@ function ItemDetailTab() {
               value={expirationThreshold}
               onChange={(e) => setExpirationThreshold(e.target.value)}
             />
-            <p className="text-sm text-foreground-muted">
-              Shows warning N days before expiration
+            <p className="text-xs text-foreground-muted">
+              Shows warning when about to expire
             </p>
           </div>
         </div>
       </div>
 
       {/* Item Info Section */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold border-b pb-2">Item Info</h2>
-        <div className="space-y-2">
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+          <div className="h-px bg-accessory-emphasized" />
+          <h2 className="text-sm font-medium uppercase">Item Info</h2>
+          <div className="h-px bg-accessory-emphasized" />
+        </div>
+        <div className="">
           <Label htmlFor="name">Name *</Label>
           <Input
             id="name"
@@ -331,31 +331,113 @@ function ItemDetailTab() {
             required
           />
         </div>
-        <div className="space-y-2">
+        <div className="">
           <Label htmlFor="packageUnit">Package Unit</Label>
           <Input
             id="packageUnit"
             value={packageUnit}
+            placeholder="default: pack"
             onChange={(e) => setPackageUnit(e.target.value)}
           />
-          <p className="text-sm text-foreground-muted">
-            Unit for whole packages
-          </p>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
+          <div className="">
+            <Label htmlFor="targetQuantity">
+              Target Quantity{' '}
+              <span className="text-xs font-normal">
+                (
+                {targetUnit === 'measurement'
+                  ? measurementUnit
+                  : packageUnit || 'pack'}
+                )
+              </span>
+            </Label>
+            <Input
+              id="targetQuantity"
+              type="number"
+              min={0}
+              step={targetUnit === 'package' ? 1 : consumeAmount || 1}
+              value={targetQuantity}
+              onChange={(e) => setTargetQuantity(Number(e.target.value))}
+            />
+            <p className="text-xs text-foreground-muted">
+              Item becomes inactive when set to 0
+            </p>
+          </div>
+
+          <div className="">
+            <Label htmlFor="refillThreshold">
+              Refill When Below{' '}
+              <span className="text-xs font-normal">
+                (
+                {targetUnit === 'measurement'
+                  ? measurementUnit
+                  : packageUnit || 'pack'}
+                )
+              </span>
+            </Label>
+            <Input
+              id="refillThreshold"
+              type="number"
+              min={0}
+              step={targetUnit === 'package' ? 1 : consumeAmount || 1}
+              value={refillThreshold}
+              onChange={(e) => setRefillThreshold(Number(e.target.value))}
+            />
+            <p className="text-xs text-foreground-muted">
+              Shows warning on low stock
+            </p>
+          </div>
+        </div>
+        <div className="">
+          <Label htmlFor="consumeAmount">
+            Amount per Consume{' '}
+            <span className="text-xs font-normal">
+              (
+              {targetUnit === 'measurement'
+                ? measurementUnit
+                : packageUnit || 'pack'}
+              )
+            </span>
+          </Label>
+          <Input
+            id="consumeAmount"
+            type="number"
+            step="0.01"
+            min={0}
+            value={consumeAmount}
+            onChange={(e) => setConsumeAmount(Number(e.target.value))}
+            required
+          />
+          <p className="text-xs text-foreground-muted">
+            Amount added/removed per +/- button click
+          </p>
+        </div>
+      </div>
+
+      {/* Advanced Section */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+          <div className="h-px bg-accessory-emphasized" />
+          <h2 className="text-sm font-medium uppercase">
+            Advanced Configuration
+          </h2>
+          <div className="h-px bg-accessory-emphasized" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="">
             <Label htmlFor="measurementUnit">Measurement Unit</Label>
             <Input
               id="measurementUnit"
               value={measurementUnit}
               onChange={(e) => setMeasurementUnit(e.target.value)}
             />
-            <p className="text-sm text-foreground-muted">
-              For tracking partial packages
+            <p className="text-xs text-foreground-muted">
+              Precise unit like g / lb / ml
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="">
             <Label htmlFor="amountPerPackage">
               Amount per Package
               {measurementUnit && ` `}
@@ -372,12 +454,12 @@ function ItemDetailTab() {
               onChange={(e) => setAmountPerPackage(e.target.value)}
               disabled={!measurementUnit}
             />
-            <p className="text-sm text-foreground-muted">
-              {measurementUnit || 'Unit'} per pack
+            <p className="text-xs text-foreground-muted">
+              How many {measurementUnit || '?'} per pack
             </p>
           </div>
         </div>
-        <div className="space-y-2">
+        <div className="">
           <div className="flex items-center gap-3">
             <Switch
               id="targetUnit"
@@ -385,89 +467,20 @@ function ItemDetailTab() {
               onCheckedChange={(checked) =>
                 setTargetUnit(checked ? 'measurement' : 'package')
               }
-              disabled={!measurementUnit}
+              disabled={!measurementUnit || !amountPerPackage}
             />
             <Label htmlFor="targetUnit" className="cursor-pointer">
-              Track target in measurement
-              {measurementUnit && ` `}
-              {measurementUnit && (
-                <span className="text-xs font-normal">({measurementUnit})</span>
-              )}
-            </Label>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="targetQuantity">
-              Target Quantity
-              {(targetUnit === 'package' ? packageUnit : measurementUnit) &&
-                ` `}
-              {(targetUnit === 'package' ? packageUnit : measurementUnit) && (
-                <span className="text-xs font-normal">
-                  ({targetUnit === 'package' ? packageUnit : measurementUnit})
-                </span>
-              )}
-            </Label>
-            <Input
-              id="targetQuantity"
-              type="number"
-              min={0}
-              step={targetUnit === 'package' ? 1 : consumeAmount || 1}
-              value={targetQuantity}
-              onChange={(e) => setTargetQuantity(Number(e.target.value))}
-            />
-            <p className="text-sm text-foreground-muted">
-              Set to 0 to mark as inactive
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="refillThreshold">
-              Refill When Below
-              {(targetUnit === 'package' ? packageUnit : measurementUnit) &&
-                ` `}
-              {(targetUnit === 'package' ? packageUnit : measurementUnit) && (
-                <span className="text-xs font-normal">
-                  ({targetUnit === 'package' ? packageUnit : measurementUnit})
-                </span>
-              )}
-            </Label>
-            <Input
-              id="refillThreshold"
-              type="number"
-              min={0}
-              step={targetUnit === 'package' ? 1 : consumeAmount || 1}
-              value={refillThreshold}
-              onChange={(e) => setRefillThreshold(Number(e.target.value))}
-            />
-            <p className="text-sm text-foreground-muted">
-              Triggers low stock warning
-            </p>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="consumeAmount">
-            Amount per Consume
-            {(targetUnit === 'package' ? packageUnit : measurementUnit) && ` `}
-            {(targetUnit === 'package' ? packageUnit : measurementUnit) && (
+              Track in measurement{' '}
               <span className="text-xs font-normal">
-                ({targetUnit === 'package' ? packageUnit : measurementUnit})
+                ({measurementUnit ? measurementUnit : '?'})
               </span>
-            )}
-          </Label>
-          <Input
-            id="consumeAmount"
-            type="number"
-            step="0.001"
-            min={0.001}
-            value={consumeAmount}
-            onChange={(e) => setConsumeAmount(Number(e.target.value))}
-            required
-          />
-          <p className="text-sm text-foreground-muted">
-            Amount removed per consume click
+            </Label>
+          </div>
+          <p className="text-xs text-foreground-muted">
+            When both measurement unit and amount per package are set, the
+            amount of the item can be tracked precisely
           </p>
-        </div>{' '}
+        </div>
       </div>
 
       <Button type="submit" disabled={!isDirty}>
