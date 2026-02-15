@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ArrowLeft, History, Tags, Trash2, Warehouse } from 'lucide-react'
+import { ArrowLeft, History, Settings2, Tags, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import {
   AlertDialog,
@@ -81,13 +81,15 @@ function ItemLayoutInner() {
           bg-background-elevated 
           border-b-2 border-accessory-default`}
         >
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            onClick={() => navigate({ to: '/' })}
+          <Link
+            to="/"
+            className="px-3 py-4 hover:bg-background-surface transition-colors"
+            onClick={(e) => {
+              handleTabClick(e, `/`)
+            }}
           >
             <ArrowLeft className="h-4 w-4" />
-          </Button>
+          </Link>
           <h1 className="text-md font-regular truncate flex-1">{item.name}</h1>
 
           {/* Tabs */}
@@ -102,7 +104,7 @@ function ItemLayoutInner() {
               }}
               onClick={(e) => handleTabClick(e, `/items/${id}`)}
             >
-              <Warehouse className="h-4 w-4" />
+              <Settings2 className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/tags"
