@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
+import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useItem, useItemLogs } from '@/hooks'
+import { useItemLayout } from '@/hooks/useItemLayout'
 
 export const Route = createFileRoute('/items/$id/log')({
   component: ItemHistory,
@@ -13,6 +15,12 @@ function ItemHistory() {
   const navigate = useNavigate()
   const { data: item } = useItem(id)
   const { data: logs = [], isLoading } = useItemLogs(id)
+  const { registerDirtyState } = useItemLayout()
+
+  // Logs tab never has unsaved changes
+  useEffect(() => {
+    registerDirtyState(false)
+  }, [registerDirtyState])
 
   if (isLoading) {
     return <div className="p-4">Loading...</div>
