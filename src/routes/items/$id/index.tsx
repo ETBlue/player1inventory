@@ -211,6 +211,9 @@ function ItemDetailTab() {
               value={packedQuantity}
               onChange={(e) => setPackedQuantity(Number(e.target.value))}
             />
+            <p className="text-sm text-foreground-muted">
+              Number of whole packages in stock
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -230,6 +233,10 @@ function ItemDetailTab() {
               onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
               disabled={!item.measurementUnit}
             />
+            <p className="text-sm text-foreground-muted">
+              Loose amount {measurementUnit && `(${measurementUnit}) `}from
+              opened package
+            </p>
           </div>
         </div>
 
@@ -257,6 +264,7 @@ function ItemDetailTab() {
               </SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-sm text-foreground-muted">Choose tracking mode</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -286,6 +294,11 @@ function ItemDetailTab() {
                 onChange={(e) => setEstimatedDueDays(e.target.value)}
               />
             )}
+            <p className="text-sm text-foreground-muted">
+              {expirationMode === 'date'
+                ? 'Set specific expiration date'
+                : 'Auto-calculate from purchase date'}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="expirationThreshold">
@@ -299,6 +312,9 @@ function ItemDetailTab() {
               value={expirationThreshold}
               onChange={(e) => setExpirationThreshold(e.target.value)}
             />
+            <p className="text-sm text-foreground-muted">
+              Shows warning N days before expiration
+            </p>
           </div>
         </div>
       </div>
@@ -322,6 +338,9 @@ function ItemDetailTab() {
             value={packageUnit}
             onChange={(e) => setPackageUnit(e.target.value)}
           />
+          <p className="text-sm text-foreground-muted">
+            Unit for whole packages
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -331,6 +350,9 @@ function ItemDetailTab() {
               value={measurementUnit}
               onChange={(e) => setMeasurementUnit(e.target.value)}
             />
+            <p className="text-sm text-foreground-muted">
+              For tracking partial packages
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -350,6 +372,9 @@ function ItemDetailTab() {
               onChange={(e) => setAmountPerPackage(e.target.value)}
               disabled={!measurementUnit}
             />
+            <p className="text-sm text-foreground-muted">
+              {measurementUnit || 'Unit'} per pack
+            </p>
           </div>
         </div>
         <div className="space-y-2">
@@ -391,6 +416,9 @@ function ItemDetailTab() {
               value={targetQuantity}
               onChange={(e) => setTargetQuantity(Number(e.target.value))}
             />
+            <p className="text-sm text-foreground-muted">
+              Set to 0 to mark as inactive
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -412,6 +440,9 @@ function ItemDetailTab() {
               value={refillThreshold}
               onChange={(e) => setRefillThreshold(Number(e.target.value))}
             />
+            <p className="text-sm text-foreground-muted">
+              Triggers low stock warning
+            </p>
           </div>
         </div>
         <div className="space-y-2">
@@ -433,6 +464,9 @@ function ItemDetailTab() {
             onChange={(e) => setConsumeAmount(Number(e.target.value))}
             required
           />
+          <p className="text-sm text-foreground-muted">
+            Amount removed per consume click
+          </p>
         </div>{' '}
       </div>
 
