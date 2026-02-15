@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useItem, useUpdateItem } from '@/hooks'
-import { useToast } from '@/hooks/use-toast'
 import { useItemLayout } from '@/hooks/useItemLayout'
 
 export const Route = createFileRoute('/items/$id/info')({
@@ -16,7 +15,6 @@ function InfoTab() {
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
-  const { toast } = useToast()
   const { registerDirtyState } = useItemLayout()
 
   const [name, setName] = useState(item?.name ?? '')
@@ -134,14 +132,7 @@ function InfoTab() {
       ? Number(expirationThreshold)
       : undefined
 
-    updateItem.mutate(
-      { id, updates },
-      {
-        onSuccess: () => {
-          toast({ title: 'Item info updated' })
-        },
-      },
-    )
+    updateItem.mutate({ id, updates })
   }
 
   if (!item) return null

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useCreateItem, useTags, useTagTypes } from '@/hooks'
-import { useToast } from '@/hooks/use-toast'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 import type { Item } from '@/types'
 
@@ -17,7 +16,6 @@ export const Route = createFileRoute('/items/new')({
 
 function NewItemPage() {
   const navigate = useNavigate()
-  const { toast } = useToast()
   const createItem = useCreateItem()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: allTags = [] } = useTags()
@@ -76,7 +74,7 @@ function NewItemPage() {
     }
   }, [measurementUnit, targetUnit])
 
-  const clearForm = () => {
+  const _clearForm = () => {
     setName('')
     setPackageUnit('')
     setMeasurementUnit('')
@@ -114,43 +112,8 @@ function NewItemPage() {
 
     createItem.mutate(data, {
       onSuccess: (newItem) => {
-        const { dismiss } = toast({
-          title: 'Item created',
-          description: (
-            <div className="flex gap-2 mt-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  dismiss()
-                  navigate({ to: '/items/$id', params: { id: newItem.id } })
-                }}
-              >
-                View item
-              </Button>
-              <Button
-                size="sm"
-                variant="neutral-outline"
-                onClick={() => {
-                  dismiss()
-                  navigate({ to: '/' })
-                }}
-              >
-                Back to list
-              </Button>
-              <Button
-                size="sm"
-                variant="neutral-outline"
-                onClick={() => {
-                  dismiss()
-                  clearForm()
-                }}
-              >
-                Create another
-              </Button>
-            </div>
-          ),
-          duration: 10000,
-        })
+        // Navigate to the newly created item
+        navigate({ to: '/items/$id', params: { id: newItem.id } })
       },
     })
   }

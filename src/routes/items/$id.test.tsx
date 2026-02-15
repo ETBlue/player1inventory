@@ -128,17 +128,19 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('shows unpacked quantity field for all items', async () => {
-    // Given a package-only item
+  it('shows unpacked quantity field only for dual-unit items', async () => {
+    // Given a dual-unit item
     const item = await createItem({
-      name: 'Rice',
-      packageUnit: 'pack',
-      targetUnit: 'package',
+      name: 'Milk',
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
       targetQuantity: 5,
       refillThreshold: 2,
       packedQuantity: 3,
       unpackedQuantity: 0,
-      consumeAmount: 1,
+      consumeAmount: 0.25,
       tagIds: [],
     })
 
@@ -148,7 +150,7 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByLabelText(/^packed quantity$/i)).toBeInTheDocument()
     })
 
-    // Unpacked field should always be visible
+    // Unpacked field should be visible for dual-unit items
     expect(screen.getByLabelText(/^unpacked quantity$/i)).toBeInTheDocument()
   })
 })

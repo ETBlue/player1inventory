@@ -12,7 +12,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useItem, useUpdateItem } from '@/hooks'
-import { useToast } from '@/hooks/use-toast'
 import { useItemLayout } from '@/hooks/useItemLayout'
 
 export const Route = createFileRoute('/items/$id/')({
@@ -23,7 +22,6 @@ function StockTab() {
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
-  const { toast } = useToast()
   const { registerDirtyState } = useItemLayout()
 
   const [packedQuantity, setPackedQuantity] = useState(
@@ -83,14 +81,7 @@ function StockTab() {
       updates.estimatedDueDays = undefined
     }
 
-    updateItem.mutate(
-      { id, updates },
-      {
-        onSuccess: () => {
-          toast({ title: 'Stock updated' })
-        },
-      },
-    )
+    updateItem.mutate({ id, updates })
   }
 
   if (!item) return null

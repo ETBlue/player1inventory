@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/router'
+import { createFileRoute } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
