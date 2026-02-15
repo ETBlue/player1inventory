@@ -145,7 +145,7 @@ function ItemLayoutInner() {
         </div>
 
         {/* Main Content with padding to clear fixed bar */}
-        <div className="pt-20 p-4">
+        <div className="pt-16 p-4">
           <Outlet />
         </div>
       </div>
