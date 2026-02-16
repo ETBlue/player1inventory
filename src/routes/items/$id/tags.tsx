@@ -56,8 +56,11 @@ function TagsTab() {
               const sortedTypeTags = sortTagsByName(typeTags)
 
               return (
-                <div key={tagType.id}>
-                  <p className="text-sm font-medium text-foreground-muted mb-1">
+                <div
+                  key={tagType.id}
+                  className="first:mt-0 mt-6 first:pt-0 pt-3 first:border-t-0 border-t border-border"
+                >
+                  <p className="text-sm font-medium text-foreground-muted mb-1 capitalize">
                     {tagType.name}
                   </p>
                   <div className="flex flex-wrap gap-2">
