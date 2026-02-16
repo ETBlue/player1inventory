@@ -338,6 +338,7 @@ function ItemDetailTab() {
 
               setPackedQuantity(itemCopy.packedQuantity)
               setUnpackedQuantity(itemCopy.unpackedQuantity)
+              // Note: Don't update initialValues - form is now dirty and needs saving
             }}
           >
             Pack unpacked
