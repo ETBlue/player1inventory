@@ -642,8 +642,9 @@ describe('Home page filtering integration', () => {
       expect(logs).toHaveLength(0)
     })
 
-    // And item quantity is updated
+    // And item quantity is updated (added to unpacked, not normalized)
     const updatedItem = await db.items.get(item.id)
-    expect(updatedItem?.packedQuantity).toBe(6)
+    expect(updatedItem?.packedQuantity).toBe(5)
+    expect(updatedItem?.unpackedQuantity).toBe(1)
   })
 })
