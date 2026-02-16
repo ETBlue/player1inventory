@@ -222,51 +222,23 @@ function PantryView() {
               tagTypes={tagTypes}
               showTags={tagsVisible}
               onConsume={async () => {
-                // Calculate quantity before consuming
-                const quantityBefore = getCurrentQuantity(item)
-
-                // Apply consume logic
                 const updatedItem = { ...item }
                 consumeItem(updatedItem, updatedItem.consumeAmount)
 
-                // Calculate quantity after consuming
-                const quantityAfter = getCurrentQuantity(updatedItem)
-                const actualDelta = quantityAfter - quantityBefore
-
-                // Update database
                 await updateItem.mutateAsync({
                   id: item.id,
                   updates: {
                     packedQuantity: updatedItem.packedQuantity,
                     unpackedQuantity: updatedItem.unpackedQuantity,
-                    dueDate: updatedItem.dueDate,
                   },
-                })
-
-                // Log inventory change
-                addLog.mutate({
-                  itemId: item.id,
-                  delta: actualDelta,
-                  occurredAt: new Date(),
                 })
               }}
               onAdd={async () => {
-                // Calculate quantity before adding
-                const quantityBefore = getCurrentQuantity(item)
-
-                // Apply add logic
                 const updatedItem = { ...item }
                 const purchaseDate = new Date()
                 addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-
-                // Normalize unpacked (convert excess to packed)
                 normalizeUnpacked(updatedItem)
 
-                // Calculate quantity after adding
-                const quantityAfter = getCurrentQuantity(updatedItem)
-                const actualDelta = quantityAfter - quantityBefore
-
-                // Update database
                 await updateItem.mutateAsync({
                   id: item.id,
                   updates: {
@@ -274,13 +246,6 @@ function PantryView() {
                     unpackedQuantity: updatedItem.unpackedQuantity,
                     dueDate: updatedItem.dueDate,
                   },
-                })
-
-                // Log inventory change
-                addLog.mutate({
-                  itemId: item.id,
-                  delta: actualDelta,
-                  occurredAt: purchaseDate,
                 })
               }}
               onTagClick={handleTagClick}
@@ -309,39 +274,18 @@ function PantryView() {
                   tagTypes={tagTypes}
                   showTags={tagsVisible}
                   onConsume={async () => {
-                    // Calculate quantity before consuming
-                    const quantityBefore = getCurrentQuantity(item)
-
-                    // Apply consume logic
                     const updatedItem = { ...item }
                     consumeItem(updatedItem, updatedItem.consumeAmount)
 
-                    // Calculate quantity after consuming
-                    const quantityAfter = getCurrentQuantity(updatedItem)
-                    const actualDelta = quantityAfter - quantityBefore
-
-                    // Update database
                     await updateItem.mutateAsync({
                       id: item.id,
                       updates: {
                         packedQuantity: updatedItem.packedQuantity,
                         unpackedQuantity: updatedItem.unpackedQuantity,
-                        dueDate: updatedItem.dueDate,
                       },
-                    })
-
-                    // Log inventory change
-                    addLog.mutate({
-                      itemId: item.id,
-                      delta: actualDelta,
-                      occurredAt: new Date(),
                     })
                   }}
                   onAdd={async () => {
-                    // Calculate quantity before adding
-                    const quantityBefore = getCurrentQuantity(item)
-
-                    // Apply add logic
                     const updatedItem = { ...item }
                     const purchaseDate = new Date()
                     addItem(
@@ -349,15 +293,8 @@ function PantryView() {
                       updatedItem.consumeAmount,
                       purchaseDate,
                     )
-
-                    // Normalize unpacked (convert excess to packed)
                     normalizeUnpacked(updatedItem)
 
-                    // Calculate quantity after adding
-                    const quantityAfter = getCurrentQuantity(updatedItem)
-                    const actualDelta = quantityAfter - quantityBefore
-
-                    // Update database
                     await updateItem.mutateAsync({
                       id: item.id,
                       updates: {
@@ -365,13 +302,6 @@ function PantryView() {
                         unpackedQuantity: updatedItem.unpackedQuantity,
                         dueDate: updatedItem.dueDate,
                       },
-                    })
-
-                    // Log inventory change
-                    addLog.mutate({
-                      itemId: item.id,
-                      delta: actualDelta,
-                      occurredAt: purchaseDate,
                     })
                   }}
                   onTagClick={handleTagClick}
