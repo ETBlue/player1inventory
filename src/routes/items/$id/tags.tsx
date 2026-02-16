@@ -77,14 +77,16 @@ function TagsTab() {
               const sortedTypeTags = sortTagsByName(typeTags)
 
               return (
-                <div
-                  key={tagType.id}
-                  className="first:mt-0 mt-6 first:pt-0 pt-3 first:border-t-0 border-t border-border"
-                >
-                  <p className="text-sm font-medium text-foreground-muted mb-1 capitalize">
-                    {tagType.name}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
+                <div key={tagType.id}>
+                  <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center my-2">
+                    <div className="h-px bg-accessory-emphasized" />
+                    <h2 className="text-sm font-medium uppercase">
+                      {tagType.name}
+                    </h2>
+                    <div className="h-px bg-accessory-emphasized" />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 items-center">
                     {sortedTypeTags.map((tag) => {
                       const isSelected = item.tagIds.includes(tag.id)
 
@@ -105,11 +107,11 @@ function TagsTab() {
                     <Button
                       variant="neutral-ghost"
                       size="sm"
-                      className="h-6 px-2 text-xs"
+                      className="px-0 py-0 gap-1 text-xs -my-1"
                       onClick={() => setAddTagDialog(tagType.id)}
                     >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Add Tag
+                      <Plus />
+                      New Tag
                     </Button>
                   </div>
                 </div>
