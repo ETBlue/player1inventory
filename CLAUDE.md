@@ -61,26 +61,62 @@ src/
 
 ## Features
 
-### Manual Quantity Input
+### Tabbed Item Form
 
-Users can manually set current inventory quantities in the item detail form:
-- **Packed Quantity** - Number of whole packages (always visible)
-- **Unpacked Quantity** - Loose amount from opened packages (only for dual-unit items)
+Item detail pages use a tabbed layout with three sections:
 
-**Location:** Item detail page (`/items/$id`) via ItemForm component
+**1. Stock Status (default tab, `/items/$id`)**
+- Quantity fields for packed and unpacked stock
+- Unpacked quantity field always enabled (supports fractional packages)
+- Expiration tracking (specific date or days from purchase)
+- Warning threshold for expiring items
+- Save button disabled when no changes made
 
-**Behavior:**
-- Pre-populates with current `item.packedQuantity` and `item.unpackedQuantity`
-- Validates non-negative values
-- Warns when unpacked ≥ amountPerPackage
-- Saves directly to database without creating inventory log entries
-- Use for initial setup, corrections, or adjustments
+**2. Item Info (`/items/$id/info`)** - Not yet implemented
+- Item name and units configuration
+- Target quantity and refill threshold
+- Consumption amount settings
+
+**3. Tags (`/items/$id/tags`)** - Not yet implemented
+- Tag assignment interface
+- Changes apply immediately without save button
+
+**Measurement Tracking Behavior:**
+
+The "Track in measurement" switch controls measurement-based quantity tracking:
+- **Switch always enabled** - Users can toggle freely between package/measurement modes
+- **When OFF** (package mode):
+  - Measurement fields (unit, amount per package) are disabled
+  - All quantities tracked in package units
+- **When ON** (measurement mode):
+  - Measurement fields become enabled and required
+  - Form cannot be submitted until both fields filled
+  - Quantities automatically convert between units when toggling
+
+**Unit Conversion:**
+
+When toggling between package/measurement modes, these fields auto-convert:
+- Unpacked quantity
+- Target quantity
+- Refill threshold
+- Amount per consume
+
+Conversion uses the `amountPerPackage` value (e.g., 500g per pack).
+
+**Dirty State Tracking:**
+
+Each tab tracks unsaved changes independently:
+- Navigation guard prevents tab switching with unsaved changes
+- Confirmation dialog offers "Discard" or "Cancel" options
+- Save button disabled when form is clean (no changes)
+- Logs tab never has unsaved changes (view-only)
 
 **Files:**
-- `src/components/ItemForm.tsx` - Form component with quantity fields
-- `src/components/ItemForm.test.tsx` - Component tests
-- `src/components/ItemForm.stories.tsx` - Storybook stories
+- `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
+- `src/routes/items/$id/index.tsx` - Stock Status tab implementation
+- `src/routes/items/$id.log.tsx` - History/logs tab (view-only)
 - `src/routes/items/$id.test.tsx` - Integration tests
+- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
 
 ## Design Tokens
 
