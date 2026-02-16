@@ -308,6 +308,21 @@ describe('consumeItem', () => {
     expect(item.packedQuantity).toBe(2) // One package opened
     expect(item.unpackedQuantity).toBe(0.7) // 0.2 + 1.0 - 0.5 = 0.7
   })
+
+  it('opens multiple packages when consuming exceeds one package in package mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 5,
+      unpackedQuantity: 0.2,
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      consumeAmount: 2.5,
+    }
+
+    consumeItem(item as Item, 2.5)
+
+    expect(item.packedQuantity).toBe(2) // Opened 3 packages (ceil(2.3) = 3), 5 - 3 = 2
+    expect(item.unpackedQuantity).toBe(0.7) // 0.2 + 3 - 2.5 = 0.7
+  })
 })
 
 describe('addItem', () => {
