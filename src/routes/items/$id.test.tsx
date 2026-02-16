@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -554,5 +554,40 @@ describe('Item detail page - manual quantity input', () => {
       const button = screen.getByRole('button', { name: /pack unpacked/i })
       expect(button).toBeEnabled()
     })
+  })
+
+  it('packs unpacked quantity when pack button clicked', async () => {
+    const item = await createItem({
+      name: 'Olive Oil',
+      packedQuantity: 1,
+      unpackedQuantity: 2500,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      packageUnit: 'bottle',
+      targetQuantity: 5000,
+      refillThreshold: 1000,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument() // packedQuantity
+      expect(screen.getByDisplayValue('2500')).toBeInTheDocument() // unpackedQuantity
+    })
+
+    const button = screen.getByRole('button', { name: /pack unpacked/i })
+    fireEvent.click(button)
+
+    // Should pack 2 bottles (2000g) and leave 500g unpacked
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument() // packedQuantity: 1 + 2 = 3
+      expect(screen.getByDisplayValue('500')).toBeInTheDocument() // unpackedQuantity: 2500 - 2000 = 500
+    })
+
+    // Button should still be disabled (500 < 1000)
+    expect(button).toBeDisabled()
   })
 })
