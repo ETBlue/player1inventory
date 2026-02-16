@@ -260,4 +260,101 @@ describe('ItemCard - Tag Sorting', () => {
     const icon = messageEl.querySelector('svg')
     expect(icon).toBeInTheDocument()
   })
+
+  it('converts packed quantity to measurement units for display when tracking in measurement', async () => {
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Olive Oil',
+      targetQuantity: 2000, // 2000g target
+      refillThreshold: 500,
+      packedQuantity: 3, // 3 bottles
+      unpackedQuantity: 100, // 100g unpacked
+      consumeAmount: 50,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      packageUnit: 'bottle',
+      amountPerPackage: 500, // 500g per bottle
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    await renderWithRouter(
+      <ItemCard
+        item={item as Item}
+        quantity={1600} // 3*500 + 100
+        tags={[]}
+        tagTypes={[]}
+        onConsume={() => {}}
+        onAdd={() => {}}
+      />,
+    )
+
+    // Should show converted packed quantity: 3 bottles × 500g = 1500g
+    expect(screen.getByText('1500 (+100)/2000')).toBeInTheDocument()
+  })
+
+  it('shows packed quantity as-is when tracking in packages', async () => {
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Cookies',
+      targetQuantity: 10, // 10 packs target
+      refillThreshold: 2,
+      packedQuantity: 5, // 5 packs
+      unpackedQuantity: 0.5, // 0.5 packs unpacked
+      consumeAmount: 1,
+      targetUnit: 'package',
+      packageUnit: 'pack',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    await renderWithRouter(
+      <ItemCard
+        item={item as Item}
+        quantity={5.5}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={() => {}}
+        onAdd={() => {}}
+      />,
+    )
+
+    // Should show packed quantity without conversion: 5 packs
+    expect(screen.getByText('5 (+0.5)/10')).toBeInTheDocument()
+  })
+
+  it('shows simple count when unpacked is 0 with measurement tracking', async () => {
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Milk',
+      targetQuantity: 2000, // 2000mL target
+      refillThreshold: 500,
+      packedQuantity: 2, // 2 bottles
+      unpackedQuantity: 0, // No unpacked
+      consumeAmount: 250,
+      targetUnit: 'measurement',
+      measurementUnit: 'mL',
+      packageUnit: 'bottle',
+      amountPerPackage: 1000, // 1000mL per bottle
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    await renderWithRouter(
+      <ItemCard
+        item={item as Item}
+        quantity={2000} // 2*1000
+        tags={[]}
+        tagTypes={[]}
+        onConsume={() => {}}
+        onAdd={() => {}}
+      />,
+    )
+
+    // Should show simple count with converted packed: 2000/2000
+    expect(screen.getByText('2000/2000')).toBeInTheDocument()
+  })
 })
