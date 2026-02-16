@@ -213,34 +213,25 @@ export function ItemProgressBar({
   const useContinuous =
     targetUnit === 'measurement' || target > SEGMENTED_MODE_MAX_TARGET
 
-  // Format count display - always show packed/unpacked separately when unpacked > 0
-  const countDisplay =
-    unpacked > 0 ? `${packed} (+${unpacked})/${target}` : `${current}/${target}`
-
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1">
-        {useContinuous ? (
-          <ContinuousProgressBar
-            current={current}
-            target={target}
-            status={status}
-            packed={packed}
-            unpacked={unpacked}
-          />
-        ) : (
-          <SegmentedProgressBar
-            current={current}
-            target={target}
-            status={status}
-            packed={packed}
-            unpacked={unpacked}
-          />
-        )}
-      </div>
-      <span className="text-xs text-foreground-muted whitespace-nowrap">
-        {countDisplay}
-      </span>
+    <div className="flex-1">
+      {useContinuous ? (
+        <ContinuousProgressBar
+          current={current}
+          target={target}
+          status={status}
+          packed={packed}
+          unpacked={unpacked}
+        />
+      ) : (
+        <SegmentedProgressBar
+          current={current}
+          target={target}
+          status={status}
+          packed={packed}
+          unpacked={unpacked}
+        />
+      )}
     </div>
   )
 }

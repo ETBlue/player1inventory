@@ -104,7 +104,7 @@ describe('ItemProgressBar with partial segments', () => {
     expect(segments[3]).toHaveAttribute('data-unpacked', '50')
   })
 
-  it('displays count as "packed (+unpacked)/target" in simple mode', () => {
+  it('renders progress bar without count display', () => {
     const { container } = render(
       <ItemProgressBar
         current={3.5}
@@ -116,23 +116,9 @@ describe('ItemProgressBar with partial segments', () => {
       />,
     )
 
-    expect(container.textContent).toContain('3 (+0.5)/5')
-  })
-
-  it('displays normal count when unpacked is 0 in simple mode', () => {
-    const { container } = render(
-      <ItemProgressBar
-        current={3}
-        target={5}
-        status="ok"
-        targetUnit="package"
-        packed={3}
-        unpacked={0}
-      />,
-    )
-
-    expect(container.textContent).toContain('3/5')
-    expect(container.textContent).not.toContain('+')
+    // Count display moved to ItemCard - progress bar should not show count
+    expect(container.textContent).not.toContain('3 (+0.5)/5')
+    expect(container.textContent).not.toContain('3/5')
   })
 
   it('shows packed and unpacked in continuous mode for simple items', () => {

@@ -51,14 +51,21 @@ export function ItemCard({
           params={{ id: item.id }}
           className="flex-1 min-w-0"
         >
-          <CardTitle className="flex gap-1">
-            <h3 className="truncate">{item.name}</h3>
-            <span className="text-xs font-normal">
-              (
-              {item.targetUnit === 'measurement' && item.measurementUnit
-                ? item.measurementUnit
-                : (item.packageUnit ?? 'units')}
-              )
+          <CardTitle className="flex gap-1 items-baseline justify-between">
+            <div className="flex gap-1 min-w-0">
+              <h3 className="truncate">{item.name}</h3>
+              <span className="text-xs font-normal">
+                (
+                {item.targetUnit === 'measurement' && item.measurementUnit
+                  ? item.measurementUnit
+                  : (item.packageUnit ?? 'units')}
+                )
+              </span>
+            </div>
+            <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
+              {item.unpackedQuantity > 0
+                ? `${item.packedQuantity} (+${item.unpackedQuantity})/${item.targetQuantity}`
+                : `${currentQuantity}/${item.targetQuantity}`}
             </span>
           </CardTitle>
           <ItemProgressBar
