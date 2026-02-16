@@ -1,17 +1,7 @@
 import type { Item } from '@/types'
 
-export type SortField = 'name' | 'quantity' | 'stock' | 'updatedAt' | 'expiring'
+export type SortField = 'name' | 'stock' | 'updatedAt' | 'expiring'
 export type SortDirection = 'asc' | 'desc'
-
-type StatusValue = 'error' | 'warning' | 'ok'
-
-function getStatus(item: Item, quantity: number | undefined): StatusValue {
-  if (quantity === undefined) return 'ok'
-  if (quantity < item.refillThreshold) return 'error'
-  if (item.refillThreshold > 0 && quantity === item.refillThreshold)
-    return 'warning'
-  return 'ok'
-}
 
 export function sortItems(
   items: Item[],
@@ -28,22 +18,13 @@ export function sortItems(
         comparison = a.name.localeCompare(b.name)
         break
 
-      case 'quantity': {
+      case 'stock': {
+        // Sort by progress percentage (current/target)
         const qtyA = quantities.get(a.id) ?? 0
         const qtyB = quantities.get(b.id) ?? 0
-        comparison = qtyA - qtyB
-        break
-      }
-
-      case 'stock': {
-        const statusOrder: Record<StatusValue, number> = {
-          error: 0,
-          warning: 1,
-          ok: 2,
-        }
-        const statusA = getStatus(a, quantities.get(a.id))
-        const statusB = getStatus(b, quantities.get(b.id))
-        comparison = statusOrder[statusA] - statusOrder[statusB]
+        const progressA = a.targetQuantity > 0 ? qtyA / a.targetQuantity : 1
+        const progressB = b.targetQuantity > 0 ? qtyB / b.targetQuantity : 1
+        comparison = progressA - progressB
         break
       }
 
