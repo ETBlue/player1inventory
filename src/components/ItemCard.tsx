@@ -43,6 +43,12 @@ export function ItemCard({
     estimatedDueDate &&
     estimatedDueDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000 // 3 days
 
+  // Convert packed quantity to measurement units for display when tracking in measurement
+  const displayPacked =
+    item.targetUnit === 'measurement' && item.amountPerPackage
+      ? item.packedQuantity * item.amountPerPackage
+      : item.packedQuantity
+
   return (
     <Card variant={status === 'ok' ? 'default' : status}>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
@@ -64,7 +70,7 @@ export function ItemCard({
             </div>
             <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
               {item.unpackedQuantity > 0
-                ? `${item.packedQuantity} (+${item.unpackedQuantity})/${item.targetQuantity}`
+                ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
                 : `${currentQuantity}/${item.targetQuantity}`}
             </span>
           </CardTitle>
@@ -73,7 +79,7 @@ export function ItemCard({
             target={item.targetQuantity}
             status={status}
             targetUnit={item.targetUnit}
-            packed={item.packedQuantity}
+            packed={displayPacked}
             unpacked={item.unpackedQuantity}
             measurementUnit={item.measurementUnit}
           />
