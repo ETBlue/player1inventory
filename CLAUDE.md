@@ -325,14 +325,13 @@ After completing a brainstorming session and before documenting the results, cre
 
 The timing is important: create the branch after brainstorming is complete but before writing the design document. This keeps all related work isolated and makes it easy to review the complete feature or change in one PR.
 
-**Choose Your Workflow:**
+**Default Workflow: Git Worktrees**
 
-AI agents may use either approach based on their preference:
+Use git worktrees by default for feature work. Create isolated workspaces in `.worktrees/` directory. See "Advanced: Git Worktrees" section below for setup details.
 
-1. **Regular Branches** - Standard git workflow that works with all tools (GitHub Desktop, VS Code, CLI)
-2. **Git Worktrees** - Create isolated workspaces in `.worktrees/` directory for parallel work (CLI only)
+**Alternative: Regular Branches**
 
-See "Advanced: Git Worktrees" section below for worktree details.
+For GUI tool users (GitHub Desktop, VS Code) or when worktrees are not suitable, use standard git branches instead.
 
 **Branch Naming:**
 
