@@ -44,12 +44,12 @@ describe('Tags Tab - Add Tag Functionality', () => {
       </QueryClientProvider>,
     )
 
-    // When user clicks "Add Tag" button
+    // When user clicks "New Tag" button
     await waitFor(() => {
       expect(screen.getByText(/categories/i)).toBeInTheDocument()
     })
 
-    const addButton = screen.getByRole('button', { name: /add tag/i })
+    const addButton = screen.getByRole('button', { name: /new tag/i })
     await userEvent.click(addButton)
 
     // And enters tag name in dialog
