@@ -306,8 +306,8 @@ describe('addItem', () => {
 
     addItem(item as Item, 1)
 
-    expect(item.packedQuantity).toBe(3)
-    expect(item.unpackedQuantity).toBe(0.5)
+    expect(item.packedQuantity).toBe(2) // Stays same - now adds to unpacked
+    expect(item.unpackedQuantity).toBe(1.5) // Increased from 0.5 to 1.5
   })
 
   it('adds to packed quantity in simple mode', () => {
@@ -320,7 +320,8 @@ describe('addItem', () => {
 
     addItem(item as Item, 1)
 
-    expect(item.packedQuantity).toBe(4)
+    expect(item.packedQuantity).toBe(3) // Stays same - now adds to unpacked
+    expect(item.unpackedQuantity).toBe(1) // Increased from 0 to 1
   })
 
   it('recalculates dueDate when adding to empty item with estimatedDueDays', () => {
@@ -335,7 +336,8 @@ describe('addItem', () => {
 
     addItem(item as Item, 1, now)
 
-    expect(item.packedQuantity).toBe(1)
+    expect(item.packedQuantity).toBe(0) // Stays 0 - added to unpacked
+    expect(item.unpackedQuantity).toBe(1) // Increased from 0 to 1
     expect(item.dueDate).toEqual(new Date('2026-02-21'))
   })
 
@@ -350,7 +352,8 @@ describe('addItem', () => {
 
     addItem(item as Item, 1, now)
 
-    expect(item.packedQuantity).toBe(1)
+    expect(item.packedQuantity).toBe(0) // Stays 0 - added to unpacked
+    expect(item.unpackedQuantity).toBe(1) // Increased from 0 to 1
     expect(item.dueDate).toBeUndefined()
   })
 
@@ -368,8 +371,24 @@ describe('addItem', () => {
 
     addItem(item as Item, 1, now)
 
-    expect(item.packedQuantity).toBe(2)
+    expect(item.packedQuantity).toBe(1) // Stays same - added to unpacked
+    expect(item.unpackedQuantity).toBe(1) // Increased from 0 to 1
     expect(item.dueDate).toEqual(existingDate) // Unchanged
+  })
+
+  it('adds to unpacked in package mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 5,
+      unpackedQuantity: 0.5,
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      consumeAmount: 1,
+    }
+
+    addItem(item as Item, 2)
+
+    expect(item.packedQuantity).toBe(5) // Should stay same
+    expect(item.unpackedQuantity).toBe(2.5) // Should add to unpacked
   })
 })
 

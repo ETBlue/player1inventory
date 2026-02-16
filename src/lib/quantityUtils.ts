@@ -99,13 +99,8 @@ export function addItem(
   amount: number,
   purchaseDate: Date = new Date(),
 ): void {
-  if (item.targetUnit === 'measurement') {
-    // When tracking in measurement units: add to unpacked
-    item.unpackedQuantity += amount
-  } else {
-    // When tracking in packages (or simple mode): add to packed
-    item.packedQuantity += amount
-  }
+  // Always add to unpacked (removed mode branching)
+  item.unpackedQuantity += amount
 
   // Recalculate dueDate if quantity was 0 and estimatedDueDays exists
   if (item.estimatedDueDays && !item.dueDate && getCurrentQuantity(item) > 0) {
