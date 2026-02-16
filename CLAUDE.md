@@ -78,7 +78,8 @@ Item detail pages use a tabbed layout with three sections:
 - Consumption amount settings
 
 **3. Tags (`/items/$id/tags`)**
-- Tag assignment interface with uppercase tag type names
+- Tag assignment interface with uppercase text styling for tag type names
+- Click badges to toggle tag assignment (selected tags show X icon)
 - Visual dividers between tag type sections
 - Inline tag creation via "New Tag" buttons
 - Changes apply immediately without save button
@@ -116,6 +117,7 @@ Each tab tracks unsaved changes independently:
 **Files:**
 - `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
 - `src/routes/items/$id/index.tsx` - Stock Status tab implementation
+- `src/routes/items/$id/tags.tsx` - Tags tab implementation
 - `src/routes/items/$id.log.tsx` - History/logs tab (view-only)
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
