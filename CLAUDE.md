@@ -77,8 +77,10 @@ Item detail pages use a tabbed layout with three sections:
 - Target quantity and refill threshold
 - Consumption amount settings
 
-**3. Tags (`/items/$id/tags`)** - Not yet implemented
-- Tag assignment interface
+**3. Tags (`/items/$id/tags`)**
+- Tag assignment interface with uppercase tag type names
+- Visual dividers between tag type sections
+- Inline tag creation via "New Tag" buttons
 - Changes apply immediately without save button
 
 **Measurement Tracking Behavior:**
