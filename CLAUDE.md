@@ -118,6 +118,32 @@ Each tab tracks unsaved changes independently:
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
 
+### Manual Quantity Input
+
+Users can manually set current inventory quantities in the item detail form:
+- **Packed Quantity** - Number of whole packages (always visible)
+- **Unpacked Quantity** - Loose amount from opened packages (only for dual-unit items)
+- **Pack unpacked button** - Manually converts complete units from unpacked to packed
+
+**+/- Button Behavior (Pantry Page):**
+- Both + and - buttons always operate on unpacked quantity
+- No automatic normalization/packing
+- Use "Pack unpacked" button in item detail form to manually pack complete units
+
+**Location:** Item detail page (`/items/$id`) via ItemForm component
+
+**Behavior:**
+- Pre-populates with current `item.packedQuantity` and `item.unpackedQuantity`
+- Validates non-negative values
+- Warns when unpacked ≥ amountPerPackage
+- Saves directly to database without creating inventory log entries
+- Use for initial setup, corrections, or adjustments
+
+**Files:**
+- `src/routes/items/$id/index.tsx` - Item detail form with quantity fields
+- `src/routes/items/$id.test.tsx` - Component tests
+- `src/lib/quantityUtils.ts` - packUnpacked() function
+
 ## Design Tokens
 
 Token system for theme, colors, shadows, and borders:
