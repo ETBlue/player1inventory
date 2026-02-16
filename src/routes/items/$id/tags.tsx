@@ -1,8 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AddTagDialog } from '@/components/AddTagDialog'
 import { Badge } from '@/components/ui/badge'
-import { useItem, useTags, useTagTypes, useUpdateItem } from '@/hooks'
+import { Button } from '@/components/ui/button'
+import {
+  useCreateTag,
+  useItem,
+  useTags,
+  useTagTypes,
+  useUpdateItem,
+} from '@/hooks'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 
@@ -17,11 +25,25 @@ function TagsTab() {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: allTags = [] } = useTags()
   const { registerDirtyState } = useItemLayout()
+  const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
+  const [newTagName, setNewTagName] = useState('')
+  const createTag = useCreateTag()
 
   // Tags tab never has unsaved changes (saves immediately)
   useEffect(() => {
     registerDirtyState(false)
   }, [registerDirtyState])
+
+  const handleAddTag = () => {
+    if (addTagDialog && newTagName.trim()) {
+      createTag.mutate({
+        name: newTagName.trim(),
+        typeId: addTagDialog,
+      })
+      setNewTagName('')
+      setAddTagDialog(null)
+    }
+  }
 
   const toggleTag = (tagId: string) => {
     if (!item) return
@@ -52,7 +74,6 @@ function TagsTab() {
             )
             .map((tagType) => {
               const typeTags = allTags.filter((t) => t.typeId === tagType.id)
-              if (typeTags.length === 0) return null
               const sortedTypeTags = sortTagsByName(typeTags)
 
               return (
@@ -81,12 +102,28 @@ function TagsTab() {
                         </Badge>
                       )
                     })}
+                    <Button
+                      variant="neutral-ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setAddTagDialog(tagType.id)}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Tag
+                    </Button>
                   </div>
                 </div>
               )
             })}
         </div>
       )}
+      <AddTagDialog
+        open={!!addTagDialog}
+        tagName={newTagName}
+        onTagNameChange={setNewTagName}
+        onAdd={handleAddTag}
+        onClose={() => setAddTagDialog(null)}
+      />
     </div>
   )
 }
