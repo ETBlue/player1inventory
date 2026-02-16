@@ -151,6 +151,14 @@ function ItemDetailTab() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validate: if tracking in measurement, both fields must be defined
+    if (
+      targetUnit === 'measurement' &&
+      (!measurementUnit || !amountPerPackage)
+    ) {
+      return
+    }
+
     const updates: any = {
       packedQuantity,
       unpackedQuantity,
@@ -483,7 +491,14 @@ function ItemDetailTab() {
         </div>
       </div>
 
-      <Button type="submit" disabled={!isDirty}>
+      <Button
+        type="submit"
+        disabled={
+          !isDirty ||
+          (targetUnit === 'measurement' &&
+            (!measurementUnit || !amountPerPackage))
+        }
+      >
         Save
       </Button>
     </form>
