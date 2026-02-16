@@ -462,4 +462,31 @@ describe('Item detail page - manual quantity input', () => {
       expect(saveButton).toBeDisabled()
     })
   })
+
+  it('shows pack unpacked button always', async () => {
+    // Given an item with some unpacked quantity
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    // When page loads
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+    })
+
+    // Then pack unpacked button is visible
+    expect(
+      screen.getByRole('button', { name: /pack unpacked/i }),
+    ).toBeInTheDocument()
+  })
 })

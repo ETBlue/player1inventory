@@ -14,6 +14,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useItem, useUpdateItem } from '@/hooks'
 import { useItemLayout } from '@/hooks/useItemLayout'
+import { packUnpacked } from '@/lib/quantityUtils'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemDetailTab,
@@ -306,6 +307,41 @@ function ItemDetailTab() {
               Loose amount from opened package(s)
             </p>
           </div>
+        </div>
+
+        {/* Pack unpacked button */}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="neutral-outline"
+            size="sm"
+            disabled={
+              targetUnit === 'package'
+                ? unpackedQuantity < 1
+                : targetUnit === 'measurement'
+                  ? !amountPerPackage || unpackedQuantity < amountPerPackage
+                  : true
+            }
+            onClick={() => {
+              if (!item) return
+
+              const itemCopy = { ...item }
+              itemCopy.packedQuantity = packedQuantity
+              itemCopy.unpackedQuantity = unpackedQuantity
+              itemCopy.targetUnit = targetUnit
+              itemCopy.measurementUnit = measurementUnit || undefined
+              itemCopy.amountPerPackage = amountPerPackage
+                ? Number(amountPerPackage)
+                : undefined
+
+              packUnpacked(itemCopy)
+
+              setPackedQuantity(itemCopy.packedQuantity)
+              setUnpackedQuantity(itemCopy.unpackedQuantity)
+            }}
+          >
+            Pack unpacked
+          </Button>
         </div>
 
         <div className="">
