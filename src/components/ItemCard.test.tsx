@@ -180,4 +180,84 @@ describe('ItemCard - Tag Sorting', () => {
     expect(badges[2]).toHaveTextContent('Fridge')
     expect(badges[3]).toHaveTextContent('Pantry')
   })
+
+  it('shows expiration message even when not within threshold', async () => {
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Test Item',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+      expirationThreshold: 7, // Warn when < 7 days
+      estimatedDueDays: 30,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    await renderWithRouter(
+      <ItemCard
+        item={item as Item}
+        quantity={5}
+        tags={[]}
+        tagTypes={[]}
+        estimatedDueDate={futureDate}
+        onConsume={() => {}}
+        onAdd={() => {}}
+      />,
+    )
+
+    // Message should show even though 30 days > 7 day threshold
+    expect(screen.getByText(/Expires in 30 days/i)).toBeInTheDocument()
+
+    // Should be muted style (not error background)
+    const messageEl = screen.getByText(/Expires in 30 days/i)
+    expect(messageEl).toHaveClass('text-foreground-muted')
+    expect(messageEl).not.toHaveClass('bg-status-error')
+  })
+
+  it('shows warning style when within expiration threshold', async () => {
+    const soonDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // 3 days
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Test Item',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+      expirationThreshold: 7, // Warn when < 7 days
+      estimatedDueDays: 3,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    await renderWithRouter(
+      <ItemCard
+        item={item as Item}
+        quantity={5}
+        tags={[]}
+        tagTypes={[]}
+        estimatedDueDate={soonDate}
+        onConsume={() => {}}
+        onAdd={() => {}}
+      />,
+    )
+
+    const messageEl = screen.getByText(/Expires in 3 days/i)
+
+    // Should have warning style
+    expect(messageEl).toHaveClass('bg-status-error')
+    expect(messageEl).toHaveClass('text-tint')
+
+    // Should show warning icon (TriangleAlert component)
+    const icon = messageEl.querySelector('svg')
+    expect(icon).toBeInTheDocument()
+  })
 })

@@ -55,26 +55,6 @@ describe('sortItems', () => {
     expect(sorted.map((i) => i.name)).toEqual(['Tomatoes', 'Pasta', 'Apples'])
   })
 
-  it('sorts by quantity ascending', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'quantity', 'asc')
-    expect(sorted.map((i) => i.id)).toEqual(['1', '3', '2'])
-  })
-
-  it('sorts by quantity descending', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'quantity', 'desc')
-    expect(sorted.map((i) => i.id)).toEqual(['2', '1', '3'])
-  })
-
-  it('sorts by stock ascending (error -> warning -> ok)', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'stock', 'asc')
-    expect(sorted.map((i) => i.id)).toEqual(['1', '3', '2'])
-  })
-
-  it('sorts by stock descending (ok -> warning -> error)', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'stock', 'desc')
-    expect(sorted.map((i) => i.id)).toEqual(['2', '3', '1'])
-  })
-
   it('sorts by updatedAt ascending', () => {
     const sorted = sortItems(items, quantities, expiryDates, 'updatedAt', 'asc')
     expect(sorted.map((i) => i.id)).toEqual(['1', '3', '2'])
@@ -107,7 +87,7 @@ describe('sortItems', () => {
       items,
       emptyQuantities,
       expiryDates,
-      'quantity',
+      'stock',
       'asc',
     )
     expect(sorted).toHaveLength(3)
@@ -117,5 +97,79 @@ describe('sortItems', () => {
     const emptyDates = new Map<string, Date | undefined>()
     const sorted = sortItems(items, quantities, emptyDates, 'expiring', 'asc')
     expect(sorted).toHaveLength(3)
+  })
+})
+
+describe('sortItems - stock by progress', () => {
+  const createMockItem = (
+    id: string,
+    name: string,
+    overrides: Partial<Item> = {},
+  ): Item => ({
+    id,
+    name,
+    tagIds: [],
+    targetQuantity: 10,
+    refillThreshold: 2,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  })
+
+  it('sorts by progress percentage ascending', () => {
+    const items: Item[] = [
+      createMockItem('1', 'Item A', { targetQuantity: 10 }), // 5/10 = 50%
+      createMockItem('2', 'Item B', { targetQuantity: 5 }), // 2/5 = 40%
+      createMockItem('3', 'Item C', { targetQuantity: 10 }), // 8/10 = 80%
+    ]
+    const quantities = new Map([
+      ['1', 5],
+      ['2', 2],
+      ['3', 8],
+    ])
+
+    const sorted = sortItems(items, quantities, new Map(), 'stock', 'asc')
+
+    // Should sort by percentage: 40%, 50%, 80%
+    expect(sorted[0].id).toBe('2') // 40%
+    expect(sorted[1].id).toBe('1') // 50%
+    expect(sorted[2].id).toBe('3') // 80%
+  })
+
+  it('sorts by progress percentage descending', () => {
+    const items: Item[] = [
+      createMockItem('1', 'Item A', { targetQuantity: 10 }), // 5/10 = 50%
+      createMockItem('2', 'Item B', { targetQuantity: 5 }), // 2/5 = 40%
+      createMockItem('3', 'Item C', { targetQuantity: 10 }), // 8/10 = 80%
+    ]
+    const quantities = new Map([
+      ['1', 5],
+      ['2', 2],
+      ['3', 8],
+    ])
+
+    const sorted = sortItems(items, quantities, new Map(), 'stock', 'desc')
+
+    // Should sort by percentage: 80%, 50%, 40%
+    expect(sorted[0].id).toBe('3') // 80%
+    expect(sorted[1].id).toBe('1') // 50%
+    expect(sorted[2].id).toBe('2') // 40%
+  })
+
+  it('handles zero targetQuantity gracefully', () => {
+    const items: Item[] = [
+      createMockItem('1', 'Item A', { targetQuantity: 0 }), // 5/0 = Infinity
+      createMockItem('2', 'Item B', { targetQuantity: 10 }), // 5/10 = 50%
+    ]
+    const quantities = new Map([
+      ['1', 5],
+      ['2', 5],
+    ])
+
+    const sorted = sortItems(items, quantities, new Map(), 'stock', 'asc')
+
+    // Items with 0 target should sort as if 100% full
+    expect(sorted[0].id).toBe('2') // 50%
+    expect(sorted[1].id).toBe('1') // Treated as 1 (100%)
   })
 })

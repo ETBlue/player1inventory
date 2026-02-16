@@ -70,7 +70,7 @@ export function loadUiPrefs(): UiPreferences {
 }
 
 // Sort preferences (localStorage)
-export type SortField = 'name' | 'quantity' | 'stock' | 'updatedAt' | 'expiring'
+export type SortField = 'name' | 'stock' | 'updatedAt' | 'expiring'
 export type SortDirection = 'asc' | 'desc'
 
 export interface SortPreferences {

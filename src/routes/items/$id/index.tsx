@@ -444,7 +444,7 @@ function ItemDetailTab() {
               id="refillThreshold"
               type="number"
               min={0}
-              step={targetUnit === 'package' ? 1 : consumeAmount || 1}
+              step={consumeAmount || 1}
               value={refillThreshold}
               onChange={(e) => setRefillThreshold(Number(e.target.value))}
             />

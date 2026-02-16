@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
+import { cn } from '@/lib/utils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
@@ -50,14 +51,21 @@ export function ItemCard({
           params={{ id: item.id }}
           className="flex-1 min-w-0"
         >
-          <CardTitle className="flex gap-1">
-            <h3 className="truncate">{item.name}</h3>
-            <span className="text-xs font-normal">
-              (
-              {item.targetUnit === 'measurement' && item.measurementUnit
-                ? item.measurementUnit
-                : (item.packageUnit ?? 'units')}
-              )
+          <CardTitle className="flex gap-1 items-baseline justify-between">
+            <div className="flex gap-1 min-w-0">
+              <h3 className="truncate">{item.name}</h3>
+              <span className="text-xs font-normal">
+                (
+                {item.targetUnit === 'measurement' && item.measurementUnit
+                  ? item.measurementUnit
+                  : (item.packageUnit ?? 'units')}
+                )
+              </span>
+            </div>
+            <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
+              {item.unpackedQuantity > 0
+                ? `${item.packedQuantity} (+${item.unpackedQuantity})/${item.targetQuantity}`
+                : `${currentQuantity}/${item.targetQuantity}`}
             </span>
           </CardTitle>
           <ItemProgressBar
@@ -108,11 +116,18 @@ export function ItemCard({
               )
               const threshold =
                 item.expirationThreshold ?? Number.POSITIVE_INFINITY
-              const shouldShowWarning = daysUntilExpiration <= threshold
+              const isWarning = daysUntilExpiration <= threshold
 
-              return shouldShowWarning ? (
-                <span className="inline-flex gap-1 px-2 py-1 text-xs bg-status-error text-tint">
-                  <TriangleAlert className="w-4 h-4" />
+              return (
+                <span
+                  className={cn(
+                    'inline-flex gap-1 px-2 py-1 text-xs',
+                    isWarning
+                      ? 'bg-status-error text-tint'
+                      : 'text-foreground-muted',
+                  )}
+                >
+                  {isWarning && <TriangleAlert className="w-4 h-4" />}
                   {item.estimatedDueDays
                     ? // Relative mode: show "Expires in X days"
                       daysUntilExpiration >= 0
@@ -121,7 +136,7 @@ export function ItemCard({
                     : // Explicit mode: show "Expires on YYYY-MM-DD"
                       `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
                 </span>
-              ) : null
+              )
             })()}
           {tags.length > 0 && !showTags && (
             <span className="text-xs text-foreground-muted">

@@ -29,7 +29,6 @@ interface PantryToolbarProps {
 const sortLabels: Record<SortField, string> = {
   expiring: 'Expiring',
   name: 'Name',
-  quantity: 'Quantity',
   stock: 'Stock',
   updatedAt: 'Updated',
 }
@@ -96,12 +95,6 @@ export function PantryToolbar({
               onClick={() => handleCriteriaChange('name')}
             >
               Name
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={sortBy === 'quantity' ? 'bg-background-base' : ''}
-              onClick={() => handleCriteriaChange('quantity')}
-            >
-              Quantity
             </DropdownMenuItem>
             <DropdownMenuItem
               className={sortBy === 'stock' ? 'bg-background-base' : ''}
