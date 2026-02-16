@@ -65,8 +65,8 @@ function ItemDetailTab() {
     item?.expirationThreshold ?? '',
   )
 
-  // Track initial values
-  const [initialValues] = useState({
+  // Track initial values (updates when item changes after successful save)
+  const [initialValues, setInitialValues] = useState({
     packedQuantity: item?.packedQuantity ?? 0,
     unpackedQuantity: item?.unpackedQuantity ?? 0,
     expirationMode: item?.estimatedDueDays ? 'days' : 'date',
@@ -82,6 +82,62 @@ function ItemDetailTab() {
     consumeAmount: item?.consumeAmount ?? 1,
     expirationThreshold: item?.expirationThreshold ?? '',
   })
+
+  // Reset form state when item data updates (after successful save)
+  useEffect(() => {
+    if (!item) return
+
+    const newValues = {
+      packedQuantity: item.packedQuantity,
+      unpackedQuantity: item.unpackedQuantity,
+      expirationMode: item.estimatedDueDays
+        ? ('days' as const)
+        : ('date' as const),
+      dueDate: item.dueDate ? item.dueDate.toISOString().split('T')[0] : '',
+      estimatedDueDays: item.estimatedDueDays ?? '',
+      name: item.name,
+      packageUnit: item.packageUnit ?? '',
+      measurementUnit: item.measurementUnit ?? '',
+      amountPerPackage: item.amountPerPackage ?? '',
+      targetUnit: item.targetUnit,
+      targetQuantity: item.targetQuantity,
+      refillThreshold: item.refillThreshold,
+      consumeAmount: item.consumeAmount,
+      expirationThreshold: item.expirationThreshold ?? '',
+    }
+
+    setPackedQuantity(newValues.packedQuantity)
+    setUnpackedQuantity(newValues.unpackedQuantity)
+    setExpirationMode(newValues.expirationMode)
+    setDueDate(newValues.dueDate)
+    setEstimatedDueDays(newValues.estimatedDueDays)
+    setName(newValues.name)
+    setPackageUnit(newValues.packageUnit)
+    setMeasurementUnit(newValues.measurementUnit)
+    setAmountPerPackage(newValues.amountPerPackage)
+    setTargetUnit(newValues.targetUnit)
+    setTargetQuantity(newValues.targetQuantity)
+    setRefillThreshold(newValues.refillThreshold)
+    setConsumeAmount(newValues.consumeAmount)
+    setExpirationThreshold(newValues.expirationThreshold)
+    setInitialValues(newValues)
+  }, [
+    item?.id,
+    item.amountPerPackage,
+    item.consumeAmount,
+    item.dueDate,
+    item.estimatedDueDays,
+    item.expirationThreshold,
+    item.measurementUnit,
+    item.name,
+    item.packageUnit,
+    item.packedQuantity,
+    item.refillThreshold,
+    item.targetQuantity,
+    item.targetUnit,
+    item.unpackedQuantity,
+    item,
+  ])
 
   // Track previous targetUnit for conversion
   const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
@@ -137,6 +193,18 @@ function ItemDetailTab() {
     refillThreshold !== initialValues.refillThreshold ||
     consumeAmount !== initialValues.consumeAmount ||
     expirationThreshold !== initialValues.expirationThreshold
+
+  // Compute validation state
+  const isValidationFailed =
+    targetUnit === 'measurement' && (!measurementUnit || !amountPerPackage)
+
+  const validationMessage = isValidationFailed
+    ? !measurementUnit && !amountPerPackage
+      ? 'Measurement unit and amount per package are required'
+      : !measurementUnit
+        ? 'Measurement unit is required'
+        : 'Amount per package is required'
+    : null
 
   // Report dirty state to parent
   useEffect(() => {
@@ -487,16 +555,18 @@ function ItemDetailTab() {
         </div>
       </div>
 
-      <Button
-        type="submit"
-        disabled={
-          !isDirty ||
-          (targetUnit === 'measurement' &&
-            (!measurementUnit || !amountPerPackage))
-        }
-      >
-        Save
-      </Button>
+      <div className="space-y-2">
+        <Button
+          type="submit"
+          disabled={!isDirty || isValidationFailed}
+          className="w-full"
+        >
+          Save
+        </Button>
+        {isDirty && validationMessage && (
+          <p className="text-sm text-destructive">{validationMessage}</p>
+        )}
+      </div>
     </form>
   )
 }

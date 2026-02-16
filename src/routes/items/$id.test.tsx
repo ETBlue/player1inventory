@@ -356,4 +356,110 @@ describe('Item detail page - manual quantity input', () => {
       expect(saveButton).not.toBeDisabled()
     })
   })
+
+  it('validation message shows when fields required but missing', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with package tracking
+    const item = await createItem({
+      name: 'Sugar',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
+    })
+
+    // When user toggles track in measurement ON without filling fields
+    const trackSwitch = screen.getByRole('switch', {
+      name: /track in measurement/i,
+    })
+    await user.click(trackSwitch)
+
+    // Then validation message shows both fields required
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /measurement unit and amount per package are required/i,
+        ),
+      ).toBeInTheDocument()
+    })
+
+    // When user fills in measurement unit
+    const measurementUnitInput = screen.getByLabelText(/measurement unit/i)
+    await user.type(measurementUnitInput, 'g')
+
+    // Then validation message shows only amount per package required
+    await waitFor(() => {
+      expect(
+        screen.getByText(/amount per package is required/i),
+      ).toBeInTheDocument()
+    })
+
+    // When user fills in amount per package
+    const amountPerPackageInput = screen.getByLabelText(/amount per package/i)
+    await user.type(amountPerPackageInput, '500')
+
+    // Then validation message disappears
+    await waitFor(() => {
+      expect(screen.queryByText(/required/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it('save button becomes disabled after successful save', async () => {
+    const user = userEvent.setup()
+
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+    })
+
+    const saveButton = screen.getByRole('button', { name: /save/i })
+
+    // Initially disabled (no changes)
+    expect(saveButton).toBeDisabled()
+
+    // When user changes packed quantity
+    const packedInput = screen.getByLabelText(/^quantity/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+
+    // Save button becomes enabled
+    await waitFor(() => {
+      expect(saveButton).not.toBeDisabled()
+    })
+
+    // When user saves the form
+    await user.click(saveButton)
+
+    // Then save button becomes disabled again (form is clean)
+    await waitFor(async () => {
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.packedQuantity).toBe(5)
+      expect(saveButton).toBeDisabled()
+    })
+  })
 })
