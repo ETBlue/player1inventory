@@ -20,18 +20,17 @@ function SegmentedProgressBar({
   status,
   packed = 0,
   unpacked = 0,
-  measurementUnit,
 }: ProgressBarProps) {
   const segments = Array.from({ length: target }, (_, i) => {
     const segmentStart = i
     const segmentEnd = i + 1
 
-    // For simple mode (no measurement unit), show packed and unpacked separately
-    const isSimpleMode = !measurementUnit
+    // Always show packed and unpacked separately when unpacked > 0
+    const showSeparate = unpacked > 0
     let packedFill = 0
     let unpackedFill = 0
 
-    if (isSimpleMode && (packed > 0 || unpacked > 0)) {
+    if (showSeparate) {
       // Calculate how much of this segment is filled by packed
       if (packed >= segmentEnd) {
         packedFill = 100
@@ -60,8 +59,8 @@ function SegmentedProgressBar({
     }
 
     let fillPercentage = 0
-    if (!isSimpleMode || (packed === 0 && unpacked === 0)) {
-      // Normal mode: use current
+    if (!showSeparate) {
+      // Use current when not showing separate packed/unpacked
       if (current >= segmentEnd) {
         fillPercentage = 100
       } else if (current > segmentStart) {
@@ -102,7 +101,7 @@ function SegmentedProgressBar({
           'border border-accessory-emphasized',
         )}
       >
-        {isSimpleMode && (packed > 0 || unpacked > 0) ? (
+        {showSeparate ? (
           <>
             {packedFill > 0 && (
               <div
@@ -141,13 +140,11 @@ function ContinuousProgressBar({
   status,
   packed = 0,
   unpacked = 0,
-  measurementUnit,
 }: ProgressBarProps) {
-  const isSimpleMode = !measurementUnit
   const percentage = Math.min((current / target) * 100, 100)
 
-  // For simple mode with unpacked, show layered bars
-  if (isSimpleMode && unpacked > 0) {
+  // Always show layered bars when unpacked > 0
+  if (unpacked > 0) {
     const packedPercentage = Math.min((packed / target) * 100, 100)
     const totalPercentage = Math.min(((packed + unpacked) / target) * 100, 100)
 
@@ -211,18 +208,14 @@ export function ItemProgressBar({
   targetUnit,
   packed = 0,
   unpacked = 0,
-  measurementUnit,
 }: ProgressBarProps) {
   // Use continuous bar when tracking in measurement units
   const useContinuous =
     targetUnit === 'measurement' || target > SEGMENTED_MODE_MAX_TARGET
 
-  // Format count display
-  const isSimpleMode = !measurementUnit
+  // Format count display - always show packed/unpacked separately when unpacked > 0
   const countDisplay =
-    isSimpleMode && unpacked > 0
-      ? `${packed} (+${unpacked})/${target}`
-      : `${current}/${target}`
+    unpacked > 0 ? `${packed} (+${unpacked})/${target}` : `${current}/${target}`
 
   return (
     <div className="flex items-center gap-2">
@@ -234,7 +227,6 @@ export function ItemProgressBar({
             status={status}
             packed={packed}
             unpacked={unpacked}
-            measurementUnit={measurementUnit}
           />
         ) : (
           <SegmentedProgressBar
@@ -243,7 +235,6 @@ export function ItemProgressBar({
             status={status}
             packed={packed}
             unpacked={unpacked}
-            measurementUnit={measurementUnit}
           />
         )}
       </div>

@@ -15,6 +15,8 @@ import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsTagsRouteImport } from './routes/settings/tags'
 import { Route as ItemsNewRouteImport } from './routes/items/new'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
+import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
+import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
 
 const ShoppingRoute = ShoppingRouteImport.update({
@@ -47,6 +49,16 @@ const ItemsIdRoute = ItemsIdRouteImport.update({
   path: '/items/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ItemsIdIndexRoute = ItemsIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
+const ItemsIdTagsRoute = ItemsIdTagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
 const ItemsIdLogRoute = ItemsIdLogRouteImport.update({
   id: '/log',
   path: '/log',
@@ -61,15 +73,18 @@ export interface FileRoutesByFullPath {
   '/settings/tags': typeof SettingsTagsRoute
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/': typeof ItemsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/shopping': typeof ShoppingRoute
-  '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/settings': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id': typeof ItemsIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,6 +95,8 @@ export interface FileRoutesById {
   '/settings/tags': typeof SettingsTagsRoute
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/': typeof ItemsIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,15 +108,18 @@ export interface FileRouteTypes {
     | '/settings/tags'
     | '/settings/'
     | '/items/$id/log'
+    | '/items/$id/tags'
+    | '/items/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/shopping'
-    | '/items/$id'
     | '/items/new'
     | '/settings/tags'
     | '/settings'
     | '/items/$id/log'
+    | '/items/$id/tags'
+    | '/items/$id'
   id:
     | '__root__'
     | '/'
@@ -109,6 +129,8 @@ export interface FileRouteTypes {
     | '/settings/tags'
     | '/settings/'
     | '/items/$id/log'
+    | '/items/$id/tags'
+    | '/items/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,6 +186,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/items/$id/': {
+      id: '/items/$id/'
+      path: '/'
+      fullPath: '/items/$id/'
+      preLoaderRoute: typeof ItemsIdIndexRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
+    '/items/$id/tags': {
+      id: '/items/$id/tags'
+      path: '/tags'
+      fullPath: '/items/$id/tags'
+      preLoaderRoute: typeof ItemsIdTagsRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
     '/items/$id/log': {
       id: '/items/$id/log'
       path: '/log'
@@ -176,10 +212,14 @@ declare module '@tanstack/react-router' {
 
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
+  ItemsIdTagsRoute: typeof ItemsIdTagsRoute
+  ItemsIdIndexRoute: typeof ItemsIdIndexRoute
 }
 
 const ItemsIdRouteChildren: ItemsIdRouteChildren = {
   ItemsIdLogRoute: ItemsIdLogRoute,
+  ItemsIdTagsRoute: ItemsIdTagsRoute,
+  ItemsIdIndexRoute: ItemsIdIndexRoute,
 }
 
 const ItemsIdRouteWithChildren =

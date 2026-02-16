@@ -1,59 +1,64 @@
 import type { Item } from '@/types'
 
 export function getCurrentQuantity(item: Item): number {
-  if (item.measurementUnit && item.amountPerPackage) {
-    // Measurement tracking: convert packed to measurement and add unpacked
+  if (
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit &&
+    item.amountPerPackage
+  ) {
+    // Tracking in measurement: convert packed to measurement and add unpacked (already in measurement)
     const packedInMeasurement = item.packedQuantity * item.amountPerPackage
     return packedInMeasurement + item.unpackedQuantity
   }
-  // Simple mode: packed + unpacked
+  // Tracking in packages (or simple mode): packed + unpacked (both in packages)
   return item.packedQuantity + item.unpackedQuantity
 }
 
 export function getDisplayQuantity(item: Item): number {
-  if (item.targetUnit === 'package') {
-    // When tracking in packages, convert unpacked to packages if dual-unit
-    if (item.measurementUnit && item.amountPerPackage) {
-      const unpackedInPackages = item.unpackedQuantity / item.amountPerPackage
-      return item.packedQuantity + unpackedInPackages
-    }
-    // Simple mode: just packed
-    return item.packedQuantity
-  }
-  // When tracking in measurement units, show total measurement
+  // Both package and measurement tracking use getCurrentQuantity
+  // which already handles the unit conversion based on targetUnit
   return getCurrentQuantity(item)
 }
 
 export function normalizeUnpacked(item: Item): void {
-  if (!item.measurementUnit || !item.amountPerPackage) {
-    return
-  }
-
-  while (item.unpackedQuantity >= item.amountPerPackage) {
-    item.packedQuantity += 1
-    item.unpackedQuantity -= item.amountPerPackage
+  if (
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit &&
+    item.amountPerPackage
+  ) {
+    // When tracking in measurement: normalize when unpacked >= amountPerPackage
+    while (item.unpackedQuantity >= item.amountPerPackage) {
+      item.packedQuantity += 1
+      item.unpackedQuantity -= item.amountPerPackage
+    }
+  } else {
+    // When tracking in packages: normalize when unpacked >= 1
+    while (item.unpackedQuantity >= 1) {
+      item.packedQuantity += 1
+      item.unpackedQuantity -= 1
+    }
   }
 }
 
 export function consumeItem(item: Item, amount: number): void {
-  if (item.measurementUnit && item.amountPerPackage) {
-    // Convert amount to measurement units if tracking in packages
-    const amountInMeasurement =
-      item.targetUnit === 'package' ? amount * item.amountPerPackage : amount
-
-    // Measurement tracking: consume from unpacked first
-    if (item.unpackedQuantity >= amountInMeasurement) {
+  if (
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit &&
+    item.amountPerPackage
+  ) {
+    // Tracking in measurement: amount and unpacked are both in measurement units
+    if (item.unpackedQuantity >= amount) {
       item.unpackedQuantity =
-        Math.round((item.unpackedQuantity - amountInMeasurement) * 1000) / 1000
+        Math.round((item.unpackedQuantity - amount) * 1000) / 1000
     } else {
       // Need to break into packed
-      const remaining = amountInMeasurement - item.unpackedQuantity
+      const remaining = amount - item.unpackedQuantity
       item.unpackedQuantity = 0
 
       const packagesToOpen = Math.ceil(remaining / item.amountPerPackage)
       item.packedQuantity -= packagesToOpen
 
-      // Calculate leftover from opened packages
+      // Calculate leftover from opened packages (in measurement units)
       item.unpackedQuantity =
         Math.round(
           (packagesToOpen * item.amountPerPackage - remaining) * 1000,
@@ -66,10 +71,20 @@ export function consumeItem(item: Item, amount: number): void {
       }
     }
   } else {
-    // Simple mode
-    item.packedQuantity -= amount
-    if (item.packedQuantity < 0) {
-      item.packedQuantity = 0
+    // Tracking in packages (or simple mode): amount and unpacked are both in packages
+    if (item.unpackedQuantity >= amount) {
+      item.unpackedQuantity =
+        Math.round((item.unpackedQuantity - amount) * 1000) / 1000
+    } else {
+      // Consume from unpacked first, then from packed
+      const remaining = amount - item.unpackedQuantity
+      item.unpackedQuantity = 0
+      item.packedQuantity -= remaining
+
+      // Prevent negative quantities
+      if (item.packedQuantity < 0) {
+        item.packedQuantity = 0
+      }
     }
   }
 

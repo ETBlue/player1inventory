@@ -56,6 +56,7 @@ describe('getCurrentQuantity', () => {
 
   it('calculates total for measurement-only mode (no packageUnit)', () => {
     const item: Partial<Item> = {
+      targetUnit: 'measurement',
       measurementUnit: 'g',
       amountPerPackage: 100,
       packedQuantity: 3,
@@ -128,6 +129,7 @@ describe('normalizeUnpacked', () => {
 
   it('converts excess unpacked in measurement-only mode', () => {
     const item: Partial<Item> = {
+      targetUnit: 'measurement',
       measurementUnit: 'g',
       amountPerPackage: 100,
       packedQuantity: 2,
@@ -264,14 +266,14 @@ describe('consumeItem', () => {
       amountPerPackage: 100,
       targetUnit: 'package',
       packedQuantity: 1,
-      unpackedQuantity: 50,
+      unpackedQuantity: 0.5, // 0.5 packages when tracking in packages
     }
 
-    // Consume 0.2 packages = 20g
+    // Consume 0.2 packages
     consumeItem(item as Item, 0.2)
 
     expect(item.packedQuantity).toBe(1)
-    expect(item.unpackedQuantity).toBe(30) // 50g - 20g = 30g
+    expect(item.unpackedQuantity).toBe(0.3) // 0.5 - 0.2 = 0.3 packages
   })
 })
 
@@ -464,10 +466,10 @@ describe('getDisplayQuantity', () => {
       amountPerPackage: 100,
       targetUnit: 'package',
       packedQuantity: 1.2,
-      unpackedQuantity: 198.4,
+      unpackedQuantity: 1.984, // 1.984 packages when tracking in packages
     }
 
-    // 1.2 packed + (198.4 unpacked / 100 amountPerPackage) = 1.2 + 1.984 = 3.184
+    // 1.2 packed + 1.984 unpacked = 3.184 packages
     expect(getDisplayQuantity(item as Item)).toBe(3.184)
   })
 })

@@ -11,6 +11,12 @@ const navItems = [
 export function Navigation() {
   const location = useLocation()
 
+  // Hide navigation on item detail and new item pages
+  const isItemPage = location.pathname.startsWith('/items/')
+  if (isItemPage) {
+    return null
+  }
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 border-t border-accessory-default bg-background-surface">
       <div className="flex justify-around py-2">
