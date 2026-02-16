@@ -40,6 +40,33 @@ export function normalizeUnpacked(item: Item): void {
   }
 }
 
+export function packUnpacked(item: Item): void {
+  if (
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit &&
+    item.amountPerPackage
+  ) {
+    // Measurement mode: pack complete packages based on amountPerPackage
+    const packages = Math.floor(item.unpackedQuantity / item.amountPerPackage)
+    if (packages > 0) {
+      item.packedQuantity += packages
+      item.unpackedQuantity =
+        Math.round(
+          (item.unpackedQuantity - packages * item.amountPerPackage) * 1000,
+        ) / 1000
+    }
+  } else if (item.targetUnit === 'package') {
+    // Package mode: pack complete units (floor of unpacked)
+    const packages = Math.floor(item.unpackedQuantity)
+    if (packages > 0) {
+      item.packedQuantity += packages
+      item.unpackedQuantity =
+        Math.round((item.unpackedQuantity - packages) * 1000) / 1000
+    }
+  }
+  // If no valid mode or insufficient quantity, do nothing
+}
+
 export function consumeItem(item: Item, amount: number): void {
   if (
     item.targetUnit === 'measurement' &&

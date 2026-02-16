@@ -7,6 +7,7 @@ import {
   getDisplayQuantity,
   isInactive,
   normalizeUnpacked,
+  packUnpacked,
 } from './quantityUtils'
 
 describe('getCurrentQuantity', () => {
@@ -485,6 +486,65 @@ describe('isInactive', () => {
     }
 
     expect(isInactive(item as Item)).toBe(false)
+  })
+})
+
+describe('packUnpacked', () => {
+  it('packs complete units in package mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 2,
+      unpackedQuantity: 3.7,
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+    }
+
+    packUnpacked(item as Item)
+
+    expect(item.packedQuantity).toBe(5) // 2 + floor(3.7) = 5
+    expect(item.unpackedQuantity).toBe(0.7) // Remainder
+  })
+
+  it('packs complete packages in measurement mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 1,
+      unpackedQuantity: 2500,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+    }
+
+    packUnpacked(item as Item)
+
+    expect(item.packedQuantity).toBe(3) // 1 + floor(2500/1000) = 3
+    expect(item.unpackedQuantity).toBe(500) // Remainder
+  })
+
+  it('does nothing when insufficient unpacked in package mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+      targetUnit: 'package',
+    }
+
+    packUnpacked(item as Item)
+
+    expect(item.packedQuantity).toBe(2) // No change
+    expect(item.unpackedQuantity).toBe(0.5) // No change
+  })
+
+  it('does nothing when no amountPerPackage in measurement mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 2,
+      unpackedQuantity: 150,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: undefined,
+    }
+
+    packUnpacked(item as Item)
+
+    expect(item.packedQuantity).toBe(2) // No change
+    expect(item.unpackedQuantity).toBe(150) // No change
   })
 })
 
