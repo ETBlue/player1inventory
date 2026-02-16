@@ -489,4 +489,70 @@ describe('Item detail page - manual quantity input', () => {
       screen.getByRole('button', { name: /pack unpacked/i }),
     ).toBeInTheDocument()
   })
+
+  it('disables pack button when tracking measurement without amountPerPackage', async () => {
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: undefined,
+      targetQuantity: 1000,
+      refillThreshold: 200,
+      packedQuantity: 0,
+      unpackedQuantity: 150,
+      consumeAmount: 50,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      expect(button).toBeDisabled()
+    })
+  })
+
+  it('enables pack button when package mode and unpacked >= 1', async () => {
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 1.5,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      expect(button).toBeEnabled()
+    })
+  })
+
+  it('enables pack button when measurement mode and unpacked >= amountPerPackage', async () => {
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      targetQuantity: 3000,
+      refillThreshold: 500,
+      packedQuantity: 1,
+      unpackedQuantity: 1500,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      expect(button).toBeEnabled()
+    })
+  })
 })
