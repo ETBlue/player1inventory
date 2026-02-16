@@ -121,13 +121,6 @@ function ItemDetailTab() {
     prevTargetUnit.current = targetUnit
   }, [targetUnit, amountPerPackage, measurementUnit])
 
-  // Auto-set targetUnit to 'package' when measurementUnit is cleared
-  useEffect(() => {
-    if (!measurementUnit && targetUnit === 'measurement') {
-      setTargetUnit('package')
-    }
-  }, [measurementUnit, targetUnit])
-
   // Compute dirty state
   const isDirty =
     packedQuantity !== initialValues.packedQuantity ||

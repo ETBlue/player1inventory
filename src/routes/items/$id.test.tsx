@@ -183,4 +183,177 @@ describe('Item detail page - manual quantity input', () => {
     expect(unpackedInputSingle).toBeInTheDocument()
     expect(unpackedInputSingle).not.toBeDisabled()
   })
+
+  it('measurement fields are disabled when track in measurement is off', async () => {
+    const _user = userEvent.setup()
+
+    // Given an item with measurement tracking OFF
+    const item = await createItem({
+      name: 'Sugar',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
+    })
+
+    // Measurement fields should be disabled
+    const measurementUnitInput = screen.getByLabelText(
+      /measurement unit/i,
+    ) as HTMLInputElement
+    const amountPerPackageInput = screen.getByLabelText(
+      /amount per package/i,
+    ) as HTMLInputElement
+
+    expect(measurementUnitInput).toBeDisabled()
+    expect(amountPerPackageInput).toBeDisabled()
+  })
+
+  it('measurement fields are enabled when track in measurement is on', async () => {
+    // Given an item with measurement tracking ON
+    const item = await createItem({
+      name: 'Flour',
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
+    })
+
+    // Measurement fields should be enabled
+    const measurementUnitInput = screen.getByLabelText(
+      /measurement unit/i,
+    ) as HTMLInputElement
+    const amountPerPackageInput = screen.getByLabelText(
+      /amount per package/i,
+    ) as HTMLInputElement
+
+    expect(measurementUnitInput).not.toBeDisabled()
+    expect(amountPerPackageInput).not.toBeDisabled()
+  })
+
+  it('unpacked quantity converts when toggling track in measurement', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with measurement tracking ON and unpacked quantity of 250g
+    const item = await createItem({
+      name: 'Flour',
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 2,
+      unpackedQuantity: 250,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^unpacked quantity/i)).toBeInTheDocument()
+    })
+
+    // Initial unpacked quantity should be 250 (in grams)
+    const unpackedInput = screen.getByLabelText(
+      /^unpacked quantity/i,
+    ) as HTMLInputElement
+    expect(unpackedInput.value).toBe('250')
+
+    // When user toggles track in measurement OFF
+    const trackSwitch = screen.getByRole('switch', {
+      name: /track in measurement/i,
+    })
+    await user.click(trackSwitch)
+
+    // Then unpacked quantity should convert to 0.5 (250g / 500g per pack)
+    await waitFor(() => {
+      expect(unpackedInput.value).toBe('0.5')
+    })
+
+    // When user toggles track in measurement back ON
+    await user.click(trackSwitch)
+
+    // Then unpacked quantity should convert back to 250 (0.5 * 500)
+    await waitFor(() => {
+      expect(unpackedInput.value).toBe('250')
+    })
+  })
+
+  it('save button disabled when measurement tracking on but fields empty', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with package tracking
+    const item = await createItem({
+      name: 'Sugar',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
+    })
+
+    const saveButton = screen.getByRole('button', { name: /save/i })
+
+    // Save button should be disabled (no changes)
+    expect(saveButton).toBeDisabled()
+
+    // When user toggles track in measurement ON without filling fields
+    const trackSwitch = screen.getByRole('switch', {
+      name: /track in measurement/i,
+    })
+    await user.click(trackSwitch)
+
+    // Save button should remain disabled (validation fails)
+    await waitFor(() => {
+      expect(saveButton).toBeDisabled()
+    })
+
+    // When user fills in measurement unit
+    const measurementUnitInput = screen.getByLabelText(/measurement unit/i)
+    await user.type(measurementUnitInput, 'g')
+
+    // Save button should still be disabled (amount per package missing)
+    expect(saveButton).toBeDisabled()
+
+    // When user fills in amount per package
+    const amountPerPackageInput = screen.getByLabelText(/amount per package/i)
+    await user.type(amountPerPackageInput, '500')
+
+    // Save button should now be enabled
+    await waitFor(() => {
+      expect(saveButton).not.toBeDisabled()
+    })
+  })
 })
