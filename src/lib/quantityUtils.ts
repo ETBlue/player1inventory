@@ -76,14 +76,18 @@ export function consumeItem(item: Item, amount: number): void {
       item.unpackedQuantity =
         Math.round((item.unpackedQuantity - amount) * 1000) / 1000
     } else {
-      // Consume from unpacked first, then from packed
-      const remaining = amount - item.unpackedQuantity
-      item.unpackedQuantity = 0
-      item.packedQuantity -= remaining
+      // Need to open package - open FULL package
+      if (item.packedQuantity > 0) {
+        // Open one full package (1 unit in package mode)
+        item.packedQuantity -= 1
+        item.unpackedQuantity += 1
 
-      // Prevent negative quantities
-      if (item.packedQuantity < 0) {
-        item.packedQuantity = 0
+        // Now consume the amount
+        item.unpackedQuantity =
+          Math.round((item.unpackedQuantity - amount) * 1000) / 1000
+      } else {
+        // No packages left, consume what's available
+        item.unpackedQuantity = 0
       }
     }
   }

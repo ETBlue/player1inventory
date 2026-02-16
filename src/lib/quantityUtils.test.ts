@@ -275,6 +275,39 @@ describe('consumeItem', () => {
     expect(item.packedQuantity).toBe(1)
     expect(item.unpackedQuantity).toBe(0.3) // 0.5 - 0.2 = 0.3 packages
   })
+
+  it('opens full package when consuming with insufficient unpacked', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 3,
+      unpackedQuantity: 0.2,
+      targetUnit: 'measurement',
+      measurementUnit: 'L',
+      amountPerPackage: 1.0,
+      consumeAmount: 0.5,
+    }
+
+    consumeItem(item as Item, 0.5)
+
+    // Should open 1 full package (1.0L)
+    expect(item.packedQuantity).toBe(2) // One package opened
+    expect(item.unpackedQuantity).toBe(0.7) // 0.2 + 1.0 - 0.5 = 0.7
+  })
+
+  it('opens full package when consuming with insufficient unpacked in package mode', () => {
+    const item: Partial<Item> = {
+      packedQuantity: 3,
+      unpackedQuantity: 0.2,
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      consumeAmount: 0.5,
+    }
+
+    consumeItem(item as Item, 0.5)
+
+    // Should open 1 full package
+    expect(item.packedQuantity).toBe(2) // One package opened
+    expect(item.unpackedQuantity).toBe(0.7) // 0.2 + 1.0 - 0.5 = 0.7
+  })
 })
 
 describe('addItem', () => {
