@@ -432,6 +432,28 @@ function ItemDetailTab() {
           </h2>
           <div className="h-px bg-accessory-emphasized" />
         </div>
+
+        <div className="">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="targetUnit"
+              checked={targetUnit === 'measurement'}
+              onCheckedChange={(checked) =>
+                setTargetUnit(checked ? 'measurement' : 'package')
+              }
+            />
+            <Label htmlFor="targetUnit" className="cursor-pointer">
+              Track in measurement{' '}
+              <span className="text-xs font-normal">
+                ({measurementUnit ? measurementUnit : '?'})
+              </span>
+            </Label>
+          </div>
+          <p className="text-xs text-foreground-muted">
+            Turn on to enable precise measurement tracking
+          </p>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div className="">
             <Label htmlFor="measurementUnit">Measurement Unit</Label>
@@ -439,6 +461,7 @@ function ItemDetailTab() {
               id="measurementUnit"
               value={measurementUnit}
               onChange={(e) => setMeasurementUnit(e.target.value)}
+              disabled={targetUnit !== 'measurement'}
             />
             <p className="text-xs text-foreground-muted">
               Precise unit like g / lb / ml
@@ -460,34 +483,12 @@ function ItemDetailTab() {
               min={1}
               value={amountPerPackage}
               onChange={(e) => setAmountPerPackage(e.target.value)}
-              disabled={!measurementUnit}
+              disabled={targetUnit !== 'measurement'}
             />
             <p className="text-xs text-foreground-muted">
               How many {measurementUnit || '?'} per pack
             </p>
           </div>
-        </div>
-        <div className="">
-          <div className="flex items-center gap-3">
-            <Switch
-              id="targetUnit"
-              checked={targetUnit === 'measurement'}
-              onCheckedChange={(checked) =>
-                setTargetUnit(checked ? 'measurement' : 'package')
-              }
-              disabled={!measurementUnit || !amountPerPackage}
-            />
-            <Label htmlFor="targetUnit" className="cursor-pointer">
-              Track in measurement{' '}
-              <span className="text-xs font-normal">
-                ({measurementUnit ? measurementUnit : '?'})
-              </span>
-            </Label>
-          </div>
-          <p className="text-xs text-foreground-muted">
-            When both measurement unit and amount per package are set, the
-            amount of the item can be tracked precisely
-          </p>
         </div>
       </div>
 
