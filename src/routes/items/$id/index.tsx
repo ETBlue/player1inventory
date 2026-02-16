@@ -65,7 +65,7 @@ function ItemDetailTab() {
     item?.expirationThreshold ?? '',
   )
 
-  // Track initial values (updates when item changes after successful save)
+  // Track initial values
   const [initialValues, setInitialValues] = useState({
     packedQuantity: item?.packedQuantity ?? 0,
     unpackedQuantity: item?.unpackedQuantity ?? 0,
@@ -83,9 +83,18 @@ function ItemDetailTab() {
     expirationThreshold: item?.expirationThreshold ?? '',
   })
 
-  // Reset form state when item data updates (after successful save)
+  // Track previous success state to detect when a save completes
+  const prevSuccessRef = useRef(updateItem.isSuccess)
+
+  // Reset form state after successful save (only once per save)
   useEffect(() => {
     if (!item) return
+
+    // Only reset when a save just completed (success changed from false to true)
+    const justSaved = updateItem.isSuccess && !prevSuccessRef.current
+    prevSuccessRef.current = updateItem.isSuccess
+
+    if (!justSaved) return
 
     const newValues = {
       packedQuantity: item.packedQuantity,
@@ -121,23 +130,7 @@ function ItemDetailTab() {
     setConsumeAmount(newValues.consumeAmount)
     setExpirationThreshold(newValues.expirationThreshold)
     setInitialValues(newValues)
-  }, [
-    item?.id,
-    item.amountPerPackage,
-    item.consumeAmount,
-    item.dueDate,
-    item.estimatedDueDays,
-    item.expirationThreshold,
-    item.measurementUnit,
-    item.name,
-    item.packageUnit,
-    item.packedQuantity,
-    item.refillThreshold,
-    item.targetQuantity,
-    item.targetUnit,
-    item.unpackedQuantity,
-    item,
-  ])
+  }, [updateItem.isSuccess, item])
 
   // Track previous targetUnit for conversion
   const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
