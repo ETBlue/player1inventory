@@ -104,6 +104,7 @@ function ItemDetailTab() {
     }
 
     if (prevTargetUnit.current === 'package' && targetUnit === 'measurement') {
+      setUnpackedQuantity((prev) => prev * amount)
       setTargetQuantity((prev) => prev * amount)
       setRefillThreshold((prev) => prev * amount)
       setConsumeAmount((prev) => prev * amount)
@@ -111,6 +112,7 @@ function ItemDetailTab() {
       prevTargetUnit.current === 'measurement' &&
       targetUnit === 'package'
     ) {
+      setUnpackedQuantity((prev) => prev / amount)
       setTargetQuantity((prev) => prev / amount)
       setRefillThreshold((prev) => prev / amount)
       setConsumeAmount((prev) => prev / amount)
