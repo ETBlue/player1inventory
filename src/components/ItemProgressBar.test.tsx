@@ -139,4 +139,58 @@ describe('ItemProgressBar with partial segments', () => {
     const progressDivs = container.querySelectorAll('.h-2 > div')
     expect(progressDivs.length).toBeGreaterThanOrEqual(2)
   })
+
+  it('renders empty track when target is 0', () => {
+    // When target is 0 in package mode, the progress bar should show an empty track rather than disappearing
+    const { container } = render(
+      <ItemProgressBar
+        current={0}
+        target={0}
+        status="ok"
+        targetUnit="package"
+      />,
+    )
+
+    // Should NOT render any segment divs (no target means no segments to fill)
+    expect(container.querySelectorAll('[data-segment]').length).toBe(0)
+
+    // Should render the outer flex-1 wrapper (the track is still present, not missing)
+    const track = container.querySelector('.flex-1')
+    expect(track).toBeInTheDocument()
+
+    // Should NOT render a continuous progress bar — package mode with target=0 takes
+    // the segmented path, so no <Progress> component is rendered at all
+    expect(
+      container.querySelector('[role="progressbar"]'),
+    ).not.toBeInTheDocument()
+
+    // The empty track must be visible — it needs h-2 height on the inner div
+    const innerTrack = container.querySelector('.flex-1 > div')
+    expect(innerTrack).toHaveClass('h-2')
+  })
+
+  it('renders empty track when target is 0 and tracking in measurement units', () => {
+    // When an item is inactive (targetQuantity === 0) with measurement tracking,
+    // ContinuousProgressBar would compute NaN (0/0*100). The fix guards against this.
+    const { container } = render(
+      <ItemProgressBar
+        current={0}
+        target={0}
+        status="ok"
+        targetUnit="measurement"
+      />,
+    )
+
+    // Should NOT render a continuous progress bar (avoids NaN percentage)
+    expect(
+      container.querySelector('[role="progressbar"]'),
+    ).not.toBeInTheDocument()
+
+    // Should NOT render any segment divs either
+    expect(container.querySelectorAll('[data-segment]').length).toBe(0)
+
+    // Should render the outer flex-1 wrapper (track is present but empty)
+    const wrapper = container.querySelector('.flex-1')
+    expect(wrapper).toBeInTheDocument()
+  })
 })
