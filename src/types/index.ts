@@ -2,6 +2,7 @@ export interface Item {
   id: string
   name: string
   tagIds: string[]
+  vendorIds?: string[]
 
   // Dual-unit tracking
   packageUnit?: string
@@ -85,4 +86,10 @@ export interface CartItem {
   cartId: string
   itemId: string
   quantity: number
+}
+
+export interface Vendor {
+  id: string
+  name: string
+  createdAt: Date
 }

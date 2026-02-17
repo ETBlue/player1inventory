@@ -56,7 +56,6 @@ function PantryView() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     () => loadSortPrefs().sortDirection,
   )
-  const [showInactive, setShowInactive] = useState(false)
 
   // Calculate if any filters are active
   const hasActiveFilters = Object.values(filterState).some(
@@ -267,62 +266,50 @@ function PantryView() {
           ))}
 
           {inactiveItems.length > 0 && (
-            <div className="bg-background-surface">
-              <button
-                type="button"
-                onClick={() => setShowInactive(!showInactive)}
-                className="w-full px-3 py-2 text-sm text-foreground-muted hover:text-foreground"
-              >
-                {showInactive ? 'Hide' : 'Show'} {inactiveItems.length} inactive
-                item{inactiveItems.length !== 1 ? 's' : ''}
-              </button>
+            <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+              {inactiveItems.length} inactive item
+              {inactiveItems.length !== 1 ? 's' : ''}
             </div>
           )}
 
-          {showInactive &&
-            inactiveItems.map((item) => (
-              <div key={item.id} className="opacity-50">
-                <PantryItem
-                  item={item}
-                  tags={tags.filter((t) => item.tagIds.includes(t.id))}
-                  tagTypes={tagTypes}
-                  showTags={tagsVisible}
-                  onConsume={async () => {
-                    const updatedItem = { ...item }
-                    consumeItem(updatedItem, updatedItem.consumeAmount)
+          {inactiveItems.map((item) => (
+            <PantryItem
+              key={item.id}
+              item={item}
+              tags={tags.filter((t) => item.tagIds.includes(t.id))}
+              tagTypes={tagTypes}
+              showTags={tagsVisible}
+              onConsume={async () => {
+                const updatedItem = { ...item }
+                consumeItem(updatedItem, updatedItem.consumeAmount)
 
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                      },
-                    })
-                  }}
-                  onAdd={async () => {
-                    const updatedItem = { ...item }
-                    const purchaseDate = new Date()
-                    addItem(
-                      updatedItem,
-                      updatedItem.consumeAmount,
-                      purchaseDate,
-                    )
+                await updateItem.mutateAsync({
+                  id: item.id,
+                  updates: {
+                    packedQuantity: updatedItem.packedQuantity,
+                    unpackedQuantity: updatedItem.unpackedQuantity,
+                  },
+                })
+              }}
+              onAdd={async () => {
+                const updatedItem = { ...item }
+                const purchaseDate = new Date()
+                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
 
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                        ...(updatedItem.dueDate
-                          ? { dueDate: updatedItem.dueDate }
-                          : {}),
-                      },
-                    })
-                  }}
-                  onTagClick={handleTagClick}
-                />
-              </div>
-            ))}
+                await updateItem.mutateAsync({
+                  id: item.id,
+                  updates: {
+                    packedQuantity: updatedItem.packedQuantity,
+                    unpackedQuantity: updatedItem.unpackedQuantity,
+                    ...(updatedItem.dueDate
+                      ? { dueDate: updatedItem.dueDate }
+                      : {}),
+                  },
+                })
+              }}
+              onTagClick={handleTagClick}
+            />
+          ))}
         </div>
       )}
 

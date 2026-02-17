@@ -18,6 +18,7 @@ import {
   getLastPurchaseDate,
   getOrCreateActiveCart,
   getTagsByType,
+  getVendors,
   updateCartItem,
   updateItem,
 } from './operations'
@@ -445,5 +446,32 @@ describe('ShoppingCart operations', () => {
 
     const updatedCart = await db.shoppingCarts.get(cart.id)
     expect(updatedCart?.status).toBe('abandoned')
+  })
+})
+
+describe('Vendor operations', () => {
+  beforeEach(async () => {
+    await db.vendors.clear()
+  })
+
+  it('user can get all vendors', async () => {
+    // Given two vendors seeded directly
+    await db.vendors.bulkAdd([
+      { id: 'v1', name: 'Costco', createdAt: new Date() },
+      { id: 'v2', name: "Trader Joe's", createdAt: new Date() },
+    ])
+
+    // When fetching all vendors
+    const vendors = await getVendors()
+
+    // Then both vendors are returned
+    expect(vendors).toHaveLength(2)
+    expect(vendors.map((v) => v.name)).toContain('Costco')
+    expect(vendors.map((v) => v.name)).toContain("Trader Joe's")
+  })
+
+  it('user gets empty array when no vendors exist', async () => {
+    const vendors = await getVendors()
+    expect(vendors).toEqual([])
   })
 })

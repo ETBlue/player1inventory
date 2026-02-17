@@ -5,6 +5,7 @@ import type {
   ShoppingCart,
   Tag,
   TagType,
+  Vendor,
 } from '@/types'
 import { TagColor } from '@/types'
 import { db } from './index'
@@ -270,4 +271,9 @@ export async function migrateTagColorsToTypes(): Promise<void> {
       }
     }
   }
+}
+
+// Vendor operations
+export async function getVendors(): Promise<Vendor[]> {
+  return db.vendors.toArray()
 }

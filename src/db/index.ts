@@ -6,6 +6,7 @@ import type {
   ShoppingCart,
   Tag,
   TagType,
+  Vendor,
 } from '@/types'
 
 const db = new Dexie('Player1Inventory') as Dexie & {
@@ -15,6 +16,7 @@ const db = new Dexie('Player1Inventory') as Dexie & {
   inventoryLogs: EntityTable<InventoryLog, 'id'>
   shoppingCarts: EntityTable<ShoppingCart, 'id'>
   cartItems: EntityTable<CartItem, 'id'>
+  vendors: EntityTable<Vendor, 'id'>
 }
 
 // Version 1: Original schema
@@ -35,6 +37,17 @@ db.version(2).stores({
   inventoryLogs: 'id, itemId, occurredAt, createdAt',
   shoppingCarts: 'id, status, createdAt, completedAt',
   cartItems: 'id, cartId, itemId',
+})
+
+// Version 3: Add vendors table
+db.version(3).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, name, typeId',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
 })
 
 export { db }

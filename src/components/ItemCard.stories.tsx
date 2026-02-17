@@ -6,6 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
+import type { CartItem } from '@/types'
 import { ItemCard } from './ItemCard'
 
 // Create a router that renders an Outlet (which will render our story)
@@ -197,5 +198,45 @@ export const InactiveItem: Story = {
     quantity: 0,
     tags: [],
     tagTypes: [],
+  },
+}
+
+const mockTags = [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }]
+const mockTagTypes = [{ id: 'type-1', name: 'Category', color: '#3b82f6' }]
+
+const mockCartItem: CartItem = {
+  id: 'ci-1',
+  cartId: 'cart-1',
+  itemId: '1',
+  quantity: 3,
+}
+
+export const ShoppingModeNotInCart: Story = {
+  name: 'Shopping Mode — Not in cart',
+  args: {
+    item: mockItem,
+    quantity: 1,
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    mode: 'shopping',
+    onConsume: () => console.log('Consume'),
+    onAdd: () => console.log('Add'),
+    onToggleCart: () => console.log('Toggle cart'),
+  },
+}
+
+export const ShoppingModeInCart: Story = {
+  name: 'Shopping Mode — In cart',
+  args: {
+    item: mockItem,
+    quantity: 1,
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    mode: 'shopping',
+    cartItem: mockCartItem,
+    onConsume: () => console.log('Consume'),
+    onAdd: () => console.log('Add'),
+    onToggleCart: () => console.log('Toggle cart'),
+    onUpdateCartQuantity: (qty) => console.log('Update qty:', qty),
   },
 }

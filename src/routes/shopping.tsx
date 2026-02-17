@@ -1,8 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Minus, Plus, ShoppingCart, X } from 'lucide-react'
-import { ShoppingItemWithQuantity } from '@/components/ShoppingItemWithQuantity'
+import { useState } from 'react'
+import { ItemCard } from '@/components/ItemCard'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   useAbandonCart,
   useActiveCart,
@@ -12,15 +18,27 @@ import {
   useItems,
   useRemoveFromCart,
   useUpdateCartItem,
+  useVendors,
 } from '@/hooks'
+import { useTags, useTagTypes } from '@/hooks/useTags'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
+import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
   component: Shopping,
 })
 
+function getStockPercent(item: Item): number {
+  if (item.targetQuantity === 0) return Number.POSITIVE_INFINITY
+  return getCurrentQuantity(item) / item.targetQuantity
+}
+
 function Shopping() {
   const navigate = useNavigate()
   const { data: items = [] } = useItems()
+  const { data: tags = [] } = useTags()
+  const { data: tagTypes = [] } = useTagTypes()
+  const { data: vendors = [] } = useVendors()
   const { data: cart } = useActiveCart()
   const { data: cartItems = [] } = useCartItems(cart?.id)
   const addToCart = useAddToCart()
@@ -29,148 +47,132 @@ function Shopping() {
   const checkout = useCheckout()
   const abandonCart = useAbandonCart()
 
-  const itemsNeedingRefill = items.filter((item) => {
-    const cartItem = cartItems.find((ci) => ci.itemId === item.id)
-    return !cartItem // Show items not yet in cart
-  })
+  const [selectedVendorId, setSelectedVendorId] = useState<string>('')
+
+  // Build a lookup map: itemId → cartItem
+  const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
+
+  // Apply vendor filter
+  const vendorFiltered = selectedVendorId
+    ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
+    : items
+
+  // Cart section: all items (active + inactive) currently in cart
+  const cartSectionItems = vendorFiltered
+    .filter((item) => cartItemMap.has(item.id))
+    .sort((a, b) => getStockPercent(a) - getStockPercent(b))
+
+  // Pending section: active items NOT in cart, sorted by stock % ascending
+  const pendingItems = vendorFiltered
+    .filter((item) => !cartItemMap.has(item.id))
+    .sort((a, b) => getStockPercent(a) - getStockPercent(b))
 
   const cartTotal = cartItems.reduce((sum, ci) => sum + ci.quantity, 0)
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Shopping</h1>
-        {cartItems.length > 0 && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              if (cart && confirm('Abandon this shopping trip?')) {
-                abandonCart.mutate(cart.id, {
-                  onSuccess: () => navigate({ to: '/' }),
-                })
-              }
-            }}
-          >
-            <X className="h-4 w-4 mr-1" />
-            Cancel
-          </Button>
-        )}
-      </div>
+  function handleToggleCart(item: Item) {
+    const ci = cartItemMap.get(item.id)
+    if (ci) {
+      removeFromCart.mutate(ci.id)
+    } else if (cart) {
+      addToCart.mutate({ cartId: cart.id, itemId: item.id, quantity: 1 })
+    }
+  }
 
-      {cartItems.length > 0 && (
-        <Card className="bg-primary/5 border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              Cart ({cartTotal} items)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {cartItems.map((cartItem) => {
-              const item = items.find((i) => i.id === cartItem.itemId)
-              if (!item) return null
-              return (
-                <div
-                  key={cartItem.id}
-                  className="flex items-center justify-between py-2 border-b last:border-0"
-                >
-                  <span>{item.name}</span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="neutral-ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => {
-                        if (cartItem.quantity <= 1) {
-                          removeFromCart.mutate(cartItem.id)
-                        } else {
-                          updateCartItem.mutate({
-                            cartItemId: cartItem.id,
-                            quantity: cartItem.quantity - 1,
-                          })
-                        }
-                      }}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="w-6 text-center text-sm">
-                      {cartItem.quantity}
-                    </span>
-                    <Button
-                      variant="neutral-ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() =>
-                        updateCartItem.mutate({
-                          cartItemId: cartItem.id,
-                          quantity: cartItem.quantity + 1,
-                        })
-                      }
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+  function handleUpdateCartQuantity(item: Item, qty: number) {
+    const ci = cartItemMap.get(item.id)
+    if (ci) {
+      updateCartItem.mutate({ cartItemId: ci.id, quantity: qty })
+    }
+  }
+
+  function renderItemCard(item: Item, className?: string) {
+    const ci = cartItemMap.get(item.id)
+    const itemTags = tags.filter((t) => item.tagIds.includes(t.id))
+    const quantity = getCurrentQuantity(item)
+    return (
+      <div key={item.id} className={className}>
+        <ItemCard
+          item={item}
+          quantity={quantity}
+          tags={itemTags}
+          tagTypes={tagTypes}
+          mode="shopping"
+          cartItem={ci}
+          onToggleCart={() => handleToggleCart(item)}
+          onUpdateCartQuantity={(qty) => handleUpdateCartQuantity(item, qty)}
+          onConsume={() => {}}
+          onAdd={() => {}}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {vendors.length > 0 && (
+          <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="All vendors" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All vendors</SelectItem>
+              {vendors.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  {v.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
+          {cartItems.length > 0 && (
             <Button
-              className="w-full mt-4"
+              variant="destructive"
+              size="sm"
               onClick={() => {
-                if (cart) {
-                  checkout.mutate(cart.id, {
+                if (cart && confirm('Abandon this shopping trip?')) {
+                  abandonCart.mutate(cart.id, {
                     onSuccess: () => navigate({ to: '/' }),
                   })
                 }
               }}
             >
-              Checkout
+              Abandon
             </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <div>
-        <h2 className="font-medium text-foreground-muted mb-2">
-          Suggested Items
-        </h2>
-        <div className="space-y-2">
-          {itemsNeedingRefill.map((item) => {
-            const foundCartItem = cartItems.find((ci) => ci.itemId === item.id)
-            return (
-              <ShoppingItemWithQuantity
-                key={item.id}
-                item={item}
-                {...(foundCartItem ? { cartItem: foundCartItem } : {})}
-                onAddToCart={() => {
-                  if (cart) {
-                    addToCart.mutate({
-                      cartId: cart.id,
-                      itemId: item.id,
-                      quantity: Math.max(
-                        1,
-                        item.targetQuantity - item.refillThreshold,
-                      ),
-                    })
-                  }
-                }}
-                onUpdateQuantity={(qty) => {
-                  const ci = cartItems.find((c) => c.itemId === item.id)
-                  if (ci) {
-                    updateCartItem.mutate({ cartItemId: ci.id, quantity: qty })
-                  }
-                }}
-                onRemove={() => {
-                  const ci = cartItems.find((c) => c.itemId === item.id)
-                  if (ci) {
-                    removeFromCart.mutate(ci.id)
-                  }
-                }}
-              />
-            )
-          })}
+          )}
+          <Button
+            disabled={cartItems.length === 0}
+            onClick={() => {
+              if (cart) {
+                checkout.mutate(cart.id, {
+                  onSuccess: () => navigate({ to: '/' }),
+                })
+              }
+            }}
+          >
+            Confirm purchase ({cartTotal} packs)
+          </Button>
         </div>
       </div>
+
+      {/* Cart section */}
+      {cartSectionItems.length > 0 && (
+        <>
+          <div className="space-y-px bg-background-surface">
+            {cartSectionItems.map((item) => renderItemCard(item))}
+          </div>
+          <div className="h-px bg-accessory-default" />
+        </>
+      )}
+
+      {/* Pending items section */}
+      {pendingItems.length > 0 && (
+        <div className="space-y-px">
+          {pendingItems.map((item) => renderItemCard(item))}
+        </div>
+      )}
     </div>
   )
 }
