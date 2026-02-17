@@ -10,7 +10,7 @@ const meta: Meta<typeof ItemProgressBar> = {
       control: { type: 'number', min: 0, max: 100 },
     },
     target: {
-      control: { type: 'number', min: 1, max: 100 },
+      control: { type: 'number', min: 0, max: 100 },
     },
     status: {
       control: { type: 'select' },
@@ -200,4 +200,13 @@ export const MultiplePartials: Story = {
       </div>
     </div>
   ),
+}
+
+export const Inactive: Story = {
+  args: {
+    current: 0,
+    target: 0,
+    status: 'ok',
+    targetUnit: 'package',
+  },
 }

@@ -210,6 +210,15 @@ export function ItemProgressBar({
   unpacked = 0,
 }: ProgressBarProps) {
   // Use continuous bar when tracking in measurement units
+  // Guard: target=0 means inactive item — render empty visible track
+  if (target === 0) {
+    return (
+      <div className="flex-1">
+        <div className="h-2 w-full rounded-xs border border-accessory-emphasized" />
+      </div>
+    )
+  }
+
   const useContinuous =
     targetUnit === 'measurement' || target > SEGMENTED_MODE_MAX_TARGET
 
