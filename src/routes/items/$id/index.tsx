@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Calendar, Clock } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -83,43 +83,17 @@ function ItemDetailTab() {
     expirationThreshold: item?.expirationThreshold ?? '',
   })
 
-  // Track previous targetUnit for conversion
-  const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
-
-  // Convert values when switching between package and measurement tracking
-  useEffect(() => {
-    if (
-      !amountPerPackage ||
-      !measurementUnit ||
-      prevTargetUnit.current === targetUnit
-    ) {
-      prevTargetUnit.current = targetUnit
-      return
-    }
-
+  const handleTargetUnitChange = (checked: boolean) => {
     const amount = Number(amountPerPackage)
-    if (amount <= 0) {
-      prevTargetUnit.current = targetUnit
-      return
+    if (amountPerPackage && measurementUnit && amount > 0) {
+      const factor = checked ? amount : 1 / amount
+      setUnpackedQuantity((prev) => prev * factor)
+      setTargetQuantity((prev) => prev * factor)
+      setRefillThreshold((prev) => prev * factor)
+      setConsumeAmount((prev) => prev * factor)
     }
-
-    if (prevTargetUnit.current === 'package' && targetUnit === 'measurement') {
-      setUnpackedQuantity((prev) => prev * amount)
-      setTargetQuantity((prev) => prev * amount)
-      setRefillThreshold((prev) => prev * amount)
-      setConsumeAmount((prev) => prev * amount)
-    } else if (
-      prevTargetUnit.current === 'measurement' &&
-      targetUnit === 'package'
-    ) {
-      setUnpackedQuantity((prev) => prev / amount)
-      setTargetQuantity((prev) => prev / amount)
-      setRefillThreshold((prev) => prev / amount)
-      setConsumeAmount((prev) => prev / amount)
-    }
-
-    prevTargetUnit.current = targetUnit
-  }, [targetUnit, amountPerPackage, measurementUnit])
+    setTargetUnit(checked ? 'measurement' : 'package')
+  }
 
   // Compute dirty state
   const isDirty =
@@ -467,9 +441,7 @@ function ItemDetailTab() {
             <Switch
               id="targetUnit"
               checked={targetUnit === 'measurement'}
-              onCheckedChange={(checked) =>
-                setTargetUnit(checked ? 'measurement' : 'package')
-              }
+              onCheckedChange={handleTargetUnitChange}
             />
             <Label htmlFor="targetUnit" className="cursor-pointer">
               Track in measurement{' '}
