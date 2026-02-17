@@ -128,7 +128,7 @@ export function consumeItem(item: Item, amount: number): void {
 
   // Clear expiration date when quantity reaches 0
   if (getCurrentQuantity(item) === 0) {
-    item.dueDate = undefined
+    delete item.dueDate
   }
 }
 

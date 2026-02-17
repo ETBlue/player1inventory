@@ -256,7 +256,9 @@ function PantryView() {
                   updates: {
                     packedQuantity: updatedItem.packedQuantity,
                     unpackedQuantity: updatedItem.unpackedQuantity,
-                    dueDate: updatedItem.dueDate,
+                    ...(updatedItem.dueDate
+                      ? { dueDate: updatedItem.dueDate }
+                      : {}),
                   },
                 })
               }}
@@ -311,7 +313,9 @@ function PantryView() {
                       updates: {
                         packedQuantity: updatedItem.packedQuantity,
                         unpackedQuantity: updatedItem.unpackedQuantity,
-                        dueDate: updatedItem.dueDate,
+                        ...(updatedItem.dueDate
+                          ? { dueDate: updatedItem.dueDate }
+                          : {}),
                       },
                     })
                   }}

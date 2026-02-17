@@ -25,14 +25,16 @@ function buildCreateData(
     unpackedQuantity: 0,
     consumeAmount: values.consumeAmount,
     tagIds: [],
-    packageUnit: values.packageUnit || undefined,
-    measurementUnit: values.measurementUnit || undefined,
-    amountPerPackage: values.amountPerPackage
-      ? Number(values.amountPerPackage)
-      : undefined,
-    expirationThreshold: values.expirationThreshold
-      ? Number(values.expirationThreshold)
-      : undefined,
+    ...(values.packageUnit ? { packageUnit: values.packageUnit } : {}),
+    ...(values.measurementUnit
+      ? { measurementUnit: values.measurementUnit }
+      : {}),
+    ...(values.amountPerPackage
+      ? { amountPerPackage: Number(values.amountPerPackage) }
+      : {}),
+    ...(values.expirationThreshold
+      ? { expirationThreshold: Number(values.expirationThreshold) }
+      : {}),
   }
 }
 

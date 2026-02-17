@@ -39,10 +39,6 @@ export function ItemCard({
       : quantity < item.refillThreshold
         ? 'error'
         : 'ok'
-  const _isExpiringSoon =
-    estimatedDueDate &&
-    estimatedDueDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000 // 3 days
-
   // Convert packed quantity to measurement units for display when tracking in measurement
   const displayPacked =
     item.targetUnit === 'measurement' && item.amountPerPackage
@@ -81,7 +77,9 @@ export function ItemCard({
             targetUnit={item.targetUnit}
             packed={displayPacked}
             unpacked={item.unpackedQuantity}
-            measurementUnit={item.measurementUnit}
+            {...(item.measurementUnit
+              ? { measurementUnit: item.measurementUnit }
+              : {})}
           />
         </Link>
         <div className="flex items-center">

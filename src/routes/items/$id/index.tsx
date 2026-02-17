@@ -14,7 +14,9 @@ function itemToFormValues(item: Item): ItemFormValues {
   return {
     packedQuantity: item.packedQuantity,
     unpackedQuantity: item.unpackedQuantity ?? 0,
-    dueDate: item.dueDate ? item.dueDate.toISOString().split('T')[0] : '',
+    dueDate: item.dueDate
+      ? (item.dueDate.toISOString().split('T')[0] ?? '')
+      : '',
     estimatedDueDays: item.estimatedDueDays ?? '',
     name: item.name,
     packageUnit: item.packageUnit ?? '',
@@ -42,23 +44,35 @@ function buildUpdates(values: ItemFormValues): Partial<Item> {
 
   if (values.expirationMode === 'date' && values.dueDate) {
     updates.dueDate = new Date(values.dueDate)
-    updates.estimatedDueDays = undefined
+    delete updates.estimatedDueDays
   } else if (values.expirationMode === 'days' && values.estimatedDueDays) {
     updates.estimatedDueDays = Number(values.estimatedDueDays)
-    updates.dueDate = undefined
+    delete updates.dueDate
   } else {
-    updates.dueDate = undefined
-    updates.estimatedDueDays = undefined
+    delete updates.dueDate
+    delete updates.estimatedDueDays
   }
 
-  updates.packageUnit = values.packageUnit || undefined
-  updates.measurementUnit = values.measurementUnit || undefined
-  updates.amountPerPackage = values.amountPerPackage
-    ? Number(values.amountPerPackage)
-    : undefined
-  updates.expirationThreshold = values.expirationThreshold
-    ? Number(values.expirationThreshold)
-    : undefined
+  if (values.packageUnit) {
+    updates.packageUnit = values.packageUnit
+  } else {
+    delete updates.packageUnit
+  }
+  if (values.measurementUnit) {
+    updates.measurementUnit = values.measurementUnit
+  } else {
+    delete updates.measurementUnit
+  }
+  if (values.amountPerPackage) {
+    updates.amountPerPackage = Number(values.amountPerPackage)
+  } else {
+    delete updates.amountPerPackage
+  }
+  if (values.expirationThreshold) {
+    updates.expirationThreshold = Number(values.expirationThreshold)
+  } else {
+    delete updates.expirationThreshold
+  }
 
   return updates
 }
