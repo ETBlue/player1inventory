@@ -109,4 +109,13 @@ describe('Sort preferences storage', () => {
     const loaded = loadSortPrefs()
     expect(loaded).toEqual({ sortBy: 'expiring', sortDirection: 'asc' })
   })
+
+  it('migrates legacy updatedAt sort field to purchased', () => {
+    localStorage.setItem(
+      'pantry-sort-prefs',
+      JSON.stringify({ sortBy: 'updatedAt', sortDirection: 'desc' }),
+    )
+    const loaded = loadSortPrefs()
+    expect(loaded).toEqual({ sortBy: 'purchased', sortDirection: 'desc' })
+  })
 })

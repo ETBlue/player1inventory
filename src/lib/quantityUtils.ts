@@ -40,6 +40,33 @@ export function normalizeUnpacked(item: Item): void {
   }
 }
 
+export function packUnpacked(item: Item): void {
+  if (
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit &&
+    item.amountPerPackage
+  ) {
+    // Measurement mode: pack complete packages based on amountPerPackage
+    const packages = Math.floor(item.unpackedQuantity / item.amountPerPackage)
+    if (packages > 0) {
+      item.packedQuantity += packages
+      item.unpackedQuantity =
+        Math.round(
+          (item.unpackedQuantity - packages * item.amountPerPackage) * 1000,
+        ) / 1000
+    }
+  } else if (item.targetUnit === 'package') {
+    // Package mode: pack complete units (floor of unpacked)
+    const packages = Math.floor(item.unpackedQuantity)
+    if (packages > 0) {
+      item.packedQuantity += packages
+      item.unpackedQuantity =
+        Math.round((item.unpackedQuantity - packages) * 1000) / 1000
+    }
+  }
+  // If no valid mode or insufficient quantity, do nothing
+}
+
 export function consumeItem(item: Item, amount: number): void {
   if (
     item.targetUnit === 'measurement' &&
@@ -76,14 +103,25 @@ export function consumeItem(item: Item, amount: number): void {
       item.unpackedQuantity =
         Math.round((item.unpackedQuantity - amount) * 1000) / 1000
     } else {
-      // Consume from unpacked first, then from packed
-      const remaining = amount - item.unpackedQuantity
-      item.unpackedQuantity = 0
-      item.packedQuantity -= remaining
+      // Need to open packages - open minimum needed
+      if (item.packedQuantity > 0) {
+        const remaining = amount - item.unpackedQuantity
+        const packagesToOpen = Math.ceil(remaining) // In package mode, each package = 1 unit
 
-      // Prevent negative quantities
-      if (item.packedQuantity < 0) {
-        item.packedQuantity = 0
+        if (packagesToOpen <= item.packedQuantity) {
+          item.packedQuantity -= packagesToOpen
+          item.unpackedQuantity =
+            Math.round(
+              (item.unpackedQuantity + packagesToOpen - amount) * 1000,
+            ) / 1000
+        } else {
+          // Not enough packages - consume everything
+          item.packedQuantity = 0
+          item.unpackedQuantity = 0
+        }
+      } else {
+        // No packages left, consume what's available
+        item.unpackedQuantity = 0
       }
     }
   }
@@ -99,13 +137,8 @@ export function addItem(
   amount: number,
   purchaseDate: Date = new Date(),
 ): void {
-  if (item.targetUnit === 'measurement') {
-    // When tracking in measurement units: add to unpacked
-    item.unpackedQuantity += amount
-  } else {
-    // When tracking in packages (or simple mode): add to packed
-    item.packedQuantity += amount
-  }
+  // Always add to unpacked (removed mode branching)
+  item.unpackedQuantity += amount
 
   // Recalculate dueDate if quantity was 0 and estimatedDueDays exists
   if (item.estimatedDueDays && !item.dueDate && getCurrentQuantity(item) > 0) {

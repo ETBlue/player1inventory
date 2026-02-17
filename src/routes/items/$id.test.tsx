@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -460,6 +460,251 @@ describe('Item detail page - manual quantity input', () => {
       const updatedItem = await db.items.get(item.id)
       expect(updatedItem?.packedQuantity).toBe(5)
       expect(saveButton).toBeDisabled()
+    })
+  })
+
+  it('shows pack unpacked button always', async () => {
+    // Given an item with some unpacked quantity
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0.5,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    // When page loads
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+    })
+
+    // Then pack unpacked button is visible
+    expect(
+      screen.getByRole('button', { name: /pack unpacked/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('disables pack button when tracking measurement without amountPerPackage', async () => {
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: undefined,
+      targetQuantity: 1000,
+      refillThreshold: 200,
+      packedQuantity: 0,
+      unpackedQuantity: 150,
+      consumeAmount: 50,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      expect(button).toBeDisabled()
+    })
+  })
+
+  it('enables pack button when package mode and unpacked >= 1', async () => {
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 1.5,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      expect(button).toBeEnabled()
+    })
+  })
+
+  it('enables pack button when measurement mode and unpacked >= amountPerPackage', async () => {
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      targetQuantity: 3000,
+      refillThreshold: 500,
+      packedQuantity: 1,
+      unpackedQuantity: 1500,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      expect(button).toBeEnabled()
+    })
+  })
+
+  it('packs unpacked quantity when pack button clicked', async () => {
+    const item = await createItem({
+      name: 'Olive Oil',
+      packedQuantity: 1,
+      unpackedQuantity: 2500,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      packageUnit: 'bottle',
+      targetQuantity: 5000,
+      refillThreshold: 1000,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument() // packedQuantity
+      expect(screen.getByDisplayValue('2500')).toBeInTheDocument() // unpackedQuantity
+    })
+
+    const button = screen.getByRole('button', { name: /pack unpacked/i })
+    fireEvent.click(button)
+
+    // Should pack 2 bottles (2000g) and leave 500g unpacked
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument() // packedQuantity: 1 + 2 = 3
+      expect(screen.getByDisplayValue('500')).toBeInTheDocument() // unpackedQuantity: 2500 - 2000 = 500
+    })
+
+    // Button should still be disabled (500 < 1000)
+    expect(button).toBeDisabled()
+  })
+
+  it('user can pack unpacked then save without quantities reverting', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with 1 packed and 2500g unpacked
+    const item = await createItem({
+      name: 'Olive Oil',
+      packedQuantity: 1,
+      unpackedQuantity: 2500,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      packageUnit: 'bottle',
+      targetQuantity: 5000,
+      refillThreshold: 1000,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument() // packedQuantity
+      expect(screen.getByDisplayValue('2500')).toBeInTheDocument() // unpackedQuantity
+    })
+
+    // When user clicks "Pack unpacked"
+    const packButton = screen.getByRole('button', { name: /pack unpacked/i })
+    fireEvent.click(packButton)
+
+    // Form updates: 1+2=3 packed, 2500-2000=500 unpacked
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('500')).toBeInTheDocument()
+    })
+
+    // When user clicks "Save"
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    // Then quantities should NOT revert to old values after save
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('500')).toBeInTheDocument()
+    })
+
+    // And the database should have the correct packed values
+    const savedItem = await db.items.get(item.id)
+    expect(savedItem?.packedQuantity).toBe(3)
+    expect(savedItem?.unpackedQuantity).toBe(500)
+  })
+
+  it('user can see updated quantities after pantry +/- when reopening detail page', async () => {
+    // Given an item already cached in TanStack Query (previous visit to detail page)
+    // consumeAmount: 2 avoids ambiguity with unpackedQuantity: 1 in assertions
+    const item = await createItem({
+      name: 'Milk',
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+
+    // First render: populate the cache with initial data
+    const { unmount } = render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider
+          router={createRouter({
+            routeTree,
+            history: createMemoryHistory({
+              initialEntries: [`/items/${item.id}`],
+            }),
+          })}
+        />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('5')).toBeInTheDocument() // packedQuantity
+    })
+
+    unmount()
+
+    // Simulate pantry +/- updating the DB (packedQuantity goes from 5 to 4)
+    await db.items.update(item.id, {
+      packedQuantity: 4,
+      unpackedQuantity: 1,
+      updatedAt: new Date(),
+    })
+
+    // Re-render (simulates navigating back to detail page with stale cache)
+    // Cache has old data (packedQuantity: 5), DB has new data (packedQuantity: 4)
+    queryClient.invalidateQueries({ queryKey: ['items', item.id] })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider
+          router={createRouter({
+            routeTree,
+            history: createMemoryHistory({
+              initialEntries: [`/items/${item.id}`],
+            }),
+          })}
+        />
+      </QueryClientProvider>,
+    )
+
+    // Should show updated quantities from the refetch (not stale cached values)
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('4')).toBeInTheDocument() // packedQuantity: updated
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument() // unpackedQuantity: updated
     })
   })
 })

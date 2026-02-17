@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Calendar, Clock } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +14,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useItem, useUpdateItem } from '@/hooks'
 import { useItemLayout } from '@/hooks/useItemLayout'
+import { packUnpacked } from '@/lib/quantityUtils'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemDetailTab,
@@ -83,6 +84,47 @@ function ItemDetailTab() {
     expirationThreshold: item?.expirationThreshold ?? '',
   })
 
+  // Sync form with item data whenever item changes from a background refetch
+  // (e.g., after +/- button clicks on the pantry page update quantities in the DB).
+  // Uses a ref for isDirty so we don't need it as a dependency, avoiding stale closure issues.
+  const isDirtyRef = useRef(false)
+
+  useEffect(() => {
+    if (!item) return
+    if (isDirtyRef.current) return // Don't overwrite unsaved user edits
+
+    setPackedQuantity(item.packedQuantity)
+    setUnpackedQuantity(item.unpackedQuantity ?? 0)
+    setExpirationMode(item.estimatedDueDays ? 'days' : 'date')
+    setDueDate(item.dueDate ? item.dueDate.toISOString().split('T')[0] : '')
+    setEstimatedDueDays(item.estimatedDueDays ?? '')
+    setName(item.name)
+    setPackageUnit(item.packageUnit ?? '')
+    setMeasurementUnit(item.measurementUnit ?? '')
+    setAmountPerPackage(item.amountPerPackage ?? '')
+    setTargetUnit(item.targetUnit)
+    setTargetQuantity(item.targetQuantity)
+    setRefillThreshold(item.refillThreshold)
+    setConsumeAmount(item.consumeAmount ?? 1)
+    setExpirationThreshold(item.expirationThreshold ?? '')
+    setInitialValues({
+      packedQuantity: item.packedQuantity,
+      unpackedQuantity: item.unpackedQuantity ?? 0,
+      expirationMode: item.estimatedDueDays ? 'days' : 'date',
+      dueDate: item.dueDate ? item.dueDate.toISOString().split('T')[0] : '',
+      estimatedDueDays: item.estimatedDueDays ?? '',
+      name: item.name,
+      packageUnit: item.packageUnit ?? '',
+      measurementUnit: item.measurementUnit ?? '',
+      amountPerPackage: item.amountPerPackage ?? '',
+      targetUnit: item.targetUnit,
+      targetQuantity: item.targetQuantity,
+      refillThreshold: item.refillThreshold,
+      consumeAmount: item.consumeAmount ?? 1,
+      expirationThreshold: item.expirationThreshold ?? '',
+    })
+  }, [item])
+
   const handleTargetUnitChange = (checked: boolean) => {
     const amount = Number(amountPerPackage)
     if (amountPerPackage && measurementUnit && amount > 0) {
@@ -111,6 +153,9 @@ function ItemDetailTab() {
     refillThreshold !== initialValues.refillThreshold ||
     consumeAmount !== initialValues.consumeAmount ||
     expirationThreshold !== initialValues.expirationThreshold
+
+  // Keep ref in sync so the item-sync effect always reads the current dirty state
+  isDirtyRef.current = isDirty
 
   // Compute validation state
   const isValidationFailed =
@@ -253,6 +298,42 @@ function ItemDetailTab() {
               Loose amount from opened package(s)
             </p>
           </div>
+        </div>
+
+        {/* Pack unpacked button */}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="neutral-outline"
+            size="sm"
+            disabled={
+              targetUnit === 'package'
+                ? unpackedQuantity < 1
+                : targetUnit === 'measurement'
+                  ? !amountPerPackage || unpackedQuantity < amountPerPackage
+                  : true
+            }
+            onClick={() => {
+              if (!item) return
+
+              const itemCopy = { ...item }
+              itemCopy.packedQuantity = packedQuantity
+              itemCopy.unpackedQuantity = unpackedQuantity
+              itemCopy.targetUnit = targetUnit
+              itemCopy.measurementUnit = measurementUnit || undefined
+              itemCopy.amountPerPackage = amountPerPackage
+                ? Number(amountPerPackage)
+                : undefined
+
+              packUnpacked(itemCopy)
+
+              setPackedQuantity(itemCopy.packedQuantity)
+              setUnpackedQuantity(itemCopy.unpackedQuantity)
+              // Note: Don't update initialValues - form is now dirty and needs saving
+            }}
+          >
+            Pack unpacked
+          </Button>
         </div>
 
         <div className="">

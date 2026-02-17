@@ -15,7 +15,6 @@ import {
   consumeItem,
   getCurrentQuantity,
   isInactive,
-  normalizeUnpacked,
 } from '@/lib/quantityUtils'
 import {
   loadFilters,
@@ -115,11 +114,25 @@ function PantryView() {
     enabled: items.length > 0,
   })
 
+  // Fetch last purchase date per item for sorting
+  const { data: allPurchaseDates } = useQuery({
+    queryKey: ['items', 'purchaseDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | null>()
+      for (const item of items) {
+        map.set(item.id, await getLastPurchaseDate(item.id))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
   // Apply sorting
   const sortedItems = sortItems(
     filteredItems,
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
     sortBy,
     sortDirection,
   )
@@ -237,7 +250,6 @@ function PantryView() {
                 const updatedItem = { ...item }
                 const purchaseDate = new Date()
                 addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-                normalizeUnpacked(updatedItem)
 
                 await updateItem.mutateAsync({
                   id: item.id,
@@ -293,7 +305,6 @@ function PantryView() {
                       updatedItem.consumeAmount,
                       purchaseDate,
                     )
-                    normalizeUnpacked(updatedItem)
 
                     await updateItem.mutateAsync({
                       id: item.id,
