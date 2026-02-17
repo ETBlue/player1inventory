@@ -489,7 +489,7 @@ describe('Vendor operations', () => {
     const vendor = await createVendor('Costco')
 
     // When updating the vendor name
-    await updateVendor(vendor.id, 'Costco Wholesale')
+    await updateVendor(vendor.id, { name: 'Costco Wholesale' })
 
     // Then the vendor is updated in the database
     const vendors = await getVendors()

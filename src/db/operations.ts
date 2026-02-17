@@ -288,8 +288,11 @@ export async function createVendor(name: string): Promise<Vendor> {
   return vendor
 }
 
-export async function updateVendor(id: string, name: string): Promise<void> {
-  await db.vendors.update(id, { name })
+export async function updateVendor(
+  id: string,
+  updates: Partial<Omit<Vendor, 'id'>>,
+): Promise<void> {
+  await db.vendors.update(id, updates)
 }
 
 export async function deleteVendor(id: string): Promise<void> {
