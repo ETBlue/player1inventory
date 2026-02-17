@@ -192,5 +192,7 @@ describe('ItemProgressBar with partial segments', () => {
     // Should render the outer flex-1 wrapper (track is present but empty)
     const wrapper = container.querySelector('.flex-1')
     expect(wrapper).toBeInTheDocument()
+    const innerTrack = container.querySelector('.flex-1 > div')
+    expect(innerTrack).toHaveClass('h-2')
   })
 })

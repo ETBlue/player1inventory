@@ -10,7 +10,7 @@ const meta: Meta<typeof ItemProgressBar> = {
       control: { type: 'number', min: 0, max: 100 },
     },
     target: {
-      control: { type: 'number', min: 1, max: 100 },
+      control: { type: 'number', min: 0, max: 100 },
     },
     status: {
       control: { type: 'select' },
