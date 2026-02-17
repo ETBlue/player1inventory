@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { packUnpacked } from '@/lib/quantityUtils'
 
 export type ItemFormValues = {
   // Stock fields (used when sections includes 'stock')
@@ -139,14 +138,28 @@ export function ItemForm({
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
 
+  const prevIsDirtyRef = useRef<boolean | null>(null)
   useEffect(() => {
+    if (isDirty === prevIsDirtyRef.current) return
+    prevIsDirtyRef.current = isDirty
     onDirtyChange?.(isDirty)
   }, [isDirty, onDirtyChange])
 
+  const prevInitialValuesRef = useRef<Partial<ItemFormValues> | undefined>(
+    initialValues,
+  )
   useEffect(() => {
     if (!initialValues) return
     if (isDirtyRef.current) return
+    // Skip if values haven't actually changed (handles unstable object identity from callers)
+    const prev = prevInitialValuesRef.current
+    prevInitialValuesRef.current = initialValues
     const next = { ...DEFAULT_VALUES, ...initialValues }
+    const prevNext = { ...DEFAULT_VALUES, ...prev }
+    const unchanged = (Object.keys(next) as (keyof ItemFormValues)[]).every(
+      (k) => next[k] === prevNext[k],
+    )
+    if (unchanged) return
     setPackedQuantity(next.packedQuantity)
     setUnpackedQuantity(next.unpackedQuantity)
     setDueDate(next.dueDate)
@@ -173,10 +186,11 @@ export function ItemForm({
     const amount = Number(amountPerPackage)
     if (amountPerPackage && measurementUnit && amount > 0) {
       const factor = checked ? amount : 1 / amount
-      setUnpackedQuantity((prev) => prev * factor)
-      setTargetQuantity((prev) => prev * factor)
-      setRefillThreshold((prev) => prev * factor)
-      setConsumeAmount((prev) => prev * factor)
+      const round = (v: number) => Math.round(v * 1000) / 1000
+      setUnpackedQuantity((prev) => round(prev * factor))
+      setTargetQuantity((prev) => round(prev * factor))
+      setRefillThreshold((prev) => round(prev * factor))
+      setConsumeAmount((prev) => round(prev * factor))
     }
     setTargetUnit(checked ? 'measurement' : 'package')
   }
@@ -275,18 +289,25 @@ export function ItemForm({
                     : true
               }
               onClick={() => {
-                const itemLike = {
-                  packedQuantity,
-                  unpackedQuantity,
-                  targetUnit,
-                  measurementUnit: measurementUnit || undefined,
-                  amountPerPackage: amountPerPackage
-                    ? Number(amountPerPackage)
-                    : undefined,
-                } as Parameters<typeof packUnpacked>[0]
-                packUnpacked(itemLike)
-                setPackedQuantity(itemLike.packedQuantity)
-                setUnpackedQuantity(itemLike.unpackedQuantity)
+                const amount = Number(amountPerPackage)
+                if (targetUnit === 'package') {
+                  const packs = Math.floor(unpackedQuantity)
+                  if (packs > 0) {
+                    setPackedQuantity(packedQuantity + packs)
+                    setUnpackedQuantity(
+                      Math.round((unpackedQuantity - packs) * 1000) / 1000,
+                    )
+                  }
+                } else if (targetUnit === 'measurement' && amount > 0) {
+                  const packs = Math.floor(unpackedQuantity / amount)
+                  if (packs > 0) {
+                    setPackedQuantity(packedQuantity + packs)
+                    setUnpackedQuantity(
+                      Math.round((unpackedQuantity - packs * amount) * 1000) /
+                        1000,
+                    )
+                  }
+                }
               }}
             >
               Pack unpacked
