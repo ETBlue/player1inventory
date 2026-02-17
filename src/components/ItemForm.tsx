@@ -1,4 +1,4 @@
-import { Calendar, Clock } from 'lucide-react'
+import { Calendar, Clock, PackagePlus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -232,7 +232,7 @@ export function ItemForm({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="packedQuantity">
-                Quantity{' '}
+                Packed{' '}
                 <span className="text-xs font-normal">
                   ({packageUnit || 'pack'})
                 </span>
@@ -252,7 +252,7 @@ export function ItemForm({
 
             <div>
               <Label htmlFor="unpackedQuantity">
-                Unpacked Quantity{' '}
+                Unpacked{' '}
                 <span className="text-xs font-normal">
                   (
                   {targetUnit === 'measurement'
@@ -274,45 +274,43 @@ export function ItemForm({
               </p>
             </div>
           </div>
-
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="neutral-outline"
-              size="sm"
-              disabled={
-                targetUnit === 'package'
-                  ? unpackedQuantity < 1
-                  : targetUnit === 'measurement'
-                    ? !amountPerPackage ||
-                      unpackedQuantity < Number(amountPerPackage)
-                    : true
-              }
-              onClick={() => {
-                const amount = Number(amountPerPackage)
-                if (targetUnit === 'package') {
-                  const packs = Math.floor(unpackedQuantity)
-                  if (packs > 0) {
-                    setPackedQuantity(packedQuantity + packs)
-                    setUnpackedQuantity(
-                      Math.round((unpackedQuantity - packs) * 1000) / 1000,
-                    )
-                  }
-                } else if (targetUnit === 'measurement' && amount > 0) {
-                  const packs = Math.floor(unpackedQuantity / amount)
-                  if (packs > 0) {
-                    setPackedQuantity(packedQuantity + packs)
-                    setUnpackedQuantity(
-                      Math.round((unpackedQuantity - packs * amount) * 1000) /
-                        1000,
-                    )
-                  }
+          <Button
+            type="button"
+            variant="neutral"
+            size="sm"
+            disabled={
+              targetUnit === 'package'
+                ? unpackedQuantity < 1
+                : targetUnit === 'measurement'
+                  ? !amountPerPackage ||
+                    unpackedQuantity < Number(amountPerPackage)
+                  : true
+            }
+            onClick={() => {
+              const amount = Number(amountPerPackage)
+              if (targetUnit === 'package') {
+                const packs = Math.floor(unpackedQuantity)
+                if (packs > 0) {
+                  setPackedQuantity(packedQuantity + packs)
+                  setUnpackedQuantity(
+                    Math.round((unpackedQuantity - packs) * 1000) / 1000,
+                  )
                 }
-              }}
-            >
-              Pack unpacked
-            </Button>
-          </div>
+              } else if (targetUnit === 'measurement' && amount > 0) {
+                const packs = Math.floor(unpackedQuantity / amount)
+                if (packs > 0) {
+                  setPackedQuantity(packedQuantity + packs)
+                  setUnpackedQuantity(
+                    Math.round((unpackedQuantity - packs * amount) * 1000) /
+                      1000,
+                  )
+                }
+              }
+            }}
+          >
+            <PackagePlus />
+            Pack unpacked
+          </Button>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -425,29 +423,31 @@ export function ItemForm({
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="consumeAmount">
-              Amount per Consume{' '}
-              <span className="text-xs font-normal">
-                (
-                {targetUnit === 'measurement'
-                  ? measurementUnit
-                  : packageUnit || 'pack'}
-                )
-              </span>
-            </Label>
-            <Input
-              id="consumeAmount"
-              type="number"
-              step="0.01"
-              min={0}
-              value={consumeAmount}
-              onChange={(e) => setConsumeAmount(Number(e.target.value))}
-              required
-            />
-            <p className="text-xs text-foreground-muted">
-              Amount added/removed per +/- button click
-            </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="consumeAmount">
+                Amount per Consume{' '}
+                <span className="text-xs font-normal">
+                  (
+                  {targetUnit === 'measurement'
+                    ? measurementUnit
+                    : packageUnit || 'pack'}
+                  )
+                </span>
+              </Label>
+              <Input
+                id="consumeAmount"
+                type="number"
+                step="0.01"
+                min={0}
+                value={consumeAmount}
+                onChange={(e) => setConsumeAmount(Number(e.target.value))}
+                required
+              />
+              <p className="text-xs text-foreground-muted">
+                Amount added/removed per +/- button click
+              </p>
+            </div>
           </div>
 
           <div>
@@ -480,20 +480,22 @@ export function ItemForm({
             </Select>
           </div>
 
-          <div>
-            <Label htmlFor="expirationThreshold">
-              Warning in <span className="text-xs font-normal">(days)</span>
-            </Label>
-            <Input
-              id="expirationThreshold"
-              type="number"
-              min={0}
-              value={expirationThreshold}
-              onChange={(e) => setExpirationThreshold(e.target.value)}
-            />
-            <p className="text-xs text-foreground-muted">
-              Shows warning when about to expire
-            </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="expirationThreshold">
+                Warning in <span className="text-xs font-normal">(days)</span>
+              </Label>
+              <Input
+                id="expirationThreshold"
+                type="number"
+                min={0}
+                value={expirationThreshold}
+                onChange={(e) => setExpirationThreshold(e.target.value)}
+              />
+              <p className="text-xs text-foreground-muted">
+                Shows warning when about to expire
+              </p>
+            </div>
           </div>
         </div>
       )}
