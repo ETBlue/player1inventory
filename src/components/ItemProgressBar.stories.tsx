@@ -201,3 +201,12 @@ export const MultiplePartials: Story = {
     </div>
   ),
 }
+
+export const Inactive: Story = {
+  args: {
+    current: 0,
+    target: 0,
+    status: 'ok',
+    targetUnit: 'package',
+  },
+}
