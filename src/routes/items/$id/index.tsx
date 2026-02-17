@@ -84,9 +84,6 @@ function ItemDetailTab() {
     expirationThreshold: item?.expirationThreshold ?? '',
   })
 
-  // Track previous success state to detect when a save completes
-  const prevSuccessRef = useRef(updateItem.isSuccess)
-
   // Sync form with item data whenever item changes from a background refetch
   // (e.g., after +/- button clicks on the pantry page update quantities in the DB).
   // Uses a ref for isDirty so we don't need it as a dependency, avoiding stale closure issues.
@@ -128,93 +125,17 @@ function ItemDetailTab() {
     })
   }, [item])
 
-  // Reset form state after successful save (only once per save)
-  useEffect(() => {
-    if (!item) return
-
-    // Only reset when a save just completed (success changed from false to true)
-    const justSaved = updateItem.isSuccess && !prevSuccessRef.current
-    prevSuccessRef.current = updateItem.isSuccess
-
-    if (!justSaved) return
-
-    // Use mutation variables for quantities, not item from TanStack Query cache.
-    // The cache may still be stale (pre-refetch) when isSuccess fires, causing a
-    // race condition that would reset the form to old values.
-    const savedUpdates = updateItem.variables?.updates
-    const newValues = {
-      packedQuantity: savedUpdates?.packedQuantity ?? item.packedQuantity,
-      unpackedQuantity: savedUpdates?.unpackedQuantity ?? item.unpackedQuantity,
-      expirationMode: item.estimatedDueDays
-        ? ('days' as const)
-        : ('date' as const),
-      dueDate: item.dueDate ? item.dueDate.toISOString().split('T')[0] : '',
-      estimatedDueDays: item.estimatedDueDays ?? '',
-      name: item.name,
-      packageUnit: item.packageUnit ?? '',
-      measurementUnit: item.measurementUnit ?? '',
-      amountPerPackage: item.amountPerPackage ?? '',
-      targetUnit: item.targetUnit,
-      targetQuantity: item.targetQuantity,
-      refillThreshold: item.refillThreshold,
-      consumeAmount: item.consumeAmount,
-      expirationThreshold: item.expirationThreshold ?? '',
-    }
-
-    setPackedQuantity(newValues.packedQuantity)
-    setUnpackedQuantity(newValues.unpackedQuantity)
-    setExpirationMode(newValues.expirationMode)
-    setDueDate(newValues.dueDate)
-    setEstimatedDueDays(newValues.estimatedDueDays)
-    setName(newValues.name)
-    setPackageUnit(newValues.packageUnit)
-    setMeasurementUnit(newValues.measurementUnit)
-    setAmountPerPackage(newValues.amountPerPackage)
-    setTargetUnit(newValues.targetUnit)
-    setTargetQuantity(newValues.targetQuantity)
-    setRefillThreshold(newValues.refillThreshold)
-    setConsumeAmount(newValues.consumeAmount)
-    setExpirationThreshold(newValues.expirationThreshold)
-    setInitialValues(newValues)
-  }, [updateItem.isSuccess, item, updateItem.variables?.updates])
-
-  // Track previous targetUnit for conversion
-  const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
-
-  // Convert values when switching between package and measurement tracking
-  useEffect(() => {
-    if (
-      !amountPerPackage ||
-      !measurementUnit ||
-      prevTargetUnit.current === targetUnit
-    ) {
-      prevTargetUnit.current = targetUnit
-      return
-    }
-
+  const handleTargetUnitChange = (checked: boolean) => {
     const amount = Number(amountPerPackage)
-    if (amount <= 0) {
-      prevTargetUnit.current = targetUnit
-      return
+    if (amountPerPackage && measurementUnit && amount > 0) {
+      const factor = checked ? amount : 1 / amount
+      setUnpackedQuantity((prev) => prev * factor)
+      setTargetQuantity((prev) => prev * factor)
+      setRefillThreshold((prev) => prev * factor)
+      setConsumeAmount((prev) => prev * factor)
     }
-
-    if (prevTargetUnit.current === 'package' && targetUnit === 'measurement') {
-      setUnpackedQuantity((prev) => prev * amount)
-      setTargetQuantity((prev) => prev * amount)
-      setRefillThreshold((prev) => prev * amount)
-      setConsumeAmount((prev) => prev * amount)
-    } else if (
-      prevTargetUnit.current === 'measurement' &&
-      targetUnit === 'package'
-    ) {
-      setUnpackedQuantity((prev) => prev / amount)
-      setTargetQuantity((prev) => prev / amount)
-      setRefillThreshold((prev) => prev / amount)
-      setConsumeAmount((prev) => prev / amount)
-    }
-
-    prevTargetUnit.current = targetUnit
-  }, [targetUnit, amountPerPackage, measurementUnit])
+    setTargetUnit(checked ? 'measurement' : 'package')
+  }
 
   // Compute dirty state
   const isDirty =
@@ -296,7 +217,29 @@ function ItemDetailTab() {
       ? Number(expirationThreshold)
       : undefined
 
-    updateItem.mutate({ id, updates })
+    updateItem.mutate(
+      { id, updates },
+      {
+        onSuccess: () => {
+          setInitialValues({
+            packedQuantity,
+            unpackedQuantity,
+            expirationMode,
+            dueDate,
+            estimatedDueDays,
+            name,
+            packageUnit,
+            measurementUnit,
+            amountPerPackage,
+            targetUnit,
+            targetQuantity,
+            refillThreshold,
+            consumeAmount,
+            expirationThreshold,
+          })
+        },
+      },
+    )
   }
 
   if (!item) return null
@@ -579,9 +522,7 @@ function ItemDetailTab() {
             <Switch
               id="targetUnit"
               checked={targetUnit === 'measurement'}
-              onCheckedChange={(checked) =>
-                setTargetUnit(checked ? 'measurement' : 'package')
-              }
+              onCheckedChange={handleTargetUnitChange}
             />
             <Label htmlFor="targetUnit" className="cursor-pointer">
               Track in measurement{' '}

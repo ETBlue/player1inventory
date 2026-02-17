@@ -32,6 +32,7 @@ function ItemLayoutInner() {
   const { data: item, isLoading } = useItem(id)
   const deleteItem = useDeleteItem()
   const { isDirty } = useItemLayout()
+  const isOnStockTab = router.state.location.pathname === `/items/${id}`
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -43,7 +44,7 @@ function ItemLayoutInner() {
     e: React.MouseEvent<HTMLAnchorElement>,
     path: string,
   ) => {
-    if (isDirty && router.state.location.pathname !== path) {
+    if (isOnStockTab && isDirty && router.state.location.pathname !== path) {
       e.preventDefault()
       setPendingNavigation(path)
       setShowDiscardDialog(true)

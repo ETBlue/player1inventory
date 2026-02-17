@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,6 @@ import {
   useTagTypes,
   useUpdateItem,
 } from '@/hooks'
-import { useItemLayout } from '@/hooks/useItemLayout'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 
 export const Route = createFileRoute('/items/$id/tags')({
@@ -24,15 +23,9 @@ function TagsTab() {
   const updateItem = useUpdateItem()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: allTags = [] } = useTags()
-  const { registerDirtyState } = useItemLayout()
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const createTag = useCreateTag()
-
-  // Tags tab never has unsaved changes (saves immediately)
-  useEffect(() => {
-    registerDirtyState(false)
-  }, [registerDirtyState])
 
   const handleAddTag = () => {
     if (addTagDialog && newTagName.trim()) {
