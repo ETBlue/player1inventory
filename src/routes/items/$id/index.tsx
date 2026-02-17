@@ -87,6 +87,47 @@ function ItemDetailTab() {
   // Track previous success state to detect when a save completes
   const prevSuccessRef = useRef(updateItem.isSuccess)
 
+  // Sync form with item data whenever item changes from a background refetch
+  // (e.g., after +/- button clicks on the pantry page update quantities in the DB).
+  // Uses a ref for isDirty so we don't need it as a dependency, avoiding stale closure issues.
+  const isDirtyRef = useRef(false)
+
+  useEffect(() => {
+    if (!item) return
+    if (isDirtyRef.current) return // Don't overwrite unsaved user edits
+
+    setPackedQuantity(item.packedQuantity)
+    setUnpackedQuantity(item.unpackedQuantity ?? 0)
+    setExpirationMode(item.estimatedDueDays ? 'days' : 'date')
+    setDueDate(item.dueDate ? item.dueDate.toISOString().split('T')[0] : '')
+    setEstimatedDueDays(item.estimatedDueDays ?? '')
+    setName(item.name)
+    setPackageUnit(item.packageUnit ?? '')
+    setMeasurementUnit(item.measurementUnit ?? '')
+    setAmountPerPackage(item.amountPerPackage ?? '')
+    setTargetUnit(item.targetUnit)
+    setTargetQuantity(item.targetQuantity)
+    setRefillThreshold(item.refillThreshold)
+    setConsumeAmount(item.consumeAmount ?? 1)
+    setExpirationThreshold(item.expirationThreshold ?? '')
+    setInitialValues({
+      packedQuantity: item.packedQuantity,
+      unpackedQuantity: item.unpackedQuantity ?? 0,
+      expirationMode: item.estimatedDueDays ? 'days' : 'date',
+      dueDate: item.dueDate ? item.dueDate.toISOString().split('T')[0] : '',
+      estimatedDueDays: item.estimatedDueDays ?? '',
+      name: item.name,
+      packageUnit: item.packageUnit ?? '',
+      measurementUnit: item.measurementUnit ?? '',
+      amountPerPackage: item.amountPerPackage ?? '',
+      targetUnit: item.targetUnit,
+      targetQuantity: item.targetQuantity,
+      refillThreshold: item.refillThreshold,
+      consumeAmount: item.consumeAmount ?? 1,
+      expirationThreshold: item.expirationThreshold ?? '',
+    })
+  }, [item])
+
   // Reset form state after successful save (only once per save)
   useEffect(() => {
     if (!item) return
@@ -191,6 +232,9 @@ function ItemDetailTab() {
     refillThreshold !== initialValues.refillThreshold ||
     consumeAmount !== initialValues.consumeAmount ||
     expirationThreshold !== initialValues.expirationThreshold
+
+  // Keep ref in sync so the item-sync effect always reads the current dirty state
+  isDirtyRef.current = isDirty
 
   // Compute validation state
   const isValidationFailed =

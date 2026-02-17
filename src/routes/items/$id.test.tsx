@@ -641,4 +641,70 @@ describe('Item detail page - manual quantity input', () => {
     expect(savedItem?.packedQuantity).toBe(3)
     expect(savedItem?.unpackedQuantity).toBe(500)
   })
+
+  it('user can see updated quantities after pantry +/- when reopening detail page', async () => {
+    // Given an item already cached in TanStack Query (previous visit to detail page)
+    // consumeAmount: 2 avoids ambiguity with unpackedQuantity: 1 in assertions
+    const item = await createItem({
+      name: 'Milk',
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      targetUnit: 'package',
+      packageUnit: 'bottle',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+
+    // First render: populate the cache with initial data
+    const { unmount } = render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider
+          router={createRouter({
+            routeTree,
+            history: createMemoryHistory({
+              initialEntries: [`/items/${item.id}`],
+            }),
+          })}
+        />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('5')).toBeInTheDocument() // packedQuantity
+    })
+
+    unmount()
+
+    // Simulate pantry +/- updating the DB (packedQuantity goes from 5 to 4)
+    await db.items.update(item.id, {
+      packedQuantity: 4,
+      unpackedQuantity: 1,
+      updatedAt: new Date(),
+    })
+
+    // Re-render (simulates navigating back to detail page with stale cache)
+    // Cache has old data (packedQuantity: 5), DB has new data (packedQuantity: 4)
+    queryClient.invalidateQueries({ queryKey: ['items', item.id] })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider
+          router={createRouter({
+            routeTree,
+            history: createMemoryHistory({
+              initialEntries: [`/items/${item.id}`],
+            }),
+          })}
+        />
+      </QueryClientProvider>,
+    )
+
+    // Should show updated quantities from the refetch (not stale cached values)
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('4')).toBeInTheDocument() // packedQuantity: updated
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument() // unpackedQuantity: updated
+    })
+  })
 })
