@@ -44,7 +44,7 @@ describe('New item page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('switch', { name: /track target in measurement/i }),
+        screen.getByRole('switch', { name: /track in measurement/i }),
       ).toBeInTheDocument()
     })
 
@@ -56,7 +56,7 @@ describe('New item page', () => {
 
     // Then the switch is enabled (not disabled)
     const trackSwitch = screen.getByRole('switch', {
-      name: /track target in measurement/i,
+      name: /track in measurement/i,
     })
     expect(trackSwitch).not.toBeDisabled()
 
@@ -73,7 +73,7 @@ describe('New item page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('switch', { name: /track target in measurement/i }),
+        screen.getByRole('switch', { name: /track in measurement/i }),
       ).toBeInTheDocument()
     })
 
@@ -82,7 +82,7 @@ describe('New item page', () => {
 
     // When user enables measurement tracking without filling measurement fields
     const trackSwitch = screen.getByRole('switch', {
-      name: /track target in measurement/i,
+      name: /track in measurement/i,
     })
     await user.click(trackSwitch)
 

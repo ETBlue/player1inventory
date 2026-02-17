@@ -228,7 +228,7 @@ export function ItemProgressBar({
         <ContinuousProgressBar
           current={current}
           target={target}
-          status={status}
+          {...(status ? { status } : {})}
           packed={packed}
           unpacked={unpacked}
         />
@@ -236,7 +236,7 @@ export function ItemProgressBar({
         <SegmentedProgressBar
           current={current}
           target={target}
-          status={status}
+          {...(status ? { status } : {})}
           packed={packed}
           unpacked={unpacked}
         />

@@ -68,14 +68,14 @@ Item detail pages use a tabbed layout with three sections:
 **1. Stock Status (default tab, `/items/$id`)**
 - Quantity fields for packed and unpacked stock
 - Unpacked quantity field always enabled (supports fractional packages)
-- Expiration tracking (specific date or days from purchase)
-- Warning threshold for expiring items
+- Expiration date field (date value, not mode/threshold)
 - Save button disabled when no changes made
 
-**2. Item Info (`/items/$id/info`)** - Not yet implemented
-- Item name and units configuration
+**2. Item Info (same route, `/items/$id`)**
+- Item name and package unit configuration
 - Target quantity and refill threshold
 - Consumption amount settings
+- Expiration mode (specific date or days from purchase) and warning threshold
 
 **3. Tags (`/items/$id/tags`)**
 - Tag assignment interface with uppercase text styling for tag type names
@@ -115,11 +115,13 @@ Each tab tracks unsaved changes independently:
 - Logs tab never has unsaved changes (view-only)
 
 **Files:**
+- `src/components/ItemForm.tsx` - Shared form component used by both edit and new item routes
 - `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
-- `src/routes/items/$id/index.tsx` - Stock Status tab implementation
+- `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with all sections)
 - `src/routes/items/$id/tags.tsx` - Tags tab implementation
 - `src/routes/items/$id.log.tsx` - History/logs tab (view-only)
 - `src/routes/items/$id.test.tsx` - Integration tests
+- `src/routes/items/new.tsx` - New item form (uses ItemForm with info + advanced sections)
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
 
 ### Manual Quantity Input

@@ -59,11 +59,11 @@ describe('Item detail page - manual quantity input', () => {
 
     // When user opens item detail page
     await waitFor(() => {
-      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
     })
 
     // Initial value should be 2
-    const packedInput = screen.getByLabelText(/^quantity/i) as HTMLInputElement
+    const packedInput = screen.getByLabelText(/^packed/i) as HTMLInputElement
     expect(packedInput.value).toBe('2')
 
     // When user changes packed quantity to 5
@@ -108,11 +108,11 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^unpacked quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^unpacked/i)).toBeInTheDocument()
     })
 
     // When user sets unpacked quantity to 0.5
-    const unpackedInput = screen.getByLabelText(/^unpacked quantity/i)
+    const unpackedInput = screen.getByLabelText(/^unpacked/i)
     await user.clear(unpackedInput)
     await user.type(unpackedInput, '0.5')
 
@@ -145,12 +145,12 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(dualUnitItem.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
     })
 
     // Unpacked field should be visible and enabled for dual-unit items
     const unpackedInputDual = screen.getByLabelText(
-      /^unpacked quantity/i,
+      /^unpacked/i,
     ) as HTMLInputElement
     expect(unpackedInputDual).toBeInTheDocument()
     expect(unpackedInputDual).not.toBeDisabled()
@@ -173,12 +173,12 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(singleUnitItem.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
     })
 
     // Unpacked field should now be visible AND enabled (behavior changed)
     const unpackedInputSingle = screen.getByLabelText(
-      /^unpacked quantity/i,
+      /^unpacked/i,
     ) as HTMLInputElement
     expect(unpackedInputSingle).toBeInTheDocument()
     expect(unpackedInputSingle).not.toBeDisabled()
@@ -273,12 +273,12 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^unpacked quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^unpacked/i)).toBeInTheDocument()
     })
 
     // Initial unpacked quantity should be 250 (in grams)
     const unpackedInput = screen.getByLabelText(
-      /^unpacked quantity/i,
+      /^unpacked/i,
     ) as HTMLInputElement
     expect(unpackedInput.value).toBe('250')
 
@@ -434,7 +434,7 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
     })
 
     const saveButton = screen.getByRole('button', { name: /save/i })
@@ -443,7 +443,7 @@ describe('Item detail page - manual quantity input', () => {
     expect(saveButton).toBeDisabled()
 
     // When user changes packed quantity
-    const packedInput = screen.getByLabelText(/^quantity/i)
+    const packedInput = screen.getByLabelText(/^packed/i)
     await user.clear(packedInput)
     await user.type(packedInput, '5')
 
@@ -481,7 +481,7 @@ describe('Item detail page - manual quantity input', () => {
 
     // When page loads
     await waitFor(() => {
-      expect(screen.getByLabelText(/^quantity/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
     })
 
     // Then pack unpacked button is visible
