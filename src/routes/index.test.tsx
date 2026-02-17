@@ -349,9 +349,7 @@ describe('Home page filtering integration', () => {
     })
   })
 
-  it('shows inactive items when toggle clicked', async () => {
-    const user = userEvent.setup()
-
+  it('shows inactive items always visible with a count label', async () => {
     // Create inactive item (target = 0, current = 0)
     await createItem({
       name: 'Inactive Item',
@@ -380,28 +378,14 @@ describe('Home page filtering integration', () => {
 
     renderApp()
 
-    // Inactive item should not be visible initially
+    // Both items should be visible
     await waitFor(() => {
       expect(screen.getByText('Active Item')).toBeInTheDocument()
-    })
-    expect(screen.queryByText('Inactive Item')).not.toBeInTheDocument()
-
-    // Should show toggle button
-    const toggleButton = screen.getByRole('button', { name: /show.*inactive/i })
-    expect(toggleButton).toBeInTheDocument()
-
-    // Click to show inactive
-    await user.click(toggleButton)
-
-    // Now inactive item should be visible
-    await waitFor(() => {
       expect(screen.getByText('Inactive Item')).toBeInTheDocument()
     })
 
-    // Button text should change to "Hide"
-    expect(
-      screen.getByRole('button', { name: /hide.*inactive/i }),
-    ).toBeInTheDocument()
+    // Should show static count label (not a toggle button)
+    expect(screen.getByText(/1 inactive item/i)).toBeInTheDocument()
   })
 
   it('shows ItemFilters when toggle is on', async () => {

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { getCurrentQuantity, isInactive } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
 import type { CartItem, Item, Tag, TagType } from '@/types'
@@ -58,7 +58,10 @@ export function ItemCard({
   return (
     <Card
       variant={status === 'ok' ? 'default' : status}
-      className={mode === 'shopping' ? 'ml-10 mr-28' : ''}
+      className={cn(
+        mode === 'shopping' ? 'ml-10 mr-28' : '',
+        isInactive(item) ? 'opacity-50' : '',
+      )}
     >
       {mode === 'shopping' && (
         <Checkbox
@@ -73,10 +76,11 @@ export function ItemCard({
         />
       )}
       {mode === 'shopping' && cartItem && (
-        <div className="flex items-center absolute -right-26 top-2">
+        <div className="flex items-stretch absolute -right-26 top-1.5">
           <Button
             variant="neutral-outline"
             size="icon"
+            className="rounded-tr-none rounded-br-none"
             onClick={(e) => {
               e.preventDefault()
               if (cartItem.quantity > 1) {
@@ -88,12 +92,13 @@ export function ItemCard({
           >
             <Minus className="h-4 w-4" />
           </Button>
-          <span className="px-3 text-sm text-center min-w-[2rem]">
+          <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
             {cartItem.quantity}
           </span>
           <Button
             variant="neutral-outline"
             size="icon"
+            className="rounded-tl-none rounded-bl-none"
             onClick={(e) => {
               e.preventDefault()
               onUpdateCartQuantity?.(cartItem.quantity + 1)

@@ -21,7 +21,7 @@ import {
   useVendors,
 } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
-import { getCurrentQuantity, isInactive } from '@/lib/quantityUtils'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
@@ -48,7 +48,6 @@ function Shopping() {
   const abandonCart = useAbandonCart()
 
   const [selectedVendorId, setSelectedVendorId] = useState<string>('')
-  const [showInactive, setShowInactive] = useState(false)
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
@@ -58,17 +57,13 @@ function Shopping() {
     ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
     : items
 
-  // Split into active (not inactive) and inactive
-  const activeItems = vendorFiltered.filter((item) => !isInactive(item))
-  const inactiveItems = vendorFiltered.filter((item) => isInactive(item))
-
   // Cart section: all items (active + inactive) currently in cart
-  const cartSectionItems = vendorFiltered.filter((item) =>
-    cartItemMap.has(item.id),
-  )
+  const cartSectionItems = vendorFiltered
+    .filter((item) => cartItemMap.has(item.id))
+    .sort((a, b) => getStockPercent(a) - getStockPercent(b))
 
   // Pending section: active items NOT in cart, sorted by stock % ascending
-  const pendingItems = activeItems
+  const pendingItems = vendorFiltered
     .filter((item) => !cartItemMap.has(item.id))
     .sort((a, b) => getStockPercent(a) - getStockPercent(b))
 
@@ -113,7 +108,7 @@ function Shopping() {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {vendors.length > 0 && (
@@ -157,44 +152,27 @@ function Shopping() {
               }
             }}
           >
-            Checkout ({cartTotal} packs)
+            Confirm purchase ({cartTotal} packs)
           </Button>
         </div>
       </div>
 
       {/* Cart section */}
       {cartSectionItems.length > 0 && (
-        <div className="space-y-px">
-          <h2 className="font-medium text-foreground-muted">In Cart</h2>
-          {cartSectionItems.map((item) => renderItemCard(item))}
-        </div>
+        <>
+          <div className="space-y-px bg-background-surface">
+            {cartSectionItems.map((item) => renderItemCard(item))}
+          </div>
+          <div className="h-px bg-accessory-default" />
+        </>
       )}
 
       {/* Pending items section */}
       {pendingItems.length > 0 && (
         <div className="space-y-px">
-          {cartSectionItems.length > 0 && (
-            <h2 className="font-medium text-foreground-muted">Add to Cart</h2>
-          )}
           {pendingItems.map((item) => renderItemCard(item))}
         </div>
       )}
-
-      {/* Inactive section */}
-      {inactiveItems.length > 0 && (
-        <div className="bg-background-surface">
-          <button
-            type="button"
-            onClick={() => setShowInactive(!showInactive)}
-            className="w-full px-3 py-2 text-sm text-foreground-muted hover:text-foreground"
-          >
-            {showInactive ? 'Hide' : 'Show'} {inactiveItems.length} inactive
-            item{inactiveItems.length !== 1 ? 's' : ''}
-          </button>
-        </div>
-      )}
-      {showInactive &&
-        inactiveItems.map((item) => renderItemCard(item, 'opacity-50'))}
     </div>
   )
 }

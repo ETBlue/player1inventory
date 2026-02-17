@@ -164,7 +164,7 @@ describe('Shopping page', () => {
     })
   })
 
-  it('user can see inactive items when toggling the section', async () => {
+  it('user can see inactive items always visible in pending section', async () => {
     // Given an inactive item (targetQuantity=0, currentQuantity=0)
     await createItem({
       name: 'Seasonal Jam',
@@ -180,19 +180,10 @@ describe('Shopping page', () => {
     // When rendering the shopping page
     renderShopping()
 
-    // Then inactive items are hidden by default
+    // Then inactive items are always visible (no toggle needed)
     await waitFor(() => {
-      expect(screen.getByText(/1 inactive item/i)).toBeInTheDocument()
+      expect(screen.getByText('Seasonal Jam')).toBeInTheDocument()
     })
-
-    expect(screen.queryByText('Seasonal Jam')).not.toBeInTheDocument()
-
-    // When user clicks the toggle
-    const user = userEvent.setup()
-    await user.click(screen.getByText(/Show 1 inactive item/i))
-
-    // Then inactive items are shown
-    expect(screen.getByText('Seasonal Jam')).toBeInTheDocument()
   })
 
   it('checkout button is disabled when cart is empty', async () => {
@@ -202,7 +193,7 @@ describe('Shopping page', () => {
     // Then checkout button is disabled
     await waitFor(() => {
       const checkoutBtn = screen.getByRole('button', {
-        name: /Checkout/i,
+        name: /Confirm purchase/i,
       })
       expect(checkoutBtn).toBeDisabled()
     })
