@@ -83,55 +83,6 @@ function ItemDetailTab() {
     expirationThreshold: item?.expirationThreshold ?? '',
   })
 
-  // Track previous success state to detect when a save completes
-  const prevSuccessRef = useRef(updateItem.isSuccess)
-
-  // Reset form state after successful save (only once per save)
-  useEffect(() => {
-    if (!item) return
-
-    // Only reset when a save just completed (success changed from false to true)
-    const justSaved = updateItem.isSuccess && !prevSuccessRef.current
-    prevSuccessRef.current = updateItem.isSuccess
-
-    if (!justSaved) return
-
-    const newValues = {
-      packedQuantity: item.packedQuantity,
-      unpackedQuantity: item.unpackedQuantity,
-      expirationMode: item.estimatedDueDays
-        ? ('days' as const)
-        : ('date' as const),
-      dueDate: item.dueDate ? item.dueDate.toISOString().split('T')[0] : '',
-      estimatedDueDays: item.estimatedDueDays ?? '',
-      name: item.name,
-      packageUnit: item.packageUnit ?? '',
-      measurementUnit: item.measurementUnit ?? '',
-      amountPerPackage: item.amountPerPackage ?? '',
-      targetUnit: item.targetUnit,
-      targetQuantity: item.targetQuantity,
-      refillThreshold: item.refillThreshold,
-      consumeAmount: item.consumeAmount,
-      expirationThreshold: item.expirationThreshold ?? '',
-    }
-
-    setPackedQuantity(newValues.packedQuantity)
-    setUnpackedQuantity(newValues.unpackedQuantity)
-    setExpirationMode(newValues.expirationMode)
-    setDueDate(newValues.dueDate)
-    setEstimatedDueDays(newValues.estimatedDueDays)
-    setName(newValues.name)
-    setPackageUnit(newValues.packageUnit)
-    setMeasurementUnit(newValues.measurementUnit)
-    setAmountPerPackage(newValues.amountPerPackage)
-    setTargetUnit(newValues.targetUnit)
-    setTargetQuantity(newValues.targetQuantity)
-    setRefillThreshold(newValues.refillThreshold)
-    setConsumeAmount(newValues.consumeAmount)
-    setExpirationThreshold(newValues.expirationThreshold)
-    setInitialValues(newValues)
-  }, [updateItem.isSuccess, item])
-
   // Track previous targetUnit for conversion
   const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
 
@@ -247,7 +198,29 @@ function ItemDetailTab() {
       ? Number(expirationThreshold)
       : undefined
 
-    updateItem.mutate({ id, updates })
+    updateItem.mutate(
+      { id, updates },
+      {
+        onSuccess: () => {
+          setInitialValues({
+            packedQuantity,
+            unpackedQuantity,
+            expirationMode,
+            dueDate,
+            estimatedDueDays,
+            name,
+            packageUnit,
+            measurementUnit,
+            amountPerPackage,
+            targetUnit,
+            targetQuantity,
+            refillThreshold,
+            consumeAmount,
+            expirationThreshold,
+          })
+        },
+      },
+    )
   }
 
   if (!item) return null
