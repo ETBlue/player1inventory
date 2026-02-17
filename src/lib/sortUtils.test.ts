@@ -34,50 +34,104 @@ describe('sortItems', () => {
   ]
 
   const quantities = new Map([
-    ['1', 1], // Below threshold (error)
-    ['2', 10], // At target (ok)
-    ['3', 1], // At threshold (warning)
+    ['1', 1],
+    ['2', 10],
+    ['3', 1],
   ])
 
   const expiryDates = new Map([
-    ['1', new Date('2026-02-15')], // 2 days away
-    ['2', new Date('2026-02-20')], // 7 days away
-    ['3', undefined], // No expiry
+    ['1', new Date('2026-02-15')],
+    ['2', new Date('2026-02-20')],
+    ['3', undefined],
+  ])
+
+  const purchaseDates = new Map<string, Date | null>([
+    ['1', new Date('2026-01-10')], // oldest purchase
+    ['2', new Date('2026-01-30')], // most recent purchase
+    ['3', null], // never purchased
   ])
 
   it('sorts by name ascending', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'name', 'asc')
-    expect(sorted.map((i) => i.name)).toEqual(['Apples', 'Pasta', 'Tomatoes'])
-  })
-
-  it('sorts by name descending', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'name', 'desc')
-    expect(sorted.map((i) => i.name)).toEqual(['Tomatoes', 'Pasta', 'Apples'])
-  })
-
-  it('sorts by updatedAt ascending', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'updatedAt', 'asc')
-    expect(sorted.map((i) => i.id)).toEqual(['1', '3', '2'])
-  })
-
-  it('sorts by updatedAt descending', () => {
     const sorted = sortItems(
       items,
       quantities,
       expiryDates,
-      'updatedAt',
+      new Map(),
+      'name',
+      'asc',
+    )
+    expect(sorted.map((i) => i.name)).toEqual(['Apples', 'Pasta', 'Tomatoes'])
+  })
+
+  it('sorts by name descending', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      new Map(),
+      'name',
       'desc',
     )
-    expect(sorted.map((i) => i.id)).toEqual(['2', '3', '1'])
+    expect(sorted.map((i) => i.name)).toEqual(['Tomatoes', 'Pasta', 'Apples'])
+  })
+
+  it('sorts by purchased ascending (oldest first)', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      purchaseDates,
+      'purchased',
+      'asc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['1', '2', '3'])
+  })
+
+  it('sorts by purchased descending (most recent first)', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      purchaseDates,
+      'purchased',
+      'desc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['2', '1', '3'])
+  })
+
+  it('sorts null purchase dates last regardless of direction', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      purchaseDates,
+      'purchased',
+      'asc',
+    )
+    expect(sorted[sorted.length - 1].id).toBe('3')
   })
 
   it('sorts by expiring ascending (soonest first)', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'expiring', 'asc')
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      new Map(),
+      'expiring',
+      'asc',
+    )
     expect(sorted.map((i) => i.id)).toEqual(['1', '2', '3'])
   })
 
   it('sorts by expiring descending (latest first, undefined last)', () => {
-    const sorted = sortItems(items, quantities, expiryDates, 'expiring', 'desc')
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      new Map(),
+      'expiring',
+      'desc',
+    )
     expect(sorted.map((i) => i.id)).toEqual(['2', '1', '3'])
   })
 
@@ -87,6 +141,7 @@ describe('sortItems', () => {
       items,
       emptyQuantities,
       expiryDates,
+      new Map(),
       'stock',
       'asc',
     )
@@ -95,7 +150,14 @@ describe('sortItems', () => {
 
   it('handles missing expiry data gracefully', () => {
     const emptyDates = new Map<string, Date | undefined>()
-    const sorted = sortItems(items, quantities, emptyDates, 'expiring', 'asc')
+    const sorted = sortItems(
+      items,
+      quantities,
+      emptyDates,
+      new Map(),
+      'expiring',
+      'asc',
+    )
     expect(sorted).toHaveLength(3)
   })
 })
@@ -128,7 +190,14 @@ describe('sortItems - stock by progress', () => {
       ['3', 8],
     ])
 
-    const sorted = sortItems(items, quantities, new Map(), 'stock', 'asc')
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
 
     // Should sort by percentage: 40%, 50%, 80%
     expect(sorted[0].id).toBe('2') // 40%
@@ -148,7 +217,14 @@ describe('sortItems - stock by progress', () => {
       ['3', 8],
     ])
 
-    const sorted = sortItems(items, quantities, new Map(), 'stock', 'desc')
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'desc',
+    )
 
     // Should sort by percentage: 80%, 50%, 40%
     expect(sorted[0].id).toBe('3') // 80%
@@ -166,7 +242,14 @@ describe('sortItems - stock by progress', () => {
       ['2', 5],
     ])
 
-    const sorted = sortItems(items, quantities, new Map(), 'stock', 'asc')
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
 
     // Items with 0 target should sort as if 100% full
     expect(sorted[0].id).toBe('2') // 50%
