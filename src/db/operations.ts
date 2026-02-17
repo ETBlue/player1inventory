@@ -277,3 +277,21 @@ export async function migrateTagColorsToTypes(): Promise<void> {
 export async function getVendors(): Promise<Vendor[]> {
   return db.vendors.toArray()
 }
+
+export async function createVendor(name: string): Promise<Vendor> {
+  const vendor: Vendor = {
+    id: crypto.randomUUID(),
+    name,
+    createdAt: new Date(),
+  }
+  await db.vendors.add(vendor)
+  return vendor
+}
+
+export async function updateVendor(id: string, name: string): Promise<void> {
+  await db.vendors.update(id, { name })
+}
+
+export async function deleteVendor(id: string): Promise<void> {
+  await db.vendors.delete(id)
+}

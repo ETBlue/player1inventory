@@ -8,7 +8,9 @@ import {
   createItem,
   createTag,
   createTagType,
+  createVendor,
   deleteItem,
+  deleteVendor,
   getAllItems,
   getAllTagTypes,
   getCartItems,
@@ -21,6 +23,7 @@ import {
   getVendors,
   updateCartItem,
   updateItem,
+  updateVendor,
 } from './operations'
 
 describe('Item operations', () => {
@@ -473,5 +476,63 @@ describe('Vendor operations', () => {
   it('user gets empty array when no vendors exist', async () => {
     const vendors = await getVendors()
     expect(vendors).toEqual([])
+  })
+})
+
+describe('Vendor CRUD operations', () => {
+  beforeEach(async () => {
+    await db.vendors.clear()
+  })
+
+  it('user can create a vendor', async () => {
+    // Given a vendor name
+    const name = 'Costco'
+
+    // When creating the vendor
+    const vendor = await createVendor(name)
+
+    // Then vendor is persisted with id and createdAt
+    expect(vendor.id).toBeDefined()
+    expect(vendor.name).toBe('Costco')
+    expect(vendor.createdAt).toBeInstanceOf(Date)
+  })
+
+  it('user can list all vendors', async () => {
+    // Given two vendors
+    await createVendor('Costco')
+    await createVendor('Trader Joes')
+
+    // When listing vendors
+    const vendors = await getVendors()
+
+    // Then both vendors are returned
+    expect(vendors).toHaveLength(2)
+    expect(vendors.map((v) => v.name)).toContain('Costco')
+    expect(vendors.map((v) => v.name)).toContain('Trader Joes')
+  })
+
+  it('user can update a vendor name', async () => {
+    // Given an existing vendor
+    const vendor = await createVendor('Costco')
+
+    // When updating the vendor name
+    await updateVendor(vendor.id, 'Costco Wholesale')
+
+    // Then the vendor is updated in the database
+    const vendors = await getVendors()
+    const updated = vendors.find((v) => v.id === vendor.id)
+    expect(updated?.name).toBe('Costco Wholesale')
+  })
+
+  it('user can delete a vendor', async () => {
+    // Given an existing vendor
+    const vendor = await createVendor('Costco')
+
+    // When deleting the vendor
+    await deleteVendor(vendor.id)
+
+    // Then the vendor is no longer in the database
+    const vendors = await getVendors()
+    expect(vendors.find((v) => v.id === vendor.id)).toBeUndefined()
   })
 })
