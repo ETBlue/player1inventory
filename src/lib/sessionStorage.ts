@@ -70,7 +70,7 @@ export function loadUiPrefs(): UiPreferences {
 }
 
 // Sort preferences (localStorage)
-export type SortField = 'name' | 'stock' | 'updatedAt' | 'expiring'
+export type SortField = 'name' | 'stock' | 'purchased' | 'expiring'
 export type SortDirection = 'asc' | 'desc'
 
 export interface SortPreferences {
@@ -100,7 +100,23 @@ export function loadSortPrefs(): SortPreferences {
       return { sortBy: 'expiring', sortDirection: 'asc' }
     }
 
-    return parsed as SortPreferences
+    const validFields: SortField[] = ['name', 'stock', 'purchased', 'expiring']
+    const validDirections: SortDirection[] = ['asc', 'desc']
+
+    const sortBy: SortField =
+      parsed.sortBy === 'updatedAt'
+        ? 'purchased' // migrate legacy value
+        : validFields.includes(parsed.sortBy)
+          ? parsed.sortBy
+          : 'expiring' // unknown value → default
+
+    const sortDirection: SortDirection = validDirections.includes(
+      parsed.sortDirection,
+    )
+      ? parsed.sortDirection
+      : 'asc'
+
+    return { sortBy, sortDirection }
   } catch (error) {
     console.error('Failed to load sort preferences:', error)
     return { sortBy: 'expiring', sortDirection: 'asc' }
