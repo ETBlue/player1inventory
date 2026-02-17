@@ -15,7 +15,6 @@ import {
   consumeItem,
   getCurrentQuantity,
   isInactive,
-  normalizeUnpacked,
 } from '@/lib/quantityUtils'
 import {
   loadFilters,
@@ -237,7 +236,6 @@ function PantryView() {
                 const updatedItem = { ...item }
                 const purchaseDate = new Date()
                 addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-                normalizeUnpacked(updatedItem)
 
                 await updateItem.mutateAsync({
                   id: item.id,
@@ -293,7 +291,6 @@ function PantryView() {
                       updatedItem.consumeAmount,
                       purchaseDate,
                     )
-                    normalizeUnpacked(updatedItem)
 
                     await updateItem.mutateAsync({
                       id: item.id,
