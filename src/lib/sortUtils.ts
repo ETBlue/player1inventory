@@ -32,10 +32,10 @@ export function sortItems(
         const dateA = purchaseDates.get(a.id) ?? null
         const dateB = purchaseDates.get(b.id) ?? null
 
-        // null dates always sort last regardless of direction
+        // null dates sort first when ascending (never purchased = oldest), last when descending
         if (!dateA && !dateB) return 0
-        if (!dateA) return 1
-        if (!dateB) return -1
+        if (!dateA) return sortDirection === 'asc' ? -1 : 1
+        if (!dateB) return sortDirection === 'asc' ? 1 : -1
 
         comparison = dateA.getTime() - dateB.getTime()
         break

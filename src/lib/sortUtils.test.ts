@@ -75,7 +75,7 @@ describe('sortItems', () => {
     expect(sorted.map((i) => i.name)).toEqual(['Tomatoes', 'Pasta', 'Apples'])
   })
 
-  it('sorts by purchased ascending (oldest first)', () => {
+  it('sorts by purchased ascending (null first, then oldest to most recent)', () => {
     const sorted = sortItems(
       items,
       quantities,
@@ -84,10 +84,10 @@ describe('sortItems', () => {
       'purchased',
       'asc',
     )
-    expect(sorted.map((i) => i.id)).toEqual(['1', '2', '3'])
+    expect(sorted.map((i) => i.id)).toEqual(['3', '1', '2'])
   })
 
-  it('sorts by purchased descending (most recent first)', () => {
+  it('sorts by purchased descending (most recent first, null last)', () => {
     const sorted = sortItems(
       items,
       quantities,
@@ -99,7 +99,7 @@ describe('sortItems', () => {
     expect(sorted.map((i) => i.id)).toEqual(['2', '1', '3'])
   })
 
-  it('sorts null purchase dates last regardless of direction', () => {
+  it('sorts null purchase dates first when ascending', () => {
     const sorted = sortItems(
       items,
       quantities,
@@ -107,6 +107,18 @@ describe('sortItems', () => {
       purchaseDates,
       'purchased',
       'asc',
+    )
+    expect(sorted[0].id).toBe('3')
+  })
+
+  it('sorts null purchase dates last when descending', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      expiryDates,
+      purchaseDates,
+      'purchased',
+      'desc',
     )
     expect(sorted[sorted.length - 1].id).toBe('3')
   })
