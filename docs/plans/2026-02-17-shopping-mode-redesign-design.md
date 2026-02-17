@@ -44,7 +44,7 @@ interface Item {
 
 - Dexie.js version bumps to **3**
 - Adds `vendors` table with index on `name`
-- Migration adds `vendorIds: []` to all existing items
+- `vendorIds` is optional on `Item` — no `.upgrade()` callback needed; existing items without `vendorIds` are handled at read-time via `item.vendorIds ?? []`
 
 ### New DB Operations
 
