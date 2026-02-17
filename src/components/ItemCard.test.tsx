@@ -1,7 +1,8 @@
 import { screen } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
-import type { Item, Tag, TagType } from '@/types'
+import type { CartItem, Item, Tag, TagType } from '@/types'
 import { TagColor } from '@/types'
 import { ItemCard } from './ItemCard'
 
@@ -356,5 +357,180 @@ describe('ItemCard - Tag Sorting', () => {
 
     // Should show simple count with converted packed: 2000/2000
     expect(screen.getByText('2000/2000')).toBeInTheDocument()
+  })
+})
+
+describe('ItemCard - Shopping mode', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Milk',
+    packageUnit: 'gallon',
+    targetUnit: 'package',
+    tagIds: [],
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const mockCartItem: CartItem = {
+    id: 'ci-1',
+    cartId: 'cart-1',
+    itemId: 'item-1',
+    quantity: 2,
+  }
+
+  it('shows unchecked checkbox when not in cart (shopping mode)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        mode="shopping"
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Add Milk to cart/i,
+    })
+    expect(checkbox).not.toBeChecked()
+  })
+
+  it('shows checked checkbox when item is in cart (shopping mode)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        mode="shopping"
+        cartItem={mockCartItem}
+        onToggleCart={vi.fn()}
+        onUpdateCartQuantity={vi.fn()}
+      />,
+    )
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Remove Milk from cart/i,
+    })
+    expect(checkbox).toBeChecked()
+  })
+
+  it('shows stepper with quantity when item is in cart (shopping mode)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        mode="shopping"
+        cartItem={mockCartItem}
+        onToggleCart={vi.fn()}
+        onUpdateCartQuantity={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('2')).toBeInTheDocument() // cart quantity
+    expect(
+      screen.getByRole('button', { name: /Decrease quantity of Milk/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Increase quantity of Milk/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('calls onToggleCart when checkbox is clicked', async () => {
+    const user = userEvent.setup()
+    const onToggleCart = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        mode="shopping"
+        onToggleCart={onToggleCart}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox'))
+    expect(onToggleCart).toHaveBeenCalledOnce()
+  })
+
+  it('calls onUpdateCartQuantity with incremented value when + clicked', async () => {
+    const user = userEvent.setup()
+    const onUpdateCartQuantity = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        mode="shopping"
+        cartItem={mockCartItem}
+        onToggleCart={vi.fn()}
+        onUpdateCartQuantity={onUpdateCartQuantity}
+      />,
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: /Increase quantity of Milk/i }),
+    )
+    expect(onUpdateCartQuantity).toHaveBeenCalledWith(3) // 2 + 1
+  })
+
+  it('- button is disabled at quantity 1 (shopping mode)', async () => {
+    const cartItemQty1 = { ...mockCartItem, quantity: 1 }
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+        mode="shopping"
+        cartItem={cartItemQty1}
+        onToggleCart={vi.fn()}
+        onUpdateCartQuantity={vi.fn()}
+      />,
+    )
+
+    const minusBtn = screen.getByRole('button', {
+      name: /Decrease quantity of Milk/i,
+    })
+    expect(minusBtn).toBeDisabled()
+  })
+
+  it('does not show checkbox in pantry mode (default)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        quantity={1}
+        tags={[]}
+        tagTypes={[]}
+        onConsume={vi.fn()}
+        onAdd={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 })
