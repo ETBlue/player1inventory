@@ -24,13 +24,13 @@ function itemToFormValues(item: Item): ItemFormValues {
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
     consumeAmount: item.consumeAmount ?? 1,
-    expirationMode: item.estimatedDueDays ? 'days' : 'date',
+    expirationMode: item.estimatedDueDays != null ? 'days' : 'date',
     expirationThreshold: item.expirationThreshold ?? '',
   }
 }
 
-function buildUpdates(values: ItemFormValues) {
-  const updates: Record<string, unknown> = {
+function buildUpdates(values: ItemFormValues): Partial<Item> {
+  const updates: Partial<Item> = {
     packedQuantity: values.packedQuantity,
     unpackedQuantity: values.unpackedQuantity,
     name: values.name,
@@ -41,7 +41,7 @@ function buildUpdates(values: ItemFormValues) {
   }
 
   if (values.expirationMode === 'date' && values.dueDate) {
-    updates.dueDate = new Date(values.dueDate as string)
+    updates.dueDate = new Date(values.dueDate)
     updates.estimatedDueDays = undefined
   } else if (values.expirationMode === 'days' && values.estimatedDueDays) {
     updates.estimatedDueDays = Number(values.estimatedDueDays)
