@@ -19,7 +19,7 @@ export function VendorCard({ vendor, onEdit, onDelete }: VendorCardProps) {
             variant="neutral-ghost"
             size="icon"
             className="h-8 w-8"
-            aria-label="Edit vendor"
+            aria-label={`Edit ${vendor.name}`}
             onClick={onEdit}
           >
             <Pencil className="h-4 w-4" />
@@ -28,7 +28,7 @@ export function VendorCard({ vendor, onEdit, onDelete }: VendorCardProps) {
             variant="neutral-ghost"
             size="icon"
             className="h-8 w-8 text-destructive"
-            aria-label="Delete vendor"
+            aria-label={`Delete ${vendor.name}`}
             onClick={onDelete}
           >
             <Trash2 className="h-4 w-4" />
