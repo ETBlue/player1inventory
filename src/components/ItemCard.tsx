@@ -4,10 +4,11 @@ import { ItemProgressBar } from '@/components/ItemProgressBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
-import type { Item, Tag, TagType } from '@/types'
+import type { CartItem, Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
   item: Item
@@ -19,6 +20,11 @@ interface ItemCardProps {
   onAdd: () => void
   onTagClick?: (tagId: string) => void
   showTags?: boolean
+  // Shopping mode props
+  mode?: 'pantry' | 'shopping'
+  cartItem?: CartItem
+  onToggleCart?: () => void
+  onUpdateCartQuantity?: (qty: number) => void
 }
 
 export function ItemCard({
@@ -31,6 +37,10 @@ export function ItemCard({
   onAdd,
   onTagClick,
   showTags = true,
+  mode = 'pantry',
+  cartItem,
+  onToggleCart,
+  onUpdateCartQuantity,
 }: ItemCardProps) {
   const currentQuantity = getCurrentQuantity(item)
   const status =
@@ -48,6 +58,18 @@ export function ItemCard({
   return (
     <Card variant={status === 'ok' ? 'default' : status}>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
+        {mode === 'shopping' && (
+          <Checkbox
+            checked={!!cartItem}
+            onCheckedChange={() => onToggleCart?.()}
+            aria-label={
+              cartItem
+                ? `Remove ${item.name} from cart`
+                : `Add ${item.name} to cart`
+            }
+            className="mt-1 shrink-0"
+          />
+        )}
         <Link
           to="/items/$id"
           params={{ id: item.id }}
@@ -83,31 +105,70 @@ export function ItemCard({
           />
         </Link>
         <div className="flex items-center">
-          <Button
-            className="rounded-tr-none rounded-br-none"
-            variant="neutral-outline"
-            size="icon"
-            onClick={(e) => {
-              e.preventDefault()
-              onConsume()
-            }}
-            disabled={quantity <= 0}
-            aria-label={`Consume ${item.name}`}
-          >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <Button
-            className="-ml-px rounded-tl-none rounded-bl-none"
-            variant="neutral-outline"
-            size="icon"
-            onClick={(e) => {
-              e.preventDefault()
-              onAdd()
-            }}
-            aria-label={`Add ${item.name}`}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          {mode === 'shopping' ? (
+            cartItem ? (
+              <>
+                <Button
+                  className="rounded-tr-none rounded-br-none"
+                  variant="neutral-outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (cartItem.quantity > 1) {
+                      onUpdateCartQuantity?.(cartItem.quantity - 1)
+                    }
+                  }}
+                  aria-label={`Decrease quantity of ${item.name} in cart`}
+                  disabled={cartItem.quantity <= 1}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <span className="px-3 text-sm text-center min-w-[2rem]">
+                  {cartItem.quantity}
+                </span>
+                <Button
+                  className="-ml-px rounded-tl-none rounded-bl-none"
+                  variant="neutral-outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onUpdateCartQuantity?.(cartItem.quantity + 1)
+                  }}
+                  aria-label={`Increase quantity of ${item.name} in cart`}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </>
+            ) : null
+          ) : (
+            <>
+              <Button
+                className="rounded-tr-none rounded-br-none"
+                variant="neutral-outline"
+                size="icon"
+                onClick={(e) => {
+                  e.preventDefault()
+                  onConsume()
+                }}
+                disabled={quantity <= 0}
+                aria-label={`Consume ${item.name}`}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <Button
+                className="-ml-px rounded-tl-none rounded-bl-none"
+                variant="neutral-outline"
+                size="icon"
+                onClick={(e) => {
+                  e.preventDefault()
+                  onAdd()
+                }}
+                aria-label={`Add ${item.name}`}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </CardHeader>
       <CardContent>
