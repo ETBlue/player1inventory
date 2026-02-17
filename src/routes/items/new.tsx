@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,46 +33,27 @@ function NewItemPage() {
   const [expirationThreshold, setExpirationThreshold] = useState('')
   const [tagIds, setTagIds] = useState<string[]>([])
 
-  const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
-
-  // Convert values when switching between package and measurement tracking
-  useEffect(() => {
-    if (
-      !amountPerPackage ||
-      !measurementUnit ||
-      prevTargetUnit.current === targetUnit
-    ) {
-      prevTargetUnit.current = targetUnit
-      return
-    }
-
+  const handleTargetUnitChange = (checked: boolean) => {
     const amount = Number(amountPerPackage)
-    if (amount <= 0) {
-      prevTargetUnit.current = targetUnit
-      return
+    if (amountPerPackage && measurementUnit && amount > 0) {
+      const factor = checked ? amount : 1 / amount
+      setTargetQuantity((prev) => prev * factor)
+      setRefillThreshold((prev) => prev * factor)
+      setConsumeAmount((prev) => prev * factor)
     }
+    setTargetUnit(checked ? 'measurement' : 'package')
+  }
 
-    if (prevTargetUnit.current === 'package' && targetUnit === 'measurement') {
-      setTargetQuantity((prev) => prev * amount)
-      setRefillThreshold((prev) => prev * amount)
-      setConsumeAmount((prev) => prev * amount)
-    } else if (
-      prevTargetUnit.current === 'measurement' &&
-      targetUnit === 'package'
-    ) {
-      setTargetQuantity((prev) => prev / amount)
-      setRefillThreshold((prev) => prev / amount)
-      setConsumeAmount((prev) => prev / amount)
-    }
+  const isValidationFailed =
+    targetUnit === 'measurement' && (!measurementUnit || !amountPerPackage)
 
-    prevTargetUnit.current = targetUnit
-  }, [targetUnit, amountPerPackage, measurementUnit])
-
-  useEffect(() => {
-    if (!measurementUnit && targetUnit === 'measurement') {
-      setTargetUnit('package')
-    }
-  }, [measurementUnit, targetUnit])
+  const validationMessage = isValidationFailed
+    ? !measurementUnit && !amountPerPackage
+      ? 'Measurement unit and amount per package are required'
+      : !measurementUnit
+        ? 'Measurement unit is required'
+        : 'Amount per package is required'
+    : null
 
   const _clearForm = () => {
     setName('')
@@ -193,10 +174,7 @@ function NewItemPage() {
               <Switch
                 id="targetUnit"
                 checked={targetUnit === 'measurement'}
-                onCheckedChange={(checked) =>
-                  setTargetUnit(checked ? 'measurement' : 'package')
-                }
-                disabled={!measurementUnit}
+                onCheckedChange={handleTargetUnitChange}
               />
               <Label htmlFor="targetUnit" className="cursor-pointer">
                 Track target in measurement
@@ -309,7 +287,12 @@ function NewItemPage() {
             )}
           </div>
 
-          <Button type="submit">Save</Button>
+          <Button type="submit" disabled={isValidationFailed}>
+            Save
+          </Button>
+          {isValidationFailed && validationMessage && (
+            <p className="text-sm text-destructive">{validationMessage}</p>
+          )}
         </form>
       </div>
     </div>
