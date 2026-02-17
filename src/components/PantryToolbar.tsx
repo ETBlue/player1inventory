@@ -30,7 +30,7 @@ const sortLabels: Record<SortField, string> = {
   expiring: 'Expiring',
   name: 'Name',
   stock: 'Stock',
-  updatedAt: 'Updated',
+  purchased: 'Purchased',
 }
 
 export function PantryToolbar({
@@ -103,10 +103,10 @@ export function PantryToolbar({
               Stock
             </DropdownMenuItem>
             <DropdownMenuItem
-              className={sortBy === 'updatedAt' ? 'bg-background-base' : ''}
-              onClick={() => handleCriteriaChange('updatedAt')}
+              className={sortBy === 'purchased' ? 'bg-background-base' : ''}
+              onClick={() => handleCriteriaChange('purchased')}
             >
-              Last updated
+              Last purchased
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

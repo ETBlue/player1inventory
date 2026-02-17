@@ -1,12 +1,13 @@
 import type { Item } from '@/types'
 
-export type SortField = 'name' | 'stock' | 'updatedAt' | 'expiring'
+export type SortField = 'name' | 'stock' | 'purchased' | 'expiring'
 export type SortDirection = 'asc' | 'desc'
 
 export function sortItems(
   items: Item[],
   quantities: Map<string, number>,
   expiryDates: Map<string, Date | undefined>,
+  purchaseDates: Map<string, Date | null>,
   sortBy: SortField,
   sortDirection: SortDirection,
 ): Item[] {
@@ -19,7 +20,6 @@ export function sortItems(
         break
 
       case 'stock': {
-        // Sort by progress percentage (current/target)
         const qtyA = quantities.get(a.id) ?? 0
         const qtyB = quantities.get(b.id) ?? 0
         const progressA = a.targetQuantity > 0 ? qtyA / a.targetQuantity : 1
@@ -28,24 +28,28 @@ export function sortItems(
         break
       }
 
-      case 'updatedAt':
-        comparison = a.updatedAt.getTime() - b.updatedAt.getTime()
+      case 'purchased': {
+        const dateA = purchaseDates.get(a.id) ?? null
+        const dateB = purchaseDates.get(b.id) ?? null
+
+        // null dates sort first when ascending (never purchased = oldest), last when descending
+        if (!dateA && !dateB) return 0
+        if (!dateA) return sortDirection === 'asc' ? -1 : 1
+        if (!dateB) return sortDirection === 'asc' ? 1 : -1
+
+        comparison = dateA.getTime() - dateB.getTime()
         break
+      }
 
       case 'expiring': {
         const dateA = expiryDates.get(a.id)
         const dateB = expiryDates.get(b.id)
 
-        // Undefined dates always sort last regardless of direction
-        if (!dateA && !dateB) {
-          return 0
-        } else if (!dateA) {
-          return 1
-        } else if (!dateB) {
-          return -1
-        } else {
-          comparison = dateA.getTime() - dateB.getTime()
-        }
+        if (!dateA && !dateB) return 0
+        if (!dateA) return 1
+        if (!dateB) return -1
+
+        comparison = dateA.getTime() - dateB.getTime()
         break
       }
     }
