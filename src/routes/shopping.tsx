@@ -164,7 +164,7 @@ function Shopping() {
 
       {/* Cart section */}
       {cartSectionItems.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-px">
           <h2 className="font-medium text-foreground-muted">In Cart</h2>
           {cartSectionItems.map((item) => renderItemCard(item))}
         </div>
@@ -172,7 +172,7 @@ function Shopping() {
 
       {/* Pending items section */}
       {pendingItems.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-px">
           {cartSectionItems.length > 0 && (
             <h2 className="font-medium text-foreground-muted">Add to Cart</h2>
           )}
