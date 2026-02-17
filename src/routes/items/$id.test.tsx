@@ -590,4 +590,55 @@ describe('Item detail page - manual quantity input', () => {
     // Button should still be disabled (500 < 1000)
     expect(button).toBeDisabled()
   })
+
+  it('user can pack unpacked then save without quantities reverting', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with 1 packed and 2500g unpacked
+    const item = await createItem({
+      name: 'Olive Oil',
+      packedQuantity: 1,
+      unpackedQuantity: 2500,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      packageUnit: 'bottle',
+      targetQuantity: 5000,
+      refillThreshold: 1000,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('1')).toBeInTheDocument() // packedQuantity
+      expect(screen.getByDisplayValue('2500')).toBeInTheDocument() // unpackedQuantity
+    })
+
+    // When user clicks "Pack unpacked"
+    const packButton = screen.getByRole('button', { name: /pack unpacked/i })
+    fireEvent.click(packButton)
+
+    // Form updates: 1+2=3 packed, 2500-2000=500 unpacked
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('500')).toBeInTheDocument()
+    })
+
+    // When user clicks "Save"
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    // Then quantities should NOT revert to old values after save
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('500')).toBeInTheDocument()
+    })
+
+    // And the database should have the correct packed values
+    const savedItem = await db.items.get(item.id)
+    expect(savedItem?.packedQuantity).toBe(3)
+    expect(savedItem?.unpackedQuantity).toBe(500)
+  })
 })

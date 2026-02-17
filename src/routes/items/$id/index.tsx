@@ -97,9 +97,13 @@ function ItemDetailTab() {
 
     if (!justSaved) return
 
+    // Use mutation variables for quantities, not item from TanStack Query cache.
+    // The cache may still be stale (pre-refetch) when isSuccess fires, causing a
+    // race condition that would reset the form to old values.
+    const savedUpdates = updateItem.variables?.updates
     const newValues = {
-      packedQuantity: item.packedQuantity,
-      unpackedQuantity: item.unpackedQuantity,
+      packedQuantity: savedUpdates?.packedQuantity ?? item.packedQuantity,
+      unpackedQuantity: savedUpdates?.unpackedQuantity ?? item.unpackedQuantity,
       expirationMode: item.estimatedDueDays
         ? ('days' as const)
         : ('date' as const),
@@ -131,7 +135,7 @@ function ItemDetailTab() {
     setConsumeAmount(newValues.consumeAmount)
     setExpirationThreshold(newValues.expirationThreshold)
     setInitialValues(newValues)
-  }, [updateItem.isSuccess, item])
+  }, [updateItem.isSuccess, item, updateItem.variables?.updates])
 
   // Track previous targetUnit for conversion
   const prevTargetUnit = useRef<'package' | 'measurement'>(targetUnit)
