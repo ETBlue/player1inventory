@@ -183,4 +183,18 @@ describe('Settings Page', () => {
     expect(systemButton.className).toContain('border-neutral')
     expect(systemButton.className).not.toContain('bg-neutral')
   })
+
+  it('renders vendors link card', () => {
+    // Given settings page with default theme
+    vi.mocked(useTheme).mockReturnValue({
+      preference: 'system',
+      theme: 'light',
+      setPreference: vi.fn(),
+    })
+    renderSettings()
+
+    // Then vendors card is shown
+    expect(screen.getByText('Vendors')).toBeInTheDocument()
+    expect(screen.getByText('Manage vendors')).toBeInTheDocument()
+  })
 })

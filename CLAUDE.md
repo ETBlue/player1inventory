@@ -150,6 +150,27 @@ Users can manually set current inventory quantities in the item detail form:
 - `src/routes/items/$id.test.tsx` - Component tests
 - `src/lib/quantityUtils.ts` - packUnpacked() function
 
+
+### Vendor Management
+
+Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) used for filtering items in shopping mode.
+
+**Vendor type** (`src/types/index.ts`): `id`, `name`, `createdAt` (minimal, name-only)
+
+**Operations** (`src/db/operations.ts`): `getVendors`, `createVendor`, `updateVendor(id, updates: Partial<Omit<Vendor, 'id'>>)`, `deleteVendor`
+
+**Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`
+
+**Route**: `src/routes/settings/vendors.tsx` — list + create/edit dialog + delete confirmation
+
+**Components**:
+- `src/components/VendorCard.tsx` — displays one vendor with edit/delete buttons (aria-labels include vendor name)
+- `src/components/VendorFormDialog.tsx` — shared dialog for create (no `vendor` prop) and edit (`vendor` prop provided)
+
+**Settings link**: `src/routes/settings/index.tsx` (Store icon)
+
+**Note:** Items already have `vendorIds?: string[]`. Item-to-vendor assignment UI is not yet implemented.
+
 ## Design Tokens
 
 Token system for theme, colors, shadows, and borders:
