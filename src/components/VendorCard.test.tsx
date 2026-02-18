@@ -4,6 +4,27 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Vendor } from '@/types'
 import { VendorCard } from './VendorCard'
 
+// Mock TanStack Router Link since it requires RouterProvider context
+vi.mock('@tanstack/react-router', async () => {
+  const actual = await vi.importActual('@tanstack/react-router')
+  return {
+    ...actual,
+    Link: ({
+      children,
+      to,
+      ...props
+    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+      children?: React.ReactNode
+      to?: string
+      params?: unknown
+    }) => (
+      <a href={to} {...props}>
+        {children}
+      </a>
+    ),
+  }
+})
+
 const vendor: Vendor = {
   id: '1',
   name: 'Costco',
