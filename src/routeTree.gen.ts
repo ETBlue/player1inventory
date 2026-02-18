@@ -23,6 +23,7 @@ import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
 import { Route as SettingsVendorsIdIndexRouteImport } from './routes/settings/vendors/$id/index'
+import { Route as SettingsVendorsIdItemsRouteImport } from './routes/settings/vendors/$id/items'
 
 const ShoppingRoute = ShoppingRouteImport.update({
   id: '/shopping',
@@ -94,6 +95,11 @@ const SettingsVendorsIdIndexRoute = SettingsVendorsIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsVendorsIdRoute,
 } as any)
+const SettingsVendorsIdItemsRoute = SettingsVendorsIdItemsRouteImport.update({
+  id: '/items',
+  path: '/items',
+  getParentRoute: () => SettingsVendorsIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
+  '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
   '/settings/vendors/$id/': typeof SettingsVendorsIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/items/$id': typeof ItemsIdIndexRoute
   '/settings/vendors': typeof SettingsVendorsIndexRoute
+  '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdIndexRoute
 }
 export interface FileRoutesById {
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
+  '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
   '/settings/vendors/$id/': typeof SettingsVendorsIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/settings/vendors/$id'
     | '/items/$id/'
     | '/settings/vendors/'
+    | '/settings/vendors/$id/items'
     | '/settings/vendors/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/items/$id/vendors'
     | '/items/$id'
     | '/settings/vendors'
+    | '/settings/vendors/$id/items'
     | '/settings/vendors/$id'
   id:
     | '__root__'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/settings/vendors/$id'
     | '/items/$id/'
     | '/settings/vendors/'
+    | '/settings/vendors/$id/items'
     | '/settings/vendors/$id/'
   fileRoutesById: FileRoutesById
 }
@@ -299,6 +311,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsVendorsIdIndexRouteImport
       parentRoute: typeof SettingsVendorsIdRoute
     }
+    '/settings/vendors/$id/items': {
+      id: '/settings/vendors/$id/items'
+      path: '/items'
+      fullPath: '/settings/vendors/$id/items'
+      preLoaderRoute: typeof SettingsVendorsIdItemsRouteImport
+      parentRoute: typeof SettingsVendorsIdRoute
+    }
   }
 }
 
@@ -320,10 +339,12 @@ const ItemsIdRouteWithChildren =
   ItemsIdRoute._addFileChildren(ItemsIdRouteChildren)
 
 interface SettingsVendorsIdRouteChildren {
+  SettingsVendorsIdItemsRoute: typeof SettingsVendorsIdItemsRoute
   SettingsVendorsIdIndexRoute: typeof SettingsVendorsIdIndexRoute
 }
 
 const SettingsVendorsIdRouteChildren: SettingsVendorsIdRouteChildren = {
+  SettingsVendorsIdItemsRoute: SettingsVendorsIdItemsRoute,
   SettingsVendorsIdIndexRoute: SettingsVendorsIdIndexRoute,
 }
 
