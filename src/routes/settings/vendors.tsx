@@ -75,8 +75,9 @@ function VendorSettings() {
           </Button>
           <h1 className="text-2xl font-bold">Vendors</h1>
         </div>
-        <Button aria-label="New Vendor" onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4" />
+        <Button onClick={handleOpenCreate}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Vendor
         </Button>
       </div>
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Vendor } from '@/types'
@@ -88,8 +88,9 @@ describe('Vendor Settings Page', () => {
     await user.click(screen.getByRole('button', { name: /new vendor/i }))
 
     // Then the dialog opens with "New Vendor" title
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('New Vendor')).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByText('New Vendor')).toBeInTheDocument()
   })
 
   it('user can create a vendor via the form', async () => {
