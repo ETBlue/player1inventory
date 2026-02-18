@@ -171,6 +171,16 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
 
+### Shopping Page
+
+**Vendor filter:** Select dropdown in toolbar. Single-select, filters items by assigned vendor. State is not persisted.
+
+**Tag filter:** `Filters` toggle button (`Filter` icon) in the toolbar shows/hides an `ItemFilters` row below the toolbar. Multi-select per tag type (OR within type, AND across types). Applied after the vendor filter — `filterItems(vendorFiltered, filterState)`. State persists to sessionStorage (`shopping-filters`, `shopping-ui-prefs` keys).
+
+**Files:**
+- `src/routes/shopping.tsx` — main page with both vendor and tag filter controls
+- `src/routes/shopping.test.tsx` — integration tests (tag filtering + existing shopping behavior)
+
 ## Design Tokens
 
 Token system for theme, colors, shadows, and borders:
