@@ -642,6 +642,35 @@ describe('Item detail page - manual quantity input', () => {
     expect(savedItem?.unpackedQuantity).toBe(500)
   })
 
+  it('user can see the vendors tab icon', async () => {
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    // When item detail page loads
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // Then a link to the vendors tab exists
+    const vendorsHref = `/items/${item.id}/vendors`
+    const allLinks = screen.getAllByRole('link')
+    expect(allLinks.some((l) => l.getAttribute('href') === vendorsHref)).toBe(
+      true,
+    )
+  })
+
   it('user can see updated quantities after pantry +/- when reopening detail page', async () => {
     // Given an item already cached in TanStack Query (previous visit to detail page)
     // consumeAmount: 2 avoids ambiguity with unpackedQuantity: 1 in assertions
