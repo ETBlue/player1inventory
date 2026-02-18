@@ -55,9 +55,7 @@ function VendorSettings() {
 
   const handleConfirmDelete = () => {
     if (vendorToDelete) {
-      deleteVendor.mutate(vendorToDelete.id, {
-        onSuccess: () => setVendorToDelete(null),
-      })
+      deleteVendor.mutate(vendorToDelete.id)
       setVendorToDelete(null)
     }
   }

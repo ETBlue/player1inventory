@@ -168,6 +168,6 @@ describe('Vendor Settings Page', () => {
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     // Then deleteVendor mutation is called with the vendor id
-    expect(mutate).toHaveBeenCalledWith('1', expect.anything())
+    expect(mutate).toHaveBeenCalledWith('1')
   })
 })
