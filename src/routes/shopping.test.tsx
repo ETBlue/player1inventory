@@ -8,7 +8,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, getOrCreateActiveCart } from '@/db/operations'
+import {
+  createItem,
+  createTag,
+  createTagType,
+  createVendor,
+  getOrCreateActiveCart,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Shopping page', () => {
@@ -196,6 +202,216 @@ describe('Shopping page', () => {
         name: /Confirm purchase/i,
       })
       expect(checkoutBtn).toBeDisabled()
+    })
+  })
+})
+
+describe('Shopping page tag filtering', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.vendors.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderShoppingPage = () => {
+    const history = createMemoryHistory({ initialEntries: ['/shopping'] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user can see the filters toggle button', async () => {
+    // Given the shopping page
+    renderShoppingPage()
+
+    // Then the Filters toggle button is present
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can show and hide the tag filter row', async () => {
+    // Given a tag type with a tag exists
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    await createTag({ typeId: tagType.id, name: 'Dairy' })
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user clicks the Filters toggle
+    const toggleBtn = await screen.findByRole('button', {
+      name: /toggle filters/i,
+    })
+    await user.click(toggleBtn)
+
+    // Then the tag filter row appears (Category dropdown visible)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /category/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks toggle again
+    await user.click(toggleBtn)
+
+    // Then the tag filter row is hidden
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /category/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can filter items by tag', async () => {
+    // Given two items, one with a Dairy tag and one without
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const dairyTag = await createTag({ typeId: tagType.id, name: 'Dairy' })
+
+    await createItem({
+      name: 'Milk',
+      tagIds: [dairyTag.id],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Bread',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user opens filters and selects Dairy tag
+    await user.click(
+      await screen.findByRole('button', { name: /toggle filters/i }),
+    )
+    await user.click(await screen.findByRole('button', { name: /category/i }))
+    await user.click(
+      await screen.findByRole('menuitemcheckbox', { name: /dairy/i }),
+    )
+
+    // Then only Milk is shown, Bread is hidden
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument()
+      expect(screen.queryByText('Bread')).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can filter by vendor and tag simultaneously', async () => {
+    // Given three items with different vendor/tag combinations
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const dairyTag = await createTag({ typeId: tagType.id, name: 'Dairy' })
+    const vendor = await createVendor('Costco')
+
+    await createItem({
+      name: 'Milk',
+      tagIds: [dairyTag.id],
+      vendorIds: [vendor.id],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Cheese',
+      tagIds: [dairyTag.id],
+      vendorIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Bread',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // Pre-seed the vendor filter via sessionStorage so we skip the Radix UI
+    // Select interaction (which is flaky in jsdom due to hasPointerCapture)
+    sessionStorage.setItem('shopping-vendor-id', vendor.id)
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user selects the Dairy tag filter
+    await user.click(
+      await screen.findByRole('button', { name: /toggle filters/i }),
+    )
+    await user.click(await screen.findByRole('button', { name: /category/i }))
+    await user.click(
+      await screen.findByRole('menuitemcheckbox', { name: /dairy/i }),
+    )
+
+    // Then Milk and Cheese are shown (both have Dairy tag)
+    // and Bread is hidden (no Dairy tag) — tag filter is active
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument()
+      expect(screen.getByText('Cheese')).toBeInTheDocument()
+      expect(screen.queryByText('Bread')).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can see empty list when all items are filtered out', async () => {
+    // Given an item with a Dairy tag
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const dairyTag = await createTag({ typeId: tagType.id, name: 'Dairy' })
+    const _frozenTag = await createTag({ typeId: tagType.id, name: 'Frozen' })
+
+    await createItem({
+      name: 'Milk',
+      tagIds: [dairyTag.id],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user filters by Frozen tag (Milk doesn't have this tag)
+    await user.click(
+      await screen.findByRole('button', { name: /toggle filters/i }),
+    )
+    await user.click(await screen.findByRole('button', { name: /category/i }))
+    await user.click(
+      await screen.findByRole('menuitemcheckbox', { name: /frozen/i }),
+    )
+
+    // Then Milk is not shown
+    await waitFor(() => {
+      expect(screen.queryByText('Milk')).not.toBeInTheDocument()
     })
   })
 })

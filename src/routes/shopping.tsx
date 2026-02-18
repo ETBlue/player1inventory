@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { Filter } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
+import { ItemFilters } from '@/components/ItemFilters'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -21,7 +23,14 @@ import {
   useVendors,
 } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
+import { type FilterState, filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
+import {
+  loadShoppingFilters,
+  loadShoppingUiPrefs,
+  saveShoppingFilters,
+  saveShoppingUiPrefs,
+} from '@/lib/sessionStorage'
 import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
@@ -48,22 +57,43 @@ function Shopping() {
   const abandonCart = useAbandonCart()
 
   const [selectedVendorId, setSelectedVendorId] = useState<string>('')
+  const [filterState, setFilterState] = useState<FilterState>(() =>
+    loadShoppingFilters(),
+  )
+  const [filtersVisible, setFiltersVisible] = useState(
+    () => loadShoppingUiPrefs().filtersVisible,
+  )
+
+  const hasActiveFilters = Object.values(filterState).some(
+    (tagIds) => tagIds.length > 0,
+  )
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
+
+  useEffect(() => {
+    saveShoppingFilters(filterState)
+  }, [filterState])
+
+  useEffect(() => {
+    saveShoppingUiPrefs({ filtersVisible })
+  }, [filtersVisible])
 
   // Apply vendor filter
   const vendorFiltered = selectedVendorId
     ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
     : items
 
+  // Apply tag filter
+  const filteredItems = filterItems(vendorFiltered, filterState)
+
   // Cart section: all items (active + inactive) currently in cart
-  const cartSectionItems = vendorFiltered
+  const cartSectionItems = filteredItems
     .filter((item) => cartItemMap.has(item.id))
     .sort((a, b) => getStockPercent(a) - getStockPercent(b))
 
   // Pending section: active items NOT in cart, sorted by stock % ascending
-  const pendingItems = vendorFiltered
+  const pendingItems = filteredItems
     .filter((item) => !cartItemMap.has(item.id))
     .sort((a, b) => getStockPercent(a) - getStockPercent(b))
 
@@ -129,6 +159,16 @@ function Shopping() {
             </SelectContent>
           </Select>
         )}
+        <Button
+          size="icon"
+          variant={
+            filtersVisible || hasActiveFilters ? 'neutral' : 'neutral-ghost'
+          }
+          onClick={() => setFiltersVisible((v) => !v)}
+          aria-label="Toggle filters"
+        >
+          <Filter />
+        </Button>
         <div className="flex items-center gap-2 ml-auto">
           {cartItems.length > 0 && (
             <Button
@@ -159,6 +199,18 @@ function Shopping() {
           </Button>
         </div>
       </div>
+
+      {filtersVisible && (
+        <ItemFilters
+          tagTypes={tagTypes}
+          tags={tags}
+          items={vendorFiltered}
+          filterState={filterState}
+          filteredCount={filteredItems.length}
+          totalCount={vendorFiltered.length}
+          onFilterChange={setFilterState}
+        />
+      )}
 
       {/* Cart section */}
       {cartSectionItems.length > 0 && (
