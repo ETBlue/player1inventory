@@ -17,6 +17,7 @@ describe('Vendor Detail - Items Tab', () => {
   beforeEach(async () => {
     await db.items.clear()
     await db.vendors.clear()
+    await db.inventoryLogs.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })

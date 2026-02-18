@@ -85,6 +85,10 @@ function VendorItemsTab() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
+      {items.length === 0 && (
+        <p className="text-sm text-foreground-muted">No items yet.</p>
+      )}
+
       <div className="space-y-2">
         {filteredItems.map((item) => {
           const checked = isAssigned(item.id, item.vendorIds)
@@ -125,7 +129,7 @@ function VendorItemsTab() {
         })}
       </div>
 
-      <Button onClick={handleSave} disabled={!isDirty}>
+      <Button onClick={handleSave} disabled={!isDirty || updateItem.isPending}>
         Save
       </Button>
     </div>
