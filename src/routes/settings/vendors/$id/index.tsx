@@ -18,14 +18,15 @@ function VendorInfoTab() {
   const { registerDirtyState } = useVendorLayout()
 
   const [name, setName] = useState('')
-  const [_savedAt, setSavedAt] = useState(0)
+  const [savedAt, setSavedAt] = useState(0)
 
   // Sync name when vendor loads or after save
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally sync only on id change or after save
   useEffect(() => {
     if (vendor) {
       setName(vendor.name)
     }
-  }, [vendor?.id, vendor.name, vendor]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [vendor?.id, savedAt])
 
   const isDirty = vendor ? name !== vendor.name : false
 
