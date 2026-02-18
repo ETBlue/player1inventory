@@ -320,7 +320,7 @@ describe('Shopping page tag filtering', () => {
   })
 
   it('user can filter by vendor and tag simultaneously', async () => {
-    // Given three items with different vendor/tag combinations
+    // Given three items: Milk (Dairy + Costco), Cheese (Dairy only), Bread (Costco only)
     const tagType = await createTagType({ name: 'Category', color: 'blue' })
     const dairyTag = await createTag({ typeId: tagType.id, name: 'Dairy' })
     const vendor = await createVendor('Costco')
@@ -356,14 +356,10 @@ describe('Shopping page tag filtering', () => {
       consumeAmount: 1,
     })
 
-    // Pre-seed the vendor filter via sessionStorage so we skip the Radix UI
-    // Select interaction (which is flaky in jsdom due to hasPointerCapture)
-    sessionStorage.setItem('shopping-vendor-id', vendor.id)
-
     renderShoppingPage()
     const user = userEvent.setup()
 
-    // When user selects the Dairy tag filter
+    // When user opens filters and selects Dairy tag
     await user.click(
       await screen.findByRole('button', { name: /toggle filters/i }),
     )
@@ -372,13 +368,33 @@ describe('Shopping page tag filtering', () => {
       await screen.findByRole('menuitemcheckbox', { name: /dairy/i }),
     )
 
-    // Then Milk and Cheese are shown (both have Dairy tag)
-    // and Bread is hidden (no Dairy tag) — tag filter is active
+    // Then the count shows 2 of 3 items (Dairy filter applied to all 3 items)
+    // This proves tag filter is working
     await waitFor(() => {
-      expect(screen.getByText('Milk')).toBeInTheDocument()
-      expect(screen.getByText('Cheese')).toBeInTheDocument()
-      expect(screen.queryByText('Bread')).not.toBeInTheDocument()
+      expect(screen.getByText(/showing 2 of 3 items/i)).toBeInTheDocument()
     })
+
+    // When user also selects Costco vendor
+    // jsdom doesn't implement pointer capture or scrollIntoView; polyfill them
+    // so Radix UI Select can open without throwing
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+    const vendorTrigger = screen.getByRole('combobox')
+    await user.click(vendorTrigger)
+    const costcoOption = await screen.findByRole('option', { name: /costco/i })
+    await user.click(costcoOption)
+
+    // Then the count shows 1 of 2 items (Dairy filter applied to Costco's 2 items)
+    // This proves both vendor and tag filters are active simultaneously
+    await waitFor(() => {
+      expect(screen.getByText(/showing 1 of 2 items/i)).toBeInTheDocument()
+    })
+    // And Milk is visible (Dairy + Costco), Cheese and Bread are not
+    expect(screen.getByText('Milk')).toBeInTheDocument()
+    expect(screen.queryByText('Cheese')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bread')).not.toBeInTheDocument()
   })
 
   it('user can see empty list when all items are filtered out', async () => {
