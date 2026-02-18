@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShoppingRouteImport } from './routes/shopping'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsVendorsRouteImport } from './routes/settings/vendors'
 import { Route as SettingsTagsRouteImport } from './routes/settings/tags'
 import { Route as ItemsNewRouteImport } from './routes/items/new'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
 import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
+import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
 
@@ -32,6 +34,11 @@ const IndexRoute = IndexRouteImport.update({
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsVendorsRoute = SettingsVendorsRouteImport.update({
+  id: '/settings/vendors',
+  path: '/settings/vendors',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsTagsRoute = SettingsTagsRouteImport.update({
@@ -54,6 +61,11 @@ const ItemsIdIndexRoute = ItemsIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ItemsIdRoute,
 } as any)
+const ItemsIdVendorsRoute = ItemsIdVendorsRouteImport.update({
+  id: '/vendors',
+  path: '/vendors',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
 const ItemsIdTagsRoute = ItemsIdTagsRouteImport.update({
   id: '/tags',
   path: '/tags',
@@ -71,9 +83,11 @@ export interface FileRoutesByFullPath {
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
   '/settings/tags': typeof SettingsTagsRoute
+  '/settings/vendors': typeof SettingsVendorsRoute
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/items/$id/': typeof ItemsIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -81,9 +95,11 @@ export interface FileRoutesByTo {
   '/shopping': typeof ShoppingRoute
   '/items/new': typeof ItemsNewRoute
   '/settings/tags': typeof SettingsTagsRoute
+  '/settings/vendors': typeof SettingsVendorsRoute
   '/settings': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/items/$id': typeof ItemsIdIndexRoute
 }
 export interface FileRoutesById {
@@ -93,9 +109,11 @@ export interface FileRoutesById {
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
   '/settings/tags': typeof SettingsTagsRoute
+  '/settings/vendors': typeof SettingsVendorsRoute
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/items/$id/': typeof ItemsIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -106,9 +124,11 @@ export interface FileRouteTypes {
     | '/items/$id'
     | '/items/new'
     | '/settings/tags'
+    | '/settings/vendors'
     | '/settings/'
     | '/items/$id/log'
     | '/items/$id/tags'
+    | '/items/$id/vendors'
     | '/items/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -116,9 +136,11 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/items/new'
     | '/settings/tags'
+    | '/settings/vendors'
     | '/settings'
     | '/items/$id/log'
     | '/items/$id/tags'
+    | '/items/$id/vendors'
     | '/items/$id'
   id:
     | '__root__'
@@ -127,9 +149,11 @@ export interface FileRouteTypes {
     | '/items/$id'
     | '/items/new'
     | '/settings/tags'
+    | '/settings/vendors'
     | '/settings/'
     | '/items/$id/log'
     | '/items/$id/tags'
+    | '/items/$id/vendors'
     | '/items/$id/'
   fileRoutesById: FileRoutesById
 }
@@ -139,6 +163,7 @@ export interface RootRouteChildren {
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   ItemsNewRoute: typeof ItemsNewRoute
   SettingsTagsRoute: typeof SettingsTagsRoute
+  SettingsVendorsRoute: typeof SettingsVendorsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
@@ -163,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/vendors': {
+      id: '/settings/vendors'
+      path: '/settings/vendors'
+      fullPath: '/settings/vendors'
+      preLoaderRoute: typeof SettingsVendorsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/tags': {
@@ -193,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemsIdIndexRouteImport
       parentRoute: typeof ItemsIdRoute
     }
+    '/items/$id/vendors': {
+      id: '/items/$id/vendors'
+      path: '/vendors'
+      fullPath: '/items/$id/vendors'
+      preLoaderRoute: typeof ItemsIdVendorsRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
     '/items/$id/tags': {
       id: '/items/$id/tags'
       path: '/tags'
@@ -213,12 +252,14 @@ declare module '@tanstack/react-router' {
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
   ItemsIdTagsRoute: typeof ItemsIdTagsRoute
+  ItemsIdVendorsRoute: typeof ItemsIdVendorsRoute
   ItemsIdIndexRoute: typeof ItemsIdIndexRoute
 }
 
 const ItemsIdRouteChildren: ItemsIdRouteChildren = {
   ItemsIdLogRoute: ItemsIdLogRoute,
   ItemsIdTagsRoute: ItemsIdTagsRoute,
+  ItemsIdVendorsRoute: ItemsIdVendorsRoute,
   ItemsIdIndexRoute: ItemsIdIndexRoute,
 }
 
@@ -231,6 +272,7 @@ const rootRouteChildren: RootRouteChildren = {
   ItemsIdRoute: ItemsIdRouteWithChildren,
   ItemsNewRoute: ItemsNewRoute,
   SettingsTagsRoute: SettingsTagsRoute,
+  SettingsVendorsRoute: SettingsVendorsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 export const routeTree = rootRouteImport

@@ -169,7 +169,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Settings link**: `src/routes/settings/index.tsx` (Store icon)
 
-**Note:** Items already have `vendorIds?: string[]`. Item-to-vendor assignment UI is not yet implemented.
+**Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
 
 ## Design Tokens
 
