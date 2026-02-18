@@ -46,7 +46,7 @@ const setupMocks = (vendors: Vendor[] = mockVendors) => {
   return { mutate }
 }
 
-import { Route } from './vendors'
+import { Route } from './vendors/index'
 
 const VendorSettings = Route.options.component as () => JSX.Element
 
