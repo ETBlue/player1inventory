@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronRight, Moon, Sun, Tags } from 'lucide-react'
+import { ChevronRight, Moon, Store, Sun, Tags } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useTheme } from '@/hooks/useTheme'
@@ -71,6 +71,24 @@ function Settings() {
                   <p className="font-medium">Tags</p>
                   <p className="text-sm text-foreground-muted">
                     Manage tag types and tags
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 text-foreground-muted" />
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Vendors Card */}
+        <Link to="/settings/vendors">
+          <Card className="hover:bg-background-surface/50 transition-colors">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Store className="h-5 w-5 text-foreground-muted" />
+                <div>
+                  <p className="font-medium">Vendors</p>
+                  <p className="text-sm text-foreground-muted">
+                    Manage vendors
                   </p>
                 </div>
               </div>
