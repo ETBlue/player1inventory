@@ -19,10 +19,11 @@ import {
   useCheckout,
   useItems,
   useRemoveFromCart,
+  useTags,
+  useTagTypes,
   useUpdateCartItem,
   useVendors,
 } from '@/hooks'
-import { useTags, useTagTypes } from '@/hooks/useTags'
 import { type FilterState, filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import {

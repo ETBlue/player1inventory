@@ -22,6 +22,8 @@ describe('Shopping page', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
     await db.inventoryLogs.clear()
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
@@ -33,7 +35,7 @@ describe('Shopping page', () => {
     })
   })
 
-  const renderShopping = () => {
+  const renderShoppingPage = () => {
     const history = createMemoryHistory({ initialEntries: ['/shopping'] })
     const router = createRouter({ routeTree, history })
 
@@ -78,7 +80,7 @@ describe('Shopping page', () => {
     })
 
     // When rendering the shopping page
-    renderShopping()
+    renderShoppingPage()
 
     await waitFor(() => {
       expect(screen.getByText('Eggs')).toBeInTheDocument()
@@ -106,7 +108,7 @@ describe('Shopping page', () => {
     await getOrCreateActiveCart()
 
     // When rendering the shopping page
-    renderShopping()
+    renderShoppingPage()
 
     await waitFor(() => {
       expect(screen.getByText('Butter')).toBeInTheDocument()
@@ -148,7 +150,7 @@ describe('Shopping page', () => {
     })
 
     // When rendering the shopping page
-    renderShopping()
+    renderShoppingPage()
 
     await waitFor(() => {
       expect(
@@ -184,7 +186,7 @@ describe('Shopping page', () => {
     })
 
     // When rendering the shopping page
-    renderShopping()
+    renderShoppingPage()
 
     // Then inactive items are always visible (no toggle needed)
     await waitFor(() => {
@@ -194,7 +196,7 @@ describe('Shopping page', () => {
 
   it('checkout button is disabled when cart is empty', async () => {
     // When rendering the shopping page with no cart items
-    renderShopping()
+    renderShoppingPage()
 
     // Then checkout button is disabled
     await waitFor(() => {
