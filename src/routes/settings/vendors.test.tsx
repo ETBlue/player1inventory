@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Vendor } from '@/types'
@@ -29,12 +29,12 @@ vi.mock('@tanstack/react-router', async () => {
 vi.mock('@/hooks/useVendors', () => ({
   useVendors: vi.fn(),
   useCreateVendor: vi.fn(),
-  useUpdateVendor: vi.fn(),
   useDeleteVendor: vi.fn(),
 }))
 
-const { useVendors, useCreateVendor, useUpdateVendor, useDeleteVendor } =
-  await import('@/hooks/useVendors')
+const { useVendors, useCreateVendor, useDeleteVendor } = await import(
+  '@/hooks/useVendors'
+)
 
 const mockVendors: Vendor[] = [
   { id: '1', name: 'Costco', createdAt: new Date() },
@@ -49,9 +49,6 @@ const setupMocks = (vendors: Vendor[] = mockVendors) => {
   } as ReturnType<typeof useVendors>)
   vi.mocked(useCreateVendor).mockReturnValue({ mutate } as ReturnType<
     typeof useCreateVendor
-  >)
-  vi.mocked(useUpdateVendor).mockReturnValue({ mutate } as ReturnType<
-    typeof useUpdateVendor
   >)
   vi.mocked(useDeleteVendor).mockReturnValue({ mutate } as ReturnType<
     typeof useDeleteVendor
@@ -121,46 +118,6 @@ describe('Vendor Settings Page', () => {
     expect(mutate).toHaveBeenCalledWith('Whole Foods', expect.anything())
   })
 
-  it('user can open the edit dialog for a vendor', async () => {
-    // Given a vendor exists
-    renderPage([{ id: '1', name: 'Costco', createdAt: new Date() }])
-    const user = userEvent.setup()
-
-    // When user clicks the edit button for Costco
-    await user.click(screen.getByRole('button', { name: 'Edit Costco' }))
-
-    // Then the dialog opens in edit mode with pre-filled name
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-      expect(screen.getByText('Edit Vendor')).toBeInTheDocument()
-    })
-    expect(screen.getByLabelText('Name')).toHaveValue('Costco')
-  })
-
-  it('user can edit a vendor name', async () => {
-    // Given a vendor exists
-    const { mutate } = setupMocks([
-      { id: '1', name: 'Costco', createdAt: new Date() },
-    ])
-    render(<VendorSettings />)
-    const user = userEvent.setup()
-
-    // When user opens edit dialog and changes the name
-    await user.click(screen.getByRole('button', { name: 'Edit Costco' }))
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
-
-    const nameInput = screen.getByLabelText('Name')
-    await user.clear(nameInput)
-    await user.type(nameInput, 'Costco Wholesale')
-    await user.click(screen.getByRole('button', { name: /save/i }))
-
-    // Then updateVendor mutation is called with id and updates object
-    expect(mutate).toHaveBeenCalledWith(
-      { id: '1', updates: { name: 'Costco Wholesale' } },
-      expect.anything(),
-    )
-  })
-
   it('user can delete a vendor with confirmation', async () => {
     // Given a vendor
     const { mutate } = setupMocks([
@@ -173,9 +130,7 @@ describe('Vendor Settings Page', () => {
     await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
 
     // Then confirmation dialog appears
-    await waitFor(() => {
-      expect(screen.getByText(/delete "costco"/i)).toBeInTheDocument()
-    })
+    await screen.findByText(/delete "costco"/i)
 
     // When user confirms
     await user.click(screen.getByRole('button', { name: /^delete$/i }))

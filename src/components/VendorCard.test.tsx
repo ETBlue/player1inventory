@@ -34,29 +34,16 @@ const vendor: Vendor = {
 describe('VendorCard', () => {
   it('displays vendor name', () => {
     // Given a vendor
-    render(<VendorCard vendor={vendor} onEdit={vi.fn()} onDelete={vi.fn()} />)
+    render(<VendorCard vendor={vendor} onDelete={vi.fn()} />)
 
     // Then the vendor name is shown
     expect(screen.getByText('Costco')).toBeInTheDocument()
   })
 
-  it('calls onEdit when edit button is clicked', async () => {
-    // Given a vendor card
-    const onEdit = vi.fn()
-    render(<VendorCard vendor={vendor} onEdit={onEdit} onDelete={vi.fn()} />)
-    const user = userEvent.setup()
-
-    // When edit button is clicked
-    await user.click(screen.getByRole('button', { name: 'Edit Costco' }))
-
-    // Then onEdit is called
-    expect(onEdit).toHaveBeenCalledOnce()
-  })
-
   it('calls onDelete when delete button is clicked', async () => {
     // Given a vendor card
     const onDelete = vi.fn()
-    render(<VendorCard vendor={vendor} onEdit={vi.fn()} onDelete={onDelete} />)
+    render(<VendorCard vendor={vendor} onDelete={onDelete} />)
     const user = userEvent.setup()
 
     // When delete button is clicked

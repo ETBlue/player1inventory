@@ -8,7 +8,6 @@ import { VendorFormDialog } from '@/components/VendorFormDialog'
 import {
   useCreateVendor,
   useDeleteVendor,
-  useUpdateVendor,
   useVendors,
 } from '@/hooks/useVendors'
 import type { Vendor } from '@/types'
@@ -21,36 +20,17 @@ function VendorSettings() {
   const navigate = useNavigate()
   const { data: vendors = [] } = useVendors()
   const createVendor = useCreateVendor()
-  const updateVendor = useUpdateVendor()
   const deleteVendor = useDeleteVendor()
 
   const [formOpen, setFormOpen] = useState(false)
-  const [editingVendor, setEditingVendor] = useState<Vendor | undefined>()
   const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null)
 
   const sortedVendors = [...vendors].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
 
-  const handleOpenCreate = () => {
-    setEditingVendor(undefined)
-    setFormOpen(true)
-  }
-
-  const handleOpenEdit = (vendor: Vendor) => {
-    setEditingVendor(vendor)
-    setFormOpen(true)
-  }
-
   const handleSave = (name: string) => {
-    if (editingVendor) {
-      updateVendor.mutate(
-        { id: editingVendor.id, updates: { name } },
-        { onSuccess: () => setFormOpen(false) },
-      )
-    } else {
-      createVendor.mutate(name, { onSuccess: () => setFormOpen(false) })
-    }
+    createVendor.mutate(name, { onSuccess: () => setFormOpen(false) })
   }
 
   const handleConfirmDelete = () => {
@@ -73,7 +53,7 @@ function VendorSettings() {
           </Button>
           <h1 className="text-2xl font-bold">Vendors</h1>
         </div>
-        <Button onClick={handleOpenCreate}>
+        <Button onClick={() => setFormOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           New Vendor
         </Button>
@@ -89,7 +69,6 @@ function VendorSettings() {
             <VendorCard
               key={vendor.id}
               vendor={vendor}
-              onEdit={() => handleOpenEdit(vendor)}
               onDelete={() => setVendorToDelete(vendor)}
             />
           ))}
@@ -99,7 +78,6 @@ function VendorSettings() {
       <VendorFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
-        vendor={editingVendor}
         onSave={handleSave}
       />
 
