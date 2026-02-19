@@ -765,8 +765,7 @@ describe('Item detail page - manual quantity input', () => {
     })
 
     // When user clicks back button (now a button, not a link)
-    const allButtons = screen.getAllByRole('button')
-    const backButton = allButtons[0] // First button is back button
+    const backButton = screen.getByRole('button', { name: /back/i })
     await user.click(backButton)
 
     // Then navigates back to previous page (pantry)
@@ -776,6 +775,8 @@ describe('Item detail page - manual quantity input', () => {
   })
 
   it('user can navigate back after deleting item', async () => {
+    const user = userEvent.setup()
+
     // Given an item
     const item = await createItem({
       name: 'Test Item',
@@ -805,7 +806,7 @@ describe('Item detail page - manual quantity input', () => {
     const allButtons = screen.getAllByRole('button')
     const deleteButton = allButtons[allButtons.length - 1] // Last button in header is delete button
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    fireEvent.click(deleteButton)
+    await user.click(deleteButton)
 
     // Then navigates back to previous page (pantry)
     await waitFor(() => {

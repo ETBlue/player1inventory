@@ -108,6 +108,7 @@ function ItemLayoutInner() {
           <button
             type="button"
             onClick={handleBackClick}
+            aria-label="Go back"
             className="px-3 py-4 hover:bg-background-surface transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
