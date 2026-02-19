@@ -178,4 +178,108 @@ describe('Vendor Detail - Items Tab', () => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
     })
   })
+
+  it('user can see a New button', async () => {
+    // Given a vendor
+    const vendor = await createVendor('Costco')
+    renderItemsTab(vendor.id)
+
+    // Then a New button is visible
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
+    })
+  })
+
+  it('user can open the inline input by clicking New', async () => {
+    // Given a vendor
+    const vendor = await createVendor('Costco')
+    renderItemsTab(vendor.id)
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
+    })
+
+    // When user clicks New
+    await user.click(screen.getByRole('button', { name: /new/i }))
+
+    // Then an inline input appears
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/item name/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can create an item by typing a name and pressing Enter', async () => {
+    // Given a vendor
+    const vendor = await createVendor('Costco')
+    renderItemsTab(vendor.id)
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
+    })
+
+    // When user opens inline input, types a name, and presses Enter
+    await user.click(screen.getByRole('button', { name: /new/i }))
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/item name/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/item name/i), 'Butter')
+    await user.keyboard('{Enter}')
+
+    // Then the new item appears in the list checked (assigned to vendor)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Butter')).toBeChecked()
+    })
+
+    const items = await db.items.toArray()
+    const butter = items.find((i) => i.name === 'Butter')
+    expect(butter?.vendorIds).toContain(vendor.id)
+  })
+
+  it('user can cancel inline creation by pressing Escape', async () => {
+    // Given a vendor with the inline input open
+    const vendor = await createVendor('Costco')
+    renderItemsTab(vendor.id)
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /new/i }))
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/item name/i)).toBeInTheDocument()
+    })
+
+    // When user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then the inline input closes and no item was created
+    await waitFor(() => {
+      expect(
+        screen.queryByPlaceholderText(/item name/i),
+      ).not.toBeInTheDocument()
+    })
+    const items = await db.items.toArray()
+    expect(items).toHaveLength(0)
+  })
+
+  it('user cannot submit inline creation when the item name is empty', async () => {
+    // Given a vendor
+    const vendor = await createVendor('Costco')
+    renderItemsTab(vendor.id)
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
+    })
+
+    // When user opens the inline input without typing
+    await user.click(screen.getByRole('button', { name: /new/i }))
+
+    // Then the Add item button is disabled
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /add item/i })).toBeDisabled()
+    })
+  })
 })
