@@ -122,3 +122,65 @@ export function loadSortPrefs(): SortPreferences {
     return { sortBy: 'expiring', sortDirection: 'asc' }
   }
 }
+
+// Shopping page (sessionStorage)
+const SHOPPING_FILTERS_KEY = 'shopping-filters'
+const SHOPPING_UI_PREFS_KEY = 'shopping-ui-prefs'
+
+export interface ShoppingUiPreferences {
+  filtersVisible: boolean
+}
+
+export function saveShoppingFilters(filters: FilterState): void {
+  try {
+    sessionStorage.setItem(SHOPPING_FILTERS_KEY, JSON.stringify(filters))
+  } catch (error) {
+    console.error('Failed to save shopping filters to sessionStorage:', error)
+  }
+}
+
+export function loadShoppingFilters(): FilterState {
+  try {
+    const stored = sessionStorage.getItem(SHOPPING_FILTERS_KEY)
+    if (!stored) return {}
+    const parsed = JSON.parse(stored)
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return {}
+    }
+    return parsed as FilterState
+  } catch (error) {
+    console.error('Failed to load shopping filters from sessionStorage:', error)
+    return {}
+  }
+}
+
+export function saveShoppingUiPrefs(prefs: ShoppingUiPreferences): void {
+  try {
+    sessionStorage.setItem(SHOPPING_UI_PREFS_KEY, JSON.stringify(prefs))
+  } catch (error) {
+    console.error('Failed to save shopping UI preferences:', error)
+  }
+}
+
+export function loadShoppingUiPrefs(): ShoppingUiPreferences {
+  try {
+    const stored = sessionStorage.getItem(SHOPPING_UI_PREFS_KEY)
+    if (!stored) return { filtersVisible: false }
+    const parsed = JSON.parse(stored)
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return { filtersVisible: false }
+    }
+    return parsed as ShoppingUiPreferences
+  } catch (error) {
+    console.error('Failed to load shopping UI preferences:', error)
+    return { filtersVisible: false }
+  }
+}

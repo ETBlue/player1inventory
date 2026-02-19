@@ -15,7 +15,7 @@ export function FilterStatus({
   onClearAll,
 }: FilterStatusProps) {
   return (
-    <div className="flex items-center h-6 px-1 py-1">
+    <div className="flex items-center h-6 py-1">
       <div className="ml-3 text-xs text-foreground-muted">
         Showing {filteredCount} of {totalCount} items
       </div>
