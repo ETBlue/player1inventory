@@ -68,6 +68,7 @@ function Shopping() {
   const hasActiveFilters = Object.values(filterState).some(
     (tagIds) => tagIds.length > 0,
   )
+  const hasAnyFilter = !!selectedVendorId || hasActiveFilters
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
@@ -201,7 +202,7 @@ function Shopping() {
         </div>
       </div>
 
-      {filtersVisible && (
+      {(filtersVisible || hasAnyFilter) && (
         <ItemFilters
           tagTypes={tagTypes}
           tags={tags}
@@ -210,6 +211,7 @@ function Shopping() {
           filteredCount={filteredItems.length}
           totalCount={vendorFiltered.length}
           onFilterChange={setFilterState}
+          showDropdowns={filtersVisible}
         />
       )}
 
