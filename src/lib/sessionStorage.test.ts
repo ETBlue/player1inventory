@@ -149,4 +149,28 @@ describe('Navigation History', () => {
 
     expect(loaded).toEqual(['/settings'])
   })
+
+  it('returns empty array when stored data is invalid JSON', () => {
+    sessionStorage.setItem('app-navigation-history', 'invalid json')
+    const history = loadNavigationHistory()
+    expect(history).toEqual([])
+  })
+
+  it('returns empty array when stored data is not an array', () => {
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify({ foo: 'bar' }),
+    )
+    const history = loadNavigationHistory()
+    expect(history).toEqual([])
+  })
+
+  it('returns empty array when array contains non-strings', () => {
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/', 123, '/items']),
+    )
+    const history = loadNavigationHistory()
+    expect(history).toEqual([])
+  })
 })
