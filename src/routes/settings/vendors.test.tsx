@@ -11,13 +11,14 @@ vi.mock('@tanstack/react-router', async () => {
     useNavigate: () => vi.fn(),
     Link: ({
       children,
+      to,
       ...props
-    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    }: {
       children?: React.ReactNode
-      to?: string
-      params?: unknown
+      to: string
+      [key: string]: unknown
     }) => (
-      <a href={props.to} {...props}>
+      <a href={to} {...props}>
         {children}
       </a>
     ),
