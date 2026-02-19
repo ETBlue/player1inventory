@@ -1,14 +1,15 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Vendor } from '@/types'
 
 // Mock TanStack Router
+const mockNavigate = vi.fn()
 vi.mock('@tanstack/react-router', async () => {
   const actual = await vi.importActual('@tanstack/react-router')
   return {
     ...actual,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockNavigate,
     Link: ({
       children,
       to,
@@ -28,13 +29,10 @@ vi.mock('@tanstack/react-router', async () => {
 // Mock vendor hooks
 vi.mock('@/hooks/useVendors', () => ({
   useVendors: vi.fn(),
-  useCreateVendor: vi.fn(),
   useDeleteVendor: vi.fn(),
 }))
 
-const { useVendors, useCreateVendor, useDeleteVendor } = await import(
-  '@/hooks/useVendors'
-)
+const { useVendors, useDeleteVendor } = await import('@/hooks/useVendors')
 
 const mockVendors: Vendor[] = [
   { id: '1', name: 'Costco', createdAt: new Date() },
@@ -47,9 +45,6 @@ const setupMocks = (vendors: Vendor[] = mockVendors) => {
     data: vendors,
     isLoading: false,
   } as ReturnType<typeof useVendors>)
-  vi.mocked(useCreateVendor).mockReturnValue({ mutate } as ReturnType<
-    typeof useCreateVendor
-  >)
   vi.mocked(useDeleteVendor).mockReturnValue({ mutate } as ReturnType<
     typeof useDeleteVendor
   >)
@@ -89,7 +84,7 @@ describe('Vendor Settings Page', () => {
     ).toBeInTheDocument()
   })
 
-  it('user can open the create dialog', async () => {
+  it('user can navigate to new vendor page when clicking New Vendor', async () => {
     // Given the vendors page
     renderPage()
     const user = userEvent.setup()
@@ -97,25 +92,8 @@ describe('Vendor Settings Page', () => {
     // When user clicks "New Vendor"
     await user.click(screen.getByRole('button', { name: /new vendor/i }))
 
-    // Then the dialog opens with "New Vendor" title
-    const dialog = screen.getByRole('dialog')
-    expect(dialog).toBeInTheDocument()
-    expect(within(dialog).getByText('New Vendor')).toBeInTheDocument()
-  })
-
-  it('user can create a vendor via the form', async () => {
-    // Given the vendors page
-    const { mutate } = setupMocks()
-    render(<VendorSettings />)
-    const user = userEvent.setup()
-
-    // When user clicks New Vendor, types a name, and saves
-    await user.click(screen.getByRole('button', { name: /new vendor/i }))
-    await user.type(screen.getByLabelText('Name'), 'Whole Foods')
-    await user.click(screen.getByRole('button', { name: /add vendor/i }))
-
-    // Then createVendor mutation is called with the name
-    expect(mutate).toHaveBeenCalledWith('Whole Foods', expect.anything())
+    // Then navigate is called to go to new vendor page
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/vendors/new' })
   })
 
   it('user can delete a vendor with confirmation', async () => {
