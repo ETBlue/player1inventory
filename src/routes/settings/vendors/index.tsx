@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
 import { VendorFormDialog } from '@/components/VendorFormDialog'
+import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import {
   useCreateVendor,
   useDeleteVendor,
@@ -21,6 +22,7 @@ function VendorSettings() {
   const { data: vendors = [] } = useVendors()
   const createVendor = useCreateVendor()
   const deleteVendor = useDeleteVendor()
+  const vendorCounts = useVendorItemCounts()
 
   const [formOpen, setFormOpen] = useState(false)
   const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null)
@@ -69,6 +71,7 @@ function VendorSettings() {
             <VendorCard
               key={vendor.id}
               vendor={vendor}
+              itemCount={vendorCounts.get(vendor.id) ?? 0}
               onDelete={() => setVendorToDelete(vendor)}
             />
           ))}
