@@ -59,6 +59,14 @@ src/
 - **Query hooks** wrap database operations and handle cache invalidation
 - **Routes** auto-generate `src/routeTree.gen.ts` on dev server start
 
+## Custom Hooks
+
+**Navigation:**
+- `useAppNavigation()` (`src/hooks/useAppNavigation.ts`) - Tracks navigation history in sessionStorage, provides `goBack()` function for smart back navigation to previous app page (fallback to home)
+
+**Data Utilities:**
+- `useVendorItemCounts()` (`src/hooks/useVendorItemCounts.ts`) - Returns `Map<vendorId, number>` of item counts per vendor, memoized with useMemo for performance
+
 ## Features
 
 ### Tabbed Item Form
@@ -114,6 +122,16 @@ Each tab tracks unsaved changes independently:
 - Save button disabled when form is clean (no changes)
 - Logs tab never has unsaved changes (view-only)
 
+**Navigation:**
+
+Back button and post-action navigation use smart history tracking:
+- Back button navigates to previous app page (fallback to home if no history)
+- After successful save: auto-navigate back
+- After successful delete: auto-navigate back
+- Back button respects dirty state guard (shows discard dialog if unsaved changes)
+
+Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
+
 **Files:**
 - `src/components/ItemForm.tsx` - Shared form component used by both edit and new item routes
 - `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
@@ -167,6 +185,8 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 - `src/components/VendorCard.tsx` — displays one vendor with a delete button; vendor name links to the detail page
 - `src/components/VendorFormDialog.tsx` — dialog for creating a new vendor
 
+**Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.
+
 **Settings link**: `src/routes/settings/index.tsx` (Store icon)
 
 **Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
@@ -175,9 +195,13 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout prevents tab switching with unsaved changes.
 
+**Navigation:**
+
+Back button and post-action navigation use smart history tracking (same pattern as item detail pages). After successful save, automatically navigates back to previous page. Uses `useAppNavigation()` hook.
+
 ### Shopping Page
 
-**Vendor filter:** Select dropdown in toolbar. Single-select, filters items by assigned vendor. State is not persisted.
+**Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, filters items by assigned vendor. State is not persisted.
 
 **Tag filter:** `Filters` toggle button (`Filter` icon) in the toolbar shows/hides an `ItemFilters` row below the toolbar. Multi-select per tag type (OR within type, AND across types). Applied after the vendor filter — `filterItems(vendorFiltered, filterState)`. State persists to sessionStorage (`shopping-filters`, `shopping-ui-prefs` keys).
 
