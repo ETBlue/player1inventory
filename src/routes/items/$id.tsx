@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { useDeleteItem, useItem } from '@/hooks'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { ItemLayoutProvider, useItemLayout } from '@/hooks/useItemLayout'
 
 export const Route = createFileRoute('/items/$id')({
@@ -39,6 +40,7 @@ function ItemLayoutInner() {
   const { data: item, isLoading } = useItem(id)
   const deleteItem = useDeleteItem()
   const { isDirty } = useItemLayout()
+  const { goBack } = useAppNavigation()
   const isOnStockTab = router.state.location.pathname === `/items/${id}`
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
@@ -58,10 +60,24 @@ function ItemLayoutInner() {
     }
   }
 
+  // Handle back button click with dirty state guard
+  const handleBackClick = () => {
+    if (isOnStockTab && isDirty) {
+      setPendingNavigation('BACK')
+      setShowDiscardDialog(true)
+    } else {
+      goBack()
+    }
+  }
+
   const confirmDiscard = () => {
     if (pendingNavigation) {
       setShowDiscardDialog(false)
-      navigate({ to: pendingNavigation })
+      if (pendingNavigation === 'BACK') {
+        goBack()
+      } else {
+        navigate({ to: pendingNavigation })
+      }
       setPendingNavigation(null)
     }
   }
@@ -85,19 +101,18 @@ function ItemLayoutInner() {
         {/* Fixed Top Bar */}
         <div
           className={`px-3 flex items-center gap-2
-          fixed top-0 left-0 right-0 z-50 
-          bg-background-elevated 
+          fixed top-0 left-0 right-0 z-50
+          bg-background-elevated
           border-b-2 border-accessory-default`}
         >
-          <Link
-            to="/"
+          <button
+            type="button"
+            onClick={handleBackClick}
+            aria-label="Go back"
             className="px-3 py-4 hover:bg-background-surface transition-colors"
-            onClick={(e) => {
-              handleTabClick(e, `/`)
-            }}
           >
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </button>
           <h1 className="text-md font-regular truncate flex-1">{item.name}</h1>
 
           {/* Tabs */}
@@ -154,7 +169,7 @@ function ItemLayoutInner() {
             onClick={() => {
               if (confirm('Delete this item?')) {
                 deleteItem.mutate(id, {
-                  onSuccess: () => navigate({ to: '/' }),
+                  onSuccess: () => goBack(),
                 })
               }
             }}

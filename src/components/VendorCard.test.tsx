@@ -52,4 +52,20 @@ describe('VendorCard', () => {
     // Then onDelete is called
     expect(onDelete).toHaveBeenCalledOnce()
   })
+
+  it('displays item count when provided', () => {
+    // Given a vendor with item count
+    render(<VendorCard vendor={vendor} itemCount={5} onDelete={vi.fn()} />)
+
+    // Then the item count is shown
+    expect(screen.getByText(/5 items/i)).toBeInTheDocument()
+  })
+
+  it('does not display item count when not provided', () => {
+    // Given a vendor without item count
+    render(<VendorCard vendor={vendor} onDelete={vi.fn()} />)
+
+    // Then no item count text is shown
+    expect(screen.queryByText(/items/i)).not.toBeInTheDocument()
+  })
 })

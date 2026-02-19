@@ -432,4 +432,41 @@ describe('Shopping page tag filtering', () => {
       expect(screen.queryByText('Milk')).not.toBeInTheDocument()
     })
   })
+
+  it('user can see item counts in vendor dropdown', async () => {
+    // Given a vendor with 2 items
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      vendorIds: [vendor.id],
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    await createItem({
+      name: 'Eggs',
+      vendorIds: [vendor.id],
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    // When user opens vendor dropdown
+    const vendorTrigger = await screen.findByRole('combobox')
+    await user.click(vendorTrigger)
+
+    // Then vendor option should show count
+    expect(
+      await screen.findByRole('option', { name: /Costco.*2/i }),
+    ).toBeInTheDocument()
+  })
 })

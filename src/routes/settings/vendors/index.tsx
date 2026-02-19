@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
+import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import { useDeleteVendor, useVendors } from '@/hooks/useVendors'
 import type { Vendor } from '@/types'
 
@@ -15,6 +16,7 @@ function VendorSettings() {
   const navigate = useNavigate()
   const { data: vendors = [] } = useVendors()
   const deleteVendor = useDeleteVendor()
+  const vendorCounts = useVendorItemCounts()
 
   const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null)
 
@@ -58,6 +60,7 @@ function VendorSettings() {
             <VendorCard
               key={vendor.id}
               vendor={vendor}
+              itemCount={vendorCounts.get(vendor.id) ?? 0}
               onDelete={() => setVendorToDelete(vendor)}
             />
           ))}

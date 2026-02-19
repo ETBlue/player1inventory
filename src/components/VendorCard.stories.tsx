@@ -19,7 +19,14 @@ const vendor: Vendor = {
 export const Default: Story = {
   args: {
     vendor,
-    onEdit: () => console.log('Edit'),
+    onDelete: () => console.log('Delete'),
+  },
+}
+
+export const WithItemCount: Story = {
+  args: {
+    vendor,
+    itemCount: 5,
     onDelete: () => console.log('Delete'),
   },
 }

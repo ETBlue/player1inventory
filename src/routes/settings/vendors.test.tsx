@@ -32,14 +32,24 @@ vi.mock('@/hooks/useVendors', () => ({
   useDeleteVendor: vi.fn(),
 }))
 
+// Mock useVendorItemCounts hook
+vi.mock('@/hooks/useVendorItemCounts', () => ({
+  useVendorItemCounts: vi.fn(),
+}))
+
 const { useVendors, useDeleteVendor } = await import('@/hooks/useVendors')
+
+const { useVendorItemCounts } = await import('@/hooks/useVendorItemCounts')
 
 const mockVendors: Vendor[] = [
   { id: '1', name: 'Costco', createdAt: new Date() },
   { id: '2', name: "Trader Joe's", createdAt: new Date() },
 ]
 
-const setupMocks = (vendors: Vendor[] = mockVendors) => {
+const setupMocks = (
+  vendors: Vendor[] = mockVendors,
+  vendorCounts: Map<string, number> = new Map(),
+) => {
   const mutate = vi.fn()
   vi.mocked(useVendors).mockReturnValue({
     data: vendors,
@@ -48,6 +58,7 @@ const setupMocks = (vendors: Vendor[] = mockVendors) => {
   vi.mocked(useDeleteVendor).mockReturnValue({ mutate } as ReturnType<
     typeof useDeleteVendor
   >)
+  vi.mocked(useVendorItemCounts).mockReturnValue(vendorCounts)
   return { mutate }
 }
 
@@ -115,5 +126,21 @@ describe('Vendor Settings Page', () => {
 
     // Then deleteVendor mutation is called with the vendor id
     expect(mutate).toHaveBeenCalledWith('1')
+  })
+
+  it('displays item counts next to vendor names', async () => {
+    // Given a vendor with 2 items assigned
+    const vendorCounts = new Map([['1', 2]])
+    setupMocks(
+      [{ id: '1', name: 'Costco', createdAt: new Date() }],
+      vendorCounts,
+    )
+
+    // When rendering the page
+    render(<VendorSettings />)
+
+    // Then the vendor card displays the item count
+    expect(await screen.findByText(/Costco/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 items/i)).toBeInTheDocument()
   })
 })

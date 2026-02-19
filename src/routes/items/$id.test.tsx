@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
@@ -24,6 +24,9 @@ describe('Item detail page - manual quantity input', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+
+    // Clear sessionStorage (used by useAppNavigation)
+    sessionStorage.clear()
   })
 
   const renderItemDetailPage = (itemId: string) => {
@@ -630,16 +633,12 @@ describe('Item detail page - manual quantity input', () => {
     const saveButton = screen.getByRole('button', { name: /save/i })
     await user.click(saveButton)
 
-    // Then quantities should NOT revert to old values after save
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('3')).toBeInTheDocument()
-      expect(screen.getByDisplayValue('500')).toBeInTheDocument()
+    // Then the database should have the correct packed values (not reverted)
+    await waitFor(async () => {
+      const savedItem = await db.items.get(item.id)
+      expect(savedItem?.packedQuantity).toBe(3)
+      expect(savedItem?.unpackedQuantity).toBe(500)
     })
-
-    // And the database should have the correct packed values
-    const savedItem = await db.items.get(item.id)
-    expect(savedItem?.packedQuantity).toBe(3)
-    expect(savedItem?.unpackedQuantity).toBe(500)
   })
 
   it('user can see the vendors tab icon', async () => {
@@ -734,6 +733,127 @@ describe('Item detail page - manual quantity input', () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue('4')).toBeInTheDocument() // packedQuantity: updated
       expect(screen.getByDisplayValue('1')).toBeInTheDocument() // unpackedQuantity: updated
+    })
+  })
+
+  it('user can navigate back with back button when navigation history exists', async () => {
+    const user = userEvent.setup()
+
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // And navigation history exists (user came from pantry page)
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/', `/items/${item.id}`]),
+    )
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // When user clicks back button (now a button, not a link)
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then navigates back to previous page (pantry)
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/')
+    })
+  })
+
+  it('user can navigate back after deleting item', async () => {
+    const user = userEvent.setup()
+
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // And navigation history exists (user came from pantry page)
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/', `/items/${item.id}`]),
+    )
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // When user deletes the item
+    const allButtons = screen.getAllByRole('button')
+    const deleteButton = allButtons[allButtons.length - 1] // Last button in header is delete button
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(deleteButton)
+
+    // Then navigates back to previous page (pantry)
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/')
+    })
+  })
+
+  it('user can navigate back after saving changes', async () => {
+    const user = userEvent.setup()
+
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // And navigation history exists (user came from pantry page)
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/', `/items/${item.id}`]),
+    )
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+
+    // When user changes packed quantity
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+
+    // And saves the form
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    // Then navigates back to previous page (pantry)
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/')
     })
   })
 })
