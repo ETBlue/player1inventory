@@ -1,7 +1,7 @@
 // src/components/ItemFilters.tsx
 
 import { Link } from '@tanstack/react-router'
-import { Pencil, X } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import { calculateTagCount, type FilterState } from '@/lib/filterUtils'
@@ -13,11 +13,7 @@ interface ItemFiltersProps {
   tags: Tag[]
   items: Item[]
   filterState: FilterState
-  filteredCount: number
-  totalCount: number
   onFilterChange: (newState: FilterState) => void
-  showDropdowns?: boolean
-  showCountRow?: boolean
 }
 
 export function ItemFilters({
@@ -25,11 +21,7 @@ export function ItemFilters({
   tags,
   items,
   filterState,
-  filteredCount,
-  totalCount,
   onFilterChange,
-  showDropdowns = true,
-  showCountRow = true,
 }: ItemFiltersProps) {
   // Filter to only tag types that have tags, then sort alphabetically
   const tagTypesWithTags = tagTypes
@@ -40,10 +32,6 @@ export function ItemFilters({
 
   // Don't render if no tag types with tags
   if (tagTypesWithTags.length === 0) return null
-
-  const hasActiveFilters = Object.values(filterState).some(
-    (tagIds) => tagIds.length > 0,
-  )
 
   const handleToggleTag = (tagTypeId: string, tagId: string) => {
     const currentTags = filterState[tagTypeId] || []
@@ -63,59 +51,37 @@ export function ItemFilters({
     onFilterChange(newState)
   }
 
-  const handleClearAll = () => {
-    onFilterChange({})
-  }
-
   return (
-    <div className="space-y-1 py-1">
-      {showDropdowns && (
-        <div className="flex flex-wrap items-center gap-1 mx-1">
-          {tagTypesWithTags.map((tagType) => {
-            const tagTypeId = tagType.id
-            const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
-            const sortedTypeTags = sortTagsByName(typeTags)
-            const selectedTagIds = filterState[tagTypeId] || []
+    <div className="flex flex-wrap items-center gap-1 mx-1 py-1">
+      {tagTypesWithTags.map((tagType) => {
+        const tagTypeId = tagType.id
+        const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
+        const sortedTypeTags = sortTagsByName(typeTags)
+        const selectedTagIds = filterState[tagTypeId] || []
 
-            // Calculate dynamic counts for each tag
-            const tagCounts = sortedTypeTags.map((tag) =>
-              calculateTagCount(tag.id, tagTypeId, items, filterState),
-            )
+        // Calculate dynamic counts for each tag
+        const tagCounts = sortedTypeTags.map((tag) =>
+          calculateTagCount(tag.id, tagTypeId, items, filterState),
+        )
 
-            return (
-              <TagTypeDropdown
-                key={tagTypeId}
-                tagType={tagType}
-                tags={sortedTypeTags}
-                selectedTagIds={selectedTagIds}
-                tagCounts={tagCounts}
-                onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
-                onClear={() => handleClearTagType(tagTypeId)}
-              />
-            )
-          })}
-          <Link to="/settings/tags">
-            <Button size="xs" variant="neutral-ghost">
-              <Pencil />
-              Edit
-            </Button>
-          </Link>
-        </div>
-      )}
-      {showCountRow && (
-        <div className="flex items-center h-6">
-          <div className="ml-3 text-xs text-foreground-muted">
-            Showing {filteredCount} of {totalCount} items
-          </div>
-          <div className="flex-1" />
-          {hasActiveFilters && (
-            <Button variant="neutral-ghost" size="xs" onClick={handleClearAll}>
-              <X />
-              Clear filter
-            </Button>
-          )}
-        </div>
-      )}
+        return (
+          <TagTypeDropdown
+            key={tagTypeId}
+            tagType={tagType}
+            tags={sortedTypeTags}
+            selectedTagIds={selectedTagIds}
+            tagCounts={tagCounts}
+            onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
+            onClear={() => handleClearTagType(tagTypeId)}
+          />
+        )
+      })}
+      <Link to="/settings/tags">
+        <Button size="xs" variant="neutral-ghost">
+          <Pencil />
+          Edit
+        </Button>
+      </Link>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Filter } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { FilterStatus } from '@/components/FilterStatus'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemFilters } from '@/components/ItemFilters'
 import { Button } from '@/components/ui/button'
@@ -200,17 +201,21 @@ function Shopping() {
         </div>
       </div>
 
-      {(filtersVisible || hasAnyFilter) && (
+      {filtersVisible && (
         <ItemFilters
           tagTypes={tagTypes}
           tags={tags}
           items={vendorFiltered}
           filterState={filterState}
+          onFilterChange={setFilterState}
+        />
+      )}
+      {(filtersVisible || hasAnyFilter) && (
+        <FilterStatus
           filteredCount={filteredItems.length}
           totalCount={vendorFiltered.length}
-          onFilterChange={setFilterState}
-          showDropdowns={filtersVisible}
-          showCountRow={filtersVisible || hasAnyFilter}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={() => setFilterState({})}
         />
       )}
 

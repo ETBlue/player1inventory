@@ -191,24 +191,23 @@ function PantryView() {
           setSortDirection(direction)
         }}
       />
-      {filtersVisible ? (
+      {filtersVisible && (
         <ItemFilters
           tagTypes={tagTypes}
           tags={tags}
           items={items}
           filterState={filterState}
-          filteredCount={sortedItems.length}
-          totalCount={items.length}
           onFilterChange={setFilterState}
         />
-      ) : hasActiveFilters ? (
+      )}
+      {(filtersVisible || hasActiveFilters) && (
         <FilterStatus
           filteredCount={sortedItems.length}
           totalCount={items.length}
           hasActiveFilters={hasActiveFilters}
           onClearAll={() => setFilterState({})}
         />
-      ) : null}
+      )}
 
       {items.length === 0 ? (
         <div className="text-center py-12 text-foreground-muted">
