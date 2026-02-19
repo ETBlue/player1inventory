@@ -5,6 +5,8 @@ import {
   saveNavigationHistory,
 } from '@/lib/sessionStorage'
 
+const MAX_HISTORY_SIZE = 50
+
 export function useAppNavigation() {
   const router = useRouter()
   const navigate = useNavigate()
@@ -20,13 +22,14 @@ export function useAppNavigation() {
       history[history.length - 1] !== currentPath
     ) {
       history.push(currentPath)
-      // Keep last 50 entries
-      if (history.length > 50) history.shift()
+      // Keep last MAX_HISTORY_SIZE entries
+      if (history.length > MAX_HISTORY_SIZE) history.shift()
       saveNavigationHistory(history)
     }
   }, [router.state.location.pathname])
 
   const goBack = useCallback(() => {
+    // Read fresh history from sessionStorage to ensure cross-tab/cross-component consistency
     const history = loadNavigationHistory()
 
     // Get previous page WITHOUT modifying array

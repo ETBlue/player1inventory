@@ -107,4 +107,20 @@ describe('useAppNavigation', () => {
       expect(history[history.length - 1]).toBe('/new-page') // New entry added
     })
   })
+
+  it('avoids tracking duplicate consecutive paths', async () => {
+    const { rerender } = renderHook(() => useAppNavigation(), {
+      wrapper: ({ children }) => children,
+    })
+
+    // Navigate to same path again (simulated by rerender)
+    rerender()
+
+    await waitFor(() => {
+      const history = loadNavigationHistory()
+      // Should only have one entry for '/' despite multiple renders
+      const homeCount = history.filter((p) => p === '/').length
+      expect(homeCount).toBe(1)
+    })
+  })
 })
