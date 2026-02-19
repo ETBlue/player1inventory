@@ -191,9 +191,9 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
 
-**Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: searchable checklist of all items showing their current vendor assignments; uses delta-based staged state (toggled map) with explicit Save that calls `useUpdateItem` concurrently for changed items. `+ New` button opens an inline input to create a new item immediately assigned to this vendor (bypasses staged state, saved directly to DB).
+**Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. `+ New` button opens an inline input to create a new item immediately assigned to this vendor, saved directly to DB.
 
-**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout prevents tab switching with unsaved changes.
+**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout applies only to the Info tab (vendor name editing); the Items tab has no unsaved state.
 
 **Navigation:**
 

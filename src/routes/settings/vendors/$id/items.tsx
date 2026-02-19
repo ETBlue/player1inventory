@@ -66,6 +66,7 @@ function VendorItemsTab() {
     itemId: string,
     currentVendorIds: string[] = [],
   ) => {
+    if (savingItemIds.has(itemId)) return // guard against re-entrancy
     const dbAssigned = currentVendorIds.includes(vendorId)
     const newVendorIds = dbAssigned
       ? currentVendorIds.filter((id) => id !== vendorId)
