@@ -356,6 +356,7 @@ describe('Tag cascade operations', () => {
     const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
     const item1 = await createItem({
       name: 'Milk',
+      packageUnit: 'gallon',
       targetUnit: 'package',
       targetQuantity: 2,
       refillThreshold: 1,
@@ -366,6 +367,7 @@ describe('Tag cascade operations', () => {
     })
     const item2 = await createItem({
       name: 'Eggs',
+      packageUnit: 'dozen',
       targetUnit: 'package',
       targetQuantity: 2,
       refillThreshold: 1,
@@ -376,6 +378,7 @@ describe('Tag cascade operations', () => {
     })
     const item3 = await createItem({
       name: 'Bread',
+      packageUnit: 'loaf',
       targetUnit: 'package',
       targetQuantity: 2,
       refillThreshold: 1,
