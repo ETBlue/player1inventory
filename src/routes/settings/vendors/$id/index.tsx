@@ -45,7 +45,13 @@ function VendorInfoTab() {
   if (!vendor) return null
 
   return (
-    <div className="space-y-4 max-w-md">
+    <form
+      className="space-y-4 max-w-md"
+      onSubmit={(e) => {
+        e.preventDefault()
+        handleSave()
+      }}
+    >
       <div className="space-y-2">
         <Label htmlFor="vendor-name">Name</Label>
         <Input
@@ -54,9 +60,9 @@ function VendorInfoTab() {
           onChange={(e) => setName(e.target.value)}
         />
       </div>
-      <Button onClick={handleSave} disabled={!isDirty}>
+      <Button type="submit" disabled={!isDirty}>
         Save
       </Button>
-    </div>
+    </form>
   )
 }
