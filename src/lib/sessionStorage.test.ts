@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { FilterState } from './filterUtils'
 import {
   loadFilters,
+  loadNavigationHistory,
   loadSortPrefs,
   loadUiPrefs,
   saveFilters,
+  saveNavigationHistory,
   saveSortPrefs,
   saveUiPrefs,
 } from './sessionStorage'
@@ -117,5 +119,34 @@ describe('Sort preferences storage', () => {
     )
     const loaded = loadSortPrefs()
     expect(loaded).toEqual({ sortBy: 'purchased', sortDirection: 'desc' })
+  })
+})
+
+describe('Navigation History', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('loads empty array when no history exists', () => {
+    const history = loadNavigationHistory()
+    expect(history).toEqual([])
+  })
+
+  it('saves and loads navigation history', () => {
+    const history = ['/', '/items/123', '/items/123/tags']
+
+    saveNavigationHistory(history)
+    const loaded = loadNavigationHistory()
+
+    expect(loaded).toEqual(history)
+  })
+
+  it('overwrites previous history on save', () => {
+    saveNavigationHistory(['/', '/items/123'])
+    saveNavigationHistory(['/settings'])
+
+    const loaded = loadNavigationHistory()
+
+    expect(loaded).toEqual(['/settings'])
   })
 })

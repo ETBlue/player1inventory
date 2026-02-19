@@ -123,6 +123,18 @@ export function loadSortPrefs(): SortPreferences {
   }
 }
 
+// Navigation history (sessionStorage)
+const NAVIGATION_HISTORY_KEY = 'app-navigation-history'
+
+export function loadNavigationHistory(): string[] {
+  const stored = sessionStorage.getItem(NAVIGATION_HISTORY_KEY)
+  return stored ? JSON.parse(stored) : []
+}
+
+export function saveNavigationHistory(history: string[]): void {
+  sessionStorage.setItem(NAVIGATION_HISTORY_KEY, JSON.stringify(history))
+}
+
 // Shopping page (sessionStorage)
 const SHOPPING_FILTERS_KEY = 'shopping-filters'
 const SHOPPING_UI_PREFS_KEY = 'shopping-ui-prefs'
