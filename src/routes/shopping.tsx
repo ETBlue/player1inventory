@@ -23,6 +23,7 @@ import {
   useTags,
   useTagTypes,
   useUpdateCartItem,
+  useVendorItemCounts,
   useVendors,
 } from '@/hooks'
 import { type FilterState, filterItems } from '@/lib/filterUtils'
@@ -57,6 +58,7 @@ function Shopping() {
   const removeFromCart = useRemoveFromCart()
   const checkout = useCheckout()
   const abandonCart = useAbandonCart()
+  const vendorCounts = useVendorItemCounts()
 
   const [selectedVendorId, setSelectedVendorId] = useState<string>('')
   const [filterState, setFilterState] = useState<FilterState>(() =>
@@ -156,7 +158,7 @@ function Shopping() {
               <SelectItem value="all">All vendors</SelectItem>
               {vendors.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
-                  {v.name}
+                  {v.name} ({vendorCounts.get(v.id) ?? 0})
                 </SelectItem>
               ))}
             </SelectContent>
