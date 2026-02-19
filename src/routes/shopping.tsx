@@ -163,9 +163,7 @@ function Shopping() {
         )}
         <Button
           size="icon"
-          variant={
-            filtersVisible || hasActiveFilters ? 'neutral' : 'neutral-ghost'
-          }
+          variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
           onClick={() => setFiltersVisible((v) => !v)}
           aria-label="Toggle filters"
         >
