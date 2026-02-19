@@ -101,20 +101,7 @@ describe('Vendor Detail - Items Tab', () => {
     })
   })
 
-  it('save button is disabled when no changes are made', async () => {
-    // Given a vendor and an item
-    const vendor = await createVendor('Costco')
-    await makeItem('Milk')
-
-    renderItemsTab(vendor.id)
-
-    // Then Save is disabled
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
-    })
-  })
-
-  it('user can assign this vendor to an item and save', async () => {
+  it('user can assign this vendor to an item by clicking the checkbox', async () => {
     // Given a vendor and an unassigned item
     const vendor = await createVendor('Costco')
     const item = await makeItem('Milk')
@@ -122,21 +109,20 @@ describe('Vendor Detail - Items Tab', () => {
     renderItemsTab(vendor.id)
     const user = userEvent.setup()
 
-    // When user checks the item and saves
+    // When user clicks the checkbox
     await waitFor(() => {
       expect(screen.getByLabelText('Milk')).toBeInTheDocument()
     })
     await user.click(screen.getByLabelText('Milk'))
-    await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the item now has this vendor assigned
+    // Then the item now has this vendor assigned in the DB
     await waitFor(async () => {
       const updated = await db.items.get(item.id)
       expect(updated?.vendorIds).toContain(vendor.id)
     })
   })
 
-  it('user can remove this vendor from an item and save', async () => {
+  it('user can remove this vendor from an item by clicking the checkbox', async () => {
     // Given a vendor already assigned to an item
     const vendor = await createVendor('Costco')
     const item = await makeItem('Milk', [vendor.id])
@@ -144,38 +130,16 @@ describe('Vendor Detail - Items Tab', () => {
     renderItemsTab(vendor.id)
     const user = userEvent.setup()
 
-    // When user unchecks the item and saves
+    // When user unchecks the item
     await waitFor(() => {
       expect(screen.getByLabelText('Milk')).toBeChecked()
     })
     await user.click(screen.getByLabelText('Milk'))
-    await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the vendor is removed from the item
+    // Then the vendor is removed from the item in the DB
     await waitFor(async () => {
       const updated = await db.items.get(item.id)
       expect(updated?.vendorIds ?? []).not.toContain(vendor.id)
-    })
-  })
-
-  it('save button is disabled after saving (form is clean)', async () => {
-    // Given a vendor and an unassigned item
-    const vendor = await createVendor('Costco')
-    await makeItem('Milk')
-
-    renderItemsTab(vendor.id)
-    const user = userEvent.setup()
-
-    // When user checks item and saves
-    await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
-    })
-    await user.click(screen.getByLabelText('Milk'))
-    await user.click(screen.getByRole('button', { name: /save/i }))
-
-    // Then save button becomes disabled again
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
     })
   })
 
