@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ArrowLeft, List, Settings2 } from 'lucide-react'
+import { ArrowLeft, ListTodo, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import {
   AlertDialog,
@@ -107,7 +107,7 @@ function VendorDetailLayoutInner() {
                 handleTabClick(e, `/settings/vendors/${id}/items`)
               }
             >
-              <List className="h-4 w-4" />
+              <ListTodo className="h-4 w-4" />
             </Link>
           </div>
         </div>
