@@ -1,8 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { VendorNameForm } from '@/components/VendorNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout } from '@/hooks/useVendorLayout'
 import { useUpdateVendor, useVendors } from '@/hooks/useVendors'
@@ -52,24 +50,12 @@ function VendorInfoTab() {
   if (!vendor) return null
 
   return (
-    <form
-      className="space-y-4 max-w-md"
-      onSubmit={(e) => {
-        e.preventDefault()
-        handleSave()
-      }}
-    >
-      <div className="space-y-2">
-        <Label htmlFor="vendor-name">Name</Label>
-        <Input
-          id="vendor-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </div>
-      <Button type="submit" disabled={!isDirty}>
-        Save
-      </Button>
-    </form>
+    <VendorNameForm
+      name={name}
+      onNameChange={setName}
+      onSave={handleSave}
+      isDirty={isDirty}
+      isPending={updateVendor.isPending}
+    />
   )
 }

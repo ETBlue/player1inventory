@@ -179,11 +179,11 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`
 
-**Route**: `src/routes/settings/vendors/index.tsx` — list + create/edit dialog + delete confirmation
+**Routes**: `src/routes/settings/vendors/index.tsx` — vendor list + delete confirmation; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save
 
 **Components**:
 - `src/components/VendorCard.tsx` — displays one vendor with a delete button; vendor name links to the detail page
-- `src/components/VendorFormDialog.tsx` — dialog for creating a new vendor
+- `src/components/VendorNameForm.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
 
 **Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.
 
@@ -191,7 +191,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
 
-**Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: searchable checklist of all items showing their current vendor assignments; uses delta-based staged state (toggled map) with explicit Save that calls `useUpdateItem` concurrently for changed items.
+**Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: searchable checklist of all items showing their current vendor assignments; uses delta-based staged state (toggled map) with explicit Save that calls `useUpdateItem` concurrently for changed items. `+ New` button opens an inline input to create a new item immediately assigned to this vendor (bypasses staged state, saved directly to DB).
 
 **Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout prevents tab switching with unsaved changes.
 
