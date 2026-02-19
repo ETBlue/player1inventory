@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-// @ts-expect-error - isSamePage not yet exported from useAppNavigation
 import { isSamePage } from './useAppNavigation'
 
 describe('isSamePage', () => {
