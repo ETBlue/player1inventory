@@ -1,13 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Check, Plus, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
-import { useVendorLayout } from '@/hooks/useVendorLayout'
 import { useVendors } from '@/hooks/useVendors'
 
 export const Route = createFileRoute('/settings/vendors/$id/items')({
@@ -19,11 +18,9 @@ function VendorItemsTab() {
   const { data: items = [] } = useItems()
   const { data: vendors = [] } = useVendors()
   const updateItem = useUpdateItem()
-  const { registerDirtyState } = useVendorLayout()
 
   const [search, setSearch] = useState('')
-  // toggled[itemId] = true means this item's assignment to this vendor has been flipped
-  const [toggled, setToggled] = useState<Record<string, boolean>>({})
+  const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
   const [isCreating, setIsCreating] = useState(false)
   const [newItemName, setNewItemName] = useState('')
   const createItem = useCreateItem()
@@ -63,44 +60,30 @@ function VendorItemsTab() {
     [vendors],
   )
 
-  const isDirty = Object.keys(toggled).length > 0
+  const isAssigned = (vendorIds: string[] = []) => vendorIds.includes(vendorId)
 
-  useEffect(() => {
-    registerDirtyState(isDirty)
-  }, [isDirty, registerDirtyState])
+  const handleToggle = async (
+    itemId: string,
+    currentVendorIds: string[] = [],
+  ) => {
+    const dbAssigned = currentVendorIds.includes(vendorId)
+    const newVendorIds = dbAssigned
+      ? currentVendorIds.filter((id) => id !== vendorId)
+      : [...currentVendorIds, vendorId]
 
-  const isAssigned = (itemId: string, vendorIds: string[] = []) => {
-    const dbAssigned = vendorIds.includes(vendorId)
-    return toggled[itemId] ? !dbAssigned : dbAssigned
-  }
-
-  const handleToggle = (itemId: string) => {
-    setToggled((prev) => {
-      const next = { ...prev }
-      if (next[itemId]) {
-        delete next[itemId]
-      } else {
-        next[itemId] = true
-      }
-      return next
-    })
-  }
-
-  const handleSave = async () => {
-    const changedItems = items.filter((item) => toggled[item.id])
-    await Promise.all(
-      changedItems.map((item) => {
-        const dbAssigned = (item.vendorIds ?? []).includes(vendorId)
-        const newVendorIds = dbAssigned
-          ? (item.vendorIds ?? []).filter((id) => id !== vendorId)
-          : [...(item.vendorIds ?? []), vendorId]
-        return updateItem.mutateAsync({
-          id: item.id,
-          updates: { vendorIds: newVendorIds },
-        })
-      }),
-    )
-    setToggled({})
+    setSavingItemIds((prev) => new Set(prev).add(itemId))
+    try {
+      await updateItem.mutateAsync({
+        id: itemId,
+        updates: { vendorIds: newVendorIds },
+      })
+    } finally {
+      setSavingItemIds((prev) => {
+        const next = new Set(prev)
+        next.delete(itemId)
+        return next
+      })
+    }
   }
 
   const sortedItems = [...items].sort((a, b) =>
@@ -167,7 +150,6 @@ function VendorItemsTab() {
 
       <div className="space-y-2">
         {filteredItems.map((item) => {
-          const checked = isAssigned(item.id, item.vendorIds)
           const otherVendors = (item.vendorIds ?? [])
             .filter((vid) => vid !== vendorId)
             .map((vid) => vendorMap[vid])
@@ -180,8 +162,9 @@ function VendorItemsTab() {
             >
               <Checkbox
                 id={`item-${item.id}`}
-                checked={checked}
-                onCheckedChange={() => handleToggle(item.id)}
+                checked={isAssigned(item.vendorIds)}
+                onCheckedChange={() => handleToggle(item.id, item.vendorIds)}
+                disabled={savingItemIds.has(item.id)}
               />
               <Label
                 htmlFor={`item-${item.id}`}
@@ -204,10 +187,6 @@ function VendorItemsTab() {
           )
         })}
       </div>
-
-      <Button onClick={handleSave} disabled={!isDirty || updateItem.isPending}>
-        Save
-      </Button>
     </div>
   )
 }
