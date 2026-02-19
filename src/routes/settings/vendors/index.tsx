@@ -4,12 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
-import { VendorFormDialog } from '@/components/VendorFormDialog'
-import {
-  useCreateVendor,
-  useDeleteVendor,
-  useVendors,
-} from '@/hooks/useVendors'
+import { useDeleteVendor, useVendors } from '@/hooks/useVendors'
 import type { Vendor } from '@/types'
 
 export const Route = createFileRoute('/settings/vendors/')({
@@ -19,19 +14,13 @@ export const Route = createFileRoute('/settings/vendors/')({
 function VendorSettings() {
   const navigate = useNavigate()
   const { data: vendors = [] } = useVendors()
-  const createVendor = useCreateVendor()
   const deleteVendor = useDeleteVendor()
 
-  const [formOpen, setFormOpen] = useState(false)
   const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null)
 
   const sortedVendors = [...vendors].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
-
-  const handleSave = (name: string) => {
-    createVendor.mutate(name, { onSuccess: () => setFormOpen(false) })
-  }
 
   const handleConfirmDelete = () => {
     if (vendorToDelete) {
@@ -53,7 +42,7 @@ function VendorSettings() {
           </Button>
           <h1 className="text-2xl font-bold">Vendors</h1>
         </div>
-        <Button onClick={() => setFormOpen(true)}>
+        <Button onClick={() => navigate({ to: '/settings/vendors/new' })}>
           <Plus className="h-4 w-4 mr-2" />
           New Vendor
         </Button>
@@ -74,12 +63,6 @@ function VendorSettings() {
           ))}
         </div>
       )}
-
-      <VendorFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        onSave={handleSave}
-      />
 
       <ConfirmDialog
         open={!!vendorToDelete}

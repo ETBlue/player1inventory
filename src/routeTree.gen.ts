@@ -18,6 +18,7 @@ import { Route as ItemsNewRouteImport } from './routes/items/new'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
 import { Route as SettingsVendorsIndexRouteImport } from './routes/settings/vendors/index'
 import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
+import { Route as SettingsVendorsNewRouteImport } from './routes/settings/vendors/new'
 import { Route as SettingsVendorsIdRouteImport } from './routes/settings/vendors/$id'
 import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
@@ -70,6 +71,11 @@ const ItemsIdIndexRoute = ItemsIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ItemsIdRoute,
 } as any)
+const SettingsVendorsNewRoute = SettingsVendorsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => SettingsVendorsRoute,
+} as any)
 const SettingsVendorsIdRoute = SettingsVendorsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
+  '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
+  '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id': typeof ItemsIdIndexRoute
   '/settings/vendors': typeof SettingsVendorsIndexRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
@@ -145,6 +153,7 @@ export interface FileRoutesById {
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
+  '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
@@ -164,6 +173,7 @@ export interface FileRouteTypes {
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/vendors/$id'
+    | '/settings/vendors/new'
     | '/items/$id/'
     | '/settings/vendors/'
     | '/settings/vendors/$id/items'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/tags'
     | '/items/$id/vendors'
+    | '/settings/vendors/new'
     | '/items/$id'
     | '/settings/vendors'
     | '/settings/vendors/$id/items'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/vendors/$id'
+    | '/settings/vendors/new'
     | '/items/$id/'
     | '/settings/vendors/'
     | '/settings/vendors/$id/items'
@@ -276,6 +288,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemsIdIndexRouteImport
       parentRoute: typeof ItemsIdRoute
     }
+    '/settings/vendors/new': {
+      id: '/settings/vendors/new'
+      path: '/new'
+      fullPath: '/settings/vendors/new'
+      preLoaderRoute: typeof SettingsVendorsNewRouteImport
+      parentRoute: typeof SettingsVendorsRoute
+    }
     '/settings/vendors/$id': {
       id: '/settings/vendors/$id'
       path: '/$id'
@@ -353,11 +372,13 @@ const SettingsVendorsIdRouteWithChildren =
 
 interface SettingsVendorsRouteChildren {
   SettingsVendorsIdRoute: typeof SettingsVendorsIdRouteWithChildren
+  SettingsVendorsNewRoute: typeof SettingsVendorsNewRoute
   SettingsVendorsIndexRoute: typeof SettingsVendorsIndexRoute
 }
 
 const SettingsVendorsRouteChildren: SettingsVendorsRouteChildren = {
   SettingsVendorsIdRoute: SettingsVendorsIdRouteWithChildren,
+  SettingsVendorsNewRoute: SettingsVendorsNewRoute,
   SettingsVendorsIndexRoute: SettingsVendorsIndexRoute,
 }
 
