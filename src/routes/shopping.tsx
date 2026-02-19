@@ -210,7 +210,7 @@ function Shopping() {
           totalCount={vendorFiltered.length}
           onFilterChange={setFilterState}
           showDropdowns={filtersVisible}
-          showCountRow={hasAnyFilter}
+          showCountRow={filtersVisible || hasAnyFilter}
         />
       )}
 
