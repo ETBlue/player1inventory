@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout, VendorLayoutProvider } from '@/hooks/useVendorLayout'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -31,6 +32,7 @@ function VendorDetailLayoutInner() {
   const { data: vendors = [] } = useVendors()
   const vendor = vendors.find((v) => v.id === id)
   const { isDirty } = useVendorLayout()
+  const { goBack } = useAppNavigation()
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -48,10 +50,23 @@ function VendorDetailLayoutInner() {
     }
   }
 
+  const handleBackClick = () => {
+    if (isDirty) {
+      setPendingNavigation('BACK')
+      setShowDiscardDialog(true)
+    } else {
+      goBack()
+    }
+  }
+
   const confirmDiscard = () => {
     if (pendingNavigation) {
       setShowDiscardDialog(false)
-      navigate({ to: pendingNavigation })
+      if (pendingNavigation === 'BACK') {
+        goBack()
+      } else {
+        navigate({ to: pendingNavigation })
+      }
       setPendingNavigation(null)
     }
   }
@@ -75,13 +90,14 @@ function VendorDetailLayoutInner() {
           bg-background-elevated
           border-b-2 border-accessory-default`}
         >
-          <Link
-            to="/settings/vendors"
+          <button
+            type="button"
+            onClick={handleBackClick}
             className="px-3 py-4 hover:bg-background-surface transition-colors"
-            onClick={(e) => handleTabClick(e, '/settings/vendors')}
+            aria-label="Go back"
           >
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </button>
           <h1 className="text-md font-regular truncate flex-1">
             {vendor.name}
           </h1>

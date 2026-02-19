@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout } from '@/hooks/useVendorLayout'
 import { useUpdateVendor, useVendors } from '@/hooks/useVendors'
 
@@ -16,6 +17,7 @@ function VendorInfoTab() {
   const vendor = vendors.find((v) => v.id === id)
   const updateVendor = useUpdateVendor()
   const { registerDirtyState } = useVendorLayout()
+  const { goBack } = useAppNavigation()
 
   const [name, setName] = useState('')
   const [savedAt, setSavedAt] = useState(0)
@@ -38,7 +40,12 @@ function VendorInfoTab() {
     if (!vendor || !isDirty) return
     updateVendor.mutate(
       { id, updates: { name } },
-      { onSuccess: () => setSavedAt((n) => n + 1) },
+      {
+        onSuccess: () => {
+          setSavedAt((n) => n + 1)
+          goBack()
+        },
+      },
     )
   }
 

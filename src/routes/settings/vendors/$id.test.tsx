@@ -19,6 +19,9 @@ describe('Vendor Detail - Info Tab', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+
+    // Clear sessionStorage (used by useAppNavigation)
+    sessionStorage.clear()
   })
 
   const renderInfoTab = (vendorId: string) => {
@@ -81,6 +84,79 @@ describe('Vendor Detail - Info Tab', () => {
     // Then the Save button is disabled when form is clean
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    })
+  })
+
+  it('user can navigate back with back button when navigation history exists', async () => {
+    const user = userEvent.setup()
+
+    // Given a vendor
+    const vendor = await createVendor('Test Vendor')
+
+    // And navigation history exists (user came from vendors list page)
+    // Note: Include only the previous page, the current page will be added by useAppNavigation
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/vendors']),
+    )
+
+    renderInfoTab(vendor.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Vendor')).toBeInTheDocument()
+    })
+
+    // When user clicks back button (now a button, not a link)
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then navigates back to previous page (vendors list)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /vendors/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can navigate back after saving vendor name', async () => {
+    const user = userEvent.setup()
+
+    // Given a vendor
+    const vendor = await createVendor('Test Vendor')
+
+    // And navigation history exists (user came from vendors list page)
+    // Note: Include only the previous page, the current page will be added by useAppNavigation
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/vendors']),
+    )
+
+    renderInfoTab(vendor.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    // When user changes vendor name
+    const nameInput = screen.getByLabelText(/name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Updated Vendor')
+
+    // And saves the form
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    // Then navigates back to previous page (vendors list)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /vendors/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
     })
   })
 })
