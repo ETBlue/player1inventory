@@ -1,5 +1,7 @@
+import type { UseQueryResult } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { Item } from '@/types'
 import * as hooks from './index'
 import { useVendorItemCounts } from './useVendorItemCounts'
 
@@ -9,7 +11,9 @@ vi.mock('./index', () => ({
 
 describe('useVendorItemCounts', () => {
   it('returns empty Map when no items', () => {
-    vi.mocked(hooks.useItems).mockReturnValue({ data: [] } as any)
+    vi.mocked(hooks.useItems).mockReturnValue({
+      data: [],
+    } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
     const { result } = renderHook(() => useVendorItemCounts())
     expect(result.current.size).toBe(0)
   })
@@ -45,7 +49,9 @@ describe('useVendorItemCounts', () => {
         updatedAt: new Date(),
       },
     ]
-    vi.mocked(hooks.useItems).mockReturnValue({ data: items } as any)
+    vi.mocked(hooks.useItems).mockReturnValue({
+      data: items,
+    } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
     const { result } = renderHook(() => useVendorItemCounts())
     expect(result.current.get('v1')).toBe(2)
   })
@@ -81,7 +87,9 @@ describe('useVendorItemCounts', () => {
         updatedAt: new Date(),
       },
     ]
-    vi.mocked(hooks.useItems).mockReturnValue({ data: items } as any)
+    vi.mocked(hooks.useItems).mockReturnValue({
+      data: items,
+    } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
     const { result } = renderHook(() => useVendorItemCounts())
     expect(result.current.get('v1')).toBe(1)
     expect(result.current.get('v2')).toBe(1)
@@ -104,7 +112,9 @@ describe('useVendorItemCounts', () => {
         updatedAt: new Date(),
       },
     ]
-    vi.mocked(hooks.useItems).mockReturnValue({ data: items } as any)
+    vi.mocked(hooks.useItems).mockReturnValue({
+      data: items,
+    } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
     const { result } = renderHook(() => useVendorItemCounts())
     expect(result.current.get('v1')).toBe(1)
     expect(result.current.get('v2')).toBe(1)
@@ -126,7 +136,9 @@ describe('useVendorItemCounts', () => {
         updatedAt: new Date(),
       },
     ]
-    vi.mocked(hooks.useItems).mockReturnValue({ data: items } as any)
+    vi.mocked(hooks.useItems).mockReturnValue({
+      data: items,
+    } as Partial<UseQueryResult<Item[]>> as UseQueryResult<Item[]>)
     const { result } = renderHook(() => useVendorItemCounts())
     expect(result.current.size).toBe(0)
   })
