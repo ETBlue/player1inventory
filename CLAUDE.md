@@ -161,7 +161,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`
 
-**Route**: `src/routes/settings/vendors.tsx` — list + create/edit dialog + delete confirmation
+**Route**: `src/routes/settings/vendors/index.tsx` — list + create/edit dialog + delete confirmation
 
 **Components**:
 - `src/components/VendorCard.tsx` — displays one vendor with edit/delete buttons (aria-labels include vendor name)
@@ -170,6 +170,10 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 **Settings link**: `src/routes/settings/index.tsx` (Store icon)
 
 **Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
+
+**Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: searchable checklist of all items showing their current vendor assignments; uses delta-based staged state (toggled map) with explicit Save that calls `useUpdateItem` concurrently for changed items.
+
+**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout prevents tab switching with unsaved changes.
 
 ### Shopping Page
 
