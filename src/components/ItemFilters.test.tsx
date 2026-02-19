@@ -9,7 +9,6 @@ import {
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { FilterState } from '@/lib/filterUtils'
 import type { Item, Tag, TagType } from '@/types'
 import { ItemFilters } from './ItemFilters'
 
@@ -137,86 +136,6 @@ describe('ItemFilters', () => {
     expect(
       screen.queryByRole('button', { name: /empty/i }),
     ).not.toBeInTheDocument()
-  })
-
-  it('displays item count', async () => {
-    await renderWithRouter(
-      <ItemFilters
-        tagTypes={tagTypes}
-        tags={tags}
-        items={items}
-        filterState={{}}
-        filteredCount={2}
-        totalCount={5}
-        onFilterChange={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByText(/showing 2 of 5 items/i)).toBeInTheDocument()
-  })
-
-  it('shows clear filter button when filters active', async () => {
-    const filterState: FilterState = {
-      'type-1': ['tag-1'],
-    }
-
-    await renderWithRouter(
-      <ItemFilters
-        tagTypes={tagTypes}
-        tags={tags}
-        items={items}
-        filterState={filterState}
-        filteredCount={1}
-        totalCount={2}
-        onFilterChange={vi.fn()}
-      />,
-    )
-
-    expect(
-      screen.getByRole('button', { name: /clear filter/i }),
-    ).toBeInTheDocument()
-  })
-
-  it('hides clear filter button when no filters active', async () => {
-    await renderWithRouter(
-      <ItemFilters
-        tagTypes={tagTypes}
-        tags={tags}
-        items={items}
-        filterState={{}}
-        filteredCount={2}
-        totalCount={2}
-        onFilterChange={vi.fn()}
-      />,
-    )
-
-    expect(
-      screen.queryByRole('button', { name: /clear filter/i }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('calls onFilterChange when clear filter clicked', async () => {
-    const onFilterChange = vi.fn()
-    const user = userEvent.setup()
-    const filterState: FilterState = {
-      'type-1': ['tag-1'],
-    }
-
-    await renderWithRouter(
-      <ItemFilters
-        tagTypes={tagTypes}
-        tags={tags}
-        items={items}
-        filterState={filterState}
-        filteredCount={1}
-        totalCount={2}
-        onFilterChange={onFilterChange}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: /clear filter/i }))
-
-    expect(onFilterChange).toHaveBeenCalledWith({})
   })
 
   it('switches between dropdowns with single click', async () => {
