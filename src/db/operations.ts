@@ -154,6 +154,16 @@ export async function updateTag(
 }
 
 export async function deleteTag(id: string): Promise<void> {
+  const items = await db.items
+    .filter((item) => item.tagIds.includes(id))
+    .toArray()
+  const now = new Date()
+  for (const item of items) {
+    await db.items.update(item.id, {
+      tagIds: item.tagIds.filter((tagId) => tagId !== id),
+      updatedAt: now,
+    })
+  }
   await db.tags.delete(id)
 }
 

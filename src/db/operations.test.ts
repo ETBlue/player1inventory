@@ -10,8 +10,10 @@ import {
   createTagType,
   createVendor,
   deleteItem,
+  deleteTag,
   deleteVendor,
   getAllItems,
+  getAllTags,
   getAllTagTypes,
   getCartItems,
   getCurrentQuantity,
@@ -338,6 +340,67 @@ describe('Tag operations', () => {
 
     const ingredientTags = await getTagsByType(type1.id)
     expect(ingredientTags).toHaveLength(2)
+  })
+})
+
+describe('Tag cascade operations', () => {
+  beforeEach(async () => {
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.items.clear()
+  })
+
+  it('user can delete a tag and it is removed from all items', async () => {
+    // Given a tag type, a tag, and two items using that tag
+    const tagType = await createTagType({ name: 'Type' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    const item1 = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [tag.id],
+    })
+    const item2 = await createItem({
+      name: 'Eggs',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [tag.id],
+    })
+    const item3 = await createItem({
+      name: 'Bread',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // When deleting the tag
+    await deleteTag(tag.id)
+
+    // Then the tag record is gone
+    const allTags = await getAllTags()
+    expect(allTags.find((t) => t.id === tag.id)).toBeUndefined()
+
+    // And the tag is removed from items that had it
+    const updated1 = await getItem(item1.id)
+    const updated2 = await getItem(item2.id)
+    expect(updated1?.tagIds).not.toContain(tag.id)
+    expect(updated2?.tagIds).not.toContain(tag.id)
+
+    // And items that didn't have the tag are unaffected
+    const updated3 = await getItem(item3.id)
+    expect(updated3?.tagIds).toEqual([])
   })
 })
 
