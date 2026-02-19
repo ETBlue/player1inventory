@@ -165,7 +165,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Components**:
 - `src/components/VendorCard.tsx` — displays one vendor with a delete button; vendor name links to the detail page
-- `src/components/VendorFormDialog.tsx` — shared dialog for create (no `vendor` prop) and edit (`vendor` prop provided)
+- `src/components/VendorFormDialog.tsx` — dialog for creating a new vendor
 
 **Settings link**: `src/routes/settings/index.tsx` (Store icon)
 
