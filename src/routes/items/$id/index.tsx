@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { ItemFormValues } from '@/components/ItemForm'
 import { ItemForm } from '@/components/ItemForm'
 import { useItem, useUpdateItem } from '@/hooks'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import type { Item } from '@/types'
 
@@ -82,6 +83,7 @@ function ItemDetailTab() {
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
   const { registerDirtyState } = useItemLayout()
+  const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
   if (!item) return null
@@ -91,7 +93,12 @@ function ItemDetailTab() {
   const handleSubmit = (values: ItemFormValues) => {
     updateItem.mutate(
       { id, updates: buildUpdates(values) },
-      { onSuccess: () => setSavedAt((n) => n + 1) },
+      {
+        onSuccess: () => {
+          setSavedAt((n) => n + 1)
+          goBack()
+        },
+      },
     )
   }
 
