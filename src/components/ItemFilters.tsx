@@ -17,6 +17,7 @@ interface ItemFiltersProps {
   totalCount: number
   onFilterChange: (newState: FilterState) => void
   showDropdowns?: boolean
+  showCountRow?: boolean
 }
 
 export function ItemFilters({
@@ -28,6 +29,7 @@ export function ItemFilters({
   totalCount,
   onFilterChange,
   showDropdowns = true,
+  showCountRow = true,
 }: ItemFiltersProps) {
   // Filter to only tag types that have tags, then sort alphabetically
   const tagTypesWithTags = tagTypes
@@ -100,18 +102,20 @@ export function ItemFilters({
           </Link>
         </div>
       )}
-      <div className="flex items-center h-6">
-        <div className="ml-3 text-xs text-foreground-muted">
-          Showing {filteredCount} of {totalCount} items
+      {showCountRow && (
+        <div className="flex items-center h-6">
+          <div className="ml-3 text-xs text-foreground-muted">
+            Showing {filteredCount} of {totalCount} items
+          </div>
+          <div className="flex-1" />
+          {hasActiveFilters && (
+            <Button variant="neutral-ghost" size="xs" onClick={handleClearAll}>
+              <X />
+              Clear filter
+            </Button>
+          )}
         </div>
-        <div className="flex-1" />
-        {hasActiveFilters && (
-          <Button variant="neutral-ghost" size="xs" onClick={handleClearAll}>
-            <X />
-            Clear filter
-          </Button>
-        )}
-      </div>
+      )}
     </div>
   )
 }
