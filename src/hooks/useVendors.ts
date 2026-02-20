@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createVendor,
   deleteVendor,
+  getItemCountByVendor,
   getVendors,
   updateVendor,
 } from '@/db/operations'
@@ -49,6 +50,15 @@ export function useDeleteVendor() {
     mutationFn: deleteVendor,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] })
+      queryClient.invalidateQueries({ queryKey: ['items'] })
     },
+  })
+}
+
+export function useItemCountByVendor(vendorId: string) {
+  return useQuery({
+    queryKey: ['items', 'countByVendor', vendorId],
+    queryFn: () => getItemCountByVendor(vendorId),
+    enabled: !!vendorId,
   })
 }

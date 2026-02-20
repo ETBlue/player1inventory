@@ -7,6 +7,7 @@ import {
   getAllTags,
   getAllTagTypes,
   getItemCountByTag,
+  getTagCountByType,
   getTagsByType,
   updateTag,
   updateTagType,
@@ -52,6 +53,7 @@ export function useDeleteTagType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
       queryClient.invalidateQueries({ queryKey: ['tags'] })
+      queryClient.invalidateQueries({ queryKey: ['items'] })
     },
   })
 }
@@ -101,6 +103,7 @@ export function useDeleteTag() {
     mutationFn: deleteTag,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
+      queryClient.invalidateQueries({ queryKey: ['items'] })
     },
   })
 }
@@ -110,5 +113,13 @@ export function useItemCountByTag(tagId: string) {
     queryKey: ['items', 'countByTag', tagId],
     queryFn: () => getItemCountByTag(tagId),
     enabled: !!tagId,
+  })
+}
+
+export function useTagCountByType(typeId: string) {
+  return useQuery({
+    queryKey: ['tags', 'countByType', typeId],
+    queryFn: () => getTagCountByType(typeId),
+    enabled: !!typeId,
   })
 }
