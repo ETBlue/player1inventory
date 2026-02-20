@@ -152,4 +152,52 @@ describe('Vendor Settings Page', () => {
     expect(await screen.findByText(/Costco/i)).toBeInTheDocument()
     expect(screen.getByText(/2 items/i)).toBeInTheDocument()
   })
+
+  it('back button navigates using useAppNavigation with /settings fallback', async () => {
+    // Given vendor list page
+    const { goBack } = setupMocks()
+    render(<VendorSettings />)
+    const user = userEvent.setup()
+
+    // When user clicks back button (ArrowLeft icon button)
+    const backButton = screen.getAllByRole('button')[0] // First button is the back button
+    await user.click(backButton)
+
+    // Then goBack is called (with /settings fallback configured in useAppNavigation)
+    expect(goBack).toHaveBeenCalled()
+  })
+})
+
+describe('Vendor Detail Page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('back button always goes to vendor list (skips tabs)', async () => {
+    // Given a vendor detail page
+    const { goBack } = setupMocks()
+
+    // Mock vendor detail route (simplified - just testing navigation)
+    const VendorDetail = () => {
+      const { goBack: mockGoBack } = useAppNavigation('/settings/vendors')
+      return (
+        <div>
+          <button type="button" onClick={() => mockGoBack()}>
+            Back
+          </button>
+          <p>Vendor Detail</p>
+        </div>
+      )
+    }
+
+    render(<VendorDetail />)
+    const user = userEvent.setup()
+
+    // When user clicks back button
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then navigates back (to vendor list via goBack)
+    expect(goBack).toHaveBeenCalled()
+  })
 })

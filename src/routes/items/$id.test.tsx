@@ -857,3 +857,105 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 })
+
+describe('Item detail page - hierarchical navigation', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (itemId: string, initialPath?: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [initialPath || `/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    return router
+  }
+
+  it('back button skips tab navigation and goes to previous app page', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with navigation history: pantry -> item detail -> tags tab
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/', `/items/${item.id}`, `/items/${item.id}/tags`]),
+    )
+
+    // When rendering tags tab
+    const router = renderItemDetailPage(item.id, `/items/${item.id}/tags`)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // And user clicks back button
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then navigates back to pantry (skips item detail index tab)
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/')
+    })
+  })
+
+  it('back button falls back to / (pantry) when no valid history exists', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with no navigation history
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // When rendering item detail page with no history
+    const router = renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // And user clicks back button
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then falls back to pantry
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/')
+    })
+  })
+})
