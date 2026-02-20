@@ -556,6 +556,7 @@ describe('ShoppingCart operations', () => {
 describe('Vendor operations', () => {
   beforeEach(async () => {
     await db.vendors.clear()
+    await db.items.clear()
   })
 
   it('user can create a vendor', async () => {
@@ -608,5 +609,62 @@ describe('Vendor operations', () => {
     // Then the vendor is no longer in the database
     const vendors = await getVendors()
     expect(vendors.find((v) => v.id === vendor.id)).toBeUndefined()
+  })
+  it('user can delete a vendor and it is removed from all items', async () => {
+    // Given a vendor and two items assigned to it
+    const vendor = await createVendor('Costco')
+    const item1 = await createItem({
+      name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [vendor.id],
+    })
+    const item2 = await createItem({
+      name: 'Eggs',
+      packageUnit: 'dozen',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [vendor.id],
+    })
+    const item3 = await createItem({
+      name: 'Bread',
+      packageUnit: 'loaf',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [],
+    })
+
+    // When deleting the vendor
+    await deleteVendor(vendor.id)
+
+    // Then the vendor is gone
+    const vendors = await getVendors()
+    expect(vendors.find((v) => v.id === vendor.id)).toBeUndefined()
+
+    // And the vendor is removed from items that had it
+    const updated1 = await getItem(item1.id)
+    const updated2 = await getItem(item2.id)
+    expect(updated1?.vendorIds).not.toContain(vendor.id)
+    expect(updated2?.vendorIds).not.toContain(vendor.id)
+
+    // And items without this vendor are unaffected
+    const updated3 = await getItem(item3.id)
+    expect(updated3?.vendorIds ?? []).toEqual([])
   })
 })

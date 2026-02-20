@@ -310,5 +310,15 @@ export async function updateVendor(
 }
 
 export async function deleteVendor(id: string): Promise<void> {
+  const items = await db.items
+    .filter((item) => item.vendorIds?.includes(id) ?? false)
+    .toArray()
+  const now = new Date()
+  for (const item of items) {
+    await db.items.update(item.id, {
+      vendorIds: item.vendorIds?.filter((vid) => vid !== id) ?? [],
+      updatedAt: now,
+    })
+  }
   await db.vendors.delete(id)
 }
