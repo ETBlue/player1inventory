@@ -17,6 +17,7 @@ import {
   useCreateTagType,
   useDeleteTag,
   useDeleteTagType,
+  useTagCountByType,
   useTags,
   useTagTypes,
   useUpdateTag,
@@ -50,6 +51,9 @@ function TagSettings() {
   const [editTagTypeName, setEditTagTypeName] = useState('')
   const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
   const [editTagName, setEditTagName] = useState('')
+
+  const tagTypeDeleteId = tagTypeToDelete?.id ?? ''
+  const { data: tagTypeTagCount = 0 } = useTagCountByType(tagTypeDeleteId)
 
   // Run migration on mount
   useEffect(() => {
@@ -100,10 +104,6 @@ function TagSettings() {
 
   const handleDeleteTagType = () => {
     if (tagTypeToDelete) {
-      const typeTags = tags.filter((t) => t.typeId === tagTypeToDelete.id)
-      for (const t of typeTags) {
-        deleteTag.mutate(t.id)
-      }
       deleteTagType.mutate(tagTypeToDelete.id)
       setTagTypeToDelete(null)
     }
@@ -268,7 +268,7 @@ function TagSettings() {
         open={!!tagTypeToDelete}
         onOpenChange={(open) => !open && setTagTypeToDelete(null)}
         title={`Delete "${tagTypeToDelete?.name}"?`}
-        description={`This will delete the tag type and all its tags. This action cannot be undone.`}
+        description={`This will delete "${tagTypeToDelete?.name}" and its ${tagTypeTagCount} tag${tagTypeTagCount === 1 ? '' : 's'}, removing them from all assigned items.`}
         confirmLabel="Delete"
         onConfirm={handleDeleteTagType}
         destructive
