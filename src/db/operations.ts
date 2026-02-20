@@ -178,6 +178,16 @@ export async function getItemCountByTag(tagId: string): Promise<number> {
   return items
 }
 
+export async function getItemCountByVendor(vendorId: string): Promise<number> {
+  return db.items
+    .filter((item) => item.vendorIds?.includes(vendorId) ?? false)
+    .count()
+}
+
+export async function getTagCountByType(typeId: string): Promise<number> {
+  return db.tags.where('typeId').equals(typeId).count()
+}
+
 // ShoppingCart operations
 export async function getOrCreateActiveCart(): Promise<ShoppingCart> {
   const existing = await db.shoppingCarts

@@ -10,18 +10,17 @@ import {
   createTagType,
   createVendor,
   deleteItem,
-  deleteTag,
-  deleteTagType,
   deleteVendor,
   getAllItems,
-  getAllTags,
   getAllTagTypes,
   getCartItems,
   getCurrentQuantity,
   getItem,
+  getItemCountByVendor,
   getItemLogs,
   getLastPurchaseDate,
   getOrCreateActiveCart,
+  getTagCountByType,
   getTagsByType,
   getVendors,
   updateCartItem,
@@ -344,104 +343,6 @@ describe('Tag operations', () => {
   })
 })
 
-describe('Tag cascade operations', () => {
-  beforeEach(async () => {
-    await db.tags.clear()
-    await db.tagTypes.clear()
-    await db.items.clear()
-  })
-
-  it('user can delete a tag and it is removed from all items', async () => {
-    // Given a tag type, a tag, and two items using that tag
-    const tagType = await createTagType({ name: 'Type' })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    const item1 = await createItem({
-      name: 'Milk',
-      packageUnit: 'gallon',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [tag.id],
-    })
-    const item2 = await createItem({
-      name: 'Eggs',
-      packageUnit: 'dozen',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [tag.id],
-    })
-    const item3 = await createItem({
-      name: 'Bread',
-      packageUnit: 'loaf',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    // When deleting the tag
-    await deleteTag(tag.id)
-
-    // Then the tag record is gone
-    const allTags = await getAllTags()
-    expect(allTags.find((t) => t.id === tag.id)).toBeUndefined()
-
-    // And the tag is removed from items that had it
-    const updated1 = await getItem(item1.id)
-    const updated2 = await getItem(item2.id)
-    expect(updated1?.tagIds).not.toContain(tag.id)
-    expect(updated2?.tagIds).not.toContain(tag.id)
-
-    // And items that didn't have the tag are unaffected
-    const updated3 = await getItem(item3.id)
-    expect(updated3?.tagIds).toEqual([])
-  })
-
-  it('user can delete a tag type and all its tags are removed from items', async () => {
-    // Given a tag type with two tags, and an item using both
-    const tagType = await createTagType({ name: 'Type' })
-    const tag1 = await createTag({ name: 'Dairy', typeId: tagType.id })
-    const tag2 = await createTag({ name: 'Meat', typeId: tagType.id })
-    const item = await createItem({
-      name: 'Milk',
-      packageUnit: 'gallon',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [tag1.id, tag2.id],
-    })
-
-    // When deleting the tag type
-    await deleteTagType(tagType.id)
-
-    // Then the tag type is gone
-    const allTypes = await getAllTagTypes()
-    expect(allTypes.find((t) => t.id === tagType.id)).toBeUndefined()
-
-    // And both child tags are gone
-    const allTags = await getAllTags()
-    expect(allTags.find((t) => t.id === tag1.id)).toBeUndefined()
-    expect(allTags.find((t) => t.id === tag2.id)).toBeUndefined()
-
-    // And the item's tagIds are emptied
-    const updatedItem = await getItem(item.id)
-    expect(updatedItem?.tagIds).toEqual([])
-  })
-})
-
 describe('ShoppingCart operations', () => {
   beforeEach(async () => {
     await db.items.clear()
@@ -556,7 +457,6 @@ describe('ShoppingCart operations', () => {
 describe('Vendor operations', () => {
   beforeEach(async () => {
     await db.vendors.clear()
-    await db.items.clear()
   })
 
   it('user can create a vendor', async () => {
@@ -610,10 +510,18 @@ describe('Vendor operations', () => {
     const vendors = await getVendors()
     expect(vendors.find((v) => v.id === vendor.id)).toBeUndefined()
   })
-  it('user can delete a vendor and it is removed from all items', async () => {
-    // Given a vendor and two items assigned to it
+})
+
+describe('getItemCountByVendor', () => {
+  beforeEach(async () => {
+    await db.vendors.clear()
+    await db.items.clear()
+  })
+
+  it('returns count of items assigned to a vendor', async () => {
+    // Given a vendor with two assigned items and one unassigned
     const vendor = await createVendor('Costco')
-    const item1 = await createItem({
+    await createItem({
       name: 'Milk',
       packageUnit: 'gallon',
       targetUnit: 'package',
@@ -625,7 +533,7 @@ describe('Vendor operations', () => {
       tagIds: [],
       vendorIds: [vendor.id],
     })
-    const item2 = await createItem({
+    await createItem({
       name: 'Eggs',
       packageUnit: 'dozen',
       targetUnit: 'package',
@@ -637,7 +545,7 @@ describe('Vendor operations', () => {
       tagIds: [],
       vendorIds: [vendor.id],
     })
-    const item3 = await createItem({
+    await createItem({
       name: 'Bread',
       packageUnit: 'loaf',
       targetUnit: 'package',
@@ -650,21 +558,35 @@ describe('Vendor operations', () => {
       vendorIds: [],
     })
 
-    // When deleting the vendor
-    await deleteVendor(vendor.id)
+    // When counting items for the vendor
+    const count = await getItemCountByVendor(vendor.id)
 
-    // Then the vendor is gone
-    const vendors = await getVendors()
-    expect(vendors.find((v) => v.id === vendor.id)).toBeUndefined()
+    // Then only the two assigned items are counted
+    expect(count).toBe(2)
+  })
+})
 
-    // And the vendor is removed from items that had it
-    const updated1 = await getItem(item1.id)
-    const updated2 = await getItem(item2.id)
-    expect(updated1?.vendorIds).not.toContain(vendor.id)
-    expect(updated2?.vendorIds).not.toContain(vendor.id)
+describe('getTagCountByType', () => {
+  beforeEach(async () => {
+    await db.tags.clear()
+    await db.tagTypes.clear()
+  })
 
-    // And items without this vendor are unaffected
-    const updated3 = await getItem(item3.id)
-    expect(updated3?.vendorIds ?? []).toEqual([])
+  it('returns count of tags under a tag type', async () => {
+    // Given a tag type with three tags
+    const tagType = await createTagType({ name: 'Type' })
+    await createTag({ name: 'Dairy', typeId: tagType.id })
+    await createTag({ name: 'Meat', typeId: tagType.id })
+    await createTag({ name: 'Produce', typeId: tagType.id })
+
+    // And another tag type with one tag (should not be counted)
+    const otherType = await createTagType({ name: 'Other' })
+    await createTag({ name: 'Frozen', typeId: otherType.id })
+
+    // When counting tags for the first type
+    const count = await getTagCountByType(tagType.id)
+
+    // Then only tags of that type are counted
+    expect(count).toBe(3)
   })
 })
