@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ChevronRight, Moon, Store, Sun, Tags } from 'lucide-react'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useTheme } from '@/hooks/useTheme'
@@ -13,7 +14,9 @@ function Settings() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <Toolbar>
+        <h1 className="text-2xl font-bold">Settings</h1>
+      </Toolbar>
 
       <div className="space-y-2">
         {/* Theme Control Card */}
