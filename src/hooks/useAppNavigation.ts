@@ -1,11 +1,9 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import {
   loadNavigationHistory,
   saveNavigationHistory,
 } from '@/lib/sessionStorage'
-
-const MAX_HISTORY_SIZE = 50
 
 // Export for testing
 export function isSamePage(path1: string, path2: string): boolean {
@@ -29,32 +27,6 @@ export function isSamePage(path1: string, path2: string): boolean {
 export function useAppNavigation(fallbackPath?: string) {
   const router = useRouter()
   const navigate = useNavigate()
-
-  // Track navigation
-  useEffect(() => {
-    const history = loadNavigationHistory()
-    const currentPath = router.state.location.pathname
-
-    console.log('[useAppNavigation] Navigation tracking:', {
-      currentPath,
-      lastHistoryEntry: history[history.length - 1],
-      willAdd:
-        currentPath.startsWith('/') &&
-        history[history.length - 1] !== currentPath,
-    })
-
-    // Only track app routes and avoid duplicates
-    if (
-      currentPath.startsWith('/') &&
-      history[history.length - 1] !== currentPath
-    ) {
-      history.push(currentPath)
-      // Keep last MAX_HISTORY_SIZE entries
-      if (history.length > MAX_HISTORY_SIZE) history.shift()
-      saveNavigationHistory(history)
-      console.log('[useAppNavigation] Added to history. New history:', history)
-    }
-  }, [router.state.location.pathname])
 
   const goBack = useCallback(() => {
     // Read fresh history from sessionStorage to ensure cross-tab/cross-component consistency
