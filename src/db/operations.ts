@@ -123,6 +123,10 @@ export async function updateTagType(
 }
 
 export async function deleteTagType(id: string): Promise<void> {
+  const tags = await db.tags.where('typeId').equals(id).toArray()
+  for (const tag of tags) {
+    await deleteTag(tag.id)
+  }
   await db.tagTypes.delete(id)
 }
 

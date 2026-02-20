@@ -11,6 +11,7 @@ import {
   createVendor,
   deleteItem,
   deleteTag,
+  deleteTagType,
   deleteVendor,
   getAllItems,
   getAllTags,
@@ -404,6 +405,40 @@ describe('Tag cascade operations', () => {
     // And items that didn't have the tag are unaffected
     const updated3 = await getItem(item3.id)
     expect(updated3?.tagIds).toEqual([])
+  })
+
+  it('user can delete a tag type and all its tags are removed from items', async () => {
+    // Given a tag type with two tags, and an item using both
+    const tagType = await createTagType({ name: 'Type' })
+    const tag1 = await createTag({ name: 'Dairy', typeId: tagType.id })
+    const tag2 = await createTag({ name: 'Meat', typeId: tagType.id })
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [tag1.id, tag2.id],
+    })
+
+    // When deleting the tag type
+    await deleteTagType(tagType.id)
+
+    // Then the tag type is gone
+    const allTypes = await getAllTagTypes()
+    expect(allTypes.find((t) => t.id === tagType.id)).toBeUndefined()
+
+    // And both child tags are gone
+    const allTags = await getAllTags()
+    expect(allTags.find((t) => t.id === tag1.id)).toBeUndefined()
+    expect(allTags.find((t) => t.id === tag2.id)).toBeUndefined()
+
+    // And the item's tagIds are emptied
+    const updatedItem = await getItem(item.id)
+    expect(updatedItem?.tagIds).toEqual([])
   })
 })
 
