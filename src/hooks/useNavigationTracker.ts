@@ -1,4 +1,4 @@
-import { useRouter } from '@tanstack/react-router'
+import { useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import {
   loadNavigationHistory,
@@ -12,11 +12,12 @@ const MAX_HISTORY_SIZE = 50
  * Must be used at app root to track every navigation.
  */
 export function useNavigationTracker() {
-  const router = useRouter()
+  const currentPath = useRouterState({
+    select: (state) => state.location.pathname,
+  })
 
   useEffect(() => {
     const history = loadNavigationHistory()
-    const currentPath = router.state.location.pathname
 
     console.log('[useNavigationTracker] Effect fired:', {
       currentPath,
@@ -44,5 +45,5 @@ export function useNavigationTracker() {
         isDuplicate: history[history.length - 1] === currentPath,
       })
     }
-  }, [router.state.location.pathname])
+  }, [currentPath])
 }
