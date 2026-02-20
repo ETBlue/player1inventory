@@ -1,5 +1,17 @@
-import { describe, expect, it } from 'vitest'
-import { isSamePage } from './useAppNavigation'
+import { renderHook } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isSamePage, useAppNavigation } from './useAppNavigation'
+
+// Mock dependencies
+vi.mock('@/lib/sessionStorage', () => ({
+  loadNavigationHistory: vi.fn(),
+  saveNavigationHistory: vi.fn(),
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: vi.fn(),
+  useRouter: vi.fn(),
+}))
 
 describe('isSamePage', () => {
   it('treats item detail tabs as same page', () => {
@@ -39,5 +51,68 @@ describe('isSamePage', () => {
     expect(isSamePage('/', '/shopping')).toBe(false)
     expect(isSamePage('/items/123', '/shopping')).toBe(false)
     expect(isSamePage('/settings/vendors', '/settings/tags')).toBe(false)
+  })
+})
+
+describe('useAppNavigation', () => {
+  let mockNavigate: ReturnType<typeof vi.fn>
+  let mockUseRouter: ReturnType<typeof vi.fn>
+  let mockLoadNavigationHistory: ReturnType<typeof vi.fn>
+  let mockSaveNavigationHistory: ReturnType<typeof vi.fn>
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+
+    // Setup mocks
+    mockNavigate = vi.fn()
+    mockLoadNavigationHistory = vi.fn()
+    mockSaveNavigationHistory = vi.fn()
+
+    mockUseRouter = vi.fn(() => ({
+      state: {
+        location: {
+          pathname: '/current-page',
+        },
+      },
+    }))
+
+    // Apply mocks
+    const { useNavigate, useRouter } = await import('@tanstack/react-router')
+    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    vi.mocked(useRouter).mockImplementation(mockUseRouter)
+
+    const { loadNavigationHistory, saveNavigationHistory } = await import(
+      '@/lib/sessionStorage'
+    )
+    vi.mocked(loadNavigationHistory).mockImplementation(
+      mockLoadNavigationHistory,
+    )
+    vi.mocked(saveNavigationHistory).mockImplementation(
+      mockSaveNavigationHistory,
+    )
+  })
+
+  it('user can navigate back when history is empty and fallback provided', () => {
+    // Given empty history and a fallback path
+    mockLoadNavigationHistory.mockReturnValue([])
+
+    // When user calls goBack with fallback
+    const { result } = renderHook(() => useAppNavigation('/settings'))
+    result.current.goBack()
+
+    // Then navigates to fallback path
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings' })
+  })
+
+  it('user can navigate back when history is empty and no fallback provided', () => {
+    // Given empty history and no fallback
+    mockLoadNavigationHistory.mockReturnValue([])
+
+    // When user calls goBack without fallback
+    const { result } = renderHook(() => useAppNavigation())
+    result.current.goBack()
+
+    // Then navigates to default home path
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/' })
   })
 })
