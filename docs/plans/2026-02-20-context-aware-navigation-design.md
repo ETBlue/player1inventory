@@ -329,3 +329,35 @@ This design enhances back button navigation to be context-aware while maintainin
 - **Vendor management access** - Easy access to vendor settings from shopping page
 
 The implementation reuses the existing `useAppNavigation` hook with minimal changes, making it a low-risk enhancement that significantly improves UX.
+
+## Implementation Status
+
+**Date Completed:** 2026-02-20
+**Status:** ✅ Implemented, tested, and merged
+
+All tasks completed:
+- ✅ Created global `useNavigationTracker` hook for all pages
+- ✅ Fixed root cause: pantry and shopping pages now tracked
+- ✅ Enhanced useAppNavigation with same-page detection
+- ✅ Added "Manage vendors..." to shopping page dropdown
+- ✅ Added comprehensive test coverage (328 tests passing)
+- ✅ All manual testing scenarios verified working
+
+**Implementation Details:**
+- Root cause: Navigation tracking was per-component, missing pantry/shopping
+- Solution: Global `useNavigationTracker` using `useRouterState()` in root
+- Result: All 7 navigation scenarios work correctly
+
+3. **Shopping → Tag List (via Edit button) → Back**
+   - Expected: Back to Shopping
+
+4. **Direct URL access to `/items/123/tags` → Back**
+   - Expected: Falls back to `/` (pantry)
+
+5. **Settings → Vendor List → Back**
+   - Expected: Back to Settings
+
+6. **Settings → Tag List → Back**
+   - Expected: Back to Settings
+
+**Commits:** See git log for detailed change history
