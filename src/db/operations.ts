@@ -123,6 +123,10 @@ export async function updateTagType(
 }
 
 export async function deleteTagType(id: string): Promise<void> {
+  const tags = await db.tags.where('typeId').equals(id).toArray()
+  for (const tag of tags) {
+    await deleteTag(tag.id)
+  }
   await db.tagTypes.delete(id)
 }
 
@@ -154,6 +158,16 @@ export async function updateTag(
 }
 
 export async function deleteTag(id: string): Promise<void> {
+  const items = await db.items
+    .filter((item) => item.tagIds.includes(id))
+    .toArray()
+  const now = new Date()
+  for (const item of items) {
+    await db.items.update(item.id, {
+      tagIds: item.tagIds.filter((tagId) => tagId !== id),
+      updatedAt: now,
+    })
+  }
   await db.tags.delete(id)
 }
 
@@ -162,6 +176,16 @@ export async function getItemCountByTag(tagId: string): Promise<number> {
     .filter((item) => item.tagIds.includes(tagId))
     .count()
   return items
+}
+
+export async function getItemCountByVendor(vendorId: string): Promise<number> {
+  return db.items
+    .filter((item) => item.vendorIds?.includes(vendorId) ?? false)
+    .count()
+}
+
+export async function getTagCountByType(typeId: string): Promise<number> {
+  return db.tags.where('typeId').equals(typeId).count()
 }
 
 // ShoppingCart operations
@@ -296,5 +320,15 @@ export async function updateVendor(
 }
 
 export async function deleteVendor(id: string): Promise<void> {
+  const items = await db.items
+    .filter((item) => item.vendorIds?.includes(id) ?? false)
+    .toArray()
+  const now = new Date()
+  for (const item of items) {
+    await db.items.update(item.id, {
+      vendorIds: item.vendorIds?.filter((vid) => vid !== id) ?? [],
+      updatedAt: now,
+    })
+  }
   await db.vendors.delete(id)
 }

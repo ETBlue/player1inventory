@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -29,43 +31,59 @@ export function TagDetailDialog({
   onClose,
 }: TagDetailDialogProps) {
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Tag Details</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="editTagName">Name</Label>
-            <Input
-              id="editTagName"
-              value={tagName}
-              onChange={(e) => onTagNameChange(e.target.value)}
-              placeholder="e.g., Dairy"
-              onKeyDown={(e) => e.key === 'Enter' && onSave()}
-            />
+    <>
+      <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tag Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editTagName">Name</Label>
+              <Input
+                id="editTagName"
+                value={tagName}
+                onChange={(e) => onTagNameChange(e.target.value)}
+                placeholder="e.g., Dairy"
+                onKeyDown={(e) => e.key === 'Enter' && onSave()}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Item count</Label>
+              <p className="text-sm text-foreground-muted">
+                {itemCount} items using this tag
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Item count</Label>
-            <p className="text-sm text-foreground-muted">
-              {itemCount} items using this tag
-            </p>
-          </div>
-        </div>
-        <DialogFooter className="flex justify-between">
-          <Button variant="destructive" onClick={onDelete}>
-            Delete
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="neutral-ghost" onClick={onClose}>
-              Cancel
+          <DialogFooter className="flex justify-between">
+            <Button variant="destructive" onClick={() => setShowConfirm(true)}>
+              Delete
             </Button>
-            <Button onClick={onSave}>Save</Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <div className="flex gap-2">
+              <Button variant="neutral-ghost" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button onClick={onSave}>Save</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={showConfirm}
+        onOpenChange={(open) => !open && setShowConfirm(false)}
+        title={`Delete "${tag.name}"?`}
+        description={`This will remove "${tag.name}" from ${itemCount} item${itemCount === 1 ? '' : 's'}.`}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          setShowConfirm(false)
+          onDelete()
+        }}
+        destructive
+      />
+    </>
   )
 }

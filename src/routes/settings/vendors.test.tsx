@@ -30,6 +30,7 @@ vi.mock('@tanstack/react-router', async () => {
 vi.mock('@/hooks/useVendors', () => ({
   useVendors: vi.fn(),
   useDeleteVendor: vi.fn(),
+  useItemCountByVendor: vi.fn(),
 }))
 
 // Mock useVendorItemCounts hook
@@ -42,7 +43,9 @@ vi.mock('@/hooks/useAppNavigation', () => ({
   useAppNavigation: vi.fn(),
 }))
 
-const { useVendors, useDeleteVendor } = await import('@/hooks/useVendors')
+const { useVendors, useDeleteVendor, useItemCountByVendor } = await import(
+  '@/hooks/useVendors'
+)
 
 const { useVendorItemCounts } = await import('@/hooks/useVendorItemCounts')
 
@@ -67,6 +70,9 @@ const setupMocks = (
     typeof useDeleteVendor
   >)
   vi.mocked(useVendorItemCounts).mockReturnValue(vendorCounts)
+  vi.mocked(useItemCountByVendor).mockReturnValue({
+    data: 0,
+  } as ReturnType<typeof useItemCountByVendor>)
   vi.mocked(useAppNavigation).mockReturnValue({ goBack })
   return { mutate, goBack }
 }
