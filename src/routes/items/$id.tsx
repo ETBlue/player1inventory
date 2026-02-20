@@ -40,7 +40,7 @@ function ItemLayoutInner() {
   const { data: item, isLoading } = useItem(id)
   const deleteItem = useDeleteItem()
   const { isDirty } = useItemLayout()
-  const { goBack } = useAppNavigation()
+  const { goBack } = useAppNavigation('/')
   const isOnStockTab = router.state.location.pathname === `/items/${id}`
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)

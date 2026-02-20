@@ -469,4 +469,110 @@ describe('Shopping page tag filtering', () => {
       await screen.findByRole('option', { name: /Costco.*2/i }),
     ).toBeInTheDocument()
   })
+
+  it('user can see "Manage vendors..." option in dropdown', async () => {
+    // Given a vendor exists
+    await createVendor('Costco')
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    // When user opens vendor dropdown
+    const vendorTrigger = await screen.findByRole('combobox')
+    await user.click(vendorTrigger)
+
+    // Then "Manage vendors..." option appears in dropdown
+    expect(
+      await screen.findByRole('option', { name: /manage vendors/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('user can navigate to vendor list from "Manage vendors..." option', async () => {
+    // Given a vendor exists
+    await createVendor('Costco')
+
+    const history = createMemoryHistory({ initialEntries: ['/shopping'] })
+    const router = createRouter({ routeTree, history })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    // When user opens vendor dropdown
+    const vendorTrigger = await screen.findByRole('combobox')
+    await user.click(vendorTrigger)
+
+    // And clicks "Manage vendors..."
+    const manageOption = await screen.findByRole('option', {
+      name: /manage vendors/i,
+    })
+    await user.click(manageOption)
+
+    // Then navigates to vendor list
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/settings/vendors')
+    })
+  })
+
+  it('user can see vendor filter still works after adding "Manage vendors..." option', async () => {
+    // Given two items with different vendors
+    const vendor1 = await createVendor('Costco')
+    const vendor2 = await createVendor("Trader Joe's")
+    await createItem({
+      name: 'Milk',
+      vendorIds: [vendor1.id],
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Bread',
+      vendorIds: [vendor2.id],
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    // When user opens vendor dropdown and selects Costco
+    const vendorTrigger = await screen.findByRole('combobox')
+    await user.click(vendorTrigger)
+    const costcoOption = await screen.findByRole('option', { name: /costco/i })
+    await user.click(costcoOption)
+
+    // Then only Milk is shown
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument()
+      expect(screen.queryByText('Bread')).not.toBeInTheDocument()
+    })
+  })
 })

@@ -32,7 +32,7 @@ function VendorDetailLayoutInner() {
   const { data: vendors = [] } = useVendors()
   const vendor = vendors.find((v) => v.id === id)
   const { isDirty } = useVendorLayout()
-  const { goBack } = useAppNavigation()
+  const { goBack } = useAppNavigation('/settings/vendors')
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(

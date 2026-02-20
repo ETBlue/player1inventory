@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AddTagDialog } from '@/components/AddTagDialog'
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { migrateTagColorsToTypes } from '@/db/operations'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import {
   useCreateTag,
   useCreateTagType,
@@ -31,7 +32,7 @@ export const Route = createFileRoute('/settings/tags')({
 })
 
 function TagSettings() {
-  const navigate = useNavigate()
+  const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
   const createTagType = useCreateTagType()
@@ -119,11 +120,7 @@ function TagSettings() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          onClick={() => navigate({ to: '/' })}
-        >
+        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Tags</h1>

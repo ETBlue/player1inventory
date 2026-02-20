@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import {
   useDeleteVendor,
@@ -18,6 +19,7 @@ export const Route = createFileRoute('/settings/vendors/')({
 
 function VendorSettings() {
   const navigate = useNavigate()
+  const { goBack } = useAppNavigation('/settings')
   const { data: vendors = [] } = useVendors()
   const deleteVendor = useDeleteVendor()
   const vendorCounts = useVendorItemCounts()
@@ -42,11 +44,7 @@ function VendorSettings() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            onClick={() => navigate({ to: '/settings' })}
-          >
+          <Button variant="neutral-ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-2xl font-bold">Vendors</h1>
