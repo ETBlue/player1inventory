@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AddTagDialog } from '@/components/AddTagDialog'
@@ -31,7 +31,6 @@ export const Route = createFileRoute('/settings/tags')({
 })
 
 function TagSettings() {
-  const _navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()

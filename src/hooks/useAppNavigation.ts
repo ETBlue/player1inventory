@@ -55,8 +55,9 @@ export function useAppNavigation(fallbackPath?: string) {
     // Filter out same-page navigation to find the previous different page
     let previousPath: string | undefined
     for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i] !== currentPath && !isSamePage(history[i], currentPath)) {
-        previousPath = history[i]
+      const path = history[i]
+      if (path && path !== currentPath && !isSamePage(path, currentPath)) {
+        previousPath = path
         break
       }
     }
