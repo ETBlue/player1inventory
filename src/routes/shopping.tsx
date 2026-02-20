@@ -149,12 +149,21 @@ function Shopping() {
         {vendors.length > 0 && (
           <Select
             value={selectedVendorId || 'all'}
-            onValueChange={(v) => setSelectedVendorId(v === 'all' ? '' : v)}
+            onValueChange={(v) => {
+              if (v === '__manage__') {
+                navigate({ to: '/settings/vendors' })
+                return
+              }
+              setSelectedVendorId(v === 'all' ? '' : v)
+            }}
           >
             <SelectTrigger className="w-40">
               <SelectValue placeholder="All vendors" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="__manage__" className="font-medium">
+                Manage vendors...
+              </SelectItem>
               <SelectItem value="all">All vendors</SelectItem>
               {vendors.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
