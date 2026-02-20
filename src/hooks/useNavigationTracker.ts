@@ -19,12 +19,6 @@ export function useNavigationTracker() {
   useEffect(() => {
     const history = loadNavigationHistory()
 
-    console.log('[useNavigationTracker] Effect fired:', {
-      currentPath,
-      historyBefore: [...history],
-      lastEntry: history[history.length - 1],
-    })
-
     // Only track app routes and avoid duplicates
     if (
       currentPath.startsWith('/') &&
@@ -34,16 +28,6 @@ export function useNavigationTracker() {
       // Keep last MAX_HISTORY_SIZE entries
       if (history.length > MAX_HISTORY_SIZE) history.shift()
       saveNavigationHistory(history)
-      console.log('[useNavigationTracker] Added to history:', {
-        currentPath,
-        historyAfter: [...history],
-      })
-    } else {
-      console.log('[useNavigationTracker] Skipped (duplicate or invalid):', {
-        currentPath,
-        startsWithSlash: currentPath.startsWith('/'),
-        isDuplicate: history[history.length - 1] === currentPath,
-      })
     }
   }, [currentPath])
 }
