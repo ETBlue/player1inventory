@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { FilterStatus } from '@/components/FilterStatus'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemFilters } from '@/components/ItemFilters'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -145,7 +146,7 @@ function Shopping() {
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <Toolbar className="flex-wrap">
         {vendors.length > 0 && (
           <Select
             value={selectedVendorId || 'all'}
@@ -210,7 +211,7 @@ function Shopping() {
             Confirm purchase ({cartTotal} packs)
           </Button>
         </div>
-      </div>
+      </Toolbar>
 
       {filtersVisible && (
         <ItemFilters
