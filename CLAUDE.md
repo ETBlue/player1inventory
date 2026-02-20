@@ -175,9 +175,9 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Vendor type** (`src/types/index.ts`): `id`, `name`, `createdAt` (minimal, name-only)
 
-**Operations** (`src/db/operations.ts`): `getVendors`, `createVendor`, `updateVendor(id, updates: Partial<Omit<Vendor, 'id'>>)`, `deleteVendor`
+**Operations** (`src/db/operations.ts`): `getVendors`, `createVendor`, `updateVendor(id, updates: Partial<Omit<Vendor, 'id'>>)`, `deleteVendor`, `getItemCountByVendor`
 
-**Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`
+**Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`, `useItemCountByVendor`
 
 **Routes**: `src/routes/settings/vendors/index.tsx` — vendor list + delete confirmation; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save
 
@@ -198,6 +198,18 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 **Navigation:**
 
 Back button and post-action navigation use smart history tracking (same pattern as item detail pages). After successful save, automatically navigates back to previous page. Uses `useAppNavigation()` hook.
+
+### Cascade Deletion
+
+Deleting a tag, tag type, or vendor automatically cleans up all item references:
+
+- **Delete tag** → removes tag from all item `tagIds` arrays (+ bumps `updatedAt`)
+- **Delete tag type** → deletes all child tags (which cascade to items), then deletes the type
+- **Delete vendor** → removes vendor from all item `vendorIds` arrays (+ bumps `updatedAt`)
+
+Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `deleteVendor`). The hooks (`useDeleteTag`, `useDeleteTagType`, `useDeleteVendor`) also invalidate the `['items']` query cache after deletion.
+
+**Count helpers** for confirmation dialogs: `getItemCountByTag`, `getItemCountByVendor`, `getTagCountByType` in `src/db/operations.ts`; corresponding hooks `useItemCountByTag`, `useItemCountByVendor`, `useTagCountByType`.
 
 ### Shopping Page
 
