@@ -7,6 +7,7 @@ import {
   Plus,
   Tags,
 } from 'lucide-react'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -51,7 +52,7 @@ export function PantryToolbar({
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-accessory-default bg-background-surface">
+    <Toolbar>
       <Button
         size="icon"
         variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
@@ -129,6 +130,6 @@ export function PantryToolbar({
           Add item
         </Button>
       </Link>
-    </div>
+    </Toolbar>
   )
 }
