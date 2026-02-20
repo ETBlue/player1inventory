@@ -6,6 +6,7 @@ import { ColorSelect } from '@/components/ColorSelect'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { TagBadge } from '@/components/TagBadge'
 import { TagDetailDialog } from '@/components/TagDetailDialog'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -119,12 +120,12 @@ function TagSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <Toolbar>
         <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Tags</h1>
-      </div>
+      </Toolbar>
 
       <Card>
         <CardHeader>
