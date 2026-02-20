@@ -35,6 +35,14 @@ export function useAppNavigation(fallbackPath?: string) {
     const history = loadNavigationHistory()
     const currentPath = router.state.location.pathname
 
+    console.log('[useAppNavigation] Navigation tracking:', {
+      currentPath,
+      lastHistoryEntry: history[history.length - 1],
+      willAdd:
+        currentPath.startsWith('/') &&
+        history[history.length - 1] !== currentPath,
+    })
+
     // Only track app routes and avoid duplicates
     if (
       currentPath.startsWith('/') &&
@@ -44,6 +52,7 @@ export function useAppNavigation(fallbackPath?: string) {
       // Keep last MAX_HISTORY_SIZE entries
       if (history.length > MAX_HISTORY_SIZE) history.shift()
       saveNavigationHistory(history)
+      console.log('[useAppNavigation] Added to history. New history:', history)
     }
   }, [router.state.location.pathname])
 
@@ -52,12 +61,25 @@ export function useAppNavigation(fallbackPath?: string) {
     const history = loadNavigationHistory()
     const currentPath = router.state.location.pathname
 
+    // DEBUG: Log navigation state
+    console.log('[useAppNavigation] goBack called', {
+      currentPath,
+      history,
+      historyLength: history.length,
+    })
+
     // Filter out same-page navigation to find the previous different page
     let previousPath: string | undefined
     for (let i = history.length - 1; i >= 0; i--) {
       const path = history[i]
       if (path && path !== currentPath && !isSamePage(path, currentPath)) {
         previousPath = path
+        console.log(
+          '[useAppNavigation] Found previousPath:',
+          previousPath,
+          'at index',
+          i,
+        )
         break
       }
     }
@@ -67,11 +89,24 @@ export function useAppNavigation(fallbackPath?: string) {
       const newHistory = history.filter(
         (path) => !isSamePage(path, currentPath) && path !== currentPath,
       )
+      console.log('[useAppNavigation] Filtered history:', {
+        oldHistory: history,
+        newHistory,
+        removedEntries: history.filter(
+          (path) => isSamePage(path, currentPath) || path === currentPath,
+        ),
+      })
       saveNavigationHistory(newHistory)
+      console.log('[useAppNavigation] Navigating to:', previousPath)
       navigate({ to: previousPath })
     } else {
       // No valid previous page - use fallback or default to home
-      navigate({ to: fallbackPath || '/' })
+      const fallbackTarget = fallbackPath || '/'
+      console.log(
+        '[useAppNavigation] No previous path, using fallback:',
+        fallbackTarget,
+      )
+      navigate({ to: fallbackTarget })
     }
   }, [navigate, router.state.location.pathname, fallbackPath])
 
