@@ -5,7 +5,11 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
-import { useDeleteVendor, useVendors } from '@/hooks/useVendors'
+import {
+  useDeleteVendor,
+  useItemCountByVendor,
+  useVendors,
+} from '@/hooks/useVendors'
 import type { Vendor } from '@/types'
 
 export const Route = createFileRoute('/settings/vendors/')({
@@ -19,6 +23,9 @@ function VendorSettings() {
   const vendorCounts = useVendorItemCounts()
 
   const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null)
+
+  const vendorDeleteId = vendorToDelete?.id ?? ''
+  const { data: vendorItemCount = 0 } = useItemCountByVendor(vendorDeleteId)
 
   const sortedVendors = [...vendors].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
@@ -71,7 +78,7 @@ function VendorSettings() {
         open={!!vendorToDelete}
         onOpenChange={(open) => !open && setVendorToDelete(null)}
         title={`Delete "${vendorToDelete?.name}"?`}
-        description="This will remove the vendor. Items assigned to this vendor will not be affected."
+        description={`This will remove "${vendorToDelete?.name}" from ${vendorItemCount} item${vendorItemCount === 1 ? '' : 's'}.`}
         confirmLabel="Delete"
         onConfirm={handleConfirmDelete}
         destructive
