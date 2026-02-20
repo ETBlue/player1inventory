@@ -37,9 +37,16 @@ vi.mock('@/hooks/useVendorItemCounts', () => ({
   useVendorItemCounts: vi.fn(),
 }))
 
+// Mock useAppNavigation hook
+vi.mock('@/hooks/useAppNavigation', () => ({
+  useAppNavigation: vi.fn(),
+}))
+
 const { useVendors, useDeleteVendor } = await import('@/hooks/useVendors')
 
 const { useVendorItemCounts } = await import('@/hooks/useVendorItemCounts')
+
+const { useAppNavigation } = await import('@/hooks/useAppNavigation')
 
 const mockVendors: Vendor[] = [
   { id: '1', name: 'Costco', createdAt: new Date() },
@@ -51,6 +58,7 @@ const setupMocks = (
   vendorCounts: Map<string, number> = new Map(),
 ) => {
   const mutate = vi.fn()
+  const goBack = vi.fn()
   vi.mocked(useVendors).mockReturnValue({
     data: vendors,
     isLoading: false,
@@ -59,7 +67,8 @@ const setupMocks = (
     typeof useDeleteVendor
   >)
   vi.mocked(useVendorItemCounts).mockReturnValue(vendorCounts)
-  return { mutate }
+  vi.mocked(useAppNavigation).mockReturnValue({ goBack })
+  return { mutate, goBack }
 }
 
 import { Route } from './vendors/index'
