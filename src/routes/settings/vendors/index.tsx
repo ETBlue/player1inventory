@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useState } from 'react'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
@@ -42,7 +43,7 @@ function VendorSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <Toolbar className="justify-between">
         <div className="flex items-center gap-2">
           <Button variant="neutral-ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
@@ -53,7 +54,7 @@ function VendorSettings() {
           <Plus className="h-4 w-4 mr-2" />
           New Vendor
         </Button>
-      </div>
+      </Toolbar>
 
       {sortedVendors.length === 0 ? (
         <p className="text-foreground-muted text-sm">
