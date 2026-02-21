@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Filter } from 'lucide-react'
+import { Check, Filter, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { FilterStatus } from '@/components/FilterStatus'
 import { ItemCard } from '@/components/ItemCard'
@@ -10,6 +10,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -72,7 +73,6 @@ function Shopping() {
   const hasActiveFilters = Object.values(filterState).some(
     (tagIds) => tagIds.length > 0,
   )
-  const hasAnyFilter = !!selectedVendorId || hasActiveFilters
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
@@ -147,6 +147,36 @@ function Shopping() {
     <div>
       {/* Toolbar */}
       <Toolbar className="flex-wrap">
+        {cartTotal} pack{cartTotal > 1 ? 's' : ''} in cart
+        <div className="flex-1" />
+        {cartItems.length > 0 && (
+          <Button
+            variant="destructive-ghost"
+            onClick={() => {
+              if (cart && confirm('Abandon this shopping trip?')) {
+                abandonCart.mutate(cart.id, {
+                  onSuccess: () => navigate({ to: '/' }),
+                })
+              }
+            }}
+          >
+            <X /> Cancel
+          </Button>
+        )}
+        <Button
+          disabled={cartItems.length === 0}
+          onClick={() => {
+            if (cart) {
+              checkout.mutate(cart.id, {
+                onSuccess: () => navigate({ to: '/' }),
+              })
+            }
+          }}
+        >
+          <Check /> Done
+        </Button>
+      </Toolbar>
+      <div className="flex items-center gap-2">
         {vendors.length > 0 && (
           <Select
             value={selectedVendorId || 'all'}
@@ -158,61 +188,31 @@ function Shopping() {
               setSelectedVendorId(v === 'all' ? '' : v)
             }}
           >
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="bg-transparent border-none">
               <SelectValue placeholder="All vendors" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__manage__" className="font-medium">
-                Manage vendors...
-              </SelectItem>
               <SelectItem value="all">All vendors</SelectItem>
               {vendors.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
                   {v.name} ({vendorCounts.get(v.id) ?? 0})
                 </SelectItem>
               ))}
+              <SelectSeparator />
+              <SelectItem value="__manage__">Manage vendors...</SelectItem>
             </SelectContent>
           </Select>
         )}
         <Button
           size="icon"
           variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
+          className="mr-3 flex-shrink-0"
           onClick={() => setFiltersVisible((v) => !v)}
           aria-label="Toggle filters"
         >
           <Filter />
         </Button>
-        <div className="flex items-center gap-2 ml-auto">
-          {cartItems.length > 0 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                if (cart && confirm('Abandon this shopping trip?')) {
-                  abandonCart.mutate(cart.id, {
-                    onSuccess: () => navigate({ to: '/' }),
-                  })
-                }
-              }}
-            >
-              Abandon
-            </Button>
-          )}
-          <Button
-            disabled={cartItems.length === 0}
-            onClick={() => {
-              if (cart) {
-                checkout.mutate(cart.id, {
-                  onSuccess: () => navigate({ to: '/' }),
-                })
-              }
-            }}
-          >
-            Confirm purchase ({cartTotal} packs)
-          </Button>
-        </div>
-      </Toolbar>
-
+      </div>
       {filtersVisible && (
         <ItemFilters
           tagTypes={tagTypes}
@@ -222,7 +222,7 @@ function Shopping() {
           onFilterChange={setFilterState}
         />
       )}
-      {(filtersVisible || hasAnyFilter) && (
+      {(filtersVisible || hasActiveFilters) && (
         <FilterStatus
           filteredCount={filteredItems.length}
           totalCount={vendorFiltered.length}
@@ -230,6 +230,7 @@ function Shopping() {
           onClearAll={() => setFilterState({})}
         />
       )}
+      <div className="h-px bg-accessory-default" />
 
       {/* Cart section */}
       {cartSectionItems.length > 0 && (
