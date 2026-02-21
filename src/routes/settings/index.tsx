@@ -15,7 +15,7 @@ function Settings() {
   return (
     <div className="space-y-4">
       <Toolbar>
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="px-3 py-2">Settings</h1>
       </Toolbar>
 
       <div className="space-y-2">

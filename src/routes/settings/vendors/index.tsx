@@ -48,10 +48,10 @@ function VendorSettings() {
           <Button variant="neutral-ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-2xl font-bold">Vendors</h1>
+          <h1>Vendors</h1>
         </div>
         <Button onClick={() => navigate({ to: '/settings/vendors/new' })}>
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4" />
           New Vendor
         </Button>
       </Toolbar>

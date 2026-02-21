@@ -124,7 +124,7 @@ function TagSettings() {
         <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold">Tags</h1>
+        <h1 className="">Tags</h1>
       </Toolbar>
 
       <Card>
