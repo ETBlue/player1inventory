@@ -20,6 +20,7 @@ import { Route as SettingsVendorsIndexRouteImport } from './routes/settings/vend
 import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
 import { Route as SettingsVendorsNewRouteImport } from './routes/settings/vendors/new'
 import { Route as SettingsVendorsIdRouteImport } from './routes/settings/vendors/$id'
+import { Route as SettingsTagsIdRouteImport } from './routes/settings/tags/$id'
 import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
@@ -81,6 +82,11 @@ const SettingsVendorsIdRoute = SettingsVendorsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => SettingsVendorsRoute,
 } as any)
+const SettingsTagsIdRoute = SettingsTagsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => SettingsTagsRoute,
+} as any)
 const ItemsIdVendorsRoute = ItemsIdVendorsRouteImport.update({
   id: '/vendors',
   path: '/vendors',
@@ -112,12 +118,13 @@ export interface FileRoutesByFullPath {
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
-  '/settings/tags': typeof SettingsTagsRoute
+  '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
+  '/settings/tags/$id': typeof SettingsTagsIdRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
   '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id/': typeof ItemsIdIndexRoute
@@ -129,11 +136,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/shopping': typeof ShoppingRoute
   '/items/new': typeof ItemsNewRoute
-  '/settings/tags': typeof SettingsTagsRoute
+  '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
+  '/settings/tags/$id': typeof SettingsTagsIdRoute
   '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id': typeof ItemsIdIndexRoute
   '/settings/vendors': typeof SettingsVendorsIndexRoute
@@ -146,12 +154,13 @@ export interface FileRoutesById {
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
-  '/settings/tags': typeof SettingsTagsRoute
+  '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
+  '/settings/tags/$id': typeof SettingsTagsIdRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
   '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id/': typeof ItemsIdIndexRoute
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/tags'
     | '/items/$id/vendors'
+    | '/settings/tags/$id'
     | '/settings/vendors/$id'
     | '/settings/vendors/new'
     | '/items/$id/'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/tags'
     | '/items/$id/vendors'
+    | '/settings/tags/$id'
     | '/settings/vendors/new'
     | '/items/$id'
     | '/settings/vendors'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/items/$id/log'
     | '/items/$id/tags'
     | '/items/$id/vendors'
+    | '/settings/tags/$id'
     | '/settings/vendors/$id'
     | '/settings/vendors/new'
     | '/items/$id/'
@@ -218,7 +230,7 @@ export interface RootRouteChildren {
   ShoppingRoute: typeof ShoppingRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   ItemsNewRoute: typeof ItemsNewRoute
-  SettingsTagsRoute: typeof SettingsTagsRoute
+  SettingsTagsRoute: typeof SettingsTagsRouteWithChildren
   SettingsVendorsRoute: typeof SettingsVendorsRouteWithChildren
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -302,6 +314,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsVendorsIdRouteImport
       parentRoute: typeof SettingsVendorsRoute
     }
+    '/settings/tags/$id': {
+      id: '/settings/tags/$id'
+      path: '/$id'
+      fullPath: '/settings/tags/$id'
+      preLoaderRoute: typeof SettingsTagsIdRouteImport
+      parentRoute: typeof SettingsTagsRoute
+    }
     '/items/$id/vendors': {
       id: '/items/$id/vendors'
       path: '/vendors'
@@ -357,6 +376,18 @@ const ItemsIdRouteChildren: ItemsIdRouteChildren = {
 const ItemsIdRouteWithChildren =
   ItemsIdRoute._addFileChildren(ItemsIdRouteChildren)
 
+interface SettingsTagsRouteChildren {
+  SettingsTagsIdRoute: typeof SettingsTagsIdRoute
+}
+
+const SettingsTagsRouteChildren: SettingsTagsRouteChildren = {
+  SettingsTagsIdRoute: SettingsTagsIdRoute,
+}
+
+const SettingsTagsRouteWithChildren = SettingsTagsRoute._addFileChildren(
+  SettingsTagsRouteChildren,
+)
+
 interface SettingsVendorsIdRouteChildren {
   SettingsVendorsIdItemsRoute: typeof SettingsVendorsIdItemsRoute
   SettingsVendorsIdIndexRoute: typeof SettingsVendorsIdIndexRoute
@@ -391,7 +422,7 @@ const rootRouteChildren: RootRouteChildren = {
   ShoppingRoute: ShoppingRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
   ItemsNewRoute: ItemsNewRoute,
-  SettingsTagsRoute: SettingsTagsRoute,
+  SettingsTagsRoute: SettingsTagsRouteWithChildren,
   SettingsVendorsRoute: SettingsVendorsRouteWithChildren,
   SettingsIndexRoute: SettingsIndexRoute,
 }
