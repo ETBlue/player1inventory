@@ -1,11 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { ColorSelect } from '@/components/ColorSelect'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { TagBadge } from '@/components/TagBadge'
-import { TagDetailDialog } from '@/components/TagDetailDialog'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,16 +16,14 @@ import { useAppNavigation } from '@/hooks/useAppNavigation'
 import {
   useCreateTag,
   useCreateTagType,
-  useDeleteTag,
   useDeleteTagType,
   useTagCountByType,
   useTags,
   useTagTypes,
-  useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
 import { sortTagsByName } from '@/lib/tagSortUtils'
-import { type Tag, TagColor, type TagType } from '@/types/index'
+import { TagColor, type TagType } from '@/types/index'
 
 export const Route = createFileRoute('/settings/tags')({
   component: TagSettings,
@@ -40,19 +37,15 @@ function TagSettings() {
   const updateTagType = useUpdateTagType()
   const deleteTagType = useDeleteTagType()
   const createTag = useCreateTag()
-  const updateTag = useUpdateTag()
-  const deleteTag = useDeleteTag()
 
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [editTagType, setEditTagType] = useState<TagType | null>(null)
-  const [editTag, setEditTag] = useState<Tag | null>(null)
   const [tagTypeToDelete, setTagTypeToDelete] = useState<TagType | null>(null)
   const [editTagTypeName, setEditTagTypeName] = useState('')
   const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
-  const [editTagName, setEditTagName] = useState('')
 
   const tagTypeDeleteId = tagTypeToDelete?.id ?? ''
   const { data: tagTypeTagCount = 0 } = useTagCountByType(tagTypeDeleteId)
@@ -94,27 +87,10 @@ function TagSettings() {
     }
   }
 
-  const handleEditTag = () => {
-    if (editTag && editTagName.trim()) {
-      updateTag.mutate({
-        id: editTag.id,
-        updates: { name: editTagName.trim() },
-      })
-      setEditTag(null)
-    }
-  }
-
   const handleDeleteTagType = () => {
     if (tagTypeToDelete) {
       deleteTagType.mutate(tagTypeToDelete.id)
       setTagTypeToDelete(null)
-    }
-  }
-
-  const handleDeleteTag = () => {
-    if (editTag) {
-      deleteTag.mutate(editTag.id)
-      setEditTag(null)
     }
   }
 
@@ -204,15 +180,14 @@ function TagSettings() {
               <CardContent>
                 <div className="flex flex-wrap gap-2">
                   {sortedTypeTags.map((tag) => (
-                    <TagBadge
+                    <Link
                       key={tag.id}
-                      tag={tag}
-                      tagType={tagType}
-                      onClick={() => {
-                        setEditTag(tag)
-                        setEditTagName(tag.name)
-                      }}
-                    />
+                      to="/settings/tags/$id"
+                      params={{ id: tag.id }}
+                      className="inline-block"
+                    >
+                      <TagBadge tag={tag} tagType={tagType} />
+                    </Link>
                   ))}
                   <Button
                     variant="neutral-ghost"
@@ -248,18 +223,6 @@ function TagSettings() {
         onSave={handleEditTagType}
         onClose={() => setEditTagType(null)}
       />
-
-      {/* Tag Detail Dialog */}
-      {editTag && (
-        <TagDetailDialog
-          tag={editTag}
-          tagName={editTagName}
-          onTagNameChange={setEditTagName}
-          onSave={handleEditTag}
-          onDelete={handleDeleteTag}
-          onClose={() => setEditTag(null)}
-        />
-      )}
 
       {/* Confirm Delete TagType Dialog */}
       <ConfirmDialog
