@@ -104,7 +104,7 @@ function VendorItemsTab() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <Button
-          variant="outline"
+          variant="neutral-outline"
           aria-label="New item"
           onClick={() => setIsCreating(true)}
           disabled={isCreating}
@@ -133,7 +133,7 @@ function VendorItemsTab() {
           </Button>
           <Button
             size="icon"
-            variant="outline"
+            variant="neutral-outline"
             aria-label="Cancel"
             onClick={() => {
               setNewItemName('')
