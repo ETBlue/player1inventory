@@ -205,6 +205,27 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 Back button and post-action navigation use smart history tracking (same pattern as item detail pages). After successful save, automatically navigates back to previous page. Uses `useAppNavigation()` hook.
 
+### Tag Management
+
+Tag detail page at `/settings/tags/$id` with Info and Items tabs, mirroring vendor detail page pattern.
+
+**Tag detail page**: `src/routes/settings/tags/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit tag name with Save button. Items tab: searchable checklist of all items showing their current tag assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as vendor Items tab. `+ New` button opens an inline input to create a new item immediately assigned to this tag, saved directly to DB.
+
+**Dirty state**: `src/hooks/useTagLayout.tsx` — same pattern as `useVendorLayout`. Navigation guard on parent layout applies only to the Info tab (tag name editing); the Items tab has no unsaved state.
+
+**Navigation:**
+
+Back button and post-action navigation use smart history tracking (same pattern as vendor detail pages). After successful save, automatically navigates back to previous page. Uses `useAppNavigation()` hook.
+
+**Entry point:** Click tag badge on tags list page (`/settings/tags`) to navigate to tag detail page.
+
+**Files:**
+- `src/routes/settings/tags/$id.tsx` - Parent layout with tabs and navigation guard
+- `src/routes/settings/tags/$id/index.tsx` - Info tab
+- `src/routes/settings/tags/$id/items.tsx` - Items tab
+- `src/hooks/useTagLayout.tsx` - Dirty state provider
+- `src/components/TagNameForm.tsx` - Presentational form component
+
 ### Cascade Deletion
 
 Deleting a tag, tag type, or vendor automatically cleans up all item references:
