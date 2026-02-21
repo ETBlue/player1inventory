@@ -530,6 +530,31 @@ describe('ShoppingCart operations', () => {
     expect(updatedCart?.status).toBe('completed')
   })
 
+  it('checkout increments packedQuantity of each item', async () => {
+    // Given an item with known packedQuantity
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    // And a cart with that item and a quantity
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 3)
+
+    // When checkout is called
+    await checkout(cart.id)
+
+    // Then item.packedQuantity should increase by the cart quantity
+    const updatedItem = await getItem(item.id)
+    expect(updatedItem?.packedQuantity).toBe(8)
+  })
+
   it('abandons cart without creating logs', async () => {
     const item = await createItem({
       name: 'Milk',
