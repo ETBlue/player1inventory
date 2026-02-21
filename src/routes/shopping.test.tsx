@@ -206,6 +206,287 @@ describe('Shopping page', () => {
       expect(checkoutBtn).toBeDisabled()
     })
   })
+
+  it('user can open abandon dialog by clicking cancel button', async () => {
+    // Given an item in the cart
+    const item = await createItem({
+      name: 'Butter',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    const cart = await getOrCreateActiveCart()
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart.id,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    // When rendering the shopping page and clicking Cancel
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+
+    // Then the abandon dialog appears with the expected title
+    await waitFor(() => {
+      expect(
+        screen.getByText('Abandon this shopping trip?'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can dismiss abandon dialog without clearing cart', async () => {
+    // Given an item in the cart
+    const item = await createItem({
+      name: 'Butter',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    const cart = await getOrCreateActiveCart()
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart.id,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    // When rendering the shopping page
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks Cancel to open dialog, then clicks "Go back"
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByText('Abandon this shopping trip?'),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /go back/i }))
+
+    // Then the dialog closes and cart item is still present
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Abandon this shopping trip?'),
+      ).not.toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('checkbox', { name: /Remove Butter from cart/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('user can abandon cart and stay on shopping page', async () => {
+    // Given an item in the cart
+    const item = await createItem({
+      name: 'Butter',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    const cart = await getOrCreateActiveCart()
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart.id,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    const history = createMemoryHistory({ initialEntries: ['/shopping'] })
+    const router = createRouter({ routeTree, history })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks Cancel, then confirms Abandon
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByText('Abandon this shopping trip?'),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /^abandon$/i }))
+
+    // Then abandonCart was called (cart items removed) and route stays at /shopping
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('checkbox', { name: /Remove Butter from cart/i }),
+      ).not.toBeInTheDocument()
+    })
+    expect(router.state.location.pathname).toBe('/shopping')
+  })
+
+  it('user can open checkout dialog by clicking done button', async () => {
+    // Given an item in the cart
+    const item = await createItem({
+      name: 'Butter',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    const cart = await getOrCreateActiveCart()
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart.id,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    // When rendering the shopping page and clicking Done
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      const doneBtn = screen.getByRole('button', { name: /done/i })
+      expect(doneBtn).not.toBeDisabled()
+    })
+
+    await user.click(screen.getByRole('button', { name: /done/i }))
+
+    // Then the checkout dialog appears with the expected title
+    await waitFor(() => {
+      expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
+    })
+  })
+
+  it('user can dismiss checkout dialog without completing checkout', async () => {
+    // Given an item in the cart
+    const item = await createItem({
+      name: 'Butter',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    const cart = await getOrCreateActiveCart()
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart.id,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    // When rendering the shopping page
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      const doneBtn = screen.getByRole('button', { name: /done/i })
+      expect(doneBtn).not.toBeDisabled()
+    })
+
+    // When user clicks Done to open dialog, then clicks "Go back"
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /go back/i }))
+
+    // Then the dialog closes and checkout was NOT called (cart item still present)
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Complete shopping trip?'),
+      ).not.toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('checkbox', { name: /Remove Butter from cart/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('user can complete checkout and stay on shopping page', async () => {
+    // Given an item in the cart
+    const item = await createItem({
+      name: 'Butter',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    const cart = await getOrCreateActiveCart()
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart.id,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    const history = createMemoryHistory({ initialEntries: ['/shopping'] })
+    const router = createRouter({ routeTree, history })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      const doneBtn = screen.getByRole('button', { name: /done/i })
+      expect(doneBtn).not.toBeDisabled()
+    })
+
+    // When user clicks Done, then confirms in dialog
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
+    })
+    // Click the "Done" action button inside the dialog (AlertDialogAction)
+    const dialogDoneBtn = screen.getByRole('button', { name: /^done$/i })
+    await user.click(dialogDoneBtn)
+
+    // Then checkout was called (cart items removed) and route stays at /shopping
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('checkbox', { name: /Remove Butter from cart/i }),
+      ).not.toBeInTheDocument()
+    })
+    expect(router.state.location.pathname).toBe('/shopping')
+  })
 })
 
 describe('Shopping page tag filtering', () => {

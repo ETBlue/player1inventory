@@ -258,6 +258,13 @@ export async function checkout(cartId: string): Promise<void> {
       delta: cartItem.quantity,
       occurredAt: now,
     })
+    const item = await db.items.get(cartItem.itemId)
+    if (item) {
+      await db.items.update(cartItem.itemId, {
+        packedQuantity: item.packedQuantity + cartItem.quantity,
+        updatedAt: now,
+      })
+    }
   }
 
   await db.shoppingCarts.update(cartId, {

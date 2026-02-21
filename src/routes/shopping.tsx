@@ -5,7 +5,17 @@ import { FilterStatus } from '@/components/FilterStatus'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemFilters } from '@/components/ItemFilters'
 import { Toolbar } from '@/components/Toolbar'
-import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -69,6 +79,8 @@ function Shopping() {
   const [filtersVisible, setFiltersVisible] = useState(
     () => loadShoppingUiPrefs().filtersVisible,
   )
+  const [showAbandonDialog, setShowAbandonDialog] = useState(false)
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
 
   const hasActiveFilters = Object.values(filterState).some(
     (tagIds) => tagIds.length > 0,
@@ -152,26 +164,14 @@ function Shopping() {
         {cartItems.length > 0 && (
           <Button
             variant="destructive-ghost"
-            onClick={() => {
-              if (cart && confirm('Abandon this shopping trip?')) {
-                abandonCart.mutate(cart.id, {
-                  onSuccess: () => navigate({ to: '/' }),
-                })
-              }
-            }}
+            onClick={() => setShowAbandonDialog(true)}
           >
             <X /> Cancel
           </Button>
         )}
         <Button
           disabled={cartItems.length === 0}
-          onClick={() => {
-            if (cart) {
-              checkout.mutate(cart.id, {
-                onSuccess: () => navigate({ to: '/' }),
-              })
-            }
-          }}
+          onClick={() => setShowCheckoutDialog(true)}
         >
           <Check /> Done
         </Button>
@@ -248,6 +248,54 @@ function Shopping() {
           {pendingItems.map((item) => renderItemCard(item))}
         </div>
       )}
+
+      {/* Abandon Cart Confirmation Dialog */}
+      <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Abandon this shopping trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              All items will be removed from the cart.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: 'destructive' })}
+              onClick={() => {
+                if (cart) abandonCart.mutate(cart.id)
+              }}
+            >
+              Abandon
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Checkout Confirmation Dialog */}
+      <AlertDialog
+        open={showCheckoutDialog}
+        onOpenChange={setShowCheckoutDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Complete shopping trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Quantities will be updated based on your cart.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (cart) checkout.mutate(cart.id)
+              }}
+            >
+              Done
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
