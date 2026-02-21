@@ -59,6 +59,12 @@ src/
 - **Query hooks** wrap database operations and handle cache invalidation
 - **Routes** auto-generate `src/routeTree.gen.ts` on dev server start
 
+## Shared Components
+
+**`Toolbar`** (`src/components/Toolbar.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by pantry (`PantryToolbar`), shopping, vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
+
+Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
+
 ## Custom Hooks
 
 **Navigation:**

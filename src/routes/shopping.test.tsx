@@ -201,7 +201,7 @@ describe('Shopping page', () => {
     // Then checkout button is disabled
     await waitFor(() => {
       const checkoutBtn = screen.getByRole('button', {
-        name: /Confirm purchase/i,
+        name: /Done/i,
       })
       expect(checkoutBtn).toBeDisabled()
     })
