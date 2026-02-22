@@ -73,6 +73,7 @@ export function useDeleteItem() {
     mutationFn: deleteItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['recipes'] }) // cascade invalidation
     },
   })
 }
