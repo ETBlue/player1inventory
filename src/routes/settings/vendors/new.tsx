@@ -31,7 +31,7 @@ function NewVendorPage() {
         <Button
           variant="neutral-ghost"
           size="icon"
-          onClick={() => navigate({ to: '/settings/vendors/' })}
+          onClick={() => navigate({ to: '/settings/vendors' })}
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
