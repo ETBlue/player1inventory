@@ -210,3 +210,13 @@ export const Inactive: Story = {
     targetUnit: 'package',
   },
 }
+
+export const InactiveWithStock: Story = {
+  name: 'Inactive — Has Stock',
+  args: {
+    current: 3,
+    target: 0,
+    status: 'ok',
+    targetUnit: 'package',
+  },
+}

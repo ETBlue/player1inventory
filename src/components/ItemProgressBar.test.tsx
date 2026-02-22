@@ -195,4 +195,15 @@ describe('ItemProgressBar with partial segments', () => {
     const innerTrack = container.querySelector('.flex-1 > div')
     expect(innerTrack).toHaveClass('h-2')
   })
+
+  it('renders full bar when target is 0 but current > 0', () => {
+    const { container } = render(
+      <ItemProgressBar current={2} target={0} status="ok" />,
+    )
+
+    // Should have an inner fill div (not just an empty track)
+    const inner = container.querySelector('.flex-1 > div > div')
+    expect(inner).toBeInTheDocument()
+    expect(inner).toHaveClass('bg-status-ok')
+  })
 })

@@ -210,8 +210,25 @@ export function ItemProgressBar({
   unpacked = 0,
 }: ProgressBarProps) {
   // Use continuous bar when tracking in measurement units
-  // Guard: target=0 means inactive item — render empty visible track
+  // Guard: target=0 means inactive item
   if (target === 0) {
+    if (current > 0) {
+      const fillColor =
+        status === 'ok'
+          ? 'bg-status-ok'
+          : status === 'warning'
+            ? 'bg-status-warning'
+            : status === 'error'
+              ? 'bg-status-error'
+              : 'bg-accessory-emphasized'
+      return (
+        <div className="flex-1">
+          <div className="h-2 w-full rounded-xs border border-accessory-emphasized overflow-hidden">
+            <div className={cn('h-full w-full', fillColor)} />
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="flex-1">
         <div className="h-2 w-full rounded-xs border border-accessory-emphasized" />
