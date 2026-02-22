@@ -2,6 +2,7 @@ import {
   closestCenter,
   DndContext,
   type DragEndEvent,
+  DragOverlay,
   PointerSensor,
   useDroppable,
   useSensor,
@@ -64,6 +65,11 @@ function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
     opacity: isDragging ? 0.5 : 1,
   }
 
+  // Note: The drag listeners wrap the entire Link to enable dragging.
+  // The 8px activation distance (set in sensors) ensures that:
+  // - Short pointer movements (< 8px) trigger click navigation
+  // - Longer movements (≥ 8px) trigger drag-and-drop
+  // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <Link
@@ -79,14 +85,12 @@ function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
 
 function DroppableTagTypeCard({
   tagType,
-  tags,
   sortedTypeTags,
   onEdit,
   onDelete,
   onAddTag,
 }: {
   tagType: TagType
-  tags: Tag[]
   sortedTypeTags: Tag[]
   onEdit: () => void
   onDelete: () => void
@@ -176,7 +180,7 @@ function TagSettings() {
   const { data: tagTypeTagCount = 0 } = useTagCountByType(tagTypeDeleteId)
 
   // Drag and drop state
-  const [_activeTag, setActiveTag] = useState<{
+  const [activeTag, setActiveTag] = useState<{
     id: string
     typeId: string
   } | null>(null)
@@ -353,7 +357,6 @@ function TagSettings() {
               <DroppableTagTypeCard
                 key={tagType.id}
                 tagType={tagType}
-                tags={tags}
                 sortedTypeTags={sortedTypeTags}
                 onEdit={() => {
                   setEditTagType(tagType)
@@ -396,6 +399,18 @@ function TagSettings() {
           onConfirm={handleDeleteTagType}
           destructive
         />
+
+        {/* Drag Overlay - shows preview of tag being dragged */}
+        <DragOverlay>
+          {activeTag &&
+            (() => {
+              const tag = tags.find((t) => t.id === activeTag.id)
+              const tagType = tagTypes.find((tt) => tt.id === activeTag.typeId)
+              return tag && tagType ? (
+                <TagBadge tag={tag} tagType={tagType} />
+              ) : null
+            })()}
+        </DragOverlay>
       </div>
     </DndContext>
   )

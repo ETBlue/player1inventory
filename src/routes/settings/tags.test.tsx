@@ -110,7 +110,7 @@ describe('Tag settings page - context-aware back navigation', () => {
   })
 })
 
-describe('Tags List Page - Drag and Drop', () => {
+describe('Tags List Page - Database Operations', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
@@ -124,7 +124,7 @@ describe('Tags List Page - Drag and Drop', () => {
     })
   })
 
-  it('user can drag tag to different type', async () => {
+  it('tag type can be updated in database', async () => {
     // Given two tag types with tags
     const type1 = await createTagType({
       name: 'Category',
@@ -150,23 +150,15 @@ describe('Tags List Page - Drag and Drop', () => {
       expect(screen.getByText('Tags')).toBeInTheDocument()
     })
 
-    // When tag is dragged to a different type
-    // (simulating drag-and-drop by directly calling updateTag mutation)
-    await queryClient.getMutationCache().find({
-      mutationKey: undefined,
-      predicate: (_mutation) => true,
-    })
-
-    // Manually trigger the tag update (simulating successful drag-and-drop)
+    // When tag type is updated in database
     await db.tags.update(tag.id, { typeId: type2.id })
 
     // Then tag is moved to new type in database
     const updatedTag = await db.tags.get(tag.id)
     expect(updatedTag?.typeId).toBe(type2.id)
 
-    // Note: Testing the full drag-and-drop interaction with UI would require
-    // more complex setup with @dnd-kit/testing-library or manual event simulation.
-    // This test verifies that the database update works correctly, which is the
-    // core functionality. The UI drag-and-drop behavior will be tested manually.
+    // Note: Testing the full drag-and-drop UI interaction would require
+    // @dnd-kit testing utilities or manual event simulation.
+    // The drag-and-drop UX will be verified in Task 7 manual testing.
   })
 })
