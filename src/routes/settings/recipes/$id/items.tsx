@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import { Minus, Plus } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -134,6 +135,14 @@ function RecipeItemsTab() {
     }
   }
 
+  const handleAdjustDefaultAmount = async (itemId: string, delta: number) => {
+    const item = items.find((i) => i.id === itemId)
+    const step = (item?.consumeAmount ?? 0) > 0 ? (item?.consumeAmount ?? 1) : 1
+    const current = getDefaultAmount(itemId)
+    const next = Math.max(0, current + delta * step)
+    await handleDefaultAmountChange(itemId, next)
+  }
+
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="flex gap-2">
@@ -178,17 +187,31 @@ function RecipeItemsTab() {
                 {item.name}
               </Label>
               {assigned && (
-                <Input
-                  type="number"
-                  min={0}
-                  value={defaultAmount}
-                  onChange={(e) =>
-                    handleDefaultAmountChange(item.id, Number(e.target.value))
-                  }
-                  disabled={savingItemIds.has(item.id)}
-                  className="w-20 text-right"
-                  aria-label={`Default amount for ${item.name}`}
-                />
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="neutral-outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => handleAdjustDefaultAmount(item.id, -1)}
+                    disabled={savingItemIds.has(item.id)}
+                    aria-label={`Decrease ${item.name}`}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="w-16 text-center text-sm tabular-nums">
+                    {defaultAmount}
+                  </span>
+                  <Button
+                    variant="neutral-outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => handleAdjustDefaultAmount(item.id, 1)}
+                    disabled={savingItemIds.has(item.id)}
+                    aria-label={`Increase ${item.name}`}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
               )}
             </div>
           )

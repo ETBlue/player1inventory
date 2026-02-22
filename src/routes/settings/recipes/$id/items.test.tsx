@@ -167,15 +167,12 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
-    // When user changes the default amount
+    // When user clicks + twice to increase the amount (step = consumeAmount = 1, so 1 → 2 → 3)
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(`Default amount for Noodles`),
-      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Increase Noodles')).toBeInTheDocument()
     })
-    const amountInput = screen.getByLabelText(`Default amount for Noodles`)
-    await user.tripleClick(amountInput)
-    await user.keyboard('3')
+    await user.click(screen.getByLabelText('Increase Noodles'))
+    await user.click(screen.getByLabelText('Increase Noodles'))
 
     // Then the default amount is saved to the DB
     await waitFor(async () => {
