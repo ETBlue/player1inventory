@@ -8,11 +8,14 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const location = useLocation()
-  const isItemPage = location.pathname.startsWith('/items/')
+  const isFullscreenPage =
+    location.pathname.startsWith('/items/') ||
+    location.pathname.startsWith('/settings/tags') ||
+    location.pathname.startsWith('/settings/vendors')
 
   return (
     <div
-      className={`min-h-screen bg-background-base ${isItemPage ? '' : 'pb-20'}`}
+      className={`min-h-screen bg-background-base ${isFullscreenPage ? '' : 'pb-20'}`}
     >
       <main className="container">{children}</main>
       <Navigation />
