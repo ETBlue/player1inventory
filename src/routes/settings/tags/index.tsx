@@ -17,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { ColorSelect } from '@/components/ColorSelect'
@@ -186,12 +186,6 @@ function TagSettings() {
     id: string
     typeId: string
   } | null>(null)
-  const [undoState, setUndoState] = useState<{
-    tagId: string
-    previousTypeId: string
-    newTypeId: string
-  } | null>(null)
-  const undoTimeoutRef = useRef<number | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -281,20 +275,17 @@ function TagSettings() {
     const previousTypeId = tag.typeId
     const newType = tagTypes.find((t) => t.id === newTypeId)
 
-    const newUndoState = {
+    console.log('[DEBUG] handleDragEnd - moving tag:', {
       tagId,
-      previousTypeId,
-      newTypeId,
-    }
-    console.log('[DEBUG] handleDragEnd setting undoState:', newUndoState)
-    setUndoState(newUndoState)
+      from: previousTypeId,
+      to: newTypeId,
+    })
 
     updateTag.mutate(
       { id: tagId, updates: { typeId: newTypeId } },
       {
         onError: () => {
           toast.error('Failed to move tag')
-          setUndoState(null)
         },
       },
     )
@@ -304,50 +295,30 @@ function TagSettings() {
         duration: 5000,
         action: {
           label: 'Undo',
-          onClick: handleUndo,
+          onClick: () => {
+            console.log('[DEBUG] Toast undo clicked, calling updateTag with:', {
+              tagId,
+              previousTypeId,
+            })
+            updateTag.mutate(
+              {
+                id: tagId,
+                updates: { typeId: previousTypeId },
+              },
+              {
+                onError: (error) => {
+                  console.log('[DEBUG] Undo mutation error:', error)
+                  toast.error('Failed to undo')
+                },
+                onSuccess: () => {
+                  console.log('[DEBUG] Undo mutation success')
+                },
+              },
+            )
+          },
         },
       })
     }
-
-    // Clear previous timeout
-    if (undoTimeoutRef.current) {
-      clearTimeout(undoTimeoutRef.current)
-    }
-
-    // Set new timeout
-    undoTimeoutRef.current = setTimeout(() => {
-      setUndoState(null)
-      undoTimeoutRef.current = null
-    }, 5000)
-  }
-
-  const handleUndo = () => {
-    console.log('[DEBUG] handleUndo called, undoState:', undoState)
-    if (!undoState) {
-      console.log('[DEBUG] undoState is null, returning early')
-      return
-    }
-    console.log('[DEBUG] Calling updateTag.mutate with:', {
-      id: undoState.tagId,
-      previousTypeId: undoState.previousTypeId,
-    })
-    updateTag.mutate(
-      {
-        id: undoState.tagId,
-        updates: { typeId: undoState.previousTypeId },
-      },
-      {
-        onError: (error) => {
-          console.log('[DEBUG] updateTag.mutate onError:', error)
-          toast.error('Failed to move tag')
-          setUndoState(null)
-        },
-        onSuccess: () => {
-          console.log('[DEBUG] updateTag.mutate onSuccess')
-        },
-      },
-    )
-    setUndoState(null)
   }
 
   const handleDragCancel = () => {
