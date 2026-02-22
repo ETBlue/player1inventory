@@ -209,7 +209,7 @@ Back button and post-action navigation use smart history tracking (same pattern 
 
 Tag detail page at `/settings/tags/$id` with Info and Items tabs, mirroring vendor detail page pattern.
 
-**Tag detail page**: `src/routes/settings/tags/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit tag name with Save button. Items tab: searchable checklist of all items showing their current tag assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as vendor Items tab. `+ New` button opens an inline input to create a new item immediately assigned to this tag, saved directly to DB.
+**Tag detail page**: `src/routes/settings/tags/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit tag name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current tag assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the vendor Items tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item immediately assigned to this tag; pressing Escape clears the input.
 
 **Dirty state**: `src/hooks/useTagLayout.tsx` — same pattern as `useVendorLayout`. Navigation guard on parent layout applies only to the Info tab (tag name editing); the Items tab has no unsaved state.
 
