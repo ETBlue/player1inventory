@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { RecipeNameForm } from '@/components/RecipeNameForm'
 import { Button } from '@/components/ui/button'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useCreateRecipe } from '@/hooks/useRecipes'
 
 export const Route = createFileRoute('/settings/recipes/new')({
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/settings/recipes/new')({
 
 function NewRecipePage() {
   const navigate = useNavigate()
+  const { goBack } = useAppNavigation('/settings/recipes/')
   const createRecipe = useCreateRecipe()
   const [name, setName] = useState('')
 
@@ -34,11 +36,7 @@ function NewRecipePage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          onClick={() => navigate({ to: '/settings/recipes/' })}
-        >
+        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">New Recipe</h1>
