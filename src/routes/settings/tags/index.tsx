@@ -281,11 +281,13 @@ function TagSettings() {
     const previousTypeId = tag.typeId
     const newType = tagTypes.find((t) => t.id === newTypeId)
 
-    setUndoState({
+    const newUndoState = {
       tagId,
       previousTypeId,
       newTypeId,
-    })
+    }
+    console.log('[DEBUG] handleDragEnd setting undoState:', newUndoState)
+    setUndoState(newUndoState)
 
     updateTag.mutate(
       { id: tagId, updates: { typeId: newTypeId } },
@@ -320,16 +322,28 @@ function TagSettings() {
   }
 
   const handleUndo = () => {
-    if (!undoState) return
+    console.log('[DEBUG] handleUndo called, undoState:', undoState)
+    if (!undoState) {
+      console.log('[DEBUG] undoState is null, returning early')
+      return
+    }
+    console.log('[DEBUG] Calling updateTag.mutate with:', {
+      id: undoState.tagId,
+      previousTypeId: undoState.previousTypeId,
+    })
     updateTag.mutate(
       {
         id: undoState.tagId,
         updates: { typeId: undoState.previousTypeId },
       },
       {
-        onError: () => {
+        onError: (error) => {
+          console.log('[DEBUG] updateTag.mutate onError:', error)
           toast.error('Failed to move tag')
           setUndoState(null)
+        },
+        onSuccess: () => {
+          console.log('[DEBUG] updateTag.mutate onSuccess')
         },
       },
     )
