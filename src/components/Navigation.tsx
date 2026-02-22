@@ -11,9 +11,12 @@ const navItems = [
 export function Navigation() {
   const location = useLocation()
 
-  // Hide navigation on item detail and new item pages
-  const isItemPage = location.pathname.startsWith('/items/')
-  if (isItemPage) {
+  // Hide navigation on fullscreen pages (items, tags, vendors)
+  const isFullscreenPage =
+    location.pathname.startsWith('/items/') ||
+    location.pathname.startsWith('/settings/tags') ||
+    location.pathname.startsWith('/settings/vendors')
+  if (isFullscreenPage) {
     return null
   }
 
