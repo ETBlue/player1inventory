@@ -28,6 +28,13 @@ export function isSamePage(path1: string, path2: string): boolean {
     return true
   }
 
+  // Recipe detail pages: /settings/recipes/:id/*
+  const recipeMatch1 = path1.match(/^\/settings\/recipes\/([^/]+)/)
+  const recipeMatch2 = path2.match(/^\/settings\/recipes\/([^/]+)/)
+  if (recipeMatch1 && recipeMatch2 && recipeMatch1[1] === recipeMatch2[1]) {
+    return true
+  }
+
   return false
 }
 
@@ -40,20 +47,28 @@ export function useAppNavigation(fallbackPath?: string) {
     const history = loadNavigationHistory()
     const currentPath = router.state.location.pathname
 
-    // Filter out same-page navigation to find the previous different page
+    // Filter out same-page navigation and "new" pages to find the previous different page
     let previousPath: string | undefined
     for (let i = history.length - 1; i >= 0; i--) {
       const path = history[i]
-      if (path && path !== currentPath && !isSamePage(path, currentPath)) {
+      if (
+        path &&
+        path !== currentPath &&
+        !isSamePage(path, currentPath) &&
+        !path.endsWith('/new')
+      ) {
         previousPath = path
         break
       }
     }
 
     if (previousPath) {
-      // Remove all same-page entries and current page from history
+      // Remove all same-page entries, current page, and "new" pages from history
       const newHistory = history.filter(
-        (path) => !isSamePage(path, currentPath) && path !== currentPath,
+        (path) =>
+          !isSamePage(path, currentPath) &&
+          path !== currentPath &&
+          !path.endsWith('/new'),
       )
       saveNavigationHistory(newHistory)
       navigate({ to: previousPath })

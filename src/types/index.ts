@@ -93,3 +93,16 @@ export interface Vendor {
   name: string
   createdAt: Date
 }
+
+export interface RecipeItem {
+  itemId: string
+  defaultAmount: number // in item's native unit (measurement or package)
+}
+
+export interface Recipe {
+  id: string
+  name: string
+  items: RecipeItem[]
+  createdAt: Date
+  updatedAt: Date
+}
