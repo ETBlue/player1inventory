@@ -28,6 +28,13 @@ export function isSamePage(path1: string, path2: string): boolean {
     return true
   }
 
+  // Recipe detail pages: /settings/recipes/:id/*
+  const recipeMatch1 = path1.match(/^\/settings\/recipes\/([^/]+)/)
+  const recipeMatch2 = path2.match(/^\/settings\/recipes\/([^/]+)/)
+  if (recipeMatch1 && recipeMatch2 && recipeMatch1[1] === recipeMatch2[1]) {
+    return true
+  }
+
   return false
 }
 

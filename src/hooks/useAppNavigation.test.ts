@@ -64,6 +64,27 @@ describe('isSamePage', () => {
     ).toBe(false)
   })
 
+  it('treats recipe detail tabs as same page', () => {
+    expect(
+      isSamePage('/settings/recipes/abc', '/settings/recipes/abc/items'),
+    ).toBe(true)
+    expect(
+      isSamePage('/settings/recipes/abc/items', '/settings/recipes/abc'),
+    ).toBe(true)
+    expect(isSamePage('/settings/recipes/abc', '/settings/recipes/abc')).toBe(
+      true,
+    )
+  })
+
+  it('treats different recipe IDs as different pages', () => {
+    expect(isSamePage('/settings/recipes/abc', '/settings/recipes/xyz')).toBe(
+      false,
+    )
+    expect(
+      isSamePage('/settings/recipes/abc/items', '/settings/recipes/xyz/items'),
+    ).toBe(false)
+  })
+
   it('treats completely different routes as different pages', () => {
     expect(isSamePage('/', '/shopping')).toBe(false)
     expect(isSamePage('/items/123', '/shopping')).toBe(false)
