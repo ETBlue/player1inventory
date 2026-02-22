@@ -7,16 +7,16 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
-import { useVendors } from '@/hooks/useVendors'
+import { useTags } from '@/hooks/useTags'
 
-export const Route = createFileRoute('/settings/vendors/$id/items')({
-  component: VendorItemsTab,
+export const Route = createFileRoute('/settings/tags/$id/items')({
+  component: TagItemsTab,
 })
 
-function VendorItemsTab() {
-  const { id: vendorId } = Route.useParams()
+function TagItemsTab() {
+  const { id: tagId } = Route.useParams()
   const { data: items = [] } = useItems()
-  const { data: vendors = [] } = useVendors()
+  const { data: tags = [] } = useTags()
   const updateItem = useUpdateItem()
 
   const [search, setSearch] = useState('')
@@ -31,8 +31,8 @@ function VendorItemsTab() {
     try {
       await createItem.mutateAsync({
         name: trimmed,
-        vendorIds: [vendorId],
-        tagIds: [],
+        vendorIds: [],
+        tagIds: [tagId],
         targetUnit: 'package',
         targetQuantity: 1,
         refillThreshold: 1,
@@ -55,28 +55,25 @@ function VendorItemsTab() {
     }
   }
 
-  const vendorMap = useMemo(
-    () => Object.fromEntries(vendors.map((v) => [v.id, v])),
-    [vendors],
+  const tagMap = useMemo(
+    () => Object.fromEntries(tags.map((t) => [t.id, t])),
+    [tags],
   )
 
-  const isAssigned = (vendorIds: string[] = []) => vendorIds.includes(vendorId)
+  const isAssigned = (tagIds: string[] = []) => tagIds.includes(tagId)
 
-  const handleToggle = async (
-    itemId: string,
-    currentVendorIds: string[] = [],
-  ) => {
+  const handleToggle = async (itemId: string, currentTagIds: string[] = []) => {
     if (savingItemIds.has(itemId)) return // guard against re-entrancy
-    const dbAssigned = currentVendorIds.includes(vendorId)
-    const newVendorIds = dbAssigned
-      ? currentVendorIds.filter((id) => id !== vendorId)
-      : [...currentVendorIds, vendorId]
+    const dbAssigned = currentTagIds.includes(tagId)
+    const newTagIds = dbAssigned
+      ? currentTagIds.filter((id) => id !== tagId)
+      : [...currentTagIds, tagId]
 
     setSavingItemIds((prev) => new Set(prev).add(itemId))
     try {
       await updateItem.mutateAsync({
         id: itemId,
-        updates: { vendorIds: newVendorIds },
+        updates: { tagIds: newTagIds },
       })
     } finally {
       setSavingItemIds((prev) => {
@@ -149,12 +146,16 @@ function VendorItemsTab() {
         <p className="text-sm text-foreground-muted">No items yet.</p>
       )}
 
+      {items.length > 0 && filteredItems.length === 0 && !isCreating && (
+        <p className="text-sm text-foreground-muted">No items found.</p>
+      )}
+
       <div className="space-y-2">
         {filteredItems.map((item) => {
-          const otherVendors = (item.vendorIds ?? [])
-            .filter((vid) => vid !== vendorId)
-            .map((vid) => vendorMap[vid])
-            .filter((v): v is NonNullable<typeof v> => v != null)
+          const otherTags = (item.tagIds ?? [])
+            .filter((tid) => tid !== tagId)
+            .map((tid) => tagMap[tid])
+            .filter((t): t is NonNullable<typeof t> => t != null)
 
           return (
             <div
@@ -163,8 +164,8 @@ function VendorItemsTab() {
             >
               <Checkbox
                 id={`item-${item.id}`}
-                checked={isAssigned(item.vendorIds)}
-                onCheckedChange={() => handleToggle(item.id, item.vendorIds)}
+                checked={isAssigned(item.tagIds)}
+                onCheckedChange={() => handleToggle(item.id, item.tagIds)}
                 disabled={savingItemIds.has(item.id)}
               />
               <Label
@@ -174,13 +175,13 @@ function VendorItemsTab() {
                 {item.name}
               </Label>
               <div className="flex gap-1 flex-wrap justify-end">
-                {otherVendors.map((v) => (
+                {otherTags.map((t) => (
                   <Badge
-                    key={v.id}
+                    key={t.id}
                     variant="neutral-outline"
                     className="text-xs"
                   >
-                    {v.name}
+                    {t.name}
                   </Badge>
                 ))}
               </div>

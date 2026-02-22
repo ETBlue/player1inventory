@@ -33,6 +33,16 @@ describe('isSamePage', () => {
     )
   })
 
+  it('treats tag detail tabs as same page', () => {
+    expect(isSamePage('/settings/tags/xyz', '/settings/tags/xyz/items')).toBe(
+      true,
+    )
+    expect(isSamePage('/settings/tags/xyz/items', '/settings/tags/xyz')).toBe(
+      true,
+    )
+    expect(isSamePage('/settings/tags/xyz', '/settings/tags/xyz')).toBe(true)
+  })
+
   it('treats different item IDs as different pages', () => {
     expect(isSamePage('/items/123', '/items/456')).toBe(false)
     expect(isSamePage('/items/123/tags', '/items/456/tags')).toBe(false)
@@ -44,6 +54,13 @@ describe('isSamePage', () => {
     )
     expect(
       isSamePage('/settings/vendors/abc/items', '/settings/vendors/xyz/items'),
+    ).toBe(false)
+  })
+
+  it('treats different tag IDs as different pages', () => {
+    expect(isSamePage('/settings/tags/abc', '/settings/tags/xyz')).toBe(false)
+    expect(
+      isSamePage('/settings/tags/abc/items', '/settings/tags/xyz/items'),
     ).toBe(false)
   })
 

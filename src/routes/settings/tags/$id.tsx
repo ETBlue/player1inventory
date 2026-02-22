@@ -18,21 +18,21 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
-import { useVendorLayout, VendorLayoutProvider } from '@/hooks/useVendorLayout'
-import { useVendors } from '@/hooks/useVendors'
+import { TagLayoutProvider, useTagLayout } from '@/hooks/useTagLayout'
+import { useTags } from '@/hooks/useTags'
 
-export const Route = createFileRoute('/settings/vendors/$id')({
-  component: VendorDetailLayout,
+export const Route = createFileRoute('/settings/tags/$id')({
+  component: TagDetailLayout,
 })
 
-function VendorDetailLayoutInner() {
+function TagDetailLayoutInner() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
   const router = useRouter()
-  const { data: vendors = [] } = useVendors()
-  const vendor = vendors.find((v) => v.id === id)
-  const { isDirty } = useVendorLayout()
-  const { goBack } = useAppNavigation('/settings/vendors')
+  const { data: tags = [] } = useTags()
+  const tag = tags.find((t) => t.id === id)
+  const { isDirty } = useTagLayout()
+  const { goBack } = useAppNavigation('/settings/tags')
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -76,8 +76,8 @@ function VendorDetailLayoutInner() {
     setPendingNavigation(null)
   }
 
-  if (!vendor) {
-    return <div className="p-4">Vendor not found</div>
+  if (!tag) {
+    return <div className="p-4">Tag not found</div>
   }
 
   return (
@@ -98,30 +98,26 @@ function VendorDetailLayoutInner() {
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <h1 className="text-md font-regular truncate flex-1">
-            {vendor.name}
-          </h1>
+          <h1 className="text-md font-regular truncate flex-1">{tag.name}</h1>
 
           {/* Tabs */}
           <div className="flex items-center">
             <Link
-              to="/settings/vendors/$id"
+              to="/settings/tags/$id"
               params={{ id }}
               activeOptions={{ exact: true }}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
-              onClick={(e) => handleTabClick(e, `/settings/vendors/${id}`)}
+              onClick={(e) => handleTabClick(e, `/settings/tags/${id}`)}
             >
               <Settings2 className="h-4 w-4" />
             </Link>
             <Link
-              to="/settings/vendors/$id/items"
+              to="/settings/tags/$id/items"
               params={{ id }}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
-              onClick={(e) =>
-                handleTabClick(e, `/settings/vendors/${id}/items`)
-              }
+              onClick={(e) => handleTabClick(e, `/settings/tags/${id}/items`)}
             >
               <ListTodo className="h-4 w-4" />
             </Link>
@@ -157,10 +153,10 @@ function VendorDetailLayoutInner() {
   )
 }
 
-function VendorDetailLayout() {
+function TagDetailLayout() {
   return (
-    <VendorLayoutProvider>
-      <VendorDetailLayoutInner />
-    </VendorLayoutProvider>
+    <TagLayoutProvider>
+      <TagDetailLayoutInner />
+    </TagLayoutProvider>
   )
 }
