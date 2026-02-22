@@ -258,7 +258,14 @@ function TagSettings() {
     if (!over || active.id === over.id) return
 
     const tagId = active.id as string
-    const newTypeId = over.id as string
+    let newTypeId = over.id as string
+
+    // If dropped on another tag (not a type card), get that tag's typeId
+    const droppedOnTag = tags.find((t) => t.id === newTypeId)
+    if (droppedOnTag) {
+      newTypeId = droppedOnTag.typeId
+    }
+
     const tag = tags.find((t) => t.id === tagId)
 
     if (!tag || tag.typeId === newTypeId) return
