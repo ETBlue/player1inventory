@@ -275,12 +275,6 @@ function TagSettings() {
     const previousTypeId = tag.typeId
     const newType = tagTypes.find((t) => t.id === newTypeId)
 
-    console.log('[DEBUG] handleDragEnd - moving tag:', {
-      tagId,
-      from: previousTypeId,
-      to: newTypeId,
-    })
-
     updateTag.mutate(
       { id: tagId, updates: { typeId: newTypeId } },
       {
@@ -296,22 +290,14 @@ function TagSettings() {
         action: {
           label: 'Undo',
           onClick: () => {
-            console.log('[DEBUG] Toast undo clicked, calling updateTag with:', {
-              tagId,
-              previousTypeId,
-            })
             updateTag.mutate(
               {
                 id: tagId,
                 updates: { typeId: previousTypeId },
               },
               {
-                onError: (error) => {
-                  console.log('[DEBUG] Undo mutation error:', error)
+                onError: () => {
                   toast.error('Failed to undo')
-                },
-                onSuccess: () => {
-                  console.log('[DEBUG] Undo mutation success')
                 },
               },
             )
