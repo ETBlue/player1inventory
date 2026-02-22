@@ -1,6 +1,22 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { ColorSelect } from '@/components/ColorSelect'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
@@ -20,14 +36,122 @@ import {
   useTagCountByType,
   useTags,
   useTagTypes,
+  useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
 import { sortTagsByName } from '@/lib/tagSortUtils'
-import { TagColor, type TagType } from '@/types/index'
+import { type Tag, TagColor, type TagType } from '@/types/index'
 
 export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
 })
+
+function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: tag.id,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <Link
+        to="/settings/tags/$id"
+        params={{ id: tag.id }}
+        className="inline-block"
+      >
+        <TagBadge tag={tag} tagType={tagType} />
+      </Link>
+    </div>
+  )
+}
+
+function DroppableTagTypeCard({
+  tagType,
+  tags,
+  sortedTypeTags,
+  onEdit,
+  onDelete,
+  onAddTag,
+}: {
+  tagType: TagType
+  tags: Tag[]
+  sortedTypeTags: Tag[]
+  onEdit: () => void
+  onDelete: () => void
+  onAddTag: () => void
+}) {
+  const { setNodeRef } = useDroppable({
+    id: tagType.id,
+  })
+
+  const tagTypeColor = tagType.color || TagColor.blue
+
+  return (
+    <Card key={tagType.id} className="relative">
+      <div
+        className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
+      />
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg capitalize">{tagType.name}</CardTitle>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              variant="neutral-ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={onEdit}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="neutral-ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent ref={setNodeRef}>
+        <SortableContext
+          items={sortedTypeTags.map((t) => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="flex flex-wrap gap-2">
+            {sortedTypeTags.map((tag) => (
+              <DraggableTagBadge key={tag.id} tag={tag} tagType={tagType} />
+            ))}
+            <Button
+              variant="neutral-ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={onAddTag}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Add
+            </Button>
+          </div>
+        </SortableContext>
+      </CardContent>
+    </Card>
+  )
+}
 
 function TagSettings() {
   const { goBack } = useAppNavigation('/settings')
@@ -37,6 +161,7 @@ function TagSettings() {
   const updateTagType = useUpdateTagType()
   const deleteTagType = useDeleteTagType()
   const createTag = useCreateTag()
+  const updateTag = useUpdateTag()
 
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
@@ -49,6 +174,25 @@ function TagSettings() {
 
   const tagTypeDeleteId = tagTypeToDelete?.id ?? ''
   const { data: tagTypeTagCount = 0 } = useTagCountByType(tagTypeDeleteId)
+
+  // Drag and drop state
+  const [_activeTag, setActiveTag] = useState<{
+    id: string
+    typeId: string
+  } | null>(null)
+  const [undoState, setUndoState] = useState<{
+    tagId: string
+    previousTypeId: string
+    newTypeId: string
+  } | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+  )
 
   // Run migration on mount
   useEffect(() => {
@@ -94,146 +238,165 @@ function TagSettings() {
     }
   }
 
+  const handleDragStart = (event: DragEndEvent) => {
+    const tagId = event.active.id as string
+    const tag = tags.find((t) => t.id === tagId)
+    if (tag) {
+      setActiveTag({ id: tag.id, typeId: tag.typeId })
+    }
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveTag(null)
+
+    if (!over || active.id === over.id) return
+
+    const tagId = active.id as string
+    const newTypeId = over.id as string
+    const tag = tags.find((t) => t.id === tagId)
+
+    if (!tag || tag.typeId === newTypeId) return
+
+    const previousTypeId = tag.typeId
+    const newType = tagTypes.find((t) => t.id === newTypeId)
+
+    setUndoState({
+      tagId,
+      previousTypeId,
+      newTypeId,
+    })
+
+    updateTag.mutate({ id: tagId, updates: { typeId: newTypeId } })
+
+    if (newType) {
+      toast(`Moved ${tag.name} to ${newType.name}`, {
+        duration: 5000,
+        action: {
+          label: 'Undo',
+          onClick: handleUndo,
+        },
+      })
+    }
+
+    setTimeout(() => setUndoState(null), 5000)
+  }
+
+  const handleUndo = () => {
+    if (!undoState) return
+    updateTag.mutate({
+      id: undoState.tagId,
+      updates: { typeId: undoState.previousTypeId },
+    })
+    setUndoState(null)
+  }
+
+  const handleDragCancel = () => {
+    setActiveTag(null)
+  }
+
   return (
-    <div className="space-y-4">
-      <Toolbar>
-        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="">Tags</h1>
-      </Toolbar>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="space-y-4">
+        <Toolbar>
+          <Button variant="neutral-ghost" size="icon" onClick={goBack}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="">Tags</h1>
+        </Toolbar>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Add Tag Type</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g., Ingredient type, Storage method"
-                value={newTagTypeName}
-                onChange={(e) => setNewTagTypeName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
-              />
-              <Button onClick={handleAddTagType}>
-                <Plus className="h-4 w-4" />
-              </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Add Tag Type</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g., Ingredient type, Storage method"
+                  value={newTagTypeName}
+                  onChange={(e) => setNewTagTypeName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
+                />
+                <Button onClick={handleAddTagType}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newTagTypeColor">Color</Label>
+                <ColorSelect
+                  id="newTagTypeColor"
+                  value={newTagTypeColor}
+                  onChange={setNewTagTypeColor}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="newTagTypeColor">Color</Label>
-              <ColorSelect
-                id="newTagTypeColor"
-                value={newTagTypeColor}
-                onChange={setNewTagTypeColor}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {[...tagTypes]
-        .sort((a, b) =>
-          a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-        )
-        .map((tagType) => {
-          const typeTags = tags.filter((t) => t.typeId === tagType.id)
-          const sortedTypeTags = sortTagsByName(typeTags)
-          const tagTypeColor = tagType.color || TagColor.blue
-
-          return (
-            <Card key={tagType.id} className="relative">
-              <div
-                className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
-              />
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-lg capitalize">
-                      {tagType.name}
-                    </CardTitle>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="neutral-ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => {
-                        setEditTagType(tagType)
-                        setEditTagTypeName(tagType.name)
-                        setEditTagTypeColor(tagTypeColor)
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="neutral-ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => setTagTypeToDelete(tagType)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {sortedTypeTags.map((tag) => (
-                    <Link
-                      key={tag.id}
-                      to="/settings/tags/$id"
-                      params={{ id: tag.id }}
-                      className="inline-block"
-                    >
-                      <TagBadge tag={tag} tagType={tagType} />
-                    </Link>
-                  ))}
-                  <Button
-                    variant="neutral-ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setAddTagDialog(tagType.id)}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+        {[...tagTypes]
+          .sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
           )
-        })}
+          .map((tagType) => {
+            const typeTags = tags.filter((t) => t.typeId === tagType.id)
+            const sortedTypeTags = sortTagsByName(typeTags)
+            const tagTypeColor = tagType.color || TagColor.blue
 
-      {/* Add Tag Dialog */}
-      <AddTagDialog
-        open={!!addTagDialog}
-        tagName={newTagName}
-        onTagNameChange={setNewTagName}
-        onAdd={handleAddTag}
-        onClose={() => setAddTagDialog(null)}
-      />
+            return (
+              <DroppableTagTypeCard
+                key={tagType.id}
+                tagType={tagType}
+                tags={tags}
+                sortedTypeTags={sortedTypeTags}
+                onEdit={() => {
+                  setEditTagType(tagType)
+                  setEditTagTypeName(tagType.name)
+                  setEditTagTypeColor(tagTypeColor)
+                }}
+                onDelete={() => setTagTypeToDelete(tagType)}
+                onAddTag={() => setAddTagDialog(tagType.id)}
+              />
+            )
+          })}
 
-      {/* Edit TagType Dialog */}
-      <EditTagTypeDialog
-        tagType={editTagType}
-        name={editTagTypeName}
-        color={editTagTypeColor}
-        onNameChange={setEditTagTypeName}
-        onColorChange={setEditTagTypeColor}
-        onSave={handleEditTagType}
-        onClose={() => setEditTagType(null)}
-      />
+        {/* Add Tag Dialog */}
+        <AddTagDialog
+          open={!!addTagDialog}
+          tagName={newTagName}
+          onTagNameChange={setNewTagName}
+          onAdd={handleAddTag}
+          onClose={() => setAddTagDialog(null)}
+        />
 
-      {/* Confirm Delete TagType Dialog */}
-      <ConfirmDialog
-        open={!!tagTypeToDelete}
-        onOpenChange={(open) => !open && setTagTypeToDelete(null)}
-        title={`Delete "${tagTypeToDelete?.name}"?`}
-        description={`This will delete "${tagTypeToDelete?.name}" and its ${tagTypeTagCount} tag${tagTypeTagCount === 1 ? '' : 's'}, removing them from all assigned items.`}
-        confirmLabel="Delete"
-        onConfirm={handleDeleteTagType}
-        destructive
-      />
-    </div>
+        {/* Edit TagType Dialog */}
+        <EditTagTypeDialog
+          tagType={editTagType}
+          name={editTagTypeName}
+          color={editTagTypeColor}
+          onNameChange={setEditTagTypeName}
+          onColorChange={setEditTagTypeColor}
+          onSave={handleEditTagType}
+          onClose={() => setEditTagType(null)}
+        />
+
+        {/* Confirm Delete TagType Dialog */}
+        <ConfirmDialog
+          open={!!tagTypeToDelete}
+          onOpenChange={(open) => !open && setTagTypeToDelete(null)}
+          title={`Delete "${tagTypeToDelete?.name}"?`}
+          description={`This will delete "${tagTypeToDelete?.name}" and its ${tagTypeTagCount} tag${tagTypeTagCount === 1 ? '' : 's'}, removing them from all assigned items.`}
+          confirmLabel="Delete"
+          onConfirm={handleDeleteTagType}
+          destructive
+        />
+      </div>
+    </DndContext>
   )
 }
