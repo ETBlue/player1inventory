@@ -174,8 +174,8 @@ describe('Recipe Detail - Items Tab', () => {
       ).toBeInTheDocument()
     })
     const amountInput = screen.getByLabelText(`Default amount for Noodles`)
-    await user.clear(amountInput)
-    await user.type(amountInput, '3')
+    await user.tripleClick(amountInput)
+    await user.keyboard('3')
 
     // Then the default amount is saved to the DB
     await waitFor(async () => {
