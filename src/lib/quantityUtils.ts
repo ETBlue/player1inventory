@@ -149,5 +149,5 @@ export function addItem(
 }
 
 export function isInactive(item: Item): boolean {
-  return item.targetQuantity === 0 && getCurrentQuantity(item) === 0
+  return item.targetQuantity === 0 && item.refillThreshold === 0
 }

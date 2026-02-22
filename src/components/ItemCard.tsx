@@ -58,10 +58,7 @@ export function ItemCard({
   return (
     <Card
       variant={status === 'ok' ? 'default' : status}
-      className={cn(
-        mode === 'shopping' ? 'ml-10 mr-28' : '',
-        isInactive(item) ? 'opacity-50' : '',
-      )}
+      className={cn(mode === 'shopping' ? 'ml-10 mr-28' : '')}
     >
       {mode === 'shopping' && (
         <Checkbox
@@ -109,7 +106,12 @@ export function ItemCard({
           </Button>
         </div>
       )}
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
+      <CardHeader
+        className={cn(
+          'flex flex-row items-start justify-between gap-2',
+          isInactive(item) ? 'opacity-50' : '',
+        )}
+      >
         <Link
           to="/items/$id"
           params={{ id: item.id }}
@@ -175,7 +177,7 @@ export function ItemCard({
           </div>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className={isInactive(item) ? 'opacity-50' : ''}>
         <div className="flex items-center gap-2 -mb-1">
           {currentQuantity > 0 &&
             estimatedDueDate &&

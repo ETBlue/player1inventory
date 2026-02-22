@@ -192,6 +192,7 @@ export const InactiveItem: Story = {
     item: {
       ...mockItem,
       targetQuantity: 0,
+      refillThreshold: 0,
       packedQuantity: 0,
       unpackedQuantity: 0,
     },

@@ -442,50 +442,42 @@ describe('addItem', () => {
 })
 
 describe('isInactive', () => {
-  it('returns true when both target and current are 0', () => {
+  it('returns true when both targetQuantity and refillThreshold are 0', () => {
     const item: Partial<Item> = {
       targetQuantity: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
+      refillThreshold: 0,
     }
 
     expect(isInactive(item as Item)).toBe(true)
   })
 
-  it('returns false when target > 0', () => {
+  it('returns false when targetQuantity > 0', () => {
     const item: Partial<Item> = {
       targetQuantity: 2,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
+      refillThreshold: 0,
     }
 
     expect(isInactive(item as Item)).toBe(false)
   })
 
-  it('returns false when current > 0', () => {
+  it('returns false when refillThreshold > 0', () => {
     const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
       targetQuantity: 0,
-      packedQuantity: 1,
-      unpackedQuantity: 0,
+      refillThreshold: 1,
     }
 
     expect(isInactive(item as Item)).toBe(false)
   })
 
-  it('returns false when unpacked > 0', () => {
+  it('returns true even when item has stock', () => {
     const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
       targetQuantity: 0,
-      packedQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 3,
       unpackedQuantity: 0.5,
     }
 
-    expect(isInactive(item as Item)).toBe(false)
+    expect(isInactive(item as Item)).toBe(true)
   })
 })
 
