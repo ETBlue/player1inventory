@@ -64,6 +64,7 @@ function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none',
   }
 
   // Note: The drag listeners wrap the entire Link to enable dragging.
