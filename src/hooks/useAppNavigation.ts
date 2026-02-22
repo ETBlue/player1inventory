@@ -21,6 +21,13 @@ export function isSamePage(path1: string, path2: string): boolean {
     return true
   }
 
+  // Tag detail pages: /settings/tags/:id/*
+  const tagMatch1 = path1.match(/^\/settings\/tags\/([^/]+)/)
+  const tagMatch2 = path2.match(/^\/settings\/tags\/([^/]+)/)
+  if (tagMatch1 && tagMatch2 && tagMatch1[1] === tagMatch2[1]) {
+    return true
+  }
+
   return false
 }
 
