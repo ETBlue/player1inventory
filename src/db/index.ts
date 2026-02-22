@@ -3,6 +3,7 @@ import type {
   CartItem,
   InventoryLog,
   Item,
+  Recipe,
   ShoppingCart,
   Tag,
   TagType,
@@ -17,6 +18,7 @@ const db = new Dexie('Player1Inventory') as Dexie & {
   shoppingCarts: EntityTable<ShoppingCart, 'id'>
   cartItems: EntityTable<CartItem, 'id'>
   vendors: EntityTable<Vendor, 'id'>
+  recipes: EntityTable<Recipe, 'id'>
 }
 
 // Version 1: Original schema
@@ -48,6 +50,18 @@ db.version(3).stores({
   shoppingCarts: 'id, status, createdAt, completedAt',
   cartItems: 'id, cartId, itemId',
   vendors: 'id, name',
+})
+
+// Version 4: Add recipes table
+db.version(4).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, name, typeId',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
+  recipes: 'id, name',
 })
 
 export { db }
