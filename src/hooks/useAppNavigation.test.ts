@@ -90,6 +90,15 @@ describe('isSamePage', () => {
     expect(isSamePage('/items/123', '/shopping')).toBe(false)
     expect(isSamePage('/settings/vendors', '/settings/tags')).toBe(false)
   })
+
+  it('does not treat /new pages as same page as detail pages', () => {
+    expect(isSamePage('/settings/recipes/new', '/settings/recipes/abc')).toBe(
+      false,
+    )
+    expect(isSamePage('/settings/vendors/new', '/settings/vendors/abc')).toBe(
+      false,
+    )
+  })
 })
 
 describe('useAppNavigation', () => {
@@ -128,6 +137,39 @@ describe('useAppNavigation', () => {
     vi.mocked(saveNavigationHistory).mockImplementation(
       mockSaveNavigationHistory,
     )
+  })
+
+  it('user can navigate back skipping /new pages in history', () => {
+    // Given history has a /new page before the list page
+    mockLoadNavigationHistory.mockReturnValue([
+      '/settings/recipes',
+      '/settings/recipes/new',
+    ])
+    mockUseRouter.mockReturnValue({
+      state: { location: { pathname: '/settings/recipes/abc' } },
+    })
+
+    // When user calls goBack
+    const { result } = renderHook(() => useAppNavigation('/settings/recipes'))
+    result.current.goBack()
+
+    // Then navigates to the list page, skipping /new
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/recipes' })
+  })
+
+  it('user can navigate back when only /new pages are in history', () => {
+    // Given history only has a /new page
+    mockLoadNavigationHistory.mockReturnValue(['/settings/recipes/new'])
+    mockUseRouter.mockReturnValue({
+      state: { location: { pathname: '/settings/recipes/abc' } },
+    })
+
+    // When user calls goBack with fallback
+    const { result } = renderHook(() => useAppNavigation('/settings/recipes'))
+    result.current.goBack()
+
+    // Then falls back to the fallback path
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/recipes' })
   })
 
   it('user can navigate back when history is empty and fallback provided', () => {

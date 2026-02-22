@@ -47,20 +47,28 @@ export function useAppNavigation(fallbackPath?: string) {
     const history = loadNavigationHistory()
     const currentPath = router.state.location.pathname
 
-    // Filter out same-page navigation to find the previous different page
+    // Filter out same-page navigation and "new" pages to find the previous different page
     let previousPath: string | undefined
     for (let i = history.length - 1; i >= 0; i--) {
       const path = history[i]
-      if (path && path !== currentPath && !isSamePage(path, currentPath)) {
+      if (
+        path &&
+        path !== currentPath &&
+        !isSamePage(path, currentPath) &&
+        !path.endsWith('/new')
+      ) {
         previousPath = path
         break
       }
     }
 
     if (previousPath) {
-      // Remove all same-page entries and current page from history
+      // Remove all same-page entries, current page, and "new" pages from history
       const newHistory = history.filter(
-        (path) => !isSamePage(path, currentPath) && path !== currentPath,
+        (path) =>
+          !isSamePage(path, currentPath) &&
+          path !== currentPath &&
+          !path.endsWith('/new'),
       )
       saveNavigationHistory(newHistory)
       navigate({ to: previousPath })
