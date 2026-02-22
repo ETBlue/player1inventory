@@ -159,4 +159,63 @@ describe('Vendor Detail - Info Tab', () => {
       ).toBeInTheDocument()
     })
   })
+
+  it('user does not see discard dialog after discarding and returning to Info tab', async () => {
+    const user = userEvent.setup()
+
+    // Given a vendor
+    const vendor = await createVendor('Test Vendor')
+
+    renderInfoTab(vendor.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    // When user edits name
+    const nameInput = screen.getByLabelText(/name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Changed Name')
+
+    // And navigates to Items tab and discards
+    const itemsTab = screen
+      .getAllByRole('link')
+      .find((link) => link.getAttribute('href')?.includes('/items'))
+    if (!itemsTab) throw new Error('Items tab not found')
+    await user.click(itemsTab)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // And navigates back to Info tab
+    const infoTab = screen
+      .getAllByRole('link')
+      .find(
+        (link) =>
+          link.getAttribute('href') === `/settings/vendors/${vendor.id}` &&
+          link.querySelector('svg')?.classList.contains('lucide-settings2'),
+      )
+    if (!infoTab) throw new Error('Info tab not found')
+    await user.click(infoTab)
+
+    // Then no discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole('heading', { name: /unsaved changes/i }),
+    ).not.toBeInTheDocument()
+
+    // And name input shows original value
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Test Vendor')
+  })
 })

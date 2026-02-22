@@ -130,7 +130,7 @@ function VendorDetailLayoutInner() {
 
         {/* Main Content with padding to clear fixed bar */}
         <div className="pt-16 p-4">
-          <Outlet />
+          <Outlet key={router.state.location.pathname} />
         </div>
       </div>
 
