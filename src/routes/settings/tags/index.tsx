@@ -189,7 +189,7 @@ function TagSettings() {
     previousTypeId: string
     newTypeId: string
   } | null>(null)
-  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const undoTimeoutRef = useRef<number | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

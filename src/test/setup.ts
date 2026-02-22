@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import 'fake-indexeddb/auto'
+import { vi } from 'vitest'
 
 // Mock ResizeObserver for Radix UI components
 globalThis.ResizeObserver = class ResizeObserver {
@@ -11,7 +12,7 @@ globalThis.ResizeObserver = class ResizeObserver {
 // Mock matchMedia for theme detection
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation((query) => ({
+  value: vi.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,
     onchange: null,

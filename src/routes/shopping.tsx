@@ -145,7 +145,7 @@ function Shopping() {
           tags={itemTags}
           tagTypes={tagTypes}
           mode="shopping"
-          cartItem={ci}
+          {...(ci ? { cartItem: ci } : {})}
           onToggleCart={() => handleToggleCart(item)}
           onUpdateCartQuantity={(qty) => handleUpdateCartQuantity(item, qty)}
           onConsume={() => {}}
