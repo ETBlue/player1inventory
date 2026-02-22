@@ -1,10 +1,11 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Home, Settings, ShoppingCart } from 'lucide-react'
+import { Home, Settings, ShoppingCart, UtensilsCrossed } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Pantry', icon: Home },
   { to: '/shopping', label: 'Cart', icon: ShoppingCart },
+  { to: '/cooking', label: 'Use', icon: UtensilsCrossed },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 

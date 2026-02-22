@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShoppingRouteImport } from './routes/shopping'
+import { Route as CookingRouteImport } from './routes/cooking'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsVendorsRouteImport } from './routes/settings/vendors'
@@ -38,6 +39,11 @@ import { Route as SettingsRecipesIdItemsRouteImport } from './routes/settings/re
 const ShoppingRoute = ShoppingRouteImport.update({
   id: '/shopping',
   path: '/shopping',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CookingRoute = CookingRouteImport.update({
+  id: '/cooking',
+  path: '/cooking',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -163,6 +169,7 @@ const SettingsRecipesIdItemsRoute = SettingsRecipesIdItemsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cooking': typeof CookingRoute
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
@@ -181,15 +188,16 @@ export interface FileRoutesByFullPath {
   '/settings/recipes/': typeof SettingsRecipesIndexRoute
   '/settings/tags/': typeof SettingsTagsIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
+  '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
   '/settings/tags/$id/items': typeof SettingsTagsIdItemsRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
-  '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
   '/settings/recipes/$id/': typeof SettingsRecipesIdIndexRoute
   '/settings/tags/$id/': typeof SettingsTagsIdIndexRoute
   '/settings/vendors/$id/': typeof SettingsVendorsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cooking': typeof CookingRoute
   '/shopping': typeof ShoppingRoute
   '/items/new': typeof ItemsNewRoute
   '/settings': typeof SettingsIndexRoute
@@ -202,9 +210,9 @@ export interface FileRoutesByTo {
   '/settings/recipes': typeof SettingsRecipesIndexRoute
   '/settings/tags': typeof SettingsTagsIndexRoute
   '/settings/vendors': typeof SettingsVendorsIndexRoute
+  '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
   '/settings/tags/$id/items': typeof SettingsTagsIdItemsRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
-  '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdIndexRoute
   '/settings/tags/$id': typeof SettingsTagsIdIndexRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdIndexRoute
@@ -212,6 +220,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/cooking': typeof CookingRoute
   '/shopping': typeof ShoppingRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
@@ -230,9 +239,9 @@ export interface FileRoutesById {
   '/settings/recipes/': typeof SettingsRecipesIndexRoute
   '/settings/tags/': typeof SettingsTagsIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
+  '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
   '/settings/tags/$id/items': typeof SettingsTagsIdItemsRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
-  '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
   '/settings/recipes/$id/': typeof SettingsRecipesIdIndexRoute
   '/settings/tags/$id/': typeof SettingsTagsIdIndexRoute
   '/settings/vendors/$id/': typeof SettingsVendorsIdIndexRoute
@@ -241,6 +250,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/cooking'
     | '/shopping'
     | '/items/$id'
     | '/items/new'
@@ -259,15 +269,16 @@ export interface FileRouteTypes {
     | '/settings/recipes/'
     | '/settings/tags/'
     | '/settings/vendors/'
+    | '/settings/recipes/$id/items'
     | '/settings/tags/$id/items'
     | '/settings/vendors/$id/items'
-    | '/settings/recipes/$id/items'
     | '/settings/recipes/$id/'
     | '/settings/tags/$id/'
     | '/settings/vendors/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/cooking'
     | '/shopping'
     | '/items/new'
     | '/settings'
@@ -280,15 +291,16 @@ export interface FileRouteTypes {
     | '/settings/recipes'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/settings/recipes/$id/items'
     | '/settings/tags/$id/items'
     | '/settings/vendors/$id/items'
-    | '/settings/recipes/$id/items'
     | '/settings/recipes/$id'
     | '/settings/tags/$id'
     | '/settings/vendors/$id'
   id:
     | '__root__'
     | '/'
+    | '/cooking'
     | '/shopping'
     | '/items/$id'
     | '/items/new'
@@ -307,9 +319,9 @@ export interface FileRouteTypes {
     | '/settings/recipes/'
     | '/settings/tags/'
     | '/settings/vendors/'
+    | '/settings/recipes/$id/items'
     | '/settings/tags/$id/items'
     | '/settings/vendors/$id/items'
-    | '/settings/recipes/$id/items'
     | '/settings/recipes/$id/'
     | '/settings/tags/$id/'
     | '/settings/vendors/$id/'
@@ -317,6 +329,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CookingRoute: typeof CookingRoute
   ShoppingRoute: typeof ShoppingRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   ItemsNewRoute: typeof ItemsNewRoute
@@ -335,6 +348,13 @@ declare module '@tanstack/react-router' {
       path: '/shopping'
       fullPath: '/shopping'
       preLoaderRoute: typeof ShoppingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cooking': {
+      id: '/cooking'
+      path: '/cooking'
+      fullPath: '/cooking'
+      preLoaderRoute: typeof CookingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -597,6 +617,7 @@ const SettingsRecipesIdRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CookingRoute: CookingRoute,
   ShoppingRoute: ShoppingRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
   ItemsNewRoute: ItemsNewRoute,
