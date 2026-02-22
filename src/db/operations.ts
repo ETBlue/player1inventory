@@ -2,6 +2,8 @@ import type {
   CartItem,
   InventoryLog,
   Item,
+  Recipe,
+  RecipeItem,
   ShoppingCart,
   Tag,
   TagType,
@@ -41,6 +43,17 @@ export async function updateItem(
 }
 
 export async function deleteItem(id: string): Promise<void> {
+  // Cascade: remove item from all recipes
+  const recipes = await db.recipes
+    .filter((recipe) => recipe.items.some((ri) => ri.itemId === id))
+    .toArray()
+  const now = new Date()
+  for (const recipe of recipes) {
+    await db.recipes.update(recipe.id, {
+      items: recipe.items.filter((ri) => ri.itemId !== id),
+      updatedAt: now,
+    })
+  }
   await db.items.delete(id)
 }
 
@@ -338,4 +351,46 @@ export async function deleteVendor(id: string): Promise<void> {
     })
   }
   await db.vendors.delete(id)
+}
+
+// Recipe operations
+
+export async function getRecipes(): Promise<Recipe[]> {
+  return db.recipes.toArray()
+}
+
+export async function getRecipe(id: string): Promise<Recipe | undefined> {
+  return db.recipes.get(id)
+}
+
+export async function createRecipe(input: {
+  name: string
+  items?: RecipeItem[]
+}): Promise<Recipe> {
+  const now = new Date()
+  const recipe: Recipe = {
+    id: crypto.randomUUID(),
+    name: input.name,
+    items: input.items ?? [],
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.recipes.add(recipe)
+  return recipe
+}
+
+export async function updateRecipe(
+  id: string,
+  updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>,
+): Promise<void> {
+  await db.recipes.update(id, { ...updates, updatedAt: new Date() })
+}
+
+export async function deleteRecipe(id: string): Promise<void> {
+  await db.recipes.delete(id)
+}
+
+export async function getItemCountByRecipe(recipeId: string): Promise<number> {
+  const recipe = await db.recipes.get(recipeId)
+  return recipe?.items.length ?? 0
 }

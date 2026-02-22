@@ -6,10 +6,12 @@ import {
   addToCart,
   checkout,
   createItem,
+  createRecipe,
   createTag,
   createTagType,
   createVendor,
   deleteItem,
+  deleteRecipe,
   deleteTag,
   deleteTagType,
   deleteVendor,
@@ -19,15 +21,19 @@ import {
   getCartItems,
   getCurrentQuantity,
   getItem,
+  getItemCountByRecipe,
   getItemCountByVendor,
   getItemLogs,
   getLastPurchaseDate,
   getOrCreateActiveCart,
+  getRecipe,
+  getRecipes,
   getTagCountByType,
   getTagsByType,
   getVendors,
   updateCartItem,
   updateItem,
+  updateRecipe,
   updateVendor,
 } from './operations'
 
@@ -773,5 +779,98 @@ describe('getTagCountByType', () => {
 
     // Then only tags of that type are counted
     expect(count).toBe(3)
+  })
+})
+
+describe('Recipe operations', () => {
+  beforeEach(async () => {
+    await db.recipes.clear()
+    await db.items.clear()
+  })
+
+  it('user can create a recipe', async () => {
+    const recipe = await createRecipe({ name: 'Pasta Dinner' })
+    expect(recipe.id).toBeDefined()
+    expect(recipe.name).toBe('Pasta Dinner')
+    expect(recipe.items).toEqual([])
+    expect(recipe.createdAt).toBeInstanceOf(Date)
+    expect(recipe.updatedAt).toBeInstanceOf(Date)
+  })
+
+  it('user can create a recipe with initial items', async () => {
+    const recipe = await createRecipe({
+      name: 'Omelette',
+      items: [{ itemId: 'item-1', defaultAmount: 2 }],
+    })
+    expect(recipe.items).toHaveLength(1)
+    expect(recipe.items[0].itemId).toBe('item-1')
+    expect(recipe.items[0].defaultAmount).toBe(2)
+  })
+
+  it('user can retrieve a recipe by id', async () => {
+    const created = await createRecipe({ name: 'Salad' })
+    const retrieved = await getRecipe(created.id)
+    expect(retrieved?.name).toBe('Salad')
+  })
+
+  it('user can list all recipes', async () => {
+    await createRecipe({ name: 'Pasta Dinner' })
+    await createRecipe({ name: 'Omelette' })
+    const recipes = await getRecipes()
+    expect(recipes).toHaveLength(2)
+  })
+
+  it('user can update a recipe name', async () => {
+    const recipe = await createRecipe({ name: 'Pasta' })
+    await updateRecipe(recipe.id, { name: 'Pasta Carbonara' })
+    const updated = await getRecipe(recipe.id)
+    expect(updated?.name).toBe('Pasta Carbonara')
+  })
+
+  it('user can update recipe items', async () => {
+    const recipe = await createRecipe({ name: 'Pasta' })
+    const newItems = [{ itemId: 'item-1', defaultAmount: 3 }]
+    await updateRecipe(recipe.id, { items: newItems })
+    const updated = await getRecipe(recipe.id)
+    expect(updated?.items).toEqual(newItems)
+  })
+
+  it('user can delete a recipe', async () => {
+    const recipe = await createRecipe({ name: 'Pasta' })
+    await deleteRecipe(recipe.id)
+    const retrieved = await getRecipe(recipe.id)
+    expect(retrieved).toBeUndefined()
+  })
+
+  it('getItemCountByRecipe returns number of items in recipe', async () => {
+    const recipe = await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: 'item-1', defaultAmount: 1 },
+        { itemId: 'item-2', defaultAmount: 2 },
+      ],
+    })
+    const count = await getItemCountByRecipe(recipe.id)
+    expect(count).toBe(2)
+  })
+
+  it('deleteItem removes item from recipe items arrays', async () => {
+    const item = await createItem({
+      name: 'Flour',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const recipe = await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+    await deleteItem(item.id)
+    const updated = await getRecipe(recipe.id)
+    expect(updated?.items).toEqual([])
   })
 })
