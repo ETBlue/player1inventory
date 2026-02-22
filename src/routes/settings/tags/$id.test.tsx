@@ -93,10 +93,13 @@ describe('Tag Detail - Info Tab', () => {
 
     renderInfoTab(tag.id)
 
-    // Then the Save button is disabled when form is clean
+    // Wait for form to load with tag data
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+      expect(screen.getByLabelText(/name/i)).toHaveValue('Dairy')
     })
+
+    // Then the Save button is disabled when form is clean
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 
   it('user can navigate back with back button when navigation history exists', async () => {
@@ -409,6 +412,59 @@ describe('Tag Detail - Info Tab', () => {
     // Then shows not found message
     await waitFor(() => {
       expect(screen.getByText(/tag not found/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can change tag type via select dropdown', async () => {
+    // Given two tag types and a tag
+    const type1 = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const type2 = await createTagType({
+      name: 'Location',
+      color: TagColor.green,
+    })
+    const tag = await createTag({ name: 'Organic', typeId: type1.id })
+
+    // jsdom doesn't implement pointer capture or scrollIntoView; polyfill them
+    // so Radix UI Select can open without throwing
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    const user = userEvent.setup()
+
+    renderInfoTab(tag.id)
+
+    // Then tag type select shows current type
+    await waitFor(() => {
+      const combobox = screen.getByRole('combobox', { name: /tag type/i })
+      expect(combobox).toHaveTextContent('Category')
+    })
+
+    // When user changes tag type
+    const combobox = screen.getByRole('combobox', { name: /tag type/i })
+    await user.click(combobox)
+
+    // Find and click the Location option
+    const locationOption = await screen.findByRole('option', {
+      name: 'Location',
+    })
+    await user.click(locationOption)
+
+    // Then Save button is enabled (dirty state)
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    expect(saveButton).toBeEnabled()
+
+    // When user clicks Save
+    await user.click(saveButton)
+
+    // Then tag type is updated
+    await waitFor(async () => {
+      const updatedTag = await db.tags.get(tag.id)
+      expect(updatedTag?.typeId).toBe(type2.id)
     })
   })
 })
