@@ -20,6 +20,7 @@ function RecipeInfoTab() {
   const [name, setName] = useState('')
   const [savedAt, setSavedAt] = useState(0)
 
+  // Sync name when recipe loads or after save
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally sync only on id change or after save
   useEffect(() => {
     if (recipe) {

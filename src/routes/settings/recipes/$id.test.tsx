@@ -19,6 +19,8 @@ describe('Recipe Detail - Info Tab', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+
+    // Clear sessionStorage (used by useAppNavigation)
     sessionStorage.clear()
   })
 
@@ -35,8 +37,12 @@ describe('Recipe Detail - Info Tab', () => {
   }
 
   it('user can see the recipe name in the heading', async () => {
+    // Given a recipe exists
     const recipe = await createRecipe({ name: 'Pasta Dinner' })
+
     renderInfoTab(recipe.id)
+
+    // Then the recipe name is shown as the page heading
     await waitFor(() => {
       expect(
         screen.getByRole('heading', { name: 'Pasta Dinner' }),
@@ -45,18 +51,24 @@ describe('Recipe Detail - Info Tab', () => {
   })
 
   it('user can edit the recipe name and save it', async () => {
+    // Given a recipe exists
     const recipe = await createRecipe({ name: 'Pasta Dinner' })
+
     renderInfoTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user clears the name field and types a new name
     await waitFor(() => {
       expect(screen.getByLabelText('Name')).toBeInTheDocument()
     })
     const nameInput = screen.getByLabelText('Name')
     await user.clear(nameInput)
     await user.type(nameInput, 'Pasta Carbonara')
+
+    // When user clicks Save
     await user.click(screen.getByRole('button', { name: /save/i }))
 
+    // Then the recipe name is updated in the database
     await waitFor(async () => {
       const updated = await db.recipes.get(recipe.id)
       expect(updated?.name).toBe('Pasta Carbonara')
@@ -64,10 +76,148 @@ describe('Recipe Detail - Info Tab', () => {
   })
 
   it('save button is disabled when name has not changed', async () => {
+    // Given a recipe exists
     const recipe = await createRecipe({ name: 'Pasta Dinner' })
+
     renderInfoTab(recipe.id)
+
+    // Then the Save button is disabled when form is clean
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
     })
+  })
+
+  it('user can navigate back with back button when navigation history exists', async () => {
+    const user = userEvent.setup()
+
+    // Given a recipe
+    const recipe = await createRecipe({ name: 'Test Recipe' })
+
+    // And navigation history exists (user came from recipes list page)
+    // Note: Include only the previous page, the current page will be added by useAppNavigation
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/recipes']),
+    )
+
+    renderInfoTab(recipe.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Recipe')).toBeInTheDocument()
+    })
+
+    // When user clicks back button (now a button, not a link)
+    const backButton = screen.getByRole('button', { name: /back/i })
+    await user.click(backButton)
+
+    // Then navigates back to previous page (recipes list)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /recipes/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new recipe/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can navigate back after saving recipe name', async () => {
+    const user = userEvent.setup()
+
+    // Given a recipe
+    const recipe = await createRecipe({ name: 'Test Recipe' })
+
+    // And navigation history exists (user came from recipes list page)
+    // Note: Include only the previous page, the current page will be added by useAppNavigation
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/recipes']),
+    )
+
+    renderInfoTab(recipe.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    // When user changes recipe name
+    const nameInput = screen.getByLabelText(/name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Updated Recipe')
+
+    // And saves the form
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    await user.click(saveButton)
+
+    // Then navigates back to previous page (recipes list)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /recipes/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new recipe/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user does not see discard dialog after discarding and returning to Info tab', async () => {
+    const user = userEvent.setup()
+
+    // Given a recipe
+    const recipe = await createRecipe({ name: 'Test Recipe' })
+
+    renderInfoTab(recipe.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    // When user edits name
+    const nameInput = screen.getByLabelText(/name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Changed Name')
+
+    // And navigates to Items tab and discards
+    const itemsTab = screen
+      .getAllByRole('link')
+      .find((link) => link.getAttribute('href')?.includes('/items'))
+    if (!itemsTab) throw new Error('Items tab not found')
+    await user.click(itemsTab)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('heading', { name: /unsaved changes/i }),
+      ).not.toBeInTheDocument()
+    })
+
+    // And navigates back to Info tab
+    const infoTab = screen
+      .getAllByRole('link')
+      .find(
+        (link) =>
+          link.getAttribute('href') === `/settings/recipes/${recipe.id}` &&
+          link.querySelector('svg')?.classList.contains('lucide-settings2'),
+      )
+    if (!infoTab) throw new Error('Info tab not found')
+    await user.click(infoTab)
+
+    // Then no discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole('heading', { name: /unsaved changes/i }),
+    ).not.toBeInTheDocument()
+
+    // And name input shows original value
+    expect(screen.getByLabelText(/name/i)).toHaveValue('Test Recipe')
   })
 })
