@@ -34,9 +34,12 @@ function RecipeItemsTab() {
     return ri?.defaultAmount ?? 0
   }
 
-  const sortedItems = [...items].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-  )
+  const sortedItems = [...items].sort((a, b) => {
+    const aAssigned = isAssigned(a.id) ? 0 : 1
+    const bAssigned = isAssigned(b.id) ? 0 : 1
+    if (aAssigned !== bAssigned) return aAssigned - bAssigned
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  })
 
   const filteredItems = sortedItems.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
