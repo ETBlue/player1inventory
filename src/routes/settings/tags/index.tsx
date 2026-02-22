@@ -16,7 +16,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { ColorSelect } from '@/components/ColorSelect'
@@ -189,6 +189,7 @@ function TagSettings() {
     previousTypeId: string
     newTypeId: string
   } | null>(null)
+  const undoTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -271,7 +272,15 @@ function TagSettings() {
       newTypeId,
     })
 
-    updateTag.mutate({ id: tagId, updates: { typeId: newTypeId } })
+    updateTag.mutate(
+      { id: tagId, updates: { typeId: newTypeId } },
+      {
+        onError: () => {
+          toast.error('Failed to move tag')
+          setUndoState(null)
+        },
+      },
+    )
 
     if (newType) {
       toast(`Moved ${tag.name} to ${newType.name}`, {
@@ -283,15 +292,32 @@ function TagSettings() {
       })
     }
 
-    setTimeout(() => setUndoState(null), 5000)
+    // Clear previous timeout
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current)
+    }
+
+    // Set new timeout
+    undoTimeoutRef.current = setTimeout(() => {
+      setUndoState(null)
+      undoTimeoutRef.current = null
+    }, 5000)
   }
 
   const handleUndo = () => {
     if (!undoState) return
-    updateTag.mutate({
-      id: undoState.tagId,
-      updates: { typeId: undoState.previousTypeId },
-    })
+    updateTag.mutate(
+      {
+        id: undoState.tagId,
+        updates: { typeId: undoState.previousTypeId },
+      },
+      {
+        onError: () => {
+          toast.error('Failed to move tag')
+          setUndoState(null)
+        },
+      },
+    )
     setUndoState(null)
   }
 
