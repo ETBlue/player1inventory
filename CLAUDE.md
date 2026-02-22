@@ -541,17 +541,18 @@ For CLI users who want to work on multiple branches simultaneously without switc
 **Setup:**
 ```bash
 # Create worktree in .worktrees/ directory
-git worktree add .worktrees/<branch-name> -b <branch-name>
-cd .worktrees/<branch-name>
+# Use dashes instead of slashes in the directory name (e.g. feature-xxx, not feature/xxx)
+git worktree add .worktrees/<feature-xxx> -b <branch-name>
+cd .worktrees/<feature-xxx>
 ```
 
 **Directory Convention:**
-Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`.
+Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`. Use dashes instead of slashes in directory names (e.g. `feature-xxx`, not `feature/xxx`) to avoid creating subfolders.
 
 **Cleanup:**
 ```bash
 # After branch is merged and deleted
-git worktree remove .worktrees/<branch-name>
+git worktree remove .worktrees/<feature-xxx>
 ```
 
 **Note:** Git worktrees are not supported in GitHub Desktop. If you use GUI tools, stick with regular branches.
