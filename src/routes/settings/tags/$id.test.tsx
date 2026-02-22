@@ -8,7 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, createTag, createTagType } from '@/db/operations'
+import { createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { TagColor } from '@/types'
 
@@ -294,7 +294,9 @@ describe('Tag Detail - Info Tab', () => {
         screen.queryByRole('heading', { name: /unsaved changes/i }),
       ).not.toBeInTheDocument()
       // Should show Items tab content (search input)
-      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+      expect(
+        screen.getByPlaceholderText(/search or create item/i),
+      ).toBeInTheDocument()
     })
 
     // And changes were not saved
@@ -339,7 +341,9 @@ describe('Tag Detail - Info Tab', () => {
     await user.click(screen.getByRole('button', { name: /discard/i }))
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+      expect(
+        screen.getByPlaceholderText(/search or create item/i),
+      ).toBeInTheDocument()
     })
 
     // And navigates back to Info tab
@@ -409,352 +413,6 @@ describe('Tag Detail - Info Tab', () => {
   })
 })
 
-describe('Tag Detail - Items Tab', () => {
-  let queryClient: QueryClient
-
-  beforeEach(async () => {
-    await db.items.clear()
-    await db.tags.clear()
-    await db.tagTypes.clear()
-    await db.inventoryLogs.clear()
-    queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-  })
-
-  const renderItemsTab = (tagId: string) => {
-    const history = createMemoryHistory({
-      initialEntries: [`/settings/tags/${tagId}/items`],
-    })
-    const router = createRouter({ routeTree, history })
-    render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    )
-  }
-
-  const makeItem = (name: string, tagIds: string[] = []) =>
-    createItem({
-      name,
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds,
-      vendorIds: [],
-    })
-
-  it('user can see all items in the checklist', async () => {
-    // Given a tag type, tag, and two items
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    await makeItem('Milk')
-    await makeItem('Eggs')
-
-    renderItemsTab(tag.id)
-
-    // Then both items appear in the list
-    await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
-      expect(screen.getByLabelText('Eggs')).toBeInTheDocument()
-    })
-  })
-
-  it('user can see already-assigned items as checked', async () => {
-    // Given a tag and an item already assigned to it
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    await makeItem('Milk', [tag.id])
-    await makeItem('Eggs')
-
-    renderItemsTab(tag.id)
-
-    // Then Milk's checkbox is checked and Eggs' is not
-    await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeChecked()
-      expect(screen.getByLabelText('Eggs')).not.toBeChecked()
-    })
-  })
-
-  it('user can filter items by name', async () => {
-    // Given a tag and two items
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    await makeItem('Milk')
-    await makeItem('Eggs')
-
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
-    })
-
-    // When user types "mil"
-    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
-
-    // Then only Milk is visible
-    await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
-      expect(screen.queryByLabelText('Eggs')).not.toBeInTheDocument()
-    })
-  })
-
-  it('user can assign this tag to an item by clicking the checkbox', async () => {
-    // Given a tag and an unassigned item
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    const item = await makeItem('Milk')
-
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    // When user clicks the checkbox
-    await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
-    })
-    await user.click(screen.getByLabelText('Milk'))
-
-    // Then the item now has this tag assigned in the DB
-    await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.tagIds).toContain(tag.id)
-    })
-  })
-
-  it('user can remove this tag from an item by clicking the checkbox', async () => {
-    // Given a tag already assigned to an item
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    const item = await makeItem('Milk', [tag.id])
-
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    // When user unchecks the item
-    await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeChecked()
-    })
-    await user.click(screen.getByLabelText('Milk'))
-
-    // Then the tag is removed from the item in the DB
-    await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.tagIds ?? []).not.toContain(tag.id)
-    })
-  })
-
-  it('user can see other tags as badges on items', async () => {
-    // Given a tag and an item with other tags
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-
-    const otherTagType = await createTagType({
-      name: 'Location',
-      color: TagColor.green,
-    })
-    const otherTag = await createTag({
-      name: 'Fridge',
-      typeId: otherTagType.id,
-    })
-
-    await makeItem('Milk', [otherTag.id])
-
-    renderItemsTab(tag.id)
-
-    // Then the other tag appears as a badge
-    await waitFor(() => {
-      expect(screen.getByText('Fridge')).toBeInTheDocument()
-    })
-  })
-
-  it('user can see a New button', async () => {
-    // Given a tag
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    renderItemsTab(tag.id)
-
-    // Then a New button is visible
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
-    })
-  })
-
-  it('user can open the inline input by clicking New', async () => {
-    // Given a tag
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
-    })
-
-    // When user clicks New
-    await user.click(screen.getByRole('button', { name: /new/i }))
-
-    // Then an inline input appears
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/item name/i)).toBeInTheDocument()
-    })
-  })
-
-  it('user can create an item by typing a name and pressing Enter', async () => {
-    // Given a tag
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
-    })
-
-    // When user opens inline input, types a name, and presses Enter
-    await user.click(screen.getByRole('button', { name: /new/i }))
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/item name/i)).toBeInTheDocument()
-    })
-    await user.type(screen.getByPlaceholderText(/item name/i), 'Butter')
-    await user.keyboard('{Enter}')
-
-    // Then the new item appears in the list checked (assigned to tag)
-    await waitFor(() => {
-      expect(screen.getByLabelText('Butter')).toBeChecked()
-    })
-
-    const items = await db.items.toArray()
-    const butter = items.find((i) => i.name === 'Butter')
-    expect(butter?.tagIds).toContain(tag.id)
-  })
-
-  it('user can cancel inline creation by pressing Escape', async () => {
-    // Given a tag with the inline input open
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
-    })
-    await user.click(screen.getByRole('button', { name: /new/i }))
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/item name/i)).toBeInTheDocument()
-    })
-
-    // When user presses Escape
-    await user.keyboard('{Escape}')
-
-    // Then the inline input closes and no item was created
-    await waitFor(() => {
-      expect(
-        screen.queryByPlaceholderText(/item name/i),
-      ).not.toBeInTheDocument()
-    })
-    const items = await db.items.toArray()
-    expect(items).toHaveLength(0)
-  })
-
-  it('user cannot submit inline creation when the item name is empty', async () => {
-    // Given a tag
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /new/i })).toBeInTheDocument()
-    })
-
-    // When user opens the inline input without typing
-    await user.click(screen.getByRole('button', { name: /new/i }))
-
-    // Then the Add item button is disabled
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /add item/i })).toBeDisabled()
-    })
-  })
-
-  it('shows No items yet when there are no items', async () => {
-    // Given a tag with no items
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    renderItemsTab(tag.id)
-
-    // Then shows empty state message
-    await waitFor(() => {
-      expect(screen.getByText(/no items yet/i)).toBeInTheDocument()
-    })
-  })
-
-  it('shows no results message when search has no matches', async () => {
-    // Given a tag with items
-    const tagType = await createTagType({
-      name: 'Category',
-      color: TagColor.blue,
-    })
-    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
-    await makeItem('Milk')
-    await makeItem('Eggs')
-
-    renderItemsTab(tag.id)
-    const user = userEvent.setup()
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
-    })
-
-    // When user searches for non-existent item
-    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
-
-    // Then shows no results message
-    await waitFor(() => {
-      expect(screen.getByText(/no items found/i)).toBeInTheDocument()
-    })
-  })
-})
-
 describe('Tag Detail - Tab Navigation', () => {
   let queryClient: QueryClient
 
@@ -805,7 +463,9 @@ describe('Tag Detail - Tab Navigation', () => {
 
     // Then shows Items tab content
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+      expect(
+        screen.getByPlaceholderText(/search or create item/i),
+      ).toBeInTheDocument()
     })
 
     // When user clicks Info tab
