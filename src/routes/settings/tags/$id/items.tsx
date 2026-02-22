@@ -146,6 +146,10 @@ function TagItemsTab() {
         <p className="text-sm text-foreground-muted">No items yet.</p>
       )}
 
+      {items.length > 0 && filteredItems.length === 0 && !isCreating && (
+        <p className="text-sm text-foreground-muted">No items found.</p>
+      )}
+
       <div className="space-y-2">
         {filteredItems.map((item) => {
           const otherTags = (item.tagIds ?? [])

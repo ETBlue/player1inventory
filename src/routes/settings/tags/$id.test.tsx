@@ -12,17 +12,7 @@ import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { TagColor } from '@/types'
 
-// TODO: These tests are currently failing due to a routing issue in the test environment.
-// When navigating to `/settings/tags/$id`, the router is rendering the tags list page
-// (`/settings/tags`) instead of the tag detail page. This appears to be a TanStack Router
-// configuration or test environment issue. The vendor detail tests (`vendors/$id.test.tsx`)
-// use an identical pattern and work correctly, suggesting the issue is specific to how
-// the tags routes are configured. Investigation needed:
-// 1. Check if the route structure difference (tags.tsx as list vs vendors.tsx as layout) affects routing
-// 2. Verify route tree generation is correct for nested tag routes
-// 3. Test manually in browser to confirm routes work outside test environment
-
-describe.skip('Tag Detail - Info Tab', () => {
+describe('Tag Detail - Info Tab', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
@@ -210,7 +200,9 @@ describe.skip('Tag Detail - Info Tab', () => {
 
     // Then discard dialog appears
     await waitFor(() => {
-      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
       expect(screen.getByText(/discard changes/i)).toBeInTheDocument()
     })
   })
@@ -243,7 +235,9 @@ describe.skip('Tag Detail - Info Tab', () => {
     await user.click(itemsTab)
 
     await waitFor(() => {
-      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
     })
 
     // And clicks Cancel
@@ -251,7 +245,9 @@ describe.skip('Tag Detail - Info Tab', () => {
 
     // Then dialog closes and changes are preserved
     await waitFor(() => {
-      expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: /unsaved changes/i }),
+      ).not.toBeInTheDocument()
     })
     expect(nameInput).toHaveValue('Changed Name')
   })
@@ -284,7 +280,9 @@ describe.skip('Tag Detail - Info Tab', () => {
     await user.click(itemsTab)
 
     await waitFor(() => {
-      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
     })
 
     // And clicks Discard
@@ -292,7 +290,9 @@ describe.skip('Tag Detail - Info Tab', () => {
 
     // Then navigates to Items tab
     await waitFor(() => {
-      expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: /unsaved changes/i }),
+      ).not.toBeInTheDocument()
       // Should show Items tab content (search input)
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
@@ -328,7 +328,9 @@ describe.skip('Tag Detail - Info Tab', () => {
 
     // Then discard dialog appears
     await waitFor(() => {
-      expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: /unsaved changes/i }),
+      ).toBeInTheDocument()
       expect(screen.getByText(/discard changes/i)).toBeInTheDocument()
     })
   })
@@ -344,7 +346,7 @@ describe.skip('Tag Detail - Info Tab', () => {
   })
 })
 
-describe.skip('Tag Detail - Items Tab', () => {
+describe('Tag Detail - Items Tab', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
@@ -690,7 +692,7 @@ describe.skip('Tag Detail - Items Tab', () => {
   })
 })
 
-describe.skip('Tag Detail - Tab Navigation', () => {
+describe('Tag Detail - Tab Navigation', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
