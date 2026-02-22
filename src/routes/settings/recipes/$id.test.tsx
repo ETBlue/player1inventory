@@ -44,7 +44,7 @@ describe('Recipe Detail - Info Tab', () => {
     })
   })
 
-  it('user can edit the recipe name and save', async () => {
+  it('user can edit the recipe name and save it', async () => {
     const recipe = await createRecipe({ name: 'Pasta Dinner' })
     renderInfoTab(recipe.id)
     const user = userEvent.setup()
