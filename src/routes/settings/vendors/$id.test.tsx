@@ -193,7 +193,9 @@ describe('Vendor Detail - Info Tab', () => {
     await user.click(screen.getByRole('button', { name: /discard/i }))
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+      expect(
+        screen.getByPlaceholderText(/search or create item/i),
+      ).toBeInTheDocument()
     })
 
     // And navigates back to Info tab
