@@ -4,6 +4,7 @@ import {
   type DragEndEvent,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   useDroppable,
   useSensor,
   useSensors,
@@ -195,6 +196,12 @@ function TagSettings() {
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     }),
   )
