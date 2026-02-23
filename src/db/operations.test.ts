@@ -18,8 +18,10 @@ import {
   getAllItems,
   getAllTags,
   getAllTagTypes,
+  getCartItemCountByItem,
   getCartItems,
   getCurrentQuantity,
+  getInventoryLogCountByItem,
   getItem,
   getItemCountByRecipe,
   getItemCountByVendor,
@@ -863,6 +865,100 @@ describe('Item cascade operations', () => {
       .equals(item.id)
       .toArray()
     expect(cartItems).toHaveLength(0)
+  })
+})
+
+describe('Count helpers for item relations', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.inventoryLogs.clear()
+    await db.cartItems.clear()
+    await db.shoppingCarts.clear()
+  })
+
+  it('getInventoryLogCountByItem returns correct count', async () => {
+    // Given an item with 3 inventory logs
+    const item = await createItem({
+      name: 'Test Item',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packageUnit: 'package',
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: 5,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: -2,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: 1,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+
+    // When counting logs
+    const count = await getInventoryLogCountByItem(item.id)
+
+    // Then count is correct
+    expect(count).toBe(3)
+  })
+
+  it('getCartItemCountByItem returns correct count', async () => {
+    // Given an item in 2 different carts
+    const item = await createItem({
+      name: 'Test Item',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packageUnit: 'package',
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const cart1 = await db.shoppingCarts.add({
+      id: crypto.randomUUID(),
+      status: 'active',
+      createdAt: new Date(),
+    })
+    const cart2 = await db.shoppingCarts.add({
+      id: crypto.randomUUID(),
+      status: 'active',
+      createdAt: new Date(),
+    })
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart1,
+      itemId: item.id,
+      quantity: 3,
+    })
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart2,
+      itemId: item.id,
+      quantity: 1,
+    })
+
+    // When counting cart items
+    const count = await getCartItemCountByItem(item.id)
+
+    // Then count is correct
+    expect(count).toBe(2)
   })
 })
 
