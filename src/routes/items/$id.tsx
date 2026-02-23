@@ -211,7 +211,7 @@ function ItemLayoutInner() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete item?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <div className="text-sm text-muted-foreground">
               {(logCount > 0 || cartCount > 0) && (
                 <>
                   This will also delete:
@@ -232,18 +232,18 @@ function ItemLayoutInner() {
               {logCount === 0 &&
                 cartCount === 0 &&
                 'This item has no related data.'}
-            </AlertDialogDescription>
+            </div>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={() => {
                 deleteItem.mutate(id, {
                   onSuccess: () => goBack(),
                 })
               }}
               disabled={deleteItem.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteItem.isPending ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>

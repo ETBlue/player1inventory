@@ -179,13 +179,13 @@ function TagDetailLayoutInner() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={() => {
                 deleteTag.mutate(id, {
                   onSuccess: () => goBack(),
                 })
               }}
               disabled={deleteTag.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteTag.isPending ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
