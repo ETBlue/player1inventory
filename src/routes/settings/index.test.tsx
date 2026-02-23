@@ -82,7 +82,7 @@ describe('Settings Page', () => {
 
     // Then sun icon is displayed
     // Note: lucide-react icons don't have specific test IDs, so we check the icon exists
-    const card = screen.getByText('Theme').closest('.p-4')
+    const card = screen.getByText('Theme').closest('[class*="px-"]')
     expect(card).toBeInTheDocument()
   })
 
@@ -97,7 +97,7 @@ describe('Settings Page', () => {
     renderSettings()
 
     // Then moon icon is displayed
-    const card = screen.getByText('Theme').closest('.p-4')
+    const card = screen.getByText('Theme').closest('[class*="px-"]')
     expect(card).toBeInTheDocument()
   })
 
