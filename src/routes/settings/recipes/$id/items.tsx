@@ -1,12 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Minus, Plus } from 'lucide-react'
-import { useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Plus } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { ItemCard } from '@/components/ItemCard'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useCreateItem, useItems } from '@/hooks'
+import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
 import { useRecipe, useUpdateRecipe } from '@/hooks/useRecipes'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 
 export const Route = createFileRoute('/settings/recipes/$id/items')({
   component: RecipeItemsTab,
@@ -18,6 +17,13 @@ function RecipeItemsTab() {
   const { data: recipe } = useRecipe(recipeId)
   const updateRecipe = useUpdateRecipe()
   const createItem = useCreateItem()
+  const { data: tags = [] } = useTags()
+  const { data: tagTypes = [] } = useTagTypes()
+
+  const tagMap = useMemo(
+    () => Object.fromEntries(tags.map((t) => [t.id, t])),
+    [tags],
+  )
 
   const [search, setSearch] = useState('')
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
@@ -165,58 +171,34 @@ function RecipeItemsTab() {
         <p className="text-sm text-foreground-muted">No items found.</p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-px">
         {filteredItems.map((item) => {
           const assigned = isAssigned(item.id)
-          const defaultAmount = getDefaultAmount(item.id)
+          const itemTags = (item.tagIds ?? [])
+            .map((tid) => tagMap[tid])
+            .filter((t): t is NonNullable<typeof t> => t != null)
 
           return (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-center gap-3 py-2 px-1 rounded hover:bg-background-surface transition-colors"
-            >
-              <Checkbox
-                id={`item-${item.id}`}
-                checked={assigned}
-                onCheckedChange={() =>
-                  handleToggle(item.id, item.consumeAmount ?? 1)
-                }
-                disabled={savingItemIds.has(item.id)}
-              />
-              <Label
-                htmlFor={`item-${item.id}`}
-                className="flex-1 cursor-pointer font-normal"
-              >
-                {item.name}
-              </Label>
-              {assigned && (
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="neutral-outline"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => handleAdjustDefaultAmount(item.id, -1)}
-                    disabled={savingItemIds.has(item.id)}
-                    aria-label={`Decrease ${item.name}`}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                  <span className="w-16 text-center text-sm tabular-nums">
-                    {defaultAmount}
-                  </span>
-                  <Button
-                    variant="neutral-outline"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => handleAdjustDefaultAmount(item.id, 1)}
-                    disabled={savingItemIds.has(item.id)}
-                    aria-label={`Increase ${item.name}`}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-            </div>
+              mode="recipe-assignment"
+              item={item}
+              quantity={getCurrentQuantity(item)}
+              tags={itemTags}
+              tagTypes={tagTypes}
+              isChecked={assigned}
+              onCheckboxToggle={() =>
+                handleToggle(item.id, item.consumeAmount ?? 1)
+              }
+              {...(assigned
+                ? { controlAmount: getDefaultAmount(item.id) }
+                : {})}
+              minControlAmount={0}
+              onAmountChange={(delta) =>
+                handleAdjustDefaultAmount(item.id, delta)
+              }
+              disabled={savingItemIds.has(item.id)}
+            />
           )
         })}
         {filteredItems.length === 0 && search.trim() && (

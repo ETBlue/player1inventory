@@ -45,8 +45,13 @@ export function PantryItem({
       tagTypes={tagTypes}
       showTags={showTags}
       {...(estimatedDueDate ? { estimatedDueDate } : {})}
-      onConsume={onConsume}
-      onAdd={onAdd}
+      onAmountChange={(delta) => {
+        if (delta > 0) {
+          onAdd()
+        } else {
+          onConsume()
+        }
+      }}
       {...(onTagClick ? { onTagClick } : {})}
     />
   )

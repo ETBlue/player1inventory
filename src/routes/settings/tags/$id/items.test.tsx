@@ -64,8 +64,8 @@ describe('Tag Detail - Items Tab', () => {
 
     // Then both items appear in the list
     await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
-      expect(screen.getByLabelText('Eggs')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Eggs')).toBeInTheDocument()
     })
   })
 
@@ -83,8 +83,8 @@ describe('Tag Detail - Items Tab', () => {
 
     // Then Milk's checkbox is checked and Eggs' is not
     await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeChecked()
-      expect(screen.getByLabelText('Eggs')).not.toBeChecked()
+      expect(screen.getByLabelText('Remove Milk')).toBeChecked()
+      expect(screen.getByLabelText('Add Eggs')).not.toBeChecked()
     })
   })
 
@@ -112,8 +112,8 @@ describe('Tag Detail - Items Tab', () => {
 
     // Then only Milk is visible
     await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
-      expect(screen.queryByLabelText('Eggs')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Add Eggs')).not.toBeInTheDocument()
     })
   })
 
@@ -131,9 +131,9 @@ describe('Tag Detail - Items Tab', () => {
 
     // When user clicks the checkbox
     await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
-    await user.click(screen.getByLabelText('Milk'))
+    await user.click(screen.getByLabelText('Add Milk'))
 
     // Then the item now has this tag assigned in the DB
     await waitFor(async () => {
@@ -156,9 +156,9 @@ describe('Tag Detail - Items Tab', () => {
 
     // When user unchecks the item
     await waitFor(() => {
-      expect(screen.getByLabelText('Milk')).toBeChecked()
+      expect(screen.getByLabelText('Remove Milk')).toBeChecked()
     })
-    await user.click(screen.getByLabelText('Milk'))
+    await user.click(screen.getByLabelText('Remove Milk'))
 
     // Then the tag is removed from the item in the DB
     await waitFor(async () => {
@@ -214,7 +214,7 @@ describe('Tag Detail - Items Tab', () => {
 
     // Then the new item appears in the list checked (assigned to tag)
     await waitFor(() => {
-      expect(screen.getByLabelText('Butter')).toBeChecked()
+      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
     })
 
     await waitFor(async () => {
@@ -256,7 +256,7 @@ describe('Tag Detail - Items Tab', () => {
     // Then the create row is not shown (Milk matched)
     await waitFor(() => {
       expect(screen.queryByText(/create/i)).not.toBeInTheDocument()
-      expect(screen.getByLabelText('Milk')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
   })
 
@@ -285,7 +285,7 @@ describe('Tag Detail - Items Tab', () => {
 
     // Then Butter appears in the list checked and the input is cleared
     await waitFor(() => {
-      expect(screen.getByLabelText('Butter')).toBeChecked()
+      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
       expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
     })
   })

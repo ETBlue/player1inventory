@@ -145,11 +145,13 @@ function Shopping() {
           tags={itemTags}
           tagTypes={tagTypes}
           mode="shopping"
-          {...(ci ? { cartItem: ci } : {})}
-          onToggleCart={() => handleToggleCart(item)}
-          onUpdateCartQuantity={(qty) => handleUpdateCartQuantity(item, qty)}
-          onConsume={() => {}}
-          onAdd={() => {}}
+          isChecked={!!ci}
+          {...(ci ? { controlAmount: ci.quantity } : {})}
+          onCheckboxToggle={() => handleToggleCart(item)}
+          onAmountChange={(delta) => {
+            const newQty = (ci?.quantity ?? 0) + delta
+            if (newQty >= 1) handleUpdateCartQuantity(item, newQty)
+          }}
         />
       </div>
     )

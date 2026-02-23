@@ -6,7 +6,6 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import type { CartItem } from '@/types'
 import { ItemCard } from './ItemCard'
 
 // Create a router that renders an Outlet (which will render our story)
@@ -40,10 +39,6 @@ const meta: Meta<typeof ItemCard> = {
       </RouterWrapper>
     ),
   ],
-  args: {
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
-  },
 }
 
 export default meta
@@ -205,13 +200,6 @@ export const InactiveItem: Story = {
 const mockTags = [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }]
 const mockTagTypes = [{ id: 'type-1', name: 'Category', color: '#3b82f6' }]
 
-const mockCartItem: CartItem = {
-  id: 'ci-1',
-  cartId: 'cart-1',
-  itemId: '1',
-  quantity: 3,
-}
-
 export const ShoppingModeNotInCart: Story = {
   name: 'Shopping Mode — Not in cart',
   args: {
@@ -220,9 +208,8 @@ export const ShoppingModeNotInCart: Story = {
     tags: mockTags,
     tagTypes: mockTagTypes,
     mode: 'shopping',
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
-    onToggleCart: () => console.log('Toggle cart'),
+    isChecked: false,
+    onCheckboxToggle: () => console.log('Toggle cart'),
   },
 }
 
@@ -234,10 +221,51 @@ export const ShoppingModeInCart: Story = {
     tags: mockTags,
     tagTypes: mockTagTypes,
     mode: 'shopping',
-    cartItem: mockCartItem,
-    onConsume: () => console.log('Consume'),
-    onAdd: () => console.log('Add'),
-    onToggleCart: () => console.log('Toggle cart'),
-    onUpdateCartQuantity: (qty) => console.log('Update qty:', qty),
+    isChecked: true,
+    controlAmount: 3,
+    onCheckboxToggle: () => console.log('Toggle cart'),
+    onAmountChange: (delta) => console.log('Amount change:', delta),
+  },
+}
+
+export const TagAssignment: Story = {
+  name: 'Tag Assignment — Checked',
+  args: {
+    ...Default.args,
+    mode: 'tag-assignment',
+    isChecked: true,
+    onCheckboxToggle: () => console.log('Toggle assignment'),
+  },
+}
+
+export const TagAssignmentUnchecked: Story = {
+  name: 'Tag Assignment — Unchecked',
+  args: {
+    ...Default.args,
+    mode: 'tag-assignment',
+    isChecked: false,
+    onCheckboxToggle: () => console.log('Toggle assignment'),
+  },
+}
+
+export const RecipeAssignment: Story = {
+  name: 'Recipe Assignment — Assigned',
+  args: {
+    ...Default.args,
+    mode: 'recipe-assignment',
+    isChecked: true,
+    controlAmount: 2,
+    onCheckboxToggle: () => console.log('Toggle assignment'),
+    onAmountChange: (delta) => console.log('Amount change:', delta),
+  },
+}
+
+export const RecipeAssignmentUnchecked: Story = {
+  name: 'Recipe Assignment — Unassigned',
+  args: {
+    ...Default.args,
+    mode: 'recipe-assignment',
+    isChecked: false,
+    onCheckboxToggle: () => console.log('Toggle assignment'),
   },
 }
