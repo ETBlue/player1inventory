@@ -11,7 +11,8 @@ export function Layout({ children }: LayoutProps) {
   const isFullscreenPage =
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
-    location.pathname.startsWith('/settings/vendors')
+    location.pathname.startsWith('/settings/vendors') ||
+    location.pathname.startsWith('/settings/recipes')
 
   return (
     <div
