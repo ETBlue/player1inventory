@@ -57,7 +57,9 @@ export function ItemCard({
       ? item.packedQuantity * item.amountPerPackage
       : item.packedQuantity
 
-  if (import.meta.env.DEV && controlAmount !== undefined && !onAmountChange) {
+  const isAmountControllable = ['shopping', 'recipe-assignment'].includes(mode)
+
+  if (import.meta.env.DEV && isAmountControllable && !onAmountChange) {
     console.warn('ItemCard: controlAmount requires onAmountChange to function.')
   }
 
@@ -66,7 +68,7 @@ export function ItemCard({
       variant={status === 'ok' ? 'default' : status}
       className={cn(
         onCheckboxToggle ? 'ml-10' : '',
-        controlAmount !== undefined ? 'mr-28' : '',
+        isAmountControllable ? 'mr-28' : '',
       )}
     >
       {onCheckboxToggle && (
@@ -78,7 +80,7 @@ export function ItemCard({
           className="absolute -ml-10"
         />
       )}
-      {controlAmount !== undefined && (
+      {isChecked && isAmountControllable && (
         <div className="flex items-stretch absolute -right-26 top-1.5">
           <Button
             variant="neutral-outline"
@@ -152,7 +154,7 @@ export function ItemCard({
           />
         </Link>
 
-        {onAmountChange && controlAmount === undefined && mode === 'pantry' && (
+        {onAmountChange && mode === 'pantry' && (
           <div>
             <Button
               className="rounded-tr-none rounded-br-none"
