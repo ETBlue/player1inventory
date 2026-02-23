@@ -8,7 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createTag, createTagType } from '@/db/operations'
+import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { TagColor } from '@/types'
 
@@ -536,5 +536,149 @@ describe('Tag Detail - Tab Navigation', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
     })
+  })
+})
+
+describe('Tag Detail Page - Delete Dialog', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.delete()
+    await db.open()
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+  })
+
+  const renderWithRouter = (initialPath: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [initialPath],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user can open delete dialog', async () => {
+    // Given a tag
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When user navigates to tag detail page
+    renderWithRouter(`/settings/tags/${tag.id}`)
+
+    // Then delete button is visible
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete tag/i,
+    })
+    expect(deleteButton).toBeInTheDocument()
+
+    // When user clicks delete button
+    const user = userEvent.setup()
+    await user.click(deleteButton)
+
+    // Then delete dialog appears
+    await waitFor(() => {
+      expect(screen.getByText('Delete tag?')).toBeInTheDocument()
+      expect(
+        screen.getByText('This tag is not assigned to any items.'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can see affected item count in delete dialog', async () => {
+    // Given a tag assigned to 2 items
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    await createItem({
+      name: 'Milk',
+      tagIds: [tag.id],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    await createItem({
+      name: 'Cheese',
+      tagIds: [tag.id],
+      targetQuantity: 1,
+      refillThreshold: 0,
+    })
+
+    // When user opens delete dialog
+    renderWithRouter(`/settings/tags/${tag.id}`)
+    const user = userEvent.setup()
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete tag/i,
+    })
+    await user.click(deleteButton)
+
+    // Then dialog shows affected item count
+    await waitFor(() => {
+      expect(
+        screen.getByText(/2 items will lose this tag/i),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can confirm deletion and navigate back', async () => {
+    // Given a tag
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When user confirms deletion
+    renderWithRouter(`/settings/tags/${tag.id}`)
+    const user = userEvent.setup()
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete tag/i,
+    })
+    await user.click(deleteButton)
+
+    const confirmButton = await screen.findByRole('button', {
+      name: /^delete$/i,
+    })
+    await user.click(confirmButton)
+
+    // Then tag is deleted
+    await waitFor(async () => {
+      const deletedTag = await db.tags.get(tag.id)
+      expect(deletedTag).toBeUndefined()
+    })
+
+    // And user is navigated away from detail page
+    await waitFor(() => {
+      expect(window.location.pathname).not.toBe(`/settings/tags/${tag.id}`)
+    })
+  })
+
+  it('user can cancel deletion', async () => {
+    // Given a tag
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When user opens and cancels delete dialog
+    renderWithRouter(`/settings/tags/${tag.id}`)
+    const user = userEvent.setup()
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete tag/i,
+    })
+    await user.click(deleteButton)
+
+    const cancelButton = screen.getByRole('button', { name: /cancel/i })
+    await user.click(cancelButton)
+
+    // Then dialog closes
+    await waitFor(() => {
+      expect(screen.queryByText('Delete tag?')).not.toBeInTheDocument()
+    })
+
+    // And tag is not deleted
+    const stillExists = await db.tags.get(tag.id)
+    expect(stillExists).toBeDefined()
+    expect(stillExists?.name).toBe('Dairy')
   })
 })

@@ -43,6 +43,12 @@ export async function updateItem(
 }
 
 export async function deleteItem(id: string): Promise<void> {
+  // Delete related inventory logs
+  await db.inventoryLogs.where('itemId').equals(id).delete()
+
+  // Delete related cart items
+  await db.cartItems.where('itemId').equals(id).delete()
+
   // Cascade: remove item from all recipes
   const recipes = await db.recipes
     .filter((recipe) => recipe.items.some((ri) => ri.itemId === id))
@@ -54,7 +60,19 @@ export async function deleteItem(id: string): Promise<void> {
       updatedAt: now,
     })
   }
+
+  // Delete the item itself
   await db.items.delete(id)
+}
+
+export async function getInventoryLogCountByItem(
+  itemId: string,
+): Promise<number> {
+  return await db.inventoryLogs.where('itemId').equals(itemId).count()
+}
+
+export async function getCartItemCountByItem(itemId: string): Promise<number> {
+  return await db.cartItems.where('itemId').equals(itemId).count()
 }
 
 // InventoryLog operations

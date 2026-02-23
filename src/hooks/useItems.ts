@@ -3,6 +3,8 @@ import {
   createItem,
   deleteItem,
   getAllItems,
+  getCartItemCountByItem,
+  getInventoryLogCountByItem,
   getItem,
   getLastPurchaseDate,
   updateItem,
@@ -75,5 +77,21 @@ export function useDeleteItem() {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] }) // cascade invalidation
     },
+  })
+}
+
+export function useInventoryLogCountByItem(itemId: string) {
+  return useQuery({
+    queryKey: ['inventoryLogs', 'countByItem', itemId],
+    queryFn: () => getInventoryLogCountByItem(itemId),
+    enabled: !!itemId,
+  })
+}
+
+export function useCartItemCountByItem(itemId: string) {
+  return useQuery({
+    queryKey: ['cartItems', 'countByItem', itemId],
+    queryFn: () => getCartItemCountByItem(itemId),
+    enabled: !!itemId,
   })
 }

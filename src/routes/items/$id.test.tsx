@@ -959,3 +959,199 @@ describe('Item detail page - hierarchical navigation', () => {
     })
   })
 })
+
+describe('Item detail page - delete dialog', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
+    sessionStorage.clear()
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderWithRouter = (initialPath: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [initialPath],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user can open delete dialog', async () => {
+    // Given an item
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+
+    // When user navigates to item detail page
+    renderWithRouter(`/items/${item.id}`)
+
+    // Then delete button is visible
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete item/i,
+    })
+    expect(deleteButton).toBeInTheDocument()
+
+    // When user clicks delete button
+    await userEvent.click(deleteButton)
+
+    // Then delete dialog appears
+    expect(screen.getByText('Delete item?')).toBeInTheDocument()
+    expect(
+      screen.getByText('This item has no related data.'),
+    ).toBeInTheDocument()
+  })
+
+  it('user can see related data counts in delete dialog', async () => {
+    // Given an item with 2 inventory logs and 1 cart entry
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: 5,
+      quantity: 5,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: -2,
+      quantity: 3,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+    const cartId = await db.shoppingCarts.add({
+      id: crypto.randomUUID(),
+      status: 'active',
+      createdAt: new Date(),
+    })
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cartId,
+      itemId: item.id,
+      quantity: 3,
+    })
+
+    // When user opens delete dialog
+    renderWithRouter(`/items/${item.id}`)
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete item/i,
+    })
+    await userEvent.click(deleteButton)
+
+    // Then dialog shows related data counts
+    await waitFor(() => {
+      expect(screen.getByText(/2 inventory logs/i)).toBeInTheDocument()
+      expect(screen.getByText(/1 cart entry/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can confirm deletion and related data is cascaded', async () => {
+    // Given an item with related data
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    const logId = crypto.randomUUID()
+    await db.inventoryLogs.add({
+      id: logId,
+      itemId: item.id,
+      delta: 5,
+      quantity: 5,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+    const cartId = await db.shoppingCarts.add({
+      id: crypto.randomUUID(),
+      status: 'active',
+      createdAt: new Date(),
+    })
+    const cartItemId = crypto.randomUUID()
+    await db.cartItems.add({
+      id: cartItemId,
+      cartId: cartId,
+      itemId: item.id,
+      quantity: 3,
+    })
+
+    // When user confirms deletion
+    renderWithRouter(`/items/${item.id}`)
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete item/i,
+    })
+    await userEvent.click(deleteButton)
+
+    const confirmButton = screen.getByRole('button', { name: /^delete$/i })
+    await userEvent.click(confirmButton)
+
+    // Then item and related data are deleted
+    await waitFor(async () => {
+      const deletedItem = await db.items.get(item.id)
+      expect(deletedItem).toBeUndefined()
+
+      const deletedLog = await db.inventoryLogs.get(logId)
+      expect(deletedLog).toBeUndefined()
+
+      const deletedCartItem = await db.cartItems.get(cartItemId)
+      expect(deletedCartItem).toBeUndefined()
+    })
+
+    // And user is navigated away from detail page
+    await waitFor(() => {
+      expect(window.location.pathname).not.toBe(`/items/${item.id}`)
+    })
+  })
+
+  it('user can cancel item deletion', async () => {
+    // Given an item
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+
+    // When user opens and cancels delete dialog
+    renderWithRouter(`/items/${item.id}`)
+    const deleteButton = await screen.findByRole('button', {
+      name: /delete item/i,
+    })
+    await userEvent.click(deleteButton)
+
+    const cancelButton = screen.getByRole('button', { name: /cancel/i })
+    await userEvent.click(cancelButton)
+
+    // Then dialog closes
+    await waitFor(() => {
+      expect(screen.queryByText('Delete item?')).not.toBeInTheDocument()
+    })
+
+    // And item is not deleted
+    const stillExists = await db.items.get(item.id)
+    expect(stillExists).toBeDefined()
+    expect(stillExists?.name).toBe('Milk')
+  })
+})
