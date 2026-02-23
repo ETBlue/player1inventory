@@ -28,6 +28,10 @@ import { Button } from '@/components/ui/button'
 import { useDeleteItem, useItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { ItemLayoutProvider, useItemLayout } from '@/hooks/useItemLayout'
+import {
+  useCartItemCountByItem,
+  useInventoryLogCountByItem,
+} from '@/hooks/useItems'
 
 export const Route = createFileRoute('/items/$id')({
   component: ItemLayout,
@@ -42,8 +46,11 @@ function ItemLayoutInner() {
   const { isDirty } = useItemLayout()
   const { goBack } = useAppNavigation('/')
   const isOnStockTab = router.state.location.pathname === `/items/${id}`
+  const { data: logCount = 0 } = useInventoryLogCountByItem(id)
+  const { data: cartCount = 0 } = useCartItemCountByItem(id)
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null,
   )
@@ -166,13 +173,8 @@ function ItemLayoutInner() {
           <Button
             variant="destructive"
             size="icon"
-            onClick={() => {
-              if (confirm('Delete this item?')) {
-                deleteItem.mutate(id, {
-                  onSuccess: () => goBack(),
-                })
-              }
-            }}
+            onClick={() => setShowDeleteDialog(true)}
+            aria-label="Delete item"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -199,6 +201,51 @@ function ItemLayoutInner() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDiscard}>
               Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(logCount > 0 || cartCount > 0) && (
+                <>
+                  This will also delete:
+                  <ul className="list-disc list-inside mt-2">
+                    {logCount > 0 && (
+                      <li>
+                        {logCount} inventory log{logCount === 1 ? '' : 's'}
+                      </li>
+                    )}
+                    {cartCount > 0 && (
+                      <li>
+                        {cartCount} cart entr{cartCount === 1 ? 'y' : 'ies'}
+                      </li>
+                    )}
+                  </ul>
+                </>
+              )}
+              {logCount === 0 &&
+                cartCount === 0 &&
+                'This item has no related data.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                deleteItem.mutate(id, {
+                  onSuccess: () => goBack(),
+                })
+              }}
+              disabled={deleteItem.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteItem.isPending ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
