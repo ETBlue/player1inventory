@@ -1,12 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
+import { ItemCard } from '@/components/ItemCard'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
+import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useTags } from '@/hooks/useTags'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 
 export const Route = createFileRoute('/settings/tags/$id/items')({
   component: TagItemsTab,
@@ -16,6 +15,7 @@ function TagItemsTab() {
   const { id: tagId } = Route.useParams()
   const { data: items = [] } = useItems()
   const { data: tags = [] } = useTags()
+  const { data: tagTypes = [] } = useTagTypes()
   const updateItem = useUpdateItem()
 
   const [search, setSearch] = useState('')
@@ -117,42 +117,25 @@ function TagItemsTab() {
         <p className="text-sm text-foreground-muted">No items found.</p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-px">
         {filteredItems.map((item) => {
-          const otherTags = (item.tagIds ?? [])
+          const itemTags = (item.tagIds ?? [])
             .filter((tid) => tid !== tagId)
             .map((tid) => tagMap[tid])
             .filter((t): t is NonNullable<typeof t> => t != null)
 
           return (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-center gap-3 py-2 px-1 rounded hover:bg-background-surface transition-colors"
-            >
-              <Checkbox
-                id={`item-${item.id}`}
-                checked={isAssigned(item.tagIds)}
-                onCheckedChange={() => handleToggle(item.id, item.tagIds)}
-                disabled={savingItemIds.has(item.id)}
-              />
-              <Label
-                htmlFor={`item-${item.id}`}
-                className="flex-1 cursor-pointer font-normal"
-              >
-                {item.name}
-              </Label>
-              <div className="flex gap-1 flex-wrap justify-end">
-                {otherTags.map((t) => (
-                  <Badge
-                    key={t.id}
-                    variant="neutral-outline"
-                    className="text-xs"
-                  >
-                    {t.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+              mode="tag-assignment"
+              item={item}
+              quantity={getCurrentQuantity(item)}
+              tags={itemTags}
+              tagTypes={tagTypes}
+              isChecked={isAssigned(item.tagIds)}
+              onCheckboxToggle={() => handleToggle(item.id, item.tagIds)}
+              disabled={savingItemIds.has(item.id)}
+            />
           )
         })}
         {filteredItems.length === 0 && search.trim() && (
