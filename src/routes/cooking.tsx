@@ -108,19 +108,18 @@ function CookingPage() {
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {
     return Array.from(totalByItemId.entries())
-      .filter(([itemId, amount]) => {
-        const item = items.find((i) => i.id === itemId)
-        if (!item) return false
-        return getCurrentQuantity(item) < amount
-      })
       .map(([itemId, amount]) => {
-        const item = items.find((i) => i.id === itemId)!
+        const item = items.find((i) => i.id === itemId)
+        if (!item) return null
+        const available = getCurrentQuantity(item)
+        if (available >= amount) return null
         return {
           item,
           requested: amount,
-          available: getCurrentQuantity(item),
+          available,
         }
       })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
   }, [totalByItemId, items])
 
   const handleConfirmDone = async () => {
