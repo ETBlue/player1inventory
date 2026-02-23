@@ -1,12 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  ChevronRight,
-  Moon,
-  Store,
-  Sun,
-  Tags,
-  UtensilsCrossed,
-} from 'lucide-react'
+import { ChevronRight, CookingPot, Moon, Store, Sun, Tags } from 'lucide-react'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -112,7 +105,7 @@ function Settings() {
           <Card className="hover:bg-background-surface/50 transition-colors">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <UtensilsCrossed className="h-5 w-5 text-foreground-muted" />
+                <CookingPot className="h-5 w-5 text-foreground-muted" />
                 <div>
                   <p className="font-medium">Recipes</p>
                   <p className="text-sm text-foreground-muted">
