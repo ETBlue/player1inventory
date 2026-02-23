@@ -63,8 +63,8 @@ describe('Recipe Detail - Items Tab', () => {
 
     // Then both items appear in the list
     await waitFor(() => {
-      expect(screen.getByLabelText('Noodles')).toBeInTheDocument()
-      expect(screen.getByLabelText('Tomato Sauce')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Tomato Sauce')).toBeInTheDocument()
     })
   })
 
@@ -80,8 +80,8 @@ describe('Recipe Detail - Items Tab', () => {
 
     // Then Noodles is checked and Tomato Sauce is not
     await waitFor(() => {
-      expect(screen.getByLabelText('Noodles')).toBeChecked()
-      expect(screen.getByLabelText('Tomato Sauce')).not.toBeChecked()
+      expect(screen.getByLabelText('Remove Noodles')).toBeChecked()
+      expect(screen.getByLabelText('Add Tomato Sauce')).not.toBeChecked()
     })
   })
 
@@ -105,8 +105,10 @@ describe('Recipe Detail - Items Tab', () => {
 
     // Then only Noodles is visible
     await waitFor(() => {
-      expect(screen.getByLabelText('Noodles')).toBeInTheDocument()
-      expect(screen.queryByLabelText('Tomato Sauce')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(
+        screen.queryByLabelText('Add Tomato Sauce'),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -120,9 +122,9 @@ describe('Recipe Detail - Items Tab', () => {
 
     // When user clicks the checkbox
     await waitFor(() => {
-      expect(screen.getByLabelText('Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
     })
-    await user.click(screen.getByLabelText('Noodles'))
+    await user.click(screen.getByLabelText('Add Noodles'))
 
     // Then the item is added to the recipe in the DB with defaultAmount from consumeAmount
     await waitFor(async () => {
@@ -145,9 +147,9 @@ describe('Recipe Detail - Items Tab', () => {
 
     // When user unchecks the item
     await waitFor(() => {
-      expect(screen.getByLabelText('Noodles')).toBeChecked()
+      expect(screen.getByLabelText('Remove Noodles')).toBeChecked()
     })
-    await user.click(screen.getByLabelText('Noodles'))
+    await user.click(screen.getByLabelText('Remove Noodles'))
 
     // Then the item is removed from the recipe in the DB
     await waitFor(async () => {
@@ -169,16 +171,18 @@ describe('Recipe Detail - Items Tab', () => {
 
     // When user clicks + twice to increase the amount (step = consumeAmount = 1, so 1 → 2 → 3)
     await waitFor(() => {
-      expect(screen.getByLabelText('Increase Noodles')).toBeInTheDocument()
+      expect(
+        screen.getByLabelText('Increase quantity of Noodles'),
+      ).toBeInTheDocument()
     })
-    await user.click(screen.getByLabelText('Increase Noodles'))
+    await user.click(screen.getByLabelText('Increase quantity of Noodles'))
     // Wait for first mutation to commit before second click (avoids stale closure race)
     await waitFor(async () => {
       const updated = await db.recipes.get(recipe.id)
       const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
       expect(recipeItem?.defaultAmount).toBe(2)
     })
-    await user.click(screen.getByLabelText('Increase Noodles'))
+    await user.click(screen.getByLabelText('Increase quantity of Noodles'))
 
     // Then the default amount is saved to the DB
     await waitFor(async () => {
@@ -206,7 +210,7 @@ describe('Recipe Detail - Items Tab', () => {
 
     // Then the new item appears in the list checked (assigned to the recipe)
     await waitFor(() => {
-      expect(screen.getByLabelText('Butter')).toBeChecked()
+      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
     })
 
     await waitFor(async () => {
@@ -249,7 +253,7 @@ describe('Recipe Detail - Items Tab', () => {
     // Then the create row is not shown (Noodles matched)
     await waitFor(() => {
       expect(screen.queryByText(/create/i)).not.toBeInTheDocument()
-      expect(screen.getByLabelText('Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
     })
   })
 
@@ -274,7 +278,7 @@ describe('Recipe Detail - Items Tab', () => {
 
     // Then Butter appears in the list checked and the input is cleared
     await waitFor(() => {
-      expect(screen.getByLabelText('Butter')).toBeChecked()
+      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
       expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
     })
   })
