@@ -172,6 +172,12 @@ describe('Recipe Detail - Items Tab', () => {
       expect(screen.getByLabelText('Increase Noodles')).toBeInTheDocument()
     })
     await user.click(screen.getByLabelText('Increase Noodles'))
+    // Wait for first mutation to commit before second click (avoids stale closure race)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBe(2)
+    })
     await user.click(screen.getByLabelText('Increase Noodles'))
 
     // Then the default amount is saved to the DB

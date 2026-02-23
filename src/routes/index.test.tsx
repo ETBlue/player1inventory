@@ -656,8 +656,12 @@ describe('Home page filtering integration', () => {
 
     const addButton = screen.getByLabelText('Add Cookies')
 
-    // When user clicks + button twice
+    // When user clicks + button twice (waiting for first mutation to commit before second click)
     await user.click(addButton)
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      expect(updated?.unpackedQuantity).toBe(1)
+    })
     await user.click(addButton)
 
     // Then packed quantity stays unchanged and unpacked adds up
