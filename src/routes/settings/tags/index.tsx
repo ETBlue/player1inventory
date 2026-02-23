@@ -109,47 +109,39 @@ function DroppableTagTypeCard({
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
       />
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-lg capitalize">{tagType.name}</CardTitle>
-          </div>
-          <div className="flex gap-1">
-            <Button
-              variant="neutral-ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onEdit}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="neutral-ghost"
-              size="icon"
-              className="h-8 w-8 text-destructive"
-              onClick={onDelete}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+      <CardHeader className="pb-1 -mt-1 pl-3">
+        <div className="flex items-center gap-1">
+          <CardTitle className="text-lg capitalize">{tagType.name}</CardTitle>
+          <div className="flex-1" />
+          <Button
+            variant="neutral-ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onEdit}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="neutral-ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </CardHeader>
-      <CardContent ref={setNodeRef}>
+      <CardContent ref={setNodeRef} className="pl-3">
         <SortableContext
           items={sortedTypeTags.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1">
             {sortedTypeTags.map((tag) => (
               <DraggableTagBadge key={tag.id} tag={tag} tagType={tagType} />
             ))}
-            <Button
-              variant="neutral-ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={onAddTag}
-            >
-              <Plus className="h-3 w-3 mr-1" />
+            <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
+              <Plus className="h-3 w-3" />
               Add
             </Button>
           </div>
@@ -319,43 +311,42 @@ function TagSettings() {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="space-y-4">
-        <Toolbar>
-          <Button variant="neutral-ghost" size="icon" onClick={goBack}>
-            <ArrowLeft className="h-5 w-5" />
+      <Toolbar>
+        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <h1 className="">Tags</h1>
+      </Toolbar>
+
+      <div className="px-6 pt-3 pb-5 space-y-2">
+        <div className="grid grid-cols-[1fr_auto] gap-2">
+          <div>
+            <Label htmlFor="newTagTypeColor">Color</Label>
+            <ColorSelect
+              id="newTagTypeColor"
+              value={newTagTypeColor}
+              onChange={setNewTagTypeColor}
+            />
+          </div>
+          <div>
+            <Label htmlFor="newTagTypeName">Name</Label>
+            <Input
+              id="newTagTypeName"
+              placeholder="e.g., Ingredient type, Storage method"
+              value={newTagTypeName}
+              onChange={(e) => setNewTagTypeName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
+            />
+          </div>
+        </div>
+        <div className="flex">
+          <Button onClick={handleAddTagType} className="flex-1">
+            <Plus className="h-4 w-4" />
+            New Tag Type
           </Button>
-          <h1 className="">Tags</h1>
-        </Toolbar>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Add Tag Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g., Ingredient type, Storage method"
-                  value={newTagTypeName}
-                  onChange={(e) => setNewTagTypeName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
-                />
-                <Button onClick={handleAddTagType}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="newTagTypeColor">Color</Label>
-                <ColorSelect
-                  id="newTagTypeColor"
-                  value={newTagTypeColor}
-                  onChange={setNewTagTypeColor}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+        </div>
+      </div>
+      <div className="space-y-px pb-4">
         {[...tagTypes]
           .sort((a, b) =>
             a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
@@ -380,50 +371,50 @@ function TagSettings() {
               />
             )
           })}
-
-        {/* Add Tag Dialog */}
-        <AddTagDialog
-          open={!!addTagDialog}
-          tagName={newTagName}
-          onTagNameChange={setNewTagName}
-          onAdd={handleAddTag}
-          onClose={() => setAddTagDialog(null)}
-        />
-
-        {/* Edit TagType Dialog */}
-        <EditTagTypeDialog
-          tagType={editTagType}
-          name={editTagTypeName}
-          color={editTagTypeColor}
-          onNameChange={setEditTagTypeName}
-          onColorChange={setEditTagTypeColor}
-          onSave={handleEditTagType}
-          onClose={() => setEditTagType(null)}
-        />
-
-        {/* Confirm Delete TagType Dialog */}
-        <ConfirmDialog
-          open={!!tagTypeToDelete}
-          onOpenChange={(open) => !open && setTagTypeToDelete(null)}
-          title={`Delete "${tagTypeToDelete?.name}"?`}
-          description={`This will delete "${tagTypeToDelete?.name}" and its ${tagTypeTagCount} tag${tagTypeTagCount === 1 ? '' : 's'}, removing them from all assigned items.`}
-          confirmLabel="Delete"
-          onConfirm={handleDeleteTagType}
-          destructive
-        />
-
-        {/* Drag Overlay - shows preview of tag being dragged */}
-        <DragOverlay>
-          {activeTag &&
-            (() => {
-              const tag = tags.find((t) => t.id === activeTag.id)
-              const tagType = tagTypes.find((tt) => tt.id === activeTag.typeId)
-              return tag && tagType ? (
-                <TagBadge tag={tag} tagType={tagType} />
-              ) : null
-            })()}
-        </DragOverlay>
       </div>
+
+      {/* Add Tag Dialog */}
+      <AddTagDialog
+        open={!!addTagDialog}
+        tagName={newTagName}
+        onTagNameChange={setNewTagName}
+        onAdd={handleAddTag}
+        onClose={() => setAddTagDialog(null)}
+      />
+
+      {/* Edit TagType Dialog */}
+      <EditTagTypeDialog
+        tagType={editTagType}
+        name={editTagTypeName}
+        color={editTagTypeColor}
+        onNameChange={setEditTagTypeName}
+        onColorChange={setEditTagTypeColor}
+        onSave={handleEditTagType}
+        onClose={() => setEditTagType(null)}
+      />
+
+      {/* Confirm Delete TagType Dialog */}
+      <ConfirmDialog
+        open={!!tagTypeToDelete}
+        onOpenChange={(open) => !open && setTagTypeToDelete(null)}
+        title={`Delete "${tagTypeToDelete?.name}"?`}
+        description={`This will delete "${tagTypeToDelete?.name}" and its ${tagTypeTagCount} tag${tagTypeTagCount === 1 ? '' : 's'}, removing them from all assigned items.`}
+        confirmLabel="Delete"
+        onConfirm={handleDeleteTagType}
+        destructive
+      />
+
+      {/* Drag Overlay - shows preview of tag being dragged */}
+      <DragOverlay>
+        {activeTag &&
+          (() => {
+            const tag = tags.find((t) => t.id === activeTag.id)
+            const tagType = tagTypes.find((tt) => tt.id === activeTag.typeId)
+            return tag && tagType ? (
+              <TagBadge tag={tag} tagType={tagType} />
+            ) : null
+          })()}
+      </DragOverlay>
     </DndContext>
   )
 }

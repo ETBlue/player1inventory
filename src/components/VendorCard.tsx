@@ -12,8 +12,8 @@ interface VendorCardProps {
 
 export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
   return (
-    <Card>
-      <CardContent className="p-4 flex items-center justify-between">
+    <Card className="py-1">
+      <CardContent className="pl-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link
             to="/settings/vendors/$id"

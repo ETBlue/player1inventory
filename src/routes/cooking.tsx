@@ -163,7 +163,7 @@ function CookingPage() {
   const anyChecked = checkedRecipeIds.size > 0
 
   return (
-    <div className="space-y-4">
+    <div>
       <Toolbar className="justify-between">
         <div className="flex items-center gap-2">
           <Button
@@ -173,7 +173,7 @@ function CookingPage() {
             Done
           </Button>
           <Button
-            variant="neutral-outline"
+            variant="neutral-ghost"
             disabled={!anyChecked}
             onClick={() => setShowCancelDialog(true)}
           >
@@ -181,7 +181,7 @@ function CookingPage() {
           </Button>
         </div>
         <Button
-          variant="neutral-ghost"
+          variant="neutral-outline"
           onClick={() => navigate({ to: '/settings/recipes/new' })}
         >
           <Plus className="h-4 w-4" />
@@ -194,14 +194,14 @@ function CookingPage() {
           No recipes yet. Create your first recipe to get started.
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-px pb-4">
           {sortedRecipes.map((recipe) => {
             const isChecked = checkedRecipeIds.has(recipe.id)
             const recipeAmounts = sessionAmounts.get(recipe.id)
 
             return (
               <Card key={recipe.id}>
-                <CardContent className="p-4 space-y-3">
+                <CardContent>
                   {/* Recipe header row */}
                   <div className="flex items-center gap-3">
                     <Checkbox

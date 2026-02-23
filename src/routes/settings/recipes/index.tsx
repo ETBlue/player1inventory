@@ -40,7 +40,7 @@ function RecipeSettings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <Toolbar className="justify-between">
         <div className="flex items-center gap-2">
           <Button variant="neutral-ghost" size="icon" onClick={goBack}>
@@ -54,22 +54,22 @@ function RecipeSettings() {
         </Button>
       </Toolbar>
 
-      {sortedRecipes.length === 0 ? (
-        <p className="text-foreground-muted text-sm">
-          No recipes yet. Add your first recipe.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {sortedRecipes.map((recipe) => (
+      <div className="space-y-px pb-4">
+        {sortedRecipes.length === 0 ? (
+          <p className="text-foreground-muted text-sm">
+            No recipes yet. Add your first recipe.
+          </p>
+        ) : (
+          sortedRecipes.map((recipe) => (
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
               itemCount={recipe.items.length}
               onDelete={() => setRecipeToDelete(recipe)}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       <ConfirmDialog
         open={!!recipeToDelete}

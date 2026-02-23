@@ -42,7 +42,7 @@ function VendorSettings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <Toolbar className="justify-between">
         <div className="flex items-center gap-2">
           <Button variant="neutral-ghost" size="icon" onClick={goBack}>
@@ -56,22 +56,22 @@ function VendorSettings() {
         </Button>
       </Toolbar>
 
-      {sortedVendors.length === 0 ? (
-        <p className="text-foreground-muted text-sm">
-          No vendors yet. Add your first vendor.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {sortedVendors.map((vendor) => (
+      <div className="space-y-px pb-4">
+        {sortedVendors.length === 0 ? (
+          <p className="text-foreground-muted text-sm">
+            No vendors yet. Add your first vendor.
+          </p>
+        ) : (
+          sortedVendors.map((vendor) => (
             <VendorCard
               key={vendor.id}
               vendor={vendor}
               itemCount={vendorCounts.get(vendor.id) ?? 0}
               onDelete={() => setVendorToDelete(vendor)}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       <ConfirmDialog
         open={!!vendorToDelete}
