@@ -782,6 +782,90 @@ describe('getTagCountByType', () => {
   })
 })
 
+describe('Item cascade operations', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.inventoryLogs.clear()
+    await db.cartItems.clear()
+    await db.shoppingCarts.clear()
+  })
+
+  it('deleteItem cascades to inventory logs', async () => {
+    // Given an item with inventory logs
+    const item = await createItem({
+      name: 'Test Item',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packageUnit: 'package',
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: 5,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: -2,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+
+    // When item is deleted
+    await deleteItem(item.id)
+
+    // Then inventory logs are also deleted
+    const logs = await db.inventoryLogs
+      .where('itemId')
+      .equals(item.id)
+      .toArray()
+    expect(logs).toHaveLength(0)
+  })
+
+  it('deleteItem cascades to cart items', async () => {
+    // Given an item in a shopping cart
+    const item = await createItem({
+      name: 'Test Item',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packageUnit: 'package',
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const cart = await db.shoppingCarts.add({
+      id: crypto.randomUUID(),
+      status: 'active',
+      createdAt: new Date(),
+    })
+    await db.cartItems.add({
+      id: crypto.randomUUID(),
+      cartId: cart,
+      itemId: item.id,
+      quantity: 3,
+    })
+
+    // When item is deleted
+    await deleteItem(item.id)
+
+    // Then cart items are also deleted
+    const cartItems = await db.cartItems
+      .where('itemId')
+      .equals(item.id)
+      .toArray()
+    expect(cartItems).toHaveLength(0)
+  })
+})
+
 describe('Recipe operations', () => {
   beforeEach(async () => {
     await db.recipes.clear()
