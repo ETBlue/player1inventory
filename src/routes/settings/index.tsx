@@ -13,15 +13,15 @@ function Settings() {
   const { preference, theme, setPreference } = useTheme()
 
   return (
-    <div className="space-y-4">
+    <div>
       <Toolbar>
         <h1 className="px-3 py-2">Settings</h1>
       </Toolbar>
 
-      <div className="space-y-2">
+      <div className="space-y-px">
         {/* Theme Control Card */}
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="px-3 py-1">
             <div className="flex items-center gap-3 mb-3">
               {theme === 'dark' ? (
                 <Moon className="h-5 w-5 text-foreground-muted" />
@@ -36,11 +36,11 @@ function Settings() {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex">
               <Button
                 variant={preference === 'light' ? 'neutral' : 'neutral-outline'}
                 onClick={() => setPreference('light')}
-                className="flex-1"
+                className="flex-1 rounded-tr-none rounded-br-none"
               >
                 Light
               </Button>
@@ -49,14 +49,14 @@ function Settings() {
                   preference === 'system' ? 'neutral' : 'neutral-outline'
                 }
                 onClick={() => setPreference('system')}
-                className="flex-1"
+                className="flex-1 rounded-none -ml-px -mr-px"
               >
                 System
               </Button>
               <Button
                 variant={preference === 'dark' ? 'neutral' : 'neutral-outline'}
                 onClick={() => setPreference('dark')}
-                className="flex-1"
+                className="flex-1 rounded-tl-none rounded-bl-none"
               >
                 Dark
               </Button>
@@ -65,9 +65,9 @@ function Settings() {
         </Card>
 
         {/* Tags Card */}
-        <Link to="/settings/tags">
-          <Card className="hover:bg-background-surface/50 transition-colors">
-            <CardContent className="p-4 flex items-center justify-between">
+        <Link to="/settings/tags" className="block">
+          <Card>
+            <CardContent className="px-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Tags className="h-5 w-5 text-foreground-muted" />
                 <div>
@@ -83,9 +83,9 @@ function Settings() {
         </Link>
 
         {/* Vendors Card */}
-        <Link to="/settings/vendors">
-          <Card className="hover:bg-background-surface/50 transition-colors">
-            <CardContent className="p-4 flex items-center justify-between">
+        <Link to="/settings/vendors" className="block">
+          <Card>
+            <CardContent className="px-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Store className="h-5 w-5 text-foreground-muted" />
                 <div>
@@ -101,9 +101,9 @@ function Settings() {
         </Link>
 
         {/* Recipes Card */}
-        <Link to="/settings/recipes">
-          <Card className="hover:bg-background-surface/50 transition-colors">
-            <CardContent className="p-4 flex items-center justify-between">
+        <Link to="/settings/recipes" className="block">
+          <Card>
+            <CardContent className="px-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <CookingPot className="h-5 w-5 text-foreground-muted" />
                 <div>
