@@ -117,14 +117,14 @@ describe('Shopping page', () => {
     // When user checks the checkbox
     const user = userEvent.setup()
     const checkbox = screen.getByRole('checkbox', {
-      name: /Add Butter to cart/i,
+      name: /Add Butter/i,
     })
     await user.click(checkbox)
 
     // Then the item moves to the cart section
     await waitFor(() => {
       expect(
-        screen.getByRole('checkbox', { name: /Remove Butter from cart/i }),
+        screen.getByRole('checkbox', { name: /Remove Butter/i }),
       ).toBeChecked()
     })
   })
@@ -154,20 +154,18 @@ describe('Shopping page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('checkbox', { name: /Remove Cheese from cart/i }),
+        screen.getByRole('checkbox', { name: /Remove Cheese/i }),
       ).toBeChecked()
     })
 
     // When user unchecks the checkbox
     const user = userEvent.setup()
-    await user.click(
-      screen.getByRole('checkbox', { name: /Remove Cheese from cart/i }),
-    )
+    await user.click(screen.getByRole('checkbox', { name: /Remove Cheese/i }))
 
     // Then the item is removed from cart
     await waitFor(() => {
       expect(
-        screen.getByRole('checkbox', { name: /Add Cheese to cart/i }),
+        screen.getByRole('checkbox', { name: /Add Cheese/i }),
       ).not.toBeChecked()
     })
   })
@@ -293,7 +291,7 @@ describe('Shopping page', () => {
       ).not.toBeInTheDocument()
     })
     expect(
-      screen.getByRole('checkbox', { name: /Remove Butter from cart/i }),
+      screen.getByRole('checkbox', { name: /Remove Butter/i }),
     ).toBeInTheDocument()
   })
 
@@ -345,7 +343,7 @@ describe('Shopping page', () => {
     // Then abandonCart was called (cart items removed) and route stays at /shopping
     await waitFor(() => {
       expect(
-        screen.queryByRole('checkbox', { name: /Remove Butter from cart/i }),
+        screen.queryByRole('checkbox', { name: /Remove Butter/i }),
       ).not.toBeInTheDocument()
     })
     expect(router.state.location.pathname).toBe('/shopping')
@@ -431,7 +429,7 @@ describe('Shopping page', () => {
       ).not.toBeInTheDocument()
     })
     expect(
-      screen.getByRole('checkbox', { name: /Remove Butter from cart/i }),
+      screen.getByRole('checkbox', { name: /Remove Butter/i }),
     ).toBeInTheDocument()
   })
 
@@ -482,7 +480,7 @@ describe('Shopping page', () => {
     // Then checkout was called (cart items removed) and route stays at /shopping
     await waitFor(() => {
       expect(
-        screen.queryByRole('checkbox', { name: /Remove Butter from cart/i }),
+        screen.queryByRole('checkbox', { name: /Remove Butter/i }),
       ).not.toBeInTheDocument()
     })
     expect(router.state.location.pathname).toBe('/shopping')

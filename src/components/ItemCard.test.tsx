@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
-import type { CartItem, Item, Tag, TagType } from '@/types'
+import type { Item, Tag, TagType } from '@/types'
 import { TagColor } from '@/types'
 import { ItemCard } from './ItemCard'
 
@@ -160,8 +160,6 @@ describe('ItemCard - Tag Sorting', () => {
         quantity={5}
         tags={tags}
         tagTypes={tagTypes}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         showTags={true}
       />,
     )
@@ -207,8 +205,6 @@ describe('ItemCard - Tag Sorting', () => {
         tags={[]}
         tagTypes={[]}
         estimatedDueDate={futureDate}
-        onConsume={() => {}}
-        onAdd={() => {}}
       />,
     )
 
@@ -246,8 +242,6 @@ describe('ItemCard - Tag Sorting', () => {
         tags={[]}
         tagTypes={[]}
         estimatedDueDate={soonDate}
-        onConsume={() => {}}
-        onAdd={() => {}}
       />,
     )
 
@@ -286,8 +280,6 @@ describe('ItemCard - Tag Sorting', () => {
         quantity={1600} // 3*500 + 100
         tags={[]}
         tagTypes={[]}
-        onConsume={() => {}}
-        onAdd={() => {}}
       />,
     )
 
@@ -312,14 +304,7 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard
-        item={item as Item}
-        quantity={5.5}
-        tags={[]}
-        tagTypes={[]}
-        onConsume={() => {}}
-        onAdd={() => {}}
-      />,
+      <ItemCard item={item as Item} quantity={5.5} tags={[]} tagTypes={[]} />,
     )
 
     // Should show packed quantity without conversion: 5 packs
@@ -350,8 +335,6 @@ describe('ItemCard - Tag Sorting', () => {
         quantity={2000} // 2*1000
         tags={[]}
         tagTypes={[]}
-        onConsume={() => {}}
-        onAdd={() => {}}
       />,
     )
 
@@ -376,13 +359,6 @@ describe('ItemCard - Shopping mode', () => {
     updatedAt: new Date(),
   }
 
-  const mockCartItem: CartItem = {
-    id: 'ci-1',
-    cartId: 'cart-1',
-    itemId: 'item-1',
-    quantity: 2,
-  }
-
   it('shows unchecked checkbox when not in cart (shopping mode)', async () => {
     await renderWithRouter(
       <ItemCard
@@ -390,14 +366,14 @@ describe('ItemCard - Shopping mode', () => {
         quantity={1}
         tags={[]}
         tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         mode="shopping"
+        isChecked={false}
+        onCheckboxToggle={vi.fn()}
       />,
     )
 
     const checkbox = screen.getByRole('checkbox', {
-      name: /Add Milk to cart/i,
+      name: /Add Milk/i,
     })
     expect(checkbox).not.toBeChecked()
   })
@@ -409,17 +385,16 @@ describe('ItemCard - Shopping mode', () => {
         quantity={1}
         tags={[]}
         tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         mode="shopping"
-        cartItem={mockCartItem}
-        onToggleCart={vi.fn()}
-        onUpdateCartQuantity={vi.fn()}
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={2}
+        onAmountChange={vi.fn()}
       />,
     )
 
     const checkbox = screen.getByRole('checkbox', {
-      name: /Remove Milk from cart/i,
+      name: /Remove Milk/i,
     })
     expect(checkbox).toBeChecked()
   })
@@ -431,12 +406,11 @@ describe('ItemCard - Shopping mode', () => {
         quantity={1}
         tags={[]}
         tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         mode="shopping"
-        cartItem={mockCartItem}
-        onToggleCart={vi.fn()}
-        onUpdateCartQuantity={vi.fn()}
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={2}
+        onAmountChange={vi.fn()}
       />,
     )
 
@@ -449,9 +423,9 @@ describe('ItemCard - Shopping mode', () => {
     ).toBeInTheDocument()
   })
 
-  it('calls onToggleCart when checkbox is clicked', async () => {
+  it('calls onCheckboxToggle when checkbox is clicked', async () => {
     const user = userEvent.setup()
-    const onToggleCart = vi.fn()
+    const onCheckboxToggle = vi.fn()
 
     await renderWithRouter(
       <ItemCard
@@ -459,20 +433,19 @@ describe('ItemCard - Shopping mode', () => {
         quantity={1}
         tags={[]}
         tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         mode="shopping"
-        onToggleCart={onToggleCart}
+        isChecked={false}
+        onCheckboxToggle={onCheckboxToggle}
       />,
     )
 
     await user.click(screen.getByRole('checkbox'))
-    expect(onToggleCart).toHaveBeenCalledOnce()
+    expect(onCheckboxToggle).toHaveBeenCalledOnce()
   })
 
-  it('calls onUpdateCartQuantity with incremented value when + clicked', async () => {
+  it('calls onAmountChange with +1 when + clicked', async () => {
     const user = userEvent.setup()
-    const onUpdateCartQuantity = vi.fn()
+    const onAmountChange = vi.fn()
 
     await renderWithRouter(
       <ItemCard
@@ -480,36 +453,32 @@ describe('ItemCard - Shopping mode', () => {
         quantity={1}
         tags={[]}
         tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         mode="shopping"
-        cartItem={mockCartItem}
-        onToggleCart={vi.fn()}
-        onUpdateCartQuantity={onUpdateCartQuantity}
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={2}
+        onAmountChange={onAmountChange}
       />,
     )
 
     await user.click(
       screen.getByRole('button', { name: /Increase quantity of Milk/i }),
     )
-    expect(onUpdateCartQuantity).toHaveBeenCalledWith(3) // 2 + 1
+    expect(onAmountChange).toHaveBeenCalledWith(1)
   })
 
   it('- button is disabled at quantity 1 (shopping mode)', async () => {
-    const cartItemQty1 = { ...mockCartItem, quantity: 1 }
-
     await renderWithRouter(
       <ItemCard
         item={mockItem}
         quantity={1}
         tags={[]}
         tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
         mode="shopping"
-        cartItem={cartItemQty1}
-        onToggleCart={vi.fn()}
-        onUpdateCartQuantity={vi.fn()}
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={1}
+        onAmountChange={vi.fn()}
       />,
     )
 
@@ -521,14 +490,7 @@ describe('ItemCard - Shopping mode', () => {
 
   it('does not show checkbox in pantry mode (default)', async () => {
     await renderWithRouter(
-      <ItemCard
-        item={mockItem}
-        quantity={1}
-        tags={[]}
-        tagTypes={[]}
-        onConsume={vi.fn()}
-        onAdd={vi.fn()}
-      />,
+      <ItemCard item={mockItem} quantity={1} tags={[]} tagTypes={[]} />,
     )
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()

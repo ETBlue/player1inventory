@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { getCurrentQuantity, isInactive } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
-import type { CartItem, Item, Tag, TagType } from '@/types'
+import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
   item: Item
@@ -16,15 +16,16 @@ interface ItemCardProps {
   tags: Tag[]
   tagTypes: TagType[]
   estimatedDueDate?: Date
-  onConsume: () => void
-  onAdd: () => void
   onTagClick?: (tagId: string) => void
   showTags?: boolean
-  // Shopping mode props
-  mode?: 'pantry' | 'shopping'
-  cartItem?: CartItem
-  onToggleCart?: () => void
-  onUpdateCartQuantity?: (qty: number) => void
+  mode?: 'pantry' | 'shopping' | 'tag-assignment' | 'recipe-assignment'
+  // Unified behavior props (mode-agnostic)
+  isChecked?: boolean
+  onCheckboxToggle?: () => void
+  controlAmount?: number // shown in right-side controls (cart qty, recipe amount)
+  minControlAmount?: number // minimum before minus disables (default: 1)
+  onAmountChange?: (delta: number) => void
+  disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
 }
 
 export function ItemCard({
@@ -33,14 +34,15 @@ export function ItemCard({
   tags,
   tagTypes,
   estimatedDueDate,
-  onConsume,
-  onAdd,
   onTagClick,
   showTags = true,
   mode = 'pantry',
-  cartItem,
-  onToggleCart,
-  onUpdateCartQuantity,
+  isChecked,
+  onCheckboxToggle,
+  controlAmount,
+  minControlAmount = 1,
+  onAmountChange,
+  disabled,
 }: ItemCardProps) {
   const currentQuantity = getCurrentQuantity(item)
   const status =
@@ -55,24 +57,32 @@ export function ItemCard({
       ? item.packedQuantity * item.amountPerPackage
       : item.packedQuantity
 
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    controlAmount !== undefined &&
+    !onAmountChange
+  ) {
+    console.warn('ItemCard: controlAmount requires onAmountChange to function.')
+  }
+
   return (
     <Card
       variant={status === 'ok' ? 'default' : status}
-      className={cn(mode === 'shopping' ? 'ml-10 mr-28' : '')}
+      className={cn(
+        onCheckboxToggle ? 'ml-10' : '',
+        controlAmount !== undefined ? 'mr-28' : '',
+      )}
     >
-      {mode === 'shopping' && (
+      {onCheckboxToggle && (
         <Checkbox
-          checked={!!cartItem}
-          onCheckedChange={() => onToggleCart?.()}
-          aria-label={
-            cartItem
-              ? `Remove ${item.name} from cart`
-              : `Add ${item.name} to cart`
-          }
+          checked={!!isChecked}
+          onCheckedChange={() => onCheckboxToggle()}
+          disabled={disabled}
+          aria-label={isChecked ? `Remove ${item.name}` : `Add ${item.name}`}
           className="absolute -ml-10"
         />
       )}
-      {mode === 'shopping' && cartItem && (
+      {controlAmount !== undefined && (
         <div className="flex items-stretch absolute -right-26 top-1.5">
           <Button
             variant="neutral-outline"
@@ -80,17 +90,15 @@ export function ItemCard({
             className="rounded-tr-none rounded-br-none"
             onClick={(e) => {
               e.preventDefault()
-              if (cartItem.quantity > 1) {
-                onUpdateCartQuantity?.(cartItem.quantity - 1)
-              }
+              onAmountChange?.(-1)
             }}
-            aria-label={`Decrease quantity of ${item.name} in cart`}
-            disabled={cartItem.quantity <= 1}
+            aria-label={`Decrease quantity of ${item.name}`}
+            disabled={disabled || (controlAmount ?? 0) <= minControlAmount}
           >
             <Minus className="h-4 w-4" />
           </Button>
           <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
-            {cartItem.quantity}
+            {controlAmount}
           </span>
           <Button
             variant="neutral-outline"
@@ -98,9 +106,10 @@ export function ItemCard({
             className="rounded-tl-none rounded-bl-none"
             onClick={(e) => {
               e.preventDefault()
-              onUpdateCartQuantity?.(cartItem.quantity + 1)
+              onAmountChange?.(1)
             }}
-            aria-label={`Increase quantity of ${item.name} in cart`}
+            aria-label={`Increase quantity of ${item.name}`}
+            disabled={disabled}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -147,7 +156,7 @@ export function ItemCard({
           />
         </Link>
 
-        {mode === 'pantry' && (
+        {onAmountChange && controlAmount === undefined && (
           <div>
             <Button
               className="rounded-tr-none rounded-br-none"
@@ -155,9 +164,9 @@ export function ItemCard({
               size="icon"
               onClick={(e) => {
                 e.preventDefault()
-                onConsume()
+                onAmountChange(-(item.consumeAmount ?? 1))
               }}
-              disabled={quantity <= 0}
+              disabled={disabled || quantity <= 0}
               aria-label={`Consume ${item.name}`}
             >
               <Minus className="h-4 w-4" />
@@ -168,8 +177,9 @@ export function ItemCard({
               size="icon"
               onClick={(e) => {
                 e.preventDefault()
-                onAdd()
+                onAmountChange(1)
               }}
+              disabled={disabled}
               aria-label={`Add ${item.name}`}
             >
               <Plus className="h-4 w-4" />
