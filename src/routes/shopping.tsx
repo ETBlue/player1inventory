@@ -146,7 +146,7 @@ function Shopping() {
           tagTypes={tagTypes}
           mode="shopping"
           isChecked={!!ci}
-          controlAmount={ci?.quantity}
+          {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
           onAmountChange={(delta) => {
             const newQty = (ci?.quantity ?? 0) + delta

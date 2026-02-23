@@ -57,11 +57,7 @@ export function ItemCard({
       ? item.packedQuantity * item.amountPerPackage
       : item.packedQuantity
 
-  if (
-    process.env.NODE_ENV !== 'production' &&
-    controlAmount !== undefined &&
-    !onAmountChange
-  ) {
+  if (import.meta.env.DEV && controlAmount !== undefined && !onAmountChange) {
     console.warn('ItemCard: controlAmount requires onAmountChange to function.')
   }
 

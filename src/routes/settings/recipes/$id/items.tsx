@@ -190,7 +190,9 @@ function RecipeItemsTab() {
               onCheckboxToggle={() =>
                 handleToggle(item.id, item.consumeAmount ?? 1)
               }
-              controlAmount={assigned ? getDefaultAmount(item.id) : undefined}
+              {...(assigned
+                ? { controlAmount: getDefaultAmount(item.id) }
+                : {})}
               minControlAmount={0}
               onAmountChange={(delta) =>
                 handleAdjustDefaultAmount(item.id, delta)
