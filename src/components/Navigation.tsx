@@ -12,11 +12,12 @@ const navItems = [
 export function Navigation() {
   const location = useLocation()
 
-  // Hide navigation on fullscreen pages (items, tags, vendors)
+  // Hide navigation on fullscreen pages (items, tags, vendors, recipes)
   const isFullscreenPage =
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
-    location.pathname.startsWith('/settings/vendors')
+    location.pathname.startsWith('/settings/vendors') ||
+    location.pathname.startsWith('/settings/recipes')
   if (isFullscreenPage) {
     return null
   }
