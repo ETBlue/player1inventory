@@ -216,7 +216,7 @@ function VendorItemsTab() {
       {(filtersVisible || hasActiveFilters) && (
         <FilterStatus
           filteredCount={filteredItems.length}
-          totalCount={items.length}
+          totalCount={searchFiltered.length}
           hasActiveFilters={hasActiveFilters}
           onClearAll={() => setFilterState({})}
         />
@@ -247,6 +247,11 @@ function VendorItemsTab() {
             />
           )
         })}
+        {filteredItems.length === 0 && hasActiveFilters && !search.trim() && (
+          <p className="text-sm text-foreground-muted py-4 px-1">
+            No items match the current filters.
+          </p>
+        )}
         {filteredItems.length === 0 && search.trim() && (
           <button
             type="button"

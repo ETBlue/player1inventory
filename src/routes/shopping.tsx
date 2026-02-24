@@ -303,6 +303,14 @@ function Shopping() {
             </SelectContent>
           </Select>
         )}
+        <Button
+          size="icon"
+          variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
+          onClick={() => setFiltersVisible((v) => !v)}
+          aria-label="Toggle filters"
+        >
+          <Filter />
+        </Button>
         <div className="flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -351,19 +359,11 @@ function Shopping() {
               setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
             }
             aria-label="Toggle sort direction"
+            className="mr-3"
           >
             {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
           </Button>
         </div>
-        <Button
-          size="icon"
-          variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
-          className="mr-3 flex-shrink-0"
-          onClick={() => setFiltersVisible((v) => !v)}
-          aria-label="Toggle filters"
-        >
-          <Filter />
-        </Button>
       </div>
       {filtersVisible && (
         <ItemFilters

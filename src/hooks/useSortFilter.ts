@@ -73,12 +73,15 @@ function loadUiPrefs(storageKey: string): UiPrefs {
 }
 
 export function useSortFilter(storageKey: string) {
-  const [sortBy, setSortBy] = useState<SortField>(
-    () => loadSortPrefs(storageKey).sortBy,
+  const [sortPrefs, setSortPrefsState] = useState(() =>
+    loadSortPrefs(storageKey),
   )
-  const [sortDirection, setSortDirection] = useState<SortDirection>(
-    () => loadSortPrefs(storageKey).sortDirection,
-  )
+  const sortBy = sortPrefs.sortBy
+  const sortDirection = sortPrefs.sortDirection
+  const setSortBy = (field: SortField) =>
+    setSortPrefsState((prev) => ({ ...prev, sortBy: field }))
+  const setSortDirection = (dir: SortDirection) =>
+    setSortPrefsState((prev) => ({ ...prev, sortDirection: dir }))
   const [filterState, setFilterState] = useState<FilterState>(() =>
     loadFilterState(storageKey),
   )
