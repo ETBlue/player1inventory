@@ -595,32 +595,19 @@ describe('getDisplayQuantity', () => {
 })
 
 describe('getStockStatus', () => {
-  const makeItem = (refillThreshold: number): Item =>
-    ({
-      refillThreshold,
-      targetQuantity: 10,
-      tagIds: [],
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      targetUnit: 'package',
-      consumeAmount: 1,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }) as Item
-
   it('returns error when quantity is below threshold', () => {
-    expect(getStockStatus(makeItem(3), 1)).toBe('error')
+    expect(getStockStatus(1, 3)).toBe('error')
   })
 
   it('returns warning when quantity equals threshold', () => {
-    expect(getStockStatus(makeItem(3), 3)).toBe('warning')
+    expect(getStockStatus(3, 3)).toBe('warning')
   })
 
   it('returns ok when quantity is above threshold', () => {
-    expect(getStockStatus(makeItem(3), 5)).toBe('ok')
+    expect(getStockStatus(5, 3)).toBe('ok')
   })
 
   it('returns ok when threshold is zero (no tracking)', () => {
-    expect(getStockStatus(makeItem(0), 0)).toBe('ok')
+    expect(getStockStatus(0, 0)).toBe('ok')
   })
 })

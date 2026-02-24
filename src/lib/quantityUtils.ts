@@ -15,12 +15,11 @@ export function getCurrentQuantity(item: Item): number {
 }
 
 export function getStockStatus(
-  item: Item,
   quantity: number,
+  refillThreshold: number,
 ): 'error' | 'warning' | 'ok' {
-  if (item.refillThreshold > 0 && quantity === item.refillThreshold)
-    return 'warning'
-  if (quantity < item.refillThreshold) return 'error'
+  if (refillThreshold > 0 && quantity === refillThreshold) return 'warning'
+  if (quantity < refillThreshold) return 'error'
   return 'ok'
 }
 
