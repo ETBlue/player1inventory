@@ -268,3 +268,71 @@ describe('sortItems - stock by progress', () => {
     expect(sorted[1].id).toBe('1') // Treated as 1 (100%)
   })
 })
+
+describe('sortItems - stock by status group', () => {
+  const makeItem = (id: string, refillThreshold: number): Item => ({
+    id,
+    name: `Item ${id}`,
+    tagIds: [],
+    targetQuantity: 10,
+    refillThreshold,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    targetUnit: 'package',
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+
+  // Item A: qty=1, threshold=3 → error (10%)
+  // Item B: qty=3, threshold=3 → warning (30%)
+  // Item C: qty=8, threshold=3 → ok (80%)
+  const items = [makeItem('A', 3), makeItem('B', 3), makeItem('C', 3)]
+  const quantities = new Map([
+    ['A', 1],
+    ['B', 3],
+    ['C', 8],
+  ])
+
+  it('sorts error → warning → ok when ascending', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('sorts ok → warning → error when descending', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'desc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['C', 'B', 'A'])
+  })
+
+  it('sorts by percentage within the same status group', () => {
+    // Two error items: D at 20%, E at 10%
+    const twoErrors = [makeItem('D', 3), makeItem('E', 3)]
+    const twoQtys = new Map([
+      ['D', 2],
+      ['E', 1],
+    ])
+    const sorted = sortItems(
+      twoErrors,
+      twoQtys,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['E', 'D']) // 10% before 20%
+  })
+})
