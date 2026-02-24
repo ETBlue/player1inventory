@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { DeleteButton } from '@/components/DeleteButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,7 +13,13 @@ import {
 } from '@/components/ui/select'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useTagLayout } from '@/hooks/useTagLayout'
-import { useTags, useTagTypes, useUpdateTag } from '@/hooks/useTags'
+import {
+  useDeleteTag,
+  useItemCountByTag,
+  useTags,
+  useTagTypes,
+  useUpdateTag,
+} from '@/hooks/useTags'
 
 export const Route = createFileRoute('/settings/tags/$id/')({
   component: TagInfoTab,
@@ -26,6 +33,8 @@ function TagInfoTab() {
   const updateTag = useUpdateTag()
   const { registerDirtyState } = useTagLayout()
   const { goBack } = useAppNavigation()
+  const deleteTag = useDeleteTag()
+  const { data: affectedItemCount = 0 } = useItemCountByTag(id)
 
   const [name, setName] = useState('')
   const [typeId, setTypeId] = useState('')
@@ -60,6 +69,12 @@ function TagInfoTab() {
         },
       },
     )
+  }
+
+  const handleDelete = async () => {
+    deleteTag.mutate(id, {
+      onSuccess: () => goBack(),
+    })
   }
 
   // Don't render until we have both tag and tagTypes loaded
@@ -105,9 +120,32 @@ function TagInfoTab() {
         />
       </div>
 
-      <Button type="submit" disabled={!isDirty || updateTag.isPending}>
-        Save
+      <Button
+        type="submit"
+        disabled={!isDirty || updateTag.isPending}
+        className="w-full"
+      >
+        {updateTag.isPending ? 'Saving...' : 'Save Changes'}
       </Button>
+
+      <DeleteButton
+        trigger="Delete Tag"
+        buttonVariant="ghost"
+        buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+        dialogTitle="Delete Tag?"
+        dialogDescription={
+          <>
+            Are you sure you want to delete <strong>{tag.name}</strong>?
+            {affectedItemCount > 0 && (
+              <span className="block mt-2 text-sm text-muted-foreground">
+                This tag will be removed from {affectedItemCount} item
+                {affectedItemCount !== 1 ? 's' : ''}.
+              </span>
+            )}
+          </>
+        }
+        onDelete={handleDelete}
+      />
     </form>
   )
 }
