@@ -185,6 +185,15 @@ describe('Tag Detail - Items Tab', () => {
     await makeItem('Milk', [otherTag.id])
 
     renderItemsTab(tag.id)
+    const user = userEvent.setup()
+
+    // When user toggles tags visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle tags/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /toggle tags/i }))
 
     // Then the other tag appears as a badge
     await waitFor(() => {
@@ -348,7 +357,7 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
-  it('shows no results message when search has no matches', async () => {
+  it('user can see create prompt when search input has no matches', async () => {
     // Given a tag with items
     const tagType = await createTagType({
       name: 'Category',
@@ -373,6 +382,95 @@ describe('Tag Detail - Items Tab', () => {
     // Then the create row appears (zero-match state), not a "no results" message
     await waitFor(() => {
       expect(screen.getByText(/create "xyz"/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can see sort and filter toolbar controls', async () => {
+    // Given a tag exists
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When user navigates to the items tab
+    renderItemsTab(tag.id)
+
+    // Then sort and filter toolbar controls are visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /toggle tags/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /sort by criteria/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can sort items by name', async () => {
+    // Given a tag and items created out of alphabetical order
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    await makeItem('Yogurt')
+    await makeItem('Butter')
+    await makeItem('Milk')
+
+    // When user navigates to items tab (default sort is name asc)
+    renderItemsTab(tag.id)
+
+    // Then items are rendered in alphabetical order by name
+    await waitFor(() => {
+      const itemLinks = screen.getAllByRole('link', {
+        name: /butter|milk|yogurt/i,
+      })
+      const names = itemLinks.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/butter/i)
+      expect(names[1]).toMatch(/milk/i)
+      expect(names[2]).toMatch(/yogurt/i)
+    })
+  })
+
+  it('user can filter items using the tag filter', async () => {
+    // Given a primary tag and a second tag type used as a filter
+    const primaryTagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const primaryTag = await createTag({
+      name: 'Dairy',
+      typeId: primaryTagType.id,
+    })
+    const filterTagType = await createTagType({
+      name: 'Location',
+      color: TagColor.green,
+    })
+    await createTag({ name: 'Fridge', typeId: filterTagType.id })
+    await makeItem('Milk', [primaryTag.id])
+
+    const user = userEvent.setup()
+
+    // When user navigates to the items tab
+    renderItemsTab(primaryTag.id)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks the Filter button to show filters
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // Then the ItemFilters component renders with filter dropdowns for tag types that have tags
+    await waitFor(() => {
+      expect(screen.getByText(/location/i)).toBeInTheDocument()
     })
   })
 })
