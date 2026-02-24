@@ -5,6 +5,7 @@ import {
   consumeItem,
   getCurrentQuantity,
   getDisplayQuantity,
+  getStockStatus,
   isInactive,
   normalizeUnpacked,
   packUnpacked,
@@ -590,5 +591,36 @@ describe('getDisplayQuantity', () => {
 
     // 1.2 packed + 1.984 unpacked = 3.184 packages
     expect(getDisplayQuantity(item as Item)).toBe(3.184)
+  })
+})
+
+describe('getStockStatus', () => {
+  const makeItem = (refillThreshold: number): Item =>
+    ({
+      refillThreshold,
+      targetQuantity: 10,
+      tagIds: [],
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }) as Item
+
+  it('returns error when quantity is below threshold', () => {
+    expect(getStockStatus(makeItem(3), 1)).toBe('error')
+  })
+
+  it('returns warning when quantity equals threshold', () => {
+    expect(getStockStatus(makeItem(3), 3)).toBe('warning')
+  })
+
+  it('returns ok when quantity is above threshold', () => {
+    expect(getStockStatus(makeItem(3), 5)).toBe('ok')
+  })
+
+  it('returns ok when threshold is zero (no tracking)', () => {
+    expect(getStockStatus(makeItem(0), 0)).toBe('ok')
   })
 })

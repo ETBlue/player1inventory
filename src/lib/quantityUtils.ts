@@ -14,6 +14,16 @@ export function getCurrentQuantity(item: Item): number {
   return item.packedQuantity + item.unpackedQuantity
 }
 
+export function getStockStatus(
+  item: Item,
+  quantity: number,
+): 'error' | 'warning' | 'ok' {
+  if (item.refillThreshold > 0 && quantity === item.refillThreshold)
+    return 'warning'
+  if (quantity < item.refillThreshold) return 'error'
+  return 'ok'
+}
+
 export function getDisplayQuantity(item: Item): number {
   // Both package and measurement tracking use getCurrentQuantity
   // which already handles the unit conversion based on targetUnit
