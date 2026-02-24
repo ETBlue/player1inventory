@@ -1,8 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
+import { DeleteButton } from '@/components/DeleteButton'
 import type { ItemFormValues } from '@/components/ItemForm'
 import { ItemForm } from '@/components/ItemForm'
-import { useItem, useUpdateItem } from '@/hooks'
+import { useDeleteItem, useItem, useUpdateItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import type { Item } from '@/types'
@@ -82,6 +83,7 @@ function ItemDetailTab() {
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
+  const deleteItem = useDeleteItem()
   const { registerDirtyState } = useItemLayout()
   const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
@@ -102,13 +104,39 @@ function ItemDetailTab() {
     )
   }
 
+  const handleDelete = async () => {
+    deleteItem.mutate(item.id, {
+      onSuccess: () => goBack(),
+    })
+  }
+
   return (
-    <ItemForm
-      initialValues={formValues}
-      sections={['stock', 'info', 'advanced']}
-      onSubmit={handleSubmit}
-      onDirtyChange={registerDirtyState}
-      savedAt={savedAt}
-    />
+    <>
+      <ItemForm
+        initialValues={formValues}
+        sections={['stock', 'info', 'advanced']}
+        onSubmit={handleSubmit}
+        onDirtyChange={registerDirtyState}
+        savedAt={savedAt}
+      />
+
+      <DeleteButton
+        trigger="Delete Item"
+        buttonVariant="destructive-ghost"
+        buttonClassName="w-full mt-4"
+        dialogTitle="Delete Item?"
+        dialogDescription={
+          <>
+            <span className="block">
+              Are you sure you want to delete <strong>{item.name}</strong>?
+            </span>
+            <span className="block mt-2 text-sm text-muted-foreground">
+              This will permanently remove this item and its history.
+            </span>
+          </>
+        }
+        onDelete={handleDelete}
+      />
+    </>
   )
 }
