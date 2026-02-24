@@ -128,9 +128,9 @@ function ItemDetailTab() {
         dialogDescription={
           <>
             Are you sure you want to delete <strong>{item.name}</strong>?
-            <p className="mt-2 text-sm text-muted-foreground">
+            <span className="block mt-2 text-sm text-muted-foreground">
               This will permanently remove this item and its history.
-            </p>
+            </span>
           </>
         }
         onDelete={handleDelete}
