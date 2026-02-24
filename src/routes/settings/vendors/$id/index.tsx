@@ -1,9 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { DeleteButton } from '@/components/DeleteButton'
 import { VendorNameForm } from '@/components/VendorNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout } from '@/hooks/useVendorLayout'
-import { useUpdateVendor, useVendors } from '@/hooks/useVendors'
+import {
+  useDeleteVendor,
+  useItemCountByVendor,
+  useUpdateVendor,
+  useVendors,
+} from '@/hooks/useVendors'
 
 export const Route = createFileRoute('/settings/vendors/$id/')({
   component: VendorInfoTab,
@@ -16,6 +22,8 @@ function VendorInfoTab() {
   const updateVendor = useUpdateVendor()
   const { registerDirtyState } = useVendorLayout()
   const { goBack } = useAppNavigation()
+  const deleteVendor = useDeleteVendor()
+  const { data: affectedItemCount = 0 } = useItemCountByVendor(id)
 
   const [name, setName] = useState('')
   const [savedAt, setSavedAt] = useState(0)
@@ -47,15 +55,45 @@ function VendorInfoTab() {
     )
   }
 
+  const handleDelete = async () => {
+    if (!vendor) return
+    deleteVendor.mutate(id, {
+      onSuccess: () => {
+        goBack()
+      },
+    })
+  }
+
   if (!vendor) return null
 
   return (
-    <VendorNameForm
-      name={name}
-      onNameChange={setName}
-      onSave={handleSave}
-      isDirty={isDirty}
-      isPending={updateVendor.isPending}
-    />
+    <>
+      <VendorNameForm
+        name={name}
+        onNameChange={setName}
+        onSave={handleSave}
+        isDirty={isDirty}
+        isPending={updateVendor.isPending}
+      />
+      <div className="px-6 pb-6">
+        <DeleteButton
+          trigger="Delete Vendor"
+          buttonVariant="ghost"
+          buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+          dialogTitle="Delete Vendor?"
+          dialogDescription={
+            <>
+              {vendor.name}
+              <span className="block mt-2 text-sm text-muted-foreground">
+                {affectedItemCount > 0
+                  ? `This vendor will be removed from ${affectedItemCount} item${affectedItemCount === 1 ? '' : 's'}.`
+                  : 'This action cannot be undone.'}
+              </span>
+            </>
+          }
+          onDelete={handleDelete}
+        />
+      </div>
+    </>
   )
 }
