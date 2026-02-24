@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -77,6 +77,8 @@ function DraggableTagBadge({
     touchAction: 'none',
   }
 
+  const navigate = useNavigate()
+
   // Note: The drag listeners wrap the entire Link to enable dragging.
   // The 8px activation distance (set in sensors) ensures that:
   // - Short pointer movements (< 8px) trigger click navigation
@@ -84,19 +86,23 @@ function DraggableTagBadge({
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <div className="inline-flex items-center gap-1">
-        <Link
-          to="/settings/tags/$id"
-          params={{ id: tag.id }}
-          className="inline-block"
-        >
-          <TagBadge tag={tag} tagType={tagType} />
-        </Link>
+      <div className="inline-flex items-center">
+        <TagBadge
+          tag={tag}
+          tagType={tagType}
+          className="rounded-tr-none rounded-br-none"
+          onClick={() => {
+            navigate({
+              to: '/settings/tags/$id',
+              params: { id: tag.id },
+            })
+          }}
+        />
         <DeleteButton
-          trigger={<X className="h-3 w-3" />}
-          buttonVariant="ghost"
-          buttonSize="icon"
-          buttonClassName="h-4 w-4 p-0 hover:bg-destructive/20"
+          trigger={<X />}
+          buttonVariant="neutral-outline"
+          buttonSize="icon-xs"
+          buttonClassName="h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px"
           dialogTitle="Delete Tag?"
           dialogDescription={
             <>
@@ -141,7 +147,7 @@ function DroppableTagTypeCard({
       />
       <CardHeader className="pb-1 -mt-1 pl-3">
         <div className="flex items-center gap-1">
-          <CardTitle className="text-lg capitalize">{tagType.name}</CardTitle>
+          <CardTitle className="capitalize">{tagType.name}</CardTitle>
           <div className="flex-1" />
           <Button
             variant="neutral-ghost"
@@ -177,7 +183,7 @@ function DroppableTagTypeCard({
             ))}
             <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
               <Plus className="h-3 w-3" />
-              Add
+              New Tag
             </Button>
           </div>
         </SortableContext>
