@@ -16,11 +16,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { ColorSelect } from '@/components/ColorSelect'
+import { DeleteButton } from '@/components/DeleteButton'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { TagBadge } from '@/components/TagBadge'
 import { Toolbar } from '@/components/Toolbar'
@@ -34,6 +35,7 @@ import { useAppNavigation } from '@/hooks/useAppNavigation'
 import {
   useCreateTag,
   useCreateTagType,
+  useDeleteTag,
   useDeleteTagType,
   useTagCountByType,
   useTags,
@@ -48,7 +50,15 @@ export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
 })
 
-function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
+function DraggableTagBadge({
+  tag,
+  tagType,
+  onDelete,
+}: {
+  tag: Tag
+  tagType: TagType
+  onDelete: () => void
+}) {
   const {
     attributes,
     listeners,
@@ -74,13 +84,31 @@ function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <Link
-        to="/settings/tags/$id"
-        params={{ id: tag.id }}
-        className="inline-block"
-      >
-        <TagBadge tag={tag} tagType={tagType} />
-      </Link>
+      <div className="inline-flex items-center gap-1">
+        <Link
+          to="/settings/tags/$id"
+          params={{ id: tag.id }}
+          className="inline-block"
+        >
+          <TagBadge tag={tag} tagType={tagType} />
+        </Link>
+        <DeleteButton
+          trigger={<X className="h-3 w-3" />}
+          buttonVariant="ghost"
+          buttonSize="icon"
+          buttonClassName="h-4 w-4 p-0 hover:bg-destructive/20"
+          dialogTitle="Delete Tag?"
+          dialogDescription={
+            <>
+              {tag.name}
+              <span className="block mt-2 text-sm text-muted-foreground">
+                This tag will be removed from all assigned items.
+              </span>
+            </>
+          }
+          onDelete={onDelete}
+        />
+      </div>
     </div>
   )
 }
@@ -91,12 +119,14 @@ function DroppableTagTypeCard({
   onEdit,
   onDelete,
   onAddTag,
+  onDeleteTag,
 }: {
   tagType: TagType
   sortedTypeTags: Tag[]
   onEdit: () => void
   onDelete: () => void
   onAddTag: () => void
+  onDeleteTag: (tagId: string) => void
 }) {
   const { setNodeRef } = useDroppable({
     id: tagType.id,
@@ -138,7 +168,12 @@ function DroppableTagTypeCard({
         >
           <div className="flex flex-wrap gap-1">
             {sortedTypeTags.map((tag) => (
-              <DraggableTagBadge key={tag.id} tag={tag} tagType={tagType} />
+              <DraggableTagBadge
+                key={tag.id}
+                tag={tag}
+                tagType={tagType}
+                onDelete={() => onDeleteTag(tag.id)}
+              />
             ))}
             <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
               <Plus className="h-3 w-3" />
@@ -160,6 +195,7 @@ function TagSettings() {
   const deleteTagType = useDeleteTagType()
   const createTag = useCreateTag()
   const updateTag = useUpdateTag()
+  const deleteTag = useDeleteTag()
 
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
@@ -235,6 +271,10 @@ function TagSettings() {
       deleteTagType.mutate(tagTypeToDelete.id)
       setTagTypeToDelete(null)
     }
+  }
+
+  const handleDeleteTag = async (tagId: string) => {
+    deleteTag.mutate(tagId)
   }
 
   const handleDragStart = (event: DragEndEvent) => {
@@ -368,6 +408,7 @@ function TagSettings() {
                 }}
                 onDelete={() => setTagTypeToDelete(tagType)}
                 onAddTag={() => setAddTagDialog(tagType.id)}
+                onDeleteTag={handleDeleteTag}
               />
             )
           })}
