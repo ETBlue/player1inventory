@@ -1,9 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { DeleteButton } from '@/components/DeleteButton'
 import { RecipeNameForm } from '@/components/RecipeNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useRecipeLayout } from '@/hooks/useRecipeLayout'
-import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
+import {
+  useDeleteRecipe,
+  useRecipes,
+  useUpdateRecipe,
+} from '@/hooks/useRecipes'
 
 export const Route = createFileRoute('/settings/recipes/$id/')({
   component: RecipeInfoTab,
@@ -16,6 +21,7 @@ function RecipeInfoTab() {
   const updateRecipe = useUpdateRecipe()
   const { registerDirtyState } = useRecipeLayout()
   const { goBack } = useAppNavigation()
+  const deleteRecipe = useDeleteRecipe()
 
   const [name, setName] = useState('')
   const [savedAt, setSavedAt] = useState(0)
@@ -47,15 +53,43 @@ function RecipeInfoTab() {
     )
   }
 
+  const handleDelete = async () => {
+    if (!recipe) return
+    deleteRecipe.mutate(id, {
+      onSuccess: () => {
+        goBack()
+      },
+    })
+  }
+
   if (!recipe) return null
 
   return (
-    <RecipeNameForm
-      name={name}
-      onNameChange={setName}
-      onSave={handleSave}
-      isDirty={isDirty}
-      isPending={updateRecipe.isPending}
-    />
+    <>
+      <RecipeNameForm
+        name={name}
+        onNameChange={setName}
+        onSave={handleSave}
+        isDirty={isDirty}
+        isPending={updateRecipe.isPending}
+      />
+      <div className="px-6 pb-6">
+        <DeleteButton
+          trigger="Delete Recipe"
+          buttonVariant="ghost"
+          buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+          dialogTitle="Delete Recipe?"
+          dialogDescription={
+            <>
+              {recipe.name}
+              <span className="block mt-2 text-sm text-muted-foreground">
+                This action cannot be undone.
+              </span>
+            </>
+          }
+          onDelete={handleDelete}
+        />
+      </div>
+    </>
   )
 }

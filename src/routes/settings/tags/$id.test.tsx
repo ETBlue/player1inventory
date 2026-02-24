@@ -585,9 +585,9 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
     // Then delete dialog appears
     await waitFor(() => {
-      expect(screen.getByText('Delete tag?')).toBeInTheDocument()
+      expect(screen.getByText('Delete Tag?')).toBeInTheDocument()
       expect(
-        screen.getByText('This tag is not assigned to any items.'),
+        screen.getByText(/Are you sure you want to delete/i),
       ).toBeInTheDocument()
     })
   })
@@ -620,7 +620,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
     // Then dialog shows affected item count
     await waitFor(() => {
       expect(
-        screen.getByText(/2 items will lose this tag/i),
+        screen.getByText(/This tag will be removed from 2 items/i),
       ).toBeInTheDocument()
     })
   })
@@ -673,7 +673,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
     // Then dialog closes
     await waitFor(() => {
-      expect(screen.queryByText('Delete tag?')).not.toBeInTheDocument()
+      expect(screen.queryByText('Delete Tag?')).not.toBeInTheDocument()
     })
 
     // And tag is not deleted

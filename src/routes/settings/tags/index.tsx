@@ -15,12 +15,13 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AddTagDialog } from '@/components/AddTagDialog'
 import { ColorSelect } from '@/components/ColorSelect'
+import { DeleteButton } from '@/components/DeleteButton'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
 import { TagBadge } from '@/components/TagBadge'
 import { Toolbar } from '@/components/Toolbar'
@@ -34,6 +35,7 @@ import { useAppNavigation } from '@/hooks/useAppNavigation'
 import {
   useCreateTag,
   useCreateTagType,
+  useDeleteTag,
   useDeleteTagType,
   useTagCountByType,
   useTags,
@@ -48,7 +50,15 @@ export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
 })
 
-function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
+function DraggableTagBadge({
+  tag,
+  tagType,
+  onDelete,
+}: {
+  tag: Tag
+  tagType: TagType
+  onDelete: () => void
+}) {
   const {
     attributes,
     listeners,
@@ -67,6 +77,8 @@ function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
     touchAction: 'none',
   }
 
+  const navigate = useNavigate()
+
   // Note: The drag listeners wrap the entire Link to enable dragging.
   // The 8px activation distance (set in sensors) ensures that:
   // - Short pointer movements (< 8px) trigger click navigation
@@ -74,13 +86,35 @@ function DraggableTagBadge({ tag, tagType }: { tag: Tag; tagType: TagType }) {
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <Link
-        to="/settings/tags/$id"
-        params={{ id: tag.id }}
-        className="inline-block"
-      >
-        <TagBadge tag={tag} tagType={tagType} />
-      </Link>
+      <div className="inline-flex items-center">
+        <TagBadge
+          tag={tag}
+          tagType={tagType}
+          className="rounded-tr-none rounded-br-none"
+          onClick={() => {
+            navigate({
+              to: '/settings/tags/$id',
+              params: { id: tag.id },
+            })
+          }}
+        />
+        <DeleteButton
+          trigger={<X />}
+          buttonVariant="neutral-outline"
+          buttonSize="icon-xs"
+          buttonClassName="h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px"
+          dialogTitle="Delete Tag?"
+          dialogDescription={
+            <>
+              {tag.name}
+              <span className="block mt-2 text-sm text-muted-foreground">
+                This tag will be removed from all assigned items.
+              </span>
+            </>
+          }
+          onDelete={onDelete}
+        />
+      </div>
     </div>
   )
 }
@@ -91,12 +125,14 @@ function DroppableTagTypeCard({
   onEdit,
   onDelete,
   onAddTag,
+  onDeleteTag,
 }: {
   tagType: TagType
   sortedTypeTags: Tag[]
   onEdit: () => void
   onDelete: () => void
   onAddTag: () => void
+  onDeleteTag: (tagId: string) => void
 }) {
   const { setNodeRef } = useDroppable({
     id: tagType.id,
@@ -111,7 +147,7 @@ function DroppableTagTypeCard({
       />
       <CardHeader className="pb-1 -mt-1 pl-3">
         <div className="flex items-center gap-1">
-          <CardTitle className="text-lg capitalize">{tagType.name}</CardTitle>
+          <CardTitle className="capitalize">{tagType.name}</CardTitle>
           <div className="flex-1" />
           <Button
             variant="neutral-ghost"
@@ -138,11 +174,16 @@ function DroppableTagTypeCard({
         >
           <div className="flex flex-wrap gap-1">
             {sortedTypeTags.map((tag) => (
-              <DraggableTagBadge key={tag.id} tag={tag} tagType={tagType} />
+              <DraggableTagBadge
+                key={tag.id}
+                tag={tag}
+                tagType={tagType}
+                onDelete={() => onDeleteTag(tag.id)}
+              />
             ))}
             <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
               <Plus className="h-3 w-3" />
-              Add
+              New Tag
             </Button>
           </div>
         </SortableContext>
@@ -160,6 +201,7 @@ function TagSettings() {
   const deleteTagType = useDeleteTagType()
   const createTag = useCreateTag()
   const updateTag = useUpdateTag()
+  const deleteTag = useDeleteTag()
 
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
@@ -235,6 +277,10 @@ function TagSettings() {
       deleteTagType.mutate(tagTypeToDelete.id)
       setTagTypeToDelete(null)
     }
+  }
+
+  const handleDeleteTag = async (tagId: string) => {
+    deleteTag.mutate(tagId)
   }
 
   const handleDragStart = (event: DragEndEvent) => {
@@ -368,6 +414,7 @@ function TagSettings() {
                 }}
                 onDelete={() => setTagTypeToDelete(tagType)}
                 onAddTag={() => setAddTagDialog(tagType.id)}
+                onDeleteTag={handleDeleteTag}
               />
             )
           })}

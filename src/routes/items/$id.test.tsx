@@ -1011,14 +1011,16 @@ describe('Item detail page - delete dialog', () => {
     await userEvent.click(deleteButton)
 
     // Then delete dialog appears
-    expect(screen.getByText('Delete item?')).toBeInTheDocument()
+    expect(screen.getByText('Delete Item?')).toBeInTheDocument()
     expect(
-      screen.getByText('This item has no related data.'),
+      screen.getByText(
+        /This will permanently remove this item and its history/i,
+      ),
     ).toBeInTheDocument()
   })
 
-  it('user can see related data counts in delete dialog', async () => {
-    // Given an item with 2 inventory logs and 1 cart entry
+  it('user can see delete confirmation dialog', async () => {
+    // Given an item with related data
     const item = await createItem({
       name: 'Milk',
       tagIds: [],
@@ -1030,14 +1032,6 @@ describe('Item detail page - delete dialog', () => {
       itemId: item.id,
       delta: 5,
       quantity: 5,
-      occurredAt: new Date(),
-      createdAt: new Date(),
-    })
-    await db.inventoryLogs.add({
-      id: crypto.randomUUID(),
-      itemId: item.id,
-      delta: -2,
-      quantity: 3,
       occurredAt: new Date(),
       createdAt: new Date(),
     })
@@ -1060,11 +1054,13 @@ describe('Item detail page - delete dialog', () => {
     })
     await userEvent.click(deleteButton)
 
-    // Then dialog shows related data counts
-    await waitFor(() => {
-      expect(screen.getByText(/2 inventory logs/i)).toBeInTheDocument()
-      expect(screen.getByText(/1 cart entry/i)).toBeInTheDocument()
-    })
+    // Then dialog shows warning message (not detailed counts)
+    expect(screen.getByText('Delete Item?')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /This will permanently remove this item and its history/i,
+      ),
+    ).toBeInTheDocument()
   })
 
   it('user can confirm deletion and related data is cascaded', async () => {
