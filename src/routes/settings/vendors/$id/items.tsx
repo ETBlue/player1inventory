@@ -1,12 +1,19 @@
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
+import { FilterStatus } from '@/components/FilterStatus'
+import { ItemCard } from '@/components/ItemCard'
+import { ItemFilters } from '@/components/ItemFilters'
+import { SortFilterToolbar } from '@/components/SortFilterToolbar'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
-import { useVendors } from '@/hooks/useVendors'
+import { getLastPurchaseDate } from '@/db/operations'
+import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
+import { useSortFilter } from '@/hooks/useSortFilter'
+import { useTags } from '@/hooks/useTags'
+import { filterItems } from '@/lib/filterUtils'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { sortItems } from '@/lib/sortUtils'
 
 export const Route = createFileRoute('/settings/vendors/$id/items')({
   component: VendorItemsTab,
@@ -15,29 +22,125 @@ export const Route = createFileRoute('/settings/vendors/$id/items')({
 function VendorItemsTab() {
   const { id: vendorId } = Route.useParams()
   const { data: items = [] } = useItems()
-  const { data: vendors = [] } = useVendors()
+  const { data: tags = [] } = useTags()
+  const { data: tagTypes = [] } = useTagTypes()
   const updateItem = useUpdateItem()
+  const createItem = useCreateItem()
+
+  const {
+    sortBy,
+    sortDirection,
+    setSortBy,
+    setSortDirection,
+    filterState,
+    setFilterState,
+    filtersVisible,
+    setFiltersVisible,
+    tagsVisible,
+    setTagsVisible,
+  } = useSortFilter('vendor-items')
 
   const [search, setSearch] = useState('')
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-  const createItem = useCreateItem()
-
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const vendorMap = useMemo(
-    () => Object.fromEntries(vendors.map((v) => [v.id, v])),
-    [vendors],
+  const tagMap = useMemo(
+    () => Object.fromEntries(tags.map((t) => [t.id, t])),
+    [tags],
   )
+
+  const { data: allQuantities } = useQuery({
+    queryKey: ['items', 'quantities'],
+    queryFn: async () => {
+      const map = new Map<string, number>()
+      for (const item of items) {
+        map.set(item.id, getCurrentQuantity(item))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const { data: allExpiryDates } = useQuery({
+    queryKey: ['items', 'expiryDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | undefined>()
+      for (const item of items) {
+        const lastPurchase = await getLastPurchaseDate(item.id)
+        const estimatedDate =
+          item.estimatedDueDays && lastPurchase
+            ? new Date(
+                lastPurchase.getTime() +
+                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
+              )
+            : item.dueDate
+        map.set(item.id, estimatedDate)
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const { data: allPurchaseDates } = useQuery({
+    queryKey: ['items', 'purchaseDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | null>()
+      for (const item of items) {
+        map.set(item.id, await getLastPurchaseDate(item.id))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
 
   const isAssigned = (vendorIds: string[] = []) => vendorIds.includes(vendorId)
 
-  const sortedItems = [...items].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+  const hasActiveFilters = Object.values(filterState).some(
+    (ids) => ids.length > 0,
   )
 
-  const filteredItems = sortedItems.filter((item) =>
+  // 1. Name search filter
+  const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
+
+  // 2. Tag filter
+  const tagFiltered = filterItems(searchFiltered, filterState)
+
+  // 3. Sort
+  const filteredItems = sortItems(
+    tagFiltered,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
+
+  const handleToggle = async (
+    itemId: string,
+    currentVendorIds: string[] = [],
+  ) => {
+    if (savingItemIds.has(itemId)) return
+    const dbAssigned = currentVendorIds.includes(vendorId)
+    const newVendorIds = dbAssigned
+      ? currentVendorIds.filter((id) => id !== vendorId)
+      : [...currentVendorIds, vendorId]
+
+    setSavingItemIds((prev) => new Set(prev).add(itemId))
+    try {
+      await updateItem.mutateAsync({
+        id: itemId,
+        updates: { vendorIds: newVendorIds },
+      })
+    } finally {
+      setSavingItemIds((prev) => {
+        const next = new Set(prev)
+        next.delete(itemId)
+        return next
+      })
+    }
+  }
 
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
@@ -75,34 +178,9 @@ function VendorItemsTab() {
     }
   }
 
-  const handleToggle = async (
-    itemId: string,
-    currentVendorIds: string[] = [],
-  ) => {
-    if (savingItemIds.has(itemId)) return // guard against re-entrancy
-    const dbAssigned = currentVendorIds.includes(vendorId)
-    const newVendorIds = dbAssigned
-      ? currentVendorIds.filter((id) => id !== vendorId)
-      : [...currentVendorIds, vendorId]
-
-    setSavingItemIds((prev) => new Set(prev).add(itemId))
-    try {
-      await updateItem.mutateAsync({
-        id: itemId,
-        updates: { vendorIds: newVendorIds },
-      })
-    } finally {
-      setSavingItemIds((prev) => {
-        const next = new Set(prev)
-        next.delete(itemId)
-        return next
-      })
-    }
-  }
-
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex gap-2">
+    <div className="space-y-0 max-w-2xl">
+      <div className="flex gap-2 mb-2">
         <Input
           ref={inputRef}
           placeholder="Search or create item..."
@@ -112,49 +190,61 @@ function VendorItemsTab() {
         />
       </div>
 
-      {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items yet.</p>
-      )}
-      {items.length > 0 && filteredItems.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items found.</p>
+      <SortFilterToolbar
+        filtersVisible={filtersVisible}
+        tagsVisible={tagsVisible}
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onToggleFilters={() => setFiltersVisible((v) => !v)}
+        onToggleTags={() => setTagsVisible((v) => !v)}
+        onSortChange={(field, direction) => {
+          setSortBy(field)
+          setSortDirection(direction)
+        }}
+      />
+
+      {filtersVisible && (
+        <ItemFilters
+          tagTypes={tagTypes}
+          tags={tags}
+          items={items}
+          filterState={filterState}
+          onFilterChange={setFilterState}
+        />
       )}
 
-      <div className="space-y-2">
+      {(filtersVisible || hasActiveFilters) && (
+        <FilterStatus
+          filteredCount={filteredItems.length}
+          totalCount={items.length}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={() => setFilterState({})}
+        />
+      )}
+
+      {items.length === 0 && !search.trim() && (
+        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
+      )}
+
+      <div className="space-y-px">
         {filteredItems.map((item) => {
-          const otherVendors = (item.vendorIds ?? [])
-            .filter((vid) => vid !== vendorId)
-            .map((vid) => vendorMap[vid])
-            .filter((v): v is NonNullable<typeof v> => v != null)
+          const itemTags = (item.tagIds ?? [])
+            .map((tid) => tagMap[tid])
+            .filter((t): t is NonNullable<typeof t> => t != null)
 
           return (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-center gap-3 py-2 px-1 rounded hover:bg-background-surface transition-colors"
-            >
-              <Checkbox
-                id={`item-${item.id}`}
-                checked={isAssigned(item.vendorIds)}
-                onCheckedChange={() => handleToggle(item.id, item.vendorIds)}
-                disabled={savingItemIds.has(item.id)}
-              />
-              <Label
-                htmlFor={`item-${item.id}`}
-                className="flex-1 cursor-pointer font-normal"
-              >
-                {item.name}
-              </Label>
-              <div className="flex gap-1 flex-wrap justify-end">
-                {otherVendors.map((v) => (
-                  <Badge
-                    key={v.id}
-                    variant="neutral-outline"
-                    className="text-xs"
-                  >
-                    {v.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+              mode="tag-assignment"
+              item={item}
+              quantity={getCurrentQuantity(item)}
+              tags={itemTags}
+              tagTypes={tagTypes}
+              showTags={tagsVisible}
+              isChecked={isAssigned(item.vendorIds)}
+              onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
+              disabled={savingItemIds.has(item.id)}
+            />
           )
         })}
         {filteredItems.length === 0 && search.trim() && (
