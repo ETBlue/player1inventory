@@ -268,3 +268,75 @@ describe('sortItems - stock by progress', () => {
     expect(sorted[1].id).toBe('1') // Treated as 1 (100%)
   })
 })
+
+describe('sortItems - stock by status group', () => {
+  const makeItem = (id: string, refillThreshold: number): Item => ({
+    id,
+    name: `Item ${id}`,
+    tagIds: [],
+    targetQuantity: 10,
+    refillThreshold,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    targetUnit: 'package',
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+
+  // Item A: qty=4, threshold=5, target=10 → error at 40%
+  // Item B: qty=3, threshold=3, target=10 → warning at 30%  (lower % than A, but warning comes after error)
+  // Item C: qty=8, threshold=3, target=10 → ok at 80%
+  const items = [
+    makeItem('A', 5), // refillThreshold=5
+    makeItem('B', 3), // refillThreshold=3
+    makeItem('C', 3), // refillThreshold=3
+  ]
+  const quantities = new Map([
+    ['A', 4], // 4/10 = 40%, below threshold 5 → error
+    ['B', 3], // 3/10 = 30%, equals threshold 3 → warning
+    ['C', 8], // 8/10 = 80%, above threshold 3 → ok
+  ])
+
+  it('sorts error → warning → ok when ascending', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('sorts ok → warning → error when descending', () => {
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'desc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['C', 'B', 'A'])
+  })
+
+  it('sorts by percentage within the same status group', () => {
+    // Two error items: D at 20%, E at 10%
+    const twoErrors = [makeItem('D', 3), makeItem('E', 3)]
+    const twoQtys = new Map([
+      ['D', 2],
+      ['E', 1],
+    ])
+    const sorted = sortItems(
+      twoErrors,
+      twoQtys,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
+    expect(sorted.map((i) => i.id)).toEqual(['E', 'D']) // 10% before 20%
+  })
+})

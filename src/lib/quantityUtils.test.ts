@@ -5,6 +5,7 @@ import {
   consumeItem,
   getCurrentQuantity,
   getDisplayQuantity,
+  getStockStatus,
   isInactive,
   normalizeUnpacked,
   packUnpacked,
@@ -590,5 +591,23 @@ describe('getDisplayQuantity', () => {
 
     // 1.2 packed + 1.984 unpacked = 3.184 packages
     expect(getDisplayQuantity(item as Item)).toBe(3.184)
+  })
+})
+
+describe('getStockStatus', () => {
+  it('returns error when quantity is below threshold', () => {
+    expect(getStockStatus(1, 3)).toBe('error')
+  })
+
+  it('returns warning when quantity equals threshold', () => {
+    expect(getStockStatus(3, 3)).toBe('warning')
+  })
+
+  it('returns ok when quantity is above threshold', () => {
+    expect(getStockStatus(5, 3)).toBe('ok')
+  })
+
+  it('returns ok when threshold is zero (no tracking)', () => {
+    expect(getStockStatus(0, 0)).toBe('ok')
   })
 })

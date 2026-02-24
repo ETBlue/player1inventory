@@ -5,7 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getCurrentQuantity, isInactive } from '@/lib/quantityUtils'
+import {
+  getCurrentQuantity,
+  getStockStatus,
+  isInactive,
+} from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
 import type { Item, Tag, TagType } from '@/types'
@@ -45,12 +49,7 @@ export function ItemCard({
   disabled,
 }: ItemCardProps) {
   const currentQuantity = getCurrentQuantity(item)
-  const status =
-    item.refillThreshold > 0 && quantity === item.refillThreshold
-      ? 'warning'
-      : quantity < item.refillThreshold
-        ? 'error'
-        : 'ok'
+  const status = getStockStatus(quantity, item.refillThreshold)
   // Convert packed quantity to measurement units for display when tracking in measurement
   const displayPacked =
     item.targetUnit === 'measurement' && item.amountPerPackage

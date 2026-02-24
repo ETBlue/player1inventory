@@ -1,3 +1,4 @@
+import { getStockStatus } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
 export type SortField = 'name' | 'stock' | 'purchased' | 'expiring'
@@ -22,6 +23,18 @@ export function sortItems(
       case 'stock': {
         const qtyA = quantities.get(a.id) ?? 0
         const qtyB = quantities.get(b.id) ?? 0
+        const statusRank: Record<ReturnType<typeof getStockStatus>, number> = {
+          error: 0,
+          warning: 1,
+          ok: 2,
+        }
+        const rankDiff =
+          statusRank[getStockStatus(qtyA, a.refillThreshold)] -
+          statusRank[getStockStatus(qtyB, b.refillThreshold)]
+        if (rankDiff !== 0) {
+          comparison = rankDiff
+          break // sortDirection flip applied below
+        }
         const progressA = a.targetQuantity > 0 ? qtyA / a.targetQuantity : 1
         const progressB = b.targetQuantity > 0 ? qtyB / b.targetQuantity : 1
         comparison = progressA - progressB
