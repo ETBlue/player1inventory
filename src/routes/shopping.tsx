@@ -1,5 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Check, Filter, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, Filter, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { FilterStatus } from '@/components/FilterStatus'
 import { ItemCard } from '@/components/ItemCard'
@@ -17,6 +18,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -24,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { getLastPurchaseDate } from '@/db/operations'
 import {
   useAbandonCart,
   useActiveCart,
@@ -46,15 +54,19 @@ import {
   saveShoppingFilters,
   saveShoppingUiPrefs,
 } from '@/lib/sessionStorage'
+import type { SortDirection, SortField } from '@/lib/sortUtils'
+import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
   component: Shopping,
 })
 
-function getStockPercent(item: Item): number {
-  if (item.targetQuantity === 0) return Number.POSITIVE_INFINITY
-  return getCurrentQuantity(item) / item.targetQuantity
+const sortLabels: Record<SortField, string> = {
+  expiring: 'Expiring',
+  name: 'Name',
+  stock: 'Stock',
+  purchased: 'Purchased',
 }
 
 function Shopping() {
@@ -81,6 +93,27 @@ function Shopping() {
   )
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
+  const [sortBy, setSortBy] = useState<SortField>(() => {
+    try {
+      const stored = localStorage.getItem('shopping-sort-prefs')
+      if (!stored) return 'name'
+      const parsed = JSON.parse(stored)
+      const valid: SortField[] = ['name', 'stock', 'purchased', 'expiring']
+      return valid.includes(parsed.sortBy) ? parsed.sortBy : 'name'
+    } catch {
+      return 'name'
+    }
+  })
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
+    try {
+      const stored = localStorage.getItem('shopping-sort-prefs')
+      if (!stored) return 'asc'
+      const parsed = JSON.parse(stored)
+      return parsed.sortDirection === 'desc' ? 'desc' : 'asc'
+    } catch {
+      return 'asc'
+    }
+  })
 
   const hasActiveFilters = Object.values(filterState).some(
     (tagIds) => tagIds.length > 0,
@@ -97,6 +130,61 @@ function Shopping() {
     saveShoppingUiPrefs({ filtersVisible })
   }, [filtersVisible])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'shopping-sort-prefs',
+        JSON.stringify({ sortBy, sortDirection }),
+      )
+    } catch (error) {
+      console.error('Failed to save shopping sort prefs:', error)
+    }
+  }, [sortBy, sortDirection])
+
+  const { data: allQuantities } = useQuery({
+    queryKey: ['items', 'quantities'],
+    queryFn: async () => {
+      const map = new Map<string, number>()
+      for (const item of items) {
+        map.set(item.id, getCurrentQuantity(item))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const { data: allExpiryDates } = useQuery({
+    queryKey: ['items', 'expiryDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | undefined>()
+      for (const item of items) {
+        const lastPurchase = await getLastPurchaseDate(item.id)
+        const estimatedDate =
+          item.estimatedDueDays && lastPurchase
+            ? new Date(
+                lastPurchase.getTime() +
+                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
+              )
+            : item.dueDate
+        map.set(item.id, estimatedDate)
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const { data: allPurchaseDates } = useQuery({
+    queryKey: ['items', 'purchaseDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | null>()
+      for (const item of items) {
+        map.set(item.id, await getLastPurchaseDate(item.id))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
   // Apply vendor filter
   const vendorFiltered = selectedVendorId
     ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
@@ -105,15 +193,25 @@ function Shopping() {
   // Apply tag filter
   const filteredItems = filterItems(vendorFiltered, filterState)
 
-  // Cart section: all items (active + inactive) currently in cart
-  const cartSectionItems = filteredItems
-    .filter((item) => cartItemMap.has(item.id))
-    .sort((a, b) => getStockPercent(a) - getStockPercent(b))
+  // Cart section: apply user sort
+  const cartSectionItems = sortItems(
+    filteredItems.filter((item) => cartItemMap.has(item.id)),
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
 
-  // Pending section: active items NOT in cart, sorted by stock % ascending
-  const pendingItems = filteredItems
-    .filter((item) => !cartItemMap.has(item.id))
-    .sort((a, b) => getStockPercent(a) - getStockPercent(b))
+  // Pending section: apply user sort
+  const pendingItems = sortItems(
+    filteredItems.filter((item) => !cartItemMap.has(item.id)),
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
 
   const cartTotal = cartItems.reduce((sum, ci) => sum + ci.quantity, 0)
 
@@ -205,6 +303,58 @@ function Shopping() {
             </SelectContent>
           </Select>
         )}
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="default"
+                variant="neutral-ghost"
+                aria-label="Sort by criteria"
+                className="px-2"
+              >
+                <ArrowUpDown />
+                {sortLabels[sortBy]}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                className={sortBy === 'expiring' ? 'bg-background-base' : ''}
+                onClick={() => setSortBy('expiring')}
+              >
+                Expiring soon
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={sortBy === 'name' ? 'bg-background-base' : ''}
+                onClick={() => setSortBy('name')}
+              >
+                Name
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={sortBy === 'stock' ? 'bg-background-base' : ''}
+                onClick={() => setSortBy('stock')}
+              >
+                Stock
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={sortBy === 'purchased' ? 'bg-background-base' : ''}
+                onClick={() => setSortBy('purchased')}
+              >
+                Last purchased
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            size="icon"
+            variant="neutral-ghost"
+            onClick={() =>
+              setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+            }
+            aria-label="Toggle sort direction"
+          >
+            {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
+          </Button>
+        </div>
         <Button
           size="icon"
           variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
