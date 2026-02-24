@@ -112,14 +112,14 @@ function ItemLayoutInner() {
           bg-background-elevated
           border-b-2 border-accessory-default`}
         >
-          <button
-            type="button"
+          <Button
+            variant="neutral-ghost"
+            size="icon"
             onClick={handleBackClick}
             aria-label="Go back"
-            className="px-3 py-4 hover:bg-background-surface transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+            <ArrowLeft />
+          </Button>
           <h1 className="text-md font-regular truncate flex-1">{item.name}</h1>
 
           {/* Tabs */}

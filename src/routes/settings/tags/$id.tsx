@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { TagLayoutProvider, useTagLayout } from '@/hooks/useTagLayout'
 import { useDeleteTag, useItemCountByTag, useTags } from '@/hooks/useTags'
@@ -93,50 +94,48 @@ function TagDetailLayoutInner() {
           bg-background-elevated
           border-b-2 border-accessory-default`}
         >
-          <button
-            type="button"
+          <Button
+            variant="neutral-ghost"
+            size="icon"
             onClick={handleBackClick}
-            className="px-3 py-4 hover:bg-background-surface transition-colors"
             aria-label="Go back"
           >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+            <ArrowLeft />
+          </Button>
           <h1 className="text-md font-regular truncate flex-1">{tag.name}</h1>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             {/* Tabs */}
-            <div className="flex items-center">
-              <Link
-                to="/settings/tags/$id"
-                params={{ id }}
-                activeOptions={{ exact: true }}
-                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-                activeProps={{ className: 'border-foreground-muted' }}
-                onClick={(e) => handleTabClick(e, `/settings/tags/${id}`)}
-              >
-                <Settings2 className="h-4 w-4" />
-              </Link>
-              <Link
-                to="/settings/tags/$id/items"
-                params={{ id }}
-                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-                activeProps={{ className: 'border-foreground-muted' }}
-                onClick={(e) => handleTabClick(e, `/settings/tags/${id}/items`)}
-              >
-                <ListTodo className="h-4 w-4" />
-              </Link>
-            </div>
-
-            {/* Delete Button */}
-            <button
-              type="button"
-              onClick={() => setShowDeleteDialog(true)}
-              className="px-3 py-4 hover:bg-background-surface transition-colors text-destructive"
-              aria-label="Delete tag"
+            <Link
+              to="/settings/tags/$id"
+              params={{ id }}
+              activeOptions={{ exact: true }}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{ className: 'border-foreground-muted' }}
+              onClick={(e) => handleTabClick(e, `/settings/tags/${id}`)}
             >
-              <Trash2 className="h-4 w-4" />
-            </button>
+              <Settings2 className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/settings/tags/$id/items"
+              params={{ id }}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{ className: 'border-foreground-muted' }}
+              onClick={(e) => handleTabClick(e, `/settings/tags/${id}/items`)}
+            >
+              <ListTodo className="h-4 w-4" />
+            </Link>
           </div>
+
+          {/* Delete Button */}
+          <button
+            type="button"
+            onClick={() => setShowDeleteDialog(true)}
+            className="px-3 py-4 hover:bg-background-surface transition-colors text-destructive"
+            aria-label="Delete tag"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Main Content with padding to clear fixed bar */}

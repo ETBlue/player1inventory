@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { RecipeLayoutProvider, useRecipeLayout } from '@/hooks/useRecipeLayout'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -90,14 +91,14 @@ function RecipeDetailLayoutInner() {
           bg-background-elevated
           border-b-2 border-accessory-default`}
         >
-          <button
-            type="button"
+          <Button
+            variant="neutral-ghost"
+            size="icon"
             onClick={handleBackClick}
-            className="px-3 py-4 hover:bg-background-surface transition-colors"
             aria-label="Go back"
           >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+            <ArrowLeft />
+          </Button>
           <h1 className="text-md font-regular truncate flex-1">
             {recipe.name}
           </h1>
