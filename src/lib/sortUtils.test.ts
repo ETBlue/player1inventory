@@ -284,14 +284,18 @@ describe('sortItems - stock by status group', () => {
     updatedAt: new Date(),
   })
 
-  // Item A: qty=1, threshold=3 → error (10%)
-  // Item B: qty=3, threshold=3 → warning (30%)
-  // Item C: qty=8, threshold=3 → ok (80%)
-  const items = [makeItem('A', 3), makeItem('B', 3), makeItem('C', 3)]
+  // Item A: qty=4, threshold=5, target=10 → error at 40%
+  // Item B: qty=3, threshold=3, target=10 → warning at 30%  (lower % than A, but warning comes after error)
+  // Item C: qty=8, threshold=3, target=10 → ok at 80%
+  const items = [
+    makeItem('A', 5), // refillThreshold=5
+    makeItem('B', 3), // refillThreshold=3
+    makeItem('C', 3), // refillThreshold=3
+  ]
   const quantities = new Map([
-    ['A', 1],
-    ['B', 3],
-    ['C', 8],
+    ['A', 4], // 4/10 = 40%, below threshold 5 → error
+    ['B', 3], // 3/10 = 30%, equals threshold 3 → warning
+    ['C', 8], // 8/10 = 80%, above threshold 3 → ok
   ])
 
   it('sorts error → warning → ok when ascending', () => {
