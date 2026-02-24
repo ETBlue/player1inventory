@@ -1,11 +1,19 @@
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { FilterStatus } from '@/components/FilterStatus'
 import { ItemCard } from '@/components/ItemCard'
+import { ItemFilters } from '@/components/ItemFilters'
+import { SortFilterToolbar } from '@/components/SortFilterToolbar'
 import { Input } from '@/components/ui/input'
+import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
 import { useRecipe, useUpdateRecipe } from '@/hooks/useRecipes'
+import { useSortFilter } from '@/hooks/useSortFilter'
+import { filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { sortItems } from '@/lib/sortUtils'
 
 export const Route = createFileRoute('/settings/recipes/$id/items')({
   component: RecipeItemsTab,
@@ -40,16 +48,100 @@ function RecipeItemsTab() {
     return ri?.defaultAmount ?? 0
   }
 
-  const sortedItems = [...items].sort((a, b) => {
-    const aAssigned = isAssigned(a.id) ? 0 : 1
-    const bAssigned = isAssigned(b.id) ? 0 : 1
-    if (aAssigned !== bAssigned) return aAssigned - bAssigned
-    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  const {
+    sortBy,
+    sortDirection,
+    setSortBy,
+    setSortDirection,
+    filterState,
+    setFilterState,
+    filtersVisible,
+    setFiltersVisible,
+    tagsVisible,
+    setTagsVisible,
+  } = useSortFilter('recipe-items')
+
+  // Quantities map (for stock sort) — same query key as pantry, cache is shared
+  const { data: allQuantities } = useQuery({
+    queryKey: ['items', 'quantities'],
+    queryFn: async () => {
+      const map = new Map<string, number>()
+      for (const item of items) {
+        map.set(item.id, getCurrentQuantity(item))
+      }
+      return map
+    },
+    enabled: items.length > 0,
   })
 
-  const filteredItems = sortedItems.filter((item) =>
+  // Expiry dates map (for expiring sort)
+  const { data: allExpiryDates } = useQuery({
+    queryKey: ['items', 'expiryDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | undefined>()
+      for (const item of items) {
+        const lastPurchase = await getLastPurchaseDate(item.id)
+        const estimatedDate =
+          item.estimatedDueDays && lastPurchase
+            ? new Date(
+                lastPurchase.getTime() +
+                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
+              )
+            : item.dueDate
+        map.set(item.id, estimatedDate)
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  // Purchase dates map (for purchased sort)
+  const { data: allPurchaseDates } = useQuery({
+    queryKey: ['items', 'purchaseDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | null>()
+      for (const item of items) {
+        map.set(item.id, await getLastPurchaseDate(item.id))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const hasActiveFilters = Object.values(filterState).some(
+    (ids) => ids.length > 0,
+  )
+
+  // 1. Name search filter
+  const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
+
+  // 2. Tag filter
+  const tagFiltered = filterItems(searchFiltered, filterState)
+
+  // 3. Sort: assigned items first, then user's chosen sort within each group
+  const assignedItems = tagFiltered.filter((item) => isAssigned(item.id))
+  const unassignedItems = tagFiltered.filter((item) => !isAssigned(item.id))
+
+  const sortedAssigned = sortItems(
+    assignedItems,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
+  const sortedUnassigned = sortItems(
+    unassignedItems,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
+
+  const filteredItems = [...sortedAssigned, ...sortedUnassigned]
 
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
@@ -153,8 +245,8 @@ function RecipeItemsTab() {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex gap-2">
+    <div className="space-y-0 max-w-2xl">
+      <div className="flex gap-2 mb-2">
         <Input
           ref={inputRef}
           placeholder="Search or create item..."
@@ -164,11 +256,40 @@ function RecipeItemsTab() {
         />
       </div>
 
-      {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items yet.</p>
+      <SortFilterToolbar
+        filtersVisible={filtersVisible}
+        tagsVisible={tagsVisible}
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onToggleFilters={() => setFiltersVisible((v) => !v)}
+        onToggleTags={() => setTagsVisible((v) => !v)}
+        onSortChange={(field, direction) => {
+          setSortBy(field)
+          setSortDirection(direction)
+        }}
+      />
+
+      {filtersVisible && (
+        <ItemFilters
+          tagTypes={tagTypes}
+          tags={tags}
+          items={items}
+          filterState={filterState}
+          onFilterChange={setFilterState}
+        />
       )}
-      {items.length > 0 && filteredItems.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items found.</p>
+
+      {(filtersVisible || hasActiveFilters) && (
+        <FilterStatus
+          filteredCount={filteredItems.length}
+          totalCount={items.length}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={() => setFilterState({})}
+        />
+      )}
+
+      {items.length === 0 && !search.trim() && (
+        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
       )}
 
       <div className="space-y-px">
@@ -186,6 +307,7 @@ function RecipeItemsTab() {
               quantity={getCurrentQuantity(item)}
               tags={itemTags}
               tagTypes={tagTypes}
+              showTags={tagsVisible}
               isChecked={assigned}
               onCheckboxToggle={() =>
                 handleToggle(item.id, item.consumeAmount ?? 1)
