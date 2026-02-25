@@ -106,26 +106,6 @@ export function ItemListToolbar({
       <Toolbar className={className}>
         {leading}
 
-        <Button
-          size="icon"
-          variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
-          onClick={() => setIsFiltersVisible(!isFiltersVisible)}
-          aria-label="Toggle filters"
-        >
-          <Filter />
-        </Button>
-
-        {isTagsToggleEnabled && (
-          <Button
-            size="icon"
-            variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => setIsTagsVisible(!isTagsVisible)}
-            aria-label="Toggle tags"
-          >
-            <Tags />
-          </Button>
-        )}
-
         <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -180,6 +160,26 @@ export function ItemListToolbar({
           </Button>
         </div>
 
+        {isTagsToggleEnabled && (
+          <Button
+            size="icon"
+            variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
+            onClick={() => setIsTagsVisible(!isTagsVisible)}
+            aria-label="Toggle tags"
+          >
+            <Tags />
+          </Button>
+        )}
+
+        <Button
+          size="icon"
+          variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
+          onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+          aria-label="Toggle filters"
+        >
+          <Filter />
+        </Button>
+
         <Button
           size="icon"
           variant={searchVisible ? 'neutral' : 'neutral-ghost'}
@@ -202,16 +202,34 @@ export function ItemListToolbar({
         )}
       </Toolbar>
 
+      {/* Row 3: filters */}
+      {isFiltersVisible && (
+        <>
+          <div className="h-px bg-accessory-default" />
+          <ItemFilters items={items} />
+        </>
+      )}
+
+      {/* Row 4: filter status */}
+      {(isFiltersVisible || hasActiveFilters) && (
+        <FilterStatus
+          filteredCount={filteredCount}
+          totalCount={totalCount}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={() => setFilterState({})}
+        />
+      )}
+
       {/* Row 2: search input */}
       {searchVisible && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b-2 border-accessory-default bg-background-surface">
+        <div className="flex items-center gap-2 border-t border-accessory-default px-3">
           <Search className="h-4 w-4 text-foreground-muted shrink-0" />
           <Input
             placeholder="Search items..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
-            className="border-none shadow-none bg-transparent focus-visible:ring-0 h-auto py-0 px-0"
+            className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
             autoFocus
           />
           {search && (
@@ -226,19 +244,6 @@ export function ItemListToolbar({
             </Button>
           )}
         </div>
-      )}
-
-      {/* Row 3: filters */}
-      {isFiltersVisible && <ItemFilters items={items} />}
-
-      {/* Row 4: filter status */}
-      {(isFiltersVisible || hasActiveFilters) && (
-        <FilterStatus
-          filteredCount={filteredCount}
-          totalCount={totalCount}
-          hasActiveFilters={hasActiveFilters}
-          onClearAll={() => setFilterState({})}
-        />
       )}
     </>
   )
