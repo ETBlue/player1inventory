@@ -71,7 +71,7 @@ function Shopping() {
 
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('shopping')
-  const { filterState } = useUrlSearchAndFilters()
+  const { search, filterState } = useUrlSearchAndFilters()
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
@@ -120,13 +120,17 @@ function Shopping() {
     enabled: items.length > 0,
   })
 
-  // Apply vendor filter first
+  // Apply vendor filter, then search filter, then tag filter
   const vendorFiltered = selectedVendorId
     ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
     : items
 
-  // Apply tag filter (ItemListToolbar receives vendorFiltered for count display)
-  const filteredItems = filterItems(vendorFiltered, filterState)
+  const searchFiltered = vendorFiltered.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase()),
+  )
+
+  // ItemListToolbar receives searchFiltered for accurate filter counts
+  const filteredItems = filterItems(searchFiltered, filterState)
 
   // Cart section: apply user sort
   const cartSectionItems = sortItems(
@@ -220,7 +224,7 @@ function Shopping() {
           setSortBy(f)
           setSortDirection(d)
         }}
-        items={vendorFiltered}
+        items={searchFiltered}
         leading={
           vendors.length > 0 ? (
             <Select

@@ -44,11 +44,14 @@ function PantryView() {
     () => loadSortPrefs().sortDirection,
   )
 
-  const { filterState, setFilterState, isTagsVisible } =
+  const { search, filterState, setFilterState, isTagsVisible } =
     useUrlSearchAndFilters()
 
-  // Apply filters to items
-  const filteredItems = filterItems(items, filterState)
+  // Apply search filter, then tag filters
+  const searchFiltered = items.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase()),
+  )
+  const filteredItems = filterItems(searchFiltered, filterState)
 
   // Fetch all quantities for sorting
   const { data: allQuantities } = useQuery({
@@ -157,7 +160,7 @@ function PantryView() {
           setSortDirection(direction)
         }}
         isTagsToggleEnabled
-        items={items}
+        items={searchFiltered}
       >
         <Link to="/items/new">
           <Button>
