@@ -1,14 +1,6 @@
 // src/components/ItemListToolbar.tsx
 
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Filter,
-  Search,
-  Tags,
-  X,
-} from 'lucide-react'
+import { ArrowDown, ArrowUp, Filter, Search, Tags, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { FilterStatus } from '@/components/FilterStatus'
@@ -134,40 +126,43 @@ export function ItemListToolbar({
           </Button>
         )}
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 size="default"
                 variant="neutral-ghost"
                 aria-label="Sort by criteria"
-                className="px-2"
+                className="px-2 font-normal"
               >
-                <ArrowUpDown />
                 {sortLabels[sortBy]}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem
-                className={sortBy === 'expiring' ? 'bg-background-base' : ''}
+                className={
+                  sortBy === 'expiring' ? 'bg-background-elevated' : ''
+                }
                 onClick={() => handleCriteriaChange('expiring')}
               >
                 Expiring soon
               </DropdownMenuItem>
               <DropdownMenuItem
-                className={sortBy === 'name' ? 'bg-background-base' : ''}
+                className={sortBy === 'name' ? 'bg-background-elevated' : ''}
                 onClick={() => handleCriteriaChange('name')}
               >
                 Name
               </DropdownMenuItem>
               <DropdownMenuItem
-                className={sortBy === 'stock' ? 'bg-background-base' : ''}
+                className={sortBy === 'stock' ? 'bg-background-elevated' : ''}
                 onClick={() => handleCriteriaChange('stock')}
               >
                 Stock
               </DropdownMenuItem>
               <DropdownMenuItem
-                className={sortBy === 'purchased' ? 'bg-background-base' : ''}
+                className={
+                  sortBy === 'purchased' ? 'bg-background-elevated' : ''
+                }
                 onClick={() => handleCriteriaChange('purchased')}
               >
                 Last purchased
