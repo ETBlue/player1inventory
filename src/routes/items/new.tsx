@@ -55,7 +55,7 @@ function NewItemPage() {
       <div
         className={`px-3 flex items-center gap-2
           fixed top-0 left-0 right-0 z-50 
-          bg-background-elevated 
+          bg-background-surface 
           border-b-2 border-accessory-default`}
       >
         <Link
