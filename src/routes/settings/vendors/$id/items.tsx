@@ -179,7 +179,7 @@ function VendorItemsTab() {
   }
 
   return (
-    <div className="space-y-0 max-w-2xl">
+    <div className="max-w-2xl">
       <div className="flex gap-2 mb-2">
         <Input
           ref={inputRef}
