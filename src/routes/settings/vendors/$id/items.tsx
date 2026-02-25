@@ -159,7 +159,9 @@ function VendorItemsTab() {
         isTagsToggleEnabled
         items={searchFiltered}
         onSearchSubmit={handleCreateFromSearch}
+        className="bg-transparent border-none"
       />
+      <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
         <p className="text-sm text-foreground-muted py-4">No items yet.</p>
@@ -176,7 +178,6 @@ function VendorItemsTab() {
               key={item.id}
               mode="tag-assignment"
               item={item}
-              quantity={getCurrentQuantity(item)}
               tags={itemTags}
               tagTypes={tagTypes}
               showTags={isTagsVisible}

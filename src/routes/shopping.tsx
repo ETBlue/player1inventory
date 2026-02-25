@@ -173,12 +173,10 @@ function Shopping() {
   function renderItemCard(item: Item) {
     const ci = cartItemMap.get(item.id)
     const itemTags = tags.filter((t) => item.tagIds.includes(t.id))
-    const quantity = getCurrentQuantity(item)
     return (
       <div key={item.id}>
         <ItemCard
           item={item}
-          quantity={quantity}
           tags={itemTags}
           tagTypes={tagTypes}
           mode="shopping"
@@ -218,6 +216,7 @@ function Shopping() {
 
       {/* Filter/sort toolbar */}
       <ItemListToolbar
+        className="bg-transparent border-none"
         sortBy={sortBy}
         sortDirection={sortDirection}
         onSortChange={(f, d) => {
@@ -237,7 +236,7 @@ function Shopping() {
                 setSelectedVendorId(v === 'all' ? '' : v)
               }}
             >
-              <SelectTrigger className="bg-transparent border-none">
+              <SelectTrigger className="bg-transparent border-none -mx-3 -my-2 mr-0 flex-1 text-sm">
                 <SelectValue placeholder="All vendors" />
               </SelectTrigger>
               <SelectContent>
