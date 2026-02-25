@@ -161,6 +161,7 @@ function PantryView() {
         }}
         isTagsToggleEnabled
         items={searchFiltered}
+        className="border-b"
       >
         <Link to="/items/new">
           <Button size="icon" aria-label="Add item">
@@ -168,6 +169,8 @@ function PantryView() {
           </Button>
         </Link>
       </ItemListToolbar>
+
+      <div className="h-px bg-accessory-default" />
 
       {items.length === 0 ? (
         <div className="text-center py-12 text-foreground-muted">
