@@ -3,8 +3,8 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
+import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
-import { PantryItem } from '@/components/PantryItem'
 import { Button } from '@/components/ui/button'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useAddInventoryLog, useItems, useUpdateItem } from '@/hooks'
@@ -163,9 +163,8 @@ function PantryView() {
         items={searchFiltered}
       >
         <Link to="/items/new">
-          <Button>
+          <Button size="icon" aria-label="Add item">
             <Plus />
-            Add item
           </Button>
         </Link>
       </ItemListToolbar>
@@ -187,39 +186,37 @@ function PantryView() {
       ) : (
         <div className="bg-background-base flex flex-col gap-px">
           {activeItems.map((item) => (
-            <PantryItem
+            <ItemCard
               key={item.id}
               item={item}
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
               showTags={isTagsVisible}
-              onConsume={async () => {
+              onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
-                consumeItem(updatedItem, updatedItem.consumeAmount)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                  },
-                })
-              }}
-              onAdd={async () => {
-                const updatedItem = { ...item }
-                const purchaseDate = new Date()
-                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                    ...(updatedItem.dueDate
-                      ? { dueDate: updatedItem.dueDate }
-                      : {}),
-                  },
-                })
+                if (delta > 0) {
+                  const purchaseDate = new Date()
+                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                      ...(updatedItem.dueDate
+                        ? { dueDate: updatedItem.dueDate }
+                        : {}),
+                    },
+                  })
+                } else {
+                  consumeItem(updatedItem, updatedItem.consumeAmount)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                    },
+                  })
+                }
               }}
               onTagClick={handleTagClick}
             />
@@ -233,39 +230,37 @@ function PantryView() {
           )}
 
           {inactiveItems.map((item) => (
-            <PantryItem
+            <ItemCard
               key={item.id}
               item={item}
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
               showTags={isTagsVisible}
-              onConsume={async () => {
+              onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
-                consumeItem(updatedItem, updatedItem.consumeAmount)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                  },
-                })
-              }}
-              onAdd={async () => {
-                const updatedItem = { ...item }
-                const purchaseDate = new Date()
-                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                    ...(updatedItem.dueDate
-                      ? { dueDate: updatedItem.dueDate }
-                      : {}),
-                  },
-                })
+                if (delta > 0) {
+                  const purchaseDate = new Date()
+                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                      ...(updatedItem.dueDate
+                        ? { dueDate: updatedItem.dueDate }
+                        : {}),
+                    },
+                  })
+                } else {
+                  consumeItem(updatedItem, updatedItem.consumeAmount)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                    },
+                  })
+                }
               }}
               onTagClick={handleTagClick}
             />
