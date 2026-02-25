@@ -157,7 +157,6 @@ describe('ItemCard - Tag Sorting', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={5}
         tags={tags}
         tagTypes={tagTypes}
         showTags={true}
@@ -192,20 +191,15 @@ describe('ItemCard - Tag Sorting', () => {
       consumeAmount: 1,
       targetUnit: 'package',
       expirationThreshold: 7, // Warn when < 7 days
-      estimatedDueDays: 30,
+      estimatedDueDays: 30, // triggers "Expires in X days" display format
+      dueDate: futureDate, // fallback used when no last purchase date in test env
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
     }
 
     await renderWithRouter(
-      <ItemCard
-        item={item as Item}
-        quantity={5}
-        tags={[]}
-        tagTypes={[]}
-        estimatedDueDate={futureDate}
-      />,
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
     // Message should show even though 30 days > 7 day threshold
@@ -229,20 +223,15 @@ describe('ItemCard - Tag Sorting', () => {
       consumeAmount: 1,
       targetUnit: 'package',
       expirationThreshold: 7, // Warn when < 7 days
-      estimatedDueDays: 3,
+      estimatedDueDays: 3, // triggers "Expires in X days" display format
+      dueDate: soonDate, // fallback used when no last purchase date in test env
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
     }
 
     await renderWithRouter(
-      <ItemCard
-        item={item as Item}
-        quantity={5}
-        tags={[]}
-        tagTypes={[]}
-        estimatedDueDate={soonDate}
-      />,
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
     const messageEl = screen.getByText(/Expires in 3 days/i)
@@ -275,12 +264,7 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard
-        item={item as Item}
-        quantity={1600} // 3*500 + 100
-        tags={[]}
-        tagTypes={[]}
-      />,
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
     // Should show converted packed quantity: 3 bottles × 500g = 1500g
@@ -304,7 +288,7 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard item={item as Item} quantity={5.5} tags={[]} tagTypes={[]} />,
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
     // Should show packed quantity without conversion: 5 packs
@@ -330,12 +314,7 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard
-        item={item as Item}
-        quantity={2000} // 2*1000
-        tags={[]}
-        tagTypes={[]}
-      />,
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
     // Should show simple count with converted packed: 2000/2000
@@ -363,7 +342,6 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={1}
         tags={[]}
         tagTypes={[]}
         mode="shopping"
@@ -382,7 +360,6 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={1}
         tags={[]}
         tagTypes={[]}
         mode="shopping"
@@ -403,7 +380,6 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={1}
         tags={[]}
         tagTypes={[]}
         mode="shopping"
@@ -430,7 +406,6 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={1}
         tags={[]}
         tagTypes={[]}
         mode="shopping"
@@ -450,7 +425,6 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={1}
         tags={[]}
         tagTypes={[]}
         mode="shopping"
@@ -471,7 +445,6 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
-        quantity={1}
         tags={[]}
         tagTypes={[]}
         mode="shopping"
@@ -489,9 +462,7 @@ describe('ItemCard - Shopping mode', () => {
   })
 
   it('does not show checkbox in pantry mode (default)', async () => {
-    await renderWithRouter(
-      <ItemCard item={mockItem} quantity={1} tags={[]} tagTypes={[]} />,
-    )
+    await renderWithRouter(<ItemCard item={mockItem} tags={[]} tagTypes={[]} />)
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })

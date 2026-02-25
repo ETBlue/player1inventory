@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useLastPurchaseDate } from '@/hooks'
 import {
   getCurrentQuantity,
   getStockStatus,
@@ -16,10 +17,8 @@ import type { Item, Tag, TagType } from '@/types'
 
 interface ItemCardProps {
   item: Item
-  quantity: number
   tags: Tag[]
   tagTypes: TagType[]
-  estimatedDueDate?: Date
   onTagClick?: (tagId: string) => void
   showTags?: boolean
   mode?: 'pantry' | 'shopping' | 'tag-assignment' | 'recipe-assignment'
@@ -34,10 +33,8 @@ interface ItemCardProps {
 
 export function ItemCard({
   item,
-  quantity,
   tags,
   tagTypes,
-  estimatedDueDate,
   onTagClick,
   showTags = true,
   mode = 'pantry',
@@ -48,8 +45,17 @@ export function ItemCard({
   onAmountChange,
   disabled,
 }: ItemCardProps) {
+  const { data: lastPurchase } = useLastPurchaseDate(item.id)
+
+  const estimatedDueDate =
+    item.estimatedDueDays && lastPurchase
+      ? new Date(
+          lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000,
+        )
+      : item.dueDate
+
   const currentQuantity = getCurrentQuantity(item)
-  const status = getStockStatus(quantity, item.refillThreshold)
+  const status = getStockStatus(currentQuantity, item.refillThreshold)
   // Convert packed quantity to measurement units for display when tracking in measurement
   const displayPacked =
     item.targetUnit === 'measurement' && item.amountPerPackage
@@ -123,7 +129,7 @@ export function ItemCard({
           params={{ id: item.id }}
           className="flex-1 min-w-0"
         >
-          <CardTitle className="flex gap-1 items-baseline justify-between">
+          <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
             <div className="flex gap-1 min-w-0">
               <h3 className="truncate">{item.name}</h3>
               <span className="text-xs font-normal">
@@ -141,7 +147,7 @@ export function ItemCard({
             </span>
           </CardTitle>
           <ItemProgressBar
-            current={quantity}
+            current={currentQuantity}
             target={item.targetQuantity}
             status={status}
             targetUnit={item.targetUnit}
@@ -153,39 +159,43 @@ export function ItemCard({
           />
         </Link>
 
-        {onAmountChange && mode === 'pantry' && (
-          <div>
-            <Button
-              className="rounded-tr-none rounded-br-none"
-              variant="neutral-outline"
-              size="icon"
-              onClick={(e) => {
-                e.preventDefault()
-                onAmountChange(-(item.consumeAmount ?? 1))
-              }}
-              disabled={disabled || quantity <= 0}
-              aria-label={`Consume ${item.name}`}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <Button
-              className="-ml-px rounded-tl-none rounded-bl-none"
-              variant="neutral-outline"
-              size="icon"
-              onClick={(e) => {
-                e.preventDefault()
-                onAmountChange(1)
-              }}
-              disabled={disabled}
-              aria-label={`Add ${item.name}`}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+        {mode === 'pantry' && (
+          <div className="h-8">
+            {onAmountChange && (
+              <>
+                <Button
+                  className="rounded-tr-none rounded-br-none"
+                  variant="neutral-outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onAmountChange(-(item.consumeAmount ?? 1))
+                  }}
+                  disabled={disabled || currentQuantity <= 0}
+                  aria-label={`Consume ${item.name}`}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Button
+                  className="-ml-px rounded-tl-none rounded-bl-none"
+                  variant="neutral-outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onAmountChange(1)
+                  }}
+                  disabled={disabled}
+                  aria-label={`Add ${item.name}`}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </>
+            )}
           </div>
         )}
       </CardHeader>
       <CardContent className={isInactive(item) ? 'opacity-50' : ''}>
-        <div className="flex items-center gap-2 -mb-1">
+        <div className="flex items-center gap-2">
           {currentQuantity > 0 &&
             estimatedDueDate &&
             (() => {
@@ -199,9 +209,9 @@ export function ItemCard({
               return (
                 <span
                   className={cn(
-                    'inline-flex gap-1 px-2 py-1 text-xs',
+                    'inline-flex gap-1 text-xs',
                     isWarning
-                      ? 'bg-status-error text-tint'
+                      ? 'bg-status-error text-tint px-2 py-1'
                       : 'text-foreground-muted',
                   )}
                 >

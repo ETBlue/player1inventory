@@ -1,7 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
 import { ItemCard } from '@/components/ItemCard'
-import { getLastPurchaseDate } from '@/db/operations'
-import { getDisplayQuantity } from '@/lib/quantityUtils'
 import type { Item, Tag, TagType } from '@/types'
 
 interface PantryItemProps {
@@ -23,28 +20,12 @@ export function PantryItem({
   onTagClick,
   showTags = true,
 }: PantryItemProps) {
-  const quantity = getDisplayQuantity(item)
-
-  const { data: lastPurchase } = useQuery({
-    queryKey: ['items', item.id, 'lastPurchase'],
-    queryFn: () => getLastPurchaseDate(item.id),
-  })
-
-  const estimatedDueDate =
-    item.estimatedDueDays && lastPurchase
-      ? new Date(
-          lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000,
-        )
-      : item.dueDate
-
   return (
     <ItemCard
       item={item}
-      quantity={quantity}
       tags={tags}
       tagTypes={tagTypes}
       showTags={showTags}
-      {...(estimatedDueDate ? { estimatedDueDate } : {})}
       onAmountChange={(delta) => {
         if (delta > 0) {
           onAdd()

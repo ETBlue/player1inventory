@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -8,7 +9,12 @@ import { render } from '@testing-library/react'
 import type React from 'react'
 
 export const renderWithRouter = async (ui: React.ReactElement) => {
-  const Wrapper = () => ui
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  const Wrapper = () => (
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  )
   const rootRoute = createRootRoute({ component: Wrapper })
   const router = createRouter({
     routeTree: rootRoute,
