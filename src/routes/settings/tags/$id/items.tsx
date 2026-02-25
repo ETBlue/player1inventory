@@ -1,16 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
-import { FilterStatus } from '@/components/FilterStatus'
+import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
-import { ItemFilters } from '@/components/ItemFilters'
-import { SortFilterToolbar } from '@/components/SortFilterToolbar'
-import { Input } from '@/components/ui/input'
+import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
@@ -27,29 +24,19 @@ function TagItemsTab() {
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
 
-  const {
-    sortBy,
-    sortDirection,
-    setSortBy,
-    setSortDirection,
-    filterState,
-    setFilterState,
-    filtersVisible,
-    setFiltersVisible,
-    tagsVisible,
-    setTagsVisible,
-  } = useSortFilter('tag-items')
+  const { sortBy, sortDirection, setSortBy, setSortDirection } =
+    useSortFilter('tag-items')
 
-  const [search, setSearch] = useState('')
+  const { search, filterState, isTagsVisible, setSearch } =
+    useUrlSearchAndFilters()
+
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const tagMap = useMemo(
     () => Object.fromEntries(tags.map((t) => [t.id, t])),
     [tags],
   )
 
-  // Quantities map (for stock sort) — same query key as pantry, cache is shared
   const { data: allQuantities } = useQuery({
     queryKey: ['items', 'quantities'],
     queryFn: async () => {
@@ -62,7 +49,6 @@ function TagItemsTab() {
     enabled: items.length > 0,
   })
 
-  // Expiry dates map (for expiring sort)
   const { data: allExpiryDates } = useQuery({
     queryKey: ['items', 'expiryDates'],
     queryFn: async () => {
@@ -83,7 +69,6 @@ function TagItemsTab() {
     enabled: items.length > 0,
   })
 
-  // Purchase dates map (for purchased sort)
   const { data: allPurchaseDates } = useQuery({
     queryKey: ['items', 'purchaseDates'],
     queryFn: async () => {
@@ -138,10 +123,6 @@ function TagItemsTab() {
     sortDirection,
   )
 
-  const hasActiveFilters = Object.values(filterState).some(
-    (ids) => ids.length > 0,
-  )
-
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
     if (!trimmed) return
@@ -158,69 +139,24 @@ function TagItemsTab() {
         consumeAmount: 1,
       })
       setSearch('')
-      inputRef.current?.focus()
     } catch {
       // input stays populated for retry
     }
   }
 
-  const handleSearchKeyDown = async (e: React.KeyboardEvent) => {
-    if (
-      e.key === 'Enter' &&
-      filteredItems.length === 0 &&
-      search.trim() &&
-      !createItem.isPending
-    ) {
-      await handleCreateFromSearch()
-    }
-    if (e.key === 'Escape') {
-      setSearch('')
-    }
-  }
-
   return (
     <div className="space-y-0 max-w-2xl">
-      <div className="flex gap-2 mb-2">
-        <Input
-          ref={inputRef}
-          placeholder="Search or create item..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-        />
-      </div>
-
-      <SortFilterToolbar
-        filtersVisible={filtersVisible}
-        tagsVisible={tagsVisible}
+      <ItemListToolbar
         sortBy={sortBy}
         sortDirection={sortDirection}
-        onToggleFilters={() => setFiltersVisible((v) => !v)}
-        onToggleTags={() => setTagsVisible((v) => !v)}
         onSortChange={(field, direction) => {
           setSortBy(field)
           setSortDirection(direction)
         }}
+        isTagsToggleEnabled
+        items={searchFiltered}
+        onSearchSubmit={handleCreateFromSearch}
       />
-
-      {filtersVisible && (
-        <ItemFilters
-          tagTypes={tagTypes}
-          tags={tags}
-          items={items}
-          filterState={filterState}
-          onFilterChange={setFilterState}
-        />
-      )}
-
-      {(filtersVisible || hasActiveFilters) && (
-        <FilterStatus
-          filteredCount={filteredItems.length}
-          totalCount={searchFiltered.length}
-          hasActiveFilters={hasActiveFilters}
-          onClearAll={() => setFilterState({})}
-        />
-      )}
 
       {items.length === 0 && !search.trim() && (
         <p className="text-sm text-foreground-muted py-4">No items yet.</p>
@@ -241,18 +177,20 @@ function TagItemsTab() {
               quantity={getCurrentQuantity(item)}
               tags={itemTags}
               tagTypes={tagTypes}
-              showTags={tagsVisible}
+              showTags={isTagsVisible}
               isChecked={isAssigned(item.tagIds)}
               onCheckboxToggle={() => handleToggle(item.id, item.tagIds)}
               disabled={savingItemIds.has(item.id)}
             />
           )
         })}
-        {filteredItems.length === 0 && hasActiveFilters && !search.trim() && (
-          <p className="text-sm text-foreground-muted py-4 px-1">
-            No items match the current filters.
-          </p>
-        )}
+        {filteredItems.length === 0 &&
+          Object.values(filterState).some((ids) => ids.length > 0) &&
+          !search.trim() && (
+            <p className="text-sm text-foreground-muted py-4 px-1">
+              No items match the current filters.
+            </p>
+          )}
         {filteredItems.length === 0 && search.trim() && (
           <button
             type="button"
@@ -260,8 +198,7 @@ function TagItemsTab() {
             onClick={handleCreateFromSearch}
             disabled={createItem.isPending}
           >
-            <Plus className="h-4 w-4" />
-            Create "{search.trim()}"
+            + Create "{search.trim()}"
           </button>
         )}
       </div>

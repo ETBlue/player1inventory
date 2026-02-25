@@ -1,10 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, Filter, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { FilterStatus } from '@/components/FilterStatus'
+import { Check, X } from 'lucide-react'
+import { useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
-import { ItemFilters } from '@/components/ItemFilters'
+import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { Toolbar } from '@/components/Toolbar'
 import {
   AlertDialog,
@@ -17,12 +16,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button, buttonVariants } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Select,
   SelectContent,
@@ -46,28 +39,16 @@ import {
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
-import { type FilterState, filterItems } from '@/lib/filterUtils'
+import { useSortFilter } from '@/hooks/useSortFilter'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
+import { filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
-import {
-  loadShoppingFilters,
-  loadShoppingUiPrefs,
-  saveShoppingFilters,
-  saveShoppingUiPrefs,
-} from '@/lib/sessionStorage'
-import type { SortDirection, SortField } from '@/lib/sortUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
   component: Shopping,
 })
-
-const sortLabels: Record<SortField, string> = {
-  expiring: 'Expiring',
-  name: 'Name',
-  stock: 'Stock',
-  purchased: 'Purchased',
-}
 
 function Shopping() {
   const navigate = useNavigate()
@@ -85,61 +66,15 @@ function Shopping() {
   const vendorCounts = useVendorItemCounts()
 
   const [selectedVendorId, setSelectedVendorId] = useState<string>('')
-  const [filterState, setFilterState] = useState<FilterState>(() =>
-    loadShoppingFilters(),
-  )
-  const [filtersVisible, setFiltersVisible] = useState(
-    () => loadShoppingUiPrefs().filtersVisible,
-  )
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
-  const [sortBy, setSortBy] = useState<SortField>(() => {
-    try {
-      const stored = localStorage.getItem('shopping-sort-prefs')
-      if (!stored) return 'name'
-      const parsed = JSON.parse(stored)
-      const valid: SortField[] = ['name', 'stock', 'purchased', 'expiring']
-      return valid.includes(parsed.sortBy) ? parsed.sortBy : 'name'
-    } catch {
-      return 'name'
-    }
-  })
-  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
-    try {
-      const stored = localStorage.getItem('shopping-sort-prefs')
-      if (!stored) return 'asc'
-      const parsed = JSON.parse(stored)
-      return parsed.sortDirection === 'desc' ? 'desc' : 'asc'
-    } catch {
-      return 'asc'
-    }
-  })
 
-  const hasActiveFilters = Object.values(filterState).some(
-    (tagIds) => tagIds.length > 0,
-  )
+  const { sortBy, sortDirection, setSortBy, setSortDirection } =
+    useSortFilter('shopping')
+  const { filterState } = useUrlSearchAndFilters()
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
-
-  useEffect(() => {
-    saveShoppingFilters(filterState)
-  }, [filterState])
-
-  useEffect(() => {
-    saveShoppingUiPrefs({ filtersVisible })
-  }, [filtersVisible])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'shopping-sort-prefs',
-        JSON.stringify({ sortBy, sortDirection }),
-      )
-    } catch (error) {
-      console.error('Failed to save shopping sort prefs:', error)
-    }
-  }, [sortBy, sortDirection])
 
   const { data: allQuantities } = useQuery({
     queryKey: ['items', 'quantities'],
@@ -185,12 +120,12 @@ function Shopping() {
     enabled: items.length > 0,
   })
 
-  // Apply vendor filter
+  // Apply vendor filter first
   const vendorFiltered = selectedVendorId
     ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
     : items
 
-  // Apply tag filter
+  // Apply tag filter (ItemListToolbar receives vendorFiltered for count display)
   const filteredItems = filterItems(vendorFiltered, filterState)
 
   // Cart section: apply user sort
@@ -231,12 +166,12 @@ function Shopping() {
     }
   }
 
-  function renderItemCard(item: Item, className?: string) {
+  function renderItemCard(item: Item) {
     const ci = cartItemMap.get(item.id)
     const itemTags = tags.filter((t) => item.tagIds.includes(t.id))
     const quantity = getCurrentQuantity(item)
     return (
-      <div key={item.id} className={className}>
+      <div key={item.id}>
         <ItemCard
           item={item}
           quantity={quantity}
@@ -257,7 +192,7 @@ function Shopping() {
 
   return (
     <div>
-      {/* Toolbar */}
+      {/* Cart toolbar */}
       <Toolbar className="flex-wrap">
         {cartTotal} pack{cartTotal > 1 ? 's' : ''} in cart
         <div className="flex-1" />
@@ -276,112 +211,46 @@ function Shopping() {
           <Check /> Done
         </Button>
       </Toolbar>
-      <div className="flex items-center gap-2">
-        {vendors.length > 0 && (
-          <Select
-            value={selectedVendorId || 'all'}
-            onValueChange={(v) => {
-              if (v === '__manage__') {
-                navigate({ to: '/settings/vendors' })
-                return
-              }
-              setSelectedVendorId(v === 'all' ? '' : v)
-            }}
-          >
-            <SelectTrigger className="bg-transparent border-none">
-              <SelectValue placeholder="All vendors" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All vendors</SelectItem>
-              {vendors.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.name} ({vendorCounts.get(v.id) ?? 0})
-                </SelectItem>
-              ))}
-              <SelectSeparator />
-              <SelectItem value="__manage__">Manage vendors...</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <Button
-          size="icon"
-          variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
-          onClick={() => setFiltersVisible((v) => !v)}
-          aria-label="Toggle filters"
-        >
-          <Filter />
-        </Button>
-        <div className="flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="default"
-                variant="neutral-ghost"
-                aria-label="Sort by criteria"
-                className="px-2"
-              >
-                <ArrowUpDown />
-                {sortLabels[sortBy]}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem
-                className={sortBy === 'expiring' ? 'bg-background-base' : ''}
-                onClick={() => setSortBy('expiring')}
-              >
-                Expiring soon
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={sortBy === 'name' ? 'bg-background-base' : ''}
-                onClick={() => setSortBy('name')}
-              >
-                Name
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={sortBy === 'stock' ? 'bg-background-base' : ''}
-                onClick={() => setSortBy('stock')}
-              >
-                Stock
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={sortBy === 'purchased' ? 'bg-background-base' : ''}
-                onClick={() => setSortBy('purchased')}
-              >
-                Last purchased
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
-          <Button
-            size="icon"
-            variant="neutral-ghost"
-            onClick={() =>
-              setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
-            }
-            aria-label="Toggle sort direction"
-            className="mr-3"
-          >
-            {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
-          </Button>
-        </div>
-      </div>
-      {filtersVisible && (
-        <ItemFilters
-          tagTypes={tagTypes}
-          tags={tags}
-          items={vendorFiltered}
-          filterState={filterState}
-          onFilterChange={setFilterState}
-        />
-      )}
-      {(filtersVisible || hasActiveFilters) && (
-        <FilterStatus
-          filteredCount={filteredItems.length}
-          totalCount={vendorFiltered.length}
-          hasActiveFilters={hasActiveFilters}
-          onClearAll={() => setFilterState({})}
-        />
-      )}
+      {/* Filter/sort toolbar */}
+      <ItemListToolbar
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onSortChange={(f, d) => {
+          setSortBy(f)
+          setSortDirection(d)
+        }}
+        items={vendorFiltered}
+        leading={
+          vendors.length > 0 ? (
+            <Select
+              value={selectedVendorId || 'all'}
+              onValueChange={(v) => {
+                if (v === '__manage__') {
+                  navigate({ to: '/settings/vendors' })
+                  return
+                }
+                setSelectedVendorId(v === 'all' ? '' : v)
+              }}
+            >
+              <SelectTrigger className="bg-transparent border-none">
+                <SelectValue placeholder="All vendors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All vendors</SelectItem>
+                {vendors.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name} ({vendorCounts.get(v.id) ?? 0})
+                  </SelectItem>
+                ))}
+                <SelectSeparator />
+                <SelectItem value="__manage__">Manage vendors...</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : undefined
+        }
+      />
+
       <div className="h-px bg-accessory-default" />
 
       {/* Cart section */}

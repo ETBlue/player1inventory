@@ -102,14 +102,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "nood"
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'nood')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
 
     // Then only Noodles is visible
     await waitFor(() => {
@@ -206,14 +209,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "Butter" into the search input (zero matches) and presses Enter
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'Butter')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
     // Then the new item appears in the list checked (assigned to the recipe)
@@ -240,14 +246,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types text that matches no items
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // Then the create row is visible
     await waitFor(() => {
@@ -255,8 +264,8 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     // When user clears the input and types text that matches an item
-    await user.clear(screen.getByPlaceholderText(/search or create/i))
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'nood')
+    await user.clear(screen.getByPlaceholderText(/search items/i))
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
 
     // Then the create row is not shown (Noodles matched)
     await waitFor(() => {
@@ -271,14 +280,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "Butter" and clicks the create row
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'Butter')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await waitFor(() => {
       expect(screen.getByText(/create "Butter"/i)).toBeInTheDocument()
     })
@@ -287,7 +299,7 @@ describe('Recipe Detail - Items Tab', () => {
     // Then Butter appears in the list checked and the input is cleared
     await waitFor(() => {
       expect(screen.getByLabelText('Remove Butter')).toBeChecked()
-      expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('')
     })
   })
 
@@ -297,19 +309,24 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // When user presses Escape
     await user.keyboard('{Escape}')
 
-    // Then the input is cleared
+    // Then the search panel is hidden
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
+      expect(
+        screen.queryByPlaceholderText(/search items/i),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -379,14 +396,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "nood"
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'nood')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
 
     // Then only Noodles is visible
     await waitFor(() => {
@@ -406,14 +426,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user searches for non-existent item
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // Then the create row appears (zero-match state), not a "no results" message
     await waitFor(() => {

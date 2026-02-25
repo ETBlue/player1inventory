@@ -1,16 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
-import { FilterStatus } from '@/components/FilterStatus'
+import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
-import { ItemFilters } from '@/components/ItemFilters'
-import { SortFilterToolbar } from '@/components/SortFilterToolbar'
-import { Input } from '@/components/ui/input'
+import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
@@ -27,22 +24,13 @@ function VendorItemsTab() {
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
 
-  const {
-    sortBy,
-    sortDirection,
-    setSortBy,
-    setSortDirection,
-    filterState,
-    setFilterState,
-    filtersVisible,
-    setFiltersVisible,
-    tagsVisible,
-    setTagsVisible,
-  } = useSortFilter('vendor-items')
+  const { sortBy, sortDirection, setSortBy, setSortDirection } =
+    useSortFilter('vendor-items')
 
-  const [search, setSearch] = useState('')
+  const { search, filterState, isTagsVisible, setSearch } =
+    useUrlSearchAndFilters()
+
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const tagMap = useMemo(
     () => Object.fromEntries(tags.map((t) => [t.id, t])),
@@ -95,28 +83,6 @@ function VendorItemsTab() {
 
   const isAssigned = (vendorIds: string[] = []) => vendorIds.includes(vendorId)
 
-  const hasActiveFilters = Object.values(filterState).some(
-    (ids) => ids.length > 0,
-  )
-
-  // 1. Name search filter
-  const searchFiltered = items.filter((item) =>
-    item.name.toLowerCase().includes(search.toLowerCase()),
-  )
-
-  // 2. Tag filter
-  const tagFiltered = filterItems(searchFiltered, filterState)
-
-  // 3. Sort
-  const filteredItems = sortItems(
-    tagFiltered,
-    allQuantities ?? new Map(),
-    allExpiryDates ?? new Map(),
-    allPurchaseDates ?? new Map(),
-    sortBy,
-    sortDirection,
-  )
-
   const handleToggle = async (
     itemId: string,
     currentVendorIds: string[] = [],
@@ -158,69 +124,42 @@ function VendorItemsTab() {
         consumeAmount: 1,
       })
       setSearch('')
-      inputRef.current?.focus()
     } catch {
       // input stays populated for retry
     }
   }
 
-  const handleSearchKeyDown = async (e: React.KeyboardEvent) => {
-    if (
-      e.key === 'Enter' &&
-      filteredItems.length === 0 &&
-      search.trim() &&
-      !createItem.isPending
-    ) {
-      await handleCreateFromSearch()
-    }
-    if (e.key === 'Escape') {
-      setSearch('')
-    }
-  }
+  // 1. Name search filter
+  const searchFiltered = items.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase()),
+  )
+
+  // 2. Tag filter
+  const tagFiltered = filterItems(searchFiltered, filterState)
+
+  // 3. Sort
+  const filteredItems = sortItems(
+    tagFiltered,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
 
   return (
     <div className="max-w-2xl">
-      <div className="flex gap-2 mb-2">
-        <Input
-          ref={inputRef}
-          placeholder="Search or create item..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-        />
-      </div>
-
-      <SortFilterToolbar
-        filtersVisible={filtersVisible}
-        tagsVisible={tagsVisible}
+      <ItemListToolbar
         sortBy={sortBy}
         sortDirection={sortDirection}
-        onToggleFilters={() => setFiltersVisible((v) => !v)}
-        onToggleTags={() => setTagsVisible((v) => !v)}
         onSortChange={(field, direction) => {
           setSortBy(field)
           setSortDirection(direction)
         }}
+        isTagsToggleEnabled
+        items={searchFiltered}
+        onSearchSubmit={handleCreateFromSearch}
       />
-
-      {filtersVisible && (
-        <ItemFilters
-          tagTypes={tagTypes}
-          tags={tags}
-          items={items}
-          filterState={filterState}
-          onFilterChange={setFilterState}
-        />
-      )}
-
-      {(filtersVisible || hasActiveFilters) && (
-        <FilterStatus
-          filteredCount={filteredItems.length}
-          totalCount={searchFiltered.length}
-          hasActiveFilters={hasActiveFilters}
-          onClearAll={() => setFilterState({})}
-        />
-      )}
 
       {items.length === 0 && !search.trim() && (
         <p className="text-sm text-foreground-muted py-4">No items yet.</p>
@@ -240,18 +179,20 @@ function VendorItemsTab() {
               quantity={getCurrentQuantity(item)}
               tags={itemTags}
               tagTypes={tagTypes}
-              showTags={tagsVisible}
+              showTags={isTagsVisible}
               isChecked={isAssigned(item.vendorIds)}
               onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
               disabled={savingItemIds.has(item.id)}
             />
           )
         })}
-        {filteredItems.length === 0 && hasActiveFilters && !search.trim() && (
-          <p className="text-sm text-foreground-muted py-4 px-1">
-            No items match the current filters.
-          </p>
-        )}
+        {filteredItems.length === 0 &&
+          Object.values(filterState).some((ids) => ids.length > 0) &&
+          !search.trim() && (
+            <p className="text-sm text-foreground-muted py-4 px-1">
+              No items match the current filters.
+            </p>
+          )}
         {filteredItems.length === 0 && search.trim() && (
           <button
             type="button"
@@ -259,8 +200,7 @@ function VendorItemsTab() {
             onClick={handleCreateFromSearch}
             disabled={createItem.isPending}
           >
-            <Plus className="h-4 w-4" />
-            Create "{search.trim()}"
+            + Create "{search.trim()}"
           </button>
         )}
       </div>
