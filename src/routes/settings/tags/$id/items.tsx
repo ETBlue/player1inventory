@@ -156,7 +156,7 @@ function TagItemsTab() {
           setSortDirection(direction)
         }}
         isTagsToggleEnabled
-        items={searchFiltered}
+        items={items}
         onSearchSubmit={handleCreateFromSearch}
         className="bg-transparent border-none"
       />

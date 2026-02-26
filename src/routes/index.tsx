@@ -162,7 +162,7 @@ function PantryView() {
           setSortDirection(direction)
         }}
         isTagsToggleEnabled
-        items={searchFiltered}
+        items={items}
         className="border-b"
       >
         <Link to="/items/new">
