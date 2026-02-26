@@ -239,7 +239,7 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
-  it('user sees a create row only when search has text and zero items match', async () => {
+  it('user sees the create button only when search has text and zero items match', async () => {
     // Given a tag with one item
     const tagType = await createTagType({
       name: 'Category',
@@ -262,23 +262,27 @@ describe('Tag Detail - Items Tab', () => {
     // When user types text that matches no items
     await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
-    // Then the create row is visible
+    // Then the create button (+ inside search input) is visible
     await waitFor(() => {
-      expect(screen.getByText(/create "xyz"/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
     })
 
     // When user clears the input and types text that matches an item
     await user.clear(screen.getByPlaceholderText(/search items/i))
     await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
 
-    // Then the create row is not shown (Milk matched)
+    // Then the create button is not shown (Milk matched) and Milk appears
     await waitFor(() => {
-      expect(screen.queryByText(/create/i)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /create item/i }),
+      ).not.toBeInTheDocument()
       expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
   })
 
-  it('user can create an item by clicking the create row', async () => {
+  it('user can create an item by clicking the create button in the search input', async () => {
     // Given a tag with no items matching "Butter"
     const tagType = await createTagType({
       name: 'Category',
@@ -297,17 +301,18 @@ describe('Tag Detail - Items Tab', () => {
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
-    // When user types "Butter" and clicks the create row
+    // When user types "Butter" and clicks the + create button inside the search input
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await waitFor(() => {
-      expect(screen.getByText(/create "Butter"/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
     })
-    await user.click(screen.getByText(/create "Butter"/i))
+    await user.click(screen.getByRole('button', { name: /create item/i }))
 
-    // Then Butter appears in the list checked and the input is cleared
+    // Then Butter appears in the list checked (assigned to tag)
     await waitFor(() => {
       expect(screen.getByLabelText('Remove Butter')).toBeChecked()
-      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('')
     })
   })
 
@@ -399,9 +404,11 @@ describe('Tag Detail - Items Tab', () => {
     // When user searches for non-existent item
     await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
-    // Then the create row appears (zero-match state), not a "no results" message
+    // Then the create button (+ inside search input) appears for zero-match state
     await waitFor(() => {
-      expect(screen.getByText(/create "xyz"/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
     })
   })
 

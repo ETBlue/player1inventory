@@ -27,8 +27,7 @@ function TagItemsTab() {
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('tag-items')
 
-  const { search, filterState, isTagsVisible, setSearch } =
-    useUrlSearchAndFilters()
+  const { search, filterState, isTagsVisible } = useUrlSearchAndFilters()
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
 
@@ -134,13 +133,12 @@ function TagItemsTab() {
         tagIds: [tagId],
         vendorIds: [],
         targetUnit: 'package',
-        targetQuantity: 1,
-        refillThreshold: 1,
+        targetQuantity: 0,
+        refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
+        consumeAmount: 0,
       })
-      setSearch('')
     } catch {
       // input stays populated for retry
     }
@@ -158,6 +156,7 @@ function TagItemsTab() {
         isTagsToggleEnabled
         items={items}
         onSearchSubmit={handleCreateFromSearch}
+        onCreateFromSearch={handleCreateFromSearch}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -194,16 +193,6 @@ function TagItemsTab() {
               No items match the current filters.
             </p>
           )}
-        {filteredItems.length === 0 && search.trim() && (
-          <button
-            type="button"
-            className="flex items-center gap-2 py-2 px-1 w-full text-left rounded hover:bg-background-surface transition-colors text-foreground-muted"
-            onClick={handleCreateFromSearch}
-            disabled={createItem.isPending}
-          >
-            + Create "{search.trim()}"
-          </button>
-        )}
       </div>
     </div>
   )
