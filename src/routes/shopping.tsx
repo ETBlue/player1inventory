@@ -132,7 +132,7 @@ function Shopping() {
   // Tag filters disabled during search
   const filteredItems = search
     ? searchFiltered
-    : filterItems(searchFiltered, filterState)
+    : filterItems(vendorFiltered, filterState)
 
   // Cart section: apply user sort
   const cartSectionItems = sortItems(
@@ -225,7 +225,7 @@ function Shopping() {
           setSortBy(f)
           setSortDirection(d)
         }}
-        items={items}
+        items={vendorFiltered}
         leading={
           vendors.length > 0 ? (
             <Select
