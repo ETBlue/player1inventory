@@ -225,7 +225,7 @@ function Shopping() {
           setSortBy(f)
           setSortDirection(d)
         }}
-        items={searchFiltered}
+        items={items}
         leading={
           vendors.length > 0 ? (
             <Select

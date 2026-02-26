@@ -667,10 +667,11 @@ describe('Shopping page tag filtering', () => {
     const costcoOption = await screen.findByRole('option', { name: /costco/i })
     await user.click(costcoOption)
 
-    // Then the count shows 1 of 2 items (Dairy filter applied to Costco's 2 items)
+    // Then the count shows 2 of 3 items (Dairy filter applied to all items — FilterStatus
+    // counts are not scoped to the vendor selection, only the displayed list is)
     // This proves both vendor and tag filters are active simultaneously
     await waitFor(() => {
-      expect(screen.getByText(/showing 1 of 2 items/i)).toBeInTheDocument()
+      expect(screen.getByText(/showing 2 of 3 items/i)).toBeInTheDocument()
     })
     // And Milk is visible (Dairy + Costco), Cheese and Bread are not
     expect(screen.getByText('Milk')).toBeInTheDocument()
