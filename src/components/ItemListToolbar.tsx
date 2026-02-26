@@ -233,7 +233,7 @@ export function ItemListToolbar({
       {/* Row 2: search input */}
       {searchVisible && (
         <div className="flex items-center gap-2 border-t border-accessory-default px-3">
-          <Search className="h-4 w-4 text-foreground-muted shrink-0" />
+          <Search className="h-4 w-4 text-foreground-muted" />
           <Input
             placeholder="Search items..."
             value={search}
@@ -245,13 +245,13 @@ export function ItemListToolbar({
           {search &&
             (onCreateFromSearch && queriedCount === 0 ? (
               <Button
-                size="icon"
-                variant="neutral-ghost"
-                className="h-6 w-6 shrink-0"
+                variant="primary"
+                size="sm"
                 onClick={() => onCreateFromSearch(search.trim())}
                 aria-label="Create item"
               >
-                <Plus className="h-3 w-3" />
+                <Plus />
+                Create
               </Button>
             ) : (
               <Button
@@ -261,7 +261,7 @@ export function ItemListToolbar({
                 onClick={() => setSearch('')}
                 aria-label="Clear search"
               >
-                <X className="h-3 w-3" />
+                <X />
               </Button>
             ))}
         </div>
