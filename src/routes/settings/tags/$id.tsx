@@ -88,7 +88,7 @@ function TagDetailLayoutInner() {
         <div
           className={`px-3 flex items-center gap-2
           fixed top-0 left-0 right-0 z-50
-          bg-background-elevated
+          bg-background-surface
           border-b-2 border-accessory-default`}
         >
           <Button
@@ -126,7 +126,7 @@ function TagDetailLayoutInner() {
         </div>
 
         {/* Main Content with padding to clear fixed bar */}
-        <div className="pt-16 p-4">
+        <div className="mt-[50px]">
           <Outlet key={router.state.location.pathname} />
         </div>
       </div>

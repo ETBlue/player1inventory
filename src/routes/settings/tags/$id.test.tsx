@@ -298,7 +298,7 @@ describe('Tag Detail - Info Tab', () => {
       ).not.toBeInTheDocument()
       // Should show Items tab content (search input)
       expect(
-        screen.getByPlaceholderText(/search or create item/i),
+        screen.getByRole('button', { name: /toggle filters/i }),
       ).toBeInTheDocument()
     })
 
@@ -345,7 +345,7 @@ describe('Tag Detail - Info Tab', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText(/search or create item/i),
+        screen.getByRole('button', { name: /toggle filters/i }),
       ).toBeInTheDocument()
     })
 
@@ -520,7 +520,7 @@ describe('Tag Detail - Tab Navigation', () => {
     // Then shows Items tab content
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText(/search or create item/i),
+        screen.getByRole('button', { name: /toggle filters/i }),
       ).toBeInTheDocument()
     })
 

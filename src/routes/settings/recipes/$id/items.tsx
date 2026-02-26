@@ -1,11 +1,16 @@
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
-import { Input } from '@/components/ui/input'
+import { ItemListToolbar } from '@/components/ItemListToolbar'
+import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
 import { useRecipe, useUpdateRecipe } from '@/hooks/useRecipes'
+import { useSortFilter } from '@/hooks/useSortFilter'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
+import { filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { sortItems } from '@/lib/sortUtils'
 
 export const Route = createFileRoute('/settings/recipes/$id/items')({
   component: RecipeItemsTab,
@@ -25,10 +30,7 @@ function RecipeItemsTab() {
     [tags],
   )
 
-  const [search, setSearch] = useState('')
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const recipeItems = recipe?.items ?? []
 
@@ -40,16 +42,91 @@ function RecipeItemsTab() {
     return ri?.defaultAmount ?? 0
   }
 
-  const sortedItems = [...items].sort((a, b) => {
-    const aAssigned = isAssigned(a.id) ? 0 : 1
-    const bAssigned = isAssigned(b.id) ? 0 : 1
-    if (aAssigned !== bAssigned) return aAssigned - bAssigned
-    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  const { sortBy, sortDirection, setSortBy, setSortDirection } =
+    useSortFilter('recipe-items')
+
+  const { search, filterState, isTagsVisible, setSearch } =
+    useUrlSearchAndFilters()
+
+  // Quantities map (for stock sort) — same query key as pantry, cache is shared
+  const { data: allQuantities } = useQuery({
+    queryKey: ['items', 'quantities'],
+    queryFn: async () => {
+      const map = new Map<string, number>()
+      for (const item of items) {
+        map.set(item.id, getCurrentQuantity(item))
+      }
+      return map
+    },
+    enabled: items.length > 0,
   })
 
-  const filteredItems = sortedItems.filter((item) =>
+  // Expiry dates map (for expiring sort)
+  const { data: allExpiryDates } = useQuery({
+    queryKey: ['items', 'expiryDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | undefined>()
+      for (const item of items) {
+        const lastPurchase = await getLastPurchaseDate(item.id)
+        const estimatedDate =
+          item.estimatedDueDays && lastPurchase
+            ? new Date(
+                lastPurchase.getTime() +
+                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
+              )
+            : item.dueDate
+        map.set(item.id, estimatedDate)
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  // Purchase dates map (for purchased sort)
+  const { data: allPurchaseDates } = useQuery({
+    queryKey: ['items', 'purchaseDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | null>()
+      for (const item of items) {
+        map.set(item.id, await getLastPurchaseDate(item.id))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  // 1. Name search filter
+  const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
+
+  // 2. Tag filter (disabled during search)
+  const tagFiltered = search
+    ? searchFiltered
+    : filterItems(searchFiltered, filterState)
+
+  // 3. Sort: assigned items first, then user's chosen sort within each group
+  const assignedItems = tagFiltered.filter((item) => isAssigned(item.id))
+  const unassignedItems = tagFiltered.filter((item) => !isAssigned(item.id))
+
+  const sortedAssigned = sortItems(
+    assignedItems,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
+  const sortedUnassigned = sortItems(
+    unassignedItems,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
+
+  const filteredItems = [...sortedAssigned, ...sortedUnassigned]
 
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
@@ -77,23 +154,8 @@ function RecipeItemsTab() {
         updates: { items: newRecipeItems },
       })
       setSearch('')
-      inputRef.current?.focus()
     } catch {
       // input stays populated for retry
-    }
-  }
-
-  const handleSearchKeyDown = async (e: React.KeyboardEvent) => {
-    if (
-      e.key === 'Enter' &&
-      filteredItems.length === 0 &&
-      search.trim() &&
-      !createItem.isPending
-    ) {
-      await handleCreateFromSearch()
-    }
-    if (e.key === 'Escape') {
-      setSearch('')
     }
   }
 
@@ -153,22 +215,23 @@ function RecipeItemsTab() {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex gap-2">
-        <Input
-          ref={inputRef}
-          placeholder="Search or create item..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-        />
-      </div>
+    <div className="space-y-0 max-w-2xl">
+      <ItemListToolbar
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onSortChange={(field, direction) => {
+          setSortBy(field)
+          setSortDirection(direction)
+        }}
+        isTagsToggleEnabled
+        items={items}
+        onSearchSubmit={handleCreateFromSearch}
+        className="bg-transparent border-none"
+      />
+      <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items yet.</p>
-      )}
-      {items.length > 0 && filteredItems.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items found.</p>
+        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
       )}
 
       <div className="space-y-px">
@@ -183,9 +246,9 @@ function RecipeItemsTab() {
               key={item.id}
               mode="recipe-assignment"
               item={item}
-              quantity={getCurrentQuantity(item)}
               tags={itemTags}
               tagTypes={tagTypes}
+              showTags={isTagsVisible}
               isChecked={assigned}
               onCheckboxToggle={() =>
                 handleToggle(item.id, item.consumeAmount ?? 1)
@@ -201,6 +264,13 @@ function RecipeItemsTab() {
             />
           )
         })}
+        {filteredItems.length === 0 &&
+          Object.values(filterState).some((ids) => ids.length > 0) &&
+          !search.trim() && (
+            <p className="text-sm text-foreground-muted py-4 px-1">
+              No items match the current filters.
+            </p>
+          )}
         {filteredItems.length === 0 && search.trim() && (
           <button
             type="button"
@@ -208,8 +278,7 @@ function RecipeItemsTab() {
             onClick={handleCreateFromSearch}
             disabled={createItem.isPending}
           >
-            <Plus className="h-4 w-4" />
-            Create "{search.trim()}"
+            + Create "{search.trim()}"
           </button>
         )}
       </div>

@@ -7,12 +7,11 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import { TagColor } from '@/types'
+import type { Item } from '@/types'
 import { ItemFilters } from './ItemFilters'
 
 const queryClient = new QueryClient()
 
-// Create a router for storybook
 const createStoryRouter = (storyComponent: React.ComponentType) => {
   const rootRoute = createRootRoute({
     component: storyComponent as () => React.ReactNode,
@@ -46,30 +45,18 @@ const meta: Meta<typeof ItemFilters> = {
 export default meta
 type Story = StoryObj<typeof ItemFilters>
 
-// Mock data
-const mockTagTypes = [
-  { id: 'type-1', name: 'Category', color: TagColor.teal },
-  { id: 'type-2', name: 'Store', color: TagColor.purple },
-  { id: 'type-3', name: 'Brand', color: TagColor.orange },
-]
-
-const mockTags = [
-  { id: 'tag-1', name: 'Dairy', typeId: 'type-1' },
-  { id: 'tag-2', name: 'Produce', typeId: 'type-1' },
-  { id: 'tag-3', name: 'Meat', typeId: 'type-1' },
-  { id: 'tag-4', name: 'Whole Foods', typeId: 'type-2' },
-  { id: 'tag-5', name: "Trader Joe's", typeId: 'type-2' },
-  { id: 'tag-6', name: 'Organic Valley', typeId: 'type-3' },
-  { id: 'tag-7', name: 'Horizon', typeId: 'type-3' },
-]
-
-const mockItems = [
+const mockItems: Item[] = [
   {
     id: 'item-1',
     name: 'Milk',
     tagIds: ['tag-1', 'tag-4', 'tag-6'],
+    vendorIds: [],
+    targetUnit: 'package',
     targetQuantity: 2,
     refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -77,8 +64,13 @@ const mockItems = [
     id: 'item-2',
     name: 'Cheese',
     tagIds: ['tag-1', 'tag-5'],
+    vendorIds: [],
+    targetUnit: 'package',
     targetQuantity: 1,
     refillThreshold: 0,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -86,90 +78,31 @@ const mockItems = [
     id: 'item-3',
     name: 'Apples',
     tagIds: ['tag-2', 'tag-4'],
+    vendorIds: [],
+    targetUnit: 'package',
     targetQuantity: 5,
     refillThreshold: 2,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'item-4',
-    name: 'Chicken',
-    tagIds: ['tag-3', 'tag-4'],
-    targetQuantity: 3,
-    refillThreshold: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'item-5',
-    name: 'Yogurt',
-    tagIds: ['tag-1', 'tag-5', 'tag-7'],
-    targetQuantity: 4,
-    refillThreshold: 2,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
 ]
 
+// Note: ItemFilters fetches its own tag data via hooks.
+// In Storybook, tags/tagTypes will be empty (no real database),
+// so the component renders null (no tag types with tags).
+// Use integration tests or the full app for filter interaction testing.
+
 export const Default: Story = {
-  args: {
-    tagTypes: mockTagTypes,
-    tags: mockTags,
-    items: mockItems,
-    filterState: {},
-    filteredCount: 5,
-    totalCount: 5,
-    onFilterChange: (newState) => console.log('Filter changed:', newState),
-  },
+  render: () => <ItemFilters items={mockItems} />,
 }
 
-export const WithActiveFilters: Story = {
-  args: {
-    tagTypes: mockTagTypes,
-    tags: mockTags,
-    items: mockItems,
-    filterState: {
-      'type-1': ['tag-1'], // Dairy selected
-      'type-2': ['tag-4'], // Whole Foods selected
-    },
-    filteredCount: 2,
-    totalCount: 5,
-    onFilterChange: (newState) => console.log('Filter changed:', newState),
-  },
+export const EmptyItems: Story = {
+  render: () => <ItemFilters items={[]} />,
 }
 
-export const NoTagTypes: Story = {
-  args: {
-    tagTypes: [],
-    tags: [],
-    items: mockItems,
-    filterState: {},
-    filteredCount: 5,
-    totalCount: 5,
-    onFilterChange: (newState) => console.log('Filter changed:', newState),
-  },
-}
-
-export const MultipleTagTypes: Story = {
-  args: {
-    tagTypes: [
-      { id: 'type-1', name: 'Category', color: TagColor.teal },
-      { id: 'type-2', name: 'Store', color: TagColor.purple },
-      { id: 'type-3', name: 'Brand', color: TagColor.orange },
-      { id: 'type-4', name: 'Dietary', color: TagColor.green },
-    ],
-    tags: [
-      ...mockTags,
-      { id: 'tag-8', name: 'Organic', typeId: 'type-4' },
-      { id: 'tag-9', name: 'Gluten-Free', typeId: 'type-4' },
-      { id: 'tag-10', name: 'Vegan', typeId: 'type-4' },
-    ],
-    items: mockItems,
-    filterState: {
-      'type-1': ['tag-1', 'tag-2'], // Dairy and Produce selected
-    },
-    filteredCount: 3,
-    totalCount: 5,
-    onFilterChange: (newState) => console.log('Filter changed:', newState),
-  },
+export const Disabled: Story = {
+  render: () => <ItemFilters items={mockItems} disabled />,
 }

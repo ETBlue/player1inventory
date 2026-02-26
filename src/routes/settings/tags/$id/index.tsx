@@ -83,7 +83,7 @@ function TagInfoTab() {
 
   return (
     <form
-      className="space-y-4 max-w-md"
+      className="space-y-4 max-w-md px-6 pb-6 pt-4"
       onSubmit={(e) => {
         e.preventDefault()
         handleSave()

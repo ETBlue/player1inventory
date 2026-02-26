@@ -43,6 +43,14 @@ export function useItemWithQuantity(id: string) {
   }
 }
 
+export function useLastPurchaseDate(itemId: string) {
+  return useQuery({
+    queryKey: ['items', itemId, 'lastPurchase'],
+    queryFn: () => getLastPurchaseDate(itemId),
+    enabled: !!itemId,
+  })
+}
+
 export function useCreateItem() {
   const queryClient = useQueryClient()
 

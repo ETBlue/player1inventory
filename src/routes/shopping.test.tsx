@@ -46,14 +46,14 @@ describe('Shopping page', () => {
     )
   }
 
-  it('user can see all active items sorted by stock percentage', async () => {
-    // Given three items with different stock levels
+  it('user can see all active items sorted by name (default)', async () => {
+    // Given three items with different names
     await createItem({
       name: 'Eggs',
       tagIds: [],
       targetQuantity: 10,
       refillThreshold: 2,
-      packedQuantity: 2, // 20% — should be first
+      packedQuantity: 2,
       unpackedQuantity: 0,
       consumeAmount: 1,
       targetUnit: 'package',
@@ -63,7 +63,7 @@ describe('Shopping page', () => {
       tagIds: [],
       targetQuantity: 4,
       refillThreshold: 1,
-      packedQuantity: 3, // 75% — should be last
+      packedQuantity: 3,
       unpackedQuantity: 0,
       consumeAmount: 1,
       targetUnit: 'package',
@@ -73,24 +73,24 @@ describe('Shopping page', () => {
       tagIds: [],
       targetQuantity: 4,
       refillThreshold: 1,
-      packedQuantity: 1, // 25% — should be second
+      packedQuantity: 1,
       unpackedQuantity: 0,
       consumeAmount: 1,
       targetUnit: 'package',
     })
 
-    // When rendering the shopping page
+    // When rendering the shopping page (default sort is 'name' ascending)
     renderShoppingPage()
 
     await waitFor(() => {
       expect(screen.getByText('Eggs')).toBeInTheDocument()
     })
 
-    // Then items are sorted by stock percentage ascending
+    // Then items are sorted alphabetically: Bread < Eggs < Milk
     const cards = screen.getAllByRole('heading', { level: 3 })
     const names = cards.map((el) => el.textContent)
+    expect(names.indexOf('Bread')).toBeLessThan(names.indexOf('Eggs'))
     expect(names.indexOf('Eggs')).toBeLessThan(names.indexOf('Milk'))
-    expect(names.indexOf('Milk')).toBeLessThan(names.indexOf('Bread'))
   })
 
   it('user can add item to cart by checking checkbox', async () => {
@@ -770,6 +770,43 @@ describe('Shopping page tag filtering', () => {
     expect(
       await screen.findByRole('option', { name: /manage vendors/i }),
     ).toBeInTheDocument()
+  })
+
+  it('user can sort shopping items by name', async () => {
+    // Given: two items exist in the pending section with different names
+    await createItem({
+      name: 'Zucchini',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    await createItem({
+      name: 'Apple',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+
+    // When: the page loads (default sort is 'name' ascending)
+    renderShoppingPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Apple')).toBeInTheDocument()
+      expect(screen.getByText('Zucchini')).toBeInTheDocument()
+    })
+
+    // Then: items appear in alphabetical order
+    const cards = screen.getAllByRole('heading', { level: 3 })
+    const names = cards.map((el) => el.textContent)
+    expect(names.indexOf('Apple')).toBeLessThan(names.indexOf('Zucchini'))
   })
 
   it('user can navigate to vendor list from "Manage vendors..." option', async () => {

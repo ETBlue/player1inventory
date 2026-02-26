@@ -101,14 +101,17 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "mil"
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'mil')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
 
     // Then only Milk is visible
     await waitFor(() => {
@@ -185,6 +188,15 @@ describe('Tag Detail - Items Tab', () => {
     await makeItem('Milk', [otherTag.id])
 
     renderItemsTab(tag.id)
+    const user = userEvent.setup()
+
+    // When user toggles tags visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle tags/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /toggle tags/i }))
 
     // Then the other tag appears as a badge
     await waitFor(() => {
@@ -202,14 +214,17 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "Butter" into the search input (zero matches) and presses Enter
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'Butter')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
     // Then the new item appears in the list checked (assigned to tag)
@@ -235,14 +250,17 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types text that matches no items
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // Then the create row is visible
     await waitFor(() => {
@@ -250,8 +268,8 @@ describe('Tag Detail - Items Tab', () => {
     })
 
     // When user clears the input and types text that matches an item
-    await user.clear(screen.getByPlaceholderText(/search or create/i))
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'mil')
+    await user.clear(screen.getByPlaceholderText(/search items/i))
+    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
 
     // Then the create row is not shown (Milk matched)
     await waitFor(() => {
@@ -270,14 +288,17 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "Butter" and clicks the create row
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'Butter')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await waitFor(() => {
       expect(screen.getByText(/create "Butter"/i)).toBeInTheDocument()
     })
@@ -286,7 +307,7 @@ describe('Tag Detail - Items Tab', () => {
     // Then Butter appears in the list checked and the input is cleared
     await waitFor(() => {
       expect(screen.getByLabelText('Remove Butter')).toBeChecked()
-      expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('')
     })
   })
 
@@ -300,19 +321,24 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // When user presses Escape
     await user.keyboard('{Escape}')
 
-    // Then the input is cleared
+    // Then the search panel is hidden
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
+      expect(
+        screen.queryByPlaceholderText(/search items/i),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -348,7 +374,7 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
-  it('shows no results message when search has no matches', async () => {
+  it('user can see create prompt when search input has no matches', async () => {
     // Given a tag with items
     const tagType = await createTagType({
       name: 'Category',
@@ -361,18 +387,110 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user searches for non-existent item
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // Then the create row appears (zero-match state), not a "no results" message
     await waitFor(() => {
       expect(screen.getByText(/create "xyz"/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can see sort and filter toolbar controls', async () => {
+    // Given a tag exists
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When user navigates to the items tab
+    renderItemsTab(tag.id)
+
+    // Then sort and filter toolbar controls are visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /toggle tags/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /sort by criteria/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can sort items by name', async () => {
+    // Given a tag and items created out of alphabetical order
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    await makeItem('Yogurt')
+    await makeItem('Butter')
+    await makeItem('Milk')
+
+    // When user navigates to items tab (default sort is name asc)
+    renderItemsTab(tag.id)
+
+    // Then items are rendered in alphabetical order by name
+    await waitFor(() => {
+      const itemLinks = screen.getAllByRole('link', {
+        name: /butter|milk|yogurt/i,
+      })
+      const names = itemLinks.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/butter/i)
+      expect(names[1]).toMatch(/milk/i)
+      expect(names[2]).toMatch(/yogurt/i)
+    })
+  })
+
+  it('user can filter items using the tag filter', async () => {
+    // Given a primary tag and a second tag type used as a filter
+    const primaryTagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const primaryTag = await createTag({
+      name: 'Dairy',
+      typeId: primaryTagType.id,
+    })
+    const filterTagType = await createTagType({
+      name: 'Location',
+      color: TagColor.green,
+    })
+    await createTag({ name: 'Fridge', typeId: filterTagType.id })
+    await makeItem('Milk', [primaryTag.id])
+
+    const user = userEvent.setup()
+
+    // When user navigates to the items tab
+    renderItemsTab(primaryTag.id)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks the Filter button to show filters
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // Then the ItemFilters component renders with filter dropdowns for tag types that have tags
+    await waitFor(() => {
+      expect(screen.getByText(/location/i)).toBeInTheDocument()
     })
   })
 })

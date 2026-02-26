@@ -194,7 +194,7 @@ describe('Vendor Detail - Info Tab', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText(/search or create item/i),
+        screen.getByRole('button', { name: /toggle filters/i }),
       ).toBeInTheDocument()
     })
 

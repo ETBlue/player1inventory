@@ -4,25 +4,23 @@ import { Link } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
-import { calculateTagCount, type FilterState } from '@/lib/filterUtils'
+import { useTags, useTagTypes } from '@/hooks/useTags'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
+import { calculateTagCount } from '@/lib/filterUtils'
 import { sortTagsByName } from '@/lib/tagSortUtils'
-import type { Item, Tag, TagType } from '@/types'
+import { cn } from '@/lib/utils'
+import type { Item } from '@/types'
 
 interface ItemFiltersProps {
-  tagTypes: TagType[]
-  tags: Tag[]
-  items: Item[]
-  filterState: FilterState
-  onFilterChange: (newState: FilterState) => void
+  items: Item[] // search-scoped items for available tag option computation
+  disabled?: boolean
 }
 
-export function ItemFilters({
-  tagTypes,
-  tags,
-  items,
-  filterState,
-  onFilterChange,
-}: ItemFiltersProps) {
+export function ItemFilters({ items, disabled }: ItemFiltersProps) {
+  const { data: tagTypes = [] } = useTagTypes()
+  const { data: tags = [] } = useTags()
+  const { filterState, setFilterState } = useUrlSearchAndFilters()
+
   // Filter to only tag types that have tags, then sort alphabetically
   const tagTypesWithTags = tagTypes
     .filter((tagType) => tags.some((tag) => tag.typeId === tagType.id))
@@ -39,7 +37,7 @@ export function ItemFilters({
       ? currentTags.filter((id) => id !== tagId)
       : [...currentTags, tagId]
 
-    onFilterChange({
+    setFilterState({
       ...filterState,
       [tagTypeId]: newTags,
     })
@@ -48,11 +46,16 @@ export function ItemFilters({
   const handleClearTagType = (tagTypeId: string) => {
     const newState = { ...filterState }
     delete newState[tagTypeId]
-    onFilterChange(newState)
+    setFilterState(newState)
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 mx-1 py-1">
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-1 mx-1 py-1',
+        disabled ? 'opacity-50 pointer-events-none' : '',
+      )}
+    >
       {tagTypesWithTags.map((tagType) => {
         const tagTypeId = tagType.id
         const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)

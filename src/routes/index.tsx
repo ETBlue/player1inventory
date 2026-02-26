@@ -1,15 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
-import { FilterStatus } from '@/components/FilterStatus'
-import { ItemFilters } from '@/components/ItemFilters'
-import { PantryItem } from '@/components/PantryItem'
-import { PantryToolbar } from '@/components/PantryToolbar'
+import { ItemCard } from '@/components/ItemCard'
+import { ItemListToolbar } from '@/components/ItemListToolbar'
+import { Button } from '@/components/ui/button'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useAddInventoryLog, useItems, useUpdateItem } from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
-import { type FilterState, filterItems } from '@/lib/filterUtils'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
+import { filterItems } from '@/lib/filterUtils'
 import {
   addItem,
   consumeItem,
@@ -17,14 +18,9 @@ import {
   isInactive,
 } from '@/lib/quantityUtils'
 import {
-  loadFilters,
   loadSortPrefs,
-  loadUiPrefs,
   type SortDirection,
   type SortField,
-  saveFilters,
-  saveSortPrefs,
-  saveUiPrefs,
 } from '@/lib/sessionStorage'
 import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
@@ -41,45 +37,25 @@ function PantryView() {
   const updateItem = useUpdateItem()
 
   const [addDialogItem, setAddDialogItem] = useState<Item | null>(null)
-  const [filterState, setFilterState] = useState<FilterState>(() =>
-    loadFilters(),
-  )
 
-  // Add these new states
-  const [filtersVisible, setFiltersVisible] = useState(
-    () => loadUiPrefs().filtersVisible,
-  )
-  const [tagsVisible, setTagsVisible] = useState(
-    () => loadUiPrefs().tagsVisible,
-  )
+  // Sort prefs from localStorage (pantry defaults to 'expiring')
   const [sortBy, setSortBy] = useState<SortField>(() => loadSortPrefs().sortBy)
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     () => loadSortPrefs().sortDirection,
   )
 
-  // Calculate if any filters are active
-  const hasActiveFilters = Object.values(filterState).some(
-    (tagIds) => tagIds.length > 0,
+  const { search, filterState, setFilterState, isTagsVisible } =
+    useUrlSearchAndFilters()
+
+  // Apply search filter, then tag filters (tag filters disabled during search)
+  const searchFiltered = items.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase()),
   )
+  const filteredItems = search
+    ? searchFiltered
+    : filterItems(searchFiltered, filterState)
 
-  // Save filter state to sessionStorage whenever it changes
-  useEffect(() => {
-    saveFilters(filterState)
-  }, [filterState])
-
-  // Add these new effects
-  useEffect(() => {
-    saveUiPrefs({ filtersVisible, tagsVisible })
-  }, [filtersVisible, tagsVisible])
-
-  useEffect(() => {
-    saveSortPrefs({ sortBy, sortDirection })
-  }, [sortBy, sortDirection])
-
-  // Apply filters to items
-  const filteredItems = filterItems(items, filterState)
-
-  // Add: Fetch all quantities for sorting
+  // Fetch all quantities for sorting
   const { data: allQuantities } = useQuery({
     queryKey: ['items', 'quantities'],
     queryFn: async () => {
@@ -92,7 +68,7 @@ function PantryView() {
     enabled: items.length > 0,
   })
 
-  // Add: Fetch all expiry dates for sorting
+  // Fetch all expiry dates for sorting
   const { data: allExpiryDates } = useQuery({
     queryKey: ['items', 'expiryDates'],
     queryFn: async () => {
@@ -148,28 +124,27 @@ function PantryView() {
     const tagType = tagTypes.find((t) => t.id === tag.typeId)
     if (!tagType) return
 
-    setFilterState((prev) => {
-      const existingTags = prev[tagType.id] || []
+    const existingTags = filterState[tagType.id] || []
 
-      // If tag is already in filter, remove it (toggle off)
-      if (existingTags.includes(tagId)) {
-        const newTags = existingTags.filter((id) => id !== tagId)
-        if (newTags.length === 0) {
-          // Remove tag type from filter if no tags left
-          const { [tagType.id]: _, ...rest } = prev
-          return rest
-        }
-        return {
-          ...prev,
+    // If tag is already in filter, remove it (toggle off)
+    if (existingTags.includes(tagId)) {
+      const newTags = existingTags.filter((id) => id !== tagId)
+      if (newTags.length === 0) {
+        const { [tagType.id]: _, ...rest } = filterState
+        setFilterState(rest)
+      } else {
+        setFilterState({
+          ...filterState,
           [tagType.id]: newTags,
-        }
+        })
       }
+      return
+    }
 
-      // Otherwise add it (toggle on)
-      return {
-        ...prev,
-        [tagType.id]: [...existingTags, tagId],
-      }
+    // Otherwise add it (toggle on)
+    setFilterState({
+      ...filterState,
+      [tagType.id]: [...existingTags, tagId],
     })
   }
 
@@ -179,35 +154,25 @@ function PantryView() {
 
   return (
     <div>
-      <PantryToolbar
-        filtersVisible={filtersVisible}
-        tagsVisible={tagsVisible}
+      <ItemListToolbar
         sortBy={sortBy}
         sortDirection={sortDirection}
-        onToggleFilters={() => setFiltersVisible((prev) => !prev)}
-        onToggleTags={() => setTagsVisible((prev) => !prev)}
         onSortChange={(field, direction) => {
           setSortBy(field)
           setSortDirection(direction)
         }}
-      />
-      {filtersVisible && (
-        <ItemFilters
-          tagTypes={tagTypes}
-          tags={tags}
-          items={items}
-          filterState={filterState}
-          onFilterChange={setFilterState}
-        />
-      )}
-      {(filtersVisible || hasActiveFilters) && (
-        <FilterStatus
-          filteredCount={sortedItems.length}
-          totalCount={items.length}
-          hasActiveFilters={hasActiveFilters}
-          onClearAll={() => setFilterState({})}
-        />
-      )}
+        isTagsToggleEnabled
+        items={items}
+        className="border-b"
+      >
+        <Link to="/items/new">
+          <Button size="icon" aria-label="Add item">
+            <Plus />
+          </Button>
+        </Link>
+      </ItemListToolbar>
+
+      <div className="h-px bg-accessory-default" />
 
       {items.length === 0 ? (
         <div className="text-center py-12 text-foreground-muted">
@@ -226,39 +191,37 @@ function PantryView() {
       ) : (
         <div className="bg-background-base flex flex-col gap-px">
           {activeItems.map((item) => (
-            <PantryItem
+            <ItemCard
               key={item.id}
               item={item}
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
-              showTags={tagsVisible}
-              onConsume={async () => {
+              showTags={isTagsVisible}
+              onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
-                consumeItem(updatedItem, updatedItem.consumeAmount)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                  },
-                })
-              }}
-              onAdd={async () => {
-                const updatedItem = { ...item }
-                const purchaseDate = new Date()
-                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                    ...(updatedItem.dueDate
-                      ? { dueDate: updatedItem.dueDate }
-                      : {}),
-                  },
-                })
+                if (delta > 0) {
+                  const purchaseDate = new Date()
+                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                      ...(updatedItem.dueDate
+                        ? { dueDate: updatedItem.dueDate }
+                        : {}),
+                    },
+                  })
+                } else {
+                  consumeItem(updatedItem, updatedItem.consumeAmount)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                    },
+                  })
+                }
               }}
               onTagClick={handleTagClick}
             />
@@ -272,39 +235,37 @@ function PantryView() {
           )}
 
           {inactiveItems.map((item) => (
-            <PantryItem
+            <ItemCard
               key={item.id}
               item={item}
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
-              showTags={tagsVisible}
-              onConsume={async () => {
+              showTags={isTagsVisible}
+              onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
-                consumeItem(updatedItem, updatedItem.consumeAmount)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                  },
-                })
-              }}
-              onAdd={async () => {
-                const updatedItem = { ...item }
-                const purchaseDate = new Date()
-                addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-
-                await updateItem.mutateAsync({
-                  id: item.id,
-                  updates: {
-                    packedQuantity: updatedItem.packedQuantity,
-                    unpackedQuantity: updatedItem.unpackedQuantity,
-                    ...(updatedItem.dueDate
-                      ? { dueDate: updatedItem.dueDate }
-                      : {}),
-                  },
-                })
+                if (delta > 0) {
+                  const purchaseDate = new Date()
+                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                      ...(updatedItem.dueDate
+                        ? { dueDate: updatedItem.dueDate }
+                        : {}),
+                    },
+                  })
+                } else {
+                  consumeItem(updatedItem, updatedItem.consumeAmount)
+                  await updateItem.mutateAsync({
+                    id: item.id,
+                    updates: {
+                      packedQuantity: updatedItem.packedQuantity,
+                      unpackedQuantity: updatedItem.unpackedQuantity,
+                    },
+                  })
+                }
               }}
               onTagClick={handleTagClick}
             />

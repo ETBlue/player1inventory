@@ -61,7 +61,9 @@ src/
 
 ## Shared Components
 
-**`Toolbar`** (`src/components/Toolbar.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by pantry (`PantryToolbar`), shopping, vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
+**`Toolbar`** (`src/components/Toolbar.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
+
+**`ItemListToolbar`** (`src/components/ItemListToolbar.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with zero matches).
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
@@ -69,6 +71,10 @@ Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` a
 
 **Navigation:**
 - `useAppNavigation()` (`src/hooks/useAppNavigation.ts`) - Tracks navigation history in sessionStorage, provides `goBack()` function for smart back navigation to previous app page (fallback to home)
+
+**Item List State:**
+- `useUrlSearchAndFilters()` (`src/hooks/useUrlSearchAndFilters.ts`) - Manages search query, tag filter state, and UI visibility (filters panel, tags visible) via URL params (`?q=`, `?f_<typeId>=`, `?filters=1`, `?tags=1`). Syncs to sessionStorage key `item-list-search-prefs` for cross-page carry-over on navigation.
+- `useSortFilter(storageKey)` (`src/hooks/useSortFilter.ts`) - Manages sort field and direction via localStorage key `${storageKey}-sort-prefs`. Used by all item list pages for per-page sort persistence.
 
 **Data Utilities:**
 - `useVendorItemCounts()` (`src/hooks/useVendorItemCounts.ts`) - Returns `Map<vendorId, number>` of item counts per vendor, memoized with useMemo for performance
@@ -249,7 +255,7 @@ Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `de
 
 **Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, filters items by assigned vendor. State is not persisted.
 
-**Tag filter:** `Filters` toggle button (`Filter` icon) in the toolbar shows/hides an `ItemFilters` row below the toolbar. Multi-select per tag type (OR within type, AND across types). Applied after the vendor filter — `filterItems(vendorFiltered, filterState)`. State persists to sessionStorage (`shopping-filters`, `shopping-ui-prefs` keys).
+**Tag filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Multi-select per tag type (OR within type, AND across types). Applied after the vendor filter — `filterItems(vendorFiltered, filterState)`. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
 
 **Files:**
 - `src/routes/shopping.tsx` — main page with both vendor and tag filter controls

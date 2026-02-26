@@ -4,7 +4,6 @@ import {
   addItem,
   consumeItem,
   getCurrentQuantity,
-  getDisplayQuantity,
   getStockStatus,
   isInactive,
   normalizeUnpacked,
@@ -538,59 +537,6 @@ describe('packUnpacked', () => {
 
     expect(item.packedQuantity).toBe(2) // No change
     expect(item.unpackedQuantity).toBe(150) // No change
-  })
-})
-
-describe('getDisplayQuantity', () => {
-  it('returns total in packages when tracking in packages with dual-unit', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
-      targetUnit: 'package',
-      packedQuantity: 3,
-      unpackedQuantity: 0.5,
-    }
-
-    // 3 packed + (0.5 unpacked / 1 amountPerPackage) = 3.5 packages
-    expect(getDisplayQuantity(item as Item)).toBe(3.5)
-  })
-
-  it('returns total measurement when tracking in measurement units', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
-      targetUnit: 'measurement',
-      packedQuantity: 2,
-      unpackedQuantity: 0.5,
-    }
-
-    expect(getDisplayQuantity(item as Item)).toBe(2.5)
-  })
-
-  it('returns packed quantity for simple mode', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'pack',
-      targetUnit: 'package',
-      packedQuantity: 5,
-      unpackedQuantity: 0,
-    }
-
-    expect(getDisplayQuantity(item as Item)).toBe(5)
-  })
-
-  it('correctly converts large unpacked quantity to packages', () => {
-    const item: Partial<Item> = {
-      measurementUnit: 'g',
-      amountPerPackage: 100,
-      targetUnit: 'package',
-      packedQuantity: 1.2,
-      unpackedQuantity: 1.984, // 1.984 packages when tracking in packages
-    }
-
-    // 1.2 packed + 1.984 unpacked = 3.184 packages
-    expect(getDisplayQuantity(item as Item)).toBe(3.184)
   })
 })
 

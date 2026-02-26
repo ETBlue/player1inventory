@@ -23,12 +23,6 @@ export function getStockStatus(
   return 'ok'
 }
 
-export function getDisplayQuantity(item: Item): number {
-  // Both package and measurement tracking use getCurrentQuantity
-  // which already handles the unit conversion based on targetUnit
-  return getCurrentQuantity(item)
-}
-
 export function normalizeUnpacked(item: Item): void {
   if (
     item.targetUnit === 'measurement' &&

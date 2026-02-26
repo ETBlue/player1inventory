@@ -1,11 +1,16 @@
+import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
-import { Input } from '@/components/ui/input'
+import { ItemListToolbar } from '@/components/ItemListToolbar'
+import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
+import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
+import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
+import { filterItems } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { sortItems } from '@/lib/sortUtils'
 
 export const Route = createFileRoute('/settings/tags/$id/items')({
   component: TagItemsTab,
@@ -17,20 +22,69 @@ function TagItemsTab() {
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const updateItem = useUpdateItem()
-
-  const [search, setSearch] = useState('')
-  const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
   const createItem = useCreateItem()
+
+  const { sortBy, sortDirection, setSortBy, setSortDirection } =
+    useSortFilter('tag-items')
+
+  const { search, filterState, isTagsVisible, setSearch } =
+    useUrlSearchAndFilters()
+
+  const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
 
   const tagMap = useMemo(
     () => Object.fromEntries(tags.map((t) => [t.id, t])),
     [tags],
   )
 
+  const { data: allQuantities } = useQuery({
+    queryKey: ['items', 'quantities'],
+    queryFn: async () => {
+      const map = new Map<string, number>()
+      for (const item of items) {
+        map.set(item.id, getCurrentQuantity(item))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const { data: allExpiryDates } = useQuery({
+    queryKey: ['items', 'expiryDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | undefined>()
+      for (const item of items) {
+        const lastPurchase = await getLastPurchaseDate(item.id)
+        const estimatedDate =
+          item.estimatedDueDays && lastPurchase
+            ? new Date(
+                lastPurchase.getTime() +
+                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
+              )
+            : item.dueDate
+        map.set(item.id, estimatedDate)
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
+  const { data: allPurchaseDates } = useQuery({
+    queryKey: ['items', 'purchaseDates'],
+    queryFn: async () => {
+      const map = new Map<string, Date | null>()
+      for (const item of items) {
+        map.set(item.id, await getLastPurchaseDate(item.id))
+      }
+      return map
+    },
+    enabled: items.length > 0,
+  })
+
   const isAssigned = (tagIds: string[] = []) => tagIds.includes(tagId)
 
   const handleToggle = async (itemId: string, currentTagIds: string[] = []) => {
-    if (savingItemIds.has(itemId)) return // guard against re-entrancy
+    if (savingItemIds.has(itemId)) return
     const dbAssigned = currentTagIds.includes(tagId)
     const newTagIds = dbAssigned
       ? currentTagIds.filter((id) => id !== tagId)
@@ -51,15 +105,25 @@ function TagItemsTab() {
     }
   }
 
-  const sortedItems = [...items].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-  )
-
-  const filteredItems = sortedItems.filter((item) =>
+  // 1. Name search filter
+  const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  const inputRef = useRef<HTMLInputElement>(null)
+  // 2. Tag filter (disabled during search)
+  const tagFiltered = search
+    ? searchFiltered
+    : filterItems(searchFiltered, filterState)
+
+  // 3. Sort
+  const filteredItems = sortItems(
+    tagFiltered,
+    allQuantities ?? new Map(),
+    allExpiryDates ?? new Map(),
+    allPurchaseDates ?? new Map(),
+    sortBy,
+    sortDirection,
+  )
 
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
@@ -77,44 +141,29 @@ function TagItemsTab() {
         consumeAmount: 1,
       })
       setSearch('')
-      inputRef.current?.focus()
     } catch {
       // input stays populated for retry
     }
   }
 
-  const handleSearchKeyDown = async (e: React.KeyboardEvent) => {
-    if (
-      e.key === 'Enter' &&
-      filteredItems.length === 0 &&
-      search.trim() &&
-      !createItem.isPending
-    ) {
-      await handleCreateFromSearch()
-    }
-    if (e.key === 'Escape') {
-      setSearch('')
-    }
-  }
-
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex gap-2">
-        <Input
-          ref={inputRef}
-          placeholder="Search or create item..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-        />
-      </div>
+    <div className="space-y-0 max-w-2xl">
+      <ItemListToolbar
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onSortChange={(field, direction) => {
+          setSortBy(field)
+          setSortDirection(direction)
+        }}
+        isTagsToggleEnabled
+        items={items}
+        onSearchSubmit={handleCreateFromSearch}
+        className="bg-transparent border-none"
+      />
+      <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items yet.</p>
-      )}
-
-      {items.length > 0 && filteredItems.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted">No items found.</p>
+        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
       )}
 
       <div className="space-y-px">
@@ -129,15 +178,22 @@ function TagItemsTab() {
               key={item.id}
               mode="tag-assignment"
               item={item}
-              quantity={getCurrentQuantity(item)}
               tags={itemTags}
               tagTypes={tagTypes}
+              showTags={isTagsVisible}
               isChecked={isAssigned(item.tagIds)}
               onCheckboxToggle={() => handleToggle(item.id, item.tagIds)}
               disabled={savingItemIds.has(item.id)}
             />
           )
         })}
+        {filteredItems.length === 0 &&
+          Object.values(filterState).some((ids) => ids.length > 0) &&
+          !search.trim() && (
+            <p className="text-sm text-foreground-muted py-4 px-1">
+              No items match the current filters.
+            </p>
+          )}
         {filteredItems.length === 0 && search.trim() && (
           <button
             type="button"
@@ -145,8 +201,7 @@ function TagItemsTab() {
             onClick={handleCreateFromSearch}
             disabled={createItem.isPending}
           >
-            <Plus className="h-4 w-4" />
-            Create "{search.trim()}"
+            + Create "{search.trim()}"
           </button>
         )}
       </div>

@@ -8,8 +8,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, createRecipe } from '@/db/operations'
+import {
+  createItem,
+  createRecipe,
+  createTag,
+  createTagType,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { TagColor } from '@/types'
 
 describe('Recipe Detail - Items Tab', () => {
   let queryClient: QueryClient
@@ -17,6 +23,8 @@ describe('Recipe Detail - Items Tab', () => {
   beforeEach(async () => {
     await db.items.clear()
     await db.recipes.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
     await db.inventoryLogs.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -94,14 +102,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "nood"
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'nood')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
 
     // Then only Noodles is visible
     await waitFor(() => {
@@ -198,14 +209,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "Butter" into the search input (zero matches) and presses Enter
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'Butter')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
     // Then the new item appears in the list checked (assigned to the recipe)
@@ -232,14 +246,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types text that matches no items
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // Then the create row is visible
     await waitFor(() => {
@@ -247,8 +264,8 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     // When user clears the input and types text that matches an item
-    await user.clear(screen.getByPlaceholderText(/search or create/i))
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'nood')
+    await user.clear(screen.getByPlaceholderText(/search items/i))
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
 
     // Then the create row is not shown (Noodles matched)
     await waitFor(() => {
@@ -263,14 +280,17 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
     // When user types "Butter" and clicks the create row
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'Butter')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await waitFor(() => {
       expect(screen.getByText(/create "Butter"/i)).toBeInTheDocument()
     })
@@ -279,7 +299,7 @@ describe('Recipe Detail - Items Tab', () => {
     // Then Butter appears in the list checked and the input is cleared
     await waitFor(() => {
       expect(screen.getByLabelText('Remove Butter')).toBeChecked()
-      expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('')
     })
   })
 
@@ -289,19 +309,24 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/search or create/i),
-      ).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
-    await user.type(screen.getByPlaceholderText(/search or create/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
 
     // When user presses Escape
     await user.keyboard('{Escape}')
 
-    // Then the input is cleared
+    // Then the search panel is hidden
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search or create/i)).toHaveValue('')
+      expect(
+        screen.queryByPlaceholderText(/search items/i),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -315,6 +340,137 @@ describe('Recipe Detail - Items Tab', () => {
       expect(
         screen.queryByRole('button', { name: /new/i }),
       ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can see assigned items before unassigned items', async () => {
+    // Given a recipe with one assigned item and one unassigned item
+    const assignedItem = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: assignedItem.id, defaultAmount: 1 },
+    ])
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+
+    // Then Noodles (assigned) appears before Tomato Sauce (unassigned)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Tomato Sauce')).toBeInTheDocument()
+    })
+
+    const items = screen.getAllByRole('link', { name: /noodles|tomato sauce/i })
+    const names = items.map((el) => el.textContent?.trim() ?? '')
+    const noodlesIdx = names.findIndex((n) => /noodles/i.test(n))
+    const tomatoIdx = names.findIndex((n) => /tomato sauce/i.test(n))
+    expect(noodlesIdx).toBeLessThan(tomatoIdx)
+  })
+
+  it('user can see sort and filter toolbar controls', async () => {
+    // Given a recipe exists
+    const recipe = await makeRecipe('Pasta')
+
+    // When user navigates to the items tab
+    renderItemsTab(recipe.id)
+
+    // Then sort and filter toolbar controls are visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /toggle tags/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /sort by criteria/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can filter items by name using the search input', async () => {
+    // Given a recipe and two items
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Noodles')
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types "nood"
+    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
+
+    // Then only Noodles is visible
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(
+        screen.queryByLabelText('Add Tomato Sauce'),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can see create prompt when search input has no matches', async () => {
+    // Given a recipe with items
+    const recipe = await makeRecipe('Pasta')
+    await makeItem('Noodles')
+    await makeItem('Tomato Sauce')
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user searches for non-existent item
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+
+    // Then the create row appears (zero-match state), not a "no results" message
+    await waitFor(() => {
+      expect(screen.getByText(/create "xyz"/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can filter items using the tag filter', async () => {
+    // Given a recipe and a tag type used as a filter
+    const recipe = await makeRecipe('Pasta')
+    const filterTagType = await createTagType({
+      name: 'Location',
+      color: TagColor.green,
+    })
+    await createTag({ name: 'Fridge', typeId: filterTagType.id })
+    await makeItem('Noodles')
+
+    const user = userEvent.setup()
+
+    // When user navigates to the items tab
+    renderItemsTab(recipe.id)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle filters/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks the Filter button to show filters
+    await user.click(screen.getByRole('button', { name: /toggle filters/i }))
+
+    // Then the ItemFilters component renders with filter dropdowns for tag types that have tags
+    await waitFor(() => {
+      expect(screen.getByText(/location/i)).toBeInTheDocument()
     })
   })
 })
