@@ -47,11 +47,13 @@ function PantryView() {
   const { search, filterState, setFilterState, isTagsVisible } =
     useUrlSearchAndFilters()
 
-  // Apply search filter, then tag filters
+  // Apply search filter, then tag filters (tag filters disabled during search)
   const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
-  const filteredItems = filterItems(searchFiltered, filterState)
+  const filteredItems = search
+    ? searchFiltered
+    : filterItems(searchFiltered, filterState)
 
   // Fetch all quantities for sorting
   const { data: allQuantities } = useQuery({

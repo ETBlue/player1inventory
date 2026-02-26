@@ -202,16 +202,16 @@ export function ItemListToolbar({
         )}
       </Toolbar>
 
-      {/* Row 3: filters */}
-      {isFiltersVisible && (
+      {/* Row 3: filters — hidden while searching */}
+      {isFiltersVisible && !search && (
         <>
           <div className="h-px bg-accessory-default" />
           <ItemFilters items={items} />
         </>
       )}
 
-      {/* Row 4: filter status */}
-      {(isFiltersVisible || hasActiveFilters) && (
+      {/* Row 4: filter status — hidden while searching */}
+      {(isFiltersVisible || hasActiveFilters) && !search && (
         <FilterStatus
           filteredCount={filteredCount}
           totalCount={totalCount}

@@ -134,8 +134,10 @@ function VendorItemsTab() {
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  // 2. Tag filter
-  const tagFiltered = filterItems(searchFiltered, filterState)
+  // 2. Tag filter (disabled during search)
+  const tagFiltered = search
+    ? searchFiltered
+    : filterItems(searchFiltered, filterState)
 
   // 3. Sort
   const filteredItems = sortItems(

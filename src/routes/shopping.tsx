@@ -129,8 +129,10 @@ function Shopping() {
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  // ItemListToolbar receives searchFiltered for accurate filter counts
-  const filteredItems = filterItems(searchFiltered, filterState)
+  // Tag filters disabled during search
+  const filteredItems = search
+    ? searchFiltered
+    : filterItems(searchFiltered, filterState)
 
   // Cart section: apply user sort
   const cartSectionItems = sortItems(
