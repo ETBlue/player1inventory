@@ -31,6 +31,7 @@ import {
   useAddToCart,
   useCartItems,
   useCheckout,
+  useCreateItem,
   useItems,
   useRemoveFromCart,
   useTags,
@@ -64,6 +65,26 @@ function Shopping() {
   const checkout = useCheckout()
   const abandonCart = useAbandonCart()
   const vendorCounts = useVendorItemCounts()
+
+  const createItem = useCreateItem()
+
+  const handleCreateFromSearch = async (query: string) => {
+    try {
+      await createItem.mutateAsync({
+        name: query,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 0,
+      })
+    } catch {
+      // input stays populated for retry
+    }
+  }
 
   const [selectedVendorId, setSelectedVendorId] = useState<string>('')
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
@@ -254,6 +275,7 @@ function Shopping() {
             </Select>
           ) : undefined
         }
+        onCreateFromSearch={handleCreateFromSearch}
       />
 
       <div className="h-px bg-accessory-default" />
