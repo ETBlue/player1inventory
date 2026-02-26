@@ -82,10 +82,10 @@ export function ItemListToolbar({
   const filteredCount = filterItems(items, filterState).length
   const totalCount = items.length
 
+  const lowerSearch = search.toLowerCase()
   const queriedCount = search.trim()
-    ? items.filter((item) =>
-        item.name.toLowerCase().includes(search.toLowerCase()),
-      ).length
+    ? items.filter((item) => item.name.toLowerCase().includes(lowerSearch))
+        .length
     : items.length
 
   const handleCriteriaChange = (field: SortField) => {
@@ -98,8 +98,9 @@ export function ItemListToolbar({
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (onSearchSubmit && queriedCount === 0 && search.trim()) {
-        onSearchSubmit(search.trim())
+      const createOrSearch = onCreateFromSearch ?? onSearchSubmit
+      if (createOrSearch && queriedCount === 0 && search.trim()) {
+        createOrSearch(search.trim())
       }
     }
     if (e.key === 'Escape') {
