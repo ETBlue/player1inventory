@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
@@ -41,11 +41,10 @@ function PantryView() {
   const addLog = useAddInventoryLog()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
-  const navigate = useNavigate()
 
   const handleCreateFromSearch = async (query: string) => {
     try {
-      const newItem = await createItem.mutateAsync({
+      await createItem.mutateAsync({
         name: query,
         tagIds: [],
         vendorIds: [],
@@ -56,7 +55,6 @@ function PantryView() {
         unpackedQuantity: 0,
         consumeAmount: 0,
       })
-      navigate({ to: '/items/$id', params: { id: newItem.id } })
     } catch {
       // input stays populated for retry
     }
