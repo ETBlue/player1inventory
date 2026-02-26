@@ -45,8 +45,7 @@ function RecipeItemsTab() {
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('recipe-items')
 
-  const { search, filterState, isTagsVisible, setSearch } =
-    useUrlSearchAndFilters()
+  const { search, filterState, isTagsVisible } = useUrlSearchAndFilters()
 
   // Quantities map (for stock sort) — same query key as pantry, cache is shared
   const { data: allQuantities } = useQuery({
@@ -137,23 +136,21 @@ function RecipeItemsTab() {
         vendorIds: [],
         tagIds: [],
         targetUnit: 'package',
-        targetQuantity: 1,
-        refillThreshold: 1,
+        targetQuantity: 0,
+        refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
+        consumeAmount: 0,
       })
       // Immediately add the new item to the recipe
-      const defaultAmount = newItem.consumeAmount || 1
       const newRecipeItems = [
         ...recipeItems,
-        { itemId: newItem.id, defaultAmount },
+        { itemId: newItem.id, defaultAmount: newItem.consumeAmount },
       ]
       await updateRecipe.mutateAsync({
         id: recipeId,
         updates: { items: newRecipeItems },
       })
-      setSearch('')
     } catch {
       // input stays populated for retry
     }
@@ -225,7 +222,7 @@ function RecipeItemsTab() {
         }}
         isTagsToggleEnabled
         items={items}
-        onSearchSubmit={handleCreateFromSearch}
+        onCreateFromSearch={handleCreateFromSearch}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -271,16 +268,6 @@ function RecipeItemsTab() {
               No items match the current filters.
             </p>
           )}
-        {filteredItems.length === 0 && search.trim() && (
-          <button
-            type="button"
-            className="flex items-center gap-2 py-2 px-1 w-full text-left rounded hover:bg-background-surface transition-colors text-foreground-muted"
-            onClick={handleCreateFromSearch}
-            disabled={createItem.isPending}
-          >
-            + Create "{search.trim()}"
-          </button>
-        )}
       </div>
     </div>
   )
