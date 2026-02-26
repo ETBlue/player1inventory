@@ -1,6 +1,6 @@
 // src/components/ItemListToolbar.tsx
 
-import { ArrowDown, ArrowUp, Filter, Search, Tags, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Filter, Plus, Search, Tags, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { FilterStatus } from '@/components/FilterStatus'
@@ -46,6 +46,7 @@ interface ItemListToolbarProps {
 
   // Search/create callback — called when Enter pressed with no matching items
   onSearchSubmit?: (query: string) => void
+  onCreateFromSearch?: (query: string) => void
 }
 
 export function ItemListToolbar({
@@ -58,6 +59,7 @@ export function ItemListToolbar({
   leading,
   children,
   onSearchSubmit,
+  onCreateFromSearch,
 }: ItemListToolbarProps) {
   const {
     search,
@@ -80,6 +82,12 @@ export function ItemListToolbar({
   const filteredCount = filterItems(items, filterState).length
   const totalCount = items.length
 
+  const lowerSearch = search.toLowerCase()
+  const queriedCount = search.trim()
+    ? items.filter((item) => item.name.toLowerCase().includes(lowerSearch))
+        .length
+    : items.length
+
   const handleCriteriaChange = (field: SortField) => {
     onSortChange(field, sortDirection)
   }
@@ -90,8 +98,9 @@ export function ItemListToolbar({
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      if (onSearchSubmit && filteredCount === 0 && search.trim()) {
-        onSearchSubmit(search.trim())
+      const createOrSearch = onCreateFromSearch ?? onSearchSubmit
+      if (createOrSearch && queriedCount === 0 && search.trim()) {
+        createOrSearch(search.trim())
       }
     }
     if (e.key === 'Escape') {
@@ -233,17 +242,28 @@ export function ItemListToolbar({
             className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
             autoFocus
           />
-          {search && (
-            <Button
-              size="icon"
-              variant="neutral-ghost"
-              className="h-6 w-6 shrink-0"
-              onClick={() => setSearch('')}
-              aria-label="Clear search"
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          )}
+          {search &&
+            (onCreateFromSearch && queriedCount === 0 ? (
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                onClick={() => onCreateFromSearch(search.trim())}
+                aria-label="Create item"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            ))}
         </div>
       )}
     </>
