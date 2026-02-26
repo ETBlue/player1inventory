@@ -500,4 +500,50 @@ describe('Tag Detail - Items Tab', () => {
       expect(screen.getByText(/location/i)).toBeInTheDocument()
     })
   })
+
+  it('user sees the new item in the list after creating from search (search not cleared)', async () => {
+    // Given a tag with no items matching "brand new item"
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    renderItemsTab(tag.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+
+    // When user types a name that has zero matches
+    await user.type(
+      screen.getByPlaceholderText(/search items/i),
+      'brand new item',
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks the create button
+    await user.click(screen.getByRole('button', { name: /create item/i }))
+
+    // Then search input still contains the query (search is not cleared)
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue(
+        'brand new item',
+      )
+    })
+
+    // And the new item appears in the list
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove brand new item')).toBeInTheDocument()
+    })
+  })
 })

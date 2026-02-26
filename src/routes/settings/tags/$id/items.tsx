@@ -155,7 +155,6 @@ function TagItemsTab() {
         }}
         isTagsToggleEnabled
         items={items}
-        onSearchSubmit={handleCreateFromSearch}
         onCreateFromSearch={handleCreateFromSearch}
         className="bg-transparent border-none"
       />
