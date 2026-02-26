@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
@@ -7,7 +7,12 @@ import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { Button } from '@/components/ui/button'
 import { getLastPurchaseDate } from '@/db/operations'
-import { useAddInventoryLog, useItems, useUpdateItem } from '@/hooks'
+import {
+  useAddInventoryLog,
+  useCreateItem,
+  useItems,
+  useUpdateItem,
+} from '@/hooks'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems } from '@/lib/filterUtils'
@@ -35,6 +40,27 @@ function PantryView() {
   const { data: tagTypes = [] } = useTagTypes()
   const addLog = useAddInventoryLog()
   const updateItem = useUpdateItem()
+  const createItem = useCreateItem()
+  const navigate = useNavigate()
+
+  const handleCreateFromSearch = async (query: string) => {
+    try {
+      const newItem = await createItem.mutateAsync({
+        name: query,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 0,
+      })
+      navigate({ to: '/items/$id', params: { id: newItem.id } })
+    } catch {
+      // input stays populated for retry
+    }
+  }
 
   const [addDialogItem, setAddDialogItem] = useState<Item | null>(null)
 
@@ -164,6 +190,7 @@ function PantryView() {
         isTagsToggleEnabled
         items={items}
         className="border-b"
+        onCreateFromSearch={handleCreateFromSearch}
       >
         <Link to="/items/new">
           <Button size="icon" aria-label="Add item">
