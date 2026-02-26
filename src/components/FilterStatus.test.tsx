@@ -63,4 +63,50 @@ describe('FilterStatus', () => {
     await user.click(screen.getByRole('button', { name: /clear filter/i }))
     expect(onClearAll).toHaveBeenCalledOnce()
   })
+
+  it('applies opacity-50 when disabled', () => {
+    const { container } = render(
+      <FilterStatus
+        filteredCount={5}
+        totalCount={10}
+        hasActiveFilters={true}
+        onClearAll={vi.fn()}
+        disabled
+      />,
+    )
+
+    expect(container.firstChild).toHaveClass('opacity-50')
+  })
+
+  it('disables the clear button when disabled', () => {
+    render(
+      <FilterStatus
+        filteredCount={5}
+        totalCount={10}
+        hasActiveFilters={true}
+        onClearAll={vi.fn()}
+        disabled
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /clear filter/i })).toBeDisabled()
+  })
+
+  it('does not call onClearAll when disabled', async () => {
+    const onClearAll = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <FilterStatus
+        filteredCount={5}
+        totalCount={10}
+        hasActiveFilters={true}
+        onClearAll={onClearAll}
+        disabled
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /clear filter/i }))
+    expect(onClearAll).not.toHaveBeenCalled()
+  })
 })

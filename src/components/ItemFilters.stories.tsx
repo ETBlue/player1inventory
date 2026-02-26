@@ -102,3 +102,7 @@ export const Default: Story = {
 export const EmptyItems: Story = {
   render: () => <ItemFilters items={[]} />,
 }
+
+export const Disabled: Story = {
+  render: () => <ItemFilters items={mockItems} disabled />,
+}

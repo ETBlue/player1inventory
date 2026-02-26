@@ -47,3 +47,21 @@ export const EmptyList: Story = {
     hasActiveFilters: false,
   },
 }
+
+export const DisabledWithActiveFilters: Story = {
+  args: {
+    filteredCount: 5,
+    totalCount: 10,
+    hasActiveFilters: true,
+    disabled: true,
+  },
+}
+
+export const DisabledNoActiveFilters: Story = {
+  args: {
+    filteredCount: 10,
+    totalCount: 10,
+    hasActiveFilters: false,
+    disabled: true,
+  },
+}

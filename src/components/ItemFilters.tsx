@@ -8,13 +8,15 @@ import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { calculateTagCount } from '@/lib/filterUtils'
 import { sortTagsByName } from '@/lib/tagSortUtils'
+import { cn } from '@/lib/utils'
 import type { Item } from '@/types'
 
 interface ItemFiltersProps {
   items: Item[] // search-scoped items for available tag option computation
+  disabled?: boolean
 }
 
-export function ItemFilters({ items }: ItemFiltersProps) {
+export function ItemFilters({ items, disabled }: ItemFiltersProps) {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
   const { filterState, setFilterState } = useUrlSearchAndFilters()
@@ -48,7 +50,12 @@ export function ItemFilters({ items }: ItemFiltersProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 mx-1 py-1">
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-1 mx-1 py-1',
+        disabled ? 'opacity-50 pointer-events-none' : '',
+      )}
+    >
       {tagTypesWithTags.map((tagType) => {
         const tagTypeId = tagType.id
         const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
