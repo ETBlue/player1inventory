@@ -120,7 +120,7 @@ export function ItemCard({
       )}
       <CardHeader
         className={cn(
-          'flex flex-row items-start justify-between gap-2',
+          'flex flex-row items-start justify-between gap-2 min-h-8',
           isInactive(item) ? 'opacity-50' : '',
         )}
       >
@@ -159,38 +159,36 @@ export function ItemCard({
           />
         </Link>
 
-        <div className="h-8">
-          {onAmountChange && mode === 'pantry' && (
-            <>
-              <Button
-                className="rounded-tr-none rounded-br-none"
-                variant="neutral-outline"
-                size="icon"
-                onClick={(e) => {
-                  e.preventDefault()
-                  onAmountChange(-(item.consumeAmount ?? 1))
-                }}
-                disabled={disabled || currentQuantity <= 0}
-                aria-label={`Consume ${item.name}`}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <Button
-                className="-ml-px rounded-tl-none rounded-bl-none"
-                variant="neutral-outline"
-                size="icon"
-                onClick={(e) => {
-                  e.preventDefault()
-                  onAmountChange(1)
-                }}
-                disabled={disabled}
-                aria-label={`Add ${item.name}`}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-        </div>
+        {onAmountChange && mode === 'pantry' && (
+          <div>
+            <Button
+              className="rounded-tr-none rounded-br-none"
+              variant="neutral-outline"
+              size="icon"
+              onClick={(e) => {
+                e.preventDefault()
+                onAmountChange(-(item.consumeAmount ?? 1))
+              }}
+              disabled={disabled || currentQuantity <= 0}
+              aria-label={`Consume ${item.name}`}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Button
+              className="-ml-px rounded-tl-none rounded-bl-none"
+              variant="neutral-outline"
+              size="icon"
+              onClick={(e) => {
+                e.preventDefault()
+                onAmountChange(1)
+              }}
+              disabled={disabled}
+              aria-label={`Add ${item.name}`}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent className={isInactive(item) ? 'opacity-50' : ''}>
         <div className="flex items-center gap-2">
