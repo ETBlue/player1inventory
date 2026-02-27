@@ -15,9 +15,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { filterItems } from '@/lib/filterUtils'
+import {
+  filterItems,
+  filterItemsByRecipes,
+  filterItemsByVendors,
+} from '@/lib/filterUtils'
 import type { SortDirection, SortField } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { Item, Recipe, Vendor } from '@/types'
 
 const sortLabels: Record<SortField, string> = {
   expiring: 'Expiring',
@@ -47,6 +51,10 @@ interface ItemListToolbarProps {
   // Search/create callback — called when Enter pressed with no matching items
   onSearchSubmit?: (query: string) => void
   onCreateFromSearch?: (query: string) => void
+  vendors?: Vendor[]
+  recipes?: Recipe[]
+  hideVendorFilter?: boolean
+  hideRecipeFilter?: boolean
 }
 
 export function ItemListToolbar({
@@ -60,26 +68,40 @@ export function ItemListToolbar({
   children,
   onSearchSubmit,
   onCreateFromSearch,
+  vendors,
+  recipes,
+  hideVendorFilter,
+  hideRecipeFilter,
 }: ItemListToolbarProps) {
   const {
     search,
     filterState,
+    selectedVendorIds,
+    selectedRecipeIds,
     isFiltersVisible,
     isTagsVisible,
     setSearch,
     setFilterState,
     setIsFiltersVisible,
     setIsTagsVisible,
+    clearAllFilters,
   } = useUrlSearchAndFilters()
 
   // searchVisible is internal state, initialized to true when q is non-empty
   const [searchVisible, setSearchVisible] = useState(() => search !== '')
 
-  const hasActiveFilters = Object.values(filterState).some(
-    (tagIds) => tagIds.length > 0,
-  )
+  const hasActiveFilters =
+    Object.values(filterState).some((tagIds) => tagIds.length > 0) ||
+    selectedVendorIds.length > 0 ||
+    selectedRecipeIds.length > 0
 
-  const filteredCount = filterItems(items, filterState).length
+  const tagFiltered = filterItems(items, filterState)
+  const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
+  const filteredCount = filterItemsByRecipes(
+    vendorFiltered,
+    selectedRecipeIds,
+    recipes ?? [],
+  ).length
   const totalCount = items.length
 
   const lowerSearch = search.toLowerCase()
@@ -215,7 +237,14 @@ export function ItemListToolbar({
       {isFiltersVisible && (
         <>
           <div className="h-px bg-accessory-default" />
-          <ItemFilters items={items} disabled={!!search} />
+          <ItemFilters
+            items={items}
+            disabled={!!search}
+            vendors={vendors}
+            recipes={recipes}
+            hideVendorFilter={hideVendorFilter}
+            hideRecipeFilter={hideRecipeFilter}
+          />
         </>
       )}
 
@@ -225,7 +254,7 @@ export function ItemListToolbar({
           filteredCount={filteredCount}
           totalCount={totalCount}
           hasActiveFilters={hasActiveFilters}
-          onClearAll={() => setFilterState({})}
+          onClearAll={clearAllFilters}
           disabled={!!search}
         />
       )}

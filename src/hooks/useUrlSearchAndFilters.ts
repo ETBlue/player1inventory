@@ -161,6 +161,17 @@ export function useUrlSearchAndFilters() {
     updateParams((p) => p.delete('f_recipe'))
   }
 
+  // Clears all filters (tags, vendors, recipes) in a single atomic URL update
+  function clearAllFilters(): void {
+    updateParams((p) => {
+      for (const key of [...p.keys()]) {
+        if (key.startsWith('f_')) {
+          p.delete(key)
+        }
+      }
+    })
+  }
+
   return {
     search,
     filterState,
@@ -176,5 +187,6 @@ export function useUrlSearchAndFilters() {
     toggleRecipeId,
     clearVendorIds,
     clearRecipeIds,
+    clearAllFilters,
   }
 }
