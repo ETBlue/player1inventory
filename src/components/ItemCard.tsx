@@ -281,7 +281,7 @@ export function ItemCard({
                 key={vendor.id}
                 data-testid={`vendor-badge-${vendor.name}`}
                 variant="neutral-outline"
-                className={`text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
+                className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
                 onClick={(e) => {
                   if (onVendorClick) {
                     e.preventDefault()
@@ -303,7 +303,7 @@ export function ItemCard({
                 key={recipe.id}
                 data-testid={`recipe-badge-${recipe.name}`}
                 variant="neutral-outline"
-                className={`text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
+                className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
                 onClick={(e) => {
                   if (onRecipeClick) {
                     e.preventDefault()
