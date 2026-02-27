@@ -374,6 +374,24 @@ describe('useUrlSearchAndFilters', () => {
     })
     expect(mockHistoryReplace).toHaveBeenCalledWith('/')
   })
+
+  it('clearAllFilters removes all f_ params but preserves q, filters, tags params', () => {
+    mockRouterState.location.search =
+      '?q=apple&filters=1&f_vendor=v1&f_recipe=r1&f_type-1=tag-a'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+
+    act(() => {
+      result.current.clearAllFilters()
+    })
+
+    expect(mockHistoryReplace).toHaveBeenCalledTimes(1)
+    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    expect(callArg).not.toContain('f_vendor')
+    expect(callArg).not.toContain('f_recipe')
+    expect(callArg).not.toContain('f_type-1')
+    expect(callArg).toContain('q=apple')
+    expect(callArg).toContain('filters=1')
+  })
 })
 
 describe('loadSearchPrefs', () => {
