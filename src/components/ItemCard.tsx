@@ -13,7 +13,7 @@ import {
 } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
-import type { Item, Tag, TagType } from '@/types'
+import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 
 interface ItemCardProps {
   item: Item
@@ -29,6 +29,10 @@ interface ItemCardProps {
   minControlAmount?: number // minimum before minus disables (default: 1)
   onAmountChange?: (delta: number) => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
+  vendors?: Vendor[]
+  recipes?: Recipe[]
+  onVendorClick?: (vendorId: string) => void
+  onRecipeClick?: (recipeId: string) => void
 }
 
 export function ItemCard({
@@ -44,6 +48,10 @@ export function ItemCard({
   minControlAmount = 1,
   onAmountChange,
   disabled,
+  vendors = [],
+  recipes = [],
+  onVendorClick,
+  onRecipeClick,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -222,11 +230,24 @@ export function ItemCard({
                 </span>
               )
             })()}
-          {tags.length > 0 && !showTags && (
-            <span className="text-xs text-foreground-muted">
-              {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
-            </span>
-          )}
+          {(tags.length > 0 || vendors.length > 0 || recipes.length > 0) &&
+            !showTags && (
+              <span className="text-xs text-foreground-muted">
+                {[
+                  tags.length > 0
+                    ? `${tags.length} ${tags.length === 1 ? 'tag' : 'tags'}`
+                    : null,
+                  vendors.length > 0
+                    ? `${vendors.length} ${vendors.length === 1 ? 'vendor' : 'vendors'}`
+                    : null,
+                  recipes.length > 0
+                    ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            )}
         </div>
         {tags.length > 0 && mode !== 'shopping' && showTags && (
           <div className="flex flex-wrap gap-1 mt-2">
@@ -251,6 +272,48 @@ export function ItemCard({
                 </Badge>
               )
             })}
+          </div>
+        )}
+        {vendors.length > 0 && mode !== 'shopping' && showTags && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {vendors.map((vendor) => (
+              <Badge
+                key={vendor.id}
+                data-testid={`vendor-badge-${vendor.name}`}
+                variant="outline"
+                className={`text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
+                onClick={(e) => {
+                  if (onVendorClick) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onVendorClick(vendor.id)
+                  }
+                }}
+              >
+                {vendor.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {recipes.length > 0 && mode !== 'shopping' && showTags && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {recipes.map((recipe) => (
+              <Badge
+                key={recipe.id}
+                data-testid={`recipe-badge-${recipe.name}`}
+                variant="outline"
+                className={`text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
+                onClick={(e) => {
+                  if (onRecipeClick) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onRecipeClick(recipe.id)
+                  }
+                }}
+              >
+                {recipe.name}
+              </Badge>
+            ))}
           </div>
         )}
       </CardContent>
