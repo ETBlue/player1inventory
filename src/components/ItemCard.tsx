@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Minus, Plus, TriangleAlert } from 'lucide-react'
+import { ChefHat, Minus, Plus, Store, TriangleAlert } from 'lucide-react'
 import { ItemProgressBar } from '@/components/ItemProgressBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -290,6 +290,7 @@ export function ItemCard({
                   }
                 }}
               >
+                <Store className="h-3 w-3" />
                 {vendor.name}
               </Badge>
             ))}
@@ -311,6 +312,7 @@ export function ItemCard({
                   }
                 }}
               >
+                <ChefHat className="h-3 w-3" />
                 {recipe.name}
               </Badge>
             ))}
