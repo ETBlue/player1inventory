@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { SortDirection, SortField } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { Item, Recipe, Vendor } from '@/types'
 import { ItemListToolbar } from './ItemListToolbar'
 
 const queryClient = new QueryClient()
@@ -61,7 +61,7 @@ const mockItems: Item[] = [
     id: 'item-1',
     name: 'Milk',
     tagIds: ['tag-1'],
-    vendorIds: [],
+    vendorIds: ['v1'],
     targetUnit: 'package',
     targetQuantity: 2,
     refillThreshold: 1,
@@ -75,13 +75,35 @@ const mockItems: Item[] = [
     id: 'item-2',
     name: 'Eggs',
     tagIds: [],
-    vendorIds: [],
+    vendorIds: ['v1', 'v2'],
     targetUnit: 'package',
     targetQuantity: 1,
     refillThreshold: 0,
     packedQuantity: 0,
     unpackedQuantity: 0,
     consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+]
+
+const mockVendors: Vendor[] = [
+  { id: 'v1', name: 'Costco', createdAt: new Date() },
+  { id: 'v2', name: 'Safeway', createdAt: new Date() },
+]
+
+const mockRecipes: Recipe[] = [
+  {
+    id: 'r1',
+    name: 'Pancakes',
+    items: [{ itemId: 'item-1', defaultAmount: 2 }],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'r2',
+    name: 'Scrambled Eggs',
+    items: [{ itemId: 'item-2', defaultAmount: 3 }],
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -186,4 +208,51 @@ export const DescendingSort: Story = {
       />
     )
   },
+}
+
+export const WithVendors: Story = {
+  render: () => (
+    <Controlled isTagsToggleEnabled items={mockItems} vendors={mockVendors} />
+  ),
+}
+
+export const WithRecipes: Story = {
+  render: () => (
+    <Controlled isTagsToggleEnabled items={mockItems} recipes={mockRecipes} />
+  ),
+}
+
+export const WithVendorsAndRecipes: Story = {
+  render: () => (
+    <Controlled
+      isTagsToggleEnabled
+      items={mockItems}
+      vendors={mockVendors}
+      recipes={mockRecipes}
+    />
+  ),
+}
+
+export const HideVendorFilter: Story = {
+  render: () => (
+    <Controlled
+      isTagsToggleEnabled
+      items={mockItems}
+      vendors={mockVendors}
+      recipes={mockRecipes}
+      hideVendorFilter
+    />
+  ),
+}
+
+export const HideRecipeFilter: Story = {
+  render: () => (
+    <Controlled
+      isTagsToggleEnabled
+      items={mockItems}
+      vendors={mockVendors}
+      recipes={mockRecipes}
+      hideRecipeFilter
+    />
+  ),
 }
