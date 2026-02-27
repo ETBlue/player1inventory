@@ -596,4 +596,47 @@ describe('ItemCard - vendor and recipe display', () => {
     await user.click(screen.getByTestId('recipe-badge-Pancakes'))
     expect(onRecipeClick).toHaveBeenCalledWith('r1')
   })
+
+  it('hides vendor and recipe badges in shopping mode', async () => {
+    const mockVendors: Vendor[] = [
+      { id: 'v1', name: 'Costco', createdAt: new Date() },
+    ]
+    const mockRecipes: Recipe[] = [
+      {
+        id: 'r1',
+        name: 'Pancakes',
+        items: [{ itemId: 'item-1', defaultAmount: 1 }],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]
+
+    await renderWithRouter(
+      <ItemCard
+        item={{
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }}
+        tags={[]}
+        tagTypes={[]}
+        showTags={true}
+        mode="shopping"
+        vendors={mockVendors}
+        recipes={mockRecipes}
+      />,
+    )
+    expect(screen.queryByTestId('vendor-badge-Costco')).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('recipe-badge-Pancakes'),
+    ).not.toBeInTheDocument()
+  })
 })
