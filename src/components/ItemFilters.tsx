@@ -1,25 +1,53 @@
 // src/components/ItemFilters.tsx
 
 import { Link } from '@tanstack/react-router'
-import { Pencil } from 'lucide-react'
+import { ChevronDown, Pencil, X } from 'lucide-react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { calculateTagCount } from '@/lib/filterUtils'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
-import type { Item } from '@/types'
+import type { Item, Recipe, Vendor } from '@/types'
 
 interface ItemFiltersProps {
   items: Item[] // search-scoped items for available tag option computation
   disabled?: boolean
+  vendors?: Vendor[]
+  recipes?: Recipe[]
+  hideVendorFilter?: boolean
+  hideRecipeFilter?: boolean
 }
 
-export function ItemFilters({ items, disabled }: ItemFiltersProps) {
+export function ItemFilters({
+  items,
+  disabled,
+  vendors = [],
+  recipes = [],
+  hideVendorFilter,
+  hideRecipeFilter,
+}: ItemFiltersProps) {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
-  const { filterState, setFilterState } = useUrlSearchAndFilters()
+  const {
+    filterState,
+    setFilterState,
+    selectedVendorIds,
+    selectedRecipeIds,
+    toggleVendorId,
+    toggleRecipeId,
+    clearVendorIds,
+    clearRecipeIds,
+  } = useUrlSearchAndFilters()
 
   // Filter to only tag types that have tags, then sort alphabetically
   const tagTypesWithTags = tagTypes
@@ -28,8 +56,11 @@ export function ItemFilters({ items, disabled }: ItemFiltersProps) {
       a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
     )
 
-  // Don't render if no tag types with tags
-  if (tagTypesWithTags.length === 0) return null
+  const showVendors = !hideVendorFilter && vendors.length > 0
+  const showRecipes = !hideRecipeFilter && recipes.length > 0
+
+  // Don't render if nothing to show
+  if (tagTypesWithTags.length === 0 && !showVendors && !showRecipes) return null
 
   const handleToggleTag = (tagTypeId: string, tagId: string) => {
     const currentTags = filterState[tagTypeId] || []
@@ -79,6 +110,103 @@ export function ItemFilters({ items, disabled }: ItemFiltersProps) {
           />
         )
       })}
+
+      {showVendors && (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant={
+                selectedVendorIds.length > 0 ? 'neutral' : 'neutral-ghost'
+              }
+              size="xs"
+              className="gap-1"
+            >
+              Vendors
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            {vendors.map((vendor) => {
+              const count = items.filter((item) =>
+                item.vendorIds?.includes(vendor.id),
+              ).length
+              return (
+                <DropdownMenuCheckboxItem
+                  key={vendor.id}
+                  checked={selectedVendorIds.includes(vendor.id)}
+                  onCheckedChange={() => toggleVendorId(vendor.id)}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span>{vendor.name}</span>
+                    <span className="text-foreground-muted text-xs ml-2">
+                      ({count})
+                    </span>
+                  </div>
+                </DropdownMenuCheckboxItem>
+              )
+            })}
+            {selectedVendorIds.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={clearVendorIds}>
+                  <X className="h-4 w-4" />
+                  <span className="text-xs">Clear</span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {showRecipes && (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant={
+                selectedRecipeIds.length > 0 ? 'neutral' : 'neutral-ghost'
+              }
+              size="xs"
+              className="gap-1"
+            >
+              Recipes
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            {recipes.map((recipe) => {
+              const count = items.filter((item) =>
+                recipe.items.some((ri) => ri.itemId === item.id),
+              ).length
+              return (
+                <DropdownMenuCheckboxItem
+                  key={recipe.id}
+                  checked={selectedRecipeIds.includes(recipe.id)}
+                  onCheckedChange={() => toggleRecipeId(recipe.id)}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span>{recipe.name}</span>
+                    <span className="text-foreground-muted text-xs ml-2">
+                      ({count})
+                    </span>
+                  </div>
+                </DropdownMenuCheckboxItem>
+              )
+            })}
+            {selectedRecipeIds.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={clearRecipeIds}>
+                  <X className="h-4 w-4" />
+                  <span className="text-xs">Clear</span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
       <Link to="/settings/tags">
         <Button size="xs" variant="neutral-ghost">
           <Pencil />
