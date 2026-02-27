@@ -1,4 +1,4 @@
-import type { Item } from '@/types'
+import type { Item, Recipe } from '@/types'
 
 export interface FilterState {
   [tagTypeId: string]: string[] // tagTypeId -> array of selected tag IDs
@@ -36,4 +36,28 @@ export function calculateTagCount(
     [tagTypeId]: [...(currentFilters[tagTypeId] || []), tagId],
   }
   return filterItems(items, simulatedFilters).length
+}
+
+export function filterItemsByVendors(
+  items: Item[],
+  vendorIds: string[],
+): Item[] {
+  if (vendorIds.length === 0) return items
+  return items.filter((item) =>
+    vendorIds.some((vid) => item.vendorIds?.includes(vid)),
+  )
+}
+
+export function filterItemsByRecipes(
+  items: Item[],
+  recipeIds: string[],
+  recipes: Recipe[],
+): Item[] {
+  if (recipeIds.length === 0) return items
+  return items.filter((item) =>
+    recipeIds.some((rid) => {
+      const recipe = recipes.find((r) => r.id === rid)
+      return recipe?.items.some((ri) => ri.itemId === item.id) ?? false
+    }),
+  )
 }
