@@ -10,11 +10,7 @@ import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
-import {
-  filterItems,
-  filterItemsByRecipes,
-  filterItemsByVendors,
-} from '@/lib/filterUtils'
+import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
@@ -146,9 +142,6 @@ function VendorItemsTab() {
     }
   }
 
-  const handleVendorClick = (vendorId: string) => toggleVendorId(vendorId)
-  const handleRecipeClick = (recipeId: string) => toggleRecipeId(recipeId)
-
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
     if (!trimmed) return
@@ -180,7 +173,7 @@ function VendorItemsTab() {
     : filterItems(searchFiltered, filterState)
 
   // 3. Vendor and recipe filters
-  const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
+  const vendorFiltered = tagFiltered // vendor filter hidden on this tab
   const recipeFiltered = filterItemsByRecipes(
     vendorFiltered,
     selectedRecipeIds,
@@ -236,8 +229,8 @@ function VendorItemsTab() {
               showTags={isTagsVisible}
               vendors={vendorMap.get(item.id) ?? []}
               recipes={recipeMap.get(item.id) ?? []}
-              onVendorClick={handleVendorClick}
-              onRecipeClick={handleRecipeClick}
+              onVendorClick={toggleVendorId}
+              onRecipeClick={toggleRecipeId}
               isChecked={isAssigned(item.vendorIds)}
               onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
               disabled={savingItemIds.has(item.id)}

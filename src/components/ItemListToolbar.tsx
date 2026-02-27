@@ -133,7 +133,7 @@ export function ItemListToolbar({
   return (
     <>
       {/* Row 1: always visible toolbar */}
-      <Toolbar {...(className !== undefined ? { className } : {})}>
+      <Toolbar className={className}>
         {leading}
 
         <div className="flex items-center">

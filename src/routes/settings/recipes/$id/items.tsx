@@ -9,11 +9,7 @@ import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
-import {
-  filterItems,
-  filterItemsByRecipes,
-  filterItemsByVendors,
-} from '@/lib/filterUtils'
+import { filterItems, filterItemsByVendors } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
@@ -132,9 +128,6 @@ function RecipeItemsTab() {
     enabled: items.length > 0,
   })
 
-  const handleVendorClick = (vendorId: string) => toggleVendorId(vendorId)
-  const handleRecipeClick = (recipeId: string) => toggleRecipeId(recipeId)
-
   // 1. Name search filter
   const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
@@ -147,11 +140,7 @@ function RecipeItemsTab() {
 
   // 3. Vendor and recipe filters
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-  const fullyFiltered = filterItemsByRecipes(
-    vendorFiltered,
-    selectedRecipeIds,
-    allRecipes,
-  )
+  const fullyFiltered = vendorFiltered // recipe filter hidden on this tab
 
   // 4. Sort: assigned items first, then user's chosen sort within each group
   const assignedItems = fullyFiltered.filter((item) => isAssigned(item.id))
@@ -300,8 +289,8 @@ function RecipeItemsTab() {
               showTags={isTagsVisible}
               vendors={vendorMap.get(item.id) ?? []}
               recipes={recipeMap.get(item.id) ?? []}
-              onVendorClick={handleVendorClick}
-              onRecipeClick={handleRecipeClick}
+              onVendorClick={toggleVendorId}
+              onRecipeClick={toggleRecipeId}
               isChecked={assigned}
               onCheckboxToggle={() =>
                 handleToggle(item.id, item.consumeAmount ?? 1)
