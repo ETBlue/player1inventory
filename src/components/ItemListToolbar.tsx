@@ -81,7 +81,6 @@ export function ItemListToolbar({
     isFiltersVisible,
     isTagsVisible,
     setSearch,
-    setFilterState,
     setIsFiltersVisible,
     setIsTagsVisible,
     clearAllFilters,
@@ -134,7 +133,7 @@ export function ItemListToolbar({
   return (
     <>
       {/* Row 1: always visible toolbar */}
-      <Toolbar className={className}>
+      <Toolbar {...(className !== undefined ? { className } : {})}>
         {leading}
 
         <div className="flex items-center">
@@ -240,10 +239,10 @@ export function ItemListToolbar({
           <ItemFilters
             items={items}
             disabled={!!search}
-            vendors={vendors}
-            recipes={recipes}
-            hideVendorFilter={hideVendorFilter}
-            hideRecipeFilter={hideRecipeFilter}
+            vendors={vendors ?? []}
+            recipes={recipes ?? []}
+            hideVendorFilter={hideVendorFilter ?? false}
+            hideRecipeFilter={hideRecipeFilter ?? false}
           />
         </>
       )}

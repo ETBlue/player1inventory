@@ -280,7 +280,7 @@ export function ItemCard({
               <Badge
                 key={vendor.id}
                 data-testid={`vendor-badge-${vendor.name}`}
-                variant="outline"
+                variant="neutral-outline"
                 className={`text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
                 onClick={(e) => {
                   if (onVendorClick) {
@@ -301,7 +301,7 @@ export function ItemCard({
               <Badge
                 key={recipe.id}
                 data-testid={`recipe-badge-${recipe.name}`}
-                variant="outline"
+                variant="neutral-outline"
                 className={`text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
                 onClick={(e) => {
                   if (onRecipeClick) {
