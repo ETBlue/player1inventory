@@ -261,6 +261,7 @@ function Shopping() {
           vendors.length > 0 ? (
             <Select
               value={selectedVendorId || 'all'}
+              disabled={!!search.trim()}
               onValueChange={(v) => {
                 if (v === '__manage__') {
                   navigate({ to: '/settings/vendors' })
