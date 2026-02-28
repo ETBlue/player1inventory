@@ -288,18 +288,18 @@ export async function checkout(cartId: string): Promise<void> {
   const buyingItems = cartItems.filter((ci) => ci.quantity > 0)
 
   for (const cartItem of buyingItems) {
+    const item = await db.items.get(cartItem.itemId)
+    if (!item) continue
+
     await addInventoryLog({
       itemId: cartItem.itemId,
       delta: cartItem.quantity,
       occurredAt: now,
     })
-    const item = await db.items.get(cartItem.itemId)
-    if (item) {
-      await db.items.update(cartItem.itemId, {
-        packedQuantity: item.packedQuantity + cartItem.quantity,
-        updatedAt: now,
-      })
-    }
+    await db.items.update(cartItem.itemId, {
+      packedQuantity: item.packedQuantity + cartItem.quantity,
+      updatedAt: now,
+    })
   }
 
   await db.shoppingCarts.update(cartId, {
