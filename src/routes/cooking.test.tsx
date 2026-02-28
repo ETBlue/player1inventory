@@ -147,9 +147,13 @@ describe('Use (Cooking) Page', () => {
 
     // And clicks the + button for Flour
     await waitFor(() => {
-      expect(screen.getByLabelText('Increase Flour')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Increase quantity of Flour/i }),
+      ).toBeInTheDocument()
     })
-    await user.click(screen.getByLabelText('Increase Flour'))
+    await user.click(
+      screen.getByRole('button', { name: /Increase quantity of Flour/i }),
+    )
 
     // Then the amount increases by consumeAmount (4 + 2 = 6)
     await waitFor(() => {
@@ -176,9 +180,13 @@ describe('Use (Cooking) Page', () => {
 
     // And clicks the - button
     await waitFor(() => {
-      expect(screen.getByLabelText('Decrease Flour')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Decrease quantity of Flour/i }),
+      ).toBeInTheDocument()
     })
-    await user.click(screen.getByLabelText('Decrease Flour'))
+    await user.click(
+      screen.getByRole('button', { name: /Decrease quantity of Flour/i }),
+    )
 
     // Then the amount is 0 (not negative)
     await waitFor(() => {
@@ -299,9 +307,13 @@ describe('Use (Cooking) Page', () => {
 
     // And decrements the amount to 0
     await waitFor(() => {
-      expect(screen.getByLabelText('Decrease Flour')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Decrease quantity of Flour/i }),
+      ).toBeInTheDocument()
     })
-    await user.click(screen.getByLabelText('Decrease Flour'))
+    await user.click(
+      screen.getByRole('button', { name: /Decrease quantity of Flour/i }),
+    )
 
     // And confirms Done
     await waitFor(() => {
@@ -326,5 +338,104 @@ describe('Use (Cooking) Page', () => {
       .filter((l) => l.itemId === item.id)
       .toArray()
     expect(logs).toHaveLength(0)
+  })
+
+  it('user can uncheck an optional item in an expanded recipe', async () => {
+    // Given a recipe with two items
+    const flour = await makeItem('Flour', 1, 5)
+    const bacon = await makeItem('Bacon', 1, 3)
+    await createRecipe({
+      name: 'Quiche',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: bacon.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Quiche')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Quiche'))
+
+    // Then both items appear as checked
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Flour/i }),
+      ).toBeChecked()
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Bacon/i }),
+      ).toBeChecked()
+    })
+
+    // When user unchecks Bacon (optional ingredient)
+    await user.click(screen.getByRole('checkbox', { name: /Remove Bacon/i }))
+
+    // Then Bacon is unchecked
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Add Bacon/i }),
+      ).not.toBeChecked()
+    })
+  })
+
+  it('unchecked items are excluded from consumption', async () => {
+    // Given a recipe with two items
+    const flour = await makeItem('Flour', 1, 5)
+    const bacon = await makeItem('Bacon', 1, 3)
+    await createRecipe({
+      name: 'Quiche',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: bacon.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Quiche')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Quiche'))
+
+    // And unchecks Bacon
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Bacon/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Remove Bacon/i }))
+
+    // And confirms Done
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /confirm/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then Flour's quantity is reduced
+    await waitFor(async () => {
+      const updatedFlour = await db.items.get(flour.id)
+      const total =
+        (updatedFlour?.packedQuantity ?? 0) +
+        (updatedFlour?.unpackedQuantity ?? 0)
+      expect(total).toBeLessThan(5)
+    })
+
+    // But Bacon's quantity is unchanged
+    await waitFor(async () => {
+      const updatedBacon = await db.items.get(bacon.id)
+      expect(updatedBacon?.packedQuantity).toBe(3)
+    })
   })
 })
