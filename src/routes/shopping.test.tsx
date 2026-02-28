@@ -544,10 +544,15 @@ describe('Shopping page', () => {
 
     renderShoppingPage()
 
-    // Then Done button is disabled (nothing to actually buy)
+    // Wait for the item to appear as checked in the cart (confirming cartItems has loaded)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Eggs/i }),
+      ).toBeChecked()
     })
+
+    // Then Done button is disabled (nothing to actually buy)
+    expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
   })
 
   it('pinned items (quantity=0) survive checkout and appear in next trip', async () => {
@@ -574,11 +579,9 @@ describe('Shopping page', () => {
     })
     await user.click(screen.getByRole('button', { name: /done/i }))
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /confirm/i }),
-      ).toBeInTheDocument()
+      expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /confirm/i }))
+    await user.click(screen.getByRole('button', { name: /^done$/i }))
 
     // Then the pinned item is still checked (in cart section)
     await waitFor(() => {
