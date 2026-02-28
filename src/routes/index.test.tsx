@@ -9,7 +9,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, createTag, createTagType } from '@/db/operations'
+import {
+  createItem,
+  createTag,
+  createTagType,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Home page filtering integration', () => {
@@ -20,6 +25,7 @@ describe('Home page filtering integration', () => {
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
+    await db.vendors.clear()
     sessionStorage.clear()
     localStorage.clear()
 
@@ -630,6 +636,59 @@ describe('Home page filtering integration', () => {
     const updatedItem = await db.items.get(item.id)
     expect(updatedItem?.packedQuantity).toBe(5)
     expect(updatedItem?.unpackedQuantity).toBe(1)
+  })
+
+  it('user can search all items even when vendor filter is active', async () => {
+    // Given two items and a vendor
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+    await createItem({
+      name: 'Eggs',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When user loads pantry with vendor filter active
+    const history = createMemoryHistory({
+      initialEntries: [`/?f_vendor=${vendor.id}`],
+    })
+    const router = createRouter({ routeTree, history })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // And opens search and types "Eggs" (Eggs is not assigned to the vendor)
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Eggs')
+
+    // Then Eggs appears (vendor filter is bypassed during search)
+    await waitFor(() => {
+      expect(screen.getByText('Eggs')).toBeInTheDocument()
+    })
   })
 
   it('+ button adds to unpacked without normalizing', async () => {

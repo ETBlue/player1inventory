@@ -109,13 +109,13 @@ function PantryView() {
     return map
   }, [recipes])
 
-  // Apply search filter, then tag filters (tag filters disabled during search)
-  const searchFiltered = items.filter((item) =>
+  // Branch A: search only (no filters)
+  const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
-  const tagFiltered = search
-    ? searchFiltered
-    : filterItems(searchFiltered, filterState)
+
+  // Branch B: all filters, no search
+  const tagFiltered = filterItems(items, filterState)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
   const filteredItems = filterItemsByRecipes(
     vendorFiltered,
@@ -172,7 +172,7 @@ function PantryView() {
 
   // Apply sorting
   const sortedItems = sortItems(
-    filteredItems,
+    search.trim() ? searchedItems : filteredItems,
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
     allPurchaseDates ?? new Map(),
