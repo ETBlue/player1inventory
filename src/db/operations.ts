@@ -283,7 +283,11 @@ export async function checkout(cartId: string): Promise<void> {
   const cartItems = await getCartItems(cartId)
   const now = new Date()
 
-  for (const cartItem of cartItems) {
+  // Separate pinned (quantity=0) from items being purchased
+  const pinnedItems = cartItems.filter((ci) => ci.quantity === 0)
+  const buyingItems = cartItems.filter((ci) => ci.quantity > 0)
+
+  for (const cartItem of buyingItems) {
     await addInventoryLog({
       itemId: cartItem.itemId,
       delta: cartItem.quantity,
@@ -304,6 +308,19 @@ export async function checkout(cartId: string): Promise<void> {
   })
 
   await db.cartItems.where('cartId').equals(cartId).delete()
+
+  // Move pinned items to the new active cart
+  if (pinnedItems.length > 0) {
+    const newCart = await getOrCreateActiveCart()
+    for (const pinned of pinnedItems) {
+      await db.cartItems.add({
+        id: crypto.randomUUID(),
+        cartId: newCart.id,
+        itemId: pinned.itemId,
+        quantity: 0,
+      })
+    }
+  }
 }
 
 export async function abandonCart(cartId: string): Promise<void> {
