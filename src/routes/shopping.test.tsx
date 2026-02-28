@@ -601,6 +601,8 @@ describe('Shopping page tag filtering', () => {
     await db.tagTypes.clear()
     await db.vendors.clear()
     await db.inventoryLogs.clear()
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
     sessionStorage.clear()
 
     queryClient = new QueryClient({
