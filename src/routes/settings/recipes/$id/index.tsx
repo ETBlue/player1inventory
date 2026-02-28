@@ -65,7 +65,7 @@ function RecipeInfoTab() {
   if (!recipe) return null
 
   return (
-    <>
+    <div className="px-6 py-4">
       <RecipeNameForm
         name={name}
         onNameChange={setName}
@@ -73,11 +73,10 @@ function RecipeInfoTab() {
         isDirty={isDirty}
         isPending={updateRecipe.isPending}
       />
-      <div className="px-6 pb-6">
+      <div className="pb-6">
         <DeleteButton
           trigger="Delete Recipe"
-          buttonVariant="ghost"
-          buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+          buttonVariant="destructive"
           dialogTitle="Delete Recipe?"
           dialogDescription={
             <>
@@ -90,6 +89,6 @@ function RecipeInfoTab() {
           onDelete={handleDelete}
         />
       </div>
-    </>
+    </div>
   )
 }
