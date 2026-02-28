@@ -208,7 +208,7 @@ function Shopping() {
           onCheckboxToggle={() => handleToggleCart(item)}
           onAmountChange={(delta) => {
             const newQty = (ci?.quantity ?? 0) + delta
-            if (newQty >= 1) handleUpdateCartQuantity(item, newQty)
+            handleUpdateCartQuantity(item, newQty)
           }}
         />
       </div>
@@ -230,7 +230,7 @@ function Shopping() {
           </Button>
         )}
         <Button
-          disabled={cartItems.length === 0}
+          disabled={!cartItems.some((ci) => ci.quantity > 0)}
           onClick={() => setShowCheckoutDialog(true)}
         >
           <Check /> Done
