@@ -146,17 +146,13 @@ function TagItemsTab() {
   const handleVendorClick = (vendorId: string) => toggleVendorId(vendorId)
   const handleRecipeClick = (recipeId: string) => toggleRecipeId(recipeId)
 
-  // 1. Name search filter
-  const searchFiltered = items.filter((item) =>
+  // Branch A: search only
+  const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  // 2. Tag filter (disabled during search)
-  const tagFiltered = search
-    ? searchFiltered
-    : filterItems(searchFiltered, filterState)
-
-  // 3. Vendor and recipe filters
+  // Branch B: all filters
+  const tagFiltered = filterItems(items, filterState)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
   const recipeFiltered = filterItemsByRecipes(
     vendorFiltered,
@@ -164,9 +160,9 @@ function TagItemsTab() {
     recipes,
   )
 
-  // 4. Sort
+  // Converge at sort
   const filteredItems = sortItems(
-    recipeFiltered,
+    search.trim() ? searchedItems : recipeFiltered, // trim guards whitespace-only input
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
     allPurchaseDates ?? new Map(),

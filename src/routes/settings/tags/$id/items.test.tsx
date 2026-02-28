@@ -8,7 +8,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, createTag, createTagType } from '@/db/operations'
+import {
+  createItem,
+  createTag,
+  createTagType,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { TagColor } from '@/types'
 
@@ -20,6 +25,7 @@ describe('Tag Detail - Items Tab', () => {
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
+    await db.vendors.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -409,6 +415,64 @@ describe('Tag Detail - Items Tab', () => {
       expect(
         screen.getByRole('button', { name: /create item/i }),
       ).toBeInTheDocument()
+    })
+  })
+
+  it('user can search all items even when vendor filter is active', async () => {
+    // Given a tag, a vendor, and two items
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+    await createItem({
+      name: 'Eggs',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When user loads tag items tab with vendor filter active
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/tags/${tag.id}/items?f_vendor=${vendor.id}`],
+    })
+    const router = createRouter({ routeTree, history })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // And searches for "Eggs" (Eggs not assigned to vendor)
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Eggs')
+
+    // Then Eggs appears (vendor filter bypassed during search)
+    await waitFor(() => {
+      expect(screen.getByText('Eggs')).toBeInTheDocument()
     })
   })
 
