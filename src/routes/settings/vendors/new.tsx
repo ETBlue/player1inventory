@@ -29,20 +29,22 @@ function NewVendorPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <Toolbar>
         <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold">New Vendor</h1>
+        <h1>New Vendor</h1>
       </Toolbar>
-      <VendorNameForm
-        name={name}
-        onNameChange={setName}
-        onSave={handleSave}
-        isDirty={isDirty}
-        isPending={createVendor.isPending}
-      />
+      <div className="px-6 py-4">
+        <VendorNameForm
+          name={name}
+          onNameChange={setName}
+          onSave={handleSave}
+          isDirty={isDirty}
+          isPending={createVendor.isPending}
+        />
+      </div>
     </div>
   )
 }
