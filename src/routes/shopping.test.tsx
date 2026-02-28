@@ -9,11 +9,14 @@ import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import {
+  addToCart,
   createItem,
   createTag,
   createTagType,
   createVendor,
+  getCartItems,
   getOrCreateActiveCart,
+  updateCartItem,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
@@ -501,9 +504,7 @@ describe('Shopping page', () => {
     // Given an item in the cart with quantity 1
     const item = await makeItem('Milk', 2)
     const cart = await getOrCreateActiveCart()
-    await import('@/db/operations').then(({ addToCart }) =>
-      addToCart(cart.id, item.id, 1),
-    )
+    await addToCart(cart.id, item.id, 1)
 
     renderShoppingPage()
     const user = userEvent.setup()
@@ -522,7 +523,9 @@ describe('Shopping page', () => {
 
     // Then quantity becomes 0 (item stays checked/in cart section)
     await waitFor(() => {
-      expect(screen.getByText('0')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Decrease quantity of Milk/i }),
+      ).toBeDisabled()
       expect(
         screen.getByRole('checkbox', { name: /Remove Milk/i }),
       ).toBeChecked()
@@ -533,14 +536,9 @@ describe('Shopping page', () => {
     // Given an item pinned in the cart (quantity=0)
     const item = await makeItem('Eggs', 1)
     const cart = await getOrCreateActiveCart()
-    const {
-      addToCart: addFn,
-      updateCartItem: updateFn,
-      getCartItems: getFn,
-    } = await import('@/db/operations')
-    await addFn(cart.id, item.id, 1)
-    const [ci] = await getFn(cart.id)
-    await updateFn(ci.id, 0)
+    await addToCart(cart.id, item.id, 1)
+    const [ci] = await getCartItems(cart.id)
+    await updateCartItem(ci.id, 0)
 
     renderShoppingPage()
 
@@ -560,15 +558,10 @@ describe('Shopping page', () => {
     const pinned = await makeItem('Always Buy Milk', 3)
     const buying = await makeItem('Butter', 0)
     const cart = await getOrCreateActiveCart()
-    const {
-      addToCart: addFn,
-      updateCartItem: updateFn,
-      getCartItems: getFn,
-    } = await import('@/db/operations')
-    await addFn(cart.id, pinned.id, 1)
-    const [ci] = await getFn(cart.id)
-    await updateFn(ci.id, 0)
-    await addFn(cart.id, buying.id, 2)
+    await addToCart(cart.id, pinned.id, 1)
+    const [ci] = await getCartItems(cart.id)
+    await updateCartItem(ci.id, 0)
+    await addToCart(cart.id, buying.id, 2)
 
     renderShoppingPage()
     const user = userEvent.setup()
