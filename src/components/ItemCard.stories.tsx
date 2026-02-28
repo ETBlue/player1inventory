@@ -326,3 +326,41 @@ export const WithVendorAndRecipeClickHandlers: Story = {
     onRecipeClick: (recipeId) => console.log('Recipe clicked:', recipeId),
   },
 }
+
+export const CookingModeChecked: Story = {
+  name: 'Cooking Mode — Item included',
+  args: {
+    item: {
+      ...mockItem,
+      name: 'Flour',
+      packageUnit: 'kg',
+      tagIds: ['tag-1'],
+    },
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    mode: 'cooking',
+    isChecked: true,
+    controlAmount: 4,
+    onCheckboxToggle: () => console.log('Toggle item'),
+    onAmountChange: (delta) => console.log('Amount change:', delta),
+  },
+}
+
+export const CookingModeUnchecked: Story = {
+  name: 'Cooking Mode — Item excluded (optional)',
+  args: {
+    item: {
+      ...mockItem,
+      name: 'Bacon',
+      packageUnit: 'pack',
+      tagIds: ['tag-1'],
+    },
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    mode: 'cooking',
+    isChecked: false,
+    controlAmount: 2,
+    onCheckboxToggle: () => console.log('Toggle item'),
+    onAmountChange: (delta) => console.log('Amount change:', delta),
+  },
+}
