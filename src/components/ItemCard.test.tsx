@@ -441,7 +441,7 @@ describe('ItemCard - Shopping mode', () => {
     expect(onAmountChange).toHaveBeenCalledWith(1)
   })
 
-  it('- button is disabled at quantity 1 (shopping mode)', async () => {
+  it('- button is disabled at quantity 1 when minControlAmount=1 (shopping mode)', async () => {
     await renderWithRouter(
       <ItemCard
         item={mockItem}
@@ -451,6 +451,7 @@ describe('ItemCard - Shopping mode', () => {
         isChecked={true}
         onCheckboxToggle={vi.fn()}
         controlAmount={1}
+        minControlAmount={1}
         onAmountChange={vi.fn()}
       />,
     )
@@ -638,5 +639,118 @@ describe('ItemCard - vendor and recipe display', () => {
     expect(
       screen.queryByTestId('recipe-badge-Pancakes'),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('ItemCard - Cooking mode', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Flour',
+    packageUnit: 'kg',
+    targetUnit: 'package',
+    tagIds: ['t1'],
+    targetQuantity: 5,
+    refillThreshold: 1,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const mockTags: Tag[] = [{ id: 't1', name: 'Baking', typeId: 'type1' }]
+  const mockTagTypes: TagType[] = [
+    { id: 'type1', name: 'Category', color: TagColor.blue },
+  ]
+
+  it('hides tags in cooking mode', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        mode="cooking"
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={2}
+        onAmountChange={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('tag-badge-Baking')).not.toBeInTheDocument()
+  })
+
+  it('shows checkbox when onCheckboxToggle is provided in cooking mode', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="cooking"
+        isChecked={false}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={2}
+        onAmountChange={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByRole('checkbox', { name: /Add Flour/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows amount stepper when checked in cooking mode', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="cooking"
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={4}
+        onAmountChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Increase quantity of Flour/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('minus button is disabled at amount 0 (default minControlAmount=0)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="cooking"
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={0}
+        onAmountChange={vi.fn()}
+      />,
+    )
+    const minusBtn = screen.getByRole('button', {
+      name: /Decrease quantity of Flour/i,
+    })
+    expect(minusBtn).toBeDisabled()
+  })
+
+  it('minus button is enabled at amount 1 with default minControlAmount=0', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="cooking"
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        controlAmount={1}
+        onAmountChange={vi.fn()}
+      />,
+    )
+    const minusBtn = screen.getByRole('button', {
+      name: /Decrease quantity of Flour/i,
+    })
+    expect(minusBtn).not.toBeDisabled()
   })
 })

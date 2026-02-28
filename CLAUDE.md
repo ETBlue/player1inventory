@@ -261,6 +261,30 @@ Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `de
 - `src/routes/shopping.tsx` — main page with both vendor and tag filter controls
 - `src/routes/shopping.test.tsx` — integration tests (tag filtering + existing shopping behavior)
 
+### Cooking Page
+
+Cooking page at `/cooking` for consuming ingredients via recipes.
+
+**Recipe selection:** Checkboxes to select which recipes to cook. When checked, the recipe expands to show its item list as flat `ItemCard` components below the recipe header card.
+
+**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. All items start checked. Users can uncheck optional ingredients to exclude them from consumption. Unchecked items are excluded from `totalByItemId` and are not consumed when Done is confirmed.
+
+**Amount adjustment:** Each item card shows ±buttons to adjust the amount to consume. Step size is `item.consumeAmount`. Amount can be reduced to 0.
+
+**`ItemCard` in cooking mode:**
+- `mode="cooking"` hides tags, vendors, and recipe badges (same as `mode="shopping"`)
+- `isAmountControllable` is true — ±buttons visible when item is checked
+- `minControlAmount` defaults to `0` globally (changed from `1`) — minus disabled at 0, not 1
+
+**State:**
+- `checkedRecipeIds: Set<string>` — which recipes are selected
+- `sessionAmounts: Map<recipeId, Map<itemId, number>>` — per-recipe per-item amounts
+- `checkedItemIds: Map<recipeId, Set<itemId>>` — which items are included (all start included when recipe is checked)
+
+**Files:**
+- `src/routes/cooking.tsx` — main page
+- `src/routes/cooking.test.tsx` — integration tests
+
 ## Design Tokens
 
 Token system for theme, colors, shadows, and borders:
