@@ -9,7 +9,11 @@ import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
-import { filterItems, filterItemsByVendors } from '@/lib/filterUtils'
+import {
+  filterItems,
+  filterItemsByRecipes,
+  filterItemsByVendors,
+} from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
@@ -128,23 +132,25 @@ function RecipeItemsTab() {
     enabled: items.length > 0,
   })
 
-  // 1. Name search filter
-  const searchFiltered = items.filter((item) =>
+  // Branch A: search only
+  const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  // 2. Tag filter (disabled during search)
-  const tagFiltered = search
-    ? searchFiltered
-    : filterItems(searchFiltered, filterState)
-
-  // 3. Vendor and recipe filters
+  // Branch B: all filters
+  const tagFiltered = filterItems(items, filterState)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-  const fullyFiltered = vendorFiltered // recipe filter hidden on this tab
+  const recipeFiltered = filterItemsByRecipes(
+    vendorFiltered,
+    selectedRecipeIds,
+    allRecipes,
+  )
 
-  // 4. Sort: assigned items first, then user's chosen sort within each group
-  const assignedItems = fullyFiltered.filter((item) => isAssigned(item.id))
-  const unassignedItems = fullyFiltered.filter((item) => !isAssigned(item.id))
+  const displayItems = search.trim() ? searchedItems : recipeFiltered // trim guards whitespace-only input
+
+  // Assigned-first sort
+  const assignedItems = displayItems.filter((item) => isAssigned(item.id))
+  const unassignedItems = displayItems.filter((item) => !isAssigned(item.id))
 
   const sortedAssigned = sortItems(
     assignedItems,
@@ -262,7 +268,6 @@ function RecipeItemsTab() {
         items={items}
         vendors={vendors}
         recipes={allRecipes}
-        hideRecipeFilter
         onCreateFromSearch={handleCreateFromSearch}
         className="bg-transparent border-none"
       />
