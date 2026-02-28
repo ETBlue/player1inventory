@@ -22,7 +22,12 @@ interface ItemCardProps {
   tagTypes: TagType[]
   onTagClick?: (tagId: string) => void
   showTags?: boolean
-  mode?: 'pantry' | 'shopping' | 'tag-assignment' | 'recipe-assignment'
+  mode?:
+    | 'pantry'
+    | 'shopping'
+    | 'tag-assignment'
+    | 'recipe-assignment'
+    | 'cooking'
   // Unified behavior props (mode-agnostic)
   isChecked?: boolean
   onCheckboxToggle?: () => void
@@ -46,7 +51,7 @@ export function ItemCard({
   isChecked,
   onCheckboxToggle,
   controlAmount,
-  minControlAmount = 1,
+  minControlAmount = 0,
   onAmountChange,
   disabled,
   vendors = [],
@@ -71,7 +76,11 @@ export function ItemCard({
       ? item.packedQuantity * item.amountPerPackage
       : item.packedQuantity
 
-  const isAmountControllable = ['shopping', 'recipe-assignment'].includes(mode)
+  const isAmountControllable = [
+    'shopping',
+    'recipe-assignment',
+    'cooking',
+  ].includes(mode)
 
   if (import.meta.env.DEV && isAmountControllable && !onAmountChange) {
     console.warn('ItemCard: controlAmount requires onAmountChange to function.')
@@ -250,75 +259,81 @@ export function ItemCard({
               </span>
             )}
         </div>
-        {tags.length > 0 && mode !== 'shopping' && showTags && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
-              const tagType = tagTypes.find((t) => t.id === tag.typeId)
-              const bgColor = tagType?.color
-              return (
+        {tags.length > 0 &&
+          !['shopping', 'cooking'].includes(mode) &&
+          showTags && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
+                const tagType = tagTypes.find((t) => t.id === tag.typeId)
+                const bgColor = tagType?.color
+                return (
+                  <Badge
+                    key={tag.id}
+                    data-testid={`tag-badge-${tag.name}`}
+                    variant={bgColor}
+                    className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
+                    onClick={(e) => {
+                      if (onTagClick) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onTagClick(tag.id)
+                      }
+                    }}
+                  >
+                    {tag.name}
+                  </Badge>
+                )
+              })}
+            </div>
+          )}
+        {vendors.length > 0 &&
+          !['shopping', 'cooking'].includes(mode) &&
+          showTags && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {vendors.map((vendor) => (
                 <Badge
-                  key={tag.id}
-                  data-testid={`tag-badge-${tag.name}`}
-                  variant={bgColor}
-                  className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
+                  key={vendor.id}
+                  data-testid={`vendor-badge-${vendor.name}`}
+                  variant="neutral-outline"
+                  className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
                   onClick={(e) => {
-                    if (onTagClick) {
+                    if (onVendorClick) {
                       e.preventDefault()
                       e.stopPropagation()
-                      onTagClick(tag.id)
+                      onVendorClick(vendor.id)
                     }
                   }}
                 >
-                  {tag.name}
+                  <Store className="h-3 w-3" />
+                  {vendor.name}
                 </Badge>
-              )
-            })}
-          </div>
-        )}
-        {vendors.length > 0 && mode !== 'shopping' && showTags && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {vendors.map((vendor) => (
-              <Badge
-                key={vendor.id}
-                data-testid={`vendor-badge-${vendor.name}`}
-                variant="neutral-outline"
-                className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
-                onClick={(e) => {
-                  if (onVendorClick) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onVendorClick(vendor.id)
-                  }
-                }}
-              >
-                <Store className="h-3 w-3" />
-                {vendor.name}
-              </Badge>
-            ))}
-          </div>
-        )}
-        {recipes.length > 0 && mode !== 'shopping' && showTags && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {recipes.map((recipe) => (
-              <Badge
-                key={recipe.id}
-                data-testid={`recipe-badge-${recipe.name}`}
-                variant="neutral-outline"
-                className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
-                onClick={(e) => {
-                  if (onRecipeClick) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onRecipeClick(recipe.id)
-                  }
-                }}
-              >
-                <CookingPot className="h-3 w-3" />
-                {recipe.name}
-              </Badge>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        {recipes.length > 0 &&
+          !['shopping', 'cooking'].includes(mode) &&
+          showTags && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {recipes.map((recipe) => (
+                <Badge
+                  key={recipe.id}
+                  data-testid={`recipe-badge-${recipe.name}`}
+                  variant="neutral-outline"
+                  className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
+                  onClick={(e) => {
+                    if (onRecipeClick) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onRecipeClick(recipe.id)
+                    }
+                  }}
+                >
+                  <CookingPot className="h-3 w-3" />
+                  {recipe.name}
+                </Badge>
+              ))}
+            </div>
+          )}
       </CardContent>
     </Card>
   )
