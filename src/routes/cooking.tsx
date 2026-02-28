@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Minus, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
+import { ItemCard } from '@/components/ItemCard'
 import { Toolbar } from '@/components/Toolbar'
 import {
   AlertDialog,
@@ -15,7 +16,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { useAddInventoryLog, useItems, useUpdateItem } from '@/hooks'
+import {
+  useAddInventoryLog,
+  useItems,
+  useTags,
+  useTagTypes,
+  useUpdateItem,
+} from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { consumeItem, getCurrentQuantity } from '@/lib/quantityUtils'
 
@@ -29,6 +36,8 @@ function CookingPage() {
   const { data: items = [] } = useItems()
   const updateItem = useUpdateItem()
   const addInventoryLog = useAddInventoryLog()
+  const { data: tags = [] } = useTags()
+  const { data: tagTypes = [] } = useTagTypes()
 
   // recipeId -> (itemId -> currentAmount)
   const [sessionAmounts, setSessionAmounts] = useState<
@@ -37,6 +46,10 @@ function CookingPage() {
   const [checkedRecipeIds, setCheckedRecipeIds] = useState<Set<string>>(
     new Set(),
   )
+  // Map<recipeId, Set<itemId>> — tracks which items are included per recipe
+  const [checkedItemIds, setCheckedItemIds] = useState<
+    Map<string, Set<string>>
+  >(new Map())
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
 
@@ -58,18 +71,28 @@ function CookingPage() {
       newAmounts.delete(recipeId)
       setSessionAmounts(newAmounts)
 
+      const newCheckedItemIds = new Map(checkedItemIds)
+      newCheckedItemIds.delete(recipeId)
+      setCheckedItemIds(newCheckedItemIds)
+
       const newChecked = new Set(checkedRecipeIds)
       newChecked.delete(recipeId)
       setCheckedRecipeIds(newChecked)
     } else {
-      // Check: populate with defaultAmounts
+      // Check: populate with defaultAmounts and mark all items included
       const recipeAmountMap = new Map<string, number>()
+      const recipeItemSet = new Set<string>()
       for (const ri of recipe.items) {
         recipeAmountMap.set(ri.itemId, ri.defaultAmount)
+        recipeItemSet.add(ri.itemId)
       }
       const newAmounts = new Map(sessionAmounts)
       newAmounts.set(recipeId, recipeAmountMap)
       setSessionAmounts(newAmounts)
+
+      const newCheckedItemIds = new Map(checkedItemIds)
+      newCheckedItemIds.set(recipeId, recipeItemSet)
+      setCheckedItemIds(newCheckedItemIds)
 
       setCheckedRecipeIds(new Set([...checkedRecipeIds, recipeId]))
     }
@@ -91,19 +114,32 @@ function CookingPage() {
     setSessionAmounts(newAmounts)
   }
 
+  const handleToggleItem = (recipeId: string, itemId: string) => {
+    const newCheckedItemIds = new Map(checkedItemIds)
+    const itemSet = new Set(newCheckedItemIds.get(recipeId) ?? [])
+    if (itemSet.has(itemId)) {
+      itemSet.delete(itemId)
+    } else {
+      itemSet.add(itemId)
+    }
+    newCheckedItemIds.set(recipeId, itemSet)
+    setCheckedItemIds(newCheckedItemIds)
+  }
+
   // Aggregate total amounts per item across all checked recipes
   const totalByItemId = useMemo(() => {
     const totals = new Map<string, number>()
     for (const recipeId of checkedRecipeIds) {
       const recipeAmounts = sessionAmounts.get(recipeId) ?? new Map()
+      const included = checkedItemIds.get(recipeId) ?? new Set()
       for (const [itemId, amount] of recipeAmounts) {
-        if (amount > 0) {
+        if (amount > 0 && included.has(itemId)) {
           totals.set(itemId, (totals.get(itemId) ?? 0) + amount)
         }
       }
     }
     return totals
-  }, [checkedRecipeIds, sessionAmounts])
+  }, [checkedRecipeIds, sessionAmounts, checkedItemIds])
 
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {
@@ -151,12 +187,14 @@ function CookingPage() {
     // Reset state
     setCheckedRecipeIds(new Set())
     setSessionAmounts(new Map())
+    setCheckedItemIds(new Map())
     setShowDoneDialog(false)
   }
 
   const handleConfirmCancel = () => {
     setCheckedRecipeIds(new Set())
     setSessionAmounts(new Map())
+    setCheckedItemIds(new Map())
     setShowCancelDialog(false)
   }
 
@@ -200,94 +238,77 @@ function CookingPage() {
             const recipeAmounts = sessionAmounts.get(recipe.id)
 
             return (
-              <Card key={recipe.id}>
-                <CardContent>
-                  {/* Recipe header row */}
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id={`recipe-${recipe.id}`}
-                      checked={isChecked}
-                      onCheckedChange={() => handleToggleRecipe(recipe.id)}
-                      aria-label={recipe.name}
-                    />
-                    <button
-                      type="button"
-                      className="flex-1 text-left font-medium hover:underline"
-                      onClick={() =>
-                        navigate({
-                          to: '/settings/recipes/$id',
-                          params: { id: recipe.id },
-                        })
-                      }
-                    >
-                      {recipe.name}
-                    </button>
-                    {!isChecked && (
-                      <span className="text-sm text-foreground-muted">
-                        {recipe.items.length} item
-                        {recipe.items.length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Expanded item list when checked */}
-                  {isChecked && recipeAmounts && (
-                    <div className="space-y-2 pl-7">
-                      {recipe.items.length === 0 && (
-                        <p className="text-sm text-foreground-muted">
-                          No items in this recipe.
-                        </p>
+              <React.Fragment key={recipe.id}>
+                <Card>
+                  <CardContent>
+                    {/* Recipe header row */}
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        id={`recipe-${recipe.id}`}
+                        checked={isChecked}
+                        onCheckedChange={() => handleToggleRecipe(recipe.id)}
+                        aria-label={recipe.name}
+                      />
+                      <button
+                        type="button"
+                        className="flex-1 text-left font-medium hover:underline"
+                        onClick={() =>
+                          navigate({
+                            to: '/settings/recipes/$id',
+                            params: { id: recipe.id },
+                          })
+                        }
+                      >
+                        {recipe.name}
+                      </button>
+                      {!isChecked && (
+                        <span className="text-sm text-foreground-muted">
+                          {recipe.items.length} item
+                          {recipe.items.length !== 1 ? 's' : ''}
+                        </span>
                       )}
-                      {recipe.items.map((ri) => {
-                        const item = items.find((i) => i.id === ri.itemId)
-                        if (!item) return null
-                        const amount =
-                          recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
-                        const unit =
-                          item.targetUnit === 'measurement'
-                            ? (item.measurementUnit ?? '')
-                            : (item.packageUnit ?? '') // intentionally blank when unit is unset
-
-                        return (
-                          <div
-                            key={ri.itemId}
-                            className="flex items-center gap-2"
-                          >
-                            <span className="flex-1 text-sm">{item.name}</span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="neutral-outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  handleAdjustAmount(recipe.id, ri.itemId, -1)
-                                }
-                                aria-label={`Decrease ${item.name}`}
-                              >
-                                <Minus className="h-3 w-3" />
-                              </Button>
-                              <span className="w-16 text-center text-sm tabular-nums">
-                                {amount} {unit}
-                              </span>
-                              <Button
-                                variant="neutral-outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  handleAdjustAmount(recipe.id, ri.itemId, 1)
-                                }
-                                aria-label={`Increase ${item.name}`}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      })}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+                {isChecked && recipeAmounts && (
+                  <div className="space-y-px pl-7">
+                    {recipe.items.length === 0 && (
+                      <p className="text-sm text-foreground-muted px-4">
+                        No items in this recipe.
+                      </p>
+                    )}
+                    {recipe.items.map((ri) => {
+                      const item = items.find((i) => i.id === ri.itemId)
+                      if (!item) return null
+                      const itemTags = tags.filter((t) =>
+                        item.tagIds.includes(t.id),
+                      )
+                      const amount =
+                        recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
+                      const isItemChecked =
+                        checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
+
+                      return (
+                        <ItemCard
+                          key={ri.itemId}
+                          item={item}
+                          tags={itemTags}
+                          tagTypes={tagTypes}
+                          mode="cooking"
+                          isChecked={isItemChecked}
+                          onCheckboxToggle={() =>
+                            handleToggleItem(recipe.id, ri.itemId)
+                          }
+                          controlAmount={amount}
+                          onAmountChange={(delta) =>
+                            handleAdjustAmount(recipe.id, ri.itemId, delta)
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+              </React.Fragment>
             )
           })}
         </div>
