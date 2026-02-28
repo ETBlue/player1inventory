@@ -17,7 +17,7 @@ describe('ItemCard - Unit Display Logic', () => {
     const displayUnit =
       item.targetUnit === 'measurement' && item.measurementUnit
         ? item.measurementUnit
-        : (item.packageUnit ?? 'units')
+        : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
     expect(displayUnit).toBe('bottle')
   })
@@ -32,7 +32,7 @@ describe('ItemCard - Unit Display Logic', () => {
     const displayUnit =
       item.targetUnit === 'measurement' && item.measurementUnit
         ? item.measurementUnit
-        : (item.packageUnit ?? 'units')
+        : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
     expect(displayUnit).toBe('L')
   })
@@ -46,7 +46,7 @@ describe('ItemCard - Unit Display Logic', () => {
     const displayUnit =
       item.targetUnit === 'measurement' && item.measurementUnit
         ? item.measurementUnit
-        : (item.packageUnit ?? 'units')
+        : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
     expect(displayUnit).toBe('pack')
   })
