@@ -73,7 +73,7 @@ Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` a
 - `useAppNavigation()` (`src/hooks/useAppNavigation.ts`) - Tracks navigation history in sessionStorage, provides `goBack()` function for smart back navigation to previous app page (fallback to home)
 
 **Item List State:**
-- `useUrlSearchAndFilters()` (`src/hooks/useUrlSearchAndFilters.ts`) - Manages search query, tag filter state, and UI visibility (filters panel, tags visible) via URL params (`?q=`, `?f_<typeId>=`, `?filters=1`, `?tags=1`). Syncs to sessionStorage key `item-list-search-prefs` for cross-page carry-over on navigation.
+- `useUrlSearchAndFilters()` (`src/hooks/useUrlSearchAndFilters.ts`) - Manages search query, tag filter state, vendor/recipe filter state, and UI visibility (filters panel, tags visible) via URL params (`?q=`, `?f_<typeId>=`, `?f_vendor=id1,id2`, `?f_recipe=id1,id2`, `?filters=1`, `?tags=1`). Syncs to sessionStorage key `item-list-search-prefs` for cross-page carry-over on navigation. Note: `filterState` only contains tag type filters — `vendor` and `recipe` keys are reserved and excluded from `filterState`. Exposes `selectedVendorIds: string[]`, `selectedRecipeIds: string[]`, `toggleVendorId(id)`, `toggleRecipeId(id)`, `clearVendorIds()`, `clearRecipeIds()`.
 - `useSortFilter(storageKey)` (`src/hooks/useSortFilter.ts`) - Manages sort field and direction via localStorage key `${storageKey}-sort-prefs`. Used by all item list pages for per-page sort persistence.
 
 **Data Utilities:**

@@ -6,6 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
+import type { Recipe, Vendor } from '@/types'
 import { ItemCard } from './ItemCard'
 
 // Create a router that renders an Outlet (which will render our story)
@@ -200,6 +201,21 @@ export const InactiveItem: Story = {
 const mockTags = [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }]
 const mockTagTypes = [{ id: 'type-1', name: 'Category', color: '#3b82f6' }]
 
+const mockVendors: Vendor[] = [
+  { id: 'v1', name: 'Costco', createdAt: new Date() },
+  { id: 'v2', name: 'Safeway', createdAt: new Date() },
+]
+
+const mockRecipes: Recipe[] = [
+  {
+    id: 'r1',
+    name: 'Pancakes',
+    items: [{ itemId: '1', defaultAmount: 2 }],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+]
+
 export const ShoppingModeNotInCart: Story = {
   name: 'Shopping Mode — Not in cart',
   args: {
@@ -267,5 +283,46 @@ export const RecipeAssignmentUnchecked: Story = {
     mode: 'recipe-assignment',
     isChecked: false,
     onCheckboxToggle: () => console.log('Toggle assignment'),
+  },
+}
+
+export const WithVendorsAndRecipesCollapsed: Story = {
+  name: 'With Vendors and Recipes — Collapsed',
+  args: {
+    item: mockItem,
+    quantity: 2,
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    showTags: false,
+    vendors: mockVendors,
+    recipes: mockRecipes,
+  },
+}
+
+export const WithVendorsAndRecipesExpanded: Story = {
+  name: 'With Vendors and Recipes — Expanded',
+  args: {
+    item: mockItem,
+    quantity: 2,
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    showTags: true,
+    vendors: mockVendors,
+    recipes: mockRecipes,
+  },
+}
+
+export const WithVendorAndRecipeClickHandlers: Story = {
+  name: 'With Vendor and Recipe Click Handlers',
+  args: {
+    item: mockItem,
+    quantity: 2,
+    tags: mockTags,
+    tagTypes: mockTagTypes,
+    showTags: true,
+    vendors: mockVendors,
+    recipes: mockRecipes,
+    onVendorClick: (vendorId) => console.log('Vendor clicked:', vendorId),
+    onRecipeClick: (recipeId) => console.log('Recipe clicked:', recipeId),
   },
 }

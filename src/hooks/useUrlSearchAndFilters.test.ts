@@ -285,6 +285,113 @@ describe('useUrlSearchAndFilters', () => {
     // Then URL is not modified
     expect(mockHistoryReplace).not.toHaveBeenCalled()
   })
+
+  it('selectedVendorIds reads from ?f_vendor= param', () => {
+    mockRouterState.location.search = '?f_vendor=v1%2Cv2'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    expect(result.current.selectedVendorIds).toEqual(['v1', 'v2'])
+  })
+
+  it('selectedVendorIds is empty when no f_vendor param', () => {
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    expect(result.current.selectedVendorIds).toEqual([])
+  })
+
+  it('filterState does NOT include vendor key', () => {
+    mockRouterState.location.search = '?f_vendor=v1&f_type-1=tag-a'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    expect(result.current.filterState).toEqual({ 'type-1': ['tag-a'] })
+    expect(result.current.filterState.vendor).toBeUndefined()
+  })
+
+  it('selectedRecipeIds reads from ?f_recipe= param', () => {
+    mockRouterState.location.search = '?f_recipe=r1'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    expect(result.current.selectedRecipeIds).toEqual(['r1'])
+  })
+
+  it('filterState does NOT include recipe key', () => {
+    mockRouterState.location.search = '?f_recipe=r1&f_type-1=tag-a'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    expect(result.current.filterState).toEqual({ 'type-1': ['tag-a'] })
+    expect(result.current.filterState.recipe).toBeUndefined()
+  })
+
+  it('toggleVendorId adds vendor to f_vendor param', () => {
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    act(() => {
+      result.current.toggleVendorId('v1')
+    })
+    expect(mockHistoryReplace).toHaveBeenCalledWith(
+      expect.stringContaining('f_vendor=v1'),
+    )
+  })
+
+  it('toggleVendorId removes vendor when already selected', () => {
+    mockRouterState.location.search = '?f_vendor=v1%2Cv2'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    act(() => {
+      result.current.toggleVendorId('v1')
+    })
+    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    expect(callArg).not.toContain('v1')
+    expect(callArg).toContain('v2')
+  })
+
+  it('toggleVendorId removes f_vendor param when last vendor deselected', () => {
+    mockRouterState.location.search = '?f_vendor=v1'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    act(() => {
+      result.current.toggleVendorId('v1')
+    })
+    expect(mockHistoryReplace).toHaveBeenCalledWith('/')
+  })
+
+  it('clearVendorIds removes f_vendor param', () => {
+    mockRouterState.location.search = '?f_vendor=v1%2Cv2'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    act(() => {
+      result.current.clearVendorIds()
+    })
+    expect(mockHistoryReplace).toHaveBeenCalledWith('/')
+  })
+
+  it('toggleRecipeId adds recipe to f_recipe param', () => {
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    act(() => {
+      result.current.toggleRecipeId('r1')
+    })
+    expect(mockHistoryReplace).toHaveBeenCalledWith(
+      expect.stringContaining('f_recipe=r1'),
+    )
+  })
+
+  it('clearRecipeIds removes f_recipe param', () => {
+    mockRouterState.location.search = '?f_recipe=r1'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+    act(() => {
+      result.current.clearRecipeIds()
+    })
+    expect(mockHistoryReplace).toHaveBeenCalledWith('/')
+  })
+
+  it('clearAllFilters removes all f_ params but preserves q, filters, tags params', () => {
+    mockRouterState.location.search =
+      '?q=apple&filters=1&f_vendor=v1&f_recipe=r1&f_type-1=tag-a'
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+
+    act(() => {
+      result.current.clearAllFilters()
+    })
+
+    expect(mockHistoryReplace).toHaveBeenCalledTimes(1)
+    const callArg: string = mockHistoryReplace.mock.calls[0][0]
+    expect(callArg).not.toContain('f_vendor')
+    expect(callArg).not.toContain('f_recipe')
+    expect(callArg).not.toContain('f_type-1')
+    expect(callArg).toContain('q=apple')
+    expect(callArg).toContain('filters=1')
+  })
 })
 
 describe('loadSearchPrefs', () => {

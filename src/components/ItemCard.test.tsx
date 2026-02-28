@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
-import type { Item, Tag, TagType } from '@/types'
+import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 import { TagColor } from '@/types'
 import { ItemCard } from './ItemCard'
 
@@ -465,5 +465,178 @@ describe('ItemCard - Shopping mode', () => {
     await renderWithRouter(<ItemCard item={mockItem} tags={[]} tagTypes={[]} />)
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+})
+
+describe('ItemCard - vendor and recipe display', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Milk',
+    tagIds: ['t1'],
+    vendorIds: ['v1'],
+    targetUnit: 'package',
+    packageUnit: 'gallon',
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const mockTags: Tag[] = [{ id: 't1', name: 'Dairy', typeId: 'type1' }]
+  const mockTagTypes: TagType[] = [
+    { id: 'type1', name: 'Category', color: TagColor.blue },
+  ]
+  const mockVendors: Vendor[] = [
+    { id: 'v1', name: 'Costco', createdAt: new Date() },
+  ]
+  const mockRecipes: Recipe[] = [
+    {
+      id: 'r1',
+      name: 'Pancakes',
+      items: [{ itemId: 'item-1', defaultAmount: 1 }],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ]
+
+  it('shows vendor and recipe counts alongside tag count when collapsed', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={false}
+        vendors={mockVendors}
+        recipes={mockRecipes}
+      />,
+    )
+    expect(screen.getByText('1 tag · 1 vendor · 1 recipe')).toBeInTheDocument()
+  })
+
+  it('omits zero-count entries in collapsed state', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={false}
+        vendors={[]}
+        recipes={mockRecipes}
+      />,
+    )
+    expect(screen.queryByText(/vendor/i)).not.toBeInTheDocument()
+    expect(screen.getByText('1 tag · 1 recipe')).toBeInTheDocument()
+  })
+
+  it('shows vendor badges when expanded', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        vendors={mockVendors}
+        recipes={[]}
+      />,
+    )
+    expect(screen.getByTestId('vendor-badge-Costco')).toBeInTheDocument()
+  })
+
+  it('shows recipe badges when expanded', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        vendors={[]}
+        recipes={mockRecipes}
+      />,
+    )
+    expect(screen.getByTestId('recipe-badge-Pancakes')).toBeInTheDocument()
+  })
+
+  it('calls onVendorClick with vendorId when vendor badge is clicked', async () => {
+    const user = userEvent.setup()
+    const onVendorClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        vendors={mockVendors}
+        onVendorClick={onVendorClick}
+      />,
+    )
+
+    await user.click(screen.getByTestId('vendor-badge-Costco'))
+    expect(onVendorClick).toHaveBeenCalledWith('v1')
+  })
+
+  it('calls onRecipeClick with recipeId when recipe badge is clicked', async () => {
+    const user = userEvent.setup()
+    const onRecipeClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        recipes={mockRecipes}
+        onRecipeClick={onRecipeClick}
+      />,
+    )
+
+    await user.click(screen.getByTestId('recipe-badge-Pancakes'))
+    expect(onRecipeClick).toHaveBeenCalledWith('r1')
+  })
+
+  it('hides vendor and recipe badges in shopping mode', async () => {
+    const mockVendors: Vendor[] = [
+      { id: 'v1', name: 'Costco', createdAt: new Date() },
+    ]
+    const mockRecipes: Recipe[] = [
+      {
+        id: 'r1',
+        name: 'Pancakes',
+        items: [{ itemId: 'item-1', defaultAmount: 1 }],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]
+
+    await renderWithRouter(
+      <ItemCard
+        item={{
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }}
+        tags={[]}
+        tagTypes={[]}
+        showTags={true}
+        mode="shopping"
+        vendors={mockVendors}
+        recipes={mockRecipes}
+      />,
+    )
+    expect(screen.queryByTestId('vendor-badge-Costco')).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('recipe-badge-Pancakes'),
+    ).not.toBeInTheDocument()
   })
 })

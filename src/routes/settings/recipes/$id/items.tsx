@@ -5,12 +5,14 @@ import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
-import { useRecipe, useUpdateRecipe } from '@/hooks/useRecipes'
+import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { filterItems } from '@/lib/filterUtils'
+import { useVendors } from '@/hooks/useVendors'
+import { filterItems, filterItemsByVendors } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
+import type { Recipe, Vendor } from '@/types'
 
 export const Route = createFileRoute('/settings/recipes/$id/items')({
   component: RecipeItemsTab,
@@ -24,11 +26,35 @@ function RecipeItemsTab() {
   const createItem = useCreateItem()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
+  const { data: vendors = [] } = useVendors()
+  const { data: allRecipes = [] } = useRecipes()
 
   const tagMap = useMemo(
     () => Object.fromEntries(tags.map((t) => [t.id, t])),
     [tags],
   )
+
+  const vendorMap = useMemo(() => {
+    const map = new Map<string, Vendor[]>()
+    for (const item of items) {
+      map.set(
+        item.id,
+        vendors.filter((v) => item.vendorIds?.includes(v.id) ?? false),
+      )
+    }
+    return map
+  }, [items, vendors])
+
+  const recipeMap = useMemo(() => {
+    const map = new Map<string, Recipe[]>()
+    for (const r of allRecipes) {
+      for (const ri of r.items) {
+        const existing = map.get(ri.itemId) ?? []
+        map.set(ri.itemId, [...existing, r])
+      }
+    }
+    return map
+  }, [allRecipes])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
 
@@ -45,7 +71,15 @@ function RecipeItemsTab() {
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('recipe-items')
 
-  const { search, filterState, isTagsVisible } = useUrlSearchAndFilters()
+  const {
+    search,
+    filterState,
+    isTagsVisible,
+    selectedVendorIds,
+    selectedRecipeIds,
+    toggleVendorId,
+    toggleRecipeId,
+  } = useUrlSearchAndFilters()
 
   // Quantities map (for stock sort) — same query key as pantry, cache is shared
   const { data: allQuantities } = useQuery({
@@ -104,9 +138,13 @@ function RecipeItemsTab() {
     ? searchFiltered
     : filterItems(searchFiltered, filterState)
 
-  // 3. Sort: assigned items first, then user's chosen sort within each group
-  const assignedItems = tagFiltered.filter((item) => isAssigned(item.id))
-  const unassignedItems = tagFiltered.filter((item) => !isAssigned(item.id))
+  // 3. Vendor and recipe filters
+  const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
+  const fullyFiltered = vendorFiltered // recipe filter hidden on this tab
+
+  // 4. Sort: assigned items first, then user's chosen sort within each group
+  const assignedItems = fullyFiltered.filter((item) => isAssigned(item.id))
+  const unassignedItems = fullyFiltered.filter((item) => !isAssigned(item.id))
 
   const sortedAssigned = sortItems(
     assignedItems,
@@ -222,6 +260,9 @@ function RecipeItemsTab() {
         }}
         isTagsToggleEnabled
         items={items}
+        vendors={vendors}
+        recipes={allRecipes}
+        hideRecipeFilter
         onCreateFromSearch={handleCreateFromSearch}
         className="bg-transparent border-none"
       />
@@ -246,6 +287,10 @@ function RecipeItemsTab() {
               tags={itemTags}
               tagTypes={tagTypes}
               showTags={isTagsVisible}
+              vendors={vendorMap.get(item.id) ?? []}
+              recipes={recipeMap.get(item.id) ?? []}
+              onVendorClick={toggleVendorId}
+              onRecipeClick={toggleRecipeId}
               isChecked={assigned}
               onCheckboxToggle={() =>
                 handleToggle(item.id, item.consumeAmount ?? 1)
@@ -262,7 +307,9 @@ function RecipeItemsTab() {
           )
         })}
         {filteredItems.length === 0 &&
-          Object.values(filterState).some((ids) => ids.length > 0) &&
+          (Object.values(filterState).some((ids) => ids.length > 0) ||
+            selectedVendorIds.length > 0 ||
+            selectedRecipeIds.length > 0) &&
           !search.trim() && (
             <p className="text-sm text-foreground-muted py-4 px-1">
               No items match the current filters.

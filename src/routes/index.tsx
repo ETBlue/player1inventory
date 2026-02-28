@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
@@ -13,9 +13,15 @@ import {
   useItems,
   useUpdateItem,
 } from '@/hooks'
+import { useRecipes } from '@/hooks/useRecipes'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { filterItems } from '@/lib/filterUtils'
+import { useVendors } from '@/hooks/useVendors'
+import {
+  filterItems,
+  filterItemsByRecipes,
+  filterItemsByVendors,
+} from '@/lib/filterUtils'
 import {
   addItem,
   consumeItem,
@@ -28,7 +34,7 @@ import {
   type SortField,
 } from '@/lib/sessionStorage'
 import { sortItems } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { Item, Recipe, Vendor } from '@/types'
 
 export const Route = createFileRoute('/')({
   component: PantryView,
@@ -38,6 +44,8 @@ function PantryView() {
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
+  const { data: vendors = [] } = useVendors()
+  const { data: recipes = [] } = useRecipes()
   const addLog = useAddInventoryLog()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
@@ -68,16 +76,52 @@ function PantryView() {
     () => loadSortPrefs().sortDirection,
   )
 
-  const { search, filterState, setFilterState, isTagsVisible } =
-    useUrlSearchAndFilters()
+  const {
+    search,
+    filterState,
+    setFilterState,
+    isTagsVisible,
+    selectedVendorIds,
+    selectedRecipeIds,
+    toggleVendorId,
+    toggleRecipeId,
+  } = useUrlSearchAndFilters()
+
+  const vendorMap = useMemo(() => {
+    const map = new Map<string, Vendor[]>()
+    for (const item of items) {
+      map.set(
+        item.id,
+        vendors.filter((v) => item.vendorIds?.includes(v.id) ?? false),
+      )
+    }
+    return map
+  }, [items, vendors])
+
+  const recipeMap = useMemo(() => {
+    const map = new Map<string, Recipe[]>()
+    for (const recipe of recipes) {
+      for (const ri of recipe.items) {
+        const existing = map.get(ri.itemId) ?? []
+        map.set(ri.itemId, [...existing, recipe])
+      }
+    }
+    return map
+  }, [recipes])
 
   // Apply search filter, then tag filters (tag filters disabled during search)
   const searchFiltered = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
-  const filteredItems = search
+  const tagFiltered = search
     ? searchFiltered
     : filterItems(searchFiltered, filterState)
+  const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
+  const filteredItems = filterItemsByRecipes(
+    vendorFiltered,
+    selectedRecipeIds,
+    recipes,
+  )
 
   // Fetch all quantities for sorting
   const { data: allQuantities } = useQuery({
@@ -172,6 +216,14 @@ function PantryView() {
     })
   }
 
+  const handleVendorClick = (vendorId: string) => {
+    toggleVendorId(vendorId)
+  }
+
+  const handleRecipeClick = (recipeId: string) => {
+    toggleRecipeId(recipeId)
+  }
+
   if (isLoading) {
     return <div className="p-4">Loading...</div>
   }
@@ -189,6 +241,8 @@ function PantryView() {
         items={items}
         className="border-b"
         onCreateFromSearch={handleCreateFromSearch}
+        vendors={vendors}
+        recipes={recipes}
       >
         <Link to="/items/new">
           <Button size="icon" aria-label="Add item">
@@ -222,6 +276,8 @@ function PantryView() {
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
               showTags={isTagsVisible}
+              vendors={vendorMap.get(item.id) ?? []}
+              recipes={recipeMap.get(item.id) ?? []}
               onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
                 if (delta > 0) {
@@ -249,6 +305,8 @@ function PantryView() {
                 }
               }}
               onTagClick={handleTagClick}
+              onVendorClick={handleVendorClick}
+              onRecipeClick={handleRecipeClick}
             />
           ))}
 
@@ -266,6 +324,8 @@ function PantryView() {
               tags={tags.filter((t) => item.tagIds.includes(t.id))}
               tagTypes={tagTypes}
               showTags={isTagsVisible}
+              vendors={vendorMap.get(item.id) ?? []}
+              recipes={recipeMap.get(item.id) ?? []}
               onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
                 if (delta > 0) {
@@ -293,6 +353,8 @@ function PantryView() {
                 }
               }}
               onTagClick={handleTagClick}
+              onVendorClick={handleVendorClick}
+              onRecipeClick={handleRecipeClick}
             />
           ))}
         </div>

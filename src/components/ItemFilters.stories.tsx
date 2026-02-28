@@ -7,7 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import type { Item } from '@/types'
+import type { Item, Recipe, Vendor } from '@/types'
 import { ItemFilters } from './ItemFilters'
 
 const queryClient = new QueryClient()
@@ -90,10 +90,34 @@ const mockItems: Item[] = [
   },
 ]
 
+const mockVendors: Vendor[] = [
+  { id: 'v1', name: 'Costco', createdAt: new Date() },
+  { id: 'v2', name: 'Safeway', createdAt: new Date() },
+  { id: 'v3', name: "Trader Joe's", createdAt: new Date() },
+]
+
+const mockRecipes: Recipe[] = [
+  {
+    id: 'r1',
+    name: 'Pancakes',
+    items: [{ itemId: 'item-1', defaultAmount: 2 }],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'r2',
+    name: 'Grilled Cheese',
+    items: [{ itemId: 'item-2', defaultAmount: 2 }],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+]
+
 // Note: ItemFilters fetches its own tag data via hooks.
 // In Storybook, tags/tagTypes will be empty (no real database),
-// so the component renders null (no tag types with tags).
-// Use integration tests or the full app for filter interaction testing.
+// so the tag type dropdowns render empty.
+// Vendor and recipe dropdowns use props directly and render correctly.
+// Use integration tests or the full app for tag filter interaction testing.
 
 export const Default: Story = {
   render: () => <ItemFilters items={mockItems} />,
@@ -105,4 +129,44 @@ export const EmptyItems: Story = {
 
 export const Disabled: Story = {
   render: () => <ItemFilters items={mockItems} disabled />,
+}
+
+export const WithVendors: Story = {
+  render: () => <ItemFilters items={mockItems} vendors={mockVendors} />,
+}
+
+export const WithRecipes: Story = {
+  render: () => <ItemFilters items={mockItems} recipes={mockRecipes} />,
+}
+
+export const WithVendorsAndRecipes: Story = {
+  render: () => (
+    <ItemFilters
+      items={mockItems}
+      vendors={mockVendors}
+      recipes={mockRecipes}
+    />
+  ),
+}
+
+export const HideVendorFilter: Story = {
+  render: () => (
+    <ItemFilters
+      items={mockItems}
+      vendors={mockVendors}
+      recipes={mockRecipes}
+      hideVendorFilter
+    />
+  ),
+}
+
+export const HideRecipeFilter: Story = {
+  render: () => (
+    <ItemFilters
+      items={mockItems}
+      vendors={mockVendors}
+      recipes={mockRecipes}
+      hideRecipeFilter
+    />
+  ),
 }
