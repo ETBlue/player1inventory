@@ -172,7 +172,7 @@ function PantryView() {
 
   // Apply sorting
   const sortedItems = sortItems(
-    search.trim() ? searchedItems : filteredItems,
+    search.trim() ? searchedItems : filteredItems, // trim guards whitespace-only input
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
     allPurchaseDates ?? new Map(),
