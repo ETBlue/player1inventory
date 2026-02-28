@@ -10,7 +10,11 @@ import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
-import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
+import {
+  filterItems,
+  filterItemsByRecipes,
+  filterItemsByVendors,
+} from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
@@ -162,27 +166,23 @@ function VendorItemsTab() {
     }
   }
 
-  // 1. Name search filter
-  const searchFiltered = items.filter((item) =>
+  // Branch A: search only
+  const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  // 2. Tag filter (disabled during search)
-  const tagFiltered = search
-    ? searchFiltered
-    : filterItems(searchFiltered, filterState)
-
-  // 3. Vendor and recipe filters
-  const vendorFiltered = tagFiltered // vendor filter hidden on this tab
+  // Branch B: all filters
+  const tagFiltered = filterItems(items, filterState)
+  const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
   const recipeFiltered = filterItemsByRecipes(
     vendorFiltered,
     selectedRecipeIds,
     recipes,
   )
 
-  // 4. Sort
+  // Converge at sort
   const filteredItems = sortItems(
-    recipeFiltered,
+    search.trim() ? searchedItems : recipeFiltered,
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
     allPurchaseDates ?? new Map(),
@@ -203,7 +203,6 @@ function VendorItemsTab() {
         items={items}
         vendors={vendors}
         recipes={recipes}
-        hideVendorFilter
         onCreateFromSearch={handleCreateFromSearch}
         className="bg-transparent border-none"
       />
