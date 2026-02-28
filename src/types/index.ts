@@ -1,3 +1,5 @@
+export const DEFAULT_PACKAGE_UNIT = 'pack'
+
 export interface Item {
   id: string
   name: string

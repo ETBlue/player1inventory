@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
-import { TagColor } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
 import { ItemCard } from './ItemCard'
 
 describe('ItemCard - Unit Display Logic', () => {
@@ -51,7 +51,7 @@ describe('ItemCard - Unit Display Logic', () => {
     expect(displayUnit).toBe('pack')
   })
 
-  it('returns "units" when no package unit defined', () => {
+  it('returns default unit when no package unit defined', () => {
     const item: Partial<Item> = {
       targetUnit: 'package',
     }
@@ -59,9 +59,9 @@ describe('ItemCard - Unit Display Logic', () => {
     const displayUnit =
       item.targetUnit === 'measurement' && item.measurementUnit
         ? item.measurementUnit
-        : (item.packageUnit ?? 'units')
+        : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
-    expect(displayUnit).toBe('units')
+    expect(displayUnit).toBe('pack')
   })
 })
 

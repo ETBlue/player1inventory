@@ -14,6 +14,7 @@ import {
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
+import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 interface ItemCardProps {
   item: Item
@@ -144,7 +145,7 @@ export function ItemCard({
                 (
                 {item.targetUnit === 'measurement' && item.measurementUnit
                   ? item.measurementUnit
-                  : (item.packageUnit ?? 'units')}
+                  : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)}
                 )
               </span>
             </div>
