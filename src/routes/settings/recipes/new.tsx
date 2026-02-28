@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { RecipeNameForm } from '@/components/RecipeNameForm'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useCreateRecipe } from '@/hooks/useRecipes'
@@ -35,12 +36,12 @@ function NewRecipePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <Toolbar>
         <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">New Recipe</h1>
-      </div>
+      </Toolbar>
       <RecipeNameForm
         name={name}
         onNameChange={setName}

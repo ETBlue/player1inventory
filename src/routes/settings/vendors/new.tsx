@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
+import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { VendorNameForm } from '@/components/VendorNameForm'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useCreateVendor } from '@/hooks/useVendors'
 
 export const Route = createFileRoute('/settings/vendors/new')({
@@ -11,6 +13,7 @@ export const Route = createFileRoute('/settings/vendors/new')({
 
 function NewVendorPage() {
   const navigate = useNavigate()
+  const { goBack } = useAppNavigation('/settings/vendors')
   const createVendor = useCreateVendor()
   const [name, setName] = useState('')
 
@@ -27,16 +30,12 @@ function NewVendorPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          onClick={() => navigate({ to: '/settings/vendors' })}
-        >
+      <Toolbar>
+        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">New Vendor</h1>
-      </div>
+      </Toolbar>
       <VendorNameForm
         name={name}
         onNameChange={setName}
