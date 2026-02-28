@@ -130,8 +130,7 @@ function TagInfoTab() {
 
       <DeleteButton
         trigger="Delete Tag"
-        buttonVariant="ghost"
-        buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+        buttonVariant="destructive"
         dialogTitle="Delete Tag?"
         dialogDescription={
           <>

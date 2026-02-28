@@ -67,7 +67,7 @@ function VendorInfoTab() {
   if (!vendor) return null
 
   return (
-    <>
+    <div className="px-6 py-4">
       <VendorNameForm
         name={name}
         onNameChange={setName}
@@ -75,11 +75,10 @@ function VendorInfoTab() {
         isDirty={isDirty}
         isPending={updateVendor.isPending}
       />
-      <div className="px-6 pb-6">
+      <div className="pb-6">
         <DeleteButton
           trigger="Delete Vendor"
-          buttonVariant="ghost"
-          buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+          buttonVariant="destructive"
           dialogTitle="Delete Vendor?"
           dialogDescription={
             <>
@@ -94,6 +93,6 @@ function VendorInfoTab() {
           onDelete={handleDelete}
         />
       </div>
-    </>
+    </div>
   )
 }
