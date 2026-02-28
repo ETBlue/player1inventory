@@ -563,6 +563,89 @@ describe('ShoppingCart operations', () => {
     expect(updatedItem?.packedQuantity).toBe(8)
   })
 
+  it('checkout skips inventory update for cartItems with quantity=0 (pinned)', async () => {
+    // Given an item with known packedQuantity
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    // And a cart with a pinned item (quantity=0)
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+    const cartItems = await getCartItems(cart.id)
+    await updateCartItem(cartItems[0].id, 0)
+
+    // When checkout is called
+    await checkout(cart.id)
+
+    // Then item.packedQuantity is unchanged (pinned item not consumed)
+    const updated = await getItem(item.id)
+    expect(updated?.packedQuantity).toBe(2)
+
+    // And no inventory log was created for the pinned item
+    const logs = await db.inventoryLogs
+      .filter((l) => l.itemId === item.id)
+      .toArray()
+    expect(logs).toHaveLength(0)
+  })
+
+  it('checkout keeps pinned items in new active cart', async () => {
+    // Given a pinned item (qty=0) and a buying item (qty=2)
+    const pinnedItem = await createItem({
+      name: 'Eggs',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    const buyItem = await createItem({
+      name: 'Butter',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, pinnedItem.id, 1)
+    const cartItems = await getCartItems(cart.id)
+    await updateCartItem(cartItems[0].id, 0)
+    await addToCart(cart.id, buyItem.id, 2)
+
+    // When checkout is called
+    await checkout(cart.id)
+
+    // Then old cart is completed
+    const oldCart = await db.shoppingCarts.get(cart.id)
+    expect(oldCart?.status).toBe('completed')
+
+    // And a new active cart can be retrieved (old cart is completed)
+    const newCart = await getOrCreateActiveCart()
+    expect(newCart.id).not.toBe(cart.id)
+
+    // And the pinned item is in the new cart with quantity=0
+    const newCartItems = await getCartItems(newCart.id)
+    expect(newCartItems).toHaveLength(1)
+    expect(newCartItems[0].itemId).toBe(pinnedItem.id)
+    expect(newCartItems[0].quantity).toBe(0)
+
+    // And the buying item is NOT in the new cart
+    expect(newCartItems.find((ci) => ci.itemId === buyItem.id)).toBeUndefined()
+  })
+
   it('abandons cart without creating logs', async () => {
     const item = await createItem({
       name: 'Milk',

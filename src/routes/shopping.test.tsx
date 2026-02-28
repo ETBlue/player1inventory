@@ -9,11 +9,14 @@ import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import {
+  addToCart,
   createItem,
   createTag,
   createTagType,
   createVendor,
+  getCartItems,
   getOrCreateActiveCart,
+  updateCartItem,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
@@ -45,6 +48,18 @@ describe('Shopping page', () => {
       </QueryClientProvider>,
     )
   }
+
+  const makeItem = (name: string, packedQuantity = 0) =>
+    createItem({
+      name,
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
 
   it('user can see all active items sorted by name (default)', async () => {
     // Given three items with different names
@@ -484,6 +499,96 @@ describe('Shopping page', () => {
       ).not.toBeInTheDocument()
     })
     expect(router.state.location.pathname).toBe('/shopping')
+  })
+  it('user can reduce cart item quantity to 0 (pin)', async () => {
+    // Given an item in the cart with quantity 1
+    const item = await makeItem('Milk', 2)
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When the item appears in the cart section
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Milk/i }),
+      ).toBeChecked()
+    })
+
+    // And user clicks the minus button
+    await user.click(
+      screen.getByRole('button', { name: /Decrease quantity of Milk/i }),
+    )
+
+    // Then quantity becomes 0 (item stays checked/in cart section)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Decrease quantity of Milk/i }),
+      ).toBeDisabled()
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Milk/i }),
+      ).toBeChecked()
+    })
+  })
+
+  it('Done button is disabled when all cart items have quantity 0 (pinned only)', async () => {
+    // Given an item pinned in the cart (quantity=0)
+    const item = await makeItem('Eggs', 1)
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+    const [ci] = await getCartItems(cart.id)
+    await updateCartItem(ci.id, 0)
+
+    renderShoppingPage()
+
+    // Wait for the item to appear as checked in the cart (confirming cartItems has loaded)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Eggs/i }),
+      ).toBeChecked()
+    })
+
+    // Then Done button is disabled (nothing to actually buy)
+    expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
+  })
+
+  it('pinned items (quantity=0) survive checkout and appear in next trip', async () => {
+    // Given one pinned item (qty=0) and one buying item (qty=2)
+    const pinned = await makeItem('Always Buy Milk', 3)
+    const buying = await makeItem('Butter', 0)
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, pinned.id, 1)
+    const [ci] = await getCartItems(cart.id)
+    await updateCartItem(ci.id, 0)
+    await addToCart(cart.id, buying.id, 2)
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user clicks Done and confirms
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /^done$/i }))
+
+    // Then the pinned item is still checked (in cart section)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Always Buy Milk/i }),
+      ).toBeChecked()
+    })
+
+    // And the buying item is unchecked (no longer in cart)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Add Butter/i }),
+      ).not.toBeChecked()
+    })
   })
 })
 
