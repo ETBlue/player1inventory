@@ -231,6 +231,8 @@ function TagItemsTab() {
               recipes={recipeMap.get(item.id) ?? []}
               onVendorClick={handleVendorClick}
               onRecipeClick={handleRecipeClick}
+              activeVendorIds={selectedVendorIds}
+              activeRecipeIds={selectedRecipeIds}
               isChecked={isAssigned(item.tagIds)}
               onCheckboxToggle={() => handleToggle(item.id, item.tagIds)}
               disabled={savingItemIds.has(item.id)}

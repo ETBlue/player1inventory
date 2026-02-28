@@ -296,6 +296,8 @@ function RecipeItemsTab() {
               recipes={recipeMap.get(item.id) ?? []}
               onVendorClick={toggleVendorId}
               onRecipeClick={toggleRecipeId}
+              activeVendorIds={selectedVendorIds}
+              activeRecipeIds={selectedRecipeIds}
               isChecked={assigned}
               onCheckboxToggle={() =>
                 handleToggle(item.id, item.consumeAmount ?? 1)

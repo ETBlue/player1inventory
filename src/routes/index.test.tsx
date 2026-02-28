@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
+  createRecipe,
   createTag,
   createTagType,
   createVendor,
@@ -26,6 +27,7 @@ describe('Home page filtering integration', () => {
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
     await db.vendors.clear()
+    await db.recipes.clear()
     sessionStorage.clear()
     localStorage.clear()
 
@@ -688,6 +690,107 @@ describe('Home page filtering integration', () => {
     // Then Eggs appears (vendor filter is bypassed during search)
     await waitFor(() => {
       expect(screen.getByText('Eggs')).toBeInTheDocument()
+    })
+  })
+
+  it('vendor badge is filled when vendor filter is active', async () => {
+    // Given an item assigned to a vendor
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When pantry is loaded with vendor filter active and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [`/?f_vendor=${vendor.id}&tags=1`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the vendor badge on the item card uses the filled (neutral) style
+    await waitFor(() => {
+      const badge = screen.getByTestId('vendor-badge-Costco')
+      expect(badge.className).toContain('bg-neutral')
+    })
+  })
+
+  it('vendor badge is outline when vendor filter is not active', async () => {
+    // Given an item assigned to a vendor
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When pantry is loaded with no vendor filter and tags visible
+    const history = createMemoryHistory({
+      initialEntries: ['/?tags=1'],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the vendor badge uses the outline (neutral-outline) style
+    await waitFor(() => {
+      const badge = screen.getByTestId('vendor-badge-Costco')
+      expect(badge.className).not.toContain('bg-neutral')
+    })
+  })
+
+  it('recipe badge is filled when recipe filter is active', async () => {
+    // Given an item assigned to a recipe
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+    const recipe = await createRecipe({
+      name: 'Cereal Bowl',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+
+    // When pantry is loaded with recipe filter active and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [`/?f_recipe=${recipe.id}&tags=1`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the recipe badge on the item card uses the filled (neutral) style
+    await waitFor(() => {
+      const badge = screen.getByTestId('recipe-badge-Cereal Bowl')
+      expect(badge.className).toContain('bg-neutral')
     })
   })
 

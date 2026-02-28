@@ -278,6 +278,8 @@ function PantryView() {
               showTags={isTagsVisible}
               vendors={vendorMap.get(item.id) ?? []}
               recipes={recipeMap.get(item.id) ?? []}
+              activeVendorIds={selectedVendorIds}
+              activeRecipeIds={selectedRecipeIds}
               onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
                 if (delta > 0) {
@@ -326,6 +328,8 @@ function PantryView() {
               showTags={isTagsVisible}
               vendors={vendorMap.get(item.id) ?? []}
               recipes={recipeMap.get(item.id) ?? []}
+              activeVendorIds={selectedVendorIds}
+              activeRecipeIds={selectedRecipeIds}
               onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
                 if (delta > 0) {

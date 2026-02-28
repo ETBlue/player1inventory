@@ -230,6 +230,8 @@ function VendorItemsTab() {
               recipes={recipeMap.get(item.id) ?? []}
               onVendorClick={toggleVendorId}
               onRecipeClick={toggleRecipeId}
+              activeVendorIds={selectedVendorIds}
+              activeRecipeIds={selectedRecipeIds}
               isChecked={isAssigned(item.vendorIds)}
               onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
               disabled={savingItemIds.has(item.id)}
