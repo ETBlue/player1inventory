@@ -257,6 +257,16 @@ Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `de
 
 **Tag filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Multi-select per tag type (OR within type, AND across types). Applied after the vendor filter — `filterItems(vendorFiltered, filterState)`. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
 
+**Pinned items:** Users can reduce a cart item's quantity to 0 to "pin" it. Pinned items:
+- Remain in the cart section (still checked) but don't contribute to the purchase count
+- Do NOT update inventory or create logs on checkout
+- Are automatically moved to the new active cart after checkout, so they appear ready for the next trip
+- Are removed if the cart is abandoned (intentional — abandoning clears everything)
+
+**Done button:** Disabled when `!cartItems.some(ci => ci.quantity > 0)` — i.e. when no item is actually being purchased (all pinned or cart empty).
+
+**Checkout (`src/db/operations.ts`):** Separates `pinnedItems` (qty=0) from `buyingItems` (qty>0). Only processes `buyingItems` in the inventory loop. After marking the cart completed and deleting all cartItems, re-adds pinned items to the new active cart via `getOrCreateActiveCart()`.
+
 **Files:**
 - `src/routes/shopping.tsx` — main page with both vendor and tag filter controls
 - `src/routes/shopping.test.tsx` — integration tests (tag filtering + existing shopping behavior)
