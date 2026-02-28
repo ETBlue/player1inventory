@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useItem, useItemLogs } from '@/hooks'
+import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 export const Route = createFileRoute('/items/$id/log')({
   component: ItemHistory,
@@ -45,7 +46,7 @@ function ItemHistory() {
                     <p className="font-medium">
                       {log.delta > 0 ? '+' : ''}
                       {log.delta} → {log.quantity}{' '}
-                      {item?.packageUnit ?? 'units'}
+                      {item?.packageUnit ?? DEFAULT_PACKAGE_UNIT}
                     </p>
                     {log.note && (
                       <p className="text-sm text-foreground-muted">

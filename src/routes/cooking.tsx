@@ -246,7 +246,7 @@ function CookingPage() {
                         const unit =
                           item.targetUnit === 'measurement'
                             ? (item.measurementUnit ?? '')
-                            : (item.packageUnit ?? '')
+                            : (item.packageUnit ?? '') // intentionally blank when unit is unset
 
                         return (
                           <div

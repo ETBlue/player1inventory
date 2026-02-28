@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 export type ItemFormValues = {
   // Stock fields (used when sections includes 'stock')
@@ -234,7 +235,7 @@ export function ItemForm({
               <Label htmlFor="packedQuantity">
                 Packed{' '}
                 <span className="text-xs font-normal">
-                  ({packageUnit || 'pack'})
+                  ({packageUnit || DEFAULT_PACKAGE_UNIT})
                 </span>
               </Label>
               <Input
@@ -257,7 +258,7 @@ export function ItemForm({
                   (
                   {targetUnit === 'measurement'
                     ? measurementUnit
-                    : packageUnit || 'pack'}
+                    : packageUnit || DEFAULT_PACKAGE_UNIT}
                   )
                 </span>
               </Label>
@@ -381,7 +382,7 @@ export function ItemForm({
                   (
                   {targetUnit === 'measurement'
                     ? measurementUnit
-                    : packageUnit || 'pack'}
+                    : packageUnit || DEFAULT_PACKAGE_UNIT}
                   )
                 </span>
               </Label>
@@ -405,7 +406,7 @@ export function ItemForm({
                   (
                   {targetUnit === 'measurement'
                     ? measurementUnit
-                    : packageUnit || 'pack'}
+                    : packageUnit || DEFAULT_PACKAGE_UNIT}
                   )
                 </span>
               </Label>
@@ -431,7 +432,7 @@ export function ItemForm({
                   (
                   {targetUnit === 'measurement'
                     ? measurementUnit
-                    : packageUnit || 'pack'}
+                    : packageUnit || DEFAULT_PACKAGE_UNIT}
                   )
                 </span>
               </Label>
