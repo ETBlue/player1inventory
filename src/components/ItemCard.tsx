@@ -39,6 +39,8 @@ interface ItemCardProps {
   recipes?: Recipe[]
   onVendorClick?: (vendorId: string) => void
   onRecipeClick?: (recipeId: string) => void
+  activeVendorIds?: string[]
+  activeRecipeIds?: string[]
 }
 
 export function ItemCard({
@@ -58,6 +60,8 @@ export function ItemCard({
   recipes = [],
   onVendorClick,
   onRecipeClick,
+  activeVendorIds,
+  activeRecipeIds,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -294,7 +298,11 @@ export function ItemCard({
                 <Badge
                   key={vendor.id}
                   data-testid={`vendor-badge-${vendor.name}`}
-                  variant="neutral-outline"
+                  variant={
+                    activeVendorIds?.includes(vendor.id)
+                      ? 'neutral'
+                      : 'neutral-outline'
+                  }
                   className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
                   onClick={(e) => {
                     if (onVendorClick) {
@@ -318,7 +326,11 @@ export function ItemCard({
                 <Badge
                   key={recipe.id}
                   data-testid={`recipe-badge-${recipe.name}`}
-                  variant="neutral-outline"
+                  variant={
+                    activeRecipeIds?.includes(recipe.id)
+                      ? 'neutral'
+                      : 'neutral-outline'
+                  }
                   className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
                   onClick={(e) => {
                     if (onRecipeClick) {

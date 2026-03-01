@@ -601,6 +601,8 @@ describe('Shopping page tag filtering', () => {
     await db.tagTypes.clear()
     await db.vendors.clear()
     await db.inventoryLogs.clear()
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
     sessionStorage.clear()
 
     queryClient = new QueryClient({
@@ -912,6 +914,59 @@ describe('Shopping page tag filtering', () => {
     const cards = screen.getAllByRole('heading', { level: 3 })
     const names = cards.map((el) => el.textContent)
     expect(names.indexOf('Apple')).toBeLessThan(names.indexOf('Zucchini'))
+  })
+
+  it('user can search all items regardless of selected vendor scope', async () => {
+    // Given two items and a vendor
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+    await createItem({
+      name: 'Eggs',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user selects Costco vendor scope
+    const vendorSelect = await screen.findByRole('combobox')
+    await user.click(vendorSelect)
+    await user.click(await screen.findByRole('option', { name: /costco/i }))
+
+    // Then only Milk is shown (vendor scope active, Eggs hidden)
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument()
+      expect(screen.queryByText('Eggs')).not.toBeInTheDocument()
+    })
+
+    // When user searches for "Eggs"
+    await user.click(screen.getByRole('button', { name: /toggle search/i }))
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Eggs')
+
+    // Then Eggs appears (search bypasses vendor scope)
+    await waitFor(() => {
+      expect(screen.getByText('Eggs')).toBeInTheDocument()
+    })
   })
 
   it('user can navigate to vendor list from "Manage vendors..." option', async () => {

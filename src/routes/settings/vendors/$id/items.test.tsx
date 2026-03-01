@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
+  createRecipe,
   createTag,
   createTagType,
   createVendor,
@@ -26,6 +27,7 @@ describe('Vendor Detail - Items Tab', () => {
     await db.tagTypes.clear()
     await db.vendors.clear()
     await db.inventoryLogs.clear()
+    await db.recipes.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -433,6 +435,66 @@ describe('Vendor Detail - Items Tab', () => {
     // Then the ItemFilters component renders with filter dropdowns for tag types that have tags
     await waitFor(() => {
       expect(screen.getByText(/location/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can search all items even when recipe filter is active', async () => {
+    // Given a vendor, a recipe, and two items
+    const vendor = await createVendor('Costco')
+    const recipe = await createRecipe({ name: 'Pasta', items: [] })
+    const milkItem = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+    await createItem({
+      name: 'Eggs',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+    // Add Milk to recipe but not Eggs
+    await db.recipes.update(recipe.id, {
+      items: [{ itemId: milkItem.id, defaultAmount: 1 }],
+    })
+
+    // When user loads vendor items tab with recipe filter active
+    const history = createMemoryHistory({
+      initialEntries: [
+        `/settings/vendors/${vendor.id}/items?f_recipe=${recipe.id}`,
+      ],
+    })
+    const router = createRouter({ routeTree, history })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // And searches for "Eggs" (Eggs not in the recipe)
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Eggs')
+
+    // Then Eggs appears (recipe filter bypassed during search)
+    await waitFor(() => {
+      expect(screen.getByText('Eggs')).toBeInTheDocument()
     })
   })
 

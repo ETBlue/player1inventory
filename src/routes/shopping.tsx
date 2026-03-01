@@ -40,9 +40,10 @@ import {
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
+import { useRecipes } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { filterItems } from '@/lib/filterUtils'
+import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
@@ -90,9 +91,11 @@ function Shopping() {
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
 
+  const { data: recipes = [] } = useRecipes()
+
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('shopping')
-  const { search, filterState } = useUrlSearchAndFilters()
+  const { search, filterState, selectedRecipeIds } = useUrlSearchAndFilters()
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
@@ -141,23 +144,29 @@ function Shopping() {
     enabled: items.length > 0,
   })
 
-  // Apply vendor filter, then search filter, then tag filter
-  const vendorFiltered = selectedVendorId
+  // Vendor pre-scope: applies to filter branch only
+  const vendorScopedItems = selectedVendorId
     ? items.filter((item) => (item.vendorIds ?? []).includes(selectedVendorId))
     : items
 
-  const searchFiltered = vendorFiltered.filter((item) =>
+  // Branch A: search all items, no vendor scope, no filters
+  const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  // Tag filters disabled during search
-  const filteredItems = search
-    ? searchFiltered
-    : filterItems(vendorFiltered, filterState)
+  // Branch B: vendor-scoped, then tag + recipe filters
+  const tagFiltered = filterItems(vendorScopedItems, filterState)
+  const filteredItems = filterItemsByRecipes(
+    tagFiltered,
+    selectedRecipeIds,
+    recipes,
+  )
+
+  const displayItems = search.trim() ? searchedItems : filteredItems // trim guards whitespace-only input
 
   // Cart section: apply user sort
   const cartSectionItems = sortItems(
-    filteredItems.filter((item) => cartItemMap.has(item.id)),
+    displayItems.filter((item) => cartItemMap.has(item.id)),
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
     allPurchaseDates ?? new Map(),
@@ -167,7 +176,7 @@ function Shopping() {
 
   // Pending section: apply user sort
   const pendingItems = sortItems(
-    filteredItems.filter((item) => !cartItemMap.has(item.id)),
+    displayItems.filter((item) => !cartItemMap.has(item.id)),
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
     allPurchaseDates ?? new Map(),
@@ -246,11 +255,13 @@ function Shopping() {
           setSortBy(f)
           setSortDirection(d)
         }}
-        items={vendorFiltered}
+        items={vendorScopedItems}
+        recipes={recipes}
         leading={
           vendors.length > 0 ? (
             <Select
               value={selectedVendorId || 'all'}
+              disabled={!!search.trim()}
               onValueChange={(v) => {
                 if (v === '__manage__') {
                   navigate({ to: '/settings/vendors' })

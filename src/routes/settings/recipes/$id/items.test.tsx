@@ -13,6 +13,7 @@ import {
   createRecipe,
   createTag,
   createTagType,
+  createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { TagColor } from '@/types'
@@ -26,6 +27,7 @@ describe('Recipe Detail - Items Tab', () => {
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
+    await db.vendors.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -505,6 +507,62 @@ describe('Recipe Detail - Items Tab', () => {
     // Then the ItemFilters component renders with filter dropdowns for tag types that have tags
     await waitFor(() => {
       expect(screen.getByText(/location/i)).toBeInTheDocument()
+    })
+  })
+
+  it('user can search all items even when vendor filter is active', async () => {
+    // Given a recipe, a vendor, and two items
+    const recipe = await makeRecipe('Pasta')
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Noodles',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Butter',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // When user loads recipe items tab with vendor filter active
+    const history = createMemoryHistory({
+      initialEntries: [
+        `/settings/recipes/${recipe.id}/items?f_vendor=${vendor.id}`,
+      ],
+    })
+    const router = createRouter({ routeTree, history })
+    const user = userEvent.setup()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // And searches for "Butter" (Butter not assigned to vendor)
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+
+    // Then Butter appears (vendor filter bypassed during search)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Butter')).toBeInTheDocument()
     })
   })
 })
