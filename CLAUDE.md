@@ -251,11 +251,34 @@ Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `de
 
 **Count helpers** for confirmation dialogs: `getItemCountByTag`, `getItemCountByVendor`, `getTagCountByType` in `src/db/operations.ts`; corresponding hooks `useItemCountByTag`, `useItemCountByVendor`, `useTagCountByType`.
 
+### Item List Filter Pipeline
+
+All item list pages (pantry, shopping, tag/vendor/recipe items tabs) use a two-branch filter pipeline. Search and filters are mutually exclusive — they never combine:
+
+```typescript
+// Branch A: search only (no filters, all items)
+const searchedItems = items.filter((item) =>
+  item.name.toLowerCase().includes(search.toLowerCase())
+)
+
+// Branch B: all URL-param filters, no search
+const tagFiltered = filterItems(items, filterState)
+const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
+const filteredItems = filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes)
+
+// Converge at sort — `search.trim()` guards whitespace-only input
+const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...)
+```
+
+**Shopping page exception:** The vendor single-select (dropdown in toolbar) is a pre-scope applied to `filteredItems` only. Branch A (search) always runs against all items regardless of the selected vendor.
+
+**ItemCard active filter badges:** `ItemCard` accepts `activeVendorIds?: string[]` and `activeRecipeIds?: string[]`. When a vendor or recipe badge's ID is in the active set, the badge renders with the filled `neutral` variant instead of `neutral-outline`. All item list pages pass `selectedVendorIds` and `selectedRecipeIds` as these props.
+
 ### Shopping Page
 
-**Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, filters items by assigned vendor. State is not persisted.
+**Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. State is not persisted.
 
-**Tag filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Multi-select per tag type (OR within type, AND across types). Applied after the vendor filter — `filterItems(vendorFiltered, filterState)`. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
+**Tag/recipe filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Applied in the filter branch only. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
 
 **Pinned items:** Users can reduce a cart item's quantity to 0 to "pin" it. Pinned items:
 - Remain in the cart section (still checked) but don't contribute to the purchase count
