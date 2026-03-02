@@ -7,7 +7,7 @@ const SEGMENTED_MODE_MAX_TARGET = 30
 interface ProgressBarProps {
   current: number
   target: number
-  status?: 'ok' | 'warning' | 'error'
+  status?: 'ok' | 'warning' | 'error' | 'inactive'
   targetUnit?: 'package' | 'measurement'
   packed?: number
   unpacked?: number
@@ -75,7 +75,9 @@ function SegmentedProgressBar({
           ? 'bg-status-warning'
           : status === 'error'
             ? 'bg-status-error'
-            : 'bg-accessory-emphasized'
+            : status === 'inactive'
+              ? 'bg-status-inactive'
+              : 'bg-accessory-emphasized'
 
     const packedColor =
       status === 'ok'
@@ -84,7 +86,9 @@ function SegmentedProgressBar({
           ? 'bg-status-warning'
           : status === 'error'
             ? 'bg-status-error'
-            : 'bg-accessory-emphasized'
+            : status === 'inactive'
+              ? 'bg-status-inactive'
+              : 'bg-accessory-emphasized'
 
     const unpackedColor = 'bg-accessory-default'
 
@@ -155,7 +159,9 @@ function ContinuousProgressBar({
           ? 'bg-status-warning'
           : status === 'error'
             ? 'bg-status-error'
-            : 'bg-accessory-emphasized'
+            : status === 'inactive'
+              ? 'bg-status-inactive'
+              : 'bg-accessory-emphasized'
 
     const unpackedColor = 'bg-accessory-default'
 
@@ -195,7 +201,9 @@ function ContinuousProgressBar({
             ? '[&>div]:bg-status-warning'
             : status === 'error'
               ? '[&>div]:bg-status-error'
-              : '[&>div]:bg-accessory-emphasized',
+              : status === 'inactive'
+                ? '[&>div]:bg-status-inactive'
+                : '[&>div]:bg-accessory-emphasized',
       )}
     />
   )
@@ -220,7 +228,9 @@ export function ItemProgressBar({
             ? 'bg-status-warning'
             : status === 'error'
               ? 'bg-status-error'
-              : 'bg-accessory-emphasized'
+              : status === 'inactive'
+                ? 'bg-status-inactive'
+                : 'bg-accessory-emphasized'
       return (
         <div className="flex-1">
           <div className="h-2 w-full rounded-xs border border-accessory-emphasized overflow-hidden">
