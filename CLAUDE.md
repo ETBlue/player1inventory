@@ -274,6 +274,8 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 **ItemCard active filter badges:** `ItemCard` accepts `activeVendorIds?: string[]` and `activeRecipeIds?: string[]`. When a vendor or recipe badge's ID is in the active set, the badge renders with the filled `neutral` variant instead of `neutral-outline`. All item list pages pass `selectedVendorIds` and `selectedRecipeIds` as these props.
 
+`activeTagIds?: string[]` — tag IDs that are active filters. Tags in this array show with bold (selected) variant; all others show tint (unselected) variant. When not provided, all tags default to tint appearance.
+
 ### Shopping Page
 
 **Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. State is not persisted.
@@ -383,8 +385,8 @@ import { colors, colorUtils } from '@/design-tokens'
 **Button color variants:**
 
 The Button component supports 20 color variants matching the Badge color palette:
-- Solid variants (10): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink
-- Tint variants (10): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint
+- Solid variants (14): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose
+- Tint variants (14): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint, brown-tint, lime-tint, cyan-tint, rose-tint
 
 Usage:
 ```tsx
@@ -398,7 +400,7 @@ These variants are used in tag type filter triggers (`TagTypeDropdown`) to displ
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.) - defined in theme.css
 - **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark) - defined in theme.css
 - **Status colors**: ok, warning, error, inactive (with tint variants) - defined in theme.css
-- **Colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink) - defined in colors.css
+- **Colors**: 14 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose) - defined in colors.css
 - **Color variants**: tint (light background) / default (bold, high contrast)
 - **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in colors.css
 - **Shadows**: sm, md, lg - defined in shadows.css
