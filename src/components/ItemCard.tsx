@@ -76,6 +76,7 @@ export function ItemCard({
 
   const currentQuantity = getCurrentQuantity(item)
   const status = getStockStatus(currentQuantity, item.refillThreshold)
+  const progressStatus = isInactive(item) ? 'inactive' : status
   // Convert packed quantity to measurement units for display when tracking in measurement
   const displayPacked =
     item.targetUnit === 'measurement' && item.amountPerPackage
@@ -154,16 +155,15 @@ export function ItemCard({
           className="flex-1 min-w-0"
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
-            <div className="flex gap-1 min-w-0">
-              <h3 className="truncate">{item.name}</h3>
-              <span className="text-xs font-normal">
-                (
-                {item.targetUnit === 'measurement' && item.measurementUnit
-                  ? item.measurementUnit
-                  : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)}
-                )
-              </span>
-            </div>
+            <h3 className="truncate">{item.name}</h3>
+            <span className="text-xs font-normal">
+              (
+              {item.targetUnit === 'measurement' && item.measurementUnit
+                ? item.measurementUnit
+                : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)}
+              )
+            </span>
+            <div className="flex-1" />
             <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
               {item.unpackedQuantity > 0
                 ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
@@ -173,7 +173,7 @@ export function ItemCard({
           <ItemProgressBar
             current={currentQuantity}
             target={item.targetQuantity}
-            status={status}
+            status={progressStatus}
             targetUnit={item.targetUnit}
             packed={displayPacked}
             unpacked={item.unpackedQuantity}
