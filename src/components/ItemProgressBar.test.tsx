@@ -206,4 +206,47 @@ describe('ItemProgressBar with partial segments', () => {
     expect(inner).toBeInTheDocument()
     expect(inner).toHaveClass('bg-status-ok')
   })
+  it('renders fill bar with inactive color when status is inactive and current > 0', () => {
+    const { container } = render(
+      <ItemProgressBar current={2} target={0} status="inactive" />,
+    )
+
+    // Should have an inner fill div with bg-status-inactive
+    const inner = container.querySelector('.flex-1 > div > div')
+    expect(inner).toBeInTheDocument()
+    expect(inner).toHaveClass('bg-status-inactive')
+  })
+
+  it('renders segmented bar with inactive fill color when status is inactive', () => {
+    const { container } = render(
+      <ItemProgressBar current={2} target={5} status="inactive" />,
+    )
+
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(5)
+
+    // First two segments should be filled — check a filled segment's child div
+    const firstSegment = segments[0]
+    const fillDiv = firstSegment.querySelector('div')
+    expect(fillDiv).toHaveClass('bg-status-inactive')
+  })
+
+  it('renders continuous bar with inactive fill color when status is inactive', () => {
+    const { container } = render(
+      <ItemProgressBar
+        current={20}
+        target={40}
+        status="inactive"
+        targetUnit="measurement"
+      />,
+    )
+
+    // Continuous mode uses Progress component — check its indicator class
+    const progressBar = container.querySelector('[role="progressbar"]')
+    expect(progressBar).toBeInTheDocument()
+    // The Progress component renders a child div with the fill color via [&>div]
+    // We verify the wrapper has the inactive class applied
+    const wrapper = container.querySelector('.flex-1 > div')
+    expect(wrapper).toHaveClass('[&>div]:bg-status-inactive')
+  })
 })

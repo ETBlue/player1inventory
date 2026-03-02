@@ -826,3 +826,30 @@ describe('ItemCard tag badge variants', () => {
     expect(badge).toHaveClass('bg-teal-tint')
   })
 })
+
+describe('ItemCard - inactive item progress bar', () => {
+  const inactiveItem: Item = {
+    id: 'item-inactive',
+    name: 'Archived Item',
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 0, // inactive: targetQuantity=0
+    refillThreshold: 0, // inactive: refillThreshold=0
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  it('renders progress bar fill with inactive color for inactive item', async () => {
+    const { container } = await renderWithRouter(
+      <ItemCard item={inactiveItem} tags={[]} tagTypes={[]} />,
+    )
+
+    // Inactive item with packedQuantity=2 > 0 renders the target=0 full-bar branch
+    const fillDiv = container.querySelector('div.overflow-hidden > div')
+    expect(fillDiv).toBeInTheDocument()
+    expect(fillDiv).toHaveClass('bg-status-inactive')
+  })
+})
