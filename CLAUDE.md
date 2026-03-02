@@ -327,7 +327,6 @@ Token system for theme, colors, shadows, and borders:
 ```
 src/design-tokens/
   ├── theme.css      # Shadcn semantic colors (background, primary, etc.)
-  ├── colors.css     # Tag colors + state colors
   ├── shadows.css    # Shadow scale
   ├── borders.css    # Border definitions
   ├── index.css      # Imports all
@@ -364,7 +363,7 @@ Dark mode: 3.9% → 10% → 15% (progressively lighter)
   </Card>
 </div>
 
-// Tag colors (from colors.css)
+// Tag colors (from theme.css)
 import { colors, colorUtils } from '@/design-tokens'
 
 <Badge style={{
@@ -400,9 +399,9 @@ These variants are used in tag type filter triggers (`TagTypeDropdown`) to displ
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.) - defined in theme.css
 - **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark) - defined in theme.css
 - **Status colors**: ok, warning, error, inactive (with tint variants) - defined in theme.css
-- **Colors**: 14 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose) - defined in colors.css
+- **Colors**: 14 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose) - defined in theme.css
 - **Color variants**: tint (light background) / default (bold, high contrast)
-- **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in colors.css
+- **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in theme.css
 - **Shadows**: sm, md, lg - defined in shadows.css
 - **Borders**: default (1px), thick (2px) - defined in borders.css
 
