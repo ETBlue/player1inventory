@@ -272,9 +272,10 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 **Shopping page exception:** The vendor single-select (dropdown in toolbar) is a pre-scope applied to `filteredItems` only. Branch A (search) always runs against all items regardless of the selected vendor.
 
-**ItemCard active filter badges:** `ItemCard` accepts `activeVendorIds?: string[]` and `activeRecipeIds?: string[]`. When a vendor or recipe badge's ID is in the active set, the badge renders with the filled `neutral` variant instead of `neutral-outline`. All item list pages pass `selectedVendorIds` and `selectedRecipeIds` as these props.
+**ItemCard active filter badges:** `ItemCard` accepts `activeVendorIds?: string[]`, `activeRecipeIds?: string[]`, and `activeTagIds?: string[]`. When a badge's ID is in the active set, it renders highlighted. All item list pages that show tags (pantry, tag/vendor/recipe items tabs) pass all three props derived from `selectedVendorIds`, `selectedRecipeIds`, and `Object.values(filterState).flat()`.
 
-`activeTagIds?: string[]` — tag IDs that are active filters. Tags in this array show with bold (selected) variant; all others show tint (unselected) variant. When not provided, all tags default to tint appearance.
+- `activeVendorIds` / `activeRecipeIds` — badge renders filled `neutral` variant instead of `neutral-outline`
+- `activeTagIds` — badge renders bold `x` variant instead of tint `x-tint` variant; defaults to tint when not provided
 
 ### Shopping Page
 
