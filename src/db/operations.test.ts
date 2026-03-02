@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { TagColor } from '../types'
 import { db } from './index'
 import {
   abandonCart,
@@ -33,6 +34,7 @@ import {
   getTagCountByType,
   getTagsByType,
   getVendors,
+  migrateTagColorTints,
   updateCartItem,
   updateItem,
   updateRecipe,
@@ -1135,5 +1137,43 @@ describe('Recipe operations', () => {
     await deleteItem(item.id)
     const updated = await getRecipe(recipe.id)
     expect(updated?.items).toEqual([])
+  })
+})
+
+describe('migrateTagColorTints', () => {
+  beforeEach(async () => {
+    await db.tagTypes.clear()
+  })
+
+  it('user can migrate tint tag type colors to their bold equivalents', async () => {
+    // Given tag types with legacy tint color values in the DB
+    await db.tagTypes.bulkPut([
+      { id: 'tt-red', name: 'Ingredient', color: 'red-tint' as TagColor },
+      { id: 'tt-blue', name: 'Storage', color: 'blue-tint' as TagColor },
+      { id: 'tt-green', name: 'Category', color: 'green' as TagColor },
+    ])
+
+    // When migration runs
+    await migrateTagColorTints()
+
+    // Then tint colors are replaced with bold; bold colors are unchanged
+    const types = await getAllTagTypes()
+    expect(types.find((t) => t.id === 'tt-red')?.color).toBe('red')
+    expect(types.find((t) => t.id === 'tt-blue')?.color).toBe('blue')
+    expect(types.find((t) => t.id === 'tt-green')?.color).toBe('green')
+  })
+
+  it('user sees no changes when no tint colors exist', async () => {
+    // Given tag types that already have bold colors
+    await db.tagTypes.bulkPut([
+      { id: 'tt-teal', name: 'Category', color: 'teal' as TagColor },
+    ])
+
+    // When migration runs
+    await migrateTagColorTints()
+
+    // Then nothing changes
+    const types = await getAllTagTypes()
+    expect(types.find((t) => t.id === 'tt-teal')?.color).toBe('teal')
   })
 })
