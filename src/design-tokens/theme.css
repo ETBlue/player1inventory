@@ -29,6 +29,42 @@
   --status-warning-tint: hsl(45 95% 92.5%);
   --status-error-tint: hsl(0 95% 92.5%);
   --status-inactive-tint: hsl(45 2.5% 95%);
+
+  /* Hue colors */
+  --hue-red: hsl(0 84% 60%);
+  --hue-orange: hsl(25 95% 53%);
+  --hue-amber: hsl(38 92% 50%);
+  --hue-yellow: hsl(48 96% 48%);
+  --hue-green: hsl(142 71% 45%);
+  --hue-teal: hsl(174 77% 39%);
+  --hue-blue: hsl(217 91% 60%);
+  --hue-indigo: hsl(239 84% 67%);
+  --hue-purple: hsl(271 91% 65%);
+  --hue-pink: hsl(330 81% 60%);
+  --hue-brown: hsl(30 60% 38%);
+  --hue-lime: hsl(82 65% 45%);
+  --hue-cyan: hsl(186 90% 42%);
+  --hue-rose: hsl(350 85% 60%);
+
+  /* Hue tints — light mode */
+  --hue-red-tint: hsl(0 93% 94%);
+  --hue-orange-tint: hsl(34 100% 92%);
+  --hue-amber-tint: hsl(48 96% 89%);
+  --hue-yellow-tint: hsl(55 97% 88%);
+  --hue-green-tint: hsl(141 84% 93%);
+  --hue-teal-tint: hsl(166 76% 90%);
+  --hue-blue-tint: hsl(214 95% 93%);
+  --hue-indigo-tint: hsl(231 77% 94%);
+  --hue-purple-tint: hsl(270 100% 95%);
+  --hue-pink-tint: hsl(327 73% 95%);
+  --hue-brown-tint: hsl(30 95% 92%);
+  --hue-lime-tint: hsl(82 95% 92%);
+  --hue-cyan-tint: hsl(186 95% 92%);
+  --hue-rose-tint: hsl(350 95% 92%);
+
+  /* Brightness utilities */
+  --brightness-tint: hsl(45 5% 100%);
+  --brightness-dark: hsl(45 5% 20%);
 }
 
 /* Dark mode overrides */
@@ -62,6 +98,25 @@
   --status-warning-tint: hsl(45 20% 40%);
   --status-error-tint: hsl(0 20% 40%);
   --status-inactive-tint: hsl(45 0% 30%);
+
+  /* Hue tints — dark mode (bold hue colors unchanged) */
+  --hue-red-tint: hsl(0 20% 40%);
+  --hue-orange-tint: hsl(25 20% 40%);
+  --hue-amber-tint: hsl(38 20% 40%);
+  --hue-yellow-tint: hsl(48 20% 40%);
+  --hue-green-tint: hsl(142 20% 40%);
+  --hue-teal-tint: hsl(174 20% 40%);
+  --hue-blue-tint: hsl(217 20% 40%);
+  --hue-indigo-tint: hsl(239 20% 40%);
+  --hue-purple-tint: hsl(271 20% 40%);
+  --hue-pink-tint: hsl(330 20% 40%);
+  --hue-brown-tint: hsl(30 20% 35%);
+  --hue-lime-tint: hsl(82 20% 40%);
+  --hue-cyan-tint: hsl(186 20% 40%);
+  --hue-rose-tint: hsl(350 20% 40%);
+
+  /* Flip brightness-dark so tint badge text is readable on dark backgrounds */
+  --brightness-dark: hsl(45 5% 90%);
 }
 
 /* Map to Tailwind utilities */
@@ -112,6 +167,41 @@
   --color-status-warning-tint: var(--status-warning-tint);
   --color-status-error-tint: var(--status-error-tint);
   --color-status-inactive-tint: var(--status-inactive-tint);
+
+  /* Hue color utilities */
+  --color-red: var(--hue-red);
+  --color-orange: var(--hue-orange);
+  --color-amber: var(--hue-amber);
+  --color-yellow: var(--hue-yellow);
+  --color-green: var(--hue-green);
+  --color-teal: var(--hue-teal);
+  --color-blue: var(--hue-blue);
+  --color-indigo: var(--hue-indigo);
+  --color-purple: var(--hue-purple);
+  --color-pink: var(--hue-pink);
+  --color-brown: var(--hue-brown);
+  --color-lime: var(--hue-lime);
+  --color-cyan: var(--hue-cyan);
+  --color-rose: var(--hue-rose);
+
+  --color-red-tint: var(--hue-red-tint);
+  --color-orange-tint: var(--hue-orange-tint);
+  --color-amber-tint: var(--hue-amber-tint);
+  --color-yellow-tint: var(--hue-yellow-tint);
+  --color-green-tint: var(--hue-green-tint);
+  --color-teal-tint: var(--hue-teal-tint);
+  --color-blue-tint: var(--hue-blue-tint);
+  --color-indigo-tint: var(--hue-indigo-tint);
+  --color-purple-tint: var(--hue-purple-tint);
+  --color-pink-tint: var(--hue-pink-tint);
+  --color-brown-tint: var(--hue-brown-tint);
+  --color-lime-tint: var(--hue-lime-tint);
+  --color-cyan-tint: var(--hue-cyan-tint);
+  --color-rose-tint: var(--hue-rose-tint);
+
+  /* Brightness utilities (text-tint, text-dark, bg-tint, bg-dark) */
+  --color-tint: var(--brightness-tint);
+  --color-dark: var(--brightness-dark);
 }
 
 /* Inventory-specific state mappings */
@@ -131,4 +221,3 @@ body {
 :focus-visible {
   outline: 2px dashed var(--color-outline);
 }
-
