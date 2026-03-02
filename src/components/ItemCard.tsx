@@ -42,6 +42,7 @@ interface ItemCardProps {
   activeVendorIds?: string[]
   activeRecipeIds?: string[]
   activeTagIds?: string[]
+  showExpiration?: boolean
 }
 
 export function ItemCard({
@@ -64,6 +65,7 @@ export function ItemCard({
   activeVendorIds,
   activeRecipeIds,
   activeTagIds,
+  showExpiration = true,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -216,7 +218,8 @@ export function ItemCard({
       </CardHeader>
       <CardContent className={isInactive(item) ? 'opacity-50' : ''}>
         <div className="flex items-center gap-2">
-          {currentQuantity > 0 &&
+          {showExpiration &&
+            currentQuantity > 0 &&
             estimatedDueDate &&
             (() => {
               const daysUntilExpiration = Math.ceil(
@@ -265,94 +268,88 @@ export function ItemCard({
               </span>
             )}
         </div>
-        {tags.length > 0 &&
-          !['shopping', 'cooking'].includes(mode) &&
-          showTags && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
-                const tagType = tagTypes.find((t) => t.id === tag.typeId)
-                const bgColor = tagType?.color
-                const tagVariant = bgColor
-                  ? activeTagIds?.includes(tag.id)
-                    ? bgColor
-                    : (`${bgColor}-tint` as BadgeProps['variant'])
-                  : bgColor
-                return (
-                  <Badge
-                    key={tag.id}
-                    data-testid={`tag-badge-${tag.name}`}
-                    variant={tagVariant}
-                    className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
-                    onClick={(e) => {
-                      if (onTagClick) {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        onTagClick(tag.id)
-                      }
-                    }}
-                  >
-                    {tag.name}
-                  </Badge>
-                )
-              })}
-            </div>
-          )}
-        {vendors.length > 0 &&
-          !['shopping', 'cooking'].includes(mode) &&
-          showTags && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {vendors.map((vendor) => (
+        {tags.length > 0 && showTags && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
+              const tagType = tagTypes.find((t) => t.id === tag.typeId)
+              const bgColor = tagType?.color
+              const tagVariant = bgColor
+                ? activeTagIds?.includes(tag.id)
+                  ? bgColor
+                  : (`${bgColor}-tint` as BadgeProps['variant'])
+                : bgColor
+              return (
                 <Badge
-                  key={vendor.id}
-                  data-testid={`vendor-badge-${vendor.name}`}
-                  variant={
-                    activeVendorIds?.includes(vendor.id)
-                      ? 'neutral'
-                      : 'neutral-outline'
-                  }
-                  className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
+                  key={tag.id}
+                  data-testid={`tag-badge-${tag.name}`}
+                  variant={tagVariant}
+                  className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
                   onClick={(e) => {
-                    if (onVendorClick) {
+                    if (onTagClick) {
                       e.preventDefault()
                       e.stopPropagation()
-                      onVendorClick(vendor.id)
+                      onTagClick(tag.id)
                     }
                   }}
                 >
-                  <Store className="h-3 w-3" />
-                  {vendor.name}
+                  {tag.name}
                 </Badge>
-              ))}
-            </div>
-          )}
-        {recipes.length > 0 &&
-          !['shopping', 'cooking'].includes(mode) &&
-          showTags && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {recipes.map((recipe) => (
-                <Badge
-                  key={recipe.id}
-                  data-testid={`recipe-badge-${recipe.name}`}
-                  variant={
-                    activeRecipeIds?.includes(recipe.id)
-                      ? 'neutral'
-                      : 'neutral-outline'
+              )
+            })}
+          </div>
+        )}
+        {vendors.length > 0 && showTags && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {vendors.map((vendor) => (
+              <Badge
+                key={vendor.id}
+                data-testid={`vendor-badge-${vendor.name}`}
+                variant={
+                  activeVendorIds?.includes(vendor.id)
+                    ? 'neutral'
+                    : 'neutral-outline'
+                }
+                className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
+                onClick={(e) => {
+                  if (onVendorClick) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onVendorClick(vendor.id)
                   }
-                  className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
-                  onClick={(e) => {
-                    if (onRecipeClick) {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      onRecipeClick(recipe.id)
-                    }
-                  }}
-                >
-                  <CookingPot className="h-3 w-3" />
-                  {recipe.name}
-                </Badge>
-              ))}
-            </div>
-          )}
+                }}
+              >
+                <Store className="h-3 w-3" />
+                {vendor.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {recipes.length > 0 && showTags && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {recipes.map((recipe) => (
+              <Badge
+                key={recipe.id}
+                data-testid={`recipe-badge-${recipe.name}`}
+                variant={
+                  activeRecipeIds?.includes(recipe.id)
+                    ? 'neutral'
+                    : 'neutral-outline'
+                }
+                className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
+                onClick={(e) => {
+                  if (onRecipeClick) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onRecipeClick(recipe.id)
+                  }
+                }}
+              >
+                <CookingPot className="h-3 w-3" />
+                {recipe.name}
+              </Badge>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
