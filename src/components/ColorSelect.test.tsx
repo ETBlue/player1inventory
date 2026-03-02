@@ -14,14 +14,14 @@ describe('ColorSelect', () => {
     expect(within(trigger).getByText('red')).toBeInTheDocument()
   })
 
-  it('renders with tint variant', () => {
-    // Given a color select with red-tint selected
+  it('renders with new hue variant', () => {
+    // Given a color select with brown selected
     const onChange = vi.fn()
-    render(<ColorSelect value={TagColor.red_tint} onChange={onChange} />)
+    render(<ColorSelect value={TagColor.brown} onChange={onChange} />)
 
-    // Then the trigger shows the tint variant
+    // Then the trigger shows the selected color
     const trigger = screen.getByRole('combobox')
-    expect(within(trigger).getByText('red-tint')).toBeInTheDocument()
+    expect(within(trigger).getByText('brown')).toBeInTheDocument()
   })
 
   it('renders as a combobox', () => {

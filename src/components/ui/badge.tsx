@@ -43,6 +43,16 @@ const badgeVariants = cva(
         'purple-tint': `bg-purple-tint border-purple text-dark`,
         'pink-tint': `bg-pink-tint border-pink text-dark`,
 
+        brown: `bg-brown border-brown text-tint`,
+        lime: `bg-lime border-lime text-tint`,
+        cyan: `bg-cyan border-cyan text-tint`,
+        rose: `bg-rose border-rose text-tint`,
+
+        'brown-tint': `bg-brown-tint border-brown text-dark`,
+        'lime-tint': `bg-lime-tint border-lime text-dark`,
+        'cyan-tint': `bg-cyan-tint border-cyan text-dark`,
+        'rose-tint': `bg-rose-tint border-rose text-dark`,
+
         'ok-outline': `border-status-ok text-status-ok`,
         'warning-outline': `border-status-warning text-status-warning`,
         'error-outline': `border-status-error text-status-error`,
