@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { CookingPot, Minus, Plus, Store, TriangleAlert } from 'lucide-react'
 import { ItemProgressBar } from '@/components/ItemProgressBar'
-import { Badge } from '@/components/ui/badge'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -41,6 +41,7 @@ interface ItemCardProps {
   onRecipeClick?: (recipeId: string) => void
   activeVendorIds?: string[]
   activeRecipeIds?: string[]
+  activeTagIds?: string[]
 }
 
 export function ItemCard({
@@ -62,6 +63,7 @@ export function ItemCard({
   onRecipeClick,
   activeVendorIds,
   activeRecipeIds,
+  activeTagIds,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -270,11 +272,16 @@ export function ItemCard({
               {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
                 const tagType = tagTypes.find((t) => t.id === tag.typeId)
                 const bgColor = tagType?.color
+                const tagVariant = bgColor
+                  ? activeTagIds?.includes(tag.id)
+                    ? bgColor
+                    : (`${bgColor}-tint` as BadgeProps['variant'])
+                  : bgColor
                 return (
                   <Badge
                     key={tag.id}
                     data-testid={`tag-badge-${tag.name}`}
-                    variant={bgColor}
+                    variant={tagVariant}
                     className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
                     onClick={(e) => {
                       if (onTagClick) {
