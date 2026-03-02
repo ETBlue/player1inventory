@@ -30,7 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { migrateTagColorsToTypes } from '@/db/operations'
+import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import {
   useCreateTag,
@@ -238,6 +238,7 @@ function TagSettings() {
   // Run migration on mount
   useEffect(() => {
     migrateTagColorsToTypes()
+    migrateTagColorTints()
   }, [])
 
   const handleAddTagType = () => {
