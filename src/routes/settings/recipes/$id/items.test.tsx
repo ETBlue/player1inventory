@@ -565,4 +565,87 @@ describe('Recipe Detail - Items Tab', () => {
       expect(screen.getByLabelText('Add Butter')).toBeInTheDocument()
     })
   })
+
+  it('tag badge shows bold variant when tag filter is active', async () => {
+    // Given a recipe and an item with a tag
+    const recipe = await createRecipe({ name: 'Salad', items: [] })
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [vegTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When the recipe items page is loaded with that tag filter active and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [
+        `/settings/recipes/${recipe.id}/items?f_${categoryType.id}=${vegTag.id}&tags=1`,
+      ],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the Vegetables badge uses the bold (non-tint) variant
+    await waitFor(() => {
+      const badge = screen.getByTestId('tag-badge-Vegetables')
+      expect(badge.className).not.toContain('bg-blue-tint')
+      expect(badge.className).toContain('bg-blue')
+    })
+  })
+
+  it('tag badge shows tint variant when tag filter is not active', async () => {
+    // Given a recipe and an item with a tag
+    const recipe = await createRecipe({ name: 'Salad', items: [] })
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [vegTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When the recipe items page is loaded with no filter and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/recipes/${recipe.id}/items?tags=1`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the Vegetables badge uses the tint variant
+    await waitFor(() => {
+      const badge = screen.getByTestId('tag-badge-Vegetables')
+      expect(badge.className).toContain('bg-blue-tint')
+    })
+  })
 })
