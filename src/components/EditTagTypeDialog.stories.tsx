@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
+import { TagColor } from '@/types'
 import { EditTagTypeDialog } from './EditTagTypeDialog'
 import { Button } from './ui/button'
 
@@ -19,12 +20,12 @@ export const Default: Story = {
       color?: string
     } | null>(null)
     const [name, setName] = useState('Category')
-    const [color, setColor] = useState('#3b82f6')
+    const [color, setColor] = useState(TagColor.blue)
     return (
       <>
         <Button
           onClick={() =>
-            setTagType({ id: '1', name: 'Category', color: '#3b82f6' })
+            setTagType({ id: '1', name: 'Category', color: TagColor.blue })
           }
         >
           Edit Tag Type
