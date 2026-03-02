@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { Recipe, Vendor } from '@/types'
+import { TagColor } from '@/types'
 import { ItemCard } from './ItemCard'
 
 // Create a router that renders an Outlet (which will render our story)
@@ -65,7 +66,7 @@ export const Default: Story = {
     item: mockItem,
     quantity: 2,
     tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
-    tagTypes: [{ id: 'type-1', name: 'Category', color: '#3b82f6' }],
+    tagTypes: [{ id: 'type-1', name: 'Category', color: TagColor.blue }],
   },
 }
 
@@ -74,7 +75,7 @@ export const LowStock: Story = {
     item: mockItem,
     quantity: 0,
     tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
-    tagTypes: [{ id: 'type-1', name: 'Category', color: '#3b82f6' }],
+    tagTypes: [{ id: 'type-1', name: 'Category', color: TagColor.blue }],
   },
 }
 
@@ -199,7 +200,7 @@ export const InactiveItem: Story = {
 }
 
 const mockTags = [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }]
-const mockTagTypes = [{ id: 'type-1', name: 'Category', color: '#3b82f6' }]
+const mockTagTypes = [{ id: 'type-1', name: 'Category', color: TagColor.blue }]
 
 const mockVendors: Vendor[] = [
   { id: 'v1', name: 'Costco', createdAt: new Date() },
@@ -362,5 +363,24 @@ export const CookingModeUnchecked: Story = {
     controlAmount: 2,
     onCheckboxToggle: () => console.log('Toggle item'),
     onAmountChange: (delta) => console.log('Amount change:', delta),
+  },
+}
+
+export const ActiveTagFilter: Story = {
+  args: {
+    item: { ...mockItem, tagIds: ['tag-1', 'tag-2', 'tag-3', 'tag-4'] },
+    tags: [
+      { id: 'tag-1', name: 'Dairy', typeId: 'type-1' },
+      { id: 'tag-2', name: 'Organic', typeId: 'type-2' },
+      { id: 'tag-3', name: 'Local', typeId: 'type-3' },
+      { id: 'tag-4', name: 'Sale', typeId: 'type-4' },
+    ],
+    tagTypes: [
+      { id: 'type-1', name: 'Category', color: TagColor.blue },
+      { id: 'type-2', name: 'Quality', color: TagColor.green },
+      { id: 'type-3', name: 'Source', color: TagColor.amber },
+      { id: 'type-4', name: 'Price', color: TagColor.red },
+    ],
+    activeTagIds: ['tag-1', 'tag-3'],
   },
 }

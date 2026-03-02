@@ -9,19 +9,21 @@ describe('ColorSelect', () => {
     const onChange = vi.fn()
     render(<ColorSelect value={TagColor.red} onChange={onChange} />)
 
-    // Then the trigger shows the selected color
+    // Then the trigger shows the selected color (two badges: tint + bold)
     const trigger = screen.getByRole('combobox')
-    expect(within(trigger).getByText('red')).toBeInTheDocument()
+    const badges = within(trigger).getAllByText('red')
+    expect(badges).toHaveLength(2)
   })
 
-  it('renders with tint variant', () => {
-    // Given a color select with red-tint selected
+  it('renders with new hue variant', () => {
+    // Given a color select with brown selected
     const onChange = vi.fn()
-    render(<ColorSelect value={TagColor.red_tint} onChange={onChange} />)
+    render(<ColorSelect value={TagColor.brown} onChange={onChange} />)
 
-    // Then the trigger shows the tint variant
+    // Then the trigger shows the selected color (two badges: tint + bold)
     const trigger = screen.getByRole('combobox')
-    expect(within(trigger).getByText('red-tint')).toBeInTheDocument()
+    const badges = within(trigger).getAllByText('brown')
+    expect(badges).toHaveLength(2)
   })
 
   it('renders as a combobox', () => {
@@ -52,7 +54,7 @@ describe('ColorSelect', () => {
       <ColorSelect value={TagColor.blue} onChange={onChange} />,
     )
 
-    // Then the Badge component is rendered with the color
+    // Then the Badge component is rendered with the color (at least one badge)
     const badge = container.querySelector(
       '.inline-flex.items-center.rounded-full',
     )
@@ -71,9 +73,10 @@ describe('ColorSelect', () => {
         <ColorSelect value={color} onChange={onChange} />,
       )
 
-      // Then the color is displayed in the trigger
+      // Then both tint and bold badges are displayed in the trigger
       const trigger = screen.getByRole('combobox')
-      expect(within(trigger).getByText(color)).toBeInTheDocument()
+      const badges = within(trigger).getAllByText(color)
+      expect(badges).toHaveLength(2)
 
       unmount()
     }

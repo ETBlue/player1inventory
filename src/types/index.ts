@@ -48,16 +48,10 @@ export enum TagColor {
   indigo = 'indigo',
   purple = 'purple',
   pink = 'pink',
-  red_tint = 'red-tint',
-  orange_tint = 'orange-tint',
-  amber_tint = 'amber-tint',
-  yellow_tint = 'yellow-tint',
-  green_tint = 'green-tint',
-  teal_tint = 'teal-tint',
-  blue_tint = 'blue-tint',
-  indigo_tint = 'indigo-tint',
-  purple_tint = 'purple-tint',
-  pink_tint = 'pink-tint',
+  brown = 'brown',
+  lime = 'lime',
+  cyan = 'cyan',
+  rose = 'rose',
 }
 
 export interface TagType {

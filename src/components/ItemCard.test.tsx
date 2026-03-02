@@ -6,6 +6,10 @@ import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
 import { ItemCard } from './ItemCard'
 
+vi.mock('@/hooks', () => ({
+  useLastPurchaseDate: () => ({ data: undefined }),
+}))
+
 describe('ItemCard - Unit Display Logic', () => {
   it('returns package unit when tracking in packages', () => {
     const item: Partial<Item> = {
@@ -752,5 +756,73 @@ describe('ItemCard - Cooking mode', () => {
       name: /Decrease quantity of Flour/i,
     })
     expect(minusBtn).not.toBeDisabled()
+  })
+})
+
+describe('ItemCard tag badge variants', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Milk',
+    tagIds: ['tag-1'],
+    targetUnit: 'package',
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const mockTag: Tag = { id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }
+  const mockTagType: TagType = {
+    id: 'tt-1',
+    name: 'Category',
+    color: TagColor.teal,
+  }
+
+  it('renders tag badge with tint variant when tag is not in activeTagIds', async () => {
+    // Given activeTagIds that does not include the tag
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[mockTag]}
+        tagTypes={[mockTagType]}
+        activeTagIds={[]}
+      />,
+    )
+
+    // Then badge uses the tint variant
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    expect(badge).toHaveClass('bg-teal-tint')
+    expect(badge).not.toHaveClass('bg-teal')
+  })
+
+  it('renders tag badge with bold variant when tag is in activeTagIds', async () => {
+    // Given activeTagIds that includes the tag
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[mockTag]}
+        tagTypes={[mockTagType]}
+        activeTagIds={['tag-1']}
+      />,
+    )
+
+    // Then badge uses the bold variant
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    expect(badge).toHaveClass('bg-teal')
+    expect(badge).not.toHaveClass('bg-teal-tint')
+  })
+
+  it('renders tag badge with tint variant when activeTagIds is not provided', async () => {
+    // Given no activeTagIds prop (default unselected)
+    await renderWithRouter(
+      <ItemCard item={mockItem} tags={[mockTag]} tagTypes={[mockTagType]} />,
+    )
+
+    // Then badge defaults to tint (unselected appearance)
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    expect(badge).toHaveClass('bg-teal-tint')
   })
 })

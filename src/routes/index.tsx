@@ -184,6 +184,11 @@ function PantryView() {
   const activeItems = sortedItems.filter((item) => !isInactive(item))
   const inactiveItems = sortedItems.filter((item) => isInactive(item))
 
+  const activeTagIds = useMemo(
+    () => Object.values(filterState).flat(),
+    [filterState],
+  )
+
   // Handle tag click - toggle tag in filter
   const handleTagClick = (tagId: string) => {
     const tag = tags.find((t) => t.id === tagId)
@@ -280,6 +285,7 @@ function PantryView() {
               recipes={recipeMap.get(item.id) ?? []}
               activeVendorIds={selectedVendorIds}
               activeRecipeIds={selectedRecipeIds}
+              activeTagIds={activeTagIds}
               onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
                 if (delta > 0) {
@@ -330,6 +336,7 @@ function PantryView() {
               recipes={recipeMap.get(item.id) ?? []}
               activeVendorIds={selectedVendorIds}
               activeRecipeIds={selectedRecipeIds}
+              activeTagIds={activeTagIds}
               onAmountChange={async (delta) => {
                 const updatedItem = { ...item }
                 if (delta > 0) {

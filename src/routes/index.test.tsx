@@ -794,6 +794,83 @@ describe('Home page filtering integration', () => {
     })
   })
 
+  it('tag badge shows bold variant when tag filter is active', async () => {
+    // Given an item assigned to a tag
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [vegTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When pantry is loaded with that tag's filter active and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [`/?f_${categoryType.id}=${vegTag.id}&tags=1`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the tag badge uses the bold (non-tint) variant
+    await waitFor(() => {
+      const badge = screen.getByTestId('tag-badge-Vegetables')
+      expect(badge.className).not.toContain('bg-blue-tint')
+      expect(badge.className).toContain('bg-blue')
+    })
+  })
+
+  it('tag badge shows tint variant when tag filter is not active', async () => {
+    // Given an item assigned to a tag
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const vegTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [vegTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When pantry is loaded with no tag filter and tags visible
+    const history = createMemoryHistory({ initialEntries: ['/?tags=1'] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the tag badge uses the tint variant
+    await waitFor(() => {
+      const badge = screen.getByTestId('tag-badge-Vegetables')
+      expect(badge.className).toContain('bg-blue-tint')
+    })
+  })
+
   it('+ button adds to unpacked without normalizing', async () => {
     const user = userEvent.setup()
 

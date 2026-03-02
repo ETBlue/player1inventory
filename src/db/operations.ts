@@ -352,6 +352,34 @@ export async function migrateTagColorsToTypes(): Promise<void> {
   }
 }
 
+// Migration helper: convert legacy x-tint TagType colors to bold x colors
+export async function migrateTagColorTints(): Promise<void> {
+  const tintToBase: Record<string, string> = {
+    'red-tint': 'red',
+    'orange-tint': 'orange',
+    'amber-tint': 'amber',
+    'yellow-tint': 'yellow',
+    'green-tint': 'green',
+    'teal-tint': 'teal',
+    'blue-tint': 'blue',
+    'indigo-tint': 'indigo',
+    'purple-tint': 'purple',
+    'pink-tint': 'pink',
+  }
+
+  const tagTypes = await getAllTagTypes()
+  const toUpdate = tagTypes.filter((tt) => tintToBase[tt.color])
+
+  if (toUpdate.length > 0) {
+    await db.tagTypes.bulkPut(
+      toUpdate.map((tt) => ({
+        ...tt,
+        color: tintToBase[tt.color] as TagColor,
+      })),
+    )
+  }
+}
+
 // Vendor operations
 export async function getVendors(): Promise<Vendor[]> {
   return db.vendors.toArray()

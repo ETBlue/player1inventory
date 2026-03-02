@@ -14,18 +14,31 @@ interface ColorSelectProps {
   id?: string
 }
 
+function ColorPreview({ color }: { color: TagColor }) {
+  return (
+    <div className="flex items-center gap-1">
+      <Badge
+        variant={`${color}-tint` as Parameters<typeof Badge>[0]['variant']}
+      >
+        {color}
+      </Badge>
+      <Badge variant={color}>{color}</Badge>
+    </div>
+  )
+}
+
 export function ColorSelect({ value, onChange, id }: ColorSelectProps) {
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger id={id}>
         <SelectValue asChild>
-          <Badge variant={value}>{value}</Badge>
+          <ColorPreview color={value} />
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {Object.values(TagColor).map((color) => (
           <SelectItem key={color} value={color}>
-            <Badge variant={color}>{color}</Badge>
+            <ColorPreview color={color} />
           </SelectItem>
         ))}
       </SelectContent>

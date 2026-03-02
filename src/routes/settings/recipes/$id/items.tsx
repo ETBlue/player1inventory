@@ -78,6 +78,7 @@ function RecipeItemsTab() {
   const {
     search,
     filterState,
+    setFilterState,
     isTagsVisible,
     selectedVendorIds,
     selectedRecipeIds,
@@ -170,6 +171,33 @@ function RecipeItemsTab() {
   )
 
   const filteredItems = [...sortedAssigned, ...sortedUnassigned]
+
+  const activeTagIds = useMemo(
+    () => Object.values(filterState).flat(),
+    [filterState],
+  )
+
+  const handleTagClick = (clickedTagId: string) => {
+    const tag = tags.find((t) => t.id === clickedTagId)
+    if (!tag) return
+    const tagType = tagTypes.find((t) => t.id === tag.typeId)
+    if (!tagType) return
+    const existingTags = filterState[tagType.id] || []
+    if (existingTags.includes(clickedTagId)) {
+      const newTags = existingTags.filter((id) => id !== clickedTagId)
+      if (newTags.length === 0) {
+        const { [tagType.id]: _, ...rest } = filterState
+        setFilterState(rest)
+      } else {
+        setFilterState({ ...filterState, [tagType.id]: newTags })
+      }
+      return
+    }
+    setFilterState({
+      ...filterState,
+      [tagType.id]: [...existingTags, clickedTagId],
+    })
+  }
 
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()
@@ -294,8 +322,10 @@ function RecipeItemsTab() {
               showTags={isTagsVisible}
               vendors={vendorMap.get(item.id) ?? []}
               recipes={recipeMap.get(item.id) ?? []}
+              onTagClick={handleTagClick}
               onVendorClick={toggleVendorId}
               onRecipeClick={toggleRecipeId}
+              activeTagIds={activeTagIds}
               activeVendorIds={selectedVendorIds}
               activeRecipeIds={selectedRecipeIds}
               isChecked={assigned}

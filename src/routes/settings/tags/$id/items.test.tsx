@@ -610,4 +610,96 @@ describe('Tag Detail - Items Tab', () => {
       expect(screen.getByLabelText('Remove brand new item')).toBeInTheDocument()
     })
   })
+
+  it('tag badge shows bold variant when tag filter is active', async () => {
+    // Given a tag type for the page tag and another tag type for filtering
+    const pageTagType = await createTagType({
+      name: 'Location',
+      color: 'green',
+    })
+    const filterTagType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const pageTag = await createTag({ typeId: pageTagType.id, name: 'Fridge' })
+    const filterTag = await createTag({
+      typeId: filterTagType.id,
+      name: 'Vegetables',
+    })
+    // Item is assigned to both the page tag and the filter tag
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [pageTag.id, filterTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When the tag items page is loaded with the filter tag active and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [
+        `/settings/tags/${pageTag.id}/items?f_${filterTagType.id}=${filterTag.id}&tags=1`,
+      ],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the Vegetables badge uses the bold (non-tint) variant
+    await waitFor(() => {
+      const badge = screen.getByTestId('tag-badge-Vegetables')
+      expect(badge.className).not.toContain('bg-blue-tint')
+      expect(badge.className).toContain('bg-blue')
+    })
+  })
+
+  it('tag badge shows tint variant when tag filter is not active', async () => {
+    // Given a page tag and an item with an additional tag
+    const pageTagType = await createTagType({
+      name: 'Location',
+      color: 'green',
+    })
+    const filterTagType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const pageTag = await createTag({ typeId: pageTagType.id, name: 'Fridge' })
+    const filterTag = await createTag({
+      typeId: filterTagType.id,
+      name: 'Vegetables',
+    })
+    await createItem({
+      name: 'Tomatoes',
+      tagIds: [pageTag.id, filterTag.id],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+    })
+
+    // When the tag items page is loaded with no filter and tags visible
+    const history = createMemoryHistory({
+      initialEntries: [`/settings/tags/${pageTag.id}/items?tags=1`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the Vegetables badge uses the tint variant
+    await waitFor(() => {
+      const badge = screen.getByTestId('tag-badge-Vegetables')
+      expect(badge.className).toContain('bg-blue-tint')
+    })
+  })
 })

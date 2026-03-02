@@ -272,7 +272,10 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 **Shopping page exception:** The vendor single-select (dropdown in toolbar) is a pre-scope applied to `filteredItems` only. Branch A (search) always runs against all items regardless of the selected vendor.
 
-**ItemCard active filter badges:** `ItemCard` accepts `activeVendorIds?: string[]` and `activeRecipeIds?: string[]`. When a vendor or recipe badge's ID is in the active set, the badge renders with the filled `neutral` variant instead of `neutral-outline`. All item list pages pass `selectedVendorIds` and `selectedRecipeIds` as these props.
+**ItemCard active filter badges:** `ItemCard` accepts `activeVendorIds?: string[]`, `activeRecipeIds?: string[]`, and `activeTagIds?: string[]`. When a badge's ID is in the active set, it renders highlighted. All item list pages that show tags (pantry, tag/vendor/recipe items tabs) pass all three props derived from `selectedVendorIds`, `selectedRecipeIds`, and `Object.values(filterState).flat()`.
+
+- `activeVendorIds` / `activeRecipeIds` — badge renders filled `neutral` variant instead of `neutral-outline`
+- `activeTagIds` — badge renders bold `x` variant instead of tint `x-tint` variant; defaults to tint when not provided
 
 ### Shopping Page
 
@@ -325,7 +328,6 @@ Token system for theme, colors, shadows, and borders:
 ```
 src/design-tokens/
   ├── theme.css      # Shadcn semantic colors (background, primary, etc.)
-  ├── colors.css     # Tag colors + state colors
   ├── shadows.css    # Shadow scale
   ├── borders.css    # Border definitions
   ├── index.css      # Imports all
@@ -362,7 +364,7 @@ Dark mode: 3.9% → 10% → 15% (progressively lighter)
   </Card>
 </div>
 
-// Tag colors (from colors.css)
+// Tag colors (from theme.css)
 import { colors, colorUtils } from '@/design-tokens'
 
 <Badge style={{
@@ -383,8 +385,8 @@ import { colors, colorUtils } from '@/design-tokens'
 **Button color variants:**
 
 The Button component supports 20 color variants matching the Badge color palette:
-- Solid variants (10): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink
-- Tint variants (10): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint
+- Solid variants (14): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose
+- Tint variants (14): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint, brown-tint, lime-tint, cyan-tint, rose-tint
 
 Usage:
 ```tsx
@@ -398,9 +400,9 @@ These variants are used in tag type filter triggers (`TagTypeDropdown`) to displ
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.) - defined in theme.css
 - **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark) - defined in theme.css
 - **Status colors**: ok, warning, error, inactive (with tint variants) - defined in theme.css
-- **Colors**: 10 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink) - defined in colors.css
+- **Colors**: 14 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose) - defined in theme.css
 - **Color variants**: tint (light background) / default (bold, high contrast)
-- **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in colors.css
+- **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in theme.css
 - **Shadows**: sm, md, lg - defined in shadows.css
 - **Borders**: default (1px), thick (2px) - defined in borders.css
 

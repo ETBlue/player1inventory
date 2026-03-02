@@ -40,6 +40,22 @@ export const colors = {
     tint: 'var(--color-pink-tint)',
     default: 'var(--color-pink)',
   },
+  brown: {
+    tint: 'var(--color-brown-tint)',
+    default: 'var(--color-brown)',
+  },
+  lime: {
+    tint: 'var(--color-lime-tint)',
+    default: 'var(--color-lime)',
+  },
+  cyan: {
+    tint: 'var(--color-cyan-tint)',
+    default: 'var(--color-cyan)',
+  },
+  rose: {
+    tint: 'var(--color-rose-tint)',
+    default: 'var(--color-rose)',
+  },
 } as const
 
 export type ColorName = keyof typeof colors
