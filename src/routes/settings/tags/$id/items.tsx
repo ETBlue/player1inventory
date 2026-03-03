@@ -255,6 +255,7 @@ function TagItemsTab() {
               tags={itemTags}
               tagTypes={tagTypes}
               showTags={isTagsVisible}
+              showExpiration={false}
               vendors={vendorMap.get(item.id) ?? []}
               recipes={recipeMap.get(item.id) ?? []}
               onTagClick={handleTagClick}
