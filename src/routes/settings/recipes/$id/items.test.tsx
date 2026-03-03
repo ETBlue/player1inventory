@@ -400,6 +400,50 @@ describe('Recipe Detail - Items Tab', () => {
     expect(noodlesIdx).toBeLessThan(tomatoIdx)
   })
 
+  it('user sees inactive assigned items after active assigned items', async () => {
+    // Given a recipe with two assigned items: active Zucchini and inactive Apple
+    const activeItem = await createItem({
+      name: 'Zucchini',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [],
+    })
+    const inactiveItem = await createItem({
+      name: 'Apple',
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [],
+    })
+    const recipe = await makeRecipe('Salad', [
+      { itemId: activeItem.id, defaultAmount: 1 },
+      { itemId: inactiveItem.id, defaultAmount: 1 },
+    ])
+
+    renderItemsTab(recipe.id)
+
+    // Then active Zucchini appears before inactive Apple despite Z > A alphabetically
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Zucchini')).toBeInTheDocument()
+      expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
+    })
+
+    const links = screen.getAllByRole('link', { name: /zucchini|apple/i })
+    const names = links.map((el) => el.textContent?.trim() ?? '')
+    const zucchiniIdx = names.findIndex((n) => /zucchini/i.test(n))
+    const appleIdx = names.findIndex((n) => /apple/i.test(n))
+    expect(zucchiniIdx).toBeLessThan(appleIdx)
+  })
+
   it('user can see sort and filter toolbar controls', async () => {
     // Given a recipe exists
     const recipe = await makeRecipe('Pasta')

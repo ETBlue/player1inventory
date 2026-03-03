@@ -13,6 +13,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -127,7 +128,12 @@ function RecipeItemsTab() {
     sortDirection,
   )
 
-  const filteredItems = [...sortedAssigned, ...sortedUnassigned]
+  const filteredItems = [
+    ...sortedAssigned.filter((item) => !isInactive(item)),
+    ...sortedAssigned.filter((item) => isInactive(item)),
+    ...sortedUnassigned.filter((item) => !isInactive(item)),
+    ...sortedUnassigned.filter((item) => isInactive(item)),
+  ]
 
   const activeTagIds = useMemo(
     () => Object.values(filterState).flat(),
