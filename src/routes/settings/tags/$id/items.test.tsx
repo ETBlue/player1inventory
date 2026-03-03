@@ -681,6 +681,42 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
+  it('user can see active assigned items before inactive assigned items', async () => {
+    // Given a tag with two assigned items — Apple (inactive, A sorts first) and Zucchini (active, Z sorts last)
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // Active assigned: Zucchini (Z sorts LAST alphabetically — should float above inactive Apple)
+    await makeItem('Zucchini', [tag.id])
+
+    // Inactive assigned: Apple (A sorts FIRST alphabetically — should sink below active Zucchini)
+    await createItem({
+      name: 'Apple',
+      tagIds: [tag.id],
+      targetUnit: 'package',
+      targetQuantity: 0, // inactive
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 0,
+      vendorIds: [],
+    })
+
+    // When: user views items tab (default sort: name asc)
+    renderItemsTab(tag.id)
+
+    // Then: Zucchini (active) appears before Apple (inactive) despite Z > A alphabetically
+    await waitFor(() => {
+      const links = screen.getAllByRole('link', { name: /zucchini|apple/i })
+      const names = links.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/zucchini/i)
+      expect(names[1]).toMatch(/apple/i)
+    })
+  })
+
   it('tag badge shows tint variant when tag filter is not active', async () => {
     // Given a page tag and an item with an additional tag
     const pageTagType = await createTagType({

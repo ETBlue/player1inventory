@@ -14,6 +14,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -157,10 +158,20 @@ function TagItemsTab() {
     sortBy,
     sortDirection,
   )
-  // Float assigned items to the top, preserving sort order within each group
+  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
   const filteredItems = [
-    ...sortedItems.filter((item) => isAssigned(item.tagIds)),
-    ...sortedItems.filter((item) => !isAssigned(item.tagIds)),
+    ...sortedItems.filter(
+      (item) => isAssigned(item.tagIds) && !isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => isAssigned(item.tagIds) && isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => !isAssigned(item.tagIds) && !isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => !isAssigned(item.tagIds) && isInactive(item),
+    ),
   ]
 
   const handleCreateFromSearch = async () => {
