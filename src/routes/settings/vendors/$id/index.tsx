@@ -81,12 +81,18 @@ function VendorInfoTab() {
         dialogTitle="Delete Vendor?"
         buttonClassName="mt-4 w-full max-w-2xl"
         dialogDescription={
-          <>
-            <strong>{vendor.name}</strong>
-            {affectedItemCount > 0 &&
-              ` will be removed from ${affectedItemCount} item${affectedItemCount === 1 ? '' : 's'}.`}{' '}
-            This action cannot be undone.
-          </>
+          affectedItemCount > 0 ? (
+            <>
+              <strong>{vendor.name}</strong> will be removed from{' '}
+              {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}. This
+              action cannot be undone.
+            </>
+          ) : (
+            <>
+              No items are assigned to <strong>{vendor.name}</strong>. This
+              action cannot be undone.
+            </>
+          )
         }
         onDelete={handleDelete}
       />

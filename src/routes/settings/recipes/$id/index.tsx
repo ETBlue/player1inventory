@@ -78,10 +78,17 @@ function RecipeInfoTab() {
         buttonClassName="w-full max-w-2xl mt-4"
         dialogTitle="Delete Recipe?"
         dialogDescription={
-          <>
-            <strong>{recipe.name}</strong> will be deleted. This action cannot
-            be undone.
-          </>
+          recipe.items.length > 0 ? (
+            <>
+              <strong>{recipe.name}</strong> will be deleted. It contains{' '}
+              {recipe.items.length} item{recipe.items.length !== 1 ? 's' : ''}.
+              Your inventory will not be affected.
+            </>
+          ) : (
+            <>
+              <strong>{recipe.name}</strong> will be deleted. It has no items.
+            </>
+          )
         }
         onDelete={handleDelete}
       />
