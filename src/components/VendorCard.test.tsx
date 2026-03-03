@@ -40,17 +40,37 @@ describe('VendorCard', () => {
     expect(screen.getByText('Costco')).toBeInTheDocument()
   })
 
-  it('calls onDelete when delete button is clicked', async () => {
-    // Given a vendor card
+  it('user can delete vendor after confirming the dialog', async () => {
+    // Given a vendor card with delete handler
     const onDelete = vi.fn()
     render(<VendorCard vendor={vendor} onDelete={onDelete} />)
     const user = userEvent.setup()
 
-    // When delete button is clicked
+    // When user clicks the delete button
     await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+
+    // Then confirmation dialog appears
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    // When user confirms
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     // Then onDelete is called
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+
+  it('user can cancel vendor deletion', async () => {
+    // Given a vendor card with delete handler
+    const onDelete = vi.fn()
+    render(<VendorCard vendor={vendor} onDelete={onDelete} />)
+    const user = userEvent.setup()
+
+    // When user clicks delete then cancels
+    await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+
+    // Then onDelete is NOT called
+    expect(onDelete).not.toHaveBeenCalled()
   })
 
   it('displays item count when provided', () => {
