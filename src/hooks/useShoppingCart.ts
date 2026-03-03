@@ -82,6 +82,7 @@ export function useCheckout() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cart'] })
       queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['sort', 'purchaseDates'] })
     },
   })
 }
