@@ -219,7 +219,7 @@ export function ItemCard({
         )}
       </CardHeader>
       <CardContent className={isInactive(item) ? 'opacity-50' : ''}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 -mb-1">
           {showExpiration &&
             currentQuantity > 0 &&
             estimatedDueDate &&

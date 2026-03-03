@@ -27,8 +27,8 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
+        'relative p-3 pl-4',
         cardVariants({ variant }),
-        'relative p-3',
         variant === 'inactive' && 'opacity-50',
         className,
       )}
