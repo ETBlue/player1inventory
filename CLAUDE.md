@@ -191,10 +191,10 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`, `useItemCountByVendor`
 
-**Routes**: `src/routes/settings/vendors/index.tsx` — vendor list + delete confirmation; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save
+**Routes**: `src/routes/settings/vendors/index.tsx` — vendor list; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save
 
 **Components**:
-- `src/components/VendorCard.tsx` — displays one vendor with a delete button; vendor name links to the detail page
+- `src/components/VendorCard.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation); wraps `DeleteButton` internally with an `itemCount`-based dialog description
 - `src/components/VendorNameForm.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
 
 **Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.
