@@ -121,16 +121,13 @@ function ItemDetailTab() {
       />
 
       <DeleteButton
-        trigger="Delete Item"
-        buttonVariant="ghost"
-        buttonClassName="text-destructive hover:bg-destructive/10 w-full mt-4"
+        trigger="Delete"
+        buttonClassName="w-full max-w-2xl mt-4"
         dialogTitle="Delete Item?"
         dialogDescription={
           <>
-            Are you sure you want to delete <strong>{item.name}</strong>?
-            <span className="block mt-2 text-sm text-muted-foreground">
-              This will permanently remove this item and its history.
-            </span>
+            Are you sure you want to delete <strong>{item.name}</strong>? This
+            will permanently remove this item and its history.
           </>
         }
         onDelete={handleDelete}

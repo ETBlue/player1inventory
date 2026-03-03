@@ -16,39 +16,44 @@ type Story = StoryObj<typeof meta>
 
 export const TextButton: Story = {
   args: {
-    trigger: 'Delete Tag',
-    buttonVariant: 'ghost',
-    buttonClassName: 'text-destructive hover:bg-destructive/10',
+    trigger: 'Delete',
     dialogTitle: 'Delete Tag?',
     dialogDescription: 'Are you sure you want to delete this tag?',
     onDelete: () => console.log('Deleted'),
   },
 }
 
-export const WithCascadeWarning: Story = {
+export const WithImpact: Story = {
   args: {
-    trigger: 'Delete Tag',
-    buttonVariant: 'ghost',
-    buttonClassName: 'text-destructive hover:bg-destructive/10',
+    trigger: 'Delete',
     dialogTitle: 'Delete Tag?',
     dialogDescription: (
       <>
-        Are you sure you want to delete <strong>Vegetables</strong>?
-        <p className="mt-2 text-sm text-muted-foreground">
-          This tag will be removed from 12 items.
-        </p>
+        <strong>Vegetables</strong> will be removed from 12 items.
       </>
     ),
-    onDelete: () => console.log('Deleted with cascade'),
+    onDelete: () => console.log('Deleted with impact'),
+  },
+}
+
+export const NoImpact: Story = {
+  args: {
+    trigger: 'Delete',
+    dialogTitle: 'Delete Tag?',
+    dialogDescription: (
+      <>
+        No items are using <strong>Vegetables</strong>.
+      </>
+    ),
+    onDelete: () => console.log('Deleted with no impact'),
   },
 }
 
 export const IconButton: Story = {
   args: {
     trigger: <X className="h-3 w-3" />,
-    buttonVariant: 'ghost',
-    buttonSize: 'icon',
-    buttonClassName: 'h-4 w-4 p-0 hover:bg-destructive/20',
+    buttonSize: 'icon-xs',
+    buttonClassName: 'h-5',
     dialogTitle: 'Delete Tag?',
     dialogDescription: 'Are you sure?',
     onDelete: () => console.log('Deleted from badge'),
@@ -58,8 +63,8 @@ export const IconButton: Story = {
 export const TrashIcon: Story = {
   args: {
     trigger: <Trash2 className="h-4 w-4" />,
-    buttonVariant: 'ghost',
     buttonSize: 'icon',
+    buttonClassName: 'h-8 w-8',
     dialogTitle: 'Delete Item?',
     dialogDescription: 'This action cannot be undone.',
     onDelete: () => console.log('Deleted item'),
@@ -69,8 +74,6 @@ export const TrashIcon: Story = {
 export const AsyncDelete: Story = {
   args: {
     trigger: 'Delete (Async)',
-    buttonVariant: 'ghost',
-    buttonClassName: 'text-destructive',
     dialogTitle: 'Delete Item?',
     dialogDescription: 'This will take a few seconds...',
     onDelete: () =>

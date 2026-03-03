@@ -73,22 +73,18 @@ function RecipeInfoTab() {
         isDirty={isDirty}
         isPending={updateRecipe.isPending}
       />
-      <div className="pb-6">
-        <DeleteButton
-          trigger="Delete Recipe"
-          buttonVariant="destructive"
-          dialogTitle="Delete Recipe?"
-          dialogDescription={
-            <>
-              {recipe.name}
-              <span className="block mt-2 text-sm text-muted-foreground">
-                This action cannot be undone.
-              </span>
-            </>
-          }
-          onDelete={handleDelete}
-        />
-      </div>
+      <DeleteButton
+        trigger="Delete"
+        buttonClassName="w-full max-w-2xl mt-4"
+        dialogTitle="Delete Recipe?"
+        dialogDescription={
+          <>
+            <strong>{recipe.name}</strong> will be deleted. This action cannot
+            be undone.
+          </>
+        }
+        onDelete={handleDelete}
+      />
     </div>
   )
 }

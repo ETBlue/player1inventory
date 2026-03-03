@@ -19,7 +19,7 @@ export function VendorNameForm({
 }: VendorNameFormProps) {
   return (
     <form
-      className="space-y-4 max-w-md"
+      className="space-y-4 max-w-2xl"
       onSubmit={(e) => {
         e.preventDefault()
         onSave()
@@ -33,7 +33,7 @@ export function VendorNameForm({
           onChange={(e) => onNameChange(e.target.value)}
         />
       </div>
-      <Button type="submit" disabled={!isDirty || isPending}>
+      <Button type="submit" disabled={!isDirty || isPending} className="w-full">
         Save
       </Button>
     </form>

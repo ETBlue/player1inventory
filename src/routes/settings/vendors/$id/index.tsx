@@ -75,24 +75,21 @@ function VendorInfoTab() {
         isDirty={isDirty}
         isPending={updateVendor.isPending}
       />
-      <div className="pb-6">
-        <DeleteButton
-          trigger="Delete Vendor"
-          buttonVariant="destructive"
-          dialogTitle="Delete Vendor?"
-          dialogDescription={
-            <>
-              {vendor.name}
-              <span className="block mt-2 text-sm text-muted-foreground">
-                {affectedItemCount > 0
-                  ? `This vendor will be removed from ${affectedItemCount} item${affectedItemCount === 1 ? '' : 's'}.`
-                  : 'This action cannot be undone.'}
-              </span>
-            </>
-          }
-          onDelete={handleDelete}
-        />
-      </div>
+
+      <DeleteButton
+        trigger="Delete"
+        dialogTitle="Delete Vendor?"
+        buttonClassName="mt-4 w-full max-w-2xl"
+        dialogDescription={
+          <>
+            <strong>{vendor.name}</strong>
+            {affectedItemCount > 0 &&
+              ` will be removed from ${affectedItemCount} item${affectedItemCount === 1 ? '' : 's'}.`}{' '}
+            This action cannot be undone.
+          </>
+        }
+        onDelete={handleDelete}
+      />
     </div>
   )
 }

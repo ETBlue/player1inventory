@@ -27,7 +27,7 @@ export interface DeleteButtonProps {
 export function DeleteButton({
   onDelete,
   trigger,
-  buttonVariant = 'ghost',
+  buttonVariant = 'destructive-ghost',
   buttonSize,
   buttonClassName,
   dialogTitle = 'Delete?',
@@ -62,10 +62,11 @@ export function DeleteButton({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <div className="flex-1" />
             <AlertDialogAction
               variant="destructive"
               onClick={handleConfirm}

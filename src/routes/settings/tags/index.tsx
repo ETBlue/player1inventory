@@ -106,10 +106,8 @@ function DraggableTagBadge({
           dialogTitle="Delete Tag?"
           dialogDescription={
             <>
-              {tag.name}
-              <span className="block mt-2 text-sm text-muted-foreground">
-                This tag will be removed from all assigned items.
-              </span>
+              <strong>{tag.name}</strong> will be removed from all assigned
+              items.
             </>
           }
           onDelete={onDelete}
@@ -158,9 +156,9 @@ function DroppableTagTypeCard({
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
-            variant="neutral-ghost"
+            variant="destructive-ghost"
             size="icon"
-            className="h-8 w-8 text-destructive"
+            className="h-8 w-8"
             onClick={onDelete}
           >
             <Trash2 className="h-4 w-4" />
