@@ -113,4 +113,20 @@ describe('DeleteButton', () => {
     const button = screen.getByRole('button', { name: /delete/i })
     expect(button.className).toContain('text-destructive')
   })
+
+  it('button has aria-label when buttonAriaLabel is provided', () => {
+    render(
+      <DeleteButton
+        trigger={<span data-testid="icon">🗑️</span>}
+        buttonAriaLabel="Delete Costco"
+        dialogTitle="Delete?"
+        dialogDescription="Sure?"
+        onDelete={vi.fn()}
+      />,
+    )
+
+    // Given icon-only button with aria-label
+    const button = screen.getByRole('button', { name: 'Delete Costco' })
+    expect(button).toBeInTheDocument()
+  })
 })

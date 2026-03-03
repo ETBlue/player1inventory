@@ -19,6 +19,7 @@ export interface DeleteButtonProps {
   buttonVariant?: ButtonProps['variant']
   buttonSize?: ButtonProps['size']
   buttonClassName?: string
+  buttonAriaLabel?: string
   dialogTitle?: string
   dialogDescription?: ReactNode
   confirmLabel?: string
@@ -27,9 +28,10 @@ export interface DeleteButtonProps {
 export function DeleteButton({
   onDelete,
   trigger,
-  buttonVariant = 'ghost',
+  buttonVariant = 'destructive-ghost',
   buttonSize,
   buttonClassName,
+  buttonAriaLabel,
   dialogTitle = 'Delete?',
   dialogDescription = 'Are you sure?',
   confirmLabel = 'Delete',
@@ -53,6 +55,7 @@ export function DeleteButton({
         variant={buttonVariant}
         size={buttonSize}
         className={buttonClassName}
+        aria-label={buttonAriaLabel}
         onClick={() => setOpen(true)}
       >
         {trigger}
@@ -62,10 +65,11 @@ export function DeleteButton({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <div className="flex-1" />
             <AlertDialogAction
               variant="destructive"
               onClick={handleConfirm}

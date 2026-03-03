@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { DeleteButton } from '@/components/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Recipe } from '@/types'
 
@@ -28,15 +28,28 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
             </span>
           )}
         </div>
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive"
-          aria-label={`Delete ${recipe.name}`}
-          onClick={onDelete}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <DeleteButton
+          trigger={<Trash2 className="h-4 w-4" />}
+          buttonVariant="destructive-ghost"
+          buttonSize="icon"
+          buttonClassName="h-8 w-8"
+          buttonAriaLabel={`Delete ${recipe.name}`}
+          dialogTitle="Delete Recipe?"
+          dialogDescription={
+            (itemCount ?? 0) > 0 ? (
+              <>
+                <strong>{recipe.name}</strong> will be deleted. It contains{' '}
+                {itemCount} item{itemCount !== 1 ? 's' : ''}. Your inventory
+                will not be affected.
+              </>
+            ) : (
+              <>
+                <strong>{recipe.name}</strong> will be deleted. It has no items.
+              </>
+            )
+          }
+          onDelete={onDelete}
+        />
       </CardContent>
     </Card>
   )

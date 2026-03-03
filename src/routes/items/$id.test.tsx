@@ -1003,7 +1003,7 @@ describe('Item detail page - delete dialog', () => {
 
     // Then delete button is visible
     const deleteButton = await screen.findByRole('button', {
-      name: /delete item/i,
+      name: /^delete$/i,
     })
     expect(deleteButton).toBeInTheDocument()
 
@@ -1050,7 +1050,7 @@ describe('Item detail page - delete dialog', () => {
     // When user opens delete dialog
     renderWithRouter(`/items/${item.id}`)
     const deleteButton = await screen.findByRole('button', {
-      name: /delete item/i,
+      name: /^delete$/i,
     })
     await userEvent.click(deleteButton)
 
@@ -1096,7 +1096,7 @@ describe('Item detail page - delete dialog', () => {
     // When user confirms deletion
     renderWithRouter(`/items/${item.id}`)
     const deleteButton = await screen.findByRole('button', {
-      name: /delete item/i,
+      name: /^delete$/i,
     })
     await userEvent.click(deleteButton)
 
@@ -1133,7 +1133,7 @@ describe('Item detail page - delete dialog', () => {
     // When user opens and cancels delete dialog
     renderWithRouter(`/items/${item.id}`)
     const deleteButton = await screen.findByRole('button', {
-      name: /delete item/i,
+      name: /^delete$/i,
     })
     await userEvent.click(deleteButton)
 

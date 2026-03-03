@@ -19,7 +19,7 @@ const vendor: Vendor = {
 export const Default: Story = {
   args: {
     vendor,
-    onDelete: () => console.log('Delete'),
+    onDelete: () => console.log('Delete Costco'),
   },
 }
 
@@ -27,6 +27,14 @@ export const WithItemCount: Story = {
   args: {
     vendor,
     itemCount: 5,
-    onDelete: () => console.log('Delete'),
+    onDelete: () => console.log('Delete Costco'),
+  },
+}
+
+export const WithNoItems: Story = {
+  args: {
+    vendor,
+    itemCount: 0,
+    onDelete: () => console.log('Delete Costco'),
   },
 }

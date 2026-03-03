@@ -21,7 +21,7 @@ const recipe: Recipe = {
 export const Default: Story = {
   args: {
     recipe,
-    onDelete: () => console.log('Delete'),
+    onDelete: () => console.log('Delete Pasta Dinner'),
   },
 }
 
@@ -29,6 +29,14 @@ export const WithItemCount: Story = {
   args: {
     recipe,
     itemCount: 6,
-    onDelete: () => console.log('Delete'),
+    onDelete: () => console.log('Delete Pasta Dinner'),
+  },
+}
+
+export const WithNoItems: Story = {
+  args: {
+    recipe,
+    itemCount: 0,
+    onDelete: () => console.log('Delete Pasta Dinner'),
   },
 }

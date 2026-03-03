@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Vendor } from '@/types'
-import { VendorCard } from './VendorCard'
+import type { Recipe } from '@/types'
+import { RecipeCard } from './RecipeCard'
 
 // Mock TanStack Router Link since it requires RouterProvider context
 vi.mock('@tanstack/react-router', async () => {
@@ -25,29 +25,33 @@ vi.mock('@tanstack/react-router', async () => {
   }
 })
 
-const vendor: Vendor = {
+const recipe: Recipe = {
   id: '1',
-  name: 'Costco',
+  name: 'Pasta Dinner',
+  items: [],
   createdAt: new Date(),
+  updatedAt: new Date(),
 }
 
-describe('VendorCard', () => {
-  it('displays vendor name', () => {
-    // Given a vendor
-    render(<VendorCard vendor={vendor} onDelete={vi.fn()} />)
+describe('RecipeCard', () => {
+  it('displays recipe name', () => {
+    // Given a recipe
+    render(<RecipeCard recipe={recipe} onDelete={vi.fn()} />)
 
-    // Then the vendor name is shown
-    expect(screen.getByText('Costco')).toBeInTheDocument()
+    // Then the recipe name is shown
+    expect(screen.getByText('Pasta Dinner')).toBeInTheDocument()
   })
 
-  it('user can delete vendor after confirming the dialog', async () => {
-    // Given a vendor card with delete handler
+  it('user can delete recipe after confirming the dialog', async () => {
+    // Given a recipe card with delete handler
     const onDelete = vi.fn()
-    render(<VendorCard vendor={vendor} onDelete={onDelete} />)
+    render(<RecipeCard recipe={recipe} onDelete={onDelete} />)
     const user = userEvent.setup()
 
     // When user clicks the delete button
-    await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+    )
 
     // Then confirmation dialog appears
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
@@ -59,14 +63,16 @@ describe('VendorCard', () => {
     expect(onDelete).toHaveBeenCalledOnce()
   })
 
-  it('user can cancel vendor deletion', async () => {
-    // Given a vendor card with delete handler
+  it('user can cancel recipe deletion', async () => {
+    // Given a recipe card
     const onDelete = vi.fn()
-    render(<VendorCard vendor={vendor} onDelete={onDelete} />)
+    render(<RecipeCard recipe={recipe} onDelete={onDelete} />)
     const user = userEvent.setup()
 
-    // When user clicks delete then cancels
-    await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+    // When user cancels the delete dialog
+    await user.click(
+      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+    )
     await user.click(screen.getByRole('button', { name: /cancel/i }))
 
     // Then onDelete is NOT called
@@ -74,18 +80,18 @@ describe('VendorCard', () => {
   })
 
   it('displays item count when provided', () => {
-    // Given a vendor with item count
-    render(<VendorCard vendor={vendor} itemCount={5} onDelete={vi.fn()} />)
+    // Given a recipe with item count
+    render(<RecipeCard recipe={recipe} itemCount={6} onDelete={vi.fn()} />)
 
     // Then the item count is shown
-    expect(screen.getByText(/5 items/i)).toBeInTheDocument()
+    expect(screen.getByText(/6 items/i)).toBeInTheDocument()
   })
 
   it('does not display item count when not provided', () => {
-    // Given a vendor without item count
-    render(<VendorCard vendor={vendor} onDelete={vi.fn()} />)
+    // Given a recipe without item count
+    render(<RecipeCard recipe={recipe} onDelete={vi.fn()} />)
 
     // Then no item count text is shown
-    expect(screen.queryByText(/items/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/· \d+ items/i)).not.toBeInTheDocument()
   })
 })

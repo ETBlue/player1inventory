@@ -1,18 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useState } from 'react'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { VendorCard } from '@/components/VendorCard'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
-import {
-  useDeleteVendor,
-  useItemCountByVendor,
-  useVendors,
-} from '@/hooks/useVendors'
-import type { Vendor } from '@/types'
+import { useDeleteVendor, useVendors } from '@/hooks/useVendors'
 
 export const Route = createFileRoute('/settings/vendors/')({
   component: VendorSettings,
@@ -25,21 +18,9 @@ function VendorSettings() {
   const deleteVendor = useDeleteVendor()
   const vendorCounts = useVendorItemCounts()
 
-  const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null)
-
-  const vendorDeleteId = vendorToDelete?.id ?? ''
-  const { data: vendorItemCount = 0 } = useItemCountByVendor(vendorDeleteId)
-
   const sortedVendors = [...vendors].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
-
-  const handleConfirmDelete = () => {
-    if (vendorToDelete) {
-      deleteVendor.mutate(vendorToDelete.id)
-      setVendorToDelete(null)
-    }
-  }
 
   return (
     <div>
@@ -67,21 +48,11 @@ function VendorSettings() {
               key={vendor.id}
               vendor={vendor}
               itemCount={vendorCounts.get(vendor.id) ?? 0}
-              onDelete={() => setVendorToDelete(vendor)}
+              onDelete={() => deleteVendor.mutate(vendor.id)}
             />
           ))
         )}
       </div>
-
-      <ConfirmDialog
-        open={!!vendorToDelete}
-        onOpenChange={(open) => !open && setVendorToDelete(null)}
-        title={`Delete "${vendorToDelete?.name}"?`}
-        description={`This will remove "${vendorToDelete?.name}" from ${vendorItemCount} item${vendorItemCount === 1 ? '' : 's'}.`}
-        confirmLabel="Delete"
-        onConfirm={handleConfirmDelete}
-        destructive
-      />
     </div>
   )
 }

@@ -134,7 +134,7 @@ describe('Vendor Settings Page', () => {
     await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
 
     // Then confirmation dialog appears
-    await screen.findByText(/delete "costco"/i)
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
 
     // When user confirms
     await user.click(screen.getByRole('button', { name: /^delete$/i }))

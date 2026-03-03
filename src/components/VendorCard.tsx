@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { DeleteButton } from '@/components/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Vendor } from '@/types'
 
@@ -28,15 +28,27 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
             </span>
           )}
         </div>
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive"
-          aria-label={`Delete ${vendor.name}`}
-          onClick={onDelete}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <DeleteButton
+          trigger={<Trash2 className="h-4 w-4" />}
+          buttonVariant="destructive-ghost"
+          buttonSize="icon"
+          buttonClassName="h-8 w-8"
+          buttonAriaLabel={`Delete ${vendor.name}`}
+          dialogTitle="Delete Vendor?"
+          dialogDescription={
+            (itemCount ?? 0) > 0 ? (
+              <>
+                <strong>{vendor.name}</strong> will be removed from {itemCount}{' '}
+                item{itemCount !== 1 ? 's' : ''}.
+              </>
+            ) : (
+              <>
+                No items are assigned to <strong>{vendor.name}</strong>.
+              </>
+            )
+          }
+          onDelete={onDelete}
+        />
       </CardContent>
     </Card>
   )

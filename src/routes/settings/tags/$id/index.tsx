@@ -83,7 +83,7 @@ function TagInfoTab() {
 
   return (
     <form
-      className="space-y-4 max-w-md px-6 pb-6 pt-4"
+      className="space-y-4 max-w-2xl px-6 pb-6 pt-4"
       onSubmit={(e) => {
         e.preventDefault()
         handleSave()
@@ -122,26 +122,27 @@ function TagInfoTab() {
 
       <Button
         type="submit"
-        disabled={!isDirty || updateTag.isPending}
         className="w-full"
+        disabled={!isDirty || updateTag.isPending}
       >
-        {updateTag.isPending ? 'Saving...' : 'Save Changes'}
+        {updateTag.isPending ? 'Saving...' : 'Save'}
       </Button>
 
       <DeleteButton
-        trigger="Delete Tag"
-        buttonVariant="destructive"
+        trigger="Delete"
         dialogTitle="Delete Tag?"
+        buttonClassName="w-full"
         dialogDescription={
-          <>
-            Are you sure you want to delete <strong>{tag.name}</strong>?
-            {affectedItemCount > 0 && (
-              <span className="block mt-2 text-sm text-muted-foreground">
-                This tag will be removed from {affectedItemCount} item
-                {affectedItemCount !== 1 ? 's' : ''}.
-              </span>
-            )}
-          </>
+          affectedItemCount > 0 ? (
+            <>
+              <strong>{tag.name}</strong> will be removed from{' '}
+              {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}.
+            </>
+          ) : (
+            <>
+              No items are using <strong>{tag.name}</strong>.
+            </>
+          )
         }
         onDelete={handleDelete}
       />

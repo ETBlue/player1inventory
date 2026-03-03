@@ -73,22 +73,25 @@ function RecipeInfoTab() {
         isDirty={isDirty}
         isPending={updateRecipe.isPending}
       />
-      <div className="pb-6">
-        <DeleteButton
-          trigger="Delete Recipe"
-          buttonVariant="destructive"
-          dialogTitle="Delete Recipe?"
-          dialogDescription={
+      <DeleteButton
+        trigger="Delete"
+        buttonClassName="w-full max-w-2xl mt-4"
+        dialogTitle="Delete Recipe?"
+        dialogDescription={
+          recipe.items.length > 0 ? (
             <>
-              {recipe.name}
-              <span className="block mt-2 text-sm text-muted-foreground">
-                This action cannot be undone.
-              </span>
+              <strong>{recipe.name}</strong> will be deleted. It contains{' '}
+              {recipe.items.length} item{recipe.items.length !== 1 ? 's' : ''}.
+              Your inventory will not be affected.
             </>
-          }
-          onDelete={handleDelete}
-        />
-      </div>
+          ) : (
+            <>
+              <strong>{recipe.name}</strong> will be deleted. It has no items.
+            </>
+          )
+        }
+        onDelete={handleDelete}
+      />
     </div>
   )
 }
