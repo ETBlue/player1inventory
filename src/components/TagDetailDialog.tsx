@@ -58,7 +58,7 @@ export function TagDetailDialog({
               </p>
             </div>
           </div>
-          <DialogFooter className="flex justify-between">
+          <DialogFooter>
             <Button variant="destructive" onClick={() => setShowConfirm(true)}>
               Delete
             </Button>
