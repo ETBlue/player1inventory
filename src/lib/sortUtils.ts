@@ -1,4 +1,4 @@
-import { getStockStatus } from '@/lib/quantityUtils'
+import { getStockStatus, isInactive } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
 export type SortField = 'name' | 'stock' | 'purchased' | 'expiring'
@@ -35,8 +35,20 @@ export function sortItems(
           comparison = rankDiff
           break // sortDirection flip applied below
         }
-        const progressA = a.targetQuantity > 0 ? qtyA / a.targetQuantity : 1
-        const progressB = b.targetQuantity > 0 ? qtyB / b.targetQuantity : 1
+        const progressA = isInactive(a)
+          ? qtyA > 0
+            ? 1
+            : 0
+          : a.targetQuantity > 0
+            ? qtyA / a.targetQuantity
+            : 1
+        const progressB = isInactive(b)
+          ? qtyB > 0
+            ? 1
+            : 0
+          : b.targetQuantity > 0
+            ? qtyB / b.targetQuantity
+            : 1
         comparison = progressA - progressB
         break
       }
