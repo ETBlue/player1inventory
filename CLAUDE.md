@@ -78,6 +78,7 @@ Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` a
 
 **Data Utilities:**
 - `useVendorItemCounts()` (`src/hooks/useVendorItemCounts.ts`) - Returns `Map<vendorId, number>` of item counts per vendor, memoized with useMemo for performance
+- `useItemSortData(items)` (`src/hooks/useItemSortData.ts`) - Returns `{ quantities, expiryDates, purchaseDates }` for sort operations on item lists. `quantities` is a `useMemo` (synchronous, no race condition). `expiryDates` and `purchaseDates` are TanStack Query queries under the `['sort', ...]` key namespace, using items-derived queryKeys so cache entries invalidate automatically when items update. Used by all five item list pages (pantry, shopping, tag/vendor/recipe items tabs). Checkout explicitly invalidates `['sort', 'purchaseDates']` after purchase.
 
 ## Features
 
