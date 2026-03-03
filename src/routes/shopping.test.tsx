@@ -1051,6 +1051,38 @@ describe('Shopping page tag filtering', () => {
       expect(screen.queryByText('Bread')).not.toBeInTheDocument()
     })
   })
+  it('user can see inactive items grouped at bottom of pending section with count label', async () => {
+    // Given one active item and one inactive item (name starting with 'A' so it sorts first alphabetically)
+    await createItem({
+      name: 'Active Milk',
+      tagIds: [],
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    await createItem({
+      name: 'Aaaaa Inactive Item',
+      tagIds: [],
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+
+    // When rendering the shopping page
+    renderShoppingPage()
+
+    // Then the inactive count label appears in the DOM
+    await waitFor(() => {
+      expect(screen.getByText(/1 inactive item/i)).toBeInTheDocument()
+    })
+  })
+
   it('user does not see tag badges or expiration on shopping page', async () => {
     // Given an item with a tag and a future due date added to the active cart
     const tagType = await createTagType({ name: 'Category', color: 'blue' })

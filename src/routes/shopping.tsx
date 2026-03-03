@@ -43,6 +43,7 @@ import { useRecipes } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
 
@@ -143,6 +144,11 @@ function Shopping() {
     sortBy,
     sortDirection,
   )
+
+  const activeCartItems = cartSectionItems.filter((item) => !isInactive(item))
+  const inactiveCartItems = cartSectionItems.filter((item) => isInactive(item))
+  const activePendingItems = pendingItems.filter((item) => !isInactive(item))
+  const inactivePendingItems = pendingItems.filter((item) => isInactive(item))
 
   const cartTotal = cartItems.reduce((sum, ci) => sum + ci.quantity, 0)
 
@@ -258,7 +264,14 @@ function Shopping() {
       {cartSectionItems.length > 0 && (
         <>
           <div className="space-y-px bg-background-surface">
-            {cartSectionItems.map((item) => renderItemCard(item))}
+            {activeCartItems.map((item) => renderItemCard(item))}
+            {inactiveCartItems.length > 0 && (
+              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+                {inactiveCartItems.length} inactive item
+                {inactiveCartItems.length !== 1 ? 's' : ''}
+              </div>
+            )}
+            {inactiveCartItems.map((item) => renderItemCard(item))}
           </div>
           <div className="h-px bg-accessory-default" />
         </>
@@ -267,7 +280,14 @@ function Shopping() {
       {/* Pending items section */}
       {pendingItems.length > 0 && (
         <div className="space-y-px">
-          {pendingItems.map((item) => renderItemCard(item))}
+          {activePendingItems.map((item) => renderItemCard(item))}
+          {inactivePendingItems.length > 0 && (
+            <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+              {inactivePendingItems.length} inactive item
+              {inactivePendingItems.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          {inactivePendingItems.map((item) => renderItemCard(item))}
         </div>
       )}
 
