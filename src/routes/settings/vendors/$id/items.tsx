@@ -14,6 +14,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -177,10 +178,20 @@ function VendorItemsTab() {
     sortBy,
     sortDirection,
   )
-  // Float assigned items to the top, preserving sort order within each group
+  // Float assigned items to the top; within each group, inactive items sink to the bottom
   const filteredItems = [
-    ...sortedItems.filter((item) => isAssigned(item.vendorIds)),
-    ...sortedItems.filter((item) => !isAssigned(item.vendorIds)),
+    ...sortedItems.filter(
+      (item) => isAssigned(item.vendorIds) && !isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => isAssigned(item.vendorIds) && isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => !isAssigned(item.vendorIds) && !isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => !isAssigned(item.vendorIds) && isInactive(item),
+    ),
   ]
 
   return (
