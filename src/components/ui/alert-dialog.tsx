@@ -62,7 +62,7 @@ const AlertDialogFooter = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex gap-2', className)} {...props} />
+  <div className={cn('flex justify-between gap-2', className)} {...props} />
 )
 AlertDialogFooter.displayName = 'AlertDialogFooter'
 
