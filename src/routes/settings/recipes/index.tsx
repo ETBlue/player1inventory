@@ -1,17 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useState } from 'react'
 import { RecipeCard } from '@/components/RecipeCard'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
-import {
-  useDeleteRecipe,
-  useItemCountByRecipe,
-  useRecipes,
-} from '@/hooks/useRecipes'
-import type { Recipe } from '@/types'
+import { useDeleteRecipe, useRecipes } from '@/hooks/useRecipes'
 
 export const Route = createFileRoute('/settings/recipes/')({
   component: RecipeSettings,
@@ -23,21 +16,9 @@ function RecipeSettings() {
   const { data: recipes = [] } = useRecipes()
   const deleteRecipe = useDeleteRecipe()
 
-  const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null)
-
-  const recipeDeleteId = recipeToDelete?.id ?? ''
-  const { data: recipeItemCount = 0 } = useItemCountByRecipe(recipeDeleteId)
-
   const sortedRecipes = [...recipes].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
-
-  const handleConfirmDelete = () => {
-    if (recipeToDelete) {
-      deleteRecipe.mutate(recipeToDelete.id)
-      setRecipeToDelete(null)
-    }
-  }
 
   return (
     <div>
@@ -65,21 +46,11 @@ function RecipeSettings() {
               key={recipe.id}
               recipe={recipe}
               itemCount={recipe.items.length}
-              onDelete={() => setRecipeToDelete(recipe)}
+              onDelete={() => deleteRecipe.mutate(recipe.id)}
             />
           ))
         )}
       </div>
-
-      <ConfirmDialog
-        open={!!recipeToDelete}
-        onOpenChange={(open) => !open && setRecipeToDelete(null)}
-        title={`Delete "${recipeToDelete?.name}"?`}
-        description={`This will delete the recipe "${recipeToDelete?.name}" (${recipeItemCount} item${recipeItemCount === 1 ? '' : 's'}). Your inventory will not be affected.`}
-        confirmLabel="Delete"
-        onConfirm={handleConfirmDelete}
-        destructive
-      />
     </div>
   )
 }

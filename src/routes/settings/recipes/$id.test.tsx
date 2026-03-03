@@ -11,6 +11,110 @@ import { db } from '@/db'
 import { createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
+describe('Recipe List - Delete Dialog', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.recipes.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    sessionStorage.clear()
+  })
+
+  const renderRecipeList = () => {
+    const history = createMemoryHistory({
+      initialEntries: ['/settings/recipes'],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user can open delete dialog from recipe list', async () => {
+    // Given a recipe exists
+    await createRecipe({ name: 'Pasta Dinner' })
+    renderRecipeList()
+    const user = userEvent.setup()
+
+    // When user clicks the delete button for the recipe
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      ).toBeInTheDocument()
+    })
+    await user.click(
+      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+    )
+
+    // Then the delete confirmation dialog appears
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('heading', { name: /delete "pasta dinner"\?/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('user can confirm deletion and recipe is removed from the database', async () => {
+    // Given a recipe exists
+    const recipe = await createRecipe({ name: 'Pasta Dinner' })
+    renderRecipeList()
+    const user = userEvent.setup()
+
+    // When user opens the delete dialog and confirms
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      ).toBeInTheDocument()
+    })
+    await user.click(
+      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    // Then the recipe is removed from the database
+    await waitFor(async () => {
+      const deleted = await db.recipes.get(recipe.id)
+      expect(deleted).toBeUndefined()
+    })
+  })
+
+  it('user can cancel deletion and recipe remains in the database', async () => {
+    // Given a recipe exists
+    const recipe = await createRecipe({ name: 'Pasta Dinner' })
+    renderRecipeList()
+    const user = userEvent.setup()
+
+    // When user opens the delete dialog but cancels
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      ).toBeInTheDocument()
+    })
+    await user.click(
+      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+
+    // Then the recipe still exists in the database
+    await waitFor(async () => {
+      const existing = await db.recipes.get(recipe.id)
+      expect(existing).toBeDefined()
+      expect(existing?.name).toBe('Pasta Dinner')
+    })
+  })
+})
+
 describe('Recipe Detail - Info Tab', () => {
   let queryClient: QueryClient
 
