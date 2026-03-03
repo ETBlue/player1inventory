@@ -1,0 +1,196 @@
+# Delete Dialog Text Consolidation Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Make the delete dialog title and description identical whether the user triggers deletion from a list card or the detail page.
+
+**Architecture:** Pure text changes to three component files. No new hooks, no new components. One stale test selector (`vendors.test.tsx:137`) needs updating because it currently asserts on the old named title `Delete "Costco"?`.
+
+**Tech Stack:** React 19, TypeScript, Vitest + React Testing Library
+
+---
+
+## Task 1: Consolidate delete dialog text
+
+**Files:**
+- Modify: `src/components/VendorCard.tsx`
+- Modify: `src/routes/settings/vendors/$id/index.tsx`
+- Modify: `src/components/RecipeCard.tsx`
+- Modify: `src/routes/settings/vendors.test.tsx`
+
+### Step 1: Update the stale test selector
+
+In `src/routes/settings/vendors.test.tsx`, line 137 currently asserts on the old dialog title:
+
+```tsx
+await screen.findByText(/delete "costco"/i)
+```
+
+The dialog title is changing to `Delete Vendor?`. Replace with an `alertdialog` role assertion (which is more meaningful anyway — it tests that the dialog appeared, not its title text):
+
+```tsx
+expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+```
+
+### Step 2: Run the test to verify it fails
+
+```bash
+cd /Users/etblue/Code/GitHub/player1inventory/.worktrees/feature-delete-button-consolidation
+pnpm test --run src/routes/settings/vendors.test.tsx
+```
+
+Expected: the "user can delete a vendor with confirmation" test FAILS because `findByText(/delete "costco"/i)` no longer resolves (the text hasn't changed yet — but the test now checks `alertdialog` role, which is present).
+
+Actually: the test will PASS at this step since the dialog title is still `Delete "Costco"?` and the new assertion `getByRole('alertdialog')` also passes. That is fine — proceed to the implementation.
+
+### Step 3: Update VendorCard.tsx
+
+Read the file first. Make two changes:
+
+**Change 1 — dialog title** (line ~37): replace named title with type title:
+
+```tsx
+// Before
+dialogTitle={`Delete "${vendor.name}"?`}
+
+// After
+dialogTitle="Delete Vendor?"
+```
+
+**Change 2 — non-zero description** (lines ~40-43): change subject/verb order to match the detail page pattern:
+
+```tsx
+// Before
+(itemCount ?? 0) > 0 ? (
+  <>
+    <strong>{itemCount}</strong> item{itemCount !== 1 ? 's' : ''}{' '}
+    will be unassigned from {vendor.name}.
+  </>
+) : (
+  <>
+    No items are assigned to <strong>{vendor.name}</strong>.
+  </>
+)
+
+// After
+(itemCount ?? 0) > 0 ? (
+  <>
+    <strong>{vendor.name}</strong> will be removed from {itemCount}{' '}
+    item{itemCount !== 1 ? 's' : ''}.
+  </>
+) : (
+  <>
+    No items are assigned to <strong>{vendor.name}</strong>.
+  </>
+)
+```
+
+### Step 4: Update vendors/$id/index.tsx
+
+Read the file first. Remove "This action cannot be undone." from both description branches (lines ~83-95).
+
+```tsx
+// Before (non-zero branch)
+<>
+  <strong>{vendor.name}</strong> will be removed from{' '}
+  {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}. This
+  action cannot be undone.
+</>
+
+// After (non-zero branch)
+<>
+  <strong>{vendor.name}</strong> will be removed from{' '}
+  {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}.
+</>
+```
+
+```tsx
+// Before (zero branch)
+<>
+  No items are assigned to <strong>{vendor.name}</strong>. This
+  action cannot be undone.
+</>
+
+// After (zero branch)
+<>
+  No items are assigned to <strong>{vendor.name}</strong>.
+</>
+```
+
+### Step 5: Update RecipeCard.tsx
+
+Read the file first. Make two changes:
+
+**Change 1 — dialog title** (line ~37): replace named title with type title:
+
+```tsx
+// Before
+dialogTitle={`Delete "${recipe.name}"?`}
+
+// After
+dialogTitle="Delete Recipe?"
+```
+
+**Change 2 — both description branches** (lines ~38-49): update to match the detail page pattern (name-first, "will be deleted"):
+
+```tsx
+// Before (non-zero branch)
+(itemCount ?? 0) > 0 ? (
+  <>
+    This recipe contains{' '}
+    <strong>
+      {itemCount} item{itemCount !== 1 ? 's' : ''}
+    </strong>
+    . Your inventory will not be affected.
+  </>
+) : (
+  <>This recipe has no items.</>
+)
+
+// After (non-zero branch)
+(itemCount ?? 0) > 0 ? (
+  <>
+    <strong>{recipe.name}</strong> will be deleted. It contains{' '}
+    {itemCount} item{itemCount !== 1 ? 's' : ''}.{' '}
+    Your inventory will not be affected.
+  </>
+) : (
+  <>
+    <strong>{recipe.name}</strong> will be deleted. It has no items.
+  </>
+)
+```
+
+### Step 6: Run all tests
+
+```bash
+cd /Users/etblue/Code/GitHub/player1inventory/.worktrees/feature-delete-button-consolidation
+pnpm test --run
+```
+
+Expected: all 557 tests PASS. No test checks the exact dialog title text for VendorCard or RecipeCard, so the title changes are safe. The `vendors.test.tsx` selector was already fixed in Step 1.
+
+### Step 7: Update VendorCard.stories.tsx
+
+Read the file. The `WithNoItems` story's `dialogDescription` is generated by the component itself — no change needed to the story file. But do verify the `Default` and `WithItemCount` stories still correctly demonstrate the component (no story file changes are needed — this is just a check).
+
+### Step 8: Commit
+
+```bash
+cd /Users/etblue/Code/GitHub/player1inventory/.worktrees/feature-delete-button-consolidation
+git add src/components/VendorCard.tsx
+git add src/routes/settings/vendors/'$id'/index.tsx
+git add src/components/RecipeCard.tsx
+git add src/routes/settings/vendors.test.tsx
+git commit -m "$(cat <<'EOF'
+refactor(delete): consolidate delete dialog text across list and detail pages
+
+- VendorCard: title → "Delete Vendor?", description subject order matches detail
+- vendors/$id: remove "This action cannot be undone." from both description branches
+- RecipeCard: title → "Delete Recipe?", description matches detail pattern
+- vendors.test: update dialog assertion from title text → alertdialog role
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+EOF
+)"
+```
