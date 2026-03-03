@@ -43,6 +43,7 @@ interface ItemCardProps {
   activeRecipeIds?: string[]
   activeTagIds?: string[]
   showExpiration?: boolean
+  showTagSummary?: boolean
 }
 
 export function ItemCard({
@@ -66,6 +67,7 @@ export function ItemCard({
   activeRecipeIds,
   activeTagIds,
   showExpiration = true,
+  showTagSummary = true,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -250,7 +252,8 @@ export function ItemCard({
               )
             })()}
           {(tags.length > 0 || vendors.length > 0 || recipes.length > 0) &&
-            !showTags && (
+            !showTags &&
+            showTagSummary && (
               <span className="text-xs text-foreground-muted">
                 {[
                   tags.length > 0

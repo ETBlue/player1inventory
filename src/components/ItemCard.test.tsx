@@ -644,6 +644,24 @@ describe('ItemCard - vendor and recipe display', () => {
       screen.queryByTestId('recipe-badge-Pancakes'),
     ).not.toBeInTheDocument()
   })
+
+  it('hides tag/vendor/recipe count when showTagSummary={false}', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={false}
+        showTagSummary={false}
+        vendors={mockVendors}
+        recipes={mockRecipes}
+      />,
+    )
+
+    expect(screen.queryByText(/tag/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/vendor/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/recipe/i)).not.toBeInTheDocument()
+  })
 })
 
 describe('ItemCard - Cooking mode', () => {
