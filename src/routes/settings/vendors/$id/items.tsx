@@ -209,7 +209,7 @@ function VendorItemsTab() {
   )
 
   // Converge at sort
-  const filteredItems = sortItems(
+  const sortedItems = sortItems(
     search.trim() ? searchedItems : recipeFiltered,
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
@@ -217,6 +217,11 @@ function VendorItemsTab() {
     sortBy,
     sortDirection,
   )
+  // Float assigned items to the top, preserving sort order within each group
+  const filteredItems = [
+    ...sortedItems.filter((item) => isAssigned(item.vendorIds)),
+    ...sortedItems.filter((item) => !isAssigned(item.vendorIds)),
+  ]
 
   return (
     <div className="max-w-2xl">

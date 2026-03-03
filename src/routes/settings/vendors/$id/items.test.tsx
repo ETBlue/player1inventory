@@ -386,6 +386,24 @@ describe('Vendor Detail - Items Tab', () => {
     })
   })
 
+  it('user can see assigned items listed before unassigned items regardless of sort', async () => {
+    // Given: a vendor with two items — Milk is assigned (sorts after Apple alphabetically)
+    const vendor = await createVendor('Supermart')
+    await makeItem('Milk', [vendor.id]) // assigned — M comes after A
+    await makeItem('Apple') // unassigned — A comes before M
+
+    // When: user views the items tab (default sort: name asc)
+    renderItemsTab(vendor.id)
+
+    // Then: Milk (assigned) appears before Apple (unassigned)
+    await waitFor(() => {
+      const links = screen.getAllByRole('link', { name: /milk|apple/i })
+      const names = links.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/milk/i)
+      expect(names[1]).toMatch(/apple/i)
+    })
+  })
+
   it('user can sort items by name', async () => {
     // Given a vendor and items created out of alphabetical order
     const vendor = await createVendor('Costco')
