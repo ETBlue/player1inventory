@@ -283,6 +283,11 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 **Tag/recipe filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Applied in the filter branch only. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
 
+**`ItemCard` in shopping mode:**
+- `showTags={false}` hides tags, vendors, and recipe badges
+- `showExpiration={false}` hides expiration (irrelevant at purchase time)
+- `showTagSummary={false}` hides the "N tags · N vendors · N recipes" count summary
+
 **Pinned items:** Users can reduce a cart item's quantity to 0 to "pin" it. Pinned items:
 - Remain in the cart section (still checked) but don't contribute to the purchase count
 - Do NOT update inventory or create logs on checkout
@@ -308,7 +313,9 @@ Cooking page at `/cooking` for consuming ingredients via recipes.
 **Amount adjustment:** Each item card shows ±buttons to adjust the amount to consume. Step size is `item.consumeAmount`. Amount can be reduced to 0.
 
 **`ItemCard` in cooking mode:**
-- `mode="cooking"` hides tags, vendors, and recipe badges (same as `mode="shopping"`)
+- `showTags={false}` hides tags, vendors, and recipe badges
+- `showTagSummary={false}` hides the "N tags · N vendors · N recipes" count summary
+- `showExpiration` defaults to `true` — expiration is shown (relevant for ingredient freshness)
 - `isAmountControllable` is true — ±buttons visible when item is checked
 - `minControlAmount` defaults to `0` globally (changed from `1`) — minus disabled at 0, not 1
 

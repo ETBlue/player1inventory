@@ -212,6 +212,9 @@ function Shopping() {
           tags={itemTags}
           tagTypes={tagTypes}
           mode="shopping"
+          showTags={false}
+          showExpiration={false}
+          showTagSummary={false}
           isChecked={!!ci}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}

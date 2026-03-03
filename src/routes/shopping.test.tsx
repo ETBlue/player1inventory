@@ -1051,4 +1051,40 @@ describe('Shopping page tag filtering', () => {
       expect(screen.queryByText('Bread')).not.toBeInTheDocument()
     })
   })
+  it('user does not see tag badges or expiration on shopping page', async () => {
+    // Given an item with a tag and a future due date added to the active cart
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tag = await createTag({ typeId: tagType.id, name: 'Dairy' })
+
+    const futureDate = new Date()
+    futureDate.setFullYear(futureDate.getFullYear() + 1)
+
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [tag.id],
+      dueDate: futureDate,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+
+    // When rendering the shopping page
+    renderShoppingPage()
+
+    // Then item name is visible
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument()
+    })
+
+    // Then the tag badge is NOT present
+    expect(screen.queryByText('Dairy')).not.toBeInTheDocument()
+
+    // Then no expiration text is present
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
+  })
 })

@@ -633,7 +633,7 @@ describe('ItemCard - vendor and recipe display', () => {
         }}
         tags={[]}
         tagTypes={[]}
-        showTags={true}
+        showTags={false}
         mode="shopping"
         vendors={mockVendors}
         recipes={mockRecipes}
@@ -643,6 +643,24 @@ describe('ItemCard - vendor and recipe display', () => {
     expect(
       screen.queryByTestId('recipe-badge-Pancakes'),
     ).not.toBeInTheDocument()
+  })
+
+  it('hides tag/vendor/recipe count when showTagSummary={false}', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={false}
+        showTagSummary={false}
+        vendors={mockVendors}
+        recipes={mockRecipes}
+      />,
+    )
+
+    expect(screen.queryByText(/tag/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/vendor/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/recipe/i)).not.toBeInTheDocument()
   })
 })
 
@@ -678,6 +696,7 @@ describe('ItemCard - Cooking mode', () => {
         onCheckboxToggle={vi.fn()}
         controlAmount={2}
         onAmountChange={vi.fn()}
+        showTags={false}
       />,
     )
     expect(screen.queryByTestId('tag-badge-Baking')).not.toBeInTheDocument()
@@ -756,6 +775,79 @@ describe('ItemCard - Cooking mode', () => {
       name: /Decrease quantity of Flour/i,
     })
     expect(minusBtn).not.toBeDisabled()
+  })
+})
+
+describe('ItemCard - showTags and showExpiration props', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Milk',
+    tagIds: ['tag-1'],
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+  const mockTag: Tag = { id: 'tag-1', name: 'Dairy', typeId: 'tt-1' }
+  const mockTagType: TagType = {
+    id: 'tt-1',
+    name: 'Category',
+    color: TagColor.teal,
+  }
+
+  it('shows tags in shopping mode when showTags is not set (mode no longer gates tags)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[mockTag]}
+        tagTypes={[mockTagType]}
+        mode="shopping"
+      />,
+    )
+    expect(screen.getByTestId('tag-badge-Dairy')).toBeInTheDocument()
+  })
+
+  it('hides tags when showTags={false} regardless of mode', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[mockTag]}
+        tagTypes={[mockTagType]}
+        showTags={false}
+      />,
+    )
+    expect(screen.queryByTestId('tag-badge-Dairy')).not.toBeInTheDocument()
+  })
+
+  it('hides expiration when showExpiration={false}', async () => {
+    const itemWithExpiry: Item = {
+      ...mockItem,
+      dueDate: new Date(Date.now() + 10 * 86400000),
+    }
+    await renderWithRouter(
+      <ItemCard
+        item={itemWithExpiry}
+        tags={[]}
+        tagTypes={[]}
+        showExpiration={false}
+      />,
+    )
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
+  })
+
+  it('shows expiration by default (showExpiration defaults to true)', async () => {
+    const itemWithExpiry: Item = {
+      ...mockItem,
+      dueDate: new Date(Date.now() + 10 * 86400000),
+    }
+    await renderWithRouter(
+      <ItemCard item={itemWithExpiry} tags={[]} tagTypes={[]} />,
+    )
+    expect(screen.getByText(/Expires/i)).toBeInTheDocument()
   })
 })
 
