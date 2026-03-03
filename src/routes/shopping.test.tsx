@@ -1081,6 +1081,14 @@ describe('Shopping page tag filtering', () => {
     await waitFor(() => {
       expect(screen.getByText(/1 inactive item/i)).toBeInTheDocument()
     })
+
+    // And the active item appears before the inactive item in DOM order
+    // (grouping puts inactive last regardless of alphabetical order — 'Aaaaa' would sort first by name)
+    const headings = screen.getAllByRole('heading', { level: 3 })
+    const names = headings.map((el) => el.textContent)
+    expect(names.indexOf('Active Milk')).toBeLessThan(
+      names.indexOf('Aaaaa Inactive Item'),
+    )
   })
 
   it('user does not see tag badges or expiration on shopping page', async () => {
