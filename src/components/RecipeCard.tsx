@@ -34,18 +34,18 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
           buttonSize="icon"
           buttonClassName="h-8 w-8"
           buttonAriaLabel={`Delete ${recipe.name}`}
-          dialogTitle={`Delete "${recipe.name}"?`}
+          dialogTitle="Delete Recipe?"
           dialogDescription={
             (itemCount ?? 0) > 0 ? (
               <>
-                This recipe contains{' '}
-                <strong>
-                  {itemCount} item{itemCount !== 1 ? 's' : ''}
-                </strong>
-                . Your inventory will not be affected.
+                <strong>{recipe.name}</strong> will be deleted. It contains{' '}
+                {itemCount} item{itemCount !== 1 ? 's' : ''}. Your inventory
+                will not be affected.
               </>
             ) : (
-              <>This recipe has no items.</>
+              <>
+                <strong>{recipe.name}</strong> will be deleted. It has no items.
+              </>
             )
           }
           onDelete={onDelete}

@@ -34,12 +34,12 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
           buttonSize="icon"
           buttonClassName="h-8 w-8"
           buttonAriaLabel={`Delete ${vendor.name}`}
-          dialogTitle={`Delete "${vendor.name}"?`}
+          dialogTitle="Delete Vendor?"
           dialogDescription={
             (itemCount ?? 0) > 0 ? (
               <>
-                <strong>{itemCount}</strong> item{itemCount !== 1 ? 's' : ''}{' '}
-                will be unassigned from {vendor.name}.
+                <strong>{vendor.name}</strong> will be removed from {itemCount}{' '}
+                item{itemCount !== 1 ? 's' : ''}.
               </>
             ) : (
               <>

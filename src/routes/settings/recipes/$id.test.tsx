@@ -55,7 +55,7 @@ describe('Recipe List - Delete Dialog', () => {
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     })
     expect(
-      screen.getByRole('heading', { name: /delete "pasta dinner"\?/i }),
+      screen.getByRole('heading', { name: /delete recipe\?/i }),
     ).toBeInTheDocument()
   })
 
