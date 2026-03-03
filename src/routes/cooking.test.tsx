@@ -8,7 +8,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, createRecipe } from '@/db/operations'
+import {
+  createItem,
+  createRecipe,
+  createTag,
+  createTagType,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Use (Cooking) Page', () => {
@@ -18,6 +23,8 @@ describe('Use (Cooking) Page', () => {
     await db.items.clear()
     await db.recipes.clear()
     await db.inventoryLogs.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -437,5 +444,49 @@ describe('Use (Cooking) Page', () => {
       const updatedBacon = await db.items.get(bacon.id)
       expect(updatedBacon?.packedQuantity).toBe(3)
     })
+  })
+  it('user sees expiration but not tag badges when cooking a recipe', async () => {
+    // Given an item with a tag and a future due date
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const tag = await createTag({ typeId: tagType.id, name: 'Dairy' })
+
+    const futureDate = new Date()
+    futureDate.setFullYear(futureDate.getFullYear() + 1)
+
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [tag.id],
+      dueDate: futureDate,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    await createRecipe({
+      name: 'Smoothie',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Smoothie')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Smoothie'))
+
+    // Then the item name is visible
+    await waitFor(() => {
+      expect(screen.getByText('Milk')).toBeInTheDocument()
+    })
+
+    // Then the tag badge is NOT visible (tags hidden in cooking mode)
+    expect(screen.queryByText('Dairy')).not.toBeInTheDocument()
+
+    // Then expiration text IS visible (expiration shown in cooking mode)
+    expect(screen.getByText(/Expires/i)).toBeInTheDocument()
   })
 })

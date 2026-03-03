@@ -273,7 +273,7 @@ function CookingPage() {
                   </CardContent>
                 </Card>
                 {isChecked && recipeAmounts && (
-                  <div className="space-y-px pl-7">
+                  <div className="space-y-px">
                     {recipe.items.length === 0 && (
                       <p className="text-sm text-foreground-muted px-4">
                         No items in this recipe.
@@ -299,6 +299,7 @@ function CookingPage() {
                           tags={itemTags}
                           tagTypes={tagTypes}
                           mode="cooking"
+                          showTags={false}
                           isChecked={isItemChecked}
                           onCheckboxToggle={() =>
                             handleToggleItem(recipe.id, ri.itemId)
