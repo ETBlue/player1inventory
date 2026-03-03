@@ -300,6 +300,7 @@ function CookingPage() {
                           tagTypes={tagTypes}
                           mode="cooking"
                           showTags={false}
+                          showTagSummary={false}
                           isChecked={isItemChecked}
                           onCheckboxToggle={() =>
                             handleToggleItem(recipe.id, ri.itemId)
