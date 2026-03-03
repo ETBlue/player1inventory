@@ -575,7 +575,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
     // Then delete button is visible
     const deleteButton = await screen.findByRole('button', {
-      name: /delete tag/i,
+      name: /^delete$/i,
     })
     expect(deleteButton).toBeInTheDocument()
 
@@ -586,9 +586,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
     // Then delete dialog appears
     await waitFor(() => {
       expect(screen.getByText('Delete Tag?')).toBeInTheDocument()
-      expect(
-        screen.getByText(/Are you sure you want to delete/i),
-      ).toBeInTheDocument()
+      expect(screen.getByText(/No items are using/i)).toBeInTheDocument()
     })
   })
 
@@ -613,14 +611,14 @@ describe('Tag Detail Page - Delete Dialog', () => {
     renderWithRouter(`/settings/tags/${tag.id}`)
     const user = userEvent.setup()
     const deleteButton = await screen.findByRole('button', {
-      name: /delete tag/i,
+      name: /^delete$/i,
     })
     await user.click(deleteButton)
 
     // Then dialog shows affected item count
     await waitFor(() => {
       expect(
-        screen.getByText(/This tag will be removed from 2 items/i),
+        screen.getByText(/will be removed from 2 items/i),
       ).toBeInTheDocument()
     })
   })
@@ -634,7 +632,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
     renderWithRouter(`/settings/tags/${tag.id}`)
     const user = userEvent.setup()
     const deleteButton = await screen.findByRole('button', {
-      name: /delete tag/i,
+      name: /^delete$/i,
     })
     await user.click(deleteButton)
 
@@ -664,7 +662,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
     renderWithRouter(`/settings/tags/${tag.id}`)
     const user = userEvent.setup()
     const deleteButton = await screen.findByRole('button', {
-      name: /delete tag/i,
+      name: /^delete$/i,
     })
     await user.click(deleteButton)
 

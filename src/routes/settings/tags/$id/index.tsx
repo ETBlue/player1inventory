@@ -133,16 +133,16 @@ function TagInfoTab() {
         dialogTitle="Delete Tag?"
         buttonClassName="w-full"
         dialogDescription={
-          <>
-            Are you sure you want to delete <strong>{tag.name}</strong>?
-            {affectedItemCount > 0 && (
-              <>
-                {' '}
-                This tag will be removed from {affectedItemCount} item
-                {affectedItemCount !== 1 ? 's' : ''}.
-              </>
-            )}
-          </>
+          affectedItemCount > 0 ? (
+            <>
+              <strong>{tag.name}</strong> will be removed from{' '}
+              {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}.
+            </>
+          ) : (
+            <>
+              No items are using <strong>{tag.name}</strong>.
+            </>
+          )
         }
         onDelete={handleDelete}
       />

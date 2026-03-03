@@ -19,6 +19,7 @@ export interface DeleteButtonProps {
   buttonVariant?: ButtonProps['variant']
   buttonSize?: ButtonProps['size']
   buttonClassName?: string
+  buttonAriaLabel?: string
   dialogTitle?: string
   dialogDescription?: ReactNode
   confirmLabel?: string
@@ -30,6 +31,7 @@ export function DeleteButton({
   buttonVariant = 'destructive-ghost',
   buttonSize,
   buttonClassName,
+  buttonAriaLabel,
   dialogTitle = 'Delete?',
   dialogDescription = 'Are you sure?',
   confirmLabel = 'Delete',
@@ -53,6 +55,7 @@ export function DeleteButton({
         variant={buttonVariant}
         size={buttonSize}
         className={buttonClassName}
+        aria-label={buttonAriaLabel}
         onClick={() => setOpen(true)}
       >
         {trigger}

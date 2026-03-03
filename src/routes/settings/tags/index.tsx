@@ -27,7 +27,6 @@ import { TagBadge } from '@/components/TagBadge'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
@@ -37,7 +36,7 @@ import {
   useCreateTagType,
   useDeleteTag,
   useDeleteTagType,
-  useTagCountByType,
+  useItemCountByTag,
   useTags,
   useTagTypes,
   useUpdateTag,
@@ -59,6 +58,8 @@ function DraggableTagBadge({
   tagType: TagType
   onDelete: () => void
 }) {
+  const { data: itemCount = 0 } = useItemCountByTag(tag.id)
+
   const {
     attributes,
     listeners,
@@ -105,10 +106,17 @@ function DraggableTagBadge({
           buttonClassName="h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px"
           dialogTitle="Delete Tag?"
           dialogDescription={
-            <>
-              <strong>{tag.name}</strong> will be removed from all assigned
-              items.
-            </>
+            itemCount > 0 ? (
+              <>
+                <strong>{tag.name}</strong> will be removed from {itemCount}{' '}
+                item
+                {itemCount !== 1 ? 's' : ''}.
+              </>
+            ) : (
+              <>
+                No items are using <strong>{tag.name}</strong>.
+              </>
+            )
           }
           onDelete={onDelete}
         />
@@ -120,6 +128,7 @@ function DraggableTagBadge({
 function DroppableTagTypeCard({
   tagType,
   sortedTypeTags,
+  tagCount,
   onEdit,
   onDelete,
   onAddTag,
@@ -127,6 +136,7 @@ function DroppableTagTypeCard({
 }: {
   tagType: TagType
   sortedTypeTags: Tag[]
+  tagCount: number
   onEdit: () => void
   onDelete: () => void
   onAddTag: () => void
@@ -155,14 +165,28 @@ function DroppableTagTypeCard({
           >
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button
-            variant="destructive-ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={onDelete}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <DeleteButton
+            trigger={<Trash2 className="h-4 w-4" />}
+            buttonVariant="destructive-ghost"
+            buttonSize="icon"
+            buttonClassName="h-8 w-8"
+            buttonAriaLabel={`Delete ${tagType.name}`}
+            dialogTitle={`Delete "${tagType.name}"?`}
+            dialogDescription={
+              tagCount > 0 ? (
+                <>
+                  This will delete{' '}
+                  <strong>
+                    {tagCount} tag{tagCount !== 1 ? 's' : ''}
+                  </strong>
+                  , removing them from all assigned items.
+                </>
+              ) : (
+                <>This type has no tags.</>
+              )
+            }
+            onDelete={onDelete}
+          />
         </div>
       </CardHeader>
       <CardContent ref={setNodeRef} className="pl-3">
@@ -206,12 +230,8 @@ function TagSettings() {
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [editTagType, setEditTagType] = useState<TagType | null>(null)
-  const [tagTypeToDelete, setTagTypeToDelete] = useState<TagType | null>(null)
   const [editTagTypeName, setEditTagTypeName] = useState('')
   const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
-
-  const tagTypeDeleteId = tagTypeToDelete?.id ?? ''
-  const { data: tagTypeTagCount = 0 } = useTagCountByType(tagTypeDeleteId)
 
   // Drag and drop state
   const [activeTag, setActiveTag] = useState<{
@@ -268,13 +288,6 @@ function TagSettings() {
         updates: { name: editTagTypeName.trim(), color: editTagTypeColor },
       })
       setEditTagType(null)
-    }
-  }
-
-  const handleDeleteTagType = () => {
-    if (tagTypeToDelete) {
-      deleteTagType.mutate(tagTypeToDelete.id)
-      setTagTypeToDelete(null)
     }
   }
 
@@ -406,12 +419,13 @@ function TagSettings() {
                 key={tagType.id}
                 tagType={tagType}
                 sortedTypeTags={sortedTypeTags}
+                tagCount={typeTags.length}
                 onEdit={() => {
                   setEditTagType(tagType)
                   setEditTagTypeName(tagType.name)
                   setEditTagTypeColor(tagTypeColor)
                 }}
-                onDelete={() => setTagTypeToDelete(tagType)}
+                onDelete={() => deleteTagType.mutate(tagType.id)}
                 onAddTag={() => setAddTagDialog(tagType.id)}
                 onDeleteTag={handleDeleteTag}
               />
@@ -437,17 +451,6 @@ function TagSettings() {
         onColorChange={setEditTagTypeColor}
         onSave={handleEditTagType}
         onClose={() => setEditTagType(null)}
-      />
-
-      {/* Confirm Delete TagType Dialog */}
-      <ConfirmDialog
-        open={!!tagTypeToDelete}
-        onOpenChange={(open) => !open && setTagTypeToDelete(null)}
-        title={`Delete "${tagTypeToDelete?.name}"?`}
-        description={`This will delete "${tagTypeToDelete?.name}" and its ${tagTypeTagCount} tag${tagTypeTagCount === 1 ? '' : 's'}, removing them from all assigned items.`}
-        confirmLabel="Delete"
-        onConfirm={handleDeleteTagType}
-        destructive
       />
 
       {/* Drag Overlay - shows preview of tag being dragged */}
