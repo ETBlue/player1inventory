@@ -189,7 +189,7 @@ function TagItemsTab() {
   )
 
   // Converge at sort
-  const filteredItems = sortItems(
+  const sortedItems = sortItems(
     search.trim() ? searchedItems : recipeFiltered, // trim guards whitespace-only input
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
@@ -197,6 +197,11 @@ function TagItemsTab() {
     sortBy,
     sortDirection,
   )
+  // Float assigned items to the top, preserving sort order within each group
+  const filteredItems = [
+    ...sortedItems.filter((item) => isAssigned(item.tagIds)),
+    ...sortedItems.filter((item) => !isAssigned(item.tagIds)),
+  ]
 
   const handleCreateFromSearch = async () => {
     const trimmed = search.trim()

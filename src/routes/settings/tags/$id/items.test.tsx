@@ -528,6 +528,28 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
+  it('user can see assigned items listed before unassigned items regardless of sort', async () => {
+    // Given: a tag with two items — Milk is assigned (sorts after Apple alphabetically)
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    await makeItem('Milk', [tag.id]) // assigned — M comes after A
+    await makeItem('Apple') // unassigned — A comes before M
+
+    // When: user views the items tab (default sort: name asc)
+    renderItemsTab(tag.id)
+
+    // Then: Milk (assigned) appears before Apple (unassigned)
+    await waitFor(() => {
+      const links = screen.getAllByRole('link', { name: /milk|apple/i })
+      const names = links.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/milk/i)
+      expect(names[1]).toMatch(/apple/i)
+    })
+  })
+
   it('user can filter items using the tag filter', async () => {
     // Given a primary tag and a second tag type used as a filter
     const primaryTagType = await createTagType({
