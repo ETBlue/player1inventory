@@ -128,6 +128,7 @@ function RecipeItemsTab() {
     sortDirection,
   )
 
+  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
   const filteredItems = [
     ...sortedAssigned.filter((item) => !isInactive(item)),
     ...sortedAssigned.filter((item) => isInactive(item)),
