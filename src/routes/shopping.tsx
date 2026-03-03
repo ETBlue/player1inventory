@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, X } from 'lucide-react'
 import { useState } from 'react'
@@ -24,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getLastPurchaseDate } from '@/db/operations'
 import {
   useAbandonCart,
   useActiveCart,
@@ -40,11 +38,11 @@ import {
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
+import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
 
@@ -100,49 +98,11 @@ function Shopping() {
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
 
-  const { data: allQuantities } = useQuery({
-    queryKey: ['items', 'quantities'],
-    queryFn: async () => {
-      const map = new Map<string, number>()
-      for (const item of items) {
-        map.set(item.id, getCurrentQuantity(item))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  const { data: allExpiryDates } = useQuery({
-    queryKey: ['items', 'expiryDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | undefined>()
-      for (const item of items) {
-        const lastPurchase = await getLastPurchaseDate(item.id)
-        const estimatedDate =
-          item.estimatedDueDays && lastPurchase
-            ? new Date(
-                lastPurchase.getTime() +
-                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
-              )
-            : item.dueDate
-        map.set(item.id, estimatedDate)
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  const { data: allPurchaseDates } = useQuery({
-    queryKey: ['items', 'purchaseDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | null>()
-      for (const item of items) {
-        map.set(item.id, await getLastPurchaseDate(item.id))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
+  const {
+    quantities: allQuantities,
+    expiryDates: allExpiryDates,
+    purchaseDates: allPurchaseDates,
+  } = useItemSortData(items)
 
   // Vendor pre-scope: applies to filter branch only
   const vendorScopedItems = selectedVendorId
