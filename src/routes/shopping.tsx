@@ -265,12 +265,6 @@ function Shopping() {
         <>
           <div className="space-y-px bg-background-surface">
             {activeCartItems.map((item) => renderItemCard(item))}
-            {inactiveCartItems.length > 0 && (
-              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-                {inactiveCartItems.length} inactive item
-                {inactiveCartItems.length !== 1 ? 's' : ''}
-              </div>
-            )}
             {inactiveCartItems.map((item) => renderItemCard(item))}
           </div>
           <div className="h-px bg-accessory-default" />
