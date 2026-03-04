@@ -138,7 +138,7 @@ export function ItemFilters({
                   onSelect={(e) => e.preventDefault()}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span>{vendor.name}</span>
+                    <span className="capitalize">{vendor.name}</span>
                     <span className="text-foreground-muted text-xs ml-2">
                       ({count})
                     </span>
@@ -186,7 +186,7 @@ export function ItemFilters({
                   onSelect={(e) => e.preventDefault()}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span>{recipe.name}</span>
+                    <span className="capitalize">{recipe.name}</span>
                     <span className="text-foreground-muted text-xs ml-2">
                       ({count})
                     </span>

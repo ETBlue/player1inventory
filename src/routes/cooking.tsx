@@ -256,7 +256,7 @@ function CookingPage() {
                       />
                       <button
                         type="button"
-                        className="flex-1 text-left font-medium hover:underline"
+                        className="flex-1 text-left font-medium hover:underline capitalize"
                         onClick={() =>
                           navigate({
                             to: '/settings/recipes/$id',
