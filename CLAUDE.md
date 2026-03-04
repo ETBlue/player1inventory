@@ -416,6 +416,16 @@ These variants are used in tag type filter triggers (`TagTypeDropdown`) to displ
 - **Shadows**: sm, md, lg - defined in shadows.css
 - **Borders**: default (1px), thick (2px) - defined in borders.css
 
+## Name Display Convention
+
+Entity names are displayed in title case using Tailwind's `capitalize` class (`text-transform: capitalize`). This is purely visual — stored values are unchanged, so search and comparison logic is unaffected.
+
+**Applies to:** item names, tag names, recipe names — in list cards, detail page headers, and name input fields.
+
+**Vendor names are excluded** — vendors may use intentional casing (e.g. "iHerb", "7-Eleven"). Vendor displays render names as stored.
+
+**Already covered by Badge base class:** tag badges, vendor badges, recipe badges inside `ItemCard`.
+
 ## Theme System
 
 Three-state theme system (light/dark/system) with automatic OS preference detection and manual override.
