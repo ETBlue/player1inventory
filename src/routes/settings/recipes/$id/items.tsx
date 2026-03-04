@@ -129,12 +129,15 @@ function RecipeItemsTab() {
   )
 
   // Four-bucket ordering: assigned before unassigned, active before inactive within each group
-  const filteredItems = [
+  const sortedAssignedBucket = [
     ...sortedAssigned.filter((item) => !isInactive(item)),
     ...sortedAssigned.filter((item) => isInactive(item)),
+  ]
+  const sortedUnassignedBucket = [
     ...sortedUnassigned.filter((item) => !isInactive(item)),
     ...sortedUnassigned.filter((item) => isInactive(item)),
   ]
+  const filteredItems = [...sortedAssignedBucket, ...sortedUnassignedBucket]
 
   const activeTagIds = useMemo(
     () => Object.values(filterState).flat(),
@@ -270,44 +273,56 @@ function RecipeItemsTab() {
       )}
 
       <div className="space-y-px">
-        {filteredItems.map((item) => {
-          const assigned = isAssigned(item.id)
-          const itemTags = (item.tagIds ?? [])
-            .map((tid) => tagMap[tid])
-            .filter((t): t is NonNullable<typeof t> => t != null)
+        {[
+          { key: 'assigned', items: sortedAssignedBucket },
+          { key: 'unassigned', items: sortedUnassignedBucket },
+        ].map(({ key, items }) => (
+          <div key={key} className="contents">
+            {key === 'unassigned' &&
+              sortedAssignedBucket.length > 0 &&
+              sortedUnassignedBucket.length > 0 && (
+                <div className="h-px bg-accessory-default" />
+              )}
+            {items.map((item) => {
+              const assigned = isAssigned(item.id)
+              const itemTags = (item.tagIds ?? [])
+                .map((tid) => tagMap[tid])
+                .filter((t): t is NonNullable<typeof t> => t != null)
 
-          return (
-            <ItemCard
-              key={item.id}
-              mode="recipe-assignment"
-              item={item}
-              tags={itemTags}
-              tagTypes={tagTypes}
-              showTags={isTagsVisible}
-              showExpiration={false}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              onTagClick={handleTagClick}
-              onVendorClick={toggleVendorId}
-              onRecipeClick={toggleRecipeId}
-              activeTagIds={activeTagIds}
-              activeVendorIds={selectedVendorIds}
-              activeRecipeIds={selectedRecipeIds}
-              isChecked={assigned}
-              onCheckboxToggle={() =>
-                handleToggle(item.id, item.consumeAmount ?? 1)
-              }
-              {...(assigned
-                ? { controlAmount: getDefaultAmount(item.id) }
-                : {})}
-              minControlAmount={0}
-              onAmountChange={(delta) =>
-                handleAdjustDefaultAmount(item.id, delta)
-              }
-              disabled={savingItemIds.has(item.id)}
-            />
-          )
-        })}
+              return (
+                <ItemCard
+                  key={item.id}
+                  mode="recipe-assignment"
+                  item={item}
+                  tags={itemTags}
+                  tagTypes={tagTypes}
+                  showTags={isTagsVisible}
+                  showExpiration={false}
+                  vendors={vendorMap.get(item.id) ?? []}
+                  recipes={recipeMap.get(item.id) ?? []}
+                  onTagClick={handleTagClick}
+                  onVendorClick={toggleVendorId}
+                  onRecipeClick={toggleRecipeId}
+                  activeTagIds={activeTagIds}
+                  activeVendorIds={selectedVendorIds}
+                  activeRecipeIds={selectedRecipeIds}
+                  isChecked={assigned}
+                  onCheckboxToggle={() =>
+                    handleToggle(item.id, item.consumeAmount ?? 1)
+                  }
+                  {...(assigned
+                    ? { controlAmount: getDefaultAmount(item.id) }
+                    : {})}
+                  minControlAmount={0}
+                  onAmountChange={(delta) =>
+                    handleAdjustDefaultAmount(item.id, delta)
+                  }
+                  disabled={savingItemIds.has(item.id)}
+                />
+              )
+            })}
+          </div>
+        ))}
         {filteredItems.length === 0 &&
           (Object.values(filterState).some((ids) => ids.length > 0) ||
             selectedVendorIds.length > 0 ||

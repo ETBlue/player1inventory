@@ -178,14 +178,16 @@ function VendorItemsTab() {
     sortBy,
     sortDirection,
   )
-  // Float assigned items to the top; within each group, inactive items sink to the bottom
-  const filteredItems = [
+  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
+  const assignedItems = [
     ...sortedItems.filter(
       (item) => isAssigned(item.vendorIds) && !isInactive(item),
     ),
     ...sortedItems.filter(
       (item) => isAssigned(item.vendorIds) && isInactive(item),
     ),
+  ]
+  const unassignedItems = [
     ...sortedItems.filter(
       (item) => !isAssigned(item.vendorIds) && !isInactive(item),
     ),
@@ -193,6 +195,7 @@ function VendorItemsTab() {
       (item) => !isAssigned(item.vendorIds) && isInactive(item),
     ),
   ]
+  const filteredItems = [...assignedItems, ...unassignedItems]
 
   return (
     <div className="max-w-2xl">
@@ -217,34 +220,46 @@ function VendorItemsTab() {
       )}
 
       <div className="space-y-px">
-        {filteredItems.map((item) => {
-          const itemTags = (item.tagIds ?? [])
-            .map((tid) => tagMap[tid])
-            .filter((t): t is NonNullable<typeof t> => t != null)
+        {[
+          { key: 'assigned', items: assignedItems },
+          { key: 'unassigned', items: unassignedItems },
+        ].map(({ key, items }) => (
+          <div key={key} className="contents">
+            {key === 'unassigned' &&
+              assignedItems.length > 0 &&
+              unassignedItems.length > 0 && (
+                <div className="h-px bg-accessory-default" />
+              )}
+            {items.map((item) => {
+              const itemTags = (item.tagIds ?? [])
+                .map((tid) => tagMap[tid])
+                .filter((t): t is NonNullable<typeof t> => t != null)
 
-          return (
-            <ItemCard
-              key={item.id}
-              mode="tag-assignment"
-              item={item}
-              tags={itemTags}
-              tagTypes={tagTypes}
-              showTags={isTagsVisible}
-              showExpiration={false}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              onTagClick={handleTagClick}
-              onVendorClick={toggleVendorId}
-              onRecipeClick={toggleRecipeId}
-              activeTagIds={activeTagIds}
-              activeVendorIds={selectedVendorIds}
-              activeRecipeIds={selectedRecipeIds}
-              isChecked={isAssigned(item.vendorIds)}
-              onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
-              disabled={savingItemIds.has(item.id)}
-            />
-          )
-        })}
+              return (
+                <ItemCard
+                  key={item.id}
+                  mode="tag-assignment"
+                  item={item}
+                  tags={itemTags}
+                  tagTypes={tagTypes}
+                  showTags={isTagsVisible}
+                  showExpiration={false}
+                  vendors={vendorMap.get(item.id) ?? []}
+                  recipes={recipeMap.get(item.id) ?? []}
+                  onTagClick={handleTagClick}
+                  onVendorClick={toggleVendorId}
+                  onRecipeClick={toggleRecipeId}
+                  activeTagIds={activeTagIds}
+                  activeVendorIds={selectedVendorIds}
+                  activeRecipeIds={selectedRecipeIds}
+                  isChecked={isAssigned(item.vendorIds)}
+                  onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
+                  disabled={savingItemIds.has(item.id)}
+                />
+              )
+            })}
+          </div>
+        ))}
         {filteredItems.length === 0 &&
           (Object.values(filterState).some((ids) => ids.length > 0) ||
             selectedVendorIds.length > 0 ||
