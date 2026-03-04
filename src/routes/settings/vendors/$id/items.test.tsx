@@ -386,6 +386,55 @@ describe('Vendor Detail - Items Tab', () => {
     })
   })
 
+  it('user can see assigned items listed before unassigned items regardless of sort', async () => {
+    // Given: a vendor with two items — Milk is assigned (sorts after Apple alphabetically)
+    const vendor = await createVendor('Supermart')
+    await makeItem('Milk', [vendor.id]) // assigned — M comes after A
+    await makeItem('Apple') // unassigned — A comes before M
+
+    // When: user views the items tab (default sort: name asc)
+    renderItemsTab(vendor.id)
+
+    // Then: Milk (assigned) appears before Apple (unassigned)
+    await waitFor(() => {
+      const links = screen.getAllByRole('link', { name: /milk|apple/i })
+      const names = links.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/milk/i)
+      expect(names[1]).toMatch(/apple/i)
+    })
+  })
+
+  it('user sees active assigned items before inactive assigned items', async () => {
+    // Given: a vendor with two assigned items — Zucchini (active, Z=last alphabetically)
+    // and Apple (inactive, A=first alphabetically)
+    const vendor = await createVendor('Supermart')
+    // Active assigned: Zucchini (would sort last alphabetically)
+    await makeItem('Zucchini', [vendor.id])
+    // Inactive assigned: Apple (would sort first alphabetically, but inactive)
+    await createItem({
+      name: 'Apple',
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [vendor.id],
+    })
+
+    // When: user views the items tab (default sort: name asc)
+    renderItemsTab(vendor.id)
+
+    // Then: Zucchini (active assigned) appears before Apple (inactive assigned)
+    await waitFor(() => {
+      const links = screen.getAllByRole('link', { name: /zucchini|apple/i })
+      const names = links.map((el) => el.textContent?.trim() ?? '')
+      expect(names[0]).toMatch(/zucchini/i)
+      expect(names[1]).toMatch(/apple/i)
+    })
+  })
+
   it('user can sort items by name', async () => {
     // Given a vendor and items created out of alphabetical order
     const vendor = await createVendor('Costco')

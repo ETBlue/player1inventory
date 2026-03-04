@@ -78,6 +78,7 @@ Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` a
 
 **Data Utilities:**
 - `useVendorItemCounts()` (`src/hooks/useVendorItemCounts.ts`) - Returns `Map<vendorId, number>` of item counts per vendor, memoized with useMemo for performance
+- `useItemSortData(items)` (`src/hooks/useItemSortData.ts`) - Returns `{ quantities, expiryDates, purchaseDates }` for sort operations on item lists. `quantities` is a `useMemo` (synchronous, no race condition). `expiryDates` and `purchaseDates` are TanStack Query queries under the `['sort', ...]` key namespace, using items-derived queryKeys so cache entries invalidate automatically when items update. Used by all five item list pages (pantry, shopping, tag/vendor/recipe items tabs). Checkout explicitly invalidates `['sort', 'purchaseDates']` after purchase.
 
 ## Features
 
@@ -308,7 +309,7 @@ Cooking page at `/cooking` for consuming ingredients via recipes.
 
 **Recipe selection:** Checkboxes to select which recipes to cook. When checked, the recipe expands to show its item list as flat `ItemCard` components below the recipe header card.
 
-**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. All items start checked. Users can uncheck optional ingredients to exclude them from consumption. Unchecked items are excluded from `totalByItemId` and are not consumed when Done is confirmed.
+**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked; items with `defaultAmount === 0` start unchecked (treated as disabled/optional by default). Users can toggle any item. Unchecked items are excluded from `totalByItemId` and are not consumed when Done is confirmed.
 
 **Amount adjustment:** Each item card shows ±buttons to adjust the amount to consume. Step size is `item.consumeAmount`. Amount can be reduced to 0.
 

@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -6,13 +5,13 @@ import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { Button } from '@/components/ui/button'
-import { getLastPurchaseDate } from '@/db/operations'
 import {
   useAddInventoryLog,
   useCreateItem,
   useItems,
   useUpdateItem,
 } from '@/hooks'
+import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -22,12 +21,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import {
-  addItem,
-  consumeItem,
-  getCurrentQuantity,
-  isInactive,
-} from '@/lib/quantityUtils'
+import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
 import {
   loadSortPrefs,
   type SortDirection,
@@ -123,52 +117,11 @@ function PantryView() {
     recipes,
   )
 
-  // Fetch all quantities for sorting
-  const { data: allQuantities } = useQuery({
-    queryKey: ['items', 'quantities'],
-    queryFn: async () => {
-      const map = new Map<string, number>()
-      for (const item of items) {
-        map.set(item.id, getCurrentQuantity(item))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  // Fetch all expiry dates for sorting
-  const { data: allExpiryDates } = useQuery({
-    queryKey: ['items', 'expiryDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | undefined>()
-      for (const item of items) {
-        const lastPurchase = await getLastPurchaseDate(item.id)
-        const estimatedDate =
-          item.estimatedDueDays && lastPurchase
-            ? new Date(
-                lastPurchase.getTime() +
-                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
-              )
-            : item.dueDate
-        map.set(item.id, estimatedDate)
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  // Fetch last purchase date per item for sorting
-  const { data: allPurchaseDates } = useQuery({
-    queryKey: ['items', 'purchaseDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | null>()
-      for (const item of items) {
-        map.set(item.id, await getLastPurchaseDate(item.id))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
+  const {
+    quantities: allQuantities,
+    expiryDates: allExpiryDates,
+    purchaseDates: allPurchaseDates,
+  } = useItemSortData(items)
 
   // Apply sorting
   const sortedItems = sortItems(

@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, X } from 'lucide-react'
 import { useState } from 'react'
@@ -24,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getLastPurchaseDate } from '@/db/operations'
 import {
   useAbandonCart,
   useActiveCart,
@@ -40,11 +38,12 @@ import {
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
+import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
 
@@ -100,49 +99,11 @@ function Shopping() {
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
 
-  const { data: allQuantities } = useQuery({
-    queryKey: ['items', 'quantities'],
-    queryFn: async () => {
-      const map = new Map<string, number>()
-      for (const item of items) {
-        map.set(item.id, getCurrentQuantity(item))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  const { data: allExpiryDates } = useQuery({
-    queryKey: ['items', 'expiryDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | undefined>()
-      for (const item of items) {
-        const lastPurchase = await getLastPurchaseDate(item.id)
-        const estimatedDate =
-          item.estimatedDueDays && lastPurchase
-            ? new Date(
-                lastPurchase.getTime() +
-                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
-              )
-            : item.dueDate
-        map.set(item.id, estimatedDate)
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  const { data: allPurchaseDates } = useQuery({
-    queryKey: ['items', 'purchaseDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | null>()
-      for (const item of items) {
-        map.set(item.id, await getLastPurchaseDate(item.id))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
+  const {
+    quantities: allQuantities,
+    expiryDates: allExpiryDates,
+    purchaseDates: allPurchaseDates,
+  } = useItemSortData(items)
 
   // Vendor pre-scope: applies to filter branch only
   const vendorScopedItems = selectedVendorId
@@ -183,6 +144,11 @@ function Shopping() {
     sortBy,
     sortDirection,
   )
+
+  const activeCartItems = cartSectionItems.filter((item) => !isInactive(item))
+  const inactiveCartItems = cartSectionItems.filter((item) => isInactive(item))
+  const activePendingItems = pendingItems.filter((item) => !isInactive(item))
+  const inactivePendingItems = pendingItems.filter((item) => isInactive(item))
 
   const cartTotal = cartItems.reduce((sum, ci) => sum + ci.quantity, 0)
 
@@ -297,8 +263,17 @@ function Shopping() {
       {/* Cart section */}
       {cartSectionItems.length > 0 && (
         <>
-          <div className="space-y-px bg-background-surface">
-            {cartSectionItems.map((item) => renderItemCard(item))}
+          <div className="space-y-px">
+            {activeCartItems.map((item) => (
+              <div key={item.id} className="bg-background-surface">
+                {renderItemCard(item)}
+              </div>
+            ))}
+            {inactiveCartItems.map((item) => (
+              <div key={item.id} className="bg-background-surface">
+                {renderItemCard(item)}
+              </div>
+            ))}
           </div>
           <div className="h-px bg-accessory-default" />
         </>
@@ -307,7 +282,14 @@ function Shopping() {
       {/* Pending items section */}
       {pendingItems.length > 0 && (
         <div className="space-y-px">
-          {pendingItems.map((item) => renderItemCard(item))}
+          {activePendingItems.map((item) => renderItemCard(item))}
+          {inactivePendingItems.length > 0 && (
+            <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+              {inactivePendingItems.length} inactive item
+              {inactivePendingItems.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          {inactivePendingItems.map((item) => renderItemCard(item))}
         </div>
       )}
 

@@ -340,3 +340,64 @@ describe('sortItems - stock by status group', () => {
     expect(sorted.map((i) => i.id)).toEqual(['E', 'D']) // 10% before 20%
   })
 })
+
+describe('sortItems - stock sort for inactive items', () => {
+  const makeInactive = (id: string): Item => ({
+    id,
+    name: `Item ${id}`,
+    tagIds: [],
+    targetQuantity: 0, // isInactive requires both fields = 0
+    refillThreshold: 0,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    targetUnit: 'package',
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+
+  it('inactive item with qty > 0 sorts after inactive item with qty = 0 in stock asc', () => {
+    // Given: two inactive items, one with stock and one without
+    const items = [makeInactive('A'), makeInactive('B')]
+    const quantities = new Map([
+      ['A', 5], // has stock → should be treated as 100%
+      ['B', 0], // no stock  → should be treated as 0%
+    ])
+
+    // When: sorted by stock ascending (worst first)
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'asc',
+    )
+
+    // Then: empty (0%) sorts before stocked (100%)
+    expect(sorted[0].id).toBe('B') // 0% worst → first in asc
+    expect(sorted[1].id).toBe('A') // 100% best → last in asc
+  })
+
+  it('inactive item with qty > 0 sorts before inactive item with qty = 0 in stock desc', () => {
+    const items = [makeInactive('A'), makeInactive('B')]
+    const quantities = new Map([
+      ['A', 5], // has stock → 100%
+      ['B', 0], // no stock  → 0%
+    ])
+
+    // When: sorted by stock descending (best first)
+    const sorted = sortItems(
+      items,
+      quantities,
+      new Map(),
+      new Map(),
+      'stock',
+      'desc',
+    )
+
+    // Then: stocked (100%) sorts before empty (0%)
+    expect(sorted[0].id).toBe('A') // 100% best → first in desc
+    expect(sorted[1].id).toBe('B') // 0% worst → last in desc
+  })
+})

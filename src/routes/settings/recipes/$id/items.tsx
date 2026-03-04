@@ -1,10 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
-import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
+import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -14,7 +13,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -86,52 +85,11 @@ function RecipeItemsTab() {
     toggleRecipeId,
   } = useUrlSearchAndFilters()
 
-  // Quantities map (for stock sort) — same query key as pantry, cache is shared
-  const { data: allQuantities } = useQuery({
-    queryKey: ['items', 'quantities'],
-    queryFn: async () => {
-      const map = new Map<string, number>()
-      for (const item of items) {
-        map.set(item.id, getCurrentQuantity(item))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  // Expiry dates map (for expiring sort)
-  const { data: allExpiryDates } = useQuery({
-    queryKey: ['items', 'expiryDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | undefined>()
-      for (const item of items) {
-        const lastPurchase = await getLastPurchaseDate(item.id)
-        const estimatedDate =
-          item.estimatedDueDays && lastPurchase
-            ? new Date(
-                lastPurchase.getTime() +
-                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
-              )
-            : item.dueDate
-        map.set(item.id, estimatedDate)
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  // Purchase dates map (for purchased sort)
-  const { data: allPurchaseDates } = useQuery({
-    queryKey: ['items', 'purchaseDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | null>()
-      for (const item of items) {
-        map.set(item.id, await getLastPurchaseDate(item.id))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
+  const {
+    quantities: allQuantities,
+    expiryDates: allExpiryDates,
+    purchaseDates: allPurchaseDates,
+  } = useItemSortData(items)
 
   // Branch A: search only
   const searchedItems = items.filter((item) =>
@@ -170,7 +128,16 @@ function RecipeItemsTab() {
     sortDirection,
   )
 
-  const filteredItems = [...sortedAssigned, ...sortedUnassigned]
+  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
+  const sortedAssignedBucket = [
+    ...sortedAssigned.filter((item) => !isInactive(item)),
+    ...sortedAssigned.filter((item) => isInactive(item)),
+  ]
+  const sortedUnassignedBucket = [
+    ...sortedUnassigned.filter((item) => !isInactive(item)),
+    ...sortedUnassigned.filter((item) => isInactive(item)),
+  ]
+  const filteredItems = [...sortedAssignedBucket, ...sortedUnassignedBucket]
 
   const activeTagIds = useMemo(
     () => Object.values(filterState).flat(),
@@ -305,55 +272,71 @@ function RecipeItemsTab() {
         <p className="text-sm text-foreground-muted py-4">No items yet.</p>
       )}
 
-      <div className="space-y-px">
-        {filteredItems.map((item) => {
-          const assigned = isAssigned(item.id)
-          const itemTags = (item.tagIds ?? [])
-            .map((tid) => tagMap[tid])
-            .filter((t): t is NonNullable<typeof t> => t != null)
+      {[
+        { key: 'assigned', items: sortedAssignedBucket },
+        { key: 'unassigned', items: sortedUnassignedBucket },
+      ].map(({ key, items }) => (
+        <Fragment key={key}>
+          {key === 'unassigned' &&
+            sortedAssignedBucket.length > 0 &&
+            sortedUnassignedBucket.length > 0 && (
+              <div className="h-px bg-accessory-default" />
+            )}
+          <div className="space-y-px">
+            {items.map((item) => {
+              const assigned = isAssigned(item.id)
+              const itemTags = (item.tagIds ?? [])
+                .map((tid) => tagMap[tid])
+                .filter((t): t is NonNullable<typeof t> => t != null)
 
-          return (
-            <ItemCard
-              key={item.id}
-              mode="recipe-assignment"
-              item={item}
-              tags={itemTags}
-              tagTypes={tagTypes}
-              showTags={isTagsVisible}
-              showExpiration={false}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              onTagClick={handleTagClick}
-              onVendorClick={toggleVendorId}
-              onRecipeClick={toggleRecipeId}
-              activeTagIds={activeTagIds}
-              activeVendorIds={selectedVendorIds}
-              activeRecipeIds={selectedRecipeIds}
-              isChecked={assigned}
-              onCheckboxToggle={() =>
-                handleToggle(item.id, item.consumeAmount ?? 1)
-              }
-              {...(assigned
-                ? { controlAmount: getDefaultAmount(item.id) }
-                : {})}
-              minControlAmount={0}
-              onAmountChange={(delta) =>
-                handleAdjustDefaultAmount(item.id, delta)
-              }
-              disabled={savingItemIds.has(item.id)}
-            />
-          )
-        })}
-        {filteredItems.length === 0 &&
-          (Object.values(filterState).some((ids) => ids.length > 0) ||
-            selectedVendorIds.length > 0 ||
-            selectedRecipeIds.length > 0) &&
-          !search.trim() && (
-            <p className="text-sm text-foreground-muted py-4 px-1">
-              No items match the current filters.
-            </p>
-          )}
-      </div>
+              return (
+                <div
+                  key={item.id}
+                  className={key === 'assigned' ? 'bg-background-surface' : ''}
+                >
+                  <ItemCard
+                    mode="recipe-assignment"
+                    item={item}
+                    tags={itemTags}
+                    tagTypes={tagTypes}
+                    showTags={isTagsVisible}
+                    showExpiration={false}
+                    vendors={vendorMap.get(item.id) ?? []}
+                    recipes={recipeMap.get(item.id) ?? []}
+                    onTagClick={handleTagClick}
+                    onVendorClick={toggleVendorId}
+                    onRecipeClick={toggleRecipeId}
+                    activeTagIds={activeTagIds}
+                    activeVendorIds={selectedVendorIds}
+                    activeRecipeIds={selectedRecipeIds}
+                    isChecked={assigned}
+                    onCheckboxToggle={() =>
+                      handleToggle(item.id, item.consumeAmount ?? 1)
+                    }
+                    {...(assigned
+                      ? { controlAmount: getDefaultAmount(item.id) }
+                      : {})}
+                    minControlAmount={0}
+                    onAmountChange={(delta) =>
+                      handleAdjustDefaultAmount(item.id, delta)
+                    }
+                    disabled={savingItemIds.has(item.id)}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </Fragment>
+      ))}
+      {filteredItems.length === 0 &&
+        (Object.values(filterState).some((ids) => ids.length > 0) ||
+          selectedVendorIds.length > 0 ||
+          selectedRecipeIds.length > 0) &&
+        !search.trim() && (
+          <p className="text-sm text-foreground-muted py-4 px-1">
+            No items match the current filters.
+          </p>
+        )}
     </div>
   )
 }

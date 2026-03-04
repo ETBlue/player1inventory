@@ -347,6 +347,40 @@ describe('Use (Cooking) Page', () => {
     expect(logs).toHaveLength(0)
   })
 
+  it('user can see items with defaultAmount 0 start unchecked', async () => {
+    // Given a recipe where one item has defaultAmount 2 and one has defaultAmount 0
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 0 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the item with defaultAmount 2 starts checked
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Flour/i }),
+      ).toBeChecked()
+    })
+
+    // And the item with defaultAmount 0 starts unchecked
+    expect(
+      screen.getByRole('checkbox', { name: /Add Salt/i }),
+    ).not.toBeChecked()
+  })
+
   it('user can uncheck an optional item in an expanded recipe', async () => {
     // Given a recipe with two items
     const flour = await makeItem('Flour', 1, 5)

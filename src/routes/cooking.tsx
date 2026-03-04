@@ -23,6 +23,7 @@ import {
   useTagTypes,
   useUpdateItem,
 } from '@/hooks'
+import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { consumeItem, getCurrentQuantity } from '@/lib/quantityUtils'
 
@@ -55,6 +56,8 @@ function CookingPage() {
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
 
+  const { expiryDates } = useItemSortData(items)
+
   const sortedRecipes = useMemo(
     () =>
       [...recipes].sort((a, b) =>
@@ -81,12 +84,12 @@ function CookingPage() {
       newChecked.delete(recipeId)
       setCheckedRecipeIds(newChecked)
     } else {
-      // Check: populate with defaultAmounts and mark all items included
+      // Check: populate with defaultAmounts; items with defaultAmount 0 start unchecked
       const recipeAmountMap = new Map<string, number>()
       const recipeItemSet = new Set<string>()
       for (const ri of recipe.items) {
         recipeAmountMap.set(ri.itemId, ri.defaultAmount)
-        recipeItemSet.add(ri.itemId)
+        if (ri.defaultAmount > 0) recipeItemSet.add(ri.itemId)
       }
       const newAmounts = new Map(sessionAmounts)
       newAmounts.set(recipeId, recipeAmountMap)
@@ -279,39 +282,54 @@ function CookingPage() {
                         No items in this recipe.
                       </p>
                     )}
-                    {recipe.items.map((ri) => {
-                      const item = items.find((i) => i.id === ri.itemId)
-                      if (!item) return null
-                      const itemTags = tags.filter((t) =>
-                        item.tagIds.includes(t.id),
-                      )
-                      const amount =
-                        recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
-                      // checkedItemIds is always populated when recipe is checked (see handleToggleRecipe)
-                      // ?? true is a safety fallback in case this invariant ever breaks
-                      const isItemChecked =
-                        checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
+                    {[...recipe.items]
+                      .sort((a, b) => {
+                        const dateA = expiryDates?.get(a.itemId)
+                        const dateB = expiryDates?.get(b.itemId)
+                        if (!dateA && !dateB) return 0
+                        if (!dateA) return 1
+                        if (!dateB) return -1
+                        return dateA.getTime() - dateB.getTime()
+                      })
+                      .map((ri) => {
+                        const item = items.find((i) => i.id === ri.itemId)
+                        if (!item) return null
+                        const itemTags = tags.filter((t) =>
+                          item.tagIds.includes(t.id),
+                        )
+                        const amount =
+                          recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
+                        // checkedItemIds is always populated when recipe is checked (see handleToggleRecipe)
+                        // ?? true is a safety fallback in case this invariant ever breaks
+                        const isItemChecked =
+                          checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
 
-                      return (
-                        <ItemCard
-                          key={ri.itemId}
-                          item={item}
-                          tags={itemTags}
-                          tagTypes={tagTypes}
-                          mode="cooking"
-                          showTags={false}
-                          showTagSummary={false}
-                          isChecked={isItemChecked}
-                          onCheckboxToggle={() =>
-                            handleToggleItem(recipe.id, ri.itemId)
-                          }
-                          controlAmount={amount}
-                          onAmountChange={(delta) =>
-                            handleAdjustAmount(recipe.id, ri.itemId, delta)
-                          }
-                        />
-                      )
-                    })}
+                        return (
+                          <div
+                            key={ri.itemId}
+                            className={
+                              isItemChecked ? 'bg-background-surface' : ''
+                            }
+                          >
+                            <ItemCard
+                              item={item}
+                              tags={itemTags}
+                              tagTypes={tagTypes}
+                              mode="cooking"
+                              showTags={false}
+                              showTagSummary={false}
+                              isChecked={isItemChecked}
+                              onCheckboxToggle={() =>
+                                handleToggleItem(recipe.id, ri.itemId)
+                              }
+                              controlAmount={amount}
+                              onAmountChange={(delta) =>
+                                handleAdjustAmount(recipe.id, ri.itemId, delta)
+                              }
+                            />
+                          </div>
+                        )
+                      })}
                   </div>
                 )}
               </React.Fragment>

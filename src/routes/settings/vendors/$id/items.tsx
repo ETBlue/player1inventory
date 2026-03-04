@@ -1,10 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
-import { getLastPurchaseDate } from '@/db/operations'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
+import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
@@ -15,7 +14,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -76,49 +75,11 @@ function VendorItemsTab() {
     return map
   }, [recipes])
 
-  const { data: allQuantities } = useQuery({
-    queryKey: ['items', 'quantities'],
-    queryFn: async () => {
-      const map = new Map<string, number>()
-      for (const item of items) {
-        map.set(item.id, getCurrentQuantity(item))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  const { data: allExpiryDates } = useQuery({
-    queryKey: ['items', 'expiryDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | undefined>()
-      for (const item of items) {
-        const lastPurchase = await getLastPurchaseDate(item.id)
-        const estimatedDate =
-          item.estimatedDueDays && lastPurchase
-            ? new Date(
-                lastPurchase.getTime() +
-                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
-              )
-            : item.dueDate
-        map.set(item.id, estimatedDate)
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
-
-  const { data: allPurchaseDates } = useQuery({
-    queryKey: ['items', 'purchaseDates'],
-    queryFn: async () => {
-      const map = new Map<string, Date | null>()
-      for (const item of items) {
-        map.set(item.id, await getLastPurchaseDate(item.id))
-      }
-      return map
-    },
-    enabled: items.length > 0,
-  })
+  const {
+    quantities: allQuantities,
+    expiryDates: allExpiryDates,
+    purchaseDates: allPurchaseDates,
+  } = useItemSortData(items)
 
   const isAssigned = (vendorIds: string[] = []) => vendorIds.includes(vendorId)
 
@@ -209,7 +170,7 @@ function VendorItemsTab() {
   )
 
   // Converge at sort
-  const filteredItems = sortItems(
+  const sortedItems = sortItems(
     search.trim() ? searchedItems : recipeFiltered,
     allQuantities ?? new Map(),
     allExpiryDates ?? new Map(),
@@ -217,6 +178,24 @@ function VendorItemsTab() {
     sortBy,
     sortDirection,
   )
+  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
+  const assignedItems = [
+    ...sortedItems.filter(
+      (item) => isAssigned(item.vendorIds) && !isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => isAssigned(item.vendorIds) && isInactive(item),
+    ),
+  ]
+  const unassignedItems = [
+    ...sortedItems.filter(
+      (item) => !isAssigned(item.vendorIds) && !isInactive(item),
+    ),
+    ...sortedItems.filter(
+      (item) => !isAssigned(item.vendorIds) && isInactive(item),
+    ),
+  ]
+  const filteredItems = [...assignedItems, ...unassignedItems]
 
   return (
     <div className="max-w-2xl">
@@ -240,45 +219,63 @@ function VendorItemsTab() {
         <p className="text-sm text-foreground-muted py-4">No items yet.</p>
       )}
 
-      <div className="space-y-px">
-        {filteredItems.map((item) => {
-          const itemTags = (item.tagIds ?? [])
-            .map((tid) => tagMap[tid])
-            .filter((t): t is NonNullable<typeof t> => t != null)
+      {[
+        { key: 'assigned', items: assignedItems },
+        { key: 'unassigned', items: unassignedItems },
+      ].map(({ key, items }) => (
+        <Fragment key={key}>
+          {key === 'unassigned' &&
+            assignedItems.length > 0 &&
+            unassignedItems.length > 0 && (
+              <div className="h-px bg-accessory-default" />
+            )}
+          <div className="space-y-px">
+            {items.map((item) => {
+              const itemTags = (item.tagIds ?? [])
+                .map((tid) => tagMap[tid])
+                .filter((t): t is NonNullable<typeof t> => t != null)
 
-          return (
-            <ItemCard
-              key={item.id}
-              mode="tag-assignment"
-              item={item}
-              tags={itemTags}
-              tagTypes={tagTypes}
-              showTags={isTagsVisible}
-              showExpiration={false}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              onTagClick={handleTagClick}
-              onVendorClick={toggleVendorId}
-              onRecipeClick={toggleRecipeId}
-              activeTagIds={activeTagIds}
-              activeVendorIds={selectedVendorIds}
-              activeRecipeIds={selectedRecipeIds}
-              isChecked={isAssigned(item.vendorIds)}
-              onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
-              disabled={savingItemIds.has(item.id)}
-            />
-          )
-        })}
-        {filteredItems.length === 0 &&
-          (Object.values(filterState).some((ids) => ids.length > 0) ||
-            selectedVendorIds.length > 0 ||
-            selectedRecipeIds.length > 0) &&
-          !search.trim() && (
-            <p className="text-sm text-foreground-muted py-4 px-1">
-              No items match the current filters.
-            </p>
-          )}
-      </div>
+              return (
+                <div
+                  key={item.id}
+                  className={key === 'assigned' ? 'bg-background-surface' : ''}
+                >
+                  <ItemCard
+                    mode="tag-assignment"
+                    item={item}
+                    tags={itemTags}
+                    tagTypes={tagTypes}
+                    showTags={isTagsVisible}
+                    showExpiration={false}
+                    vendors={vendorMap.get(item.id) ?? []}
+                    recipes={recipeMap.get(item.id) ?? []}
+                    onTagClick={handleTagClick}
+                    onVendorClick={toggleVendorId}
+                    onRecipeClick={toggleRecipeId}
+                    activeTagIds={activeTagIds}
+                    activeVendorIds={selectedVendorIds}
+                    activeRecipeIds={selectedRecipeIds}
+                    isChecked={isAssigned(item.vendorIds)}
+                    onCheckboxToggle={() =>
+                      handleToggle(item.id, item.vendorIds)
+                    }
+                    disabled={savingItemIds.has(item.id)}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </Fragment>
+      ))}
+      {filteredItems.length === 0 &&
+        (Object.values(filterState).some((ids) => ids.length > 0) ||
+          selectedVendorIds.length > 0 ||
+          selectedRecipeIds.length > 0) &&
+        !search.trim() && (
+          <p className="text-sm text-foreground-muted py-4 px-1">
+            No items match the current filters.
+          </p>
+        )}
     </div>
   )
 }
