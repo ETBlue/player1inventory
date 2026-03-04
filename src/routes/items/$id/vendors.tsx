@@ -49,7 +49,7 @@ function VendorsTab() {
               <Badge
                 key={vendor.id}
                 variant={isAssigned ? 'neutral' : 'neutral-outline'}
-                className="cursor-pointer"
+                className="cursor-pointer normal-case"
                 onClick={() => toggleVendor(vendor.id)}
               >
                 {vendor.name}
