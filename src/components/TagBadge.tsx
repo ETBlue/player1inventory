@@ -15,7 +15,7 @@ export function TagBadge({ tag, tagType, onClick, className }: TagBadgeProps) {
 
   return (
     <Badge
-      variant={tagType.color}
+      variant={`${tagType.color}-tint`}
       className={cn(className, onClick ? 'cursor-pointer' : '')}
       onClick={onClick}
     >
