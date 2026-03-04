@@ -23,6 +23,8 @@ The `Badge` component already has `capitalize`, so tag/vendor/recipe badges are 
 | `src/components/RecipeCard.tsx:21` | Add `capitalize` to the recipe name link |
 | `src/components/ItemForm.tsx:359` | Add `className="capitalize"` to name `<Input>` |
 | `src/components/TagNameForm.tsx:30` | Add `className="capitalize"` to `<Input>` |
+| `src/components/AddTagDialog.tsx:36` | Add `className="capitalize"` to tag name `<Input>` |
+| `src/components/EditTagTypeDialog.tsx:42` | Add `className="capitalize"` to tag type name `<Input>` |
 | `src/components/RecipeNameForm.tsx:30` | Add `className="capitalize"` to `<Input>` |
 
 ### Individual detail headers
