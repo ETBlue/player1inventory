@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
@@ -219,57 +219,63 @@ function VendorItemsTab() {
         <p className="text-sm text-foreground-muted py-4">No items yet.</p>
       )}
 
-      <div className="space-y-px">
-        {[
-          { key: 'assigned', items: assignedItems },
-          { key: 'unassigned', items: unassignedItems },
-        ].map(({ key, items }) => (
-          <div key={key} className="contents">
-            {key === 'unassigned' &&
-              assignedItems.length > 0 &&
-              unassignedItems.length > 0 && (
-                <div className="h-px bg-accessory-default" />
-              )}
+      {[
+        { key: 'assigned', items: assignedItems },
+        { key: 'unassigned', items: unassignedItems },
+      ].map(({ key, items }) => (
+        <Fragment key={key}>
+          {key === 'unassigned' &&
+            assignedItems.length > 0 &&
+            unassignedItems.length > 0 && (
+              <div className="h-px bg-accessory-default" />
+            )}
+          <div className="space-y-px">
             {items.map((item) => {
               const itemTags = (item.tagIds ?? [])
                 .map((tid) => tagMap[tid])
                 .filter((t): t is NonNullable<typeof t> => t != null)
 
               return (
-                <ItemCard
+                <div
                   key={item.id}
-                  mode="tag-assignment"
-                  item={item}
-                  tags={itemTags}
-                  tagTypes={tagTypes}
-                  showTags={isTagsVisible}
-                  showExpiration={false}
-                  vendors={vendorMap.get(item.id) ?? []}
-                  recipes={recipeMap.get(item.id) ?? []}
-                  onTagClick={handleTagClick}
-                  onVendorClick={toggleVendorId}
-                  onRecipeClick={toggleRecipeId}
-                  activeTagIds={activeTagIds}
-                  activeVendorIds={selectedVendorIds}
-                  activeRecipeIds={selectedRecipeIds}
-                  isChecked={isAssigned(item.vendorIds)}
-                  onCheckboxToggle={() => handleToggle(item.id, item.vendorIds)}
-                  disabled={savingItemIds.has(item.id)}
-                />
+                  className={key === 'assigned' ? 'bg-background-surface' : ''}
+                >
+                  <ItemCard
+                    mode="tag-assignment"
+                    item={item}
+                    tags={itemTags}
+                    tagTypes={tagTypes}
+                    showTags={isTagsVisible}
+                    showExpiration={false}
+                    vendors={vendorMap.get(item.id) ?? []}
+                    recipes={recipeMap.get(item.id) ?? []}
+                    onTagClick={handleTagClick}
+                    onVendorClick={toggleVendorId}
+                    onRecipeClick={toggleRecipeId}
+                    activeTagIds={activeTagIds}
+                    activeVendorIds={selectedVendorIds}
+                    activeRecipeIds={selectedRecipeIds}
+                    isChecked={isAssigned(item.vendorIds)}
+                    onCheckboxToggle={() =>
+                      handleToggle(item.id, item.vendorIds)
+                    }
+                    disabled={savingItemIds.has(item.id)}
+                  />
+                </div>
               )
             })}
           </div>
-        ))}
-        {filteredItems.length === 0 &&
-          (Object.values(filterState).some((ids) => ids.length > 0) ||
-            selectedVendorIds.length > 0 ||
-            selectedRecipeIds.length > 0) &&
-          !search.trim() && (
-            <p className="text-sm text-foreground-muted py-4 px-1">
-              No items match the current filters.
-            </p>
-          )}
-      </div>
+        </Fragment>
+      ))}
+      {filteredItems.length === 0 &&
+        (Object.values(filterState).some((ids) => ids.length > 0) ||
+          selectedVendorIds.length > 0 ||
+          selectedRecipeIds.length > 0) &&
+        !search.trim() && (
+          <p className="text-sm text-foreground-muted py-4 px-1">
+            No items match the current filters.
+          </p>
+        )}
     </div>
   )
 }

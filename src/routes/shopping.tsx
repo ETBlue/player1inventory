@@ -263,9 +263,17 @@ function Shopping() {
       {/* Cart section */}
       {cartSectionItems.length > 0 && (
         <>
-          <div className="space-y-px bg-background-surface">
-            {activeCartItems.map((item) => renderItemCard(item))}
-            {inactiveCartItems.map((item) => renderItemCard(item))}
+          <div className="space-y-px">
+            {activeCartItems.map((item) => (
+              <div key={item.id} className="bg-background-surface">
+                {renderItemCard(item)}
+              </div>
+            ))}
+            {inactiveCartItems.map((item) => (
+              <div key={item.id} className="bg-background-surface">
+                {renderItemCard(item)}
+              </div>
+            ))}
           </div>
           <div className="h-px bg-accessory-default" />
         </>
