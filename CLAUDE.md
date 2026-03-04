@@ -309,7 +309,7 @@ Cooking page at `/cooking` for consuming ingredients via recipes.
 
 **Recipe selection:** Checkboxes to select which recipes to cook. When checked, the recipe expands to show its item list as flat `ItemCard` components below the recipe header card.
 
-**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. All items start checked. Users can uncheck optional ingredients to exclude them from consumption. Unchecked items are excluded from `totalByItemId` and are not consumed when Done is confirmed.
+**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked; items with `defaultAmount === 0` start unchecked (treated as disabled/optional by default). Users can toggle any item. Unchecked items are excluded from `totalByItemId` and are not consumed when Done is confirmed.
 
 **Amount adjustment:** Each item card shows ±buttons to adjust the amount to consume. Step size is `item.consumeAmount`. Amount can be reduced to 0.
 
