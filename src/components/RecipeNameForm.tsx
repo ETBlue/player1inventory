@@ -31,6 +31,7 @@ export function RecipeNameForm({
           id="recipe-name"
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
+          className="capitalize"
         />
       </div>
       <Button type="submit" disabled={!isDirty || isPending} className="w-full">
