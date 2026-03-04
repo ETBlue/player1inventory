@@ -1,7 +1,7 @@
 # Design: Fix Descender Clipping in Item Card Titles
 
 **Date:** 2026-03-05
-**Status:** Approved
+**Status:** Implemented
 
 ## Problem
 
