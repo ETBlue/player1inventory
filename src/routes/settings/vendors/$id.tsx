@@ -99,7 +99,7 @@ function VendorDetailLayoutInner() {
           >
             <ArrowLeft />
           </Button>
-          <h1 className="text-md font-regular truncate flex-1 capitalize">
+          <h1 className="text-md font-regular truncate flex-1">
             {vendor.name}
           </h1>
 
