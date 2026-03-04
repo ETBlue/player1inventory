@@ -346,20 +346,20 @@ function CookingPage() {
               Consume from {checkedRecipeIds.size} recipe
               {checkedRecipeIds.size !== 1 ? 's' : ''}?
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will reduce your inventory.
-              {insufficientItems.length > 0 && (
-                <span className="block mt-2 text-destructive">
-                  Warning — insufficient stock:
-                  {insufficientItems.map(({ item, requested, available }) => (
-                    <span key={item.id} className="block">
-                      {item.name}: {requested} requested, {available} available
-                    </span>
-                  ))}
-                </span>
-              )}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            This will reduce your inventory.
+            {insufficientItems.length > 0 && (
+              <span className="block mt-2 text-destructive">
+                Warning — insufficient stock:
+                {insufficientItems.map(({ item, requested, available }) => (
+                  <span key={item.id} className="block">
+                    {item.name}: {requested} requested, {available} available
+                  </span>
+                ))}
+              </span>
+            )}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Back</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDone}>
@@ -374,10 +374,10 @@ function CookingPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard all selections?</AlertDialogTitle>
-            <AlertDialogDescription>
-              All recipe selections and amount adjustments will be reset.
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            All recipe selections and amount adjustments will be reset.
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Back</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCancel}>

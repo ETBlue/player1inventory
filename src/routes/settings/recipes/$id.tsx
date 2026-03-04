@@ -140,10 +140,10 @@ function RecipeDetailLayoutInner() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
-            <AlertDialogDescription>
-              You have unsaved changes. Discard changes?
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            You have unsaved changes. Discard changes?
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelDiscard}>
               Cancel
