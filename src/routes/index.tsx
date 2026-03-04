@@ -1,16 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { AddQuantityDialog } from '@/components/AddQuantityDialog'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
 import { Button } from '@/components/ui/button'
-import {
-  useAddInventoryLog,
-  useCreateItem,
-  useItems,
-  useUpdateItem,
-} from '@/hooks'
+import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags, useTagTypes } from '@/hooks/useTags'
@@ -28,7 +22,7 @@ import {
   type SortField,
 } from '@/lib/sessionStorage'
 import { sortItems } from '@/lib/sortUtils'
-import type { Item, Recipe, Vendor } from '@/types'
+import type { Recipe, Vendor } from '@/types'
 
 export const Route = createFileRoute('/')({
   component: PantryView,
@@ -40,7 +34,6 @@ function PantryView() {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
-  const addLog = useAddInventoryLog()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
 
@@ -61,8 +54,6 @@ function PantryView() {
       // input stays populated for retry
     }
   }
-
-  const [addDialogItem, setAddDialogItem] = useState<Item | null>(null)
 
   // Sort prefs from localStorage (pantry defaults to 'expiring')
   const [sortBy, setSortBy] = useState<SortField>(() => loadSortPrefs().sortBy)
@@ -323,21 +314,6 @@ function PantryView() {
           ))}
         </div>
       )}
-
-      <AddQuantityDialog
-        open={!!addDialogItem}
-        onOpenChange={(open) => !open && setAddDialogItem(null)}
-        itemName={addDialogItem?.name ?? ''}
-        onConfirm={(quantity, occurredAt) => {
-          if (addDialogItem) {
-            addLog.mutate({
-              itemId: addDialogItem.id,
-              delta: quantity,
-              occurredAt,
-            })
-          }
-        }}
-      />
     </div>
   )
 }
