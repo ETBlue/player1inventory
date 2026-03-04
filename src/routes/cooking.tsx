@@ -305,23 +305,29 @@ function CookingPage() {
                           checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
 
                         return (
-                          <ItemCard
+                          <div
                             key={ri.itemId}
-                            item={item}
-                            tags={itemTags}
-                            tagTypes={tagTypes}
-                            mode="cooking"
-                            showTags={false}
-                            showTagSummary={false}
-                            isChecked={isItemChecked}
-                            onCheckboxToggle={() =>
-                              handleToggleItem(recipe.id, ri.itemId)
+                            className={
+                              isItemChecked ? 'bg-background-surface' : ''
                             }
-                            controlAmount={amount}
-                            onAmountChange={(delta) =>
-                              handleAdjustAmount(recipe.id, ri.itemId, delta)
-                            }
-                          />
+                          >
+                            <ItemCard
+                              item={item}
+                              tags={itemTags}
+                              tagTypes={tagTypes}
+                              mode="cooking"
+                              showTags={false}
+                              showTagSummary={false}
+                              isChecked={isItemChecked}
+                              onCheckboxToggle={() =>
+                                handleToggleItem(recipe.id, ri.itemId)
+                              }
+                              controlAmount={amount}
+                              onAmountChange={(delta) =>
+                                handleAdjustAmount(recipe.id, ri.itemId, delta)
+                              }
+                            />
+                          </div>
                         )
                       })}
                   </div>
