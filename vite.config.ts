@@ -8,7 +8,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [
     TanStackRouterVite({
-      routeFileIgnorePattern: '.test.tsx?$',
+      routeFileIgnorePattern: '(.test.tsx?|.stories.tsx)$',
     }),
     react(),
     tailwindcss(),
