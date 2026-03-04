@@ -84,12 +84,12 @@ function CookingPage() {
       newChecked.delete(recipeId)
       setCheckedRecipeIds(newChecked)
     } else {
-      // Check: populate with defaultAmounts and mark all items included
+      // Check: populate with defaultAmounts; items with defaultAmount 0 start unchecked
       const recipeAmountMap = new Map<string, number>()
       const recipeItemSet = new Set<string>()
       for (const ri of recipe.items) {
         recipeAmountMap.set(ri.itemId, ri.defaultAmount)
-        recipeItemSet.add(ri.itemId)
+        if (ri.defaultAmount > 0) recipeItemSet.add(ri.itemId)
       }
       const newAmounts = new Map(sessionAmounts)
       newAmounts.set(recipeId, recipeAmountMap)
