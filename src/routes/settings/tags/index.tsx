@@ -103,7 +103,7 @@ function DraggableTagBadge({
           trigger={<X />}
           buttonVariant="neutral-outline"
           buttonSize="icon-xs"
-          buttonClassName="h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px"
+          buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px border-${tagType.color} text-${tagType.color}`}
           dialogTitle="Delete Tag?"
           dialogDescription={
             itemCount > 0 ? (
