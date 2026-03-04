@@ -38,6 +38,7 @@ export function AddTagDialog({
               value={tagName}
               onChange={(e) => onTagNameChange(e.target.value)}
               placeholder="e.g., Dairy, Frozen"
+              className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && onAdd()}
             />
           </div>

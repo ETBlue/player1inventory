@@ -44,6 +44,7 @@ export function EditTagTypeDialog({
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="e.g., Ingredient type"
+              className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && onSave()}
             />
           </div>
