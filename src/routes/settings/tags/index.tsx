@@ -49,6 +49,40 @@ export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
 })
 
+const TAG_COLOR_BORDER: Record<TagColor, string> = {
+  red: 'border-red',
+  orange: 'border-orange',
+  amber: 'border-amber',
+  yellow: 'border-yellow',
+  green: 'border-green',
+  teal: 'border-teal',
+  blue: 'border-blue',
+  indigo: 'border-indigo',
+  purple: 'border-purple',
+  pink: 'border-pink',
+  brown: 'border-brown',
+  lime: 'border-lime',
+  cyan: 'border-cyan',
+  rose: 'border-rose',
+}
+
+const TAG_COLOR_TEXT: Record<TagColor, string> = {
+  red: 'text-red',
+  orange: 'text-orange',
+  amber: 'text-amber',
+  yellow: 'text-yellow',
+  green: 'text-green',
+  teal: 'text-teal',
+  blue: 'text-blue',
+  indigo: 'text-indigo',
+  purple: 'text-purple',
+  pink: 'text-pink',
+  brown: 'text-brown',
+  lime: 'text-lime',
+  cyan: 'text-cyan',
+  rose: 'text-rose',
+}
+
 function DraggableTagBadge({
   tag,
   tagType,
@@ -103,7 +137,7 @@ function DraggableTagBadge({
           trigger={<X />}
           buttonVariant="neutral-outline"
           buttonSize="icon-xs"
-          buttonClassName="h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px"
+          buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px ${TAG_COLOR_BORDER[tagType.color ?? TagColor.blue]} ${TAG_COLOR_TEXT[tagType.color ?? TagColor.blue]}`}
           dialogTitle="Delete Tag?"
           dialogDescription={
             itemCount > 0 ? (
