@@ -298,10 +298,10 @@ function Shopping() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Abandon this shopping trip?</AlertDialogTitle>
-            <AlertDialogDescription>
-              All items will be removed from the cart.
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            All items will be removed from the cart.
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Go back</AlertDialogCancel>
             <AlertDialogAction
@@ -324,10 +324,10 @@ function Shopping() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Complete shopping trip?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Quantities will be updated based on your cart.
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            Quantities will be updated based on your cart.
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Go back</AlertDialogCancel>
             <AlertDialogAction

@@ -70,6 +70,7 @@ export const WithForm: Story = {
           </div>
         </div>
         <DialogFooter>
+          <Button variant="neutral-outline">Cancel</Button>
           <Button>Save changes</Button>
         </DialogFooter>
       </DialogContent>

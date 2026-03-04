@@ -69,7 +69,6 @@ export function DeleteButton({
           <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <div className="flex-1" />
             <AlertDialogAction
               variant="destructive"
               onClick={handleConfirm}
