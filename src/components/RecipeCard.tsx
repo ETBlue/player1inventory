@@ -18,7 +18,7 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
           <Link
             to="/settings/recipes/$id"
             params={{ id: recipe.id }}
-            className="font-medium hover:underline"
+            className="font-medium hover:underline capitalize"
           >
             {recipe.name}
           </Link>

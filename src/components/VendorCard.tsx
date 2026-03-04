@@ -18,7 +18,7 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
           <Link
             to="/settings/vendors/$id"
             params={{ id: vendor.id }}
-            className="font-medium hover:underline"
+            className="font-medium hover:underline capitalize"
           >
             {vendor.name}
           </Link>
