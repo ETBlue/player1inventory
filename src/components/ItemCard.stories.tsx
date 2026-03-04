@@ -48,7 +48,7 @@ type Story = StoryObj<typeof ItemCard>
 
 const mockItem = {
   id: '1',
-  name: 'Milk',
+  name: 'Yogurt (plain)',
   packageUnit: 'gallon',
   targetUnit: 'package' as const,
   tagIds: ['tag-1'],
@@ -146,7 +146,7 @@ export const DualUnitWithPartial: Story = {
   args: {
     item: {
       id: '1',
-      name: 'Milk',
+      name: 'Purple grapes',
       packageUnit: 'bottle',
       measurementUnit: 'L',
       amountPerPackage: 1,

@@ -54,6 +54,17 @@ export const HeaderOnly: Story = {
   ),
 }
 
+export const WithDescenders: Story = {
+  render: () => (
+    <Card className="w-[350px]">
+      <CardHeader>
+        <CardTitle>Yogurt (plain) — g p q y j</CardTitle>
+      </CardHeader>
+      <CardContent>Descender letters should not be clipped.</CardContent>
+    </Card>
+  ),
+}
+
 export const Variants: Story = {
   render: () => (
     <div className="flex flex-col gap-4">
