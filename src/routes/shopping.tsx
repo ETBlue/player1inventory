@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Check, Pencil, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { ItemListToolbar } from '@/components/ItemListToolbar'
@@ -250,13 +250,7 @@ function Shopping() {
                   </SelectItem>
                 ))}
                 <SelectSeparator />
-                <SelectItem
-                  value="__manage__"
-                  className="flex items-center gap-2"
-                >
-                  <Pencil className="h-4 w-4" />
-                  <span>Manage vendors...</span>
-                </SelectItem>
+                <SelectItem value="__manage__">Manage vendors...</SelectItem>
               </SelectContent>
             </Select>
           ) : undefined
