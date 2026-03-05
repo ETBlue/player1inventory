@@ -13,9 +13,7 @@ The shopping page already has a "Manage vendors..." option in its vendor `<Selec
 
 1. Add a "Manage" link (with icon) at the bottom of the vendor dropdown in `ItemFilters` → `/settings/vendors`
 2. Add a "Manage" link (with icon) at the bottom of the recipe dropdown in `ItemFilters` → `/settings/recipes`
-3. Add a `<Pencil>` icon to the existing "Manage vendors..." `SelectItem` in the shopping page for visual consistency
-
-All three use the same icon (`Pencil`, `h-4 w-4`) and text style (`text-xs` or inline), aligned with `flex items-center gap-1.5`.
+3. ~~Add a `<Pencil>` icon to the existing "Manage vendors..." `SelectItem` in the shopping page for visual consistency~~ — **Not shipped.** `SelectItem` wraps children in `SelectPrimitive.ItemText`, so icon placement is unsupported without modifying the component. Deferred until the shopping vendor `<Select>` is replaced with `<DropdownMenu>` (see Deferred section).
 
 ## Design
 
@@ -46,19 +44,6 @@ The separator always renders. The "Clear" separator+item renders only when a sel
 ✎ Manage
 ```
 
-### Shopping page vendor select
-
-In `src/routes/shopping.tsx`, line 253, add icon to the existing `SelectItem`:
-
-```tsx
-<SelectItem value="__manage__" className="flex items-center gap-1.5">
-  <Pencil className="h-4 w-4" />
-  <span>Manage vendors...</span>
-</SelectItem>
-```
-
-`Pencil` must be added to the imports from `lucide-react`.
-
 ## Deferred
 
 Replacing the shopping page `<Select>` with `<DropdownMenu>` for component consistency was considered but deferred. The `Select` provides free current-selection display via `<SelectValue>`, which would require manual implementation in a `DropdownMenu` trigger. The shopping vendor is also single-select (a pre-scope filter) while `ItemFilters` vendor is multi-select, so the behavioral models differ regardless of component choice.
@@ -66,6 +51,6 @@ Replacing the shopping page `<Select>` with `<DropdownMenu>` for component consi
 ## Scope
 
 - Modify: `src/components/ItemFilters.tsx`
-- Modify: `src/routes/shopping.tsx`
-- `Pencil` already imported in `ItemFilters.tsx`; needs adding to `shopping.tsx`
+- `Pencil` already imported in `ItemFilters.tsx`
 - No logic changes, no new components
+- `src/routes/shopping.tsx` — not modified (Goal 3 dropped, see above)
