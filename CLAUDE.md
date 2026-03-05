@@ -63,6 +63,8 @@ src/
 
 **`Toolbar`** (`src/components/Toolbar.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
 
+**`AddNameDialog`** (`src/components/AddNameDialog.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`.
+
 **`ItemListToolbar`** (`src/components/ItemListToolbar.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with zero matches).
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
@@ -102,7 +104,18 @@ Item detail pages use a tabbed layout with three sections:
 - Tag assignment interface with uppercase text styling for tag type names
 - Click badges to toggle tag assignment (selected tags show X icon)
 - Visual dividers between tag type sections
-- Inline tag creation via "New Tag" buttons
+- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`)
+- Changes apply immediately without save button
+
+**4. Vendors (`/items/$id/vendors`)**
+- Vendor assignment interface: click-to-toggle badges, immediate save
+- "New Vendor" button inline with badges — opens `AddNameDialog`, creates and immediately assigns the vendor
+- Changes apply immediately without save button
+
+**5. Recipes (`/items/$id/recipes`)**
+- Recipe assignment interface: click-to-toggle badges, immediate save
+- Architecture: recipe-centric — `Recipe.items[]` stores the relationship; toggling updates the recipe, not the item
+- "New Recipe" button inline with badges — opens `AddNameDialog`, creates recipe assigned to this item
 - Changes apply immediately without save button
 
 **Measurement Tracking Behavior:**
@@ -150,6 +163,10 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
 - `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with all sections)
 - `src/routes/items/$id/tags.tsx` - Tags tab implementation
+- `src/routes/items/$id/vendors.tsx` - Vendors tab implementation
+- `src/routes/items/$id/vendors.test.tsx` - Vendors tab tests
+- `src/routes/items/$id/recipes.tsx` - Recipes tab implementation
+- `src/routes/items/$id/recipes.test.tsx` - Recipes tab tests
 - `src/routes/items/$id.log.tsx` - History/logs tab (view-only)
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/routes/items/new.tsx` - New item form (uses ItemForm with info + advanced sections)
@@ -202,7 +219,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Settings link**: `src/routes/settings/index.tsx` (Store icon)
 
-**Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. No Save button (same as tags tab).
+**Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
 
 **Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item immediately assigned to this vendor; pressing Escape clears the input.
 
