@@ -139,6 +139,46 @@ describe('Vendors Tab', () => {
     })
   })
 
+  it('user can create a new vendor from the vendors tab', async () => {
+    // Given an item and no vendors
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // When user clicks "New Vendor" and types a name
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /new vendor/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    await user.type(screen.getByLabelText(/name/i), 'Costco')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+    // Then the vendor is created and assigned to the item
+    await waitFor(async () => {
+      const vendors = await db.vendors.toArray()
+      const newVendor = vendors.find((v) => v.name === 'Costco')
+      expect(newVendor).toBeDefined()
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds).toContain(newVendor?.id)
+    })
+  })
+
   it('user can unassign a vendor from an item', async () => {
     // Given an item with a vendor already assigned
     const vendor = await createVendor('Costco')
