@@ -420,11 +420,11 @@ These variants are used in tag type filter triggers (`TagTypeDropdown`) to displ
 
 Entity names are displayed in title case using Tailwind's `capitalize` class (`text-transform: capitalize`). This is purely visual — stored values are unchanged, so search and comparison logic is unaffected.
 
-**Applies to:** item names, tag names, recipe names — in list cards, detail page headers, and name input fields.
+**Applies to:** item names, tag names, recipe names — in list cards, detail page headers, name input fields, and tag type dropdowns.
 
-**Vendor names are excluded** — vendors may use intentional casing (e.g. "iHerb", "7-Eleven"). Vendor displays render names as stored.
+**Vendor names are excluded** — vendors may use intentional casing (e.g. "iHerb", "7-Eleven"). Vendor displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`.
 
-**Already covered by Badge base class:** tag badges, vendor badges, recipe badges inside `ItemCard`.
+**Already covered by Badge base class:** tag badges and recipe badges. Vendor badges override with `normal-case`.
 
 ## Theme System
 
