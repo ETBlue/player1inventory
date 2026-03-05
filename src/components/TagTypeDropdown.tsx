@@ -54,7 +54,11 @@ export function TagTypeDropdown({
               onSelect={(e) => e.preventDefault()} // Keep menu open
             >
               <div className="flex items-center justify-between w-full">
-                <Badge variant={tagType.color}>{tag.name}</Badge>
+                <Badge
+                  variant={isChecked ? tagType.color : `${tagType.color}-tint`}
+                >
+                  {tag.name}
+                </Badge>
                 <span className="text-foreground-muted text-xs ml-2">
                   ({tagCounts[index]})
                 </span>

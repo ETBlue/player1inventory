@@ -87,37 +87,6 @@ export function ItemFilters({
         disabled ? 'opacity-50 pointer-events-none' : '',
       )}
     >
-      {tagTypesWithTags.map((tagType) => {
-        const tagTypeId = tagType.id
-        const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
-        const sortedTypeTags = sortTagsByName(typeTags)
-        const selectedTagIds = filterState[tagTypeId] || []
-
-        // Calculate dynamic counts for each tag
-        const tagCounts = sortedTypeTags.map((tag) =>
-          calculateTagCount(tag.id, tagTypeId, items, filterState),
-        )
-
-        return (
-          <TagTypeDropdown
-            key={tagTypeId}
-            tagType={tagType}
-            tags={sortedTypeTags}
-            selectedTagIds={selectedTagIds}
-            tagCounts={tagCounts}
-            onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
-            onClear={() => handleClearTagType(tagTypeId)}
-          />
-        )
-      })}
-
-      <Link to="/settings/tags">
-        <Button size="xs" variant="neutral-ghost">
-          <Pencil />
-          Edit Tags
-        </Button>
-      </Link>
-
       {showVendors && (
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
@@ -163,6 +132,16 @@ export function ItemFilters({
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings/vendors"
+                className="flex items-center gap-1.5"
+              >
+                <Pencil className="h-4 w-4" />
+                <span className="text-xs">Manage</span>
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -212,9 +191,50 @@ export function ItemFilters({
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings/recipes"
+                className="flex items-center gap-1.5"
+              >
+                <Pencil className="h-4 w-4" />
+                <span className="text-xs">Manage</span>
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {tagTypesWithTags.map((tagType) => {
+        const tagTypeId = tagType.id
+        const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
+        const sortedTypeTags = sortTagsByName(typeTags)
+        const selectedTagIds = filterState[tagTypeId] || []
+
+        // Calculate dynamic counts for each tag
+        const tagCounts = sortedTypeTags.map((tag) =>
+          calculateTagCount(tag.id, tagTypeId, items, filterState),
+        )
+
+        return (
+          <TagTypeDropdown
+            key={tagTypeId}
+            tagType={tagType}
+            tags={sortedTypeTags}
+            selectedTagIds={selectedTagIds}
+            tagCounts={tagCounts}
+            onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
+            onClear={() => handleClearTagType(tagTypeId)}
+          />
+        )
+      })}
+
+      <Link to="/settings/tags">
+        <Button size="xs" variant="neutral-ghost">
+          <Pencil />
+          Edit Tags
+        </Button>
+      </Link>
     </div>
   )
 }

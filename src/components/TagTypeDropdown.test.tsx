@@ -182,6 +182,57 @@ describe('TagTypeDropdown', () => {
     ).toBeInTheDocument()
   })
 
+  it('renders unselected tags with tint badge variant', async () => {
+    // Given a dropdown with no selections
+    const user = userEvent.setup()
+    render(
+      <TagTypeDropdown
+        tagType={tagType}
+        tags={tags}
+        selectedTagIds={[]}
+        tagCounts={[5, 3]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    // When the dropdown is opened
+    await user.click(screen.getByRole('button', { name: /category/i }))
+
+    // Then tag badges include tint variant class in their background
+    const badges = screen.getAllByText(/vegetables|fruits/i)
+    for (const badge of badges) {
+      expect(badge.className).toMatch(/bg-blue-tint/)
+    }
+  })
+
+  it('renders selected tags with solid badge variant and unselected with tint', async () => {
+    // Given tag-1 is selected
+    const user = userEvent.setup()
+    render(
+      <TagTypeDropdown
+        tagType={tagType}
+        tags={tags}
+        selectedTagIds={['tag-1']}
+        tagCounts={[5, 3]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    // When the dropdown is opened
+    await user.click(screen.getByRole('button', { name: /category/i }))
+
+    // Then selected tag (Vegetables) has solid variant — bg class has no 'tint'
+    const selectedBadge = screen.getByText(/vegetables/i)
+    expect(selectedBadge.className).toMatch(/bg-blue\b/)
+    expect(selectedBadge.className).not.toMatch(/bg-blue-tint/)
+
+    // And unselected tag (Fruits) has tint variant — bg class includes 'tint'
+    const unselectedBadge = screen.getByText(/fruits/i)
+    expect(unselectedBadge.className).toMatch(/bg-blue-tint/)
+  })
+
   it('displays tags in the order received from parent', async () => {
     const mockTagType: TagType = {
       id: 'type-1',
