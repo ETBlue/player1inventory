@@ -50,7 +50,7 @@ export function AddNameDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="neutral-ghost" onClick={onClose}>
+          <Button variant="neutral-outline" onClick={onClose}>
             Cancel
           </Button>
           <Button onClick={onAdd}>{submitLabel}</Button>

@@ -81,18 +81,18 @@ function VendorsTab() {
               </Badge>
             )
           })}
+
+          <Button
+            variant="neutral-ghost"
+            size="sm"
+            className="px-0 py-0 gap-1 text-xs -my-1"
+            onClick={() => setShowDialog(true)}
+          >
+            <Plus />
+            New Vendor
+          </Button>
         </div>
       )}
-
-      <Button
-        variant="neutral-ghost"
-        size="sm"
-        className="gap-1"
-        onClick={() => setShowDialog(true)}
-      >
-        <Plus />
-        New Vendor
-      </Button>
 
       <AddNameDialog
         open={showDialog}

@@ -77,17 +77,17 @@ function RecipesTab() {
             </Badge>
           )
         })}
-      </div>
 
-      <Button
-        variant="neutral-ghost"
-        size="sm"
-        className="gap-1"
-        onClick={() => setShowDialog(true)}
-      >
-        <Plus />
-        New Recipe
-      </Button>
+        <Button
+          variant="neutral-ghost"
+          size="sm"
+          className="px-0 py-0 gap-1 text-xs -my-1"
+          onClick={() => setShowDialog(true)}
+        >
+          <Plus />
+          New Recipe
+        </Button>
+      </div>
 
       <AddNameDialog
         open={showDialog}
