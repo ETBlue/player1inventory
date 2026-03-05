@@ -105,7 +105,7 @@ function ItemLayoutInner() {
           >
             <ArrowLeft />
           </Button>
-          <h1 className="text-md font-regular truncate flex-1">{item.name}</h1>
+          <h1 className="text-md font-regular truncate flex-1 capitalize">{item.name}</h1>
 
           {/* Tabs */}
           <div className="flex items-center">

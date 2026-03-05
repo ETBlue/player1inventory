@@ -159,7 +159,7 @@ export function ItemCard({
           className="flex-1 min-w-0"
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
-            <h3 className="truncate">{item.name}</h3>
+            <h3 className="truncate capitalize">{item.name}</h3>
             <span className="text-xs font-normal">
               (
               {item.targetUnit === 'measurement' && item.measurementUnit
@@ -312,7 +312,7 @@ export function ItemCard({
                     ? 'neutral'
                     : 'neutral-outline'
                 }
-                className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
+                className={`gap-1 text-xs normal-case ${onVendorClick ? 'cursor-pointer' : ''}`}
                 onClick={(e) => {
                   if (onVendorClick) {
                     e.preventDefault()

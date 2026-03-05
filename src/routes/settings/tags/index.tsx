@@ -427,6 +427,7 @@ function TagSettings() {
               placeholder="e.g., Ingredient type, Storage method"
               value={newTagTypeName}
               onChange={(e) => setNewTagTypeName(e.target.value)}
+              className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
             />
           </div>

@@ -99,7 +99,7 @@ function RecipeDetailLayoutInner() {
           >
             <ArrowLeft />
           </Button>
-          <h1 className="text-md font-regular truncate flex-1">
+          <h1 className="text-md font-regular truncate flex-1 capitalize">
             {recipe.name}
           </h1>
 

@@ -92,7 +92,7 @@ function TagInfoTab() {
       <div className="space-y-2">
         <Label htmlFor="tag-type">Tag Type</Label>
         <Select value={typeId} onValueChange={setTypeId}>
-          <SelectTrigger id="tag-type">
+          <SelectTrigger id="tag-type" className="capitalize">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -103,7 +103,11 @@ function TagInfoTab() {
                 }),
               )
               .map((type) => (
-                <SelectItem key={type.id} value={type.id}>
+                <SelectItem
+                  key={type.id}
+                  value={type.id}
+                  className="capitalize"
+                >
                   {type.name}
                 </SelectItem>
               ))}
@@ -117,6 +121,7 @@ function TagInfoTab() {
           id="tag-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          className="capitalize"
         />
       </div>
 
