@@ -119,6 +119,7 @@ function TagInfoTab() {
         <Label htmlFor="tag-name">Name</Label>
         <Input
           id="tag-name"
+          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="capitalize"

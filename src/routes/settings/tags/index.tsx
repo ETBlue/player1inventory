@@ -407,7 +407,7 @@ function TagSettings() {
         <h1 className="">Tags</h1>
       </Toolbar>
 
-      <div className="px-6 pt-3 pb-5 space-y-2">
+      <form className="px-6 pt-3 pb-5 space-y-2">
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <div>
             <Label htmlFor="newTagTypeColor">Color</Label>
@@ -423,6 +423,7 @@ function TagSettings() {
               id="newTagTypeName"
               placeholder="e.g., Ingredient type, Storage method"
               value={newTagTypeName}
+              autoFocus
               onChange={(e) => setNewTagTypeName(e.target.value)}
               className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
@@ -435,7 +436,7 @@ function TagSettings() {
             New Tag Type
           </Button>
         </div>
-      </div>
+      </form>
       <div className="space-y-px pb-4">
         {[...tagTypes]
           .sort((a, b) =>

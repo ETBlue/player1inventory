@@ -30,6 +30,7 @@ export function RecipeNameForm({
         <Input
           id="recipe-name"
           value={name}
+          autoFocus
           onChange={(e) => onNameChange(e.target.value)}
           className="capitalize"
         />

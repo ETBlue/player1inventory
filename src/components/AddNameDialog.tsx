@@ -42,6 +42,7 @@ export function AddNameDialog({
             <Input
               id="entityName"
               value={name}
+              autoFocus
               onChange={(e) => onNameChange(e.target.value)}
               placeholder={placeholder}
               className="capitalize"

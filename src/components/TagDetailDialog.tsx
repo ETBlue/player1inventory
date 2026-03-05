@@ -46,6 +46,7 @@ export function TagDetailDialog({
               <Input
                 id="editTagName"
                 value={tagName}
+                autoFocus
                 onChange={(e) => onTagNameChange(e.target.value)}
                 placeholder="e.g., Dairy"
                 onKeyDown={(e) => e.key === 'Enter' && onSave()}

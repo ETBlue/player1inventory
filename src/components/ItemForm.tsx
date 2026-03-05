@@ -361,6 +361,7 @@ export function ItemForm({
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              autoFocus
               className="capitalize"
             />
           </div>
