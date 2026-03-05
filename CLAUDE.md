@@ -280,6 +280,11 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 - `activeVendorIds` / `activeRecipeIds` — badge renders filled `neutral` variant instead of `neutral-outline`
 - `activeTagIds` — badge renders bold `x` variant instead of tint `x-tint` variant; defaults to tint when not provided
 
+**`ItemFilters` dropdown behavior:**
+- Render order: vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
+- Tag badges inside tag type dropdowns: unselected tags render with `${color}-tint` variant (light), selected tags render with `${color}` variant (solid)
+- Vendor and recipe dropdowns include a "Manage" link at the bottom (always visible, with Pencil icon) navigating to `/settings/vendors` and `/settings/recipes` respectively
+
 ### Shopping Page
 
 **Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. State is not persisted.

@@ -36,6 +36,7 @@ export const Default: Story = {
 }
 
 export const WithSelections: Story = {
+  name: 'With Selections (solid vs tint badges)',
   args: {
     tagType: { id: 'type-1', name: 'Category', color: TagColor.blue },
     tags: [
