@@ -132,6 +132,16 @@ export function ItemFilters({
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings/vendors"
+                className="flex items-center gap-1.5"
+              >
+                <Pencil className="h-4 w-4" />
+                <span className="text-xs">Manage</span>
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -181,6 +191,16 @@ export function ItemFilters({
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings/recipes"
+                className="flex items-center gap-1.5"
+              >
+                <Pencil className="h-4 w-4" />
+                <span className="text-xs">Manage</span>
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
