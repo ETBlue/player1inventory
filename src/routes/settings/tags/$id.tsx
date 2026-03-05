@@ -99,7 +99,9 @@ function TagDetailLayoutInner() {
           >
             <ArrowLeft />
           </Button>
-          <h1 className="text-md font-regular truncate flex-1 capitalize">{tag.name}</h1>
+          <h1 className="text-md font-regular truncate flex-1 capitalize">
+            {tag.name}
+          </h1>
 
           <div className="flex items-center">
             {/* Tabs */}
