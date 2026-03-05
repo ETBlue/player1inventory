@@ -60,7 +60,7 @@ describe('Vendors Tab', () => {
     })
   })
 
-  it('user can see empty state when no vendors exist', async () => {
+  it('user can see new vendor button when no vendors exist', async () => {
     // Given an item and no vendors
     const item = await createItem({
       name: 'Test Item',
@@ -75,9 +75,11 @@ describe('Vendors Tab', () => {
 
     renderVendorsTab(item.id)
 
-    // Then empty state message is shown
+    // Then the new vendor button is shown
     await waitFor(() => {
-      expect(screen.getByText(/no vendors yet/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
     })
   })
 
@@ -136,6 +138,46 @@ describe('Vendors Tab', () => {
     await waitFor(async () => {
       const updatedItem = await db.items.get(item.id)
       expect(updatedItem?.vendorIds).toContain(vendor.id)
+    })
+  })
+
+  it('user can create a new vendor from the vendors tab', async () => {
+    // Given an item and no vendors
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // When user clicks "New Vendor" and types a name
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /new vendor/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    await user.type(screen.getByLabelText(/name/i), 'Costco')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+    // Then the vendor is created and assigned to the item
+    await waitFor(async () => {
+      const vendors = await db.vendors.toArray()
+      const newVendor = vendors.find((v) => v.name === 'Costco')
+      expect(newVendor).toBeDefined()
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds).toContain(newVendor?.id)
     })
   })
 

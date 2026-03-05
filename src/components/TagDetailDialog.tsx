@@ -46,6 +46,7 @@ export function TagDetailDialog({
               <Input
                 id="editTagName"
                 value={tagName}
+                autoFocus
                 onChange={(e) => onTagNameChange(e.target.value)}
                 placeholder="e.g., Dairy"
                 onKeyDown={(e) => e.key === 'Enter' && onSave()}
@@ -63,7 +64,7 @@ export function TagDetailDialog({
               Delete
             </Button>
             <div className="flex gap-2">
-              <Button variant="neutral-ghost" onClick={onClose}>
+              <Button variant="neutral-outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button onClick={onSave}>Save</Button>

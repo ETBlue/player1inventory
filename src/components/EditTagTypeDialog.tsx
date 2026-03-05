@@ -42,6 +42,7 @@ export function EditTagTypeDialog({
             <Input
               id="editTagTypeName"
               value={name}
+              autoFocus
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="e.g., Ingredient type"
               className="capitalize"
@@ -58,7 +59,7 @@ export function EditTagTypeDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="neutral-ghost" onClick={onClose}>
+          <Button variant="neutral-outline" onClick={onClose}>
             Cancel
           </Button>
           <Button onClick={onSave}>Save</Button>

@@ -225,10 +225,10 @@ function CookingPage() {
         </div>
         <Button
           variant="neutral-outline"
+          size="icon"
           onClick={() => navigate({ to: '/settings/recipes/new' })}
         >
           <Plus className="h-4 w-4" />
-          New Recipe
         </Button>
       </Toolbar>
 

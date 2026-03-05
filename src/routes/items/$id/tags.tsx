@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
-import { AddTagDialog } from '@/components/AddTagDialog'
+import { AddNameDialog } from '@/components/AddNameDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -112,10 +112,13 @@ function TagsTab() {
             })}
         </div>
       )}
-      <AddTagDialog
+      <AddNameDialog
         open={!!addTagDialog}
-        tagName={newTagName}
-        onTagNameChange={setNewTagName}
+        title="Add Tag"
+        submitLabel="Add Tag"
+        name={newTagName}
+        placeholder="e.g., Dairy, Frozen"
+        onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}
       />

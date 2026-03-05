@@ -30,6 +30,7 @@ export function VendorNameForm({
         <Input
           id="vendor-name"
           value={name}
+          autoFocus
           onChange={(e) => onNameChange(e.target.value)}
         />
       </div>

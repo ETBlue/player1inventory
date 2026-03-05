@@ -28,6 +28,7 @@ import { Route as SettingsRecipesNewRouteImport } from './routes/settings/recipe
 import { Route as SettingsRecipesIdRouteImport } from './routes/settings/recipes/$id'
 import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
+import { Route as ItemsIdRecipesRouteImport } from './routes/items/$id/recipes'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
 import { Route as SettingsVendorsIdIndexRouteImport } from './routes/settings/vendors/$id/index'
 import { Route as SettingsTagsIdIndexRouteImport } from './routes/settings/tags/$id/index'
@@ -131,6 +132,11 @@ const ItemsIdTagsRoute = ItemsIdTagsRouteImport.update({
   path: '/tags',
   getParentRoute: () => ItemsIdRoute,
 } as any)
+const ItemsIdRecipesRoute = ItemsIdRecipesRouteImport.update({
+  id: '/recipes',
+  path: '/recipes',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
 const ItemsIdLogRoute = ItemsIdLogRouteImport.update({
   id: '/log',
   path: '/log',
@@ -177,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdRouteWithChildren
@@ -202,6 +209,7 @@ export interface FileRoutesByTo {
   '/items/new': typeof ItemsNewRoute
   '/settings': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/new': typeof SettingsRecipesNewRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
   '/settings/': typeof SettingsIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdRouteWithChildren
@@ -258,6 +267,7 @@ export interface FileRouteTypes {
     | '/settings/vendors'
     | '/settings/'
     | '/items/$id/log'
+    | '/items/$id/recipes'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/$id'
@@ -283,6 +293,7 @@ export interface FileRouteTypes {
     | '/items/new'
     | '/settings'
     | '/items/$id/log'
+    | '/items/$id/recipes'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/new'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '/settings/vendors'
     | '/settings/'
     | '/items/$id/log'
+    | '/items/$id/recipes'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/$id'
@@ -476,6 +488,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemsIdTagsRouteImport
       parentRoute: typeof ItemsIdRoute
     }
+    '/items/$id/recipes': {
+      id: '/items/$id/recipes'
+      path: '/recipes'
+      fullPath: '/items/$id/recipes'
+      preLoaderRoute: typeof ItemsIdRecipesRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
     '/items/$id/log': {
       id: '/items/$id/log'
       path: '/log'
@@ -530,6 +549,7 @@ declare module '@tanstack/react-router' {
 
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
+  ItemsIdRecipesRoute: typeof ItemsIdRecipesRoute
   ItemsIdTagsRoute: typeof ItemsIdTagsRoute
   ItemsIdVendorsRoute: typeof ItemsIdVendorsRoute
   ItemsIdIndexRoute: typeof ItemsIdIndexRoute
@@ -537,6 +557,7 @@ interface ItemsIdRouteChildren {
 
 const ItemsIdRouteChildren: ItemsIdRouteChildren = {
   ItemsIdLogRoute: ItemsIdLogRoute,
+  ItemsIdRecipesRoute: ItemsIdRecipesRoute,
   ItemsIdTagsRoute: ItemsIdTagsRoute,
   ItemsIdVendorsRoute: ItemsIdVendorsRoute,
   ItemsIdIndexRoute: ItemsIdIndexRoute,

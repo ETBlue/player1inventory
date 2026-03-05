@@ -30,6 +30,7 @@ export function TagNameForm({
         <Input
           id="tag-name"
           value={name}
+          autoFocus
           onChange={(e) => onNameChange(e.target.value)}
           className="capitalize"
         />

@@ -9,45 +9,52 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-interface AddTagDialogProps {
+interface AddNameDialogProps {
   open: boolean
-  tagName: string
-  onTagNameChange: (name: string) => void
+  title: string
+  submitLabel: string
+  name: string
+  placeholder?: string
+  onNameChange: (name: string) => void
   onAdd: () => void
   onClose: () => void
 }
 
-export function AddTagDialog({
+export function AddNameDialog({
   open,
-  tagName,
-  onTagNameChange,
+  title,
+  submitLabel,
+  name,
+  placeholder,
+  onNameChange,
   onAdd,
   onClose,
-}: AddTagDialogProps) {
+}: AddNameDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Tag</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="tagName">Name</Label>
+            <Label htmlFor="entityName">Name</Label>
             <Input
-              id="tagName"
-              value={tagName}
-              onChange={(e) => onTagNameChange(e.target.value)}
-              placeholder="e.g., Dairy, Frozen"
+              id="entityName"
+              value={name}
+              autoFocus
+              onChange={(e) => onNameChange(e.target.value)}
+              placeholder={placeholder}
               className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && onAdd()}
             />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="neutral-ghost" onClick={onClose}>
+          <Button variant="neutral-outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={onAdd}>Add Tag</Button>
+          <Button onClick={onAdd}>{submitLabel}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

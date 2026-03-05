@@ -19,7 +19,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AddTagDialog } from '@/components/AddTagDialog'
+import { AddNameDialog } from '@/components/AddNameDialog'
 import { ColorSelect } from '@/components/ColorSelect'
 import { DeleteButton } from '@/components/DeleteButton'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
@@ -407,7 +407,7 @@ function TagSettings() {
         <h1 className="">Tags</h1>
       </Toolbar>
 
-      <div className="px-6 pt-3 pb-5 space-y-2">
+      <form className="px-6 pt-3 pb-5 space-y-2">
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <div>
             <Label htmlFor="newTagTypeColor">Color</Label>
@@ -423,6 +423,7 @@ function TagSettings() {
               id="newTagTypeName"
               placeholder="e.g., Ingredient type, Storage method"
               value={newTagTypeName}
+              autoFocus
               onChange={(e) => setNewTagTypeName(e.target.value)}
               className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
@@ -435,7 +436,7 @@ function TagSettings() {
             New Tag Type
           </Button>
         </div>
-      </div>
+      </form>
       <div className="space-y-px pb-4">
         {[...tagTypes]
           .sort((a, b) =>
@@ -466,10 +467,13 @@ function TagSettings() {
       </div>
 
       {/* Add Tag Dialog */}
-      <AddTagDialog
+      <AddNameDialog
         open={!!addTagDialog}
-        tagName={newTagName}
-        onTagNameChange={setNewTagName}
+        title="Add Tag"
+        submitLabel="Add Tag"
+        name={newTagName}
+        placeholder="e.g., Dairy, Frozen"
+        onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}
       />
