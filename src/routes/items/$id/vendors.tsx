@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { AddNameDialog } from '@/components/AddNameDialog'
@@ -56,43 +56,33 @@ function VendorsTab() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {sortedVendors.length === 0 ? (
-        <p className="text-sm text-foreground-muted">
-          No vendors yet.{' '}
-          <Link to="/settings/vendors" className="underline">
-            Add vendors in Settings → Vendors
-          </Link>
-          .
-        </p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {sortedVendors.map((vendor) => {
-            const isAssigned = (item.vendorIds ?? []).includes(vendor.id)
+      <div className="flex flex-wrap gap-2">
+        {sortedVendors.map((vendor) => {
+          const isAssigned = (item.vendorIds ?? []).includes(vendor.id)
 
-            return (
-              <Badge
-                key={vendor.id}
-                variant={isAssigned ? 'neutral' : 'neutral-outline'}
-                className="cursor-pointer normal-case"
-                onClick={() => toggleVendor(vendor.id)}
-              >
-                {vendor.name}
-                {isAssigned && <X className="ml-1 h-3 w-3" />}
-              </Badge>
-            )
-          })}
+          return (
+            <Badge
+              key={vendor.id}
+              variant={isAssigned ? 'neutral' : 'neutral-outline'}
+              className="cursor-pointer normal-case"
+              onClick={() => toggleVendor(vendor.id)}
+            >
+              {vendor.name}
+              {isAssigned && <X className="ml-1 h-3 w-3" />}
+            </Badge>
+          )
+        })}
 
-          <Button
-            variant="neutral-ghost"
-            size="sm"
-            className="px-0 py-0 gap-1 text-xs -my-1"
-            onClick={() => setShowDialog(true)}
-          >
-            <Plus />
-            New Vendor
-          </Button>
-        </div>
-      )}
+        <Button
+          variant="neutral-ghost"
+          size="sm"
+          className="px-0 py-0 gap-1 text-xs -my-1"
+          onClick={() => setShowDialog(true)}
+        >
+          <Plus />
+          New Vendor
+        </Button>
+      </div>
 
       <AddNameDialog
         open={showDialog}

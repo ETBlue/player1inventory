@@ -19,7 +19,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AddTagDialog } from '@/components/AddTagDialog'
+import { AddNameDialog } from '@/components/AddNameDialog'
 import { ColorSelect } from '@/components/ColorSelect'
 import { DeleteButton } from '@/components/DeleteButton'
 import { EditTagTypeDialog } from '@/components/EditTagTypeDialog'
@@ -466,10 +466,13 @@ function TagSettings() {
       </div>
 
       {/* Add Tag Dialog */}
-      <AddTagDialog
+      <AddNameDialog
         open={!!addTagDialog}
-        tagName={newTagName}
-        onTagNameChange={setNewTagName}
+        title="Add Tag"
+        submitLabel="Add Tag"
+        name={newTagName}
+        placeholder="e.g., Dairy, Frozen"
+        onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}
       />

@@ -60,7 +60,7 @@ describe('Vendors Tab', () => {
     })
   })
 
-  it('user can see empty state when no vendors exist', async () => {
+  it('user can see new vendor button when no vendors exist', async () => {
     // Given an item and no vendors
     const item = await createItem({
       name: 'Test Item',
@@ -75,9 +75,11 @@ describe('Vendors Tab', () => {
 
     renderVendorsTab(item.id)
 
-    // Then empty state message is shown
+    // Then the new vendor button is shown
     await waitFor(() => {
-      expect(screen.getByText(/no vendors yet/i)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
     })
   })
 
