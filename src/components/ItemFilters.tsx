@@ -1,7 +1,7 @@
 // src/components/ItemFilters.tsx
 
 import { Link } from '@tanstack/react-router'
-import { ChevronDown, Pencil, X } from 'lucide-react'
+import { ChevronDown, CookingPot, Pencil, Store, X } from 'lucide-react'
 import { TagTypeDropdown } from '@/components/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import {
@@ -111,6 +111,13 @@ export function ItemFilters({
         )
       })}
 
+      <Link to="/settings/tags">
+        <Button size="xs" variant="neutral-ghost">
+          <Pencil />
+          Edit Tags
+        </Button>
+      </Link>
+
       {showVendors && (
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
@@ -121,6 +128,7 @@ export function ItemFilters({
               size="xs"
               className="gap-1"
             >
+              <Store />
               Vendors
               <ChevronDown />
             </Button>
@@ -169,6 +177,7 @@ export function ItemFilters({
               size="xs"
               className="gap-1"
             >
+              <CookingPot />
               Recipes
               <ChevronDown />
             </Button>
@@ -206,13 +215,6 @@ export function ItemFilters({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-
-      <Link to="/settings/tags">
-        <Button size="xs" variant="neutral-ghost">
-          <Pencil />
-          Edit
-        </Button>
-      </Link>
     </div>
   )
 }

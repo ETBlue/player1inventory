@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { AddTagDialog } from '@/components/AddTagDialog'
@@ -187,23 +187,20 @@ function DroppableTagTypeCard({
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 bg-${tagTypeColor}`}
       />
-      <CardHeader className="pb-1 -mt-1 pl-3">
+      <CardHeader className="mb-1 -mt-1">
         <div className="flex items-center gap-1">
-          <CardTitle className="capitalize">{tagType.name}</CardTitle>
+          <CardTitle className="capitalize flex items-center gap-2">
+            <Tags className="h-4 w-4 text-foreground-muted" />
+            <h3>{tagType.name}</h3>
+          </CardTitle>
           <div className="flex-1" />
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={onEdit}
-          >
-            <Pencil className="h-4 w-4" />
+          <Button variant="neutral-ghost" size="icon" onClick={onEdit}>
+            <Pencil />
           </Button>
           <DeleteButton
-            trigger={<Trash2 className="h-4 w-4" />}
+            trigger={<Trash2 />}
             buttonVariant="destructive-ghost"
             buttonSize="icon"
-            buttonClassName="h-8 w-8"
             buttonAriaLabel={`Delete ${tagType.name}`}
             dialogTitle={`Delete "${tagType.name}"?`}
             dialogDescription={
@@ -223,7 +220,7 @@ function DroppableTagTypeCard({
           />
         </div>
       </CardHeader>
-      <CardContent ref={setNodeRef} className="pl-3">
+      <CardContent ref={setNodeRef}>
         <SortableContext
           items={sortedTypeTags.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
@@ -434,7 +431,7 @@ function TagSettings() {
         </div>
         <div className="flex">
           <Button onClick={handleAddTagType} className="flex-1">
-            <Plus className="h-4 w-4" />
+            <Plus />
             New Tag Type
           </Button>
         </div>

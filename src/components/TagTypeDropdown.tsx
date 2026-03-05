@@ -1,4 +1,4 @@
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown, Tags, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -38,6 +38,7 @@ export function TagTypeDropdown({
           size="xs"
           className="capitalize gap-1"
         >
+          <Tags />
           {tagType.name}
           <ChevronDown />
         </Button>
