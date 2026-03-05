@@ -13,7 +13,7 @@ interface VendorCardProps {
 export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
   return (
     <Card className="py-1">
-      <CardContent className="pl-3 flex items-center justify-between">
+      <CardContent className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Store className="h-4 w-4 text-foreground-muted" />
           <Link

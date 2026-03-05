@@ -12,8 +12,8 @@ interface RecipeCardProps {
 
 export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
   return (
-    <Card>
-      <CardContent className="pl-3 flex items-center justify-between">
+    <Card className="py-1">
+      <CardContent className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <CookingPot className="h-4 w-4 text-foreground-muted" />
           <Link
