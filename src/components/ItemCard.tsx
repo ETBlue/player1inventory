@@ -312,7 +312,7 @@ export function ItemCard({
                     ? 'neutral'
                     : 'neutral-outline'
                 }
-                className={`gap-1 text-xs ${onVendorClick ? 'cursor-pointer' : ''}`}
+                className={`gap-1 text-xs normal-case ${onVendorClick ? 'cursor-pointer' : ''}`}
                 onClick={(e) => {
                   if (onVendorClick) {
                     e.preventDefault()
