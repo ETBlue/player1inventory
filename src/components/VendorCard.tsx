@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Trash2 } from 'lucide-react'
+import { Store, Trash2 } from 'lucide-react'
 import { DeleteButton } from '@/components/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Vendor } from '@/types'
@@ -15,6 +15,7 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
     <Card className="py-1">
       <CardContent className="pl-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
+          <Store className="h-4 w-4 text-foreground-muted" />
           <Link
             to="/settings/vendors/$id"
             params={{ id: vendor.id }}
