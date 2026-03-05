@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Make tag badges in the `TagTypeDropdown` menu reflect selection state — solid for selected, tint for unselected.
+**Goal:** (1) Make tag badges in the `TagTypeDropdown` menu reflect selection state — solid for selected, tint for unselected. (2) Reorder `ItemFilters` so vendor/recipe dropdowns appear before tag type dropdowns.
 
-**Architecture:** One-line conditional change to the Badge `variant` prop in `TagTypeDropdown.tsx`. `isChecked` is already in scope so no new logic is needed.
+**Architecture:** One-line conditional change in `TagTypeDropdown.tsx`; JSX block reorder in `ItemFilters.tsx` with no logic changes.
 
 **Tech Stack:** React, TypeScript, shadcn/ui Badge component with existing color variant system.
 
@@ -53,4 +53,67 @@ Expected: All tests pass (no test changes needed — this is a visual-only chang
 ```bash
 git add src/components/TagTypeDropdown.tsx
 git commit -m "style(filters): render unselected tag badges with tint, selected with solid"
+```
+
+---
+
+### Task 2: Reorder dropdowns in ItemFilters
+
+**Files:**
+- Modify: `src/components/ItemFilters.tsx:83-216`
+
+**Step 1: Reorder the JSX blocks**
+
+In the `return` of `ItemFilters`, move the vendor and recipe `<DropdownMenu>` blocks before the tag type `{tagTypesWithTags.map(...)}` block. The "Edit" link stays last.
+
+New order inside `<div className="flex flex-wrap ...">`:
+
+```tsx
+{/* 1. Vendors */}
+{showVendors && (
+  <DropdownMenu modal={false}>
+    {/* ... vendor dropdown unchanged ... */}
+  </DropdownMenu>
+)}
+
+{/* 2. Recipes */}
+{showRecipes && (
+  <DropdownMenu modal={false}>
+    {/* ... recipe dropdown unchanged ... */}
+  </DropdownMenu>
+)}
+
+{/* 3. Tag type dropdowns */}
+{tagTypesWithTags.map((tagType) => {
+  {/* ... unchanged ... */}
+})}
+
+{/* 4. Edit link */}
+<Link to="/settings/tags">
+  <Button size="xs" variant="neutral-ghost">
+    <Pencil />
+    Edit
+  </Button>
+</Link>
+```
+
+No logic changes — only JSX block order changes.
+
+**Step 2: Verify in dev server**
+
+Run: `pnpm dev`
+
+Navigate to pantry page and open the Filters panel. Verify vendors/recipes dropdowns appear to the left of tag type dropdowns.
+
+**Step 3: Run tests**
+
+Run: `pnpm test`
+
+Expected: All tests pass (render order doesn't affect test assertions).
+
+**Step 4: Commit**
+
+```bash
+git add src/components/ItemFilters.tsx
+git commit -m "style(filters): render vendor and recipe dropdowns before tag type dropdowns"
 ```
