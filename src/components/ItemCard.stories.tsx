@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -22,6 +23,8 @@ const createStoryRouter = (storyComponent: React.ComponentType) => {
   })
 }
 
+const queryClient = new QueryClient()
+
 // Wrapper component that sets up router context
 function RouterWrapper({ children }: { children: React.ReactNode }) {
   const [router] = useState(() => createStoryRouter(() => <>{children}</>))
@@ -34,11 +37,13 @@ const meta: Meta<typeof ItemCard> = {
   component: ItemCard,
   decorators: [
     (Story) => (
-      <RouterWrapper>
-        <div className="max-w-md">
-          <Story />
-        </div>
-      </RouterWrapper>
+      <QueryClientProvider client={queryClient}>
+        <RouterWrapper>
+          <div className="max-w-md">
+            <Story />
+          </div>
+        </RouterWrapper>
+      </QueryClientProvider>
     ),
   ],
 }
