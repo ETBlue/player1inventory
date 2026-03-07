@@ -440,10 +440,8 @@ function CookingPage() {
                         )
                         const amount =
                           recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
-                        // checkedItemIds is populated by getDefaultCheckedItems when recipe is first initialized
-                        // ?? true is a safety fallback in case this invariant ever breaks
                         const isItemChecked =
-                          checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
+                          checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? false
 
                         return (
                           <div

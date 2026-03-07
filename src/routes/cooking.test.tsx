@@ -904,6 +904,40 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
+  it('user can expand an unchecked recipe and items show as unchecked', async () => {
+    // Given a recipe with a default item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1, 5)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands the recipe WITHOUT clicking the recipe checkbox
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    // Then item checkboxes are unchecked (recipe itself is unchecked)
+    // When unchecked, ItemCard aria-label is "Add <name>" not "Remove <name>"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Add Flour/i }),
+      ).not.toBeChecked()
+    })
+
+    // And the recipe checkbox is unchecked
+    expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+      'data-state',
+      'unchecked',
+    )
+  })
+
   it('user can check a recipe where all items have defaultAmount 0', async () => {
     // Given a recipe with one item that has defaultAmount 0 (optional ingredient)
     const item = await makeItem('Salt', 1)
