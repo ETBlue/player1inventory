@@ -8,8 +8,10 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import type { Recipe, Vendor } from '@/types'
+import type { Item, Recipe, Vendor } from '@/types'
 import { TagColor } from '@/types'
+
+// Shared mock data and Storybook decorator for ItemCard story files.
 
 const createStoryRouter = (storyComponent: React.ComponentType) => {
   const rootRoute = createRootRoute({
@@ -38,7 +40,7 @@ export const sharedDecorator: Decorator = (Story) => (
   </QueryClientProvider>
 )
 
-export const mockItem = {
+export const mockItem: Item = {
   id: '1',
   name: 'Yogurt (plain)',
   packageUnit: 'gallon',
@@ -53,8 +55,8 @@ export const mockItem = {
   updatedAt: new Date(),
 }
 
-export const mockDualUnitItem = {
-  id: '1',
+export const mockDualUnitItem: Item = {
+  id: '2',
   name: 'Purple grapes',
   packageUnit: 'bottle',
   measurementUnit: 'L',
