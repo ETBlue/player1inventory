@@ -136,25 +136,25 @@ function CookingPage() {
     setSessionAmounts(amounts)
     setSessionServings(servings)
 
-    // Derive current check state using the same tri-state logic as the render
+    // Toggle based on default items (defaultAmount > 0); fall back to all items if none have defaults
     const currentChecked = checkedItemIds.get(recipeId) ?? new Set()
-    const checkedCount = currentChecked.size
-    const totalItemCount = recipe.items.length
-    const currentCheckState: boolean | 'indeterminate' =
-      totalItemCount === 0
-        ? false
-        : checkedCount === 0
-          ? false
-          : checkedCount === totalItemCount
-            ? true
-            : 'indeterminate'
+    const defaultItems = recipe.items.filter((ri) => ri.defaultAmount > 0)
+    const effectiveItems = defaultItems.length > 0 ? defaultItems : recipe.items
+    const allEffectiveChecked =
+      effectiveItems.length > 0 &&
+      effectiveItems.every((ri) => currentChecked.has(ri.itemId))
 
     const updatedItemIds = new Map(checkedItemIds)
-    // When fully checked → uncheck all; otherwise (unchecked or indeterminate) → check default items
-    if (currentCheckState === true) {
+    if (allEffectiveChecked) {
+      // All effective items checked → uncheck all
       updatedItemIds.set(recipeId, new Set())
     } else {
-      updatedItemIds.set(recipeId, getDefaultCheckedItems(recipe))
+      // Some or none checked → check all effective items
+      const toCheck =
+        defaultItems.length > 0
+          ? getDefaultCheckedItems(recipe)
+          : new Set(recipe.items.map((ri) => ri.itemId))
+      updatedItemIds.set(recipeId, toCheck)
     }
     setCheckedItemIds(updatedItemIds)
   }
@@ -311,13 +311,26 @@ function CookingPage() {
             const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
             const totalItemCount = recipe.items.length
 
-            // Tri-state for recipe checkbox
+            // Tri-state for recipe checkbox — based on default items (defaultAmount > 0);
+            // falls back to all items when none have a default amount
+            const defaultItemIds = new Set(
+              recipe.items
+                .filter((ri) => ri.defaultAmount > 0)
+                .map((ri) => ri.itemId),
+            )
+            const effectiveItemIds =
+              defaultItemIds.size > 0
+                ? defaultItemIds
+                : new Set(recipe.items.map((ri) => ri.itemId))
+            const checkedEffectiveCount = [
+              ...(checkedItemIds.get(recipe.id) ?? new Set()),
+            ].filter((id) => effectiveItemIds.has(id)).length
             const recipeCheckState: boolean | 'indeterminate' =
-              totalItemCount === 0
+              effectiveItemIds.size === 0
                 ? false
-                : checkedCount === 0
+                : checkedEffectiveCount === 0
                   ? false
-                  : checkedCount === totalItemCount
+                  : checkedEffectiveCount === effectiveItemIds.size
                     ? true
                     : 'indeterminate'
 

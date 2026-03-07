@@ -903,4 +903,71 @@ describe('Use (Cooking) Page', () => {
       expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
     })
   })
+
+  it('user can check a recipe where all items have defaultAmount 0', async () => {
+    // Given a recipe with one item that has defaultAmount 0 (optional ingredient)
+    const item = await makeItem('Salt', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 0 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the recipe checkbox should be checked (not stuck unchecked)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'checked',
+      )
+    })
+  })
+
+  it('user can toggle a recipe with mixed defaultAmounts on and off', async () => {
+    // Given a recipe with one default item and one optional item
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 0 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox (Flour is default, Salt is optional)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the recipe checkbox shows as checked (all DEFAULT items are checked)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'checked',
+      )
+    })
+
+    // When user clicks again
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the recipe checkbox is unchecked (can toggle off)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'unchecked',
+      )
+    })
+  })
 })
