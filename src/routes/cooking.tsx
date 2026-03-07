@@ -46,8 +46,11 @@ function CookingPage() {
   const [sessionAmounts, setSessionAmounts] = useState<
     Map<string, Map<string, number>>
   >(new Map())
-  const [checkedRecipeIds, setCheckedRecipeIds] = useState<Set<string>>(
+  const [expandedRecipeIds, setExpandedRecipeIds] = useState<Set<string>>(
     new Set(),
+  )
+  const [sessionServings, setSessionServings] = useState<Map<string, number>>(
+    new Map(),
   )
   // Map<recipeId, Set<itemId>> — tracks which items are included per recipe
   const [checkedItemIds, setCheckedItemIds] = useState<
@@ -66,41 +69,92 @@ function CookingPage() {
     [recipes],
   )
 
-  const handleToggleRecipe = (recipeId: string) => {
+  const initializeRecipe = (
+    recipeId: string,
+    recipe: (typeof recipes)[0],
+    currentAmounts: Map<string, Map<string, number>>,
+    currentCheckedItemIds: Map<string, Set<string>>,
+    currentServings: Map<string, number>,
+  ) => {
+    if (currentAmounts.has(recipeId)) {
+      return {
+        amounts: currentAmounts,
+        itemIds: currentCheckedItemIds,
+        servings: currentServings,
+      }
+    }
+    const recipeAmountMap = new Map<string, number>()
+    const recipeItemSet = new Set<string>()
+    for (const ri of recipe.items) {
+      recipeAmountMap.set(ri.itemId, ri.defaultAmount)
+      if (ri.defaultAmount > 0) recipeItemSet.add(ri.itemId)
+    }
+    return {
+      amounts: new Map(currentAmounts).set(recipeId, recipeAmountMap),
+      itemIds: new Map(currentCheckedItemIds).set(recipeId, recipeItemSet),
+      servings: new Map(currentServings).set(recipeId, 1),
+    }
+  }
+
+  const handleToggleExpand = (recipeId: string) => {
     const recipe = recipes.find((r) => r.id === recipeId)
     if (!recipe) return
 
-    if (checkedRecipeIds.has(recipeId)) {
-      // Uncheck: remove from state
-      const newAmounts = new Map(sessionAmounts)
-      newAmounts.delete(recipeId)
-      setSessionAmounts(newAmounts)
-
-      const newCheckedItemIds = new Map(checkedItemIds)
-      newCheckedItemIds.delete(recipeId)
-      setCheckedItemIds(newCheckedItemIds)
-
-      const newChecked = new Set(checkedRecipeIds)
-      newChecked.delete(recipeId)
-      setCheckedRecipeIds(newChecked)
-    } else {
-      // Check: populate with defaultAmounts; items with defaultAmount 0 start unchecked
-      const recipeAmountMap = new Map<string, number>()
-      const recipeItemSet = new Set<string>()
-      for (const ri of recipe.items) {
-        recipeAmountMap.set(ri.itemId, ri.defaultAmount)
-        if (ri.defaultAmount > 0) recipeItemSet.add(ri.itemId)
-      }
-      const newAmounts = new Map(sessionAmounts)
-      newAmounts.set(recipeId, recipeAmountMap)
-      setSessionAmounts(newAmounts)
-
-      const newCheckedItemIds = new Map(checkedItemIds)
-      newCheckedItemIds.set(recipeId, recipeItemSet)
-      setCheckedItemIds(newCheckedItemIds)
-
-      setCheckedRecipeIds(new Set([...checkedRecipeIds, recipeId]))
+    const newExpanded = new Set(expandedRecipeIds)
+    if (newExpanded.has(recipeId)) {
+      newExpanded.delete(recipeId)
+      setExpandedRecipeIds(newExpanded)
+      return
     }
+
+    // Expanding — initialize state if first time
+    newExpanded.add(recipeId)
+    const { amounts, itemIds, servings } = initializeRecipe(
+      recipeId,
+      recipe,
+      sessionAmounts,
+      checkedItemIds,
+      sessionServings,
+    )
+    setExpandedRecipeIds(newExpanded)
+    setSessionAmounts(amounts)
+    setCheckedItemIds(itemIds)
+    setSessionServings(servings)
+  }
+
+  const handleToggleRecipeCheckbox = (recipeId: string) => {
+    const recipe = recipes.find((r) => r.id === recipeId)
+    if (!recipe) return
+
+    // Initialize if first time interacting
+    const { amounts, itemIds, servings } = initializeRecipe(
+      recipeId,
+      recipe,
+      sessionAmounts,
+      checkedItemIds,
+      sessionServings,
+    )
+    setSessionAmounts(amounts)
+    setSessionServings(servings)
+
+    // Derive current check state from local itemIds (not yet committed to state)
+    const currentChecked = itemIds.get(recipeId) ?? new Set()
+    const allChecked =
+      recipe.items.length > 0 && currentChecked.size === recipe.items.length
+
+    const updatedItemIds = new Map(itemIds)
+    if (allChecked) {
+      updatedItemIds.set(recipeId, new Set())
+    } else {
+      updatedItemIds.set(recipeId, new Set(recipe.items.map((ri) => ri.itemId)))
+    }
+    setCheckedItemIds(updatedItemIds)
+  }
+
+  const _handleAdjustServings = (recipeId: string, delta: number) => {
+    const current = sessionServings.get(recipeId) ?? 1
+    const next = Math.max(1, current + delta)
+    setSessionServings(new Map(sessionServings).set(recipeId, next))
   }
 
   const handleAdjustAmount = (
@@ -134,17 +188,17 @@ function CookingPage() {
   // Aggregate total amounts per item across all checked recipes
   const totalByItemId = useMemo(() => {
     const totals = new Map<string, number>()
-    for (const recipeId of checkedRecipeIds) {
-      const recipeAmounts = sessionAmounts.get(recipeId) ?? new Map()
+    for (const [recipeId, recipeAmounts] of sessionAmounts) {
+      const servings = sessionServings.get(recipeId) ?? 1
       const included = checkedItemIds.get(recipeId) ?? new Set()
       for (const [itemId, amount] of recipeAmounts) {
         if (amount > 0 && included.has(itemId)) {
-          totals.set(itemId, (totals.get(itemId) ?? 0) + amount)
+          totals.set(itemId, (totals.get(itemId) ?? 0) + servings * amount)
         }
       }
     }
     return totals
-  }, [checkedRecipeIds, sessionAmounts, checkedItemIds])
+  }, [sessionAmounts, sessionServings, checkedItemIds])
 
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {
@@ -190,20 +244,22 @@ function CookingPage() {
     }
 
     // Reset state
-    setCheckedRecipeIds(new Set())
+    setExpandedRecipeIds(new Set())
+    setSessionServings(new Map())
     setSessionAmounts(new Map())
     setCheckedItemIds(new Map())
     setShowDoneDialog(false)
   }
 
   const handleConfirmCancel = () => {
-    setCheckedRecipeIds(new Set())
+    setExpandedRecipeIds(new Set())
+    setSessionServings(new Map())
     setSessionAmounts(new Map())
     setCheckedItemIds(new Map())
     setShowCancelDialog(false)
   }
 
-  const anyChecked = checkedRecipeIds.size > 0
+  const anyChecked = [...checkedItemIds.values()].some((set) => set.size > 0)
 
   return (
     <div>
@@ -239,7 +295,12 @@ function CookingPage() {
       ) : (
         <div className="space-y-px pb-4">
           {sortedRecipes.map((recipe) => {
-            const isChecked = checkedRecipeIds.has(recipe.id)
+            const isExpanded = expandedRecipeIds.has(recipe.id)
+            const recipeCheckedItems = checkedItemIds.get(recipe.id)
+            const isChecked =
+              recipeCheckedItems !== undefined &&
+              recipe.items.length > 0 &&
+              recipeCheckedItems.size === recipe.items.length
             const recipeAmounts = sessionAmounts.get(recipe.id)
 
             return (
@@ -251,22 +312,19 @@ function CookingPage() {
                       <Checkbox
                         id={`recipe-${recipe.id}`}
                         checked={isChecked}
-                        onCheckedChange={() => handleToggleRecipe(recipe.id)}
+                        onCheckedChange={() =>
+                          handleToggleRecipeCheckbox(recipe.id)
+                        }
                         aria-label={recipe.name}
                       />
                       <button
                         type="button"
                         className="flex-1 text-left font-medium hover:underline capitalize"
-                        onClick={() =>
-                          navigate({
-                            to: '/settings/recipes/$id',
-                            params: { id: recipe.id },
-                          })
-                        }
+                        onClick={() => handleToggleExpand(recipe.id)}
                       >
                         {recipe.name}
                       </button>
-                      {!isChecked && (
+                      {!isExpanded && (
                         <span className="text-sm text-foreground-muted">
                           {recipe.items.length} item
                           {recipe.items.length !== 1 ? 's' : ''}
@@ -275,7 +333,7 @@ function CookingPage() {
                     </div>
                   </CardContent>
                 </Card>
-                {isChecked && recipeAmounts && (
+                {isExpanded && recipeAmounts && (
                   <div className="space-y-px">
                     {recipe.items.length === 0 && (
                       <p className="text-sm text-foreground-muted px-4">
@@ -343,8 +401,8 @@ function CookingPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Consume from {checkedRecipeIds.size} recipe
-              {checkedRecipeIds.size !== 1 ? 's' : ''}?
+              Consume from {sessionAmounts.size} recipe
+              {sessionAmounts.size !== 1 ? 's' : ''}?
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
