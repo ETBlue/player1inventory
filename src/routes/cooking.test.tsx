@@ -652,4 +652,130 @@ describe('Use (Cooking) Page', () => {
     // Then expiration text IS visible (expiration shown in cooking mode)
     expect(screen.getByText(/Expires/i)).toBeInTheDocument()
   })
+
+  it('user can see the serving stepper when a recipe is checked', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then serving stepper shows
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('serving count starts at 1 and can be increased', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe and clicks +
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
+
+    // Then serving count shows 2
+    await waitFor(() => {
+      expect(screen.getByText('2')).toBeInTheDocument()
+    })
+  })
+
+  it('serving count cannot go below 1', async () => {
+    // Given a recipe with an item, checked (serving = 1)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then − button is disabled at 1
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /decrease.*serving/i }),
+      ).toBeDisabled()
+    })
+  })
+
+  it('serving count multiplies ingredient amounts on consumption', async () => {
+    // Given a recipe: Flour with defaultAmount=2, packedQuantity=10
+    const item = await makeItem('Flour', 1, 10)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe and sets servings to 3
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i })) // 2
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i })) // 3
+
+    // And clicks Done and confirms
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /confirm/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then Flour is reduced by 3 × 2 = 6 (from 10 to 4)
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      const total =
+        (updated?.packedQuantity ?? 0) + (updated?.unpackedQuantity ?? 0)
+      expect(total).toBe(4)
+    })
+  })
 })
