@@ -91,7 +91,7 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('user can check a recipe and see item amounts expanded', async () => {
+  it('user can expand a recipe to see its items', async () => {
     // Given a recipe with an item
     const item = await makeItem('Flour', 2)
     await createRecipe({
@@ -102,22 +102,82 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
-    // When user checks the recipe
+    // When user expands the recipe (chevron button)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    // Then the item list is visible
+    await waitFor(() => {
+      expect(screen.getByText('Flour')).toBeInTheDocument()
+    })
+  })
+
+  it('user can collapse an expanded recipe to hide its items', async () => {
+    // Given a recipe with an item, expanded
+    const item = await makeItem('Flour', 2)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Flour')).toBeInTheDocument()
+    })
+
+    // And collapses
+    await user.click(screen.getByRole('button', { name: /Collapse Pasta/i }))
+
+    // Then items are hidden
+    await waitFor(() => {
+      expect(screen.queryByText('Flour')).not.toBeInTheDocument()
+    })
+  })
+
+  it('checking a recipe without expanding does not show items', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 2)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe (without expanding)
     await waitFor(() => {
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
     })
     await user.click(screen.getByLabelText('Pasta'))
 
-    // Then the item list is expanded with its default amount
+    // Then items are NOT visible (not expanded)
     await waitFor(() => {
-      expect(screen.getByText('Flour')).toBeInTheDocument()
-      expect(screen.getByText(/4/)).toBeInTheDocument()
+      expect(screen.queryByText('Flour')).not.toBeInTheDocument()
     })
   })
 
   it('Done and Cancel buttons become enabled when a recipe is checked', async () => {
-    // Given a recipe exists
-    await createRecipe({ name: 'Pasta' })
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
 
     renderPage()
     const user = userEvent.setup()
@@ -145,6 +205,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -179,6 +247,14 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
     // When user checks the recipe
     await waitFor(() => {
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
@@ -211,6 +287,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -260,8 +344,12 @@ describe('Use (Cooking) Page', () => {
   })
 
   it('user can cancel and selections are cleared', async () => {
-    // Given a recipe that is checked
-    await createRecipe({ name: 'Pasta' })
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
 
     renderPage()
     const user = userEvent.setup()
@@ -305,6 +393,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -362,6 +458,14 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
     // When user checks the recipe
     await waitFor(() => {
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
@@ -395,6 +499,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Quiche/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Quiche/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -437,6 +549,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Quiche/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Quiche/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -505,6 +625,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Smoothie/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Smoothie/i }))
 
     // When user checks the recipe
     await waitFor(() => {
