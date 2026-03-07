@@ -260,6 +260,9 @@ function CookingPage() {
   }
 
   const anyChecked = [...checkedItemIds.values()].some((set) => set.size > 0)
+  const recipesBeingConsumed = [...checkedItemIds.values()].filter(
+    (set) => set.size > 0,
+  ).length
 
   return (
     <div>
@@ -401,8 +404,8 @@ function CookingPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Consume from {sessionAmounts.size} recipe
-              {sessionAmounts.size !== 1 ? 's' : ''}?
+              Consume from {recipesBeingConsumed} recipe
+              {recipesBeingConsumed !== 1 ? 's' : ''}?
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
