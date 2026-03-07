@@ -325,8 +325,8 @@ function CookingPage() {
               <React.Fragment key={recipe.id}>
                 <Card>
                   <CardContent className="p-0">
-                    {/* Row 1: checkbox | [name ··· chevron] | [serving stepper] */}
-                    <div className="flex items-center gap-3 px-4 py-3">
+                    {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
+                    <div className="flex items-center gap-2 px-4 py-3">
                       <Checkbox
                         id={`recipe-${recipe.id}`}
                         checked={recipeCheckState}
@@ -335,34 +335,34 @@ function CookingPage() {
                         }
                         aria-label={recipe.name}
                       />
+                      {/* Name: navigates to recipe detail */}
+                      <button
+                        type="button"
+                        className="flex-1 text-left font-medium capitalize hover:underline truncate"
+                        onClick={() =>
+                          navigate({
+                            to: '/settings/recipes/$id',
+                            params: { id: recipe.id },
+                          })
+                        }
+                      >
+                        {recipe.name}
+                      </button>
+                      {/* Chevron: toggles expand/collapse */}
                       <button
                         type="button"
                         aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
-                        className="flex-1 flex items-center justify-between text-left font-medium capitalize"
+                        className="shrink-0 text-foreground-muted hover:text-foreground"
                         onClick={() => handleToggleExpand(recipe.id)}
                       >
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: name click navigates independently from the expand button */}
-                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: name click navigates independently from the expand button */}
-                        <span
-                          className="hover:underline cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            navigate({
-                              to: '/settings/recipes/$id',
-                              params: { id: recipe.id },
-                            })
-                          }}
-                        >
-                          {recipe.name}
-                        </span>
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-foreground-muted shrink-0" />
+                          <ChevronDown className="h-4 w-4" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-foreground-muted shrink-0" />
+                          <ChevronRight className="h-4 w-4" />
                         )}
                       </button>
                       {/* Serving stepper — always reserved, empty when no items checked */}
-                      <div className="flex items-center gap-1 w-20 justify-end">
+                      <div className="flex items-center gap-1 w-20 justify-end shrink-0">
                         {recipeCheckState !== false && (
                           <>
                             <Button
@@ -379,7 +379,7 @@ function CookingPage() {
                             >
                               −
                             </Button>
-                            <span className="text-sm w-4 text-center">
+                            <span className="text-sm w-6 text-center tabular-nums">
                               {sessionServings.get(recipe.id) ?? 1}
                             </span>
                             <Button
@@ -397,7 +397,7 @@ function CookingPage() {
                     </div>
 
                     {/* Row 2: subtitle */}
-                    <div className="px-4 pb-2 pl-10 text-sm text-foreground-muted">
+                    <div className="pr-4 pl-10 pb-2 text-sm text-foreground-muted">
                       {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
                       {checkedCount > 0 ? `, ${checkedCount} selected` : ''}
                     </div>
@@ -427,7 +427,7 @@ function CookingPage() {
                         )
                         const amount =
                           recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
-                        // checkedItemIds is always populated when recipe is initialized (see initializeRecipe)
+                        // checkedItemIds is populated by getDefaultCheckedItems when recipe is first initialized
                         // ?? true is a safety fallback in case this invariant ever breaks
                         const isItemChecked =
                           checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
