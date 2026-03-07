@@ -127,7 +127,7 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
-    // When user expands
+    // Given expanded recipe
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /Expand Pasta/i }),
@@ -148,7 +148,7 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('checking a recipe without expanding does not show items', async () => {
+  it('user can check a recipe without expanding it and items remain hidden', async () => {
     // Given a recipe with an item
     const item = await makeItem('Flour', 2)
     await createRecipe({
@@ -599,6 +599,7 @@ describe('Use (Cooking) Page', () => {
       expect(updatedBacon?.packedQuantity).toBe(3)
     })
   })
+
   it('user sees expiration but not tag badges when cooking a recipe', async () => {
     // Given an item with a tag and a future due date
     const tagType = await createTagType({ name: 'Category', color: 'blue' })
