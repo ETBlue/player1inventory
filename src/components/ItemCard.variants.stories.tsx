@@ -48,6 +48,7 @@ export const VendorsAndRecipesCollapsed: Story = {
     tags: mockTags,
     tagTypes: mockTagTypes,
     showTags: false,
+    showTagSummary: true,
     vendors: mockVendors,
     recipes: mockRecipes,
   },
