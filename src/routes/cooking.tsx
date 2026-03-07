@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { Toolbar } from '@/components/Toolbar'
@@ -69,31 +69,33 @@ function CookingPage() {
     [recipes],
   )
 
-  const initializeRecipe = (
+  // Initializes amounts and servings for a recipe (idempotent — no-op if already initialized)
+  const initializeAmountsAndServings = (
     recipeId: string,
     recipe: (typeof recipes)[0],
     currentAmounts: Map<string, Map<string, number>>,
-    currentCheckedItemIds: Map<string, Set<string>>,
     currentServings: Map<string, number>,
   ) => {
     if (currentAmounts.has(recipeId)) {
-      return {
-        amounts: currentAmounts,
-        itemIds: currentCheckedItemIds,
-        servings: currentServings,
-      }
+      return { amounts: currentAmounts, servings: currentServings }
     }
     const recipeAmountMap = new Map<string, number>()
-    const recipeItemSet = new Set<string>()
     for (const ri of recipe.items) {
       recipeAmountMap.set(ri.itemId, ri.defaultAmount)
-      if (ri.defaultAmount > 0) recipeItemSet.add(ri.itemId)
     }
     return {
       amounts: new Map(currentAmounts).set(recipeId, recipeAmountMap),
-      itemIds: new Map(currentCheckedItemIds).set(recipeId, recipeItemSet),
       servings: new Map(currentServings).set(recipeId, 1),
     }
+  }
+
+  // Returns the default checked item set for a recipe (items with defaultAmount > 0)
+  const getDefaultCheckedItems = (recipe: (typeof recipes)[0]): Set<string> => {
+    const set = new Set<string>()
+    for (const ri of recipe.items) {
+      if (ri.defaultAmount > 0) set.add(ri.itemId)
+    }
+    return set
   }
 
   const handleToggleExpand = (recipeId: string) => {
@@ -107,18 +109,16 @@ function CookingPage() {
       return
     }
 
-    // Expanding — initialize state if first time
+    // Expanding — initialize amounts/servings if first time (checkedItemIds untouched)
     newExpanded.add(recipeId)
-    const { amounts, itemIds, servings } = initializeRecipe(
+    const { amounts, servings } = initializeAmountsAndServings(
       recipeId,
       recipe,
       sessionAmounts,
-      checkedItemIds,
       sessionServings,
     )
     setExpandedRecipeIds(newExpanded)
     setSessionAmounts(amounts)
-    setCheckedItemIds(itemIds)
     setSessionServings(servings)
   }
 
@@ -126,32 +126,40 @@ function CookingPage() {
     const recipe = recipes.find((r) => r.id === recipeId)
     if (!recipe) return
 
-    // Initialize if first time interacting
-    const { amounts, itemIds, servings } = initializeRecipe(
+    // Initialize amounts/servings if first time interacting
+    const { amounts, servings } = initializeAmountsAndServings(
       recipeId,
       recipe,
       sessionAmounts,
-      checkedItemIds,
       sessionServings,
     )
     setSessionAmounts(amounts)
     setSessionServings(servings)
 
-    // Derive current check state from local itemIds (not yet committed to state)
-    const currentChecked = itemIds.get(recipeId) ?? new Set()
-    const allChecked =
-      recipe.items.length > 0 && currentChecked.size === recipe.items.length
+    // Derive current check state using the same tri-state logic as the render
+    const currentChecked = checkedItemIds.get(recipeId) ?? new Set()
+    const checkedCount = currentChecked.size
+    const totalItemCount = recipe.items.length
+    const currentCheckState: boolean | 'indeterminate' =
+      totalItemCount === 0
+        ? false
+        : checkedCount === 0
+          ? false
+          : checkedCount === totalItemCount
+            ? true
+            : 'indeterminate'
 
-    const updatedItemIds = new Map(itemIds)
-    if (allChecked) {
+    const updatedItemIds = new Map(checkedItemIds)
+    // When fully checked → uncheck all; otherwise (unchecked or indeterminate) → check default items
+    if (currentCheckState === true) {
       updatedItemIds.set(recipeId, new Set())
     } else {
-      updatedItemIds.set(recipeId, new Set(recipe.items.map((ri) => ri.itemId)))
+      updatedItemIds.set(recipeId, getDefaultCheckedItems(recipe))
     }
     setCheckedItemIds(updatedItemIds)
   }
 
-  const _handleAdjustServings = (recipeId: string, delta: number) => {
+  const handleAdjustServings = (recipeId: string, delta: number) => {
     const current = sessionServings.get(recipeId) ?? 1
     const next = Math.max(1, current + delta)
     setSessionServings(new Map(sessionServings).set(recipeId, next))
@@ -299,22 +307,29 @@ function CookingPage() {
         <div className="space-y-px pb-4">
           {sortedRecipes.map((recipe) => {
             const isExpanded = expandedRecipeIds.has(recipe.id)
-            const recipeCheckedItems = checkedItemIds.get(recipe.id)
-            const isChecked =
-              recipeCheckedItems !== undefined &&
-              recipe.items.length > 0 &&
-              recipeCheckedItems.size === recipe.items.length
             const recipeAmounts = sessionAmounts.get(recipe.id)
+            const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
+            const totalItemCount = recipe.items.length
+
+            // Tri-state for recipe checkbox
+            const recipeCheckState: boolean | 'indeterminate' =
+              totalItemCount === 0
+                ? false
+                : checkedCount === 0
+                  ? false
+                  : checkedCount === totalItemCount
+                    ? true
+                    : 'indeterminate'
 
             return (
               <React.Fragment key={recipe.id}>
                 <Card>
-                  <CardContent>
-                    {/* Recipe header row */}
-                    <div className="flex items-center gap-3">
+                  <CardContent className="p-0">
+                    {/* Row 1: checkbox | [name ··· chevron] | [serving stepper] */}
+                    <div className="flex items-center gap-3 px-4 py-3">
                       <Checkbox
                         id={`recipe-${recipe.id}`}
-                        checked={isChecked}
+                        checked={recipeCheckState}
                         onCheckedChange={() =>
                           handleToggleRecipeCheckbox(recipe.id)
                         }
@@ -322,17 +337,69 @@ function CookingPage() {
                       />
                       <button
                         type="button"
-                        className="flex-1 text-left font-medium hover:underline capitalize"
+                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
+                        className="flex-1 flex items-center justify-between text-left font-medium capitalize"
                         onClick={() => handleToggleExpand(recipe.id)}
                       >
-                        {recipe.name}
-                      </button>
-                      {!isExpanded && (
-                        <span className="text-sm text-foreground-muted">
-                          {recipe.items.length} item
-                          {recipe.items.length !== 1 ? 's' : ''}
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: name click navigates independently from the expand button */}
+                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: name click navigates independently from the expand button */}
+                        <span
+                          className="hover:underline cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate({
+                              to: '/settings/recipes/$id',
+                              params: { id: recipe.id },
+                            })
+                          }}
+                        >
+                          {recipe.name}
                         </span>
-                      )}
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-foreground-muted shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-foreground-muted shrink-0" />
+                        )}
+                      </button>
+                      {/* Serving stepper — always reserved, empty when no items checked */}
+                      <div className="flex items-center gap-1 w-20 justify-end">
+                        {recipeCheckState !== false && (
+                          <>
+                            <Button
+                              variant="neutral-outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              aria-label="Decrease servings"
+                              onClick={() =>
+                                handleAdjustServings(recipe.id, -1)
+                              }
+                              disabled={
+                                (sessionServings.get(recipe.id) ?? 1) <= 1
+                              }
+                            >
+                              −
+                            </Button>
+                            <span className="text-sm w-4 text-center">
+                              {sessionServings.get(recipe.id) ?? 1}
+                            </span>
+                            <Button
+                              variant="neutral-outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              aria-label="Increase servings"
+                              onClick={() => handleAdjustServings(recipe.id, 1)}
+                            >
+                              +
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 2: subtitle */}
+                    <div className="px-4 pb-2 pl-10 text-sm text-foreground-muted">
+                      {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
+                      {checkedCount > 0 ? `, ${checkedCount} selected` : ''}
                     </div>
                   </CardContent>
                 </Card>
