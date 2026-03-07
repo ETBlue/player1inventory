@@ -357,7 +357,7 @@ function CookingPage() {
                         )
                         const amount =
                           recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
-                        // checkedItemIds is always populated when recipe is checked (see handleToggleRecipe)
+                        // checkedItemIds is always populated when recipe is initialized (see initializeRecipe)
                         // ?? true is a safety fallback in case this invariant ever breaks
                         const isItemChecked =
                           checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? true
