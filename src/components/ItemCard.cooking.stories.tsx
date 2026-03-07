@@ -18,7 +18,7 @@ export default meta
 type Story = StoryObj<typeof ItemCard>
 
 export const ItemIncluded: Story = {
-  name: 'Item included',
+  name: 'Item included (amount controls visible)',
   args: {
     item: { ...mockItem, name: 'Flour', packageUnit: 'kg' },
     tags: mockTags,
@@ -26,6 +26,7 @@ export const ItemIncluded: Story = {
     mode: 'cooking',
     showTags: false,
     showTagSummary: false,
+    showExpiration: true,
     isChecked: true,
     controlAmount: 4,
     onCheckboxToggle: () => console.log('Toggle item'),
@@ -42,6 +43,7 @@ export const ItemExcluded: Story = {
     mode: 'cooking',
     showTags: false,
     showTagSummary: false,
+    showExpiration: true,
     isChecked: false,
     controlAmount: 2,
     onCheckboxToggle: () => console.log('Toggle item'),
