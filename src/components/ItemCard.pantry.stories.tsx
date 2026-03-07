@@ -51,9 +51,10 @@ export const StatusWarning: Story = {
   args: {
     item: {
       ...mockItem,
-      packedQuantity: 1, // equals refillThreshold
+      packedQuantity: 1,
       unpackedQuantity: 0,
-    },
+      refillThreshold: 1,
+    }, // packedQuantity equals refillThreshold
     tags: mockTags,
     tagTypes: mockTagTypes,
   },
@@ -62,11 +63,7 @@ export const StatusWarning: Story = {
 export const StatusError: Story = {
   name: 'Status — Error (out of stock)',
   args: {
-    item: {
-      ...mockItem,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-    },
+    item: { ...mockItem, packedQuantity: 0, unpackedQuantity: 0 }, // 0 < refillThreshold (1) → error
     tags: mockTags,
     tagTypes: mockTagTypes,
   },
