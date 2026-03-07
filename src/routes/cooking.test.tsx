@@ -778,4 +778,129 @@ describe('Use (Cooking) Page', () => {
       expect(total).toBe(4)
     })
   })
+
+  it('recipe checkbox shows indeterminate when only some items are checked', async () => {
+    // Given a recipe with two items (both have defaultAmount > 0)
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands the recipe and checks all items via recipe checkbox
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // And unchecks Salt
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Salt/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Remove Salt/i }))
+
+    // Then the recipe checkbox is indeterminate
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'indeterminate',
+      )
+    })
+  })
+
+  it('clicking indeterminate recipe checkbox checks all default items', async () => {
+    // Given a recipe with two items, put into indeterminate state
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // Expand, check all, then uncheck Salt → indeterminate
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+    await user.click(screen.getByLabelText('Pasta'))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Salt/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Remove Salt/i }))
+
+    // When user clicks the indeterminate recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'indeterminate',
+      )
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then both items are checked
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Flour/i }),
+      ).toBeChecked()
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Salt/i }),
+      ).toBeChecked()
+    })
+  })
+
+  it('expand/collapse does not affect check state', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands and checks the recipe
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then Done is enabled (items are checked)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+
+    // When user collapses the recipe
+    await user.click(screen.getByRole('button', { name: /Collapse Pasta/i }))
+
+    // Then Done remains enabled (check state persists through collapse)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+  })
 })
