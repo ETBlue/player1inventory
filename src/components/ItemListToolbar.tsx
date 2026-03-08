@@ -265,18 +265,19 @@ export function ItemListToolbar({
             className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
             autoFocus
           />
-          {search &&
-            (onCreateFromSearch && !hasExactMatch ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => onCreateFromSearch(search.trim())}
-                aria-label="Create item"
-              >
-                <Plus />
-                Create
-              </Button>
-            ) : (
+          {search && (
+            <>
+              {onCreateFromSearch && !hasExactMatch && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onCreateFromSearch(search.trim())}
+                  aria-label="Create item"
+                >
+                  <Plus />
+                  Create
+                </Button>
+              )}
               <Button
                 size="icon"
                 variant="neutral-ghost"
@@ -286,7 +287,8 @@ export function ItemListToolbar({
               >
                 <X />
               </Button>
-            ))}
+            </>
+          )}
         </div>
       )}
     </>
