@@ -269,3 +269,124 @@ function WithExpandedRecipeStory() {
 export const WithExpandedRecipe: Story = {
   render: () => <WithExpandedRecipeStory />,
 }
+
+// Story 5: Active toolbar — recipe checked, showing count text + Cancel + Done
+function WithActiveToolbarStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const pasta = await createItem({
+          name: 'Spaghetti',
+          tagIds: [],
+          targetQuantity: 3,
+          refillThreshold: 1,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const eggs = await createItem({
+          name: 'Eggs',
+          tagIds: [],
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 6,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const cheese = await createItem({
+          name: 'Pecorino Romano',
+          tagIds: [],
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+
+        await createRecipe({
+          name: 'Pasta Carbonara',
+          items: [
+            { itemId: pasta.id, defaultAmount: 1 },
+            { itemId: eggs.id, defaultAmount: 2 },
+            { itemId: cheese.id, defaultAmount: 1 },
+          ],
+        })
+
+        await createRecipe({
+          name: 'Green Smoothie',
+          items: [],
+        })
+      }}
+    />
+  )
+}
+
+export const WithActiveToolbar: Story = {
+  render: () => <WithActiveToolbarStory />,
+}
+
+// Story 6: Search open — shows search input row with filtered results
+function WithSearchStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const oats = await createItem({
+          name: 'Rolled Oats',
+          tagIds: [],
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const milk = await createItem({
+          name: 'Milk',
+          tagIds: [],
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const spinach = await createItem({
+          name: 'Spinach',
+          tagIds: [],
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const banana = await createItem({
+          name: 'Banana',
+          tagIds: [],
+          targetQuantity: 3,
+          refillThreshold: 1,
+          packedQuantity: 5,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+
+        await createRecipe({
+          name: 'Oatmeal',
+          items: [
+            { itemId: oats.id, defaultAmount: 1 },
+            { itemId: milk.id, defaultAmount: 1 },
+          ],
+        })
+
+        await createRecipe({
+          name: 'Green Smoothie',
+          items: [
+            { itemId: spinach.id, defaultAmount: 1 },
+            { itemId: banana.id, defaultAmount: 1 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const WithSearch: Story = {
+  render: () => <WithSearchStory />,
+}

@@ -331,6 +331,29 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 Cooking page at `/cooking` for consuming ingredients via recipes.
 
+**Toolbar:**
+```
+[Cooking N recipes · M items · ×S servings]  [flex-1]  [Cancel ×]  [Done ✓]  [🔍]
+```
+- Count text (`Cooking N recipes · M items · ×S servings`) — visible only when at least one recipe is checked
+- **Cancel** (`destructive-ghost`, X icon) — visible only when something is checked; disappears entirely otherwise
+- **Done** (Check icon) — always visible; disabled when nothing is checked
+- **Search toggle** (`🔍`) — always visible; toggles the search input row; replaces the former + button
+
+**Search input row** (below toolbar, when search is open):
+```
+[search input ..................] [+ Create | × clear]
+```
+- `+ Create` button (primary): shown when query is non-empty AND no exact recipe title match; navigates to `/settings/recipes/new?name=<query>`
+- `× clear` button (neutral-ghost, icon): shown when an exact title match exists
+- Pressing Escape clears query and hides the row; pressing Enter with no exact match navigates to create
+
+**Search filtering:**
+- Recipe visible if title or any item name partially matches the query
+- Item name matches → recipe auto-expanded, only matching items shown (siblings hidden)
+- Title match only → recipe visible but NOT expanded
+- Matched substrings highlighted via `highlight()` helper (module-level, in `cooking.tsx`)
+
 **Recipe card layout:**
 ```
 Row 1: [checkbox] [recipe name →detail link] [chevron▼▶]    [− N +]
@@ -355,17 +378,20 @@ Row 2:            [N items, M selected, × S]
 - `showExpiration` defaults to `true` — expiration is shown (relevant for ingredient freshness)
 - `isAmountControllable` is true — ±buttons visible when item is checked
 - `minControlAmount` defaults to `0` globally (changed from `1`) — minus disabled at 0, not 1
+- `highlightedName?: React.ReactNode` — optional override for the item name display; used by cooking page to pass highlighted search matches
 
 **State:**
 - `expandedRecipeIds: Set<string>` — which recipe cards are expanded; purely layout
 - `sessionServings: Map<recipeId, number>` — integer ≥ 1, initialized to 1 on first interaction
 - `sessionAmounts: Map<recipeId, Map<itemId, number>>` — per-serving amounts, initialized from `defaultAmount` on first interaction
 - `checkedItemIds: Map<recipeId, Set<itemId>>` — initialized on first checkbox click (not on expand)
+- `searchVisible: boolean` — whether the search input row is visible
+- `searchQuery: string` — current search query (local state, not persisted)
 
 **Files:**
 - `src/routes/cooking.tsx` — main page
 - `src/routes/cooking.test.tsx` — integration tests
-- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe)
+- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch)
 
 ## Design Tokens
 
