@@ -356,11 +356,11 @@ describe('Recipe Detail - Items Tab', () => {
     // When user presses Escape
     await user.keyboard('{Escape}')
 
-    // Then the search panel is hidden
+    // Then the search input is still visible but its value is cleared
     await waitFor(() => {
-      expect(
-        screen.queryByPlaceholderText(/search items/i),
-      ).not.toBeInTheDocument()
+      const input = screen.getByPlaceholderText(/search items/i)
+      expect(input).toBeInTheDocument()
+      expect(input).toHaveValue('')
     })
   })
 

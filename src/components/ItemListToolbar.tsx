@@ -122,7 +122,6 @@ export function ItemListToolbar({
     }
     if (e.key === 'Escape') {
       setSearch('')
-      setSearchVisible(false)
     }
   }
 
@@ -267,6 +266,15 @@ export function ItemListToolbar({
           />
           {search && (
             <>
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+              >
+                <X />
+              </Button>
               {onCreateFromSearch && !hasExactMatch && (
                 <Button
                   variant="primary"
@@ -278,15 +286,6 @@ export function ItemListToolbar({
                   Create
                 </Button>
               )}
-              <Button
-                size="icon"
-                variant="neutral-ghost"
-                className="h-6 w-6 shrink-0"
-                onClick={() => setSearch('')}
-                aria-label="Clear search"
-              >
-                <X />
-              </Button>
             </>
           )}
         </div>
