@@ -98,6 +98,9 @@ function PantryView() {
   const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
+  const hasExactMatch = searchedItems.some(
+    (item) => item.name.toLowerCase() === search.trim().toLowerCase(),
+  )
 
   // Branch B: all filters, no search
   const tagFiltered = filterItems(items, filterState)
@@ -190,6 +193,7 @@ function PantryView() {
         items={items}
         className="border-b"
         onCreateFromSearch={handleCreateFromSearch}
+        hasExactMatch={hasExactMatch}
         vendors={vendors}
         recipes={recipes}
       >
