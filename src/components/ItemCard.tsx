@@ -44,6 +44,7 @@ interface ItemCardProps {
   activeTagIds?: string[]
   showExpiration?: boolean
   showTagSummary?: boolean
+  isPackageDisplay?: boolean
 }
 
 export function ItemCard({
@@ -68,6 +69,7 @@ export function ItemCard({
   activeTagIds,
   showExpiration = true,
   showTagSummary = true,
+  isPackageDisplay = false,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -86,6 +88,31 @@ export function ItemCard({
     item.targetUnit === 'measurement' && item.amountPerPackage
       ? item.packedQuantity * item.amountPerPackage
       : item.packedQuantity
+
+  // Package-display values (used when isPackageDisplay=true)
+  const targetInPackages =
+    isPackageDisplay &&
+    item.targetUnit === 'measurement' &&
+    item.amountPerPackage
+      ? Math.ceil(item.targetQuantity / item.amountPerPackage)
+      : item.targetQuantity
+
+  const packageProgressCurrent = isPackageDisplay
+    ? item.amountPerPackage
+      ? item.packedQuantity + item.unpackedQuantity / item.amountPerPackage
+      : item.packedQuantity + item.unpackedQuantity
+    : currentQuantity
+
+  const packageProgressTarget = isPackageDisplay
+    ? targetInPackages
+    : item.targetQuantity
+
+  const unitLabel =
+    !isPackageDisplay &&
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit
+      ? item.measurementUnit
+      : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
   const isAmountControllable = [
     'shopping',
@@ -160,23 +187,23 @@ export function ItemCard({
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
             <h3 className="truncate capitalize">{item.name}</h3>
-            <span className="text-xs font-normal">
-              (
-              {item.targetUnit === 'measurement' && item.measurementUnit
-                ? item.measurementUnit
-                : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)}
-              )
-            </span>
             <div className="flex-1" />
             <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
-              {item.unpackedQuantity > 0
-                ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
-                : `${currentQuantity}/${item.targetQuantity}`}
+              {isPackageDisplay
+                ? item.unpackedQuantity > 0
+                  ? `${item.packedQuantity} (+${item.unpackedQuantity}${item.measurementUnit ?? ''})/${targetInPackages}`
+                  : `${item.packedQuantity}/${targetInPackages}`
+                : item.unpackedQuantity > 0
+                  ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
+                  : `${currentQuantity}/${item.targetQuantity}`}
+            </span>
+            <span className="px-1 text-xs text-foreground-muted border-1 border-foreground-muted opacity-75">
+              {unitLabel}
             </span>
           </CardTitle>
           <ItemProgressBar
-            current={currentQuantity}
-            target={item.targetQuantity}
+            current={packageProgressCurrent}
+            target={packageProgressTarget}
             status={progressStatus}
             targetUnit={item.targetUnit}
             packed={displayPacked}

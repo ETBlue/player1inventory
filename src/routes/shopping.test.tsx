@@ -61,6 +61,25 @@ describe('Shopping page', () => {
       tagIds: [],
     })
 
+  const makeDualUnitItem = (
+    name: string,
+    packedQuantity = 0,
+    unpackedQuantity = 0,
+  ) =>
+    createItem({
+      name,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      packageUnit: 'bag',
+      amountPerPackage: 500,
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity,
+      unpackedQuantity,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
   it('user can see all active items sorted by name (default)', async () => {
     // Given three items with different names
     await createItem({
@@ -588,6 +607,22 @@ describe('Shopping page', () => {
       expect(
         screen.getByRole('checkbox', { name: /Add Butter/i }),
       ).not.toBeChecked()
+    })
+  })
+
+  it('user can see dual-unit item quantity in package units', async () => {
+    // Given a dual-unit item tracking in measurement (3 packs, 250g unpacked, 4-pack target)
+    await makeDualUnitItem('Flour', 3, 250)
+
+    // When the shopping page renders
+    renderShoppingPage()
+
+    // Then the quantity display shows packages, not grams
+    // Target: 2000g / 500g per pack = 4 packs
+    // And the unit label shows the package unit (bag), not measurement unit (g)
+    await waitFor(() => {
+      expect(screen.getByText(/3 \(\+250g\)\/4/)).toBeInTheDocument()
+      expect(screen.getByText('bag')).toBeInTheDocument()
     })
   })
 })
