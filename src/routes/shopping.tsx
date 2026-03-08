@@ -114,6 +114,9 @@ function Shopping() {
   const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
+  const hasExactMatch = searchedItems.some(
+    (item) => item.name.toLowerCase() === search.trim().toLowerCase(),
+  )
 
   // Branch B: vendor-scoped, then tag + recipe filters
   const tagFiltered = filterItems(vendorScopedItems, filterState)
@@ -257,6 +260,7 @@ function Shopping() {
           ) : undefined
         }
         onCreateFromSearch={handleCreateFromSearch}
+        hasExactMatch={hasExactMatch}
       />
 
       <div className="h-px bg-accessory-default" />

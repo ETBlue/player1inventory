@@ -241,10 +241,10 @@ describe('Recipe Detail - Items Tab', () => {
     })
   })
 
-  it('user sees Create item button when search has text and zero items match', async () => {
-    // Given a recipe with one item
+  it('user sees create button when search has text and no exact item match', async () => {
+    // Given a recipe with one item named "Milk"
     const recipe = await makeRecipe('Pasta')
-    await makeItem('Noodles')
+    await makeItem('Milk')
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
@@ -252,31 +252,31 @@ describe('Recipe Detail - Items Tab', () => {
     await user.click(
       await screen.findByRole('button', { name: /toggle search/i }),
     )
-
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
-    // When user types text that matches no items
-    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    // When user types text that partially matches "Milk" but is not an exact match
+    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
 
-    // Then the Create item button is visible in the toolbar
+    // Then the create button is visible (partial match ≠ exact match)
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /create item/i }),
       ).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
 
-    // When user clears the input and types text that matches an item
+    // When user types an exact match (case-insensitive)
     await user.clear(screen.getByPlaceholderText(/search items/i))
-    await user.type(screen.getByPlaceholderText(/search items/i), 'nood')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Milk')
 
-    // Then the Create item button is not shown (Noodles matched)
+    // Then the create button is gone (exact match exists)
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /create item/i }),
       ).not.toBeInTheDocument()
-      expect(screen.getByLabelText('Add Noodles')).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
   })
 
@@ -356,11 +356,11 @@ describe('Recipe Detail - Items Tab', () => {
     // When user presses Escape
     await user.keyboard('{Escape}')
 
-    // Then the search panel is hidden
+    // Then the search input is still visible but its value is cleared
     await waitFor(() => {
-      expect(
-        screen.queryByPlaceholderText(/search items/i),
-      ).not.toBeInTheDocument()
+      const input = screen.getByPlaceholderText(/search items/i)
+      expect(input).toBeInTheDocument()
+      expect(input).toHaveValue('')
     })
   })
 

@@ -48,9 +48,10 @@ interface ItemListToolbarProps {
   leading?: ReactNode // left of controls row
   children?: ReactNode // right of controls row (add item, etc.)
 
-  // Search/create callback — called when Enter pressed with no matching items
+  // Search/create callbacks — triggered when search has no exact name match
   onSearchSubmit?: (query: string) => void
   onCreateFromSearch?: (query: string) => void
+  hasExactMatch?: boolean // pass true when searchedItems contains an exact case-insensitive match
   vendors?: Vendor[]
   recipes?: Recipe[]
   hideVendorFilter?: boolean
@@ -68,6 +69,7 @@ export function ItemListToolbar({
   children,
   onSearchSubmit,
   onCreateFromSearch,
+  hasExactMatch,
   vendors,
   recipes,
   hideVendorFilter,
@@ -103,12 +105,6 @@ export function ItemListToolbar({
   ).length
   const totalCount = items.length
 
-  const lowerSearch = search.toLowerCase()
-  const queriedCount = search.trim()
-    ? items.filter((item) => item.name.toLowerCase().includes(lowerSearch))
-        .length
-    : items.length
-
   const handleCriteriaChange = (field: SortField) => {
     onSortChange(field, sortDirection)
   }
@@ -120,13 +116,12 @@ export function ItemListToolbar({
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const createOrSearch = onCreateFromSearch ?? onSearchSubmit
-      if (createOrSearch && queriedCount === 0 && search.trim()) {
+      if (createOrSearch && !hasExactMatch && search.trim()) {
         createOrSearch(search.trim())
       }
     }
     if (e.key === 'Escape') {
       setSearch('')
-      setSearchVisible(false)
     }
   }
 
@@ -261,7 +256,6 @@ export function ItemListToolbar({
       {/* Row 2: search input */}
       {searchVisible && (
         <div className="flex items-center gap-2 border-t border-accessory-default px-3">
-          <Search className="h-4 w-4 text-foreground-muted" />
           <Input
             placeholder="Search items..."
             value={search}
@@ -270,18 +264,8 @@ export function ItemListToolbar({
             className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
             autoFocus
           />
-          {search &&
-            (onCreateFromSearch && queriedCount === 0 ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => onCreateFromSearch(search.trim())}
-                aria-label="Create item"
-              >
-                <Plus />
-                Create
-              </Button>
-            ) : (
+          {search && (
+            <>
               <Button
                 size="icon"
                 variant="neutral-ghost"
@@ -291,7 +275,19 @@ export function ItemListToolbar({
               >
                 <X />
               </Button>
-            ))}
+              {onCreateFromSearch && !hasExactMatch && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onCreateFromSearch(search.trim())}
+                  aria-label="Create item"
+                >
+                  <Plus />
+                  Create
+                </Button>
+              )}
+            </>
+          )}
         </div>
       )}
     </>
