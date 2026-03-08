@@ -257,7 +257,6 @@ export function ItemListToolbar({
       {/* Row 2: search input */}
       {searchVisible && (
         <div className="flex items-center gap-2 border-t border-accessory-default px-3">
-          <Search className="h-4 w-4 text-foreground-muted" />
           <Input
             placeholder="Search items..."
             value={search}
