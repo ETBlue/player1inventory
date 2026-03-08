@@ -583,6 +583,8 @@ The timing is important: create the branch after brainstorming is complete but b
 
 Use git worktrees by default for feature work. Create isolated workspaces in `.worktrees/` directory. See "Advanced: Git Worktrees" section below for setup details.
 
+**Worktree before implementation (mandatory):** After the implementation plan is written (via `writing-plans` skill) and before writing any code, always create a git worktree using `superpowers:using-git-worktrees`. Branch name is auto-derived from the plan topic (strip date and `-design`/`-plan` suffix, prefix with `feature/`, `fix/`, or `refactor/` based on context).
+
 **Alternative: Regular Branches**
 
 For GUI tool users (GitHub Desktop, VS Code) or when worktrees are not suitable, use standard git branches instead.
