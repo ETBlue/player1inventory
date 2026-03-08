@@ -657,6 +657,8 @@ git status
 - Design docs and plans are part of the feature and should be in the PR
 - A clean working tree ensures nothing is left behind
 
+**Completeness audit (mandatory):** Before invoking `finishing-a-development-branch`, the skill will automatically audit 5 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes; (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references. Gaps must be fixed or explicitly skipped before options are presented.
+
 **Advanced: Git Worktrees**
 
 For CLI users who want to work on multiple branches simultaneously without switching, git worktrees provide isolated workspaces.
