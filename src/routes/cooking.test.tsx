@@ -84,10 +84,12 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
 
-    // Then Done and Cancel are disabled
+    // Then Done is disabled and Cancel is not shown
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
-      expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled()
+      expect(
+        screen.queryByRole('button', { name: /cancel/i }),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -188,10 +190,12 @@ describe('Use (Cooking) Page', () => {
     })
     await user.click(screen.getByLabelText('Pasta'))
 
-    // Then Done and Cancel are enabled
+    // Then Done is enabled and Cancel appears
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
-      expect(screen.getByRole('button', { name: /cancel/i })).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
     })
   })
 
@@ -360,7 +364,9 @@ describe('Use (Cooking) Page', () => {
     await user.click(screen.getByLabelText('Pasta'))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cancel/i })).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
     })
 
     // When user clicks Cancel
@@ -379,7 +385,9 @@ describe('Use (Cooking) Page', () => {
     // Then all recipes are deselected
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
-      expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled()
+      expect(
+        screen.queryByRole('button', { name: /cancel/i }),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -1035,6 +1043,261 @@ describe('Use (Cooking) Page', () => {
       expect(screen.getByText('Pasta')).toBeInTheDocument()
     })
     expect(screen.queryByText(/×/)).not.toBeInTheDocument()
+  })
+
+  it('user sees 0 servings cooked and no cancel button when nothing is checked', async () => {
+    // Given a recipe exists
+    await createRecipe({ name: 'Pasta' })
+    renderPage()
+
+    // Then count text shows 0 servings and Cancel button is absent
+    await waitFor(() => {
+      expect(screen.getByText(/0 servings? cooked/i)).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /cancel/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user sees serving count update and cancel button after checking a recipe', async () => {
+    // Given a recipe with one item
+    const item = await makeItem('Tomato')
+    await createRecipe({
+      name: 'Salad',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+    renderPage()
+
+    // When user checks the recipe checkbox
+    await waitFor(() => screen.getByLabelText('Salad'))
+    await userEvent.click(screen.getByLabelText('Salad'))
+
+    // Then count text updates to 1 serving cooked
+    await waitFor(() => {
+      expect(screen.getByText(/1 serving cooked/i)).toBeInTheDocument()
+    })
+
+    // Then Cancel button appears
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+  })
+
+  it('user sees done button disabled when nothing is checked', async () => {
+    // Given a recipe exists
+    await createRecipe({ name: 'Pasta' })
+    renderPage()
+
+    // Then Done is disabled
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
+    })
+  })
+
+  it('user sees search toggle button in toolbar', async () => {
+    // Given cooking page renders
+    renderPage()
+
+    // Then search toggle button is present
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle search/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('search', () => {
+    it('user can toggle search input via search icon button', async () => {
+      // Given cooking page with a recipe
+      await createRecipe({ name: 'Pasta' })
+      renderPage()
+
+      // When user clicks the search toggle button
+      await waitFor(() =>
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+
+      // Then search input is visible
+      expect(screen.getByPlaceholderText(/search recipes/i)).toBeInTheDocument()
+
+      // When user clicks the toggle again
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+
+      // Then search input is hidden
+      expect(
+        screen.queryByPlaceholderText(/search recipes/i),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user can filter recipes by title', async () => {
+      // Given two recipes
+      await createRecipe({ name: 'Pasta Dinner' })
+      await createRecipe({ name: 'Tomato Salad' })
+      renderPage()
+
+      // When user opens search (wait for recipes to load first)
+      await waitFor(() => screen.getByText('Pasta Dinner'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'pasta',
+      )
+
+      // Then only Pasta Dinner is visible (text may be split by highlight mark element)
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            (_content, element) =>
+              element?.tagName === 'BUTTON' &&
+              element.textContent === 'Pasta Dinner',
+          ),
+        ).toBeInTheDocument()
+        expect(
+          screen.queryByText(
+            (_content, element) =>
+              element?.tagName === 'BUTTON' &&
+              element.textContent === 'Tomato Salad',
+          ),
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it('user can find a recipe by item name and see the item auto-expanded', async () => {
+      // Given a recipe "Salad" with item "Tomato" and a sibling item "Lettuce"
+      const tomato = await makeItem('Tomato')
+      const lettuce = await makeItem('Lettuce')
+      await createRecipe({
+        name: 'Salad',
+        items: [
+          { itemId: tomato.id, defaultAmount: 1 },
+          { itemId: lettuce.id, defaultAmount: 1 },
+        ],
+      })
+      renderPage()
+
+      // When user searches "tomato" (wait for recipe to load first)
+      await waitFor(() => screen.getByText('Salad'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'tomato',
+      )
+
+      // Then Salad recipe is visible and Tomato item is shown
+      // (Salad not highlighted since it doesn't contain "tomato")
+      await waitFor(() => {
+        expect(screen.getByText('Salad')).toBeInTheDocument()
+        // Tomato item name may be highlighted — check by textContent
+        expect(
+          screen.getByText(
+            (_content, element) =>
+              (element?.tagName === 'H3' || element?.tagName === 'BUTTON') &&
+              element.textContent === 'Tomato',
+          ),
+        ).toBeInTheDocument()
+      })
+
+      // And Lettuce (sibling) is not shown
+      expect(
+        screen.queryByText(
+          (_content, element) => element?.textContent === 'Lettuce',
+        ),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user sees create button when no exact recipe title match exists', async () => {
+      // Given one recipe "Pasta"
+      await createRecipe({ name: 'Pasta' })
+      renderPage()
+
+      // When user types "Pizza" (no exact match) — wait for recipe to load first
+      await waitFor(() => screen.getByText('Pasta'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'Pizza',
+      )
+
+      // Then Create button is visible
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: /create/i }),
+        ).toBeInTheDocument()
+      })
+    })
+
+    it('user sees matched items expanded when both recipe title and item name match', async () => {
+      // Given a recipe "Pasta" with item "Pasta Sauce" and sibling item "Cheese"
+      const sauce = await makeItem('Pasta Sauce')
+      const cheese = await makeItem('Cheese')
+      await createRecipe({
+        name: 'Pasta',
+        items: [
+          { itemId: sauce.id, defaultAmount: 1 },
+          { itemId: cheese.id, defaultAmount: 1 },
+        ],
+      })
+      renderPage()
+
+      // When user searches "pasta" (matches both recipe title and item "Pasta Sauce")
+      await waitFor(() => screen.getByText('Pasta'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'pasta',
+      )
+
+      // Then Pasta Sauce item is shown (recipe auto-expanded)
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            (_content, element) =>
+              element?.tagName === 'H3' &&
+              !!element.textContent?.match(/pasta sauce/i),
+          ),
+        ).toBeInTheDocument()
+      })
+
+      // And Cheese (non-matching sibling) is not shown
+      expect(screen.queryByText('Cheese')).not.toBeInTheDocument()
+    })
+
+    it('user does not see create button when exact title match exists', async () => {
+      // Given one recipe "Pasta"
+      await createRecipe({ name: 'Pasta' })
+      renderPage()
+
+      // When user types "pasta" (exact match, case-insensitive) — wait for recipe to load first
+      await waitFor(() => screen.getByText('Pasta'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'pasta',
+      )
+
+      // Then Create button is not visible; clear button is shown instead
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /create/i }),
+        ).not.toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: /clear search/i }),
+        ).toBeInTheDocument()
+      })
+    })
   })
 
   it('user can toggle a recipe with mixed defaultAmounts on and off', async () => {

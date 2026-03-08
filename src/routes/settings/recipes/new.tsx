@@ -8,6 +8,9 @@ import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useCreateRecipe } from '@/hooks/useRecipes'
 
 export const Route = createFileRoute('/settings/recipes/new')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    name: typeof search.name === 'string' ? search.name : '',
+  }),
   component: NewRecipePage,
 })
 
@@ -15,7 +18,8 @@ function NewRecipePage() {
   const navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings/recipes/')
   const createRecipe = useCreateRecipe()
-  const [name, setName] = useState('')
+  const { name: prefillName = '' } = Route.useSearch()
+  const [name, setName] = useState(prefillName)
 
   const isDirty = name.trim() !== ''
 

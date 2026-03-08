@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { CookingPot, Minus, Plus, Store, TriangleAlert } from 'lucide-react'
+import type React from 'react'
 import { ItemProgressBar } from '@/components/ItemProgressBar'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,7 @@ interface ItemCardProps {
   showExpiration?: boolean
   showTagSummary?: boolean
   isPackageDisplay?: boolean
+  highlightedName?: React.ReactNode
 }
 
 export function ItemCard({
@@ -70,6 +72,7 @@ export function ItemCard({
   showExpiration = true,
   showTagSummary = true,
   isPackageDisplay = false,
+  highlightedName,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
@@ -186,7 +189,9 @@ export function ItemCard({
           className="flex-1 min-w-0"
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
-            <h3 className="truncate capitalize">{item.name}</h3>
+            <h3 className="truncate capitalize">
+              {highlightedName ?? item.name}
+            </h3>
             <div className="flex-1" />
             <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
               {isPackageDisplay

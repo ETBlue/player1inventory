@@ -62,4 +62,25 @@ describe('New Recipe page', () => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
     })
   })
+
+  it('user sees name pre-filled when ?name= param is provided', async () => {
+    // Given the page is opened with ?name=Pasta+Dinner
+    const history = createMemoryHistory({
+      initialEntries: ['/settings/recipes/new?name=Pasta+Dinner'],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the name input is pre-filled
+    await waitFor(() => {
+      expect(screen.getByLabelText('Name')).toHaveValue('Pasta Dinner')
+    })
+
+    // And the save button is enabled
+    expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
+  })
 })
