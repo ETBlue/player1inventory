@@ -116,8 +116,6 @@ function CookingPage() {
     recipe: (typeof recipes)[0],
   ): Set<string> | null => {
     if (!lowerQuery) return null
-    // If title matches, don't auto-expand/filter items
-    if (recipe.name.toLowerCase().includes(lowerQuery)) return null
     const matched = recipe.items
       .filter((ri) => {
         const item = items.find((i) => i.id === ri.itemId)

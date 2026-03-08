@@ -1237,6 +1237,44 @@ describe('Use (Cooking) Page', () => {
       })
     })
 
+    it('user sees matched items expanded when both recipe title and item name match', async () => {
+      // Given a recipe "Pasta" with item "Pasta Sauce" and sibling item "Cheese"
+      const sauce = await makeItem('Pasta Sauce')
+      const cheese = await makeItem('Cheese')
+      await createRecipe({
+        name: 'Pasta',
+        items: [
+          { itemId: sauce.id, defaultAmount: 1 },
+          { itemId: cheese.id, defaultAmount: 1 },
+        ],
+      })
+      renderPage()
+
+      // When user searches "pasta" (matches both recipe title and item "Pasta Sauce")
+      await waitFor(() => screen.getByText('Pasta'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'pasta',
+      )
+
+      // Then Pasta Sauce item is shown (recipe auto-expanded)
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            (_content, element) =>
+              element?.tagName === 'H3' &&
+              !!element.textContent?.match(/pasta sauce/i),
+          ),
+        ).toBeInTheDocument()
+      })
+
+      // And Cheese (non-matching sibling) is not shown
+      expect(screen.queryByText('Cheese')).not.toBeInTheDocument()
+    })
+
     it('user does not see create button when exact title match exists', async () => {
       // Given one recipe "Pasta"
       await createRecipe({ name: 'Pasta' })
