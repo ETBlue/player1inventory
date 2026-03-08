@@ -51,6 +51,7 @@ interface ItemListToolbarProps {
   // Search/create callback — called when Enter pressed with no matching items
   onSearchSubmit?: (query: string) => void
   onCreateFromSearch?: (query: string) => void
+  hasExactMatch?: boolean
   vendors?: Vendor[]
   recipes?: Recipe[]
   hideVendorFilter?: boolean
@@ -68,6 +69,7 @@ export function ItemListToolbar({
   children,
   onSearchSubmit,
   onCreateFromSearch,
+  hasExactMatch,
   vendors,
   recipes,
   hideVendorFilter,
@@ -104,7 +106,7 @@ export function ItemListToolbar({
   const totalCount = items.length
 
   const lowerSearch = search.toLowerCase()
-  const queriedCount = search.trim()
+  const _queriedCount = search.trim()
     ? items.filter((item) => item.name.toLowerCase().includes(lowerSearch))
         .length
     : items.length
@@ -120,7 +122,7 @@ export function ItemListToolbar({
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const createOrSearch = onCreateFromSearch ?? onSearchSubmit
-      if (createOrSearch && queriedCount === 0 && search.trim()) {
+      if (createOrSearch && !hasExactMatch && search.trim()) {
         createOrSearch(search.trim())
       }
     }
@@ -271,7 +273,7 @@ export function ItemListToolbar({
             autoFocus
           />
           {search &&
-            (onCreateFromSearch && queriedCount === 0 ? (
+            (onCreateFromSearch && !hasExactMatch ? (
               <Button
                 variant="primary"
                 size="sm"
