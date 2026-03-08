@@ -1045,21 +1045,21 @@ describe('Use (Cooking) Page', () => {
     expect(screen.queryByText(/×/)).not.toBeInTheDocument()
   })
 
-  it('user does not see count text or cancel button when nothing is checked', async () => {
+  it('user sees 0 servings cooked and no cancel button when nothing is checked', async () => {
     // Given a recipe exists
     await createRecipe({ name: 'Pasta' })
     renderPage()
 
-    // Then count text is absent and Cancel button is absent
+    // Then count text shows 0 servings and Cancel button is absent
     await waitFor(() => {
-      expect(screen.queryByText(/cooking/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/0 servings? cooked/i)).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /cancel/i }),
       ).not.toBeInTheDocument()
     })
   })
 
-  it('user sees count text and cancel button after checking a recipe', async () => {
+  it('user sees serving count update and cancel button after checking a recipe', async () => {
     // Given a recipe with one item
     const item = await makeItem('Tomato')
     await createRecipe({
@@ -1072,11 +1072,9 @@ describe('Use (Cooking) Page', () => {
     await waitFor(() => screen.getByLabelText('Salad'))
     await userEvent.click(screen.getByLabelText('Salad'))
 
-    // Then count text appears (all in one span: "Cooking 1 recipe · 1 item · ×1 serving")
+    // Then count text updates to 1 serving cooked
     await waitFor(() => {
-      expect(
-        screen.getByText(/cooking 1 recipe.*1 item.*×1 serving/i),
-      ).toBeInTheDocument()
+      expect(screen.getByText(/1 serving cooked/i)).toBeInTheDocument()
     })
 
     // Then Cancel button appears

@@ -327,10 +327,6 @@ function CookingPage() {
   const recipesBeingConsumed = [...checkedItemIds.values()].filter(
     (set) => set.size > 0,
   ).length
-  const totalCheckedItems = [...checkedItemIds.values()].reduce(
-    (sum, set) => sum + set.size,
-    0,
-  )
   const totalServings = [...checkedItemIds.entries()]
     .filter(([, set]) => set.size > 0)
     .reduce((sum, [recipeId]) => sum + (sessionServings.get(recipeId) ?? 1), 0)
@@ -338,15 +334,10 @@ function CookingPage() {
   return (
     <div>
       <Toolbar className="justify-between">
-        {anyChecked && (
-          <span className="text-sm text-foreground-muted">
-            Cooking {recipesBeingConsumed} recipe
-            {recipesBeingConsumed !== 1 ? 's' : ''} · {totalCheckedItems} item
-            {totalCheckedItems !== 1 ? 's' : ''} · ×{totalServings} serving
-            {totalServings !== 1 ? 's' : ''}
-          </span>
-        )}
-        <div className="flex-1" />
+        <span className="flex-1">
+          {totalServings} serving
+          {totalServings > 1 ? 's' : ''} cooked
+        </span>
         {anyChecked && (
           <Button
             variant="destructive-ghost"
