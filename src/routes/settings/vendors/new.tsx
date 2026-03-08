@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
-import { VendorNameForm } from '@/components/VendorNameForm'
+import { VendorNameForm } from '@/components/vendor/VendorNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useCreateVendor } from '@/hooks/useVendors'
 

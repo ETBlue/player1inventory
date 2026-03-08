@@ -61,11 +61,11 @@ src/
 
 ## Shared Components
 
-**`Toolbar`** (`src/components/Toolbar.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
+**`Toolbar`** (`src/components/Toolbar/index.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
 
-**`AddNameDialog`** (`src/components/AddNameDialog.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`.
+**`AddNameDialog`** (`src/components/AddNameDialog/index.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`.
 
-**`ItemListToolbar`** (`src/components/ItemListToolbar.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with no exact match), `onCreateFromSearch` (same trigger — shows a Create button; pass `hasExactMatch` so the toolbar knows when to suppress it). Escape clears the search value but keeps the input row open.
+**`ItemListToolbar`** (`src/components/item/ItemListToolbar/index.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with no exact match), `onCreateFromSearch` (same trigger — shows a Create button; pass `hasExactMatch` so the toolbar knows when to suppress it). Escape clears the search value but keeps the input row open.
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
@@ -159,7 +159,7 @@ Back button and post-action navigation use smart history tracking:
 Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
 **Files:**
-- `src/components/ItemForm.tsx` - Shared form component used by both edit and new item routes
+- `src/components/item/ItemForm/index.tsx` - Shared form component used by both edit and new item routes
 - `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
 - `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with all sections)
 - `src/routes/items/$id/tags.tsx` - Tags tab implementation
@@ -212,8 +212,8 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 **Routes**: `src/routes/settings/vendors/index.tsx` — vendor list; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save
 
 **Components**:
-- `src/components/VendorCard.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation); wraps `DeleteButton` internally with an `itemCount`-based dialog description
-- `src/components/VendorNameForm.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
+- `src/components/vendor/VendorCard/index.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation); wraps `DeleteButton` internally with an `itemCount`-based dialog description
+- `src/components/vendor/VendorNameForm/index.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
 
 **Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.
 
@@ -257,7 +257,7 @@ Back button and post-action navigation use smart history tracking (same pattern 
 - `src/routes/settings/tags/$id/items.tsx` - Items tab
 - `src/routes/settings/tags/index.tsx` - Tags list page with drag-and-drop
 - `src/hooks/useTagLayout.tsx` - Dirty state provider
-- `src/components/TagNameForm.tsx` - Presentational form component
+- `src/components/tag/TagNameForm/index.tsx` - Presentational form component
 
 ### Cascade Deletion
 

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
-import type { ItemFormValues } from '@/components/ItemForm'
-import { ItemForm } from '@/components/ItemForm'
+import type { ItemFormValues } from '@/components/item/ItemForm'
+import { ItemForm } from '@/components/item/ItemForm'
 import { useCreateItem } from '@/hooks'
 import type { Item } from '@/types'
 

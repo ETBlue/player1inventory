@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { DeleteButton } from '@/components/DeleteButton'
-import { VendorNameForm } from '@/components/VendorNameForm'
+import { VendorNameForm } from '@/components/vendor/VendorNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout } from '@/hooks/useVendorLayout'
 import {
