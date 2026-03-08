@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronRight, Minus, Plus } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Minus, Plus } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { Toolbar } from '@/components/Toolbar'
@@ -374,7 +374,7 @@ function CookingPage() {
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4" />
                           ) : (
-                            <ChevronRight className="h-4 w-4" />
+                            <ChevronLeft className="h-4 w-4" />
                           )}
                         </button>
                       </div>
