@@ -91,7 +91,7 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('user can check a recipe and see item amounts expanded', async () => {
+  it('user can expand a recipe to see its items', async () => {
     // Given a recipe with an item
     const item = await makeItem('Flour', 2)
     await createRecipe({
@@ -102,22 +102,82 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
-    // When user checks the recipe
+    // When user expands the recipe (chevron button)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    // Then the item list is visible
+    await waitFor(() => {
+      expect(screen.getByText('Flour')).toBeInTheDocument()
+    })
+  })
+
+  it('user can collapse an expanded recipe to hide its items', async () => {
+    // Given a recipe with an item, expanded
+    const item = await makeItem('Flour', 2)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // Given expanded recipe
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Flour')).toBeInTheDocument()
+    })
+
+    // And collapses
+    await user.click(screen.getByRole('button', { name: /Collapse Pasta/i }))
+
+    // Then items are hidden
+    await waitFor(() => {
+      expect(screen.queryByText('Flour')).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can check a recipe without expanding it and items remain hidden', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 2)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe (without expanding)
     await waitFor(() => {
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
     })
     await user.click(screen.getByLabelText('Pasta'))
 
-    // Then the item list is expanded with its default amount
+    // Then items are NOT visible (not expanded)
     await waitFor(() => {
-      expect(screen.getByText('Flour')).toBeInTheDocument()
-      expect(screen.getByText(/4/)).toBeInTheDocument()
+      expect(screen.queryByText('Flour')).not.toBeInTheDocument()
     })
   })
 
   it('Done and Cancel buttons become enabled when a recipe is checked', async () => {
-    // Given a recipe exists
-    await createRecipe({ name: 'Pasta' })
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
 
     renderPage()
     const user = userEvent.setup()
@@ -145,6 +205,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -179,6 +247,14 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
     // When user checks the recipe
     await waitFor(() => {
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
@@ -211,6 +287,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -260,8 +344,12 @@ describe('Use (Cooking) Page', () => {
   })
 
   it('user can cancel and selections are cleared', async () => {
-    // Given a recipe that is checked
-    await createRecipe({ name: 'Pasta' })
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
 
     renderPage()
     const user = userEvent.setup()
@@ -305,6 +393,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -362,6 +458,14 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
     // When user checks the recipe
     await waitFor(() => {
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
@@ -395,6 +499,14 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
     const user = userEvent.setup()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Quiche/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Quiche/i }))
 
     // When user checks the recipe
     await waitFor(() => {
@@ -438,6 +550,14 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Quiche/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Quiche/i }))
+
     // When user checks the recipe
     await waitFor(() => {
       expect(screen.getByLabelText('Quiche')).toBeInTheDocument()
@@ -479,6 +599,7 @@ describe('Use (Cooking) Page', () => {
       expect(updatedBacon?.packedQuantity).toBe(3)
     })
   })
+
   it('user sees expiration but not tag badges when cooking a recipe', async () => {
     // Given an item with a tag and a future due date
     const tagType = await createTagType({ name: 'Category', color: 'blue' })
@@ -506,6 +627,14 @@ describe('Use (Cooking) Page', () => {
     renderPage()
     const user = userEvent.setup()
 
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Smoothie/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Smoothie/i }))
+
     // When user checks the recipe
     await waitFor(() => {
       expect(screen.getByLabelText('Smoothie')).toBeInTheDocument()
@@ -522,5 +651,430 @@ describe('Use (Cooking) Page', () => {
 
     // Then expiration text IS visible (expiration shown in cooking mode)
     expect(screen.getByText(/Expires/i)).toBeInTheDocument()
+  })
+
+  it('user can see the serving stepper when a recipe is checked', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then serving stepper shows
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('serving count starts at 1 and can be increased', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe and clicks +
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
+
+    // Then serving count shows 2
+    await waitFor(() => {
+      expect(screen.getByText('2')).toBeInTheDocument()
+    })
+  })
+
+  it('serving count cannot go below 1', async () => {
+    // Given a recipe with an item, checked (serving = 1)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then − button is disabled at 1
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /decrease.*serving/i }),
+      ).toBeDisabled()
+    })
+  })
+
+  it('serving count multiplies ingredient amounts on consumption', async () => {
+    // Given a recipe: Flour with defaultAmount=2, packedQuantity=10
+    const item = await makeItem('Flour', 1, 10)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks the recipe and sets servings to 3
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i })) // 2
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i })) // 3
+
+    // And clicks Done and confirms
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /confirm/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then Flour is reduced by 3 × 2 = 6 (from 10 to 4)
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      const total =
+        (updated?.packedQuantity ?? 0) + (updated?.unpackedQuantity ?? 0)
+      expect(total).toBe(4)
+    })
+  })
+
+  it('recipe checkbox shows indeterminate when only some items are checked', async () => {
+    // Given a recipe with two items (both have defaultAmount > 0)
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands the recipe and checks all items via recipe checkbox
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // And unchecks Salt
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Salt/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Remove Salt/i }))
+
+    // Then the recipe checkbox is indeterminate
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'indeterminate',
+      )
+    })
+  })
+
+  it('clicking indeterminate recipe checkbox checks all default items', async () => {
+    // Given a recipe with two items, put into indeterminate state
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // Expand, check all, then uncheck Salt → indeterminate
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+    await user.click(screen.getByLabelText('Pasta'))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Salt/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('checkbox', { name: /Remove Salt/i }))
+
+    // When user clicks the indeterminate recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'indeterminate',
+      )
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then both items are checked
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Flour/i }),
+      ).toBeChecked()
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Salt/i }),
+      ).toBeChecked()
+    })
+  })
+
+  it('expand/collapse does not affect check state', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands and checks the recipe
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then Done is enabled (items are checked)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+
+    // When user collapses the recipe
+    await user.click(screen.getByRole('button', { name: /Collapse Pasta/i }))
+
+    // Then Done remains enabled (check state persists through collapse)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+  })
+
+  it('user can expand an unchecked recipe and items show as unchecked', async () => {
+    // Given a recipe with a default item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1, 5)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands the recipe WITHOUT clicking the recipe checkbox
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    // Then item checkboxes are unchecked (recipe itself is unchecked)
+    // When unchecked, ItemCard aria-label is "Add <name>" not "Remove <name>"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Add Flour/i }),
+      ).not.toBeChecked()
+    })
+
+    // And the recipe checkbox is unchecked
+    expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+      'data-state',
+      'unchecked',
+    )
+  })
+
+  it('user can check a recipe where all items have defaultAmount 0', async () => {
+    // Given a recipe with one item that has defaultAmount 0 (optional ingredient)
+    const item = await makeItem('Salt', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 0 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the recipe checkbox should be checked (not stuck unchecked)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'checked',
+      )
+    })
+  })
+
+  it('recipe subtitle shows × 1 when recipe is checked at default servings', async () => {
+    // Given a recipe with 1 item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then subtitle text includes × 1
+    await waitFor(() => {
+      expect(screen.getByText(/× 1/)).toBeInTheDocument()
+    })
+  })
+
+  it('recipe subtitle shows × N after increasing servings', async () => {
+    // Given a recipe with 1 item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // And clicks "Increase servings" twice
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
+
+    // Then subtitle text includes × 3
+    await waitFor(() => {
+      expect(screen.getByText(/× 3/)).toBeInTheDocument()
+    })
+  })
+
+  it('recipe subtitle does not show × N when recipe is unchecked', async () => {
+    // Given a recipe with 1 item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    // When recipe is not checked
+    renderPage()
+
+    // Then the text × does not appear in the document
+    await waitFor(() => {
+      expect(screen.getByText('Pasta')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/×/)).not.toBeInTheDocument()
+  })
+
+  it('user can toggle a recipe with mixed defaultAmounts on and off', async () => {
+    // Given a recipe with one default item and one optional item
+    const flour = await makeItem('Flour', 1, 5)
+    const salt = await makeItem('Salt', 1, 3)
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 2 },
+        { itemId: salt.id, defaultAmount: 0 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox (Flour is default, Salt is optional)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the recipe checkbox shows as checked (all DEFAULT items are checked)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'checked',
+      )
+    })
+
+    // When user clicks again
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then the recipe checkbox is unchecked (can toggle off)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toHaveAttribute(
+        'data-state',
+        'unchecked',
+      )
+    })
   })
 })
