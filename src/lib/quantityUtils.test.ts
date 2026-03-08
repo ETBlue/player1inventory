@@ -442,7 +442,7 @@ describe('addItem', () => {
 })
 
 describe('isInactive', () => {
-  it('returns true when both targetQuantity and refillThreshold are 0', () => {
+  it('returns true when targetQuantity is 0 (refillThreshold also 0)', () => {
     const item: Partial<Item> = {
       targetQuantity: 0,
       refillThreshold: 0,
@@ -460,13 +460,13 @@ describe('isInactive', () => {
     expect(isInactive(item as Item)).toBe(false)
   })
 
-  it('returns false when refillThreshold > 0', () => {
+  it('returns true when targetQuantity is 0 and refillThreshold > 0', () => {
     const item: Partial<Item> = {
       targetQuantity: 0,
       refillThreshold: 1,
     }
 
-    expect(isInactive(item as Item)).toBe(false)
+    expect(isInactive(item as Item)).toBe(true)
   })
 
   it('returns true even when item has stock', () => {

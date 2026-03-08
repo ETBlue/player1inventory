@@ -126,7 +126,7 @@ export function ItemCard({
 
   return (
     <Card
-      variant={status === 'ok' ? 'default' : status}
+      variant={isInactive(item) || status === 'ok' ? 'default' : status}
       className={cn(
         onCheckboxToggle ? 'ml-10' : '',
         isAmountControllable ? 'mr-28' : '',

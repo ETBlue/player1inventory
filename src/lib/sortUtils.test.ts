@@ -346,7 +346,7 @@ describe('sortItems - stock sort for inactive items', () => {
     id,
     name: `Item ${id}`,
     tagIds: [],
-    targetQuantity: 0, // isInactive requires both fields = 0
+    targetQuantity: 0, // targetQuantity: 0 → isInactive()
     refillThreshold: 0,
     packedQuantity: 0,
     unpackedQuantity: 0,

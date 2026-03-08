@@ -944,4 +944,22 @@ describe('ItemCard - inactive item progress bar', () => {
     expect(fillDiv).toBeInTheDocument()
     expect(fillDiv).toHaveClass('bg-status-inactive')
   })
+
+  it('renders with default (not error/warning) card styling when inactive with refillThreshold > 0', async () => {
+    const itemWithThreshold: Item = {
+      ...inactiveItem,
+      id: 'item-inactive-threshold',
+      refillThreshold: 5, // would normally trigger low-stock warning
+      packedQuantity: 0, // below threshold
+    }
+
+    const { container } = await renderWithRouter(
+      <ItemCard item={itemWithThreshold} tags={[]} tagTypes={[]} />,
+    )
+
+    // Card should NOT have error or warning tint background styling
+    const card = container.firstElementChild
+    expect(card).not.toHaveClass('bg-status-error-tint')
+    expect(card).not.toHaveClass('bg-status-warning-tint')
+  })
 })
