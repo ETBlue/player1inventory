@@ -964,6 +964,79 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
+  it('recipe subtitle shows × 1 when recipe is checked at default servings', async () => {
+    // Given a recipe with 1 item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // Then subtitle text includes × 1
+    await waitFor(() => {
+      expect(screen.getByText(/× 1/)).toBeInTheDocument()
+    })
+  })
+
+  it('recipe subtitle shows × N after increasing servings', async () => {
+    // Given a recipe with 1 item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user clicks the recipe checkbox
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+
+    // And clicks "Increase servings" twice
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /increase.*serving/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
+    await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
+
+    // Then subtitle text includes × 3
+    await waitFor(() => {
+      expect(screen.getByText(/× 3/)).toBeInTheDocument()
+    })
+  })
+
+  it('recipe subtitle does not show × N when recipe is unchecked', async () => {
+    // Given a recipe with 1 item (defaultAmount > 0)
+    const item = await makeItem('Flour', 1)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    // When recipe is not checked
+    renderPage()
+
+    // Then the text × does not appear in the document
+    await waitFor(() => {
+      expect(screen.getByText('Pasta')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/×/)).not.toBeInTheDocument()
+  })
+
   it('user can toggle a recipe with mixed defaultAmounts on and off', async () => {
     // Given a recipe with one default item and one optional item
     const flour = await makeItem('Flour', 1, 5)
