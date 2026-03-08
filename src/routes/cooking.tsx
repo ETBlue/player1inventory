@@ -24,6 +24,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   useAddInventoryLog,
   useItems,
@@ -34,6 +35,21 @@ import {
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { consumeItem, getCurrentQuantity } from '@/lib/quantityUtils'
+
+function highlight(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx === -1) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-100 dark:bg-yellow-800 rounded-sm not-italic">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
 
 export const Route = createFileRoute('/cooking')({
   component: CookingPage,
@@ -67,6 +83,7 @@ function CookingPage() {
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [searchVisible, setSearchVisible] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const { expiryDates } = useItemSortData(items)
 
@@ -77,6 +94,38 @@ function CookingPage() {
       ),
     [recipes],
   )
+
+  const lowerQuery = searchQuery.toLowerCase().trim()
+
+  const displayRecipes = lowerQuery
+    ? sortedRecipes.filter((recipe) => {
+        const titleMatch = recipe.name.toLowerCase().includes(lowerQuery)
+        const itemMatch = recipe.items.some((ri) => {
+          const item = items.find((i) => i.id === ri.itemId)
+          return item?.name.toLowerCase().includes(lowerQuery)
+        })
+        return titleMatch || itemMatch
+      })
+    : sortedRecipes
+
+  const hasExactTitleMatch = lowerQuery
+    ? sortedRecipes.some((r) => r.name.toLowerCase() === lowerQuery)
+    : false
+
+  const getSearchMatchedItemIds = (
+    recipe: (typeof recipes)[0],
+  ): Set<string> | null => {
+    if (!lowerQuery) return null
+    // If title matches, don't auto-expand/filter items
+    if (recipe.name.toLowerCase().includes(lowerQuery)) return null
+    const matched = recipe.items
+      .filter((ri) => {
+        const item = items.find((i) => i.id === ri.itemId)
+        return item?.name.toLowerCase().includes(lowerQuery)
+      })
+      .map((ri) => ri.itemId)
+    return matched.length > 0 ? new Set(matched) : null
+  }
 
   // Initializes amounts and servings for a recipe (idempotent — no-op if already initialized)
   const initializeAmountsAndServings = (
@@ -315,11 +364,67 @@ function CookingPage() {
           variant={searchVisible ? 'neutral' : 'neutral-outline'}
           size="icon"
           aria-label="Toggle search"
-          onClick={() => setSearchVisible((v) => !v)}
+          onClick={() => {
+            if (searchVisible) setSearchQuery('')
+            setSearchVisible((v) => !v)
+          }}
         >
           <Search className="h-4 w-4" />
         </Button>
       </Toolbar>
+
+      {searchVisible && (
+        <div className="flex items-center gap-2 border-b-2 border-accessory-default px-3">
+          <Input
+            placeholder="Search recipes or items..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchQuery('')
+                setSearchVisible(false)
+              }
+              if (
+                e.key === 'Enter' &&
+                searchQuery.trim() &&
+                !hasExactTitleMatch
+              ) {
+                navigate({
+                  to: '/settings/recipes/new',
+                  search: { name: searchQuery.trim() },
+                })
+              }
+            }}
+            className="border-none shadow-none bg-transparent h-auto py-2 text-sm flex-1"
+            autoFocus
+          />
+          {searchQuery &&
+            (!hasExactTitleMatch ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() =>
+                  navigate({
+                    to: '/settings/recipes/new',
+                    search: { name: searchQuery.trim() },
+                  })
+                }
+              >
+                <Plus /> Create
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                aria-label="Clear search"
+                onClick={() => setSearchQuery('')}
+              >
+                <X />
+              </Button>
+            ))}
+        </div>
+      )}
 
       {sortedRecipes.length === 0 ? (
         <p className="text-foreground-muted text-sm px-4">
@@ -327,8 +432,11 @@ function CookingPage() {
         </p>
       ) : (
         <div className="space-y-px pb-4">
-          {sortedRecipes.map((recipe) => {
-            const isExpanded = expandedRecipeIds.has(recipe.id)
+          {displayRecipes.map((recipe) => {
+            const searchMatchedItemIds = getSearchMatchedItemIds(recipe)
+            const isExpanded = searchMatchedItemIds
+              ? true
+              : expandedRecipeIds.has(recipe.id)
             const recipeAmounts = sessionAmounts.get(recipe.id)
             const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
             const totalItemCount = recipe.items.length
@@ -384,7 +492,7 @@ function CookingPage() {
                             })
                           }
                         >
-                          {recipe.name}
+                          {highlight(recipe.name, searchQuery)}
                         </button>
                         {/* Chevron: toggles expand/collapse */}
                         <button
@@ -441,7 +549,7 @@ function CookingPage() {
                     </CardContent>
                   </Card>
                 </div>
-                {isExpanded && recipeAmounts && (
+                {isExpanded && (searchMatchedItemIds || recipeAmounts) && (
                   <div className="space-y-px">
                     {recipe.items.length === 0 && (
                       <p className="text-sm text-foreground-muted px-4">
@@ -457,6 +565,11 @@ function CookingPage() {
                         if (!dateB) return -1
                         return dateA.getTime() - dateB.getTime()
                       })
+                      .filter((ri) =>
+                        searchMatchedItemIds
+                          ? searchMatchedItemIds.has(ri.itemId)
+                          : true,
+                      )
                       .map((ri) => {
                         const item = items.find((i) => i.id === ri.itemId)
                         if (!item) return null
@@ -464,7 +577,7 @@ function CookingPage() {
                           item.tagIds.includes(t.id),
                         )
                         const amount =
-                          recipeAmounts.get(ri.itemId) ?? ri.defaultAmount
+                          recipeAmounts?.get(ri.itemId) ?? ri.defaultAmount
                         const isItemChecked =
                           checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? false
 
@@ -489,6 +602,11 @@ function CookingPage() {
                               controlAmount={amount}
                               onAmountChange={(delta) =>
                                 handleAdjustAmount(recipe.id, ri.itemId, delta)
+                              }
+                              highlightedName={
+                                searchQuery
+                                  ? highlight(item.name, searchQuery)
+                                  : undefined
                               }
                             />
                           </div>

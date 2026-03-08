@@ -1106,6 +1106,164 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
+  describe('search', () => {
+    it('user can toggle search input via search icon button', async () => {
+      // Given cooking page with a recipe
+      await createRecipe({ name: 'Pasta' })
+      renderPage()
+
+      // When user clicks the search toggle button
+      await waitFor(() =>
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+
+      // Then search input is visible
+      expect(screen.getByPlaceholderText(/search recipes/i)).toBeInTheDocument()
+
+      // When user clicks the toggle again
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+
+      // Then search input is hidden
+      expect(
+        screen.queryByPlaceholderText(/search recipes/i),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user can filter recipes by title', async () => {
+      // Given two recipes
+      await createRecipe({ name: 'Pasta Dinner' })
+      await createRecipe({ name: 'Tomato Salad' })
+      renderPage()
+
+      // When user opens search (wait for recipes to load first)
+      await waitFor(() => screen.getByText('Pasta Dinner'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'pasta',
+      )
+
+      // Then only Pasta Dinner is visible (text may be split by highlight mark element)
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            (_content, element) =>
+              element?.tagName === 'BUTTON' &&
+              element.textContent === 'Pasta Dinner',
+          ),
+        ).toBeInTheDocument()
+        expect(
+          screen.queryByText(
+            (_content, element) =>
+              element?.tagName === 'BUTTON' &&
+              element.textContent === 'Tomato Salad',
+          ),
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it('user can find a recipe by item name and see the item auto-expanded', async () => {
+      // Given a recipe "Salad" with item "Tomato" and a sibling item "Lettuce"
+      const tomato = await makeItem('Tomato')
+      const lettuce = await makeItem('Lettuce')
+      await createRecipe({
+        name: 'Salad',
+        items: [
+          { itemId: tomato.id, defaultAmount: 1 },
+          { itemId: lettuce.id, defaultAmount: 1 },
+        ],
+      })
+      renderPage()
+
+      // When user searches "tomato" (wait for recipe to load first)
+      await waitFor(() => screen.getByText('Salad'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'tomato',
+      )
+
+      // Then Salad recipe is visible and Tomato item is shown
+      // (Salad not highlighted since it doesn't contain "tomato")
+      await waitFor(() => {
+        expect(screen.getByText('Salad')).toBeInTheDocument()
+        // Tomato item name may be highlighted — check by textContent
+        expect(
+          screen.getByText(
+            (_content, element) =>
+              (element?.tagName === 'H3' || element?.tagName === 'BUTTON') &&
+              element.textContent === 'Tomato',
+          ),
+        ).toBeInTheDocument()
+      })
+
+      // And Lettuce (sibling) is not shown
+      expect(
+        screen.queryByText(
+          (_content, element) => element?.textContent === 'Lettuce',
+        ),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user sees create button when no exact recipe title match exists', async () => {
+      // Given one recipe "Pasta"
+      await createRecipe({ name: 'Pasta' })
+      renderPage()
+
+      // When user types "Pizza" (no exact match) — wait for recipe to load first
+      await waitFor(() => screen.getByText('Pasta'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'Pizza',
+      )
+
+      // Then Create button is visible
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: /create/i }),
+        ).toBeInTheDocument()
+      })
+    })
+
+    it('user does not see create button when exact title match exists', async () => {
+      // Given one recipe "Pasta"
+      await createRecipe({ name: 'Pasta' })
+      renderPage()
+
+      // When user types "pasta" (exact match, case-insensitive) — wait for recipe to load first
+      await waitFor(() => screen.getByText('Pasta'))
+      await userEvent.click(
+        screen.getByRole('button', { name: /toggle search/i }),
+      )
+      await userEvent.type(
+        screen.getByPlaceholderText(/search recipes/i),
+        'pasta',
+      )
+
+      // Then Create button is not visible; clear button is shown instead
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /create/i }),
+        ).not.toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: /clear search/i }),
+        ).toBeInTheDocument()
+      })
+    })
+  })
+
   it('user can toggle a recipe with mixed defaultAmounts on and off', async () => {
     // Given a recipe with one default item and one optional item
     const flour = await makeItem('Flour', 1, 5)
