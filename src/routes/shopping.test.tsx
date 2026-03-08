@@ -622,7 +622,7 @@ describe('Shopping page', () => {
     // And the unit label shows the package unit (bag), not measurement unit (g)
     await waitFor(() => {
       expect(screen.getByText(/3 \(\+250g\)\/4/)).toBeInTheDocument()
-      expect(screen.getByText('(bag)')).toBeInTheDocument()
+      expect(screen.getByText('bag')).toBeInTheDocument()
     })
   })
 })

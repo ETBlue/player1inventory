@@ -107,6 +107,13 @@ export function ItemCard({
     ? targetInPackages
     : item.targetQuantity
 
+  const unitLabel =
+    !isPackageDisplay &&
+    item.targetUnit === 'measurement' &&
+    item.measurementUnit
+      ? item.measurementUnit
+      : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
+
   const isAmountControllable = [
     'shopping',
     'recipe-assignment',
@@ -180,15 +187,6 @@ export function ItemCard({
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
             <h3 className="truncate capitalize">{item.name}</h3>
-            <span className="text-xs font-normal">
-              (
-              {!isPackageDisplay &&
-              item.targetUnit === 'measurement' &&
-              item.measurementUnit
-                ? item.measurementUnit
-                : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)}
-              )
-            </span>
             <div className="flex-1" />
             <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
               {isPackageDisplay
@@ -198,6 +196,9 @@ export function ItemCard({
                 : item.unpackedQuantity > 0
                   ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
                   : `${currentQuantity}/${item.targetQuantity}`}
+            </span>
+            <span className="px-1 text-xs text-foreground-muted border-1 border-foreground-muted opacity-75">
+              {unitLabel}
             </span>
           </CardTitle>
           <ItemProgressBar
