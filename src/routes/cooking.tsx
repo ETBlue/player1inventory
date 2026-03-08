@@ -1,5 +1,13 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronLeft, Minus, Plus } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  Minus,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { Toolbar } from '@/components/Toolbar'
@@ -58,6 +66,7 @@ function CookingPage() {
   >(new Map())
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [searchVisible, setSearchVisible] = useState(false)
 
   const { expiryDates } = useItemSortData(items)
 
@@ -271,31 +280,44 @@ function CookingPage() {
   const recipesBeingConsumed = [...checkedItemIds.values()].filter(
     (set) => set.size > 0,
   ).length
+  const totalCheckedItems = [...checkedItemIds.values()].reduce(
+    (sum, set) => sum + set.size,
+    0,
+  )
+  const totalServings = [...checkedItemIds.entries()]
+    .filter(([, set]) => set.size > 0)
+    .reduce((sum, [recipeId]) => sum + (sessionServings.get(recipeId) ?? 1), 0)
 
   return (
     <div>
       <Toolbar className="justify-between">
-        <div className="flex items-center gap-2">
+        {anyChecked && (
+          <span className="text-sm text-foreground-muted">
+            Cooking {recipesBeingConsumed} recipe
+            {recipesBeingConsumed !== 1 ? 's' : ''} · {totalCheckedItems} item
+            {totalCheckedItems !== 1 ? 's' : ''} · ×{totalServings} serving
+            {totalServings !== 1 ? 's' : ''}
+          </span>
+        )}
+        <div className="flex-1" />
+        {anyChecked && (
           <Button
-            disabled={!anyChecked}
-            onClick={() => setShowDoneDialog(true)}
-          >
-            Done
-          </Button>
-          <Button
-            variant="neutral-ghost"
-            disabled={!anyChecked}
+            variant="destructive-ghost"
             onClick={() => setShowCancelDialog(true)}
           >
-            Cancel
+            <X /> Cancel
           </Button>
-        </div>
+        )}
+        <Button disabled={!anyChecked} onClick={() => setShowDoneDialog(true)}>
+          <Check /> Done
+        </Button>
         <Button
-          variant="neutral-outline"
+          variant={searchVisible ? 'neutral' : 'neutral-outline'}
           size="icon"
-          onClick={() => navigate({ to: '/settings/recipes/new' })}
+          aria-label="Toggle search"
+          onClick={() => setSearchVisible((v) => !v)}
         >
-          <Plus className="h-4 w-4" />
+          <Search className="h-4 w-4" />
         </Button>
       </Toolbar>
 

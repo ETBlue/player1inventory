@@ -84,10 +84,12 @@ describe('Use (Cooking) Page', () => {
 
     renderPage()
 
-    // Then Done and Cancel are disabled
+    // Then Done is disabled and Cancel is not shown
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
-      expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled()
+      expect(
+        screen.queryByRole('button', { name: /cancel/i }),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -188,10 +190,12 @@ describe('Use (Cooking) Page', () => {
     })
     await user.click(screen.getByLabelText('Pasta'))
 
-    // Then Done and Cancel are enabled
+    // Then Done is enabled and Cancel appears
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
-      expect(screen.getByRole('button', { name: /cancel/i })).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
     })
   })
 
@@ -360,7 +364,9 @@ describe('Use (Cooking) Page', () => {
     await user.click(screen.getByLabelText('Pasta'))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cancel/i })).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
     })
 
     // When user clicks Cancel
@@ -379,7 +385,9 @@ describe('Use (Cooking) Page', () => {
     // Then all recipes are deselected
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
-      expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled()
+      expect(
+        screen.queryByRole('button', { name: /cancel/i }),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -1035,6 +1043,67 @@ describe('Use (Cooking) Page', () => {
       expect(screen.getByText('Pasta')).toBeInTheDocument()
     })
     expect(screen.queryByText(/×/)).not.toBeInTheDocument()
+  })
+
+  it('user does not see count text or cancel button when nothing is checked', async () => {
+    // Given a recipe exists
+    await createRecipe({ name: 'Pasta' })
+    renderPage()
+
+    // Then count text is absent and Cancel button is absent
+    await waitFor(() => {
+      expect(screen.queryByText(/cooking/i)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /cancel/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('user sees count text and cancel button after checking a recipe', async () => {
+    // Given a recipe with one item
+    const item = await makeItem('Tomato')
+    await createRecipe({
+      name: 'Salad',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+    renderPage()
+
+    // When user checks the recipe checkbox
+    await waitFor(() => screen.getByLabelText('Salad'))
+    await userEvent.click(screen.getByLabelText('Salad'))
+
+    // Then count text appears (all in one span: "Cooking 1 recipe · 1 item · ×1 serving")
+    await waitFor(() => {
+      expect(
+        screen.getByText(/cooking 1 recipe.*1 item.*×1 serving/i),
+      ).toBeInTheDocument()
+    })
+
+    // Then Cancel button appears
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+  })
+
+  it('user sees done button disabled when nothing is checked', async () => {
+    // Given a recipe exists
+    await createRecipe({ name: 'Pasta' })
+    renderPage()
+
+    // Then Done is disabled
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
+    })
+  })
+
+  it('user sees search toggle button in toolbar', async () => {
+    // Given cooking page renders
+    renderPage()
+
+    // Then search toggle button is present
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /toggle search/i }),
+      ).toBeInTheDocument()
+    })
   })
 
   it('user can toggle a recipe with mixed defaultAmounts on and off', async () => {
