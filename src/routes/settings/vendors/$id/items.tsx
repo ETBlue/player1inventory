@@ -159,6 +159,9 @@ function VendorItemsTab() {
   const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
+  const hasExactMatch = searchedItems.some(
+    (item) => item.name.toLowerCase() === search.trim().toLowerCase(),
+  )
 
   // Branch B: all filters
   const tagFiltered = filterItems(items, filterState)
@@ -211,6 +214,7 @@ function VendorItemsTab() {
         vendors={vendors}
         recipes={recipes}
         onCreateFromSearch={handleCreateFromSearch}
+        hasExactMatch={hasExactMatch}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
