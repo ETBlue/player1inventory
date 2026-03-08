@@ -442,7 +442,7 @@ describe('addItem', () => {
 })
 
 describe('isInactive', () => {
-  it('returns true when both targetQuantity and refillThreshold are 0', () => {
+  it('returns true when targetQuantity is 0 (refillThreshold also 0)', () => {
     const item: Partial<Item> = {
       targetQuantity: 0,
       refillThreshold: 0,
