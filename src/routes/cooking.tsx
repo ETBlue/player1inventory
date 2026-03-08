@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Minus, Plus } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/ItemCard'
 import { Toolbar } from '@/components/Toolbar'
@@ -336,86 +336,86 @@ function CookingPage() {
 
             return (
               <React.Fragment key={recipe.id}>
-                <Card>
-                  <CardContent className="p-0">
-                    {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
-                    <div className="flex items-center gap-2 px-4 py-3">
-                      <Checkbox
-                        id={`recipe-${recipe.id}`}
-                        checked={recipeCheckState}
-                        onCheckedChange={() =>
-                          handleToggleRecipeCheckbox(recipe.id)
-                        }
-                        aria-label={recipe.name}
-                      />
-                      {/* Name: navigates to recipe detail */}
-                      <button
-                        type="button"
-                        className="flex-1 text-left font-medium capitalize hover:underline truncate"
-                        onClick={() =>
-                          navigate({
-                            to: '/settings/recipes/$id',
-                            params: { id: recipe.id },
-                          })
-                        }
-                      >
-                        {recipe.name}
-                      </button>
-                      {/* Chevron: toggles expand/collapse */}
-                      <button
-                        type="button"
-                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
-                        className="shrink-0 text-foreground-muted hover:text-foreground"
-                        onClick={() => handleToggleExpand(recipe.id)}
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </button>
-                      {/* Serving stepper — always reserved, empty when no items checked */}
-                      <div className="flex items-center gap-1 w-20 justify-end shrink-0">
-                        {recipeCheckState !== false && (
-                          <>
-                            <Button
-                              variant="neutral-outline"
-                              size="icon"
-                              className="h-7 w-7"
-                              aria-label="Decrease servings"
-                              onClick={() =>
-                                handleAdjustServings(recipe.id, -1)
-                              }
-                              disabled={
-                                (sessionServings.get(recipe.id) ?? 1) <= 1
-                              }
-                            >
-                              −
-                            </Button>
-                            <span className="text-sm w-6 text-center tabular-nums">
-                              {sessionServings.get(recipe.id) ?? 1}
-                            </span>
-                            <Button
-                              variant="neutral-outline"
-                              size="icon"
-                              className="h-7 w-7"
-                              aria-label="Increase servings"
-                              onClick={() => handleAdjustServings(recipe.id, 1)}
-                            >
-                              +
-                            </Button>
-                          </>
-                        )}
+                <div
+                  className={recipeCheckState ? 'bg-background-surface' : ''}
+                >
+                  <Card className="relative mr-28">
+                    <CardContent>
+                      {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`recipe-${recipe.id}`}
+                          checked={recipeCheckState}
+                          onCheckedChange={() =>
+                            handleToggleRecipeCheckbox(recipe.id)
+                          }
+                          aria-label={recipe.name}
+                        />
+                        {/* Name: navigates to recipe detail */}
+                        <button
+                          type="button"
+                          className="flex-1 text-left font-medium capitalize hover:underline truncate"
+                          onClick={() =>
+                            navigate({
+                              to: '/settings/recipes/$id',
+                              params: { id: recipe.id },
+                            })
+                          }
+                        >
+                          {recipe.name}
+                        </button>
+                        {/* Chevron: toggles expand/collapse */}
+                        <button
+                          type="button"
+                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
+                          className="shrink-0 text-foreground-muted hover:text-foreground"
+                          onClick={() => handleToggleExpand(recipe.id)}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
                       </div>
-                    </div>
+                      {/* Serving stepper — always reserved, empty when no items checked */}
+                      {recipeCheckState !== false && (
+                        <div className="flex items-center items-stretch absolute -right-26 top-1.5">
+                          <Button
+                            variant="neutral-outline"
+                            className="rounded-tr-none rounded-br-none"
+                            size="icon"
+                            aria-label="Decrease servings"
+                            onClick={() => handleAdjustServings(recipe.id, -1)}
+                            disabled={
+                              (sessionServings.get(recipe.id) ?? 1) <= 1
+                            }
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
+                            {sessionServings.get(recipe.id) ?? 1}
+                          </span>
+                          <Button
+                            variant="neutral-outline"
+                            className="rounded-tl-none rounded-bl-none"
+                            size="icon"
+                            aria-label="Increase servings"
+                            onClick={() => handleAdjustServings(recipe.id, 1)}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
 
-                    {/* Row 2: subtitle */}
-                    <div className="pr-4 pl-10 pb-2 text-sm text-foreground-muted">
-                      {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
-                      {checkedCount > 0 ? `, ${checkedCount} selected` : ''}
-                    </div>
-                  </CardContent>
-                </Card>
+                      {/* Row 2: subtitle */}
+                      <div className="mx-6 text-sm text-foreground-muted">
+                        {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
+                        {checkedCount > 0 ? `, ${checkedCount} selected` : ''}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
                 {isExpanded && recipeAmounts && (
                   <div className="space-y-px">
                     {recipe.items.length === 0 && (
