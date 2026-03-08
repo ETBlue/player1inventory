@@ -331,11 +331,23 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 Cooking page at `/cooking` for consuming ingredients via recipes.
 
-**Recipe selection:** Checkboxes to select which recipes to cook. When checked, the recipe expands to show its item list as flat `ItemCard` components below the recipe header card.
+**Recipe card layout:**
+```
+Row 1: [checkbox] [recipe name →detail link] [chevron▼▶]    [− N +]
+Row 2:            [N items, M selected, × S]
+```
+- **Checkbox** — tri-state (checked / indeterminate / unchecked), derived from `checkedItemIds`; clicking toggles all default items (items with `defaultAmount > 0`); if all items have `defaultAmount === 0`, falls back to toggling all items
+- **Chevron** — toggles expand/collapse of the item list; purely layout, no effect on check state
+- **Serving stepper** (`− N +`) — absolutely positioned to the right of the card; visible when recipe is checked; min = 1
+- **Subtitle** (Row 2) — always visible; shows `N items`, `, M selected` when M > 0, and `, × S` when recipe is checked (even at S = 1)
 
-**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked; items with `defaultAmount === 0` start unchecked (treated as disabled/optional by default). Users can toggle any item. Unchecked items are excluded from `totalByItemId` and are not consumed when Done is confirmed.
+**Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked).
 
-**Amount adjustment:** Each item card shows ±buttons to adjust the amount to consume. Step size is `item.consumeAmount`. Amount can be reduced to 0.
+**Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked when the recipe checkbox is first clicked; items with `defaultAmount === 0` start unchecked. Users can toggle any item. Unchecked items are excluded from consumption.
+
+**Amount adjustment:** Each item card shows ±buttons to adjust the per-serving amount. Step size is `item.consumeAmount`. Amount can be reduced to 0.
+
+**Consumption calculation:** `totalByItemId[itemId] = servings × sessionAmounts[recipeId][itemId]` for each checked item with amount > 0, summed across all checked recipes.
 
 **`ItemCard` in cooking mode:**
 - `showTags={false}` hides tags, vendors, and recipe badges
@@ -345,13 +357,15 @@ Cooking page at `/cooking` for consuming ingredients via recipes.
 - `minControlAmount` defaults to `0` globally (changed from `1`) — minus disabled at 0, not 1
 
 **State:**
-- `checkedRecipeIds: Set<string>` — which recipes are selected
-- `sessionAmounts: Map<recipeId, Map<itemId, number>>` — per-recipe per-item amounts
-- `checkedItemIds: Map<recipeId, Set<itemId>>` — which items are included (all start included when recipe is checked)
+- `expandedRecipeIds: Set<string>` — which recipe cards are expanded; purely layout
+- `sessionServings: Map<recipeId, number>` — integer ≥ 1, initialized to 1 on first interaction
+- `sessionAmounts: Map<recipeId, Map<itemId, number>>` — per-serving amounts, initialized from `defaultAmount` on first interaction
+- `checkedItemIds: Map<recipeId, Set<itemId>>` — initialized on first checkbox click (not on expand)
 
 **Files:**
 - `src/routes/cooking.tsx` — main page
 - `src/routes/cooking.test.tsx` — integration tests
+- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe)
 
 ## Design Tokens
 
