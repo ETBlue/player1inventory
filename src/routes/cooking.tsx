@@ -9,7 +9,7 @@ import {
   X,
 } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
-import { ItemCard } from '@/components/ItemCard'
+import { ItemCard } from '@/components/item/ItemCard'
 import { Toolbar } from '@/components/Toolbar'
 import {
   AlertDialog,

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
-import { RecipeNameForm } from '@/components/RecipeNameForm'
+import { RecipeNameForm } from '@/components/recipe/RecipeNameForm'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
