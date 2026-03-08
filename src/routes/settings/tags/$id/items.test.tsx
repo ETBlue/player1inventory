@@ -245,8 +245,8 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
-  it('user sees the create button only when search has text and zero items match', async () => {
-    // Given a tag with one item
+  it('user sees create button when search has text and no exact item match', async () => {
+    // Given a tag with one item named "Milk"
     const tagType = await createTagType({
       name: 'Category',
       color: TagColor.blue,
@@ -265,21 +265,22 @@ describe('Tag Detail - Items Tab', () => {
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
-    // When user types text that matches no items
-    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    // When user types a partial match ("mil" matches "Milk" but is not an exact match)
+    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
 
-    // Then the create button (+ inside search input) is visible
+    // Then the create button is visible (no exact match) and "Add Milk" checkbox is visible
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /create item/i }),
       ).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
 
-    // When user clears the input and types text that matches an item
+    // When user clears the input and types an exact match ("Milk")
     await user.clear(screen.getByPlaceholderText(/search items/i))
-    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Milk')
 
-    // Then the create button is not shown (Milk matched) and Milk appears
+    // Then the create button is NOT visible (exact match exists) and "Add Milk" still appears
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /create item/i }),
