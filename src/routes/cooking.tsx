@@ -412,9 +412,8 @@ function CookingPage() {
                       <div className="mx-6 text-sm text-foreground-muted">
                         {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
                         {checkedCount > 0 ? `, ${checkedCount} selected` : ''}
-                        {recipeCheckState !== false &&
-                        (sessionServings.get(recipe.id) ?? 1) > 1
-                          ? `, × ${sessionServings.get(recipe.id)}`
+                        {recipeCheckState !== false
+                          ? `, × ${sessionServings.get(recipe.id) ?? 1}`
                           : ''}
                       </div>
                     </CardContent>
