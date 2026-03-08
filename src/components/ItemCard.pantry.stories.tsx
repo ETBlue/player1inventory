@@ -33,6 +33,18 @@ export const StatusInactive: Story = {
   },
 }
 
+export const StatusInactiveWithThreshold: Story = {
+  args: {
+    ...StatusInactive.args,
+    item: {
+      ...StatusInactive.args?.item,
+      id: 'inactive-with-threshold',
+      refillThreshold: 5, // has a threshold but targetQuantity=0 → inactive
+      packedQuantity: 0, // below threshold (would be error if active)
+    },
+  },
+}
+
 export const StatusOK: Story = {
   name: 'Status — OK',
   args: {
