@@ -48,10 +48,10 @@ interface ItemListToolbarProps {
   leading?: ReactNode // left of controls row
   children?: ReactNode // right of controls row (add item, etc.)
 
-  // Search/create callback — called when Enter pressed with no matching items
+  // Search/create callbacks — triggered when search has no exact name match
   onSearchSubmit?: (query: string) => void
   onCreateFromSearch?: (query: string) => void
-  hasExactMatch?: boolean
+  hasExactMatch?: boolean // pass true when searchedItems contains an exact case-insensitive match
   vendors?: Vendor[]
   recipes?: Recipe[]
   hideVendorFilter?: boolean
