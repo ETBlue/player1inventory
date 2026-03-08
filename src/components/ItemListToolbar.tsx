@@ -105,12 +105,6 @@ export function ItemListToolbar({
   ).length
   const totalCount = items.length
 
-  const lowerSearch = search.toLowerCase()
-  const _queriedCount = search.trim()
-    ? items.filter((item) => item.name.toLowerCase().includes(lowerSearch))
-        .length
-    : items.length
-
   const handleCriteriaChange = (field: SortField) => {
     onSortChange(field, sortDirection)
   }
