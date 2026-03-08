@@ -333,9 +333,9 @@ Cooking page at `/cooking` for consuming ingredients via recipes.
 
 **Toolbar:**
 ```
-[Cooking N recipes · M items · ×S servings]  [flex-1]  [Cancel ×]  [Done ✓]  [🔍]
+[N serving(s) cooked  flex-1]  [Cancel ×]  [Done ✓]  [🔍]
 ```
-- Count text (`Cooking N recipes · M items · ×S servings`) — visible only when at least one recipe is checked
+- Count text (`N serving(s) cooked`) — always visible; shows 0 when nothing is checked; uses `flex-1` to push buttons right
 - **Cancel** (`destructive-ghost`, X icon) — visible only when something is checked; disappears entirely otherwise
 - **Done** (Check icon) — always visible; disabled when nothing is checked
 - **Search toggle** (`🔍`) — always visible; toggles the search input row; replaces the former + button
