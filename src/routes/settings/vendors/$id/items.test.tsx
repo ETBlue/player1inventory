@@ -239,8 +239,8 @@ describe('Vendor Detail - Items Tab', () => {
     })
   })
 
-  it('user sees the create button only when search has text and zero items match', async () => {
-    // Given a vendor with one item
+  it('user sees create button when search has text and no exact item match', async () => {
+    // Given a vendor with one item named "Milk"
     const vendor = await createVendor('Costco')
     await makeItem('Milk')
     renderItemsTab(vendor.id)
@@ -250,26 +250,26 @@ describe('Vendor Detail - Items Tab', () => {
     await user.click(
       await screen.findByRole('button', { name: /toggle search/i }),
     )
-
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
 
-    // When user types text that matches no items
-    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    // When user types text that partially matches "Milk" but is not an exact match
+    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
 
-    // Then the create button (+ inside search input) is visible
+    // Then the create button is visible (partial match ≠ exact match)
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /create item/i }),
       ).toBeInTheDocument()
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
     })
 
-    // When user clears the input and types text that matches an item
+    // When user types an exact match (case-insensitive)
     await user.clear(screen.getByPlaceholderText(/search items/i))
-    await user.type(screen.getByPlaceholderText(/search items/i), 'mil')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Milk')
 
-    // Then the create button is not shown (Milk matched)
+    // Then the create button is gone (exact match exists)
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /create item/i }),
