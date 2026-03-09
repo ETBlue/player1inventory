@@ -38,6 +38,7 @@ import {
   updateCartItem,
   updateItem,
   updateRecipe,
+  updateRecipeLastCookedAt,
   updateVendor,
 } from './operations'
 
@@ -1137,6 +1138,29 @@ describe('Recipe operations', () => {
     await deleteItem(item.id)
     const updated = await getRecipe(recipe.id)
     expect(updated?.items).toEqual([])
+  })
+
+  it('user can record lastCookedAt on a recipe', async () => {
+    // Given a recipe exists
+    const recipe = await createRecipe({ name: 'Soup' })
+    expect(recipe.lastCookedAt).toBeUndefined()
+
+    // When lastCookedAt is updated
+    const before = new Date()
+    await updateRecipeLastCookedAt(recipe.id)
+    const after = new Date()
+
+    // Then the recipe has a lastCookedAt timestamp
+    const updated = await getRecipe(recipe.id)
+    expect(updated?.lastCookedAt).toBeDefined()
+    expect(updated?.lastCookedAt?.getTime()).toBeGreaterThanOrEqual(
+      before.getTime(),
+    )
+    expect(updated?.lastCookedAt?.getTime()).toBeLessThanOrEqual(
+      after.getTime(),
+    )
+    // And updatedAt is unchanged
+    expect(updated?.updatedAt.getTime()).toEqual(recipe.updatedAt.getTime())
   })
 })
 

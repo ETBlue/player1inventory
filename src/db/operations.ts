@@ -449,6 +449,10 @@ export async function updateRecipe(
   await db.recipes.update(id, { ...updates, updatedAt: new Date() })
 }
 
+export async function updateRecipeLastCookedAt(id: string): Promise<void> {
+  await db.recipes.update(id, { lastCookedAt: new Date() })
+}
+
 export async function deleteRecipe(id: string): Promise<void> {
   await db.recipes.delete(id)
 }
