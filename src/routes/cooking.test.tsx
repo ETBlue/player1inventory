@@ -14,6 +14,7 @@ import {
   createTag,
   createTagType,
   getRecipe,
+  updateRecipeLastCookedAt,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
@@ -1445,6 +1446,79 @@ describe('Use (Cooking) Page', () => {
     await waitFor(async () => {
       const updated = await getRecipe(recipe.id)
       expect(updated?.lastCookedAt).toBeDefined()
+    })
+  })
+
+  it('user can sort recipes by item count descending', async () => {
+    // Given two recipes with different item counts
+    const item1 = await makeItem('Egg')
+    const item2 = await makeItem('Milk')
+    await createRecipe({
+      name: 'Omelette',
+      items: [
+        { itemId: item1.id, defaultAmount: 2 },
+        { itemId: item2.id, defaultAmount: 1 },
+      ],
+    })
+    await createRecipe({ name: 'Toast', items: [] })
+
+    const router = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Omelette')).toBeInTheDocument()
+    })
+
+    // When user navigates to sort by count descending
+    await router.navigate({
+      to: '/cooking',
+      search: { sort: 'count', dir: 'desc', q: '' },
+    })
+
+    // Then Omelette (2 items) appears before Toast (0 items)
+    await waitFor(() => {
+      const buttons = screen
+        .getAllByRole('button')
+        .filter(
+          (el) =>
+            el.textContent?.trim() === 'Omelette' ||
+            el.textContent?.trim() === 'Toast',
+        )
+      expect(buttons[0].textContent?.trim()).toBe('Omelette')
+      expect(buttons[1].textContent?.trim()).toBe('Toast')
+    })
+  })
+
+  it('user can sort recipes by most recently cooked, uncooked last', async () => {
+    // Given two recipes: one recently cooked, one never cooked
+    const _recipe1 = await createRecipe({ name: 'Alpha' })
+    const recipe2 = await createRecipe({ name: 'Beta' })
+
+    // Mark recipe2 as recently cooked
+    await updateRecipeLastCookedAt(recipe2.id)
+
+    const router = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Alpha')).toBeInTheDocument()
+    })
+
+    // When user sorts by recent descending (most recent first)
+    await router.navigate({
+      to: '/cooking',
+      search: { sort: 'recent', dir: 'desc', q: '' },
+    })
+
+    // Then Beta (recently cooked) appears before Alpha (never cooked)
+    await waitFor(() => {
+      const buttons = screen
+        .getAllByRole('button')
+        .filter(
+          (el) =>
+            el.textContent?.trim() === 'Alpha' ||
+            el.textContent?.trim() === 'Beta',
+        )
+      expect(buttons[0].textContent?.trim()).toBe('Beta')
+      expect(buttons[1].textContent?.trim()).toBe('Alpha')
     })
   })
 })
