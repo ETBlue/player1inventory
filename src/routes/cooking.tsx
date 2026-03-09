@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { updateRecipeLastCookedAt } from '@/db/operations'
 import {
   useAddInventoryLog,
   useItems,
@@ -317,6 +318,12 @@ function CookingPage() {
         note: 'consumed via recipe',
       })
     }
+
+    // Record lastCookedAt for each recipe that had items checked
+    const cookedRecipeIds = [...checkedItemIds.entries()]
+      .filter(([, itemSet]) => itemSet.size > 0)
+      .map(([recipeId]) => recipeId)
+    await Promise.all(cookedRecipeIds.map((id) => updateRecipeLastCookedAt(id)))
 
     // Reset state
     setExpandedRecipeIds(new Set())
