@@ -355,7 +355,7 @@ export function ItemForm({
           </div>
 
           <div>
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">Name</Label>
             <Input
               id="name"
               value={name}

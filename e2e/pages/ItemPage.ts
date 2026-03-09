@@ -8,9 +8,8 @@ export class ItemPage {
   }
 
   async fillName(name: string) {
-    // The name field has id="name" in ItemForm (src/components/item/ItemForm/index.tsx:360)
-    // Label text is "Name *" — using locator('#name') is more reliable than getByLabel
-    await this.page.locator('#name').fill(name)
+    // Label text is "Name" (src/components/item/ItemForm/index.tsx:358)
+    await this.page.getByLabel('Name').fill(name)
   }
 
   async save() {
