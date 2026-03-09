@@ -565,6 +565,20 @@ When the user reports a bug (post-implementation or otherwise), treat it as **su
 
 This applies even when the fix seems obvious. The test serves as a regression guard.
 
+### Human Code Changes
+
+When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
+
+1. Run `git diff` to review exactly what changed
+2. For each modified component or behavior: check if tests exist and are up to date — add or update tests as needed
+3. For each modified component: check if Storybook stories exist and are up to date — add or update stories as needed
+4. Update `CLAUDE.md` and inline comments if architecture or patterns changed
+5. Only then commit — include test/story/doc updates **in the same commit** as the human's code
+
+Human code changes receive the same completeness audit as agent-authored changes. There is no "just commit it" shortcut.
+
+**Exceptions:** Changes to non-code files only (docs, config, assets) do not require a test/Storybook audit.
+
 ### CSS Variable Renames
 
 When you detect or perform a CSS variable rename:
