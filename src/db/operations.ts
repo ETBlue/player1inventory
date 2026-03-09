@@ -1,3 +1,4 @@
+import type { Language } from '@/lib/language'
 import type {
   CartItem,
   InventoryLog,
@@ -460,4 +461,46 @@ export async function deleteRecipe(id: string): Promise<void> {
 export async function getItemCountByRecipe(recipeId: string): Promise<number> {
   const recipe = await db.recipes.get(recipeId)
   return recipe?.items.length ?? 0
+}
+
+// --- Seed Data ---
+
+const EN_SEED_DATA = [
+  {
+    type: { name: 'Storage', color: TagColor.blue },
+    tags: ['freezer', 'fridge', 'pantry'],
+  },
+  {
+    type: { name: 'Diet', color: TagColor.green },
+    tags: ['plant-based', 'low-GI', 'gluten-free'],
+  },
+  {
+    type: { name: 'Category', color: TagColor.orange },
+    tags: ['produce', 'dairy', 'meat', 'grains', 'snacks', 'beverages'],
+  },
+]
+
+const TW_SEED_DATA = [
+  {
+    type: { name: '保存方式', color: TagColor.blue },
+    tags: ['冷凍', '冷藏', '常溫'],
+  },
+  {
+    type: { name: '飲食型態', color: TagColor.green },
+    tags: ['蔬食', '低GI', '無麩質'],
+  },
+  {
+    type: { name: '食材分類', color: TagColor.orange },
+    tags: ['蔬果', '乳製品', '肉', '穀物', '零食', '飲料'],
+  },
+]
+
+export async function seedDefaultData(language: Language): Promise<void> {
+  const seeds = language === 'tw' ? TW_SEED_DATA : EN_SEED_DATA
+  for (const { type, tags } of seeds) {
+    const tagType = await createTagType(type)
+    for (const tagName of tags) {
+      await createTag({ name: tagName, typeId: tagType.id })
+    }
+  }
 }

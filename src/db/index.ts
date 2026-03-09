@@ -76,4 +76,12 @@ db.version(5).stores({
   recipes: 'id, name, lastCookedAt',
 })
 
+import { resolveLanguageFromStorage } from '@/lib/language'
+import { seedDefaultData } from './operations'
+
+db.on('populate', async () => {
+  const language = resolveLanguageFromStorage()
+  await seedDefaultData(language)
+})
+
 export { db }
