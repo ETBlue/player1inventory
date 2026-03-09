@@ -1,9 +1,27 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronRight, CookingPot, Moon, Store, Sun, Tags } from 'lucide-react'
+import {
+  ChevronRight,
+  CookingPot,
+  Globe,
+  Moon,
+  Store,
+  Sun,
+  Tags,
+} from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useLanguage } from '@/hooks/useLanguage'
 import { useTheme } from '@/hooks/useTheme'
+import type { LanguagePreference } from '@/lib/language'
 
 export const Route = createFileRoute('/settings/')({
   component: Settings,
@@ -11,6 +29,12 @@ export const Route = createFileRoute('/settings/')({
 
 function Settings() {
   const { preference, theme, setPreference } = useTheme()
+  const {
+    preference: langPreference,
+    language,
+    setPreference: setLangPreference,
+  } = useLanguage()
+  const { t } = useTranslation()
 
   return (
     <div>
@@ -61,6 +85,47 @@ function Settings() {
                 Dark
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Language Control Card */}
+        <Card>
+          <CardContent className="px-3 py-1">
+            <div className="flex items-center gap-3 mb-3">
+              <Globe className="h-5 w-5 text-foreground-muted" />
+              <div>
+                <p className="font-medium">{t('settings.language.label')}</p>
+                <p className="text-sm text-foreground-muted">
+                  {langPreference === 'auto'
+                    ? t('settings.language.autoDetected', {
+                        language: t(`settings.language.languages.${language}`),
+                      })
+                    : t('settings.language.description')}
+                </p>
+              </div>
+            </div>
+
+            <Select
+              value={langPreference}
+              onValueChange={(val) =>
+                setLangPreference(val as LanguagePreference)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">
+                  {t('settings.language.auto')}
+                </SelectItem>
+                <SelectItem value="en">
+                  {t('settings.language.languages.en')}
+                </SelectItem>
+                <SelectItem value="tw">
+                  {t('settings.language.languages.tw')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
