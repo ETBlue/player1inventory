@@ -75,8 +75,10 @@ export class ItemPage {
   }
 
   getPackedQuantityInput(): Locator {
-    // Packed quantity number input (src/components/item/ItemForm/index.tsx:242)
-    return this.page.locator('#packedQuantity')
+    // Label text starts with "Packed" (e.g., "Packed (pkg)")
+    // Use start-anchor regex to avoid matching the "Unpacked" label
+    // (src/components/item/ItemForm/index.tsx:235)
+    return this.page.getByLabel(/^Packed/i)
   }
 
   async createAndAssignVendor(name: string) {
