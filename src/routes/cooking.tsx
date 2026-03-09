@@ -53,10 +53,19 @@ function highlight(text: string, query: string): React.ReactNode {
 
 export const Route = createFileRoute('/cooking')({
   component: CookingPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    sort:
+      search.sort === 'recent' || search.sort === 'count'
+        ? (search.sort as 'recent' | 'count')
+        : ('name' as const),
+    dir: search.dir === 'desc' ? ('desc' as const) : ('asc' as const),
+    q: typeof search.q === 'string' ? search.q : '',
+  }),
 })
 
 function CookingPage() {
   const navigate = useNavigate()
+  const { sort, dir, q } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
   const updateItem = useUpdateItem()
@@ -95,7 +104,7 @@ function CookingPage() {
     [recipes],
   )
 
-  const lowerQuery = searchQuery.toLowerCase().trim()
+  const lowerQuery = q.toLowerCase().trim()
 
   const displayRecipes = lowerQuery
     ? sortedRecipes.filter((recipe) => {
