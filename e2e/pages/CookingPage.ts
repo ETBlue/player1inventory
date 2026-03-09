@@ -12,8 +12,9 @@ export class CookingPage {
   }
 
   async checkRecipe(name: string) {
-    // Recipe-level checkbox: aria-label={recipe.name} (src/routes/cooking.tsx:438)
-    await this.page.getByLabel(name).click()
+    // Recipe-level checkbox: aria-label={recipe.name}, role="checkbox" (src/routes/cooking.tsx:438)
+    // Use getByRole to avoid strict-mode conflict with the "Expand {name}" button
+    await this.page.getByRole('checkbox', { name }).click()
   }
 
   async expandRecipe(name: string) {
@@ -39,6 +40,11 @@ export class CookingPage {
   async confirmDone() {
     // Done confirmation dialog title: "Consume from N recipe(s)?" — confirm button: "Confirm"
     // (src/routes/cooking.tsx:601)
+    // Radix UI's AlertDialogAction closes the dialog synchronously on click, BEFORE the
+    // async onClick handler (handleConfirmDone) completes. To ensure mutations finish,
+    // we wait for the toolbar count to reset to "0 serving cooked" — which only happens
+    // after handleConfirmDone calls setCheckedItemIds(new Map()) at the end of all awaits.
     await this.page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click()
+    await this.page.getByText('0 serving').waitFor({ state: 'visible' })
   }
 }
