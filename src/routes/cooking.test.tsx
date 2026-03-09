@@ -1229,10 +1229,13 @@ describe('Use (Cooking) Page', () => {
         'Pizza',
       )
 
-      // Then Create button is visible
+      // Then both Create and Clear buttons are visible
       await waitFor(() => {
         expect(
           screen.getByRole('button', { name: /create/i }),
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: /clear search/i }),
         ).toBeInTheDocument()
       })
     })
@@ -1290,7 +1293,7 @@ describe('Use (Cooking) Page', () => {
         'pasta',
       )
 
-      // Then Create button is not visible; clear button is shown instead
+      // Then Create button is not visible; X clear button is still shown
       await waitFor(() => {
         expect(
           screen.queryByRole('button', { name: /create/i }),
