@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 export class ItemPage {
   readonly page: Page
@@ -72,6 +72,13 @@ export class ItemPage {
     await this.page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
     // Tag is created but NOT yet assigned — click the badge to assign it
     await this.page.getByRole('main').getByText(name, { exact: false }).click()
+  }
+
+  getPackedQuantityInput(): Locator {
+    // Label text starts with "Packed" (e.g., "Packed (pkg)")
+    // Use start-anchor regex to avoid matching the "Unpacked" label
+    // (src/components/item/ItemForm/index.tsx:235)
+    return this.page.getByLabel(/^Packed/i)
   }
 
   async createAndAssignVendor(name: string) {
