@@ -1365,9 +1365,17 @@ describe('Use (Cooking) Page', () => {
   })
 
   it('user can expand all recipes at once', async () => {
-    // Given two recipes
-    await createRecipe({ name: 'Pasta Dinner' })
-    await createRecipe({ name: 'Pasta Salad' })
+    // Given two recipes with items (no prior interaction)
+    const flour = await makeItem('Flour')
+    const tomato = await makeItem('Tomato')
+    await createRecipe({
+      name: 'Pasta Dinner',
+      items: [{ itemId: flour.id, defaultAmount: 1 }],
+    })
+    await createRecipe({
+      name: 'Pasta Salad',
+      items: [{ itemId: tomato.id, defaultAmount: 1 }],
+    })
 
     renderPage()
 
@@ -1389,6 +1397,9 @@ describe('Use (Cooking) Page', () => {
       expect(
         screen.getByRole('button', { name: /Collapse Pasta Salad/i }),
       ).toBeInTheDocument()
+      // And items are visible without requiring prior interaction
+      expect(screen.getByText('Flour')).toBeInTheDocument()
+      expect(screen.getByText('Tomato')).toBeInTheDocument()
     })
   })
 
