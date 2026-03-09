@@ -555,6 +555,16 @@ Before creating a PR, update all relevant documentation:
 - This keeps the codebase in a consistent state where stories and tests match the code
 - Exception: Large refactors may need separate commits, but stories/tests should follow immediately
 
+### Bug Fixes
+
+When the user reports a bug (post-implementation or otherwise), treat it as **substantive** unless it is clearly a typo or cosmetic-only change. Required sequence — no shortcuts:
+
+1. Invoke `superpowers:systematic-debugging` to diagnose the root cause before proposing any fix
+2. Invoke `superpowers:test-driven-development` to write a **failing test** that reproduces the bug before writing the fix
+3. Implement the fix until the test passes
+
+This applies even when the fix seems obvious. The test serves as a regression guard.
+
 ### CSS Variable Renames
 
 When you detect or perform a CSS variable rename:
