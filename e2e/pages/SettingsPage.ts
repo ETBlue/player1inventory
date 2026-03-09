@@ -9,8 +9,8 @@ export class SettingsPage {
 
   async createTagType(name: string) {
     await this.page.goto('/settings/tags')
-    // Input has id="newTagTypeName" (src/routes/settings/tags/index.tsx:422)
-    await this.page.locator('#newTagTypeName').fill(name)
+    // Label text is "Name" (src/routes/settings/tags/index.tsx:421)
+    await this.page.getByLabel('Name').fill(name)
     // Button label is "New Tag Type" (src/routes/settings/tags/index.tsx:435)
     await this.page.getByRole('button', { name: /new tag type/i }).click()
     // Wait for the tag type card heading to appear
