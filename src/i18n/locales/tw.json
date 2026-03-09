@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "language": {
+      "label": "語言",
+      "description": "選擇您偏好的語言",
+      "auto": "自動（瀏覽器）",
+      "autoDetected": "自動偵測：{{language}}",
+      "languages": {
+        "en": "English",
+        "tw": "繁體中文"
+      }
+    }
+  }
+}

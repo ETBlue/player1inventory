@@ -35,6 +35,7 @@ import {
   getTagsByType,
   getVendors,
   migrateTagColorTints,
+  seedDefaultData,
   updateCartItem,
   updateItem,
   updateRecipe,
@@ -1199,5 +1200,60 @@ describe('migrateTagColorTints', () => {
     // Then nothing changes
     const types = await getAllTagTypes()
     expect(types.find((t) => t.id === 'tt-teal')?.color).toBe('teal')
+  })
+})
+
+describe('seedDefaultData', () => {
+  beforeEach(async () => {
+    await db.tags.clear()
+    await db.tagTypes.clear()
+  })
+
+  it('user can see EN default tag types seeded on first launch', async () => {
+    // Given an empty database (cleared in beforeEach)
+
+    // When seeding with English
+    await seedDefaultData('en')
+
+    // Then EN tag types exist
+    const tagTypes = await getAllTagTypes()
+    const names = tagTypes.map((t) => t.name)
+    expect(names).toContain('Storage')
+    expect(names).toContain('Diet')
+    expect(names).toContain('Category')
+  })
+
+  it('user can see TW default tag types seeded on first launch', async () => {
+    // Given an empty database
+
+    // When seeding with Traditional Chinese
+    await seedDefaultData('tw')
+
+    // Then TW tag types exist
+    const tagTypes = await getAllTagTypes()
+    const names = tagTypes.map((t) => t.name)
+    expect(names).toContain('保存方式')
+    expect(names).toContain('飲食型態')
+    expect(names).toContain('食材分類')
+  })
+
+  it('user can see EN default tags under Storage tag type', async () => {
+    // Given an empty database
+
+    // When seeding with English
+    await seedDefaultData('en')
+
+    // Then Storage tag type exists with correct tags
+    const tagTypes = await getAllTagTypes()
+    const storageType = tagTypes.find((t) => t.name === 'Storage')
+    expect(storageType).toBeDefined()
+
+    const tags = await getAllTags()
+    const storageTags = tags
+      .filter((tag) => tag.typeId === storageType?.id)
+      .map((t) => t.name)
+    expect(storageTags).toContain('freezer')
+    expect(storageTags).toContain('fridge')
+    expect(storageTags).toContain('pantry')
   })
 })
