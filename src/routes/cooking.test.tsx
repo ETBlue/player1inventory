@@ -13,6 +13,8 @@ import {
   createRecipe,
   createTag,
   createTagType,
+  getRecipe,
+  updateRecipeLastCookedAt,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
@@ -345,6 +347,11 @@ describe('Use (Cooking) Page', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
     })
+
+    // And the recipe remains expanded (expand/collapse state is preserved)
+    expect(
+      screen.getByRole('button', { name: /Collapse Pasta/i }),
+    ).toBeInTheDocument()
   })
 
   it('user can cancel and selections are cleared', async () => {
@@ -359,8 +366,11 @@ describe('Use (Cooking) Page', () => {
     const user = userEvent.setup()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
     })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
     await user.click(screen.getByLabelText('Pasta'))
 
     await waitFor(() => {
@@ -389,6 +399,11 @@ describe('Use (Cooking) Page', () => {
         screen.queryByRole('button', { name: /cancel/i }),
       ).not.toBeInTheDocument()
     })
+
+    // And the recipe remains expanded (expand/collapse state is preserved)
+    expect(
+      screen.getByRole('button', { name: /Collapse Pasta/i }),
+    ).toBeInTheDocument()
   })
 
   it('items with amount=0 are skipped on consumption', async () => {
@@ -1227,10 +1242,13 @@ describe('Use (Cooking) Page', () => {
         'Pizza',
       )
 
-      // Then Create button is visible
+      // Then both Create and Clear buttons are visible
       await waitFor(() => {
         expect(
           screen.getByRole('button', { name: /create/i }),
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: /clear search/i }),
         ).toBeInTheDocument()
       })
     })
@@ -1288,7 +1306,7 @@ describe('Use (Cooking) Page', () => {
         'pasta',
       )
 
-      // Then Create button is not visible; clear button is shown instead
+      // Then Create button is not visible; X clear button is still shown
       await waitFor(() => {
         expect(
           screen.queryByRole('button', { name: /create/i }),
@@ -1338,6 +1356,196 @@ describe('Use (Cooking) Page', () => {
         'data-state',
         'unchecked',
       )
+    })
+  })
+
+  it('user can sort recipes by name alphabetically by default', async () => {
+    // Given two recipes created in non-alphabetical order
+    await createRecipe({ name: 'Zucchini Soup' })
+    await createRecipe({ name: 'Apple Tart' })
+
+    renderPage()
+
+    // Then recipes appear alphabetically (Apple Tart before Zucchini Soup)
+    await waitFor(() => {
+      const recipeNames = screen
+        .getAllByRole('button')
+        .map((el) => el.textContent?.trim())
+        .filter((t) => t === 'Apple Tart' || t === 'Zucchini Soup')
+      expect(recipeNames[0]).toBe('Apple Tart')
+      expect(recipeNames[1]).toBe('Zucchini Soup')
+    })
+  })
+
+  it('user can expand all recipes at once', async () => {
+    // Given two recipes with items (no prior interaction)
+    const flour = await makeItem('Flour')
+    const tomato = await makeItem('Tomato')
+    await createRecipe({
+      name: 'Pasta Dinner',
+      items: [{ itemId: flour.id, defaultAmount: 1 }],
+    })
+    await createRecipe({
+      name: 'Pasta Salad',
+      items: [{ itemId: tomato.id, defaultAmount: 1 }],
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Pasta Dinner')).toBeInTheDocument()
+    })
+
+    // When user clicks Expand all
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+
+    // Then both chevrons change to Collapse and button becomes Collapse all
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Collapse all' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Collapse Pasta Dinner/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Collapse Pasta Salad/i }),
+      ).toBeInTheDocument()
+      // And items are visible without requiring prior interaction
+      expect(screen.getByText('Flour')).toBeInTheDocument()
+      expect(screen.getByText('Tomato')).toBeInTheDocument()
+    })
+  })
+
+  it('user can collapse all recipes at once', async () => {
+    // Given a recipe, expanded via Expand all
+    await createRecipe({ name: 'Pasta Dinner' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Pasta Dinner')).toBeInTheDocument()
+    })
+
+    // First expand all
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Collapse all' }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks Collapse all
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+
+    // Then chevron goes back to Expand and button shows Expand all again
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Expand all' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta Dinner/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can have lastCookedAt recorded when done cooking', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Egg')
+    const recipe = await createRecipe({
+      name: 'Omelette',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+    expect(recipe.lastCookedAt).toBeUndefined()
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Omelette')).toBeInTheDocument()
+    })
+
+    // When user checks the recipe and confirms Done
+    const checkbox = screen.getByRole('checkbox', { name: 'Omelette' })
+    await userEvent.click(checkbox)
+    await userEvent.click(screen.getByRole('button', { name: /done/i }))
+    await userEvent.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then lastCookedAt is set on the recipe
+    await waitFor(async () => {
+      const updated = await getRecipe(recipe.id)
+      expect(updated?.lastCookedAt).toBeDefined()
+    })
+  })
+
+  it('user can sort recipes by item count descending', async () => {
+    // Given two recipes with different item counts
+    const item1 = await makeItem('Egg')
+    const item2 = await makeItem('Milk')
+    await createRecipe({
+      name: 'Omelette',
+      items: [
+        { itemId: item1.id, defaultAmount: 2 },
+        { itemId: item2.id, defaultAmount: 1 },
+      ],
+    })
+    await createRecipe({ name: 'Toast', items: [] })
+
+    const router = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Omelette')).toBeInTheDocument()
+    })
+
+    // When user navigates to sort by count descending
+    await router.navigate({
+      to: '/cooking',
+      search: { sort: 'count', dir: 'desc', q: '' },
+    })
+
+    // Then Omelette (2 items) appears before Toast (0 items)
+    await waitFor(() => {
+      const buttons = screen
+        .getAllByRole('button')
+        .filter(
+          (el) =>
+            el.textContent?.trim() === 'Omelette' ||
+            el.textContent?.trim() === 'Toast',
+        )
+      expect(buttons[0].textContent?.trim()).toBe('Omelette')
+      expect(buttons[1].textContent?.trim()).toBe('Toast')
+    })
+  })
+
+  it('user can sort recipes by most recently cooked, uncooked last', async () => {
+    // Given two recipes: one recently cooked, one never cooked
+    const _recipe1 = await createRecipe({ name: 'Alpha' })
+    const recipe2 = await createRecipe({ name: 'Beta' })
+
+    // Mark recipe2 as recently cooked
+    await updateRecipeLastCookedAt(recipe2.id)
+
+    const router = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Alpha')).toBeInTheDocument()
+    })
+
+    // When user sorts by last cooked ascending (most recently cooked first, like Expiring)
+    await router.navigate({
+      to: '/cooking',
+      search: { sort: 'recent', dir: 'asc', q: '' },
+    })
+
+    // Then Beta (recently cooked) appears before Alpha (never cooked)
+    await waitFor(() => {
+      const buttons = screen
+        .getAllByRole('button')
+        .filter(
+          (el) =>
+            el.textContent?.trim() === 'Alpha' ||
+            el.textContent?.trim() === 'Beta',
+        )
+      expect(buttons[0].textContent?.trim()).toBe('Beta')
+      expect(buttons[1].textContent?.trim()).toBe('Alpha')
     })
   })
 })

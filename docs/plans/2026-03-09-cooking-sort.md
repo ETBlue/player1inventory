@@ -6,7 +6,13 @@
 
 **Architecture:** A new `CookingControlBar` component (`src/components/recipe/CookingControlBar/index.tsx`) owns all search and sort UI and reads/writes URL params directly via TanStack Router hooks. The cooking route gains a `validateSearch` to define `?sort`, `?dir`, and `?q`. Expand/collapse all state remains in `cooking.tsx` and is passed as props.
 
-**Tech Stack:** React 19, TanStack Router (`useSearch`, `useNavigate`), Dexie.js (schema v5), Lucide icons, shadcn/ui (`Select`, `Button`, `Input`)
+**Tech Stack:** React 19, TanStack Router (`useSearch`, `useNavigate`), Dexie.js (schema v5), Lucide icons, shadcn/ui (`DropdownMenu`, `Button`, `Input`)
+
+> **Implementation divergences:**
+> - Used `DropdownMenu + Button` (no chevron) instead of `Select` — matches shopping page pattern, per user request.
+> - Sort option label `recent` displays as "Last Cooked" (not "Recent/Cooked") — clearer semantics, per user request.
+> - `asc` direction for `recent` = most recently cooked first (flipped from typical ascending) — mirrors "Expiring" convention where ↑ = most urgent/relevant first, per user request.
+> - `updateRecipeLastCookedAt` exposed via `useUpdateRecipeLastCookedAt` hook in `useRecipes.ts` (not called directly from route) — architecture fix.
 
 ---
 

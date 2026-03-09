@@ -6,6 +6,7 @@ import {
   getRecipe,
   getRecipes,
   updateRecipe,
+  updateRecipeLastCookedAt,
 } from '@/db/operations'
 import type { Recipe, RecipeItem } from '@/types'
 
@@ -59,6 +60,16 @@ export function useDeleteRecipe() {
 
   return useMutation({
     mutationFn: deleteRecipe,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] })
+    },
+  })
+}
+
+export function useUpdateRecipeLastCookedAt() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => updateRecipeLastCookedAt(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
     },

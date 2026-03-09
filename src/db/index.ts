@@ -64,4 +64,16 @@ db.version(4).stores({
   recipes: 'id, name',
 })
 
+// Version 5: Add lastCookedAt to recipes
+db.version(5).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, name, typeId',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
+  recipes: 'id, name, lastCookedAt',
+})
+
 export { db }

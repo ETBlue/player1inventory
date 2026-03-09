@@ -101,4 +101,5 @@ export interface Recipe {
   items: RecipeItem[]
   createdAt: Date
   updatedAt: Date
+  lastCookedAt?: Date
 }

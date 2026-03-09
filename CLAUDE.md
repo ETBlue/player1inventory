@@ -72,6 +72,8 @@ src/
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
+**`CookingControlBar`** (`src/components/recipe/CookingControlBar/index.tsx`) — second-row toolbar for the cooking page. Props: `allExpanded`, `onExpandAll`, `onCollapseAll`. Reads/writes `?sort` (`name|recent|count`), `?dir` (`asc|desc`), `?q` directly via `Route.useSearch()` and `useNavigate()`. Row 1: sort Select, direction button, expand/collapse button, spacer, search toggle. Row 2 (conditional): search input with Create/Clear buttons. `searchVisible` is local state initialized from `!!q`.
+
 ## Custom Hooks
 
 **Navigation:**
@@ -334,22 +336,32 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 Cooking page at `/cooking` for consuming ingredients via recipes.
 
-**Toolbar:**
+**Toolbar layout (three rows):**
+
+Row 1 (`<Toolbar>`):
 ```
-[N serving(s) cooked  flex-1]  [Cancel ×]  [Done ✓]  [🔍]
+[N serving(s) cooked  flex-1]  [Cancel ×]  [Done ✓]
 ```
 - Count text (`N serving(s) cooked`) — always visible; shows 0 when nothing is checked; uses `flex-1` to push buttons right
 - **Cancel** (`destructive-ghost`, X icon) — visible only when something is checked; disappears entirely otherwise
 - **Done** (Check icon) — always visible; disabled when nothing is checked
-- **Search toggle** (`🔍`) — always visible; toggles the search input row; replaces the former + button
 
-**Search input row** (below toolbar, when search is open):
+Row 2 (`<CookingControlBar>`):
+```
+[Sort ▾]  [↑↓]  [Expand/Collapse All]  [flex-1]  [🔍]
+```
+- **Sort** — Select dropdown: Name / Recent / Item Count; persisted in `?sort` URL param
+- **Direction** — toggles `?dir` between `asc` and `desc`
+- **Expand/Collapse All** — toggles all recipe cards open/closed
+- **Search toggle** (`🔍`) — toggles the search input row
+
+Row 3 (search input, inside `CookingControlBar`, conditional):
 ```
 [search input ..................] [+ Create | × clear]
 ```
 - `+ Create` button (primary): shown when query is non-empty AND no exact recipe title match; navigates to `/settings/recipes/new?name=<query>`
-- `× clear` button (neutral-ghost, icon): shown when an exact title match exists
-- Pressing Escape clears query and hides the row; pressing Enter with no exact match navigates to create
+- `× clear` button (neutral-ghost, icon): shown whenever query is non-empty (always alongside Create when both conditions apply)
+- Pressing Escape clears query (keeps row open); pressing Enter with no exact match navigates to create
 
 **Search filtering:**
 - Recipe visible if title or any item name partially matches the query
@@ -367,7 +379,7 @@ Row 2:            [N items, M selected, × S]
 - **Serving stepper** (`− N +`) — absolutely positioned to the right of the card; visible when recipe is checked; min = 1
 - **Subtitle** (Row 2) — always visible; shows `N items`, `, M selected` when M > 0, and `, × S` when recipe is checked (even at S = 1)
 
-**Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked).
+**Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked). Expand/collapse state is preserved when Done or Cancel is confirmed — only session interaction state (servings, amounts, checked items) is reset.
 
 **Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked when the recipe checkbox is first clicked; items with `defaultAmount === 0` start unchecked. Users can toggle any item. Unchecked items are excluded from consumption.
 
@@ -383,18 +395,27 @@ Row 2:            [N items, M selected, × S]
 - `minControlAmount` defaults to `0` globally (changed from `1`) — minus disabled at 0, not 1
 - `highlightedName?: React.ReactNode` — optional override for the item name display; used by cooking page to pass highlighted search matches
 
-**State:**
+**URL search params** (validated by `validateSearch` on the route):
+- `?sort` — `name` | `recent` | `count` (default: `name`)
+- `?dir` — `asc` | `desc` (default: `asc`)
+- `?q` — search query string (default: `''`)
+
+**State** (in `CookingPage`):
 - `expandedRecipeIds: Set<string>` — which recipe cards are expanded; purely layout
 - `sessionServings: Map<recipeId, number>` — integer ≥ 1, initialized to 1 on first interaction
 - `sessionAmounts: Map<recipeId, Map<itemId, number>>` — per-serving amounts, initialized from `defaultAmount` on first interaction
 - `checkedItemIds: Map<recipeId, Set<itemId>>` — initialized on first checkbox click (not on expand)
-- `searchVisible: boolean` — whether the search input row is visible
-- `searchQuery: string` — current search query (local state, not persisted)
+
+**State** (in `CookingControlBar`):
+- `searchVisible: boolean` — whether the search input row is visible; initialized from `!!q`
+
+**`lastCookedAt`:** When Done is confirmed, `lastCookedAt` is recorded on each Recipe that had at least one item checked, via `useUpdateRecipeLastCookedAt`. This timestamp drives the `recent` sort order.
 
 **Files:**
 - `src/routes/cooking.tsx` — main page
 - `src/routes/cooking.test.tsx` — integration tests
-- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch)
+- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount)
+- `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
 
 ## Design Tokens
 

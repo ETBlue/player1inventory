@@ -20,7 +20,13 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function CookingStory({ setup }: { setup: () => Promise<void> }) {
+function CookingStory({
+  setup,
+  initialUrl = '/cooking',
+}: {
+  setup: () => Promise<void>
+  initialUrl?: string
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -43,7 +49,7 @@ function CookingStory({ setup }: { setup: () => Promise<void> }) {
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/cooking'] }),
+    history: createMemoryHistory({ initialEntries: [initialUrl] }),
     context: { queryClient },
   })
 
@@ -329,6 +335,7 @@ export const WithActiveToolbar: Story = {
 function WithSearchStory() {
   return (
     <CookingStory
+      initialUrl="/cooking?q=pasta"
       setup={async () => {
         const oats = await createItem({
           name: 'Rolled Oats',
@@ -390,3 +397,59 @@ function WithSearchStory() {
 export const WithSearch: Story = {
   render: () => <WithSearchStory />,
 }
+
+// Story 7: Sort by recent — recipes sorted by most recently used
+function SortByRecentStory() {
+  return (
+    <CookingStory
+      initialUrl="/cooking?sort=recent"
+      setup={async () => {
+        const egg = await createItem({
+          name: 'Egg',
+          targetUnit: 'package',
+          targetQuantity: 10,
+          refillThreshold: 2,
+          packedQuantity: 5,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          tagIds: [],
+        })
+        await createRecipe({
+          name: 'Omelette',
+          items: [{ itemId: egg.id, defaultAmount: 2 }],
+        })
+        await createRecipe({ name: 'Pasta', items: [] })
+      }}
+    />
+  )
+}
+
+export const SortByRecent: Story = { render: () => <SortByRecentStory /> }
+
+// Story 8: Sort by count descending — recipes sorted by ingredient count
+function SortByCountStory() {
+  return (
+    <CookingStory
+      initialUrl="/cooking?sort=count&dir=desc"
+      setup={async () => {
+        const egg = await createItem({
+          name: 'Egg',
+          targetUnit: 'package',
+          targetQuantity: 10,
+          refillThreshold: 2,
+          packedQuantity: 5,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          tagIds: [],
+        })
+        await createRecipe({
+          name: 'Omelette',
+          items: [{ itemId: egg.id, defaultAmount: 2 }],
+        })
+        await createRecipe({ name: 'Toast', items: [] })
+      }}
+    />
+  )
+}
+
+export const SortByCount: Story = { render: () => <SortByCountStory /> }
