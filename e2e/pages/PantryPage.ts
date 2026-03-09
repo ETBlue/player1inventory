@@ -21,7 +21,9 @@ export class PantryPage {
   }
 
   getItemCard(name: string): Locator {
-    // Item cards are rendered as list items containing the item name
-    return this.page.getByRole('listitem').filter({ hasText: name })
+    // ItemCard renders as a <div> (via Card component, src/components/ui/card.tsx)
+    // The item name is in an <h3> with capitalize CSS (src/components/item/ItemCard/index.tsx:192)
+    // Match the heading element which is unique per item
+    return this.page.getByRole('heading', { name, level: 3 })
   }
 }
