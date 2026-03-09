@@ -1502,10 +1502,10 @@ describe('Use (Cooking) Page', () => {
       expect(screen.getByText('Alpha')).toBeInTheDocument()
     })
 
-    // When user sorts by recent descending (most recent first)
+    // When user sorts by last cooked ascending (most recently cooked first, like Expiring)
     await router.navigate({
       to: '/cooking',
-      search: { sort: 'recent', dir: 'desc', q: '' },
+      search: { sort: 'recent', dir: 'asc', q: '' },
     })
 
     // Then Beta (recently cooked) appears before Alpha (never cooked)
