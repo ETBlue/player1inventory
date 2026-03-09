@@ -328,8 +328,7 @@ function CookingPage() {
       cookedRecipeIds.map((id) => updateRecipeLastCookedAt.mutateAsync(id)),
     )
 
-    // Reset state
-    setExpandedRecipeIds(new Set())
+    // Reset session state (expand/collapse is preserved)
     setSessionServings(new Map())
     setSessionAmounts(new Map())
     setCheckedItemIds(new Map())
@@ -337,7 +336,7 @@ function CookingPage() {
   }
 
   const handleConfirmCancel = () => {
-    setExpandedRecipeIds(new Set())
+    // Reset session state (expand/collapse is preserved)
     setSessionServings(new Map())
     setSessionAmounts(new Map())
     setCheckedItemIds(new Map())
