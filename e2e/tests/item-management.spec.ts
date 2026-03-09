@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
+import { SettingsPage } from '../pages/SettingsPage'
 
 test('user can create an item', async ({ page }) => {
   const pantry = new PantryPage(page)
@@ -44,15 +45,17 @@ test('user can edit an item name', async ({ page }) => {
 test('user can assign a tag to an item', async ({ page }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
+  const settings = new SettingsPage(page)
 
-  // Given an existing item
+  // Given a tag type exists and a new item
+  await settings.createTagType('Category')
   await pantry.navigateTo()
   await pantry.clickAddItem()
   await item.fillName('Tagged Item')
   await item.save()
 
-  // When user creates and assigns a tag (requires a tag type to exist first)
-  await item.createAndAssignTag('Dairy', 'Category')
+  // When user creates and assigns a tag inline
+  await item.createAndAssignTag('Dairy')
 
   // Then the tag badge appears on the item's tags tab
   await expect(page.getByText('Dairy')).toBeVisible()

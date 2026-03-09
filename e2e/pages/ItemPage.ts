@@ -61,34 +61,18 @@ export class ItemPage {
     await this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click()
   }
 
-  async createAndAssignTag(tagName: string, tagTypeName = 'Category') {
-    // Tags tab requires at least one tag type to exist before "New Tag" button appears.
-    // (src/routes/items/$id/tags.tsx: shows "No tags yet. Create tags in Settings."
-    //  when tagTypes.length === 0)
-    // So we first navigate to /settings/tags to create a tag type, then return to the
-    // item's tags tab to create and assign the tag.
-
-    // Store item ID before navigating away
-    const itemId = this.getCurrentItemId()
-
-    // Step 1: Create a tag type at /settings/tags
-    // The form has id="newTagTypeName" input and a "New Tag Type" submit button.
-    await this.page.goto('/settings/tags')
-    const tagTypeInput = this.page.locator('#newTagTypeName')
-    await tagTypeInput.fill(tagTypeName)
-    await this.page.getByRole('button', { name: /new tag type/i }).click()
-    // Wait for the tag type card to appear
-    await this.page.getByRole('heading', { name: tagTypeName, level: 3 }).waitFor()
-
-    // Step 2: Navigate to item's tags tab and create + assign the tag
-    await this.page.goto(`/items/${itemId}/tags`)
+  async createAndAssignTag(name: string) {
+    // Navigate to the tags tab and create + assign the tag inline.
+    // Caller is responsible for ensuring at least one tag type exists first
+    // (tags tab shows "No tags yet. Create tags in Settings." when tagTypes.length === 0).
+    await this.navigateToTab('tags')
     // "New Tag" button lives inside the tag type section
     await this.page.getByRole('button', { name: /new tag/i }).first().click()
     // AddNameDialog label is "Name" (src/components/AddNameDialog/index.tsx:41)
-    await this.page.getByRole('dialog').getByLabel('Name').fill(tagName)
+    await this.page.getByRole('dialog').getByLabel('Name').fill(name)
     await this.page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
     // Tag is created but NOT yet assigned — click the badge to assign it
-    await this.page.getByRole('main').getByText(tagName, { exact: false }).click()
+    await this.page.getByRole('main').getByText(name, { exact: false }).click()
   }
 
   async createAndAssignVendor(name: string) {
