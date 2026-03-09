@@ -160,21 +160,8 @@ export function CookingControlBar({
             className="h-auto flex-1 border-none bg-transparent py-2 text-sm shadow-none"
             autoFocus
           />
-          {q &&
-            (!hasExactTitleMatch ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() =>
-                  navigate({
-                    to: '/settings/recipes/new',
-                    search: { name: q.trim() },
-                  })
-                }
-              >
-                <Plus /> Create
-              </Button>
-            ) : (
+          {q && (
+            <>
               <Button
                 size="icon"
                 variant="neutral-ghost"
@@ -184,7 +171,22 @@ export function CookingControlBar({
               >
                 <X />
               </Button>
-            ))}
+              {!hasExactTitleMatch && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    navigate({
+                      to: '/settings/recipes/new',
+                      search: { name: q.trim() },
+                    })
+                  }
+                >
+                  <Plus /> Create
+                </Button>
+              )}
+            </>
+          )}
         </div>
       )}
     </>
