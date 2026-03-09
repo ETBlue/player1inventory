@@ -27,8 +27,8 @@ export class ItemPage {
   }
 
   async navigateToTab(tab: 'tags' | 'vendors' | 'recipes' | 'log') {
-    // Item detail tabs are icon-only links (no text labels) in src/routes/items/$id.tsx
-    // Navigation is done by extracting the item ID from the current URL
+    // Tabs are icon-only links without ARIA tab role, so we navigate directly.
+    // Note: this bypasses the dirty-state navigation guard — do not use to test guard behavior.
     const url = this.page.url()
     const match = url.match(/\/items\/([^/?]+)/)
     if (!match) throw new Error(`Not on an item page. Current URL: ${url}`)
@@ -37,10 +37,10 @@ export class ItemPage {
   }
 
   async delete() {
-    // DeleteButton opens a confirmation dialog — click delete, then confirm
-    // (src/components/DeleteButton used in item detail pages)
+    // Trigger the delete confirmation dialog
     await this.page.getByRole('button', { name: /delete/i }).click()
-    await this.page.getByRole('button', { name: /delete/i }).last().click()
+    // Confirm inside the alertdialog (scoped to avoid matching other delete buttons)
+    await this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click()
   }
 
   async createAndAssignTag(name: string) {
