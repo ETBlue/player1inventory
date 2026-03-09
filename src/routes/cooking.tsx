@@ -191,22 +191,6 @@ function CookingPage() {
     setSessionServings(servings)
   }
 
-  const handleExpandAll = () => {
-    let amounts = sessionAmounts
-    let servings = sessionServings
-    for (const recipe of recipes) {
-      ;({ amounts, servings } = initializeAmountsAndServings(
-        recipe.id,
-        recipe,
-        amounts,
-        servings,
-      ))
-    }
-    setExpandedRecipeIds(new Set(recipes.map((r) => r.id)))
-    setSessionAmounts(amounts)
-    setSessionServings(servings)
-  }
-
   const handleToggleRecipeCheckbox = (recipeId: string) => {
     const recipe = recipes.find((r) => r.id === recipeId)
     if (!recipe) return
@@ -392,7 +376,9 @@ function CookingPage() {
         allExpanded={
           recipes.length > 0 && expandedRecipeIds.size === recipes.length
         }
-        onExpandAll={handleExpandAll}
+        onExpandAll={() =>
+          setExpandedRecipeIds(new Set(recipes.map((r) => r.id)))
+        }
         onCollapseAll={() => setExpandedRecipeIds(new Set())}
       />
       <div className="h-px bg-accessory-default" />
@@ -520,7 +506,7 @@ function CookingPage() {
                     </CardContent>
                   </Card>
                 </div>
-                {isExpanded && (searchMatchedItemIds || recipeAmounts) && (
+                {isExpanded && (
                   <div className="space-y-px">
                     {recipe.items.length === 0 && (
                       <p className="text-sm text-foreground-muted px-4">
