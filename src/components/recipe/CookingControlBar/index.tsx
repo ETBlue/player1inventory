@@ -10,14 +10,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { useRecipes } from '@/hooks/useRecipes'
 import { Route } from '@/routes/cooking'
 
@@ -60,25 +59,42 @@ export function CookingControlBar({
   return (
     <>
       {/* Row 1: controls */}
-      <div className="flex items-center gap-2 border-b-2 border-accessory-default bg-background-elevated px-3 py-2">
-        <Select
-          value={sort}
-          onValueChange={(value) =>
-            setParam({ sort: value as 'name' | 'recent' | 'count' })
-          }
-        >
-          <SelectTrigger className="h-8 w-36 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="name">Name</SelectItem>
-            <SelectItem value="recent">Recent</SelectItem>
-            <SelectItem value="count">Item Count</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="default"
+              variant="neutral-ghost"
+              aria-label="Sort by criteria"
+              className="px-2 font-normal"
+            >
+              {{ name: 'Name', recent: 'Recent', count: 'Item Count' }[sort]}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              className={sort === 'name' ? 'bg-background-elevated' : ''}
+              onClick={() => setParam({ sort: 'name' })}
+            >
+              Name
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sort === 'recent' ? 'bg-background-elevated' : ''}
+              onClick={() => setParam({ sort: 'recent' })}
+            >
+              Recent
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={sort === 'count' ? 'bg-background-elevated' : ''}
+              onClick={() => setParam({ sort: 'count' })}
+            >
+              Item Count
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Button
-          variant="neutral-outline"
+          variant="neutral-ghost"
           size="icon"
           aria-label={dir === 'asc' ? 'Sort ascending' : 'Sort descending'}
           onClick={() => setParam({ dir: dir === 'asc' ? 'desc' : 'asc' })}
@@ -91,7 +107,7 @@ export function CookingControlBar({
         </Button>
 
         <Button
-          variant="neutral-outline"
+          variant="neutral-ghost"
           size="icon"
           aria-label={allExpanded ? 'Collapse all' : 'Expand all'}
           onClick={allExpanded ? onCollapseAll : onExpandAll}
@@ -106,7 +122,7 @@ export function CookingControlBar({
         <span className="flex-1" />
 
         <Button
-          variant={searchVisible ? 'neutral' : 'neutral-outline'}
+          variant={searchVisible ? 'neutral' : 'neutral-ghost'}
           size="icon"
           aria-label="Toggle search"
           onClick={() => {
