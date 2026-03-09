@@ -13,6 +13,7 @@ import {
   createRecipe,
   createTag,
   createTagType,
+  getRecipe,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
@@ -1338,6 +1339,112 @@ describe('Use (Cooking) Page', () => {
         'data-state',
         'unchecked',
       )
+    })
+  })
+
+  it('user can sort recipes by name alphabetically by default', async () => {
+    // Given two recipes created in non-alphabetical order
+    await createRecipe({ name: 'Zucchini Soup' })
+    await createRecipe({ name: 'Apple Tart' })
+
+    renderPage()
+
+    // Then recipes appear alphabetically (Apple Tart before Zucchini Soup)
+    await waitFor(() => {
+      const recipeNames = screen
+        .getAllByRole('button')
+        .map((el) => el.textContent?.trim())
+        .filter((t) => t === 'Apple Tart' || t === 'Zucchini Soup')
+      expect(recipeNames[0]).toBe('Apple Tart')
+      expect(recipeNames[1]).toBe('Zucchini Soup')
+    })
+  })
+
+  it('user can expand all recipes at once', async () => {
+    // Given two recipes
+    await createRecipe({ name: 'Pasta Dinner' })
+    await createRecipe({ name: 'Pasta Salad' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Pasta Dinner')).toBeInTheDocument()
+    })
+
+    // When user clicks Expand all
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+
+    // Then both chevrons change to Collapse and button becomes Collapse all
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Collapse all' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Collapse Pasta Dinner/i }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Collapse Pasta Salad/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can collapse all recipes at once', async () => {
+    // Given a recipe, expanded via Expand all
+    await createRecipe({ name: 'Pasta Dinner' })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Pasta Dinner')).toBeInTheDocument()
+    })
+
+    // First expand all
+    await userEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Collapse all' }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks Collapse all
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+
+    // Then chevron goes back to Expand and button shows Expand all again
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Expand all' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta Dinner/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can have lastCookedAt recorded when done cooking', async () => {
+    // Given a recipe with an item
+    const item = await makeItem('Egg')
+    const recipe = await createRecipe({
+      name: 'Omelette',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+    expect(recipe.lastCookedAt).toBeUndefined()
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Omelette')).toBeInTheDocument()
+    })
+
+    // When user checks the recipe and confirms Done
+    const checkbox = screen.getByRole('checkbox', { name: 'Omelette' })
+    await userEvent.click(checkbox)
+    await userEvent.click(screen.getByRole('button', { name: /done/i }))
+    await userEvent.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then lastCookedAt is set on the recipe
+    await waitFor(async () => {
+      const updated = await getRecipe(recipe.id)
+      expect(updated?.lastCookedAt).toBeDefined()
     })
   })
 })
