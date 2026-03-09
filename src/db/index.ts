@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { resolveLanguageFromStorage } from '@/lib/language'
 import type {
   CartItem,
   InventoryLog,
@@ -9,6 +10,7 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
+import { seedDefaultData } from './operations'
 
 const db = new Dexie('Player1Inventory') as Dexie & {
   items: EntityTable<Item, 'id'>
@@ -75,9 +77,6 @@ db.version(5).stores({
   vendors: 'id, name',
   recipes: 'id, name, lastCookedAt',
 })
-
-import { resolveLanguageFromStorage } from '@/lib/language'
-import { seedDefaultData } from './operations'
 
 db.on('populate', async () => {
   const language = resolveLanguageFromStorage()
