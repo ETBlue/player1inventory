@@ -1,15 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import {
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  Minus,
-  Plus,
-  Search,
-  X,
-} from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
+import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { Toolbar } from '@/components/Toolbar'
 import {
   AlertDialog,
@@ -24,7 +17,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import {
   useAddInventoryLog,
   useItems,
@@ -91,18 +83,32 @@ function CookingPage() {
   >(new Map())
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [searchVisible, setSearchVisible] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
 
   const { expiryDates } = useItemSortData(items)
 
-  const sortedRecipes = useMemo(
-    () =>
-      [...recipes].sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-      ),
-    [recipes],
-  )
+  const sortedRecipes = useMemo(() => {
+    const sorted = [...recipes].sort((a, b) => {
+      if (sort === 'recent') {
+        // Undefined (never cooked) always sorts last regardless of direction
+        if (!a.lastCookedAt && !b.lastCookedAt) return 0
+        if (!a.lastCookedAt) return 1
+        if (!b.lastCookedAt) return -1
+        const aTime = a.lastCookedAt.getTime()
+        const bTime = b.lastCookedAt.getTime()
+        return dir === 'asc' ? aTime - bTime : bTime - aTime
+      }
+      if (sort === 'count') {
+        const diff = a.items.length - b.items.length
+        return dir === 'asc' ? diff : -diff
+      }
+      // Default: name
+      const cmp = a.name.localeCompare(b.name, undefined, {
+        sensitivity: 'base',
+      })
+      return dir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [recipes, sort, dir])
 
   const lowerQuery = q.toLowerCase().trim()
 
@@ -116,10 +122,6 @@ function CookingPage() {
         return titleMatch || itemMatch
       })
     : sortedRecipes
-
-  const hasExactTitleMatch = lowerQuery
-    ? sortedRecipes.some((r) => r.name.toLowerCase() === lowerQuery)
-    : false
 
   const getSearchMatchedItemIds = (
     recipe: (typeof recipes)[0],
@@ -358,71 +360,17 @@ function CookingPage() {
         <Button disabled={!anyChecked} onClick={() => setShowDoneDialog(true)}>
           <Check /> Done
         </Button>
-        <Button
-          variant={searchVisible ? 'neutral' : 'neutral-outline'}
-          size="icon"
-          aria-label="Toggle search"
-          onClick={() => {
-            if (searchVisible) setSearchQuery('')
-            setSearchVisible((v) => !v)
-          }}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
       </Toolbar>
 
-      {searchVisible && (
-        <div className="flex items-center gap-2 border-b-2 border-accessory-default px-3">
-          <Input
-            placeholder="Search recipes or items..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setSearchQuery('')
-                setSearchVisible(false)
-              }
-              if (
-                e.key === 'Enter' &&
-                searchQuery.trim() &&
-                !hasExactTitleMatch
-              ) {
-                navigate({
-                  to: '/settings/recipes/new',
-                  search: { name: searchQuery.trim() },
-                })
-              }
-            }}
-            className="border-none shadow-none bg-transparent h-auto py-2 text-sm flex-1"
-            autoFocus
-          />
-          {searchQuery &&
-            (!hasExactTitleMatch ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() =>
-                  navigate({
-                    to: '/settings/recipes/new',
-                    search: { name: searchQuery.trim() },
-                  })
-                }
-              >
-                <Plus /> Create
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                variant="neutral-ghost"
-                className="h-6 w-6 shrink-0"
-                aria-label="Clear search"
-                onClick={() => setSearchQuery('')}
-              >
-                <X />
-              </Button>
-            ))}
-        </div>
-      )}
+      <CookingControlBar
+        allExpanded={
+          recipes.length > 0 && expandedRecipeIds.size === recipes.length
+        }
+        onExpandAll={() =>
+          setExpandedRecipeIds(new Set(recipes.map((r) => r.id)))
+        }
+        onCollapseAll={() => setExpandedRecipeIds(new Set())}
+      />
 
       {sortedRecipes.length === 0 ? (
         <p className="text-foreground-muted text-sm px-4">
@@ -490,7 +438,7 @@ function CookingPage() {
                             })
                           }
                         >
-                          {highlight(recipe.name, searchQuery)}
+                          {highlight(recipe.name, q)}
                         </button>
                         {/* Chevron: toggles expand/collapse */}
                         <button
@@ -602,9 +550,7 @@ function CookingPage() {
                                 handleAdjustAmount(recipe.id, ri.itemId, delta)
                               }
                               highlightedName={
-                                searchQuery
-                                  ? highlight(item.name, searchQuery)
-                                  : undefined
+                                q ? highlight(item.name, q) : undefined
                               }
                             />
                           </div>
