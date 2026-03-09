@@ -357,7 +357,7 @@ Row 3 (search input, inside `CookingControlBar`, conditional):
 [search input ..................] [+ Create | × clear]
 ```
 - `+ Create` button (primary): shown when query is non-empty AND no exact recipe title match; navigates to `/settings/recipes/new?name=<query>`
-- `× clear` button (neutral-ghost, icon): shown when an exact title match exists
+- `× clear` button (neutral-ghost, icon): shown whenever query is non-empty (always alongside Create when both conditions apply)
 - Pressing Escape clears query (keeps row open); pressing Enter with no exact match navigates to create
 
 **Search filtering:**
@@ -376,7 +376,7 @@ Row 2:            [N items, M selected, × S]
 - **Serving stepper** (`− N +`) — absolutely positioned to the right of the card; visible when recipe is checked; min = 1
 - **Subtitle** (Row 2) — always visible; shows `N items`, `, M selected` when M > 0, and `, × S` when recipe is checked (even at S = 1)
 
-**Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked).
+**Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked). Expand/collapse state is preserved when Done or Cancel is confirmed — only session interaction state (servings, amounts, checked items) is reset.
 
 **Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked when the recipe checkbox is first clicked; items with `defaultAmount === 0` start unchecked. Users can toggle any item. Unchecked items are excluded from consumption.
 
