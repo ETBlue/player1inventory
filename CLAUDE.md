@@ -843,6 +843,36 @@ it('user can create an item', async () => {
 
 **Unit tests** - Keep simple naming (existing style is fine)
 
+### E2E Test Format
+
+E2E tests use Playwright. Test files live in `e2e/tests/`, page objects in `e2e/pages/`.
+
+**Page objects** — one class per page, encapsulating selectors and actions. Include a comment on each method citing the aria-label string and source file location:
+
+```ts
+// e2e/pages/CookingPage.ts
+export class CookingPage {
+  constructor(readonly page: Page) {}
+
+  async navigateTo() { await this.page.goto('/cooking') }
+
+  async checkRecipe(name: string) {
+    // Recipe checkbox: aria-label={recipe.name}, role="checkbox" (src/routes/cooking.tsx:438)
+    // Use getByRole to avoid strict-mode conflict with the "Expand {name}" button
+    await this.page.getByRole('checkbox', { name }).click()
+  }
+}
+```
+
+**Test setup** — two strategies:
+
+1. **UI-driven** (default): Navigate through the app to create test data. Use for simple setup (1–5 steps).
+2. **`page.evaluate()` seeding**: Seed IndexedDB directly for complex multi-entity setup. Navigate to `/` first so Dexie initialises the schema, then open `indexedDB.open('Player1Inventory')` and use `readwrite` transactions. Use when UI setup would require 10+ steps (e.g. creating items + linking them to a recipe).
+
+**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
+
+**Test naming** — same "user can ..." convention with Given-When-Then comments as unit tests.
+
 ### Commits
 
 Always include scope in commit messages:
