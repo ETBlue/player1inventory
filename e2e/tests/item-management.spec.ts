@@ -3,6 +3,27 @@ import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { SettingsPage } from '../pages/SettingsPage'
 
+test.afterEach(async ({ page }) => {
+  // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
+  // We must stay on the same origin to call indexedDB.databases().
+  // Use onblocked to force-close any lingering connections before the delete proceeds.
+  await page.goto('http://localhost:5173')
+  await page.evaluate(async () => {
+    const dbs = await indexedDB.databases()
+    await Promise.all(dbs.map(({ name }) => {
+      return new Promise<void>((resolve, reject) => {
+        if (!name) { resolve(); return }
+        const req = indexedDB.deleteDatabase(name)
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+        // If existing connections block deletion, the blocked event fires.
+        // We resolve anyway since the app will be reset on next navigation.
+        req.onblocked = () => resolve()
+      })
+    }))
+  })
+})
+
 test('user can create an item', async ({ page }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
