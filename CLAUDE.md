@@ -14,6 +14,9 @@ pnpm build        # Build for production
 pnpm test         # Run tests (Vitest)
 pnpm test:watch   # Run tests in watch mode
 pnpm test:ui      # Run tests with UI browser interface
+pnpm test:e2e      # Run E2E tests with Playwright (headless)
+pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
+pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome
 pnpm format       # Format with Biome
 pnpm check        # Run all Biome checks
