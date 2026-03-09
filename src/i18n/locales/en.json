@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "language": {
+      "label": "Language",
+      "description": "Choose your preferred language",
+      "auto": "Auto (Browser)",
+      "autoDetected": "Auto-detected: {{language}}",
+      "languages": {
+        "en": "English",
+        "tw": "Traditional Chinese"
+      }
+    }
+  }
+}
