@@ -4,7 +4,9 @@ import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
 
 test.afterEach(async ({ page }) => {
-  // Same IndexedDB cleanup as item-management.spec.ts
+  // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
+  // We must stay on the same origin to call indexedDB.databases().
+  // Use onblocked to force-close any lingering connections before the delete proceeds.
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
@@ -14,6 +16,8 @@ test.afterEach(async ({ page }) => {
         const req = indexedDB.deleteDatabase(name)
         req.onsuccess = () => resolve()
         req.onerror = () => reject(req.error)
+        // If existing connections block deletion, the blocked event fires.
+        // We resolve anyway since the app will be reset on next navigation.
         req.onblocked = () => {
           console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
           resolve()
@@ -49,5 +53,5 @@ test('user can checkout items from shopping cart', async ({ page }) => {
   // And: navigate to pantry and open the item — packed quantity is now 1
   await pantry.navigateTo()
   await pantry.getItemCard('Test Milk').click()
-  await expect(page.locator('#packedQuantity')).toHaveValue('1')
+  await expect(item.getPackedQuantityInput()).toHaveValue('1')
 })
