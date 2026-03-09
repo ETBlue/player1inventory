@@ -347,6 +347,11 @@ describe('Use (Cooking) Page', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
     })
+
+    // And the recipe remains expanded (expand/collapse state is preserved)
+    expect(
+      screen.getByRole('button', { name: /Collapse Pasta/i }),
+    ).toBeInTheDocument()
   })
 
   it('user can cancel and selections are cleared', async () => {
@@ -361,8 +366,11 @@ describe('Use (Cooking) Page', () => {
     const user = userEvent.setup()
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument()
     })
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
     await user.click(screen.getByLabelText('Pasta'))
 
     await waitFor(() => {
@@ -391,6 +399,11 @@ describe('Use (Cooking) Page', () => {
         screen.queryByRole('button', { name: /cancel/i }),
       ).not.toBeInTheDocument()
     })
+
+    // And the recipe remains expanded (expand/collapse state is preserved)
+    expect(
+      screen.getByRole('button', { name: /Collapse Pasta/i }),
+    ).toBeInTheDocument()
   })
 
   it('items with amount=0 are skipped on consumption', async () => {
