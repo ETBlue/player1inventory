@@ -96,7 +96,8 @@ function CookingPage() {
         if (!b.lastCookedAt) return -1
         const aTime = a.lastCookedAt.getTime()
         const bTime = b.lastCookedAt.getTime()
-        return dir === 'asc' ? aTime - bTime : bTime - aTime
+        // asc = most recently cooked first (mirrors "Expiring" where asc = soonest first)
+        return dir === 'asc' ? bTime - aTime : aTime - bTime
       }
       if (sort === 'count') {
         const diff = a.items.length - b.items.length
