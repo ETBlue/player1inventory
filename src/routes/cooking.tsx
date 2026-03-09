@@ -17,7 +17,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { updateRecipeLastCookedAt } from '@/db/operations'
 import {
   useAddInventoryLog,
   useItems,
@@ -26,7 +25,7 @@ import {
   useUpdateItem,
 } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
-import { useRecipes } from '@/hooks/useRecipes'
+import { useRecipes, useUpdateRecipeLastCookedAt } from '@/hooks/useRecipes'
 import { consumeItem, getCurrentQuantity } from '@/lib/quantityUtils'
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -63,6 +62,7 @@ function CookingPage() {
   const { data: items = [] } = useItems()
   const updateItem = useUpdateItem()
   const addInventoryLog = useAddInventoryLog()
+  const updateRecipeLastCookedAt = useUpdateRecipeLastCookedAt()
   // tags and tagTypes are passed to ItemCard for API consistency;
   // tag badges are suppressed in cooking mode by ItemCard itself
   const { data: tags = [] } = useTags()
@@ -323,7 +323,9 @@ function CookingPage() {
     const cookedRecipeIds = [...checkedItemIds.entries()]
       .filter(([, itemSet]) => itemSet.size > 0)
       .map(([recipeId]) => recipeId)
-    await Promise.all(cookedRecipeIds.map((id) => updateRecipeLastCookedAt(id)))
+    await Promise.all(
+      cookedRecipeIds.map((id) => updateRecipeLastCookedAt.mutateAsync(id)),
+    )
 
     // Reset state
     setExpandedRecipeIds(new Set())
@@ -378,6 +380,7 @@ function CookingPage() {
         }
         onCollapseAll={() => setExpandedRecipeIds(new Set())}
       />
+      <div className="h-px bg-accessory-default" />
 
       {sortedRecipes.length === 0 ? (
         <p className="text-foreground-muted text-sm px-4">
