@@ -68,7 +68,7 @@ export function CookingControlBar({
               aria-label="Sort by criteria"
               className="px-2 font-normal"
             >
-              {{ name: 'Name', recent: 'Recent', count: 'Item Count' }[sort]}
+              {{ name: 'Name', recent: 'Cooked', count: 'Item Count' }[sort]}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
@@ -82,7 +82,7 @@ export function CookingControlBar({
               className={sort === 'recent' ? 'bg-background-elevated' : ''}
               onClick={() => setParam({ sort: 'recent' })}
             >
-              Recent
+              Cooked
             </DropdownMenuItem>
             <DropdownMenuItem
               className={sort === 'count' ? 'bg-background-elevated' : ''}
