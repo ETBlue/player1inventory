@@ -153,3 +153,18 @@ test('user can create a recipe', async ({ page }) => {
   await recipes.navigateTo()
   await expect(recipes.getRecipeCard('Pancakes')).toBeVisible()
 })
+
+test('user can navigate to recipe detail after creating', async ({ page }) => {
+  const recipes = new RecipesPage(page)
+
+  // Given: recipes list is empty
+  await recipes.navigateTo()
+
+  // When: user creates "Pancakes"
+  await recipes.clickNewRecipe()
+  await recipes.fillRecipeName('Pancakes')
+  await recipes.clickSave()
+
+  // Then: URL is /settings/recipes/<id> (detail page, not the new page)
+  await expect(page).toHaveURL(/\/settings\/recipes\/[^/]+$/)
+})
