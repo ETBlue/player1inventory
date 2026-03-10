@@ -616,7 +616,7 @@ const { t } = useTranslation()
 
 **Settings UI:** Language selector card in `/settings` with Globe icon and Select dropdown (Auto/English/繁體中文). Positioned between Theme and Tags cards.
 
-**Page-by-page string extraction:** Only the settings Language card is translated in this infrastructure PR. All other pages still use hardcoded English strings — they will be migrated page-by-page in follow-up PRs. Missing keys fall back to English automatically.
+**Page-by-page string extraction:** Translated pages so far: settings main page (title, theme, tags/vendors/recipes nav cards, language selector) and settings tags pages (tags list, tag detail layout, tag info tab, tag items tab). All other pages still use hardcoded English strings — they will be migrated page-by-page in follow-up PRs. Missing keys fall back to English automatically.
 
 ## AI Agent SOP
 
