@@ -8,6 +8,7 @@ export class RecipesPage {
   }
 
   async navigateTo() {
+    // /settings/recipes uses parent layout route src/routes/settings/recipes.tsx
     await this.page.goto('/settings/recipes')
   }
 

@@ -133,4 +133,23 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-// Tests will be added in Tasks 3-8
+test('user can create a recipe', async ({ page }) => {
+  const recipes = new RecipesPage(page)
+
+  // Given: recipes list is empty
+  await recipes.navigateTo()
+
+  // When: user clicks "New Recipe", fills name, and saves
+  await recipes.clickNewRecipe()
+  // URL becomes /settings/recipes/new?name= (query param from validateSearch)
+  await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
+  await recipes.fillRecipeName('Pancakes')
+  await recipes.clickSave()
+
+  // Wait for redirect to the detail page after save
+  await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+
+  // Then: navigate back to list to verify the recipe appears
+  await recipes.navigateTo()
+  await expect(recipes.getRecipeCard('Pancakes')).toBeVisible()
+})
