@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,8 +35,9 @@ export function DeleteButton({
   buttonAriaLabel,
   dialogTitle = 'Delete?',
   dialogDescription = 'Are you sure?',
-  confirmLabel = 'Delete',
+  confirmLabel,
 }: DeleteButtonProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -68,13 +70,17 @@ export function DeleteButton({
           </AlertDialogHeader>
           <AlertDialogDescription>{dialogDescription}</AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleConfirm}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Deleting...' : confirmLabel}
+              {isDeleting
+                ? t('common.deleting')
+                : (confirmLabel ?? t('common.delete'))}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

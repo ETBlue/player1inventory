@@ -1,4 +1,10 @@
 {
+  "common": {
+    "cancel": "取消",
+    "delete": "刪除",
+    "deleting": "刪除中...",
+    "nameLabel": "名稱"
+  },
   "settings": {
     "title": "設定",
     "theme": {
@@ -16,6 +22,7 @@
         "nameLabel": "名稱",
         "namePlaceholder": "例：食材類別、保存方式",
         "newButton": "新增標籤分類",
+        "editTitle": "編輯標籤分類",
         "deleteTitle": "刪除標籤分類？",
         "deleteWithTags_other": "即將刪除「{{name}}」與底下的 {{count}} 個標籤，並移除標籤與品項的關聯。",
         "deleteNoTags": "「{{name}}」底下沒有任何標籤，可以安心刪除。"

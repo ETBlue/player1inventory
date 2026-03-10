@@ -139,7 +139,7 @@ function TagInfoTab() {
       </Button>
 
       <DeleteButton
-        trigger="Delete"
+        trigger={t('common.delete')}
         dialogTitle={t('settings.tags.tag.deleteTitle')}
         buttonClassName="w-full"
         dialogDescription={

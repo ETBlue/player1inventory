@@ -1,4 +1,10 @@
 {
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleting": "Deleting...",
+    "nameLabel": "Name"
+  },
   "settings": {
     "title": "Settings",
     "theme": {
@@ -16,6 +22,7 @@
         "nameLabel": "Name",
         "namePlaceholder": "e.g., Ingredient type, Storage method",
         "newButton": "New Tag Type",
+        "editTitle": "Edit Tag Type",
         "deleteTitle": "Delete Tag Type?",
         "deleteWithTags_one": "We are about to delete {{name}} and its 1 associated tag, removing it from all assigned items.",
         "deleteWithTags_other": "We are about to delete {{name}} and its {{count}} associated tags, removing them from all assigned items.",
