@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ColorSelect } from '@/components/ColorSelect'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,27 +31,33 @@ export function EditTagTypeDialog({
   onSave,
   onClose,
 }: EditTagTypeDialogProps) {
+  const { t } = useTranslation()
+
   return (
     <Dialog open={!!tagType} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Tag Type</DialogTitle>
+          <DialogTitle>{t('settings.tags.tagType.editTitle')}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="editTagTypeName">Name</Label>
+            <Label htmlFor="editTagTypeName">
+              {t('settings.tags.tagType.nameLabel')}
+            </Label>
             <Input
               id="editTagTypeName"
               value={name}
               autoFocus
               onChange={(e) => onNameChange(e.target.value)}
-              placeholder="e.g., Ingredient type"
+              placeholder={t('settings.tags.tagType.namePlaceholder')}
               className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && onSave()}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="editTagTypeColor">Color</Label>
+            <Label htmlFor="editTagTypeColor">
+              {t('settings.tags.tagType.colorLabel')}
+            </Label>
             <ColorSelect
               id="editTagTypeColor"
               value={color}
@@ -60,9 +67,9 @@ export function EditTagTypeDialog({
         </div>
         <DialogFooter>
           <Button variant="neutral-outline" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
-          <Button onClick={onSave}>Save</Button>
+          <Button onClick={onSave}>{t('settings.tags.detail.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

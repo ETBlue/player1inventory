@@ -27,7 +27,10 @@ describe('locale files', () => {
     const twKeys = collectKeys(tw as Record<string, unknown>).sort()
 
     // When comparing their key sets
-    const missingInTw = enKeys.filter((k) => !twKeys.includes(k))
+    // EN uses _one/_other plural suffixes; TW only uses _other (i18next falls back gracefully)
+    const missingInTw = enKeys.filter(
+      (k) => !twKeys.includes(k) && !k.endsWith('_one'),
+    )
     const missingInEn = twKeys.filter((k) => !enKeys.includes(k))
 
     // Then they are identical

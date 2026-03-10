@@ -1,6 +1,7 @@
 import type { Preview, Decorator } from '@storybook/react'
 import { withThemeByClassName } from '@storybook/addon-themes'
 import { themes } from 'storybook/theming'
+import '../src/i18n'
 import '../src/index.css'
 import './docs-theme.css'
 

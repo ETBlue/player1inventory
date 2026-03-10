@@ -18,6 +18,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { AddNameDialog } from '@/components/AddNameDialog'
 import { ColorSelect } from '@/components/ColorSelect'
@@ -92,6 +93,7 @@ function DraggableTagBadge({
   tagType: TagType
   onDelete: () => void
 }) {
+  const { t } = useTranslation()
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
 
   const {
@@ -138,19 +140,14 @@ function DraggableTagBadge({
           buttonVariant="neutral-outline"
           buttonSize="icon-xs"
           buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px ${TAG_COLOR_BORDER[tagType.color ?? TagColor.blue]} ${TAG_COLOR_TEXT[tagType.color ?? TagColor.blue]}`}
-          dialogTitle="Delete Tag?"
+          dialogTitle={t('settings.tags.tag.deleteTitle')}
           dialogDescription={
-            itemCount > 0 ? (
-              <>
-                <strong>{tag.name}</strong> will be removed from {itemCount}{' '}
-                item
-                {itemCount !== 1 ? 's' : ''}.
-              </>
-            ) : (
-              <>
-                No items are using <strong>{tag.name}</strong>.
-              </>
-            )
+            itemCount > 0
+              ? t('settings.tags.tag.deleteWithItems', {
+                  name: tag.name,
+                  count: itemCount,
+                })
+              : t('settings.tags.tag.deleteNoItems', { name: tag.name })
           }
           onDelete={onDelete}
         />
@@ -176,6 +173,7 @@ function DroppableTagTypeCard({
   onAddTag: () => void
   onDeleteTag: (tagId: string) => void
 }) {
+  const { t } = useTranslation()
   const { setNodeRef } = useDroppable({
     id: tagType.id,
   })
@@ -202,19 +200,16 @@ function DroppableTagTypeCard({
             buttonVariant="destructive-ghost"
             buttonSize="icon"
             buttonAriaLabel={`Delete ${tagType.name}`}
-            dialogTitle={`Delete "${tagType.name}"?`}
+            dialogTitle={t('settings.tags.tagType.deleteTitle')}
             dialogDescription={
-              tagCount > 0 ? (
-                <>
-                  This will delete{' '}
-                  <strong>
-                    {tagCount} tag{tagCount !== 1 ? 's' : ''}
-                  </strong>
-                  , removing them from all assigned items.
-                </>
-              ) : (
-                <>This type has no tags.</>
-              )
+              tagCount > 0
+                ? t('settings.tags.tagType.deleteWithTags', {
+                    name: tagType.name,
+                    count: tagCount,
+                  })
+                : t('settings.tags.tagType.deleteNoTags', {
+                    name: tagType.name,
+                  })
             }
             onDelete={onDelete}
           />
@@ -222,7 +217,7 @@ function DroppableTagTypeCard({
       </CardHeader>
       <CardContent ref={setNodeRef}>
         <SortableContext
-          items={sortedTypeTags.map((t) => t.id)}
+          items={sortedTypeTags.map((tag) => tag.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="flex flex-wrap gap-1">
@@ -236,7 +231,7 @@ function DroppableTagTypeCard({
             ))}
             <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
               <Plus className="h-3 w-3" />
-              New Tag
+              {t('settings.tags.tag.newButton')}
             </Button>
           </div>
         </SortableContext>
@@ -246,6 +241,7 @@ function DroppableTagTypeCard({
 }
 
 function TagSettings() {
+  const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
@@ -328,7 +324,7 @@ function TagSettings() {
 
   const handleDragStart = (event: DragEndEvent) => {
     const tagId = event.active.id as string
-    const tag = tags.find((t) => t.id === tagId)
+    const tag = tags.find((tag) => tag.id === tagId)
     if (tag) {
       setActiveTag({ id: tag.id, typeId: tag.typeId })
     }
@@ -344,47 +340,53 @@ function TagSettings() {
     let newTypeId = over.id as string
 
     // If dropped on another tag (not a type card), get that tag's typeId
-    const droppedOnTag = tags.find((t) => t.id === newTypeId)
+    const droppedOnTag = tags.find((tag) => tag.id === newTypeId)
     if (droppedOnTag) {
       newTypeId = droppedOnTag.typeId
     }
 
-    const tag = tags.find((t) => t.id === tagId)
+    const tag = tags.find((tag) => tag.id === tagId)
 
     if (!tag || tag.typeId === newTypeId) return
 
     const previousTypeId = tag.typeId
-    const newType = tagTypes.find((t) => t.id === newTypeId)
+    const newType = tagTypes.find((type) => type.id === newTypeId)
 
     updateTag.mutate(
       { id: tagId, updates: { typeId: newTypeId } },
       {
         onError: () => {
-          toast.error('Failed to move tag')
+          toast.error(t('settings.tags.toast.moveFailed'))
         },
       },
     )
 
     if (newType) {
-      toast(`Moved ${tag.name} to ${newType.name}`, {
-        duration: 5000,
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            updateTag.mutate(
-              {
-                id: tagId,
-                updates: { typeId: previousTypeId },
-              },
-              {
-                onError: () => {
-                  toast.error('Failed to undo')
+      toast(
+        t('settings.tags.toast.moveSuccess', {
+          name: tag.name,
+          newType: newType.name,
+        }),
+        {
+          duration: 5000,
+          action: {
+            label: t('settings.tags.toast.undo'),
+            onClick: () => {
+              updateTag.mutate(
+                {
+                  id: tagId,
+                  updates: { typeId: previousTypeId },
                 },
-              },
-            )
+                {
+                  onError: () => {
+                    toast.error(t('settings.tags.toast.undoFailed'))
+                  },
+                },
+              )
+            },
           },
         },
-      })
+      )
     }
   }
 
@@ -404,13 +406,15 @@ function TagSettings() {
         <Button variant="neutral-ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="">Tags</h1>
+        <h1 className="">{t('settings.tags.label')}</h1>
       </Toolbar>
 
       <form className="px-6 pt-3 pb-5 space-y-2">
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <div>
-            <Label htmlFor="newTagTypeColor">Color</Label>
+            <Label htmlFor="newTagTypeColor">
+              {t('settings.tags.tagType.colorLabel')}
+            </Label>
             <ColorSelect
               id="newTagTypeColor"
               value={newTagTypeColor}
@@ -418,10 +422,12 @@ function TagSettings() {
             />
           </div>
           <div>
-            <Label htmlFor="newTagTypeName">Name</Label>
+            <Label htmlFor="newTagTypeName">
+              {t('settings.tags.tagType.nameLabel')}
+            </Label>
             <Input
               id="newTagTypeName"
-              placeholder="e.g., Ingredient type, Storage method"
+              placeholder={t('settings.tags.tagType.namePlaceholder')}
               value={newTagTypeName}
               autoFocus
               onChange={(e) => setNewTagTypeName(e.target.value)}
@@ -433,7 +439,7 @@ function TagSettings() {
         <div className="flex">
           <Button onClick={handleAddTagType} className="flex-1">
             <Plus />
-            New Tag Type
+            {t('settings.tags.tagType.newButton')}
           </Button>
         </div>
       </form>
@@ -443,7 +449,7 @@ function TagSettings() {
             a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
           )
           .map((tagType) => {
-            const typeTags = tags.filter((t) => t.typeId === tagType.id)
+            const typeTags = tags.filter((tag) => tag.typeId === tagType.id)
             const sortedTypeTags = sortTagsByName(typeTags)
             const tagTypeColor = tagType.color || TagColor.blue
 
@@ -469,10 +475,10 @@ function TagSettings() {
       {/* Add Tag Dialog */}
       <AddNameDialog
         open={!!addTagDialog}
-        title="Add Tag"
-        submitLabel="Add Tag"
+        title={t('settings.tags.tag.addTitle')}
+        submitLabel={t('settings.tags.tag.addSubmit')}
         name={newTagName}
-        placeholder="e.g., Dairy, Frozen"
+        placeholder={t('settings.tags.tag.addPlaceholder')}
         onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}
@@ -493,7 +499,7 @@ function TagSettings() {
       <DragOverlay>
         {activeTag &&
           (() => {
-            const tag = tags.find((t) => t.id === activeTag.id)
+            const tag = tags.find((tag) => tag.id === activeTag.id)
             const tagType = tagTypes.find((tt) => tt.id === activeTag.typeId)
             return tag && tagType ? (
               <TagBadge tag={tag} tagType={tagType} />

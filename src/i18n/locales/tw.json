@@ -1,4 +1,10 @@
 {
+  "common": {
+    "cancel": "取消",
+    "delete": "刪除",
+    "deleting": "刪除中...",
+    "nameLabel": "名稱"
+  },
   "settings": {
     "title": "設定",
     "theme": {
@@ -10,7 +16,48 @@
     },
     "tags": {
       "label": "標籤",
-      "description": "管理標籤與其分類"
+      "description": "管理標籤與其分類",
+      "tagType": {
+        "colorLabel": "顏色",
+        "nameLabel": "名稱",
+        "namePlaceholder": "例：食材類別、保存方式",
+        "newButton": "新增標籤分類",
+        "editTitle": "編輯標籤分類",
+        "deleteTitle": "刪除標籤分類？",
+        "deleteWithTags_other": "即將刪除「{{name}}」與底下的 {{count}} 個標籤，並移除標籤與品項的關聯。",
+        "deleteNoTags": "「{{name}}」底下沒有任何標籤，可以安心刪除。"
+      },
+      "tag": {
+        "newButton": "新增標籤",
+        "addTitle": "新增標籤",
+        "addSubmit": "新增",
+        "addPlaceholder": "例：乳製品、冷凍食品",
+        "typeLabel": "標籤分類",
+        "nameLabel": "名稱",
+        "deleteTitle": "刪除標籤？",
+        "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
+        "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。"
+      },
+      "toast": {
+        "moveFailed": "移動標籤失敗了...",
+        "moveSuccess": "已將「{{name}}」移至「{{newType}}」",
+        "undo": "剛剛的不算",
+        "undoFailed": "復原失敗了..."
+      },
+      "detail": {
+        "notFound": "查無此標籤",
+        "goBack": "回上一頁",
+        "unsavedTitle": "未存檔的變更",
+        "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？",
+        "cancel": "取消",
+        "discard": "丟掉",
+        "save": "存檔",
+        "saving": "存檔中..."
+      },
+      "items": {
+        "empty": "還沒建立任何品項。",
+        "emptyFiltered": "沒有符合篩選條件的品項。"
+      }
     },
     "vendors": {
       "label": "供應商",

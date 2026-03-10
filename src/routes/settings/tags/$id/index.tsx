@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,10 +27,11 @@ export const Route = createFileRoute('/settings/tags/$id/')({
 })
 
 function TagInfoTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
-  const tag = tags.find((t) => t.id === id)
+  const tag = tags.find((tag) => tag.id === id)
   const updateTag = useUpdateTag()
   const { registerDirtyState } = useTagLayout()
   const { goBack } = useAppNavigation()
@@ -90,7 +92,7 @@ function TagInfoTab() {
       }}
     >
       <div className="space-y-2">
-        <Label htmlFor="tag-type">Tag Type</Label>
+        <Label htmlFor="tag-type">{t('settings.tags.tag.typeLabel')}</Label>
         <Select value={typeId} onValueChange={setTypeId}>
           <SelectTrigger id="tag-type" className="capitalize">
             <SelectValue />
@@ -116,7 +118,7 @@ function TagInfoTab() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="tag-name">Name</Label>
+        <Label htmlFor="tag-name">{t('settings.tags.tag.nameLabel')}</Label>
         <Input
           id="tag-name"
           autoFocus
@@ -131,24 +133,22 @@ function TagInfoTab() {
         className="w-full"
         disabled={!isDirty || updateTag.isPending}
       >
-        {updateTag.isPending ? 'Saving...' : 'Save'}
+        {updateTag.isPending
+          ? t('settings.tags.detail.saving')
+          : t('settings.tags.detail.save')}
       </Button>
 
       <DeleteButton
-        trigger="Delete"
-        dialogTitle="Delete Tag?"
+        trigger={t('common.delete')}
+        dialogTitle={t('settings.tags.tag.deleteTitle')}
         buttonClassName="w-full"
         dialogDescription={
-          affectedItemCount > 0 ? (
-            <>
-              <strong>{tag.name}</strong> will be removed from{' '}
-              {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}.
-            </>
-          ) : (
-            <>
-              No items are using <strong>{tag.name}</strong>.
-            </>
-          )
+          affectedItemCount > 0
+            ? t('settings.tags.tag.deleteWithItems', {
+                name: tag.name,
+                count: affectedItemCount,
+              })
+            : t('settings.tags.tag.deleteNoItems', { name: tag.name })
         }
         onDelete={handleDelete}
       />

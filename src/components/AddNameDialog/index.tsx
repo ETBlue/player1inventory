@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -30,6 +31,8 @@ export function AddNameDialog({
   onAdd,
   onClose,
 }: AddNameDialogProps) {
+  const { t } = useTranslation()
+
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -38,7 +41,7 @@ export function AddNameDialog({
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="entityName">Name</Label>
+            <Label htmlFor="entityName">{t('common.nameLabel')}</Label>
             <Input
               id="entityName"
               value={name}
@@ -52,7 +55,7 @@ export function AddNameDialog({
         </div>
         <DialogFooter>
           <Button variant="neutral-outline" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={onAdd}>{submitLabel}</Button>
         </DialogFooter>

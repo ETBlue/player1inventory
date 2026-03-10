@@ -1,4 +1,10 @@
 {
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleting": "Deleting...",
+    "nameLabel": "Name"
+  },
   "settings": {
     "title": "Settings",
     "theme": {
@@ -10,7 +16,50 @@
     },
     "tags": {
       "label": "Tags",
-      "description": "Manage tag types and tags"
+      "description": "Manage tag types and tags",
+      "tagType": {
+        "colorLabel": "Color",
+        "nameLabel": "Name",
+        "namePlaceholder": "e.g., Ingredient type, Storage method",
+        "newButton": "New Tag Type",
+        "editTitle": "Edit Tag Type",
+        "deleteTitle": "Delete Tag Type?",
+        "deleteWithTags_one": "We are about to delete {{name}} and its 1 associated tag, removing it from all assigned items.",
+        "deleteWithTags_other": "We are about to delete {{name}} and its {{count}} associated tags, removing them from all assigned items.",
+        "deleteNoTags": "It's safe to delete {{name}} since no tag belongs to it."
+      },
+      "tag": {
+        "newButton": "New Tag",
+        "addTitle": "Add Tag",
+        "addSubmit": "Add Tag",
+        "addPlaceholder": "e.g., Dairy, Frozen",
+        "typeLabel": "Tag Type",
+        "nameLabel": "Name",
+        "deleteTitle": "Delete Tag?",
+        "deleteWithItems_one": "We are about to delete {{name}}, removing it from 1 item.",
+        "deleteWithItems_other": "We are about to delete {{name}}, removing it from {{count}} items.",
+        "deleteNoItems": "It's safe to delete {{name}} since no item is using it."
+      },
+      "toast": {
+        "moveFailed": "Failed to move tag",
+        "moveSuccess": "Moved {{name}} to {{newType}}",
+        "undo": "Undo",
+        "undoFailed": "Failed to undo"
+      },
+      "detail": {
+        "notFound": "Tag not found",
+        "goBack": "Go back",
+        "unsavedTitle": "Unsaved changes",
+        "unsavedDescription": "You have unsaved changes. Discard changes?",
+        "cancel": "Cancel",
+        "discard": "Discard",
+        "save": "Save",
+        "saving": "Saving..."
+      },
+      "items": {
+        "empty": "No items yet.",
+        "emptyFiltered": "No items match the current filters."
+      }
     },
     "vendors": {
       "label": "Vendors",

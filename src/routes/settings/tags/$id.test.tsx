@@ -586,7 +586,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
     // Then delete dialog appears
     await waitFor(() => {
       expect(screen.getByText('Delete Tag?')).toBeInTheDocument()
-      expect(screen.getByText(/No items are using/i)).toBeInTheDocument()
+      expect(screen.getByText(/no item is using it/i)).toBeInTheDocument()
     })
   })
 
@@ -617,9 +617,7 @@ describe('Tag Detail Page - Delete Dialog', () => {
 
     // Then dialog shows affected item count
     await waitFor(() => {
-      expect(
-        screen.getByText(/will be removed from 2 items/i),
-      ).toBeInTheDocument()
+      expect(screen.getByText(/removing it from 2 items/i)).toBeInTheDocument()
     })
   })
 

@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { ArrowLeft, ListTodo, Settings2 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,11 +28,12 @@ export const Route = createFileRoute('/settings/tags/$id')({
 })
 
 function TagDetailLayoutInner() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const navigate = useNavigate()
   const router = useRouter()
   const { data: tags = [] } = useTags()
-  const tag = tags.find((t) => t.id === id)
+  const tag = tags.find((tag) => tag.id === id)
   const { isDirty } = useTagLayout()
   const { goBack } = useAppNavigation('/settings/tags')
 
@@ -78,7 +80,7 @@ function TagDetailLayoutInner() {
   }
 
   if (!tag) {
-    return <div className="p-4">Tag not found</div>
+    return <div className="p-4">{t('settings.tags.detail.notFound')}</div>
   }
 
   return (
@@ -95,7 +97,7 @@ function TagDetailLayoutInner() {
             variant="neutral-ghost"
             size="icon"
             onClick={handleBackClick}
-            aria-label="Go back"
+            aria-label={t('settings.tags.detail.goBack')}
           >
             <ArrowLeft />
           </Button>
@@ -137,17 +139,19 @@ function TagDetailLayoutInner() {
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('settings.tags.detail.unsavedTitle')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            You have unsaved changes. Discard changes?
+            {t('settings.tags.detail.unsavedDescription')}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelDiscard}>
-              Cancel
+              {t('settings.tags.detail.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDiscard}>
-              Discard
+              {t('settings.tags.detail.discard')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

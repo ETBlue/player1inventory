@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Fragment, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
@@ -23,6 +24,7 @@ export const Route = createFileRoute('/settings/tags/$id/items')({
 })
 
 function TagItemsTab() {
+  const { t } = useTranslation()
   const { id: tagId } = Route.useParams()
   const { data: items = [] } = useItems()
   const { data: tags = [] } = useTags()
@@ -220,7 +222,9 @@ function TagItemsTab() {
       <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
+        <p className="text-sm text-foreground-muted py-4">
+          {t('settings.tags.items.empty')}
+        </p>
       )}
 
       {[
@@ -276,7 +280,7 @@ function TagItemsTab() {
           selectedRecipeIds.length > 0) &&
         !search.trim() && (
           <p className="text-sm text-foreground-muted py-4 px-1">
-            No items match the current filters.
+            {t('settings.tags.items.emptyFiltered')}
           </p>
         )}
     </div>
