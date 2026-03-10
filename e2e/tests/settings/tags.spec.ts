@@ -118,6 +118,26 @@ test.afterEach(async ({ page }) => {
   })
 })
 
+test('user can delete a tag type', async ({ page }) => {
+  const tagsPage = new TagsPage(page)
+
+  // Given: tag type "Protein" with no tags seeded via IndexedDB
+  await seedTags(page, [{ name: 'Protein', color: 'green' }])
+
+  // When: navigate to tags page
+  await tagsPage.navigateTo()
+  await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
+
+  // And: user clicks the delete (trash) button on the tag type card
+  await tagsPage.clickDeleteTagType('Protein')
+
+  // And: confirms deletion
+  await tagsPage.confirmDelete()
+
+  // Then: the "Protein" card is gone
+  await expect(tagsPage.getTagTypeCard('Protein')).not.toBeVisible()
+})
+
 test('user can delete a tag', async ({ page }) => {
   const tagsPage = new TagsPage(page)
 
