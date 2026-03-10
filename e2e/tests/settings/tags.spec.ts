@@ -153,6 +153,38 @@ test.skip('user can move a tag to a different type via drag-and-drop', async ({ 
   await expect(tagsPage.getTagBadge('Rice')).toBeVisible()
 })
 
+test('user can edit tag name and type on Info tab', async ({ page }) => {
+  const detail = new TagDetailPage(page)
+
+  // Given: two tag types "Protein" and "Dairy", with tag "Chicken" under "Protein"
+  const { tagIds } = await seedTags(
+    page,
+    [{ name: 'Protein', color: 'green' }, { name: 'Dairy', color: 'blue' }],
+    [{ name: 'Chicken', typeIndex: 0 }],
+  )
+  const tagId = tagIds[0]
+
+  // When: navigate to tag detail page (Info tab is default)
+  await detail.navigateTo(tagId)
+
+  // And: change the name to "Turkey"
+  await detail.fillName('Turkey')
+
+  // And: change the type to "Dairy"
+  await detail.selectType('Dairy')
+
+  // And: save
+  await detail.clickSave()
+
+  // Then: the page navigates away after save (goBack navigates to previous page or home)
+  // Wait for navigation to complete, then navigate directly back to verify saved data
+  await page.waitForURL((url) => !url.pathname.includes(tagId))
+  await detail.navigateTo(tagId)
+
+  // The Name field shows "Turkey"
+  await expect(page.getByLabel('Name')).toHaveValue('Turkey')
+})
+
 test('user can delete a tag type', async ({ page }) => {
   const tagsPage = new TagsPage(page)
 
