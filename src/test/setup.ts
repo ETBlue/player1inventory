@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import 'fake-indexeddb/auto'
 import { vi } from 'vitest'
+import '../i18n'
 
 // Mock ResizeObserver for Radix UI components
 globalThis.ResizeObserver = class ResizeObserver {
