@@ -186,3 +186,25 @@ test('user can navigate to recipe detail after creating', async ({ page }) => {
   // Then: URL is /settings/recipes/<id> (detail page, not the new page)
   await expect(page).toHaveURL(/\/settings\/recipes\/[^/]+$/)
 })
+
+test('user can edit recipe name on Info tab', async ({ page }) => {
+  const detail = new RecipeDetailPage(page)
+
+  // Given: recipe "Pancakes" exists
+  const { recipeId } = await seedRecipe(page, 'Pancakes')
+
+  // When: navigate to detail page (Info tab is default)
+  await detail.navigateTo(recipeId)
+
+  // And: change name to "Waffles" and save
+  await detail.fillName('Waffles')
+  await detail.clickSave()
+
+  // Wait for goBack() navigation to complete (save triggers goBack which leaves the detail page)
+  await page.waitForURL((url) => !url.pathname.endsWith(`/${recipeId}`))
+
+  // Then: re-navigate to detail to verify persistence
+  await detail.navigateTo(recipeId)
+  await page.waitForURL((url) => url.pathname.includes(recipeId))
+  await expect(page.getByLabel('Name')).toHaveValue('Waffles')
+})
