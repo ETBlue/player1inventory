@@ -39,7 +39,7 @@ function Settings() {
   return (
     <div>
       <Toolbar>
-        <h1 className="px-3 py-2">Settings</h1>
+        <h1 className="px-3 py-2">{t('settings.title')}</h1>
       </Toolbar>
 
       <div className="space-y-px">
@@ -53,9 +53,9 @@ function Settings() {
                 <Sun className="h-5 w-5 text-foreground-muted" />
               )}
               <div>
-                <p className="font-medium">Theme</p>
+                <p className="font-medium">{t('settings.theme.label')}</p>
                 <p className="text-sm text-foreground-muted">
-                  Choose light, dark, or system theme
+                  {t('settings.theme.description')}
                 </p>
               </div>
             </div>
@@ -66,7 +66,7 @@ function Settings() {
                 onClick={() => setPreference('light')}
                 className="flex-1 rounded-tr-none rounded-br-none"
               >
-                Light
+                {t('settings.theme.light')}
               </Button>
               <Button
                 variant={
@@ -75,14 +75,14 @@ function Settings() {
                 onClick={() => setPreference('system')}
                 className="flex-1 rounded-none -ml-px -mr-px"
               >
-                System
+                {t('settings.theme.system')}
               </Button>
               <Button
                 variant={preference === 'dark' ? 'neutral' : 'neutral-outline'}
                 onClick={() => setPreference('dark')}
                 className="flex-1 rounded-tl-none rounded-bl-none"
               >
-                Dark
+                {t('settings.theme.dark')}
               </Button>
             </div>
           </CardContent>
@@ -136,9 +136,9 @@ function Settings() {
               <div className="flex items-center gap-3">
                 <Tags className="h-5 w-5 text-foreground-muted" />
                 <div>
-                  <p className="font-medium">Tags</p>
+                  <p className="font-medium">{t('settings.tags.label')}</p>
                   <p className="text-sm text-foreground-muted">
-                    Manage tag types and tags
+                    {t('settings.tags.description')}
                   </p>
                 </div>
               </div>
@@ -154,9 +154,9 @@ function Settings() {
               <div className="flex items-center gap-3">
                 <Store className="h-5 w-5 text-foreground-muted" />
                 <div>
-                  <p className="font-medium">Vendors</p>
+                  <p className="font-medium">{t('settings.vendors.label')}</p>
                   <p className="text-sm text-foreground-muted">
-                    Manage vendors
+                    {t('settings.vendors.description')}
                   </p>
                 </div>
               </div>
@@ -172,9 +172,9 @@ function Settings() {
               <div className="flex items-center gap-3">
                 <CookingPot className="h-5 w-5 text-foreground-muted" />
                 <div>
-                  <p className="font-medium">Recipes</p>
+                  <p className="font-medium">{t('settings.recipes.label')}</p>
                   <p className="text-sm text-foreground-muted">
-                    Manage recipes
+                    {t('settings.recipes.description')}
                   </p>
                 </div>
               </div>
