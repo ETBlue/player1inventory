@@ -118,6 +118,26 @@ test.afterEach(async ({ page }) => {
   })
 })
 
+test('user can add a tag to a tag type', async ({ page }) => {
+  const tagsPage = new TagsPage(page)
+
+  // Given: tag type "Protein" exists (created via UI)
+  await tagsPage.navigateTo()
+  await tagsPage.fillTagTypeName('Protein')
+  await tagsPage.clickNewTagType()
+  await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
+
+  // When: user clicks "New Tag" inside the Protein card
+  await tagsPage.clickNewTag('Protein')
+
+  // And: fills the tag name and submits
+  await tagsPage.fillTagName('Chicken')
+  await tagsPage.submitTagDialog()
+
+  // Then: "Chicken" badge appears
+  await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+})
+
 test('user can create a tag type', async ({ page }) => {
   const tags = new TagsPage(page)
 
