@@ -19,7 +19,7 @@
 - **Tags list — Delete tag type button:** `getByRole('button', { name: \`Delete ${tagTypeName}\` })` (aria-label on DeleteButton, `src/routes/settings/tags/index.tsx:204`)
 - **Tags list — tag badge:** `getByRole('button', { name: tagName })` (TagBadge onClick, `src/routes/settings/tags/index.tsx:126-135`)
 - **Tags list — X button on badge:** `getByRole('button', { name: tagName }).locator('..')` then sibling — or use `page.getByRole('button', { name: /^X$/ })` near the badge. In practice: locate the badge container and find the X button within it.
-- **Delete confirm button:** `getByRole('button', { name: 'Confirm' })` (DeleteButton uses AlertDialog with Confirm)
+- **Delete confirm button:** `getByRole('button', { name: 'Delete' })` (DeleteButton's `confirmLabel` defaults to `'Delete'`, not `'Confirm'` — see `src/components/DeleteButton/index.tsx:37`)
 - **Tag detail — Name input:** `getByLabel('Name')` (label `htmlFor="tag-name"`, `src/routes/settings/tags/$id/index.tsx:119`)
 - **Tag detail — Tag Type select:** `getByLabel('Tag Type')` (label `htmlFor="tag-type"`, `src/routes/settings/tags/$id/index.tsx:93`)
 - **Tag detail — Save button:** `getByRole('button', { name: 'Save' })`
@@ -580,6 +580,8 @@ git commit -m "feat(e2e): test user can delete a tag type"
 ---
 
 ### Task 7: Test — user can move a tag via drag-and-drop (with undo)
+
+> **Implementation note:** This test was attempted and marked `test.skip` in the final implementation. dnd-kit's `PointerSensor` with an 8px activation distance does not fire reliably via Playwright's synthetic mouse events in headless Chromium. The test body and skip reason are preserved in `tags.spec.ts` for future re-evaluation.
 
 **Files:**
 - Modify: `e2e/tests/settings/tags.spec.ts`
