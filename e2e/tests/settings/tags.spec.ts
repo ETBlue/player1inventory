@@ -185,6 +185,37 @@ test('user can edit tag name and type on Info tab', async ({ page }) => {
   await expect(page.getByLabel('Name')).toHaveValue('Turkey')
 })
 
+test('user can assign and unassign an item on Items tab', async ({ page }) => {
+  const detail = new TagDetailPage(page)
+
+  // Given: tag type "Protein" + tag "Chicken" + item "Eggs" (unassigned)
+  const { tagIds } = await seedTags(
+    page,
+    [{ name: 'Protein', color: 'green' }],
+    [{ name: 'Chicken', typeIndex: 0 }],
+  )
+  const tagId = tagIds[0]
+  await seedItem(page, 'Eggs')
+
+  // When: navigate to tag detail Items tab
+  await detail.navigateToItems(tagId)
+
+  // Then: "Eggs" shows as unassigned (Add checkbox visible)
+  await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
+
+  // When: user checks the "Eggs" checkbox (assigns it)
+  await detail.toggleItem('Eggs')
+
+  // Then: "Eggs" shows as assigned (Remove checkbox visible)
+  await expect(detail.getAssignedItemCheckbox('Eggs')).toBeVisible()
+
+  // When: user unchecks the "Eggs" checkbox (unassigns it)
+  await detail.toggleItem('Eggs')
+
+  // Then: "Eggs" shows as unassigned again
+  await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
+})
+
 test('user can delete a tag type', async ({ page }) => {
   const tagsPage = new TagsPage(page)
 
