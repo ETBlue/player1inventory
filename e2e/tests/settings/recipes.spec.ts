@@ -187,6 +187,32 @@ test('user can navigate to recipe detail after creating', async ({ page }) => {
   await expect(page).toHaveURL(/\/settings\/recipes\/[^/]+$/)
 })
 
+test('user can assign and unassign an item on Items tab', async ({ page }) => {
+  const detail = new RecipeDetailPage(page)
+
+  // Given: recipe "Pancakes" (no items) and unassigned item "Eggs"
+  const { recipeId } = await seedRecipe(page, 'Pancakes')
+  await seedItem(page, 'Eggs')
+
+  // When: navigate to Items tab
+  await detail.navigateToItems(recipeId)
+
+  // Then: "Eggs" shows as unassigned (Add checkbox visible)
+  await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
+
+  // When: check (assign)
+  await detail.toggleItem('Eggs')
+
+  // Then: "Eggs" shows as assigned (Remove checkbox visible)
+  await expect(detail.getAssignedItemCheckbox('Eggs')).toBeVisible()
+
+  // When: uncheck (unassign)
+  await detail.toggleItem('Eggs')
+
+  // Then: back to unassigned
+  await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
+})
+
 test('user can edit recipe name on Info tab', async ({ page }) => {
   const detail = new RecipeDetailPage(page)
 
