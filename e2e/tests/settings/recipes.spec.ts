@@ -213,6 +213,35 @@ test('user can assign and unassign an item on Items tab', async ({ page }) => {
   await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
 })
 
+test('user can adjust default amount for an assigned item', async ({ page }) => {
+  const detail = new RecipeDetailPage(page)
+
+  // Given: recipe "Pancakes" with "Flour" assigned at defaultAmount=2
+  const { recipeId } = await seedRecipe(page, 'Pancakes', [
+    { name: 'Flour', defaultAmount: 2 },
+  ])
+
+  // When: navigate to Items tab
+  await detail.navigateToItems(recipeId)
+
+  // Then: Flour is assigned (Remove checkbox visible) and amount display shows 2
+  await expect(detail.getAssignedItemCheckbox('Flour')).toBeVisible()
+  await expect(detail.getAmountDisplay('Flour')).toHaveText('2')
+
+  // When: click + (increase)
+  await detail.clickIncreaseAmount('Flour')
+
+  // Then: amount is 3 (step = consumeAmount = 1)
+  await expect(detail.getAmountDisplay('Flour')).toHaveText('3')
+
+  // When: click − twice
+  await detail.clickDecreaseAmount('Flour')
+  await detail.clickDecreaseAmount('Flour')
+
+  // Then: amount is 1
+  await expect(detail.getAmountDisplay('Flour')).toHaveText('1')
+})
+
 test('user can edit recipe name on Info tab', async ({ page }) => {
   const detail = new RecipeDetailPage(page)
 
