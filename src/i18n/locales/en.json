@@ -1,5 +1,25 @@
 {
   "settings": {
+    "title": "Settings",
+    "theme": {
+      "label": "Theme",
+      "description": "Choose light, dark, or system theme",
+      "light": "Light",
+      "system": "System",
+      "dark": "Dark"
+    },
+    "tags": {
+      "label": "Tags",
+      "description": "Manage tag types and tags"
+    },
+    "vendors": {
+      "label": "Vendors",
+      "description": "Manage vendors"
+    },
+    "recipes": {
+      "label": "Recipes",
+      "description": "Manage recipes"
+    },
     "language": {
       "label": "Language",
       "description": "Choose your preferred language",

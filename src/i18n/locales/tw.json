@@ -1,5 +1,25 @@
 {
   "settings": {
+    "title": "設定",
+    "theme": {
+      "label": "佈景",
+      "description": "選擇淺色、深色佈景，或依系統設定",
+      "light": "淺色",
+      "system": "依系統設定",
+      "dark": "深色"
+    },
+    "tags": {
+      "label": "標籤",
+      "description": "管理標籤與其分類"
+    },
+    "vendors": {
+      "label": "供應商",
+      "description": "管理供應商"
+    },
+    "recipes": {
+      "label": "食譜",
+      "description": "管理食譜"
+    },
     "language": {
       "label": "語言",
       "description": "選擇您偏好的語言",
