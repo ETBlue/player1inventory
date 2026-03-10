@@ -118,4 +118,16 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-// Tests will be added in subsequent tasks
+test('user can create a tag type', async ({ page }) => {
+  const tags = new TagsPage(page)
+
+  // Given: the tags settings page is empty
+  await tags.navigateTo()
+
+  // When: user fills the name and clicks "New Tag Type"
+  await tags.fillTagTypeName('Protein')
+  await tags.clickNewTagType()
+
+  // Then: a card with heading "Protein" appears
+  await expect(tags.getTagTypeCard('Protein')).toBeVisible()
+})
