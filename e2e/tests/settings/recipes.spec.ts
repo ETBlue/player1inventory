@@ -154,6 +154,24 @@ test('user can create a recipe', async ({ page }) => {
   await expect(recipes.getRecipeCard('Pancakes')).toBeVisible()
 })
 
+test('user can delete a recipe', async ({ page }) => {
+  const recipes = new RecipesPage(page)
+
+  // Given: recipe "Pancakes" exists (seeded via IndexedDB)
+  await seedRecipe(page, 'Pancakes')
+
+  // When: navigate to recipes list
+  await recipes.navigateTo()
+  await expect(recipes.getRecipeCard('Pancakes')).toBeVisible()
+
+  // And: user clicks delete and confirms
+  await recipes.clickDeleteRecipe('Pancakes')
+  await recipes.confirmDelete()
+
+  // Then: "Pancakes" card is gone
+  await expect(recipes.getRecipeCard('Pancakes')).not.toBeVisible()
+})
+
 test('user can navigate to recipe detail after creating', async ({ page }) => {
   const recipes = new RecipesPage(page)
 
