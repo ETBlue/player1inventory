@@ -45,16 +45,20 @@ export class TagsPage {
   }
 
   getTagBadge(name: string): Locator {
-    // TagBadge renders as a button (src/routes/settings/tags/index.tsx:126)
-    return this.page.getByRole('button', { name })
+    // dnd-kit sets role="button" on the drag wrapper div, whose text content includes
+    // the tag name and item count: "{name} (N)". Match by tag name prefix.
+    // (src/routes/settings/tags/index.tsx:123, @dnd-kit/core defaultRole='button')
+    return this.page.getByRole('button', { name: new RegExp(`^${name} \\(`) })
   }
 
   async clickDeleteTag(name: string) {
-    // X button is inside the same inline-flex div as the badge button
-    const wrapper = this.page.locator('div.inline-flex').filter({
-      has: this.page.getByRole('button', { name })
-    })
-    await wrapper.getByRole('button').last().click()
+    // The dnd-kit drag wrapper has role="button" with the tag name text.
+    // Inside it, the X delete button (from DeleteButton) is a real <button> element.
+    // Navigate into the drag wrapper to find its descendant <button> (the X button).
+    // (src/routes/settings/tags/index.tsx:123-155, src/components/DeleteButton/index.tsx)
+    const dragWrapper = this.page.getByRole('button', { name: new RegExp(`^${name} \\(`) })
+    // The X button is a <button> element (not the drag wrapper itself which is a div)
+    await dragWrapper.locator('button').click()
   }
 
   async clickDeleteTagType(name: string) {
@@ -63,8 +67,9 @@ export class TagsPage {
   }
 
   async confirmDelete() {
-    // AlertDialog confirm button
-    await this.page.getByRole('button', { name: 'Confirm' }).click()
+    // AlertDialog confirm button — DeleteButton uses confirmLabel="Delete" by default
+    // (src/components/DeleteButton/index.tsx:37, AlertDialogAction renders the label)
+    await this.page.getByRole('button', { name: 'Delete' }).click()
   }
 
   async dragTagToType(tagName: string, targetTypeName: string) {

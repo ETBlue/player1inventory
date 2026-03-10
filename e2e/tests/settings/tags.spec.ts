@@ -118,6 +118,30 @@ test.afterEach(async ({ page }) => {
   })
 })
 
+test('user can delete a tag', async ({ page }) => {
+  const tagsPage = new TagsPage(page)
+
+  // Given: tag type "Protein" with tag "Chicken" seeded via IndexedDB
+  await seedTags(
+    page,
+    [{ name: 'Protein', color: 'green' }],
+    [{ name: 'Chicken', typeIndex: 0 }],
+  )
+
+  // When: navigate to tags page
+  await tagsPage.navigateTo()
+  await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+
+  // And: user clicks the X button on the "Chicken" badge
+  await tagsPage.clickDeleteTag('Chicken')
+
+  // And: confirms deletion
+  await tagsPage.confirmDelete()
+
+  // Then: "Chicken" badge is gone
+  await expect(tagsPage.getTagBadge('Chicken')).not.toBeVisible()
+})
+
 test('user can add a tag to a tag type', async ({ page }) => {
   const tagsPage = new TagsPage(page)
 
