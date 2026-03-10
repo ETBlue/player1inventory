@@ -217,7 +217,7 @@ function DroppableTagTypeCard({
       </CardHeader>
       <CardContent ref={setNodeRef}>
         <SortableContext
-          items={sortedTypeTags.map((t) => t.id)}
+          items={sortedTypeTags.map((tag) => tag.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="flex flex-wrap gap-1">
