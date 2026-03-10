@@ -73,29 +73,28 @@ export class TagsPage {
   }
 
   async dragTagToType(tagName: string, targetTypeName: string) {
-    const source = this.page.getByRole('button', { name: tagName })
+    // The dnd-kit drag wrapper has role="button" and text "{tagName} (N)"
+    // Listeners are on the drag wrapper div. Target is the tag type heading area.
+    // (src/routes/settings/tags/index.tsx:123, @dnd-kit/core PointerSensor activation=8px)
+    const source = this.page.getByRole('button', { name: new RegExp(`^${tagName} \\(`) })
     const target = this.page.getByRole('heading', { name: targetTypeName, level: 3 })
 
     const sourceBox = await source.boundingBox()
     const targetBox = await target.boundingBox()
     if (!sourceBox || !targetBox) throw new Error('Could not get bounding boxes')
 
-    // Move mouse to source center, then past 8px activation threshold, then to target
-    await this.page.mouse.move(
-      sourceBox.x + sourceBox.width / 2,
-      sourceBox.y + sourceBox.height / 2,
-    )
+    const sx = sourceBox.x + sourceBox.width / 2
+    const sy = sourceBox.y + sourceBox.height / 2
+    const tx = targetBox.x + targetBox.width / 2
+    const ty = targetBox.y + targetBox.height / 2
+
+    // Move to source, press, move slowly past 8px threshold, then to target
+    await this.page.mouse.move(sx, sy)
     await this.page.mouse.down()
-    await this.page.mouse.move(
-      sourceBox.x + sourceBox.width / 2 + 10,
-      sourceBox.y + sourceBox.height / 2,
-      { steps: 5 },
-    )
-    await this.page.mouse.move(
-      targetBox.x + targetBox.width / 2,
-      targetBox.y + targetBox.height / 2,
-      { steps: 10 },
-    )
+    // Small nudge to pass the 8px PointerSensor activation distance
+    await this.page.mouse.move(sx + 10, sy, { steps: 10 })
+    // Move to target in many steps to keep dnd-kit active
+    await this.page.mouse.move(tx, ty, { steps: 30 })
     await this.page.mouse.up()
   }
 
