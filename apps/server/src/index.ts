@@ -2,26 +2,27 @@ import express from 'express'
 import cors from 'cors'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
+import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { typeDefs } from './schema/index.js'
 import { resolvers } from './resolvers/index.js'
 import type { Context } from './context.js'
 
 const app = express()
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173' }))
+app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN }))
 app.use(express.json())
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
 await server.start()
 
 app.use(
-  '/graphql',
+  GRAPHQL_PATH,
   expressMiddleware(server, {
     context: async () => ({ userId: null }),
   }),
 )
 
-const PORT = process.env.PORT ?? 4000
+const PORT = process.env.PORT ?? DEFAULT_PORT
 app.listen(PORT, () => {
-  console.log(`Server ready at http://localhost:${PORT}/graphql`)
+  console.log(`Server ready at http://localhost:${PORT}${GRAPHQL_PATH}`)
 })
