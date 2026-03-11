@@ -19,10 +19,4 @@
     "storybook": "pnpm --filter web storybook",
     "dev:server": "pnpm --filter server dev",
     "prepare": "husky"
-  },
-  "lint-staged": {
-    "src/**/*.{ts,tsx}": [
-      "biome check --write --unsafe"
-    ]
-  }
-}
+  }}
