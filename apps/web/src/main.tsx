@@ -36,33 +36,28 @@ if (!rootElement) {
   throw new Error('Root element not found')
 }
 
+function renderApp() {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <ClerkProvider publishableKey={publishableKey}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+          {/* <ReactQueryDevtools initialIsOpen={false} /> */}
+        </QueryClientProvider>
+      </ClerkProvider>
+    </StrictMode>,
+  )
+}
+
 // Run database migration on app start
 db.open()
   .then(() => migrateItemsToV2())
   .then(() => {
     console.log('Database migration complete')
-    createRoot(rootElement).render(
-      <StrictMode>
-        <ClerkProvider publishableKey={publishableKey}>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider router={router} />
-            {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-          </QueryClientProvider>
-        </ClerkProvider>
-      </StrictMode>,
-    )
+    renderApp()
   })
   .catch((error) => {
     console.error('Database migration failed:', error)
     // Still render the app even if migration fails
-    createRoot(rootElement).render(
-      <StrictMode>
-        <ClerkProvider publishableKey={publishableKey}>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider router={router} />
-            {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-          </QueryClientProvider>
-        </ClerkProvider>
-      </StrictMode>,
-    )
+    renderApp()
   })
