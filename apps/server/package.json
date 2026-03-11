@@ -12,25 +12,26 @@
   "dependencies": {
     "@apollo/server": "^4.12.0",
     "@as-integrations/express5": "^1.1.2",
+    "@clerk/express": "^1.5.0",
+    "@typegoose/typegoose": "^12.10.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
     "express": "^5.1.0",
     "graphql": "^16.10.0",
-    "graphql-ws": "^5.16.0",
-    "ws": "^8.18.0",
-    "mongoose": "^8.15.0",
-    "@typegoose/typegoose": "^12.10.0",
-    "@clerk/express": "^1.5.0",
     "graphql-subscriptions": "^3.0.0",
-    "cors": "^2.8.5"
+    "graphql-ws": "^5.16.0",
+    "mongoose": "^8.15.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.3",
-    "@types/ws": "^8.5.14",
+    "@p1i/types": "workspace:*",
     "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
     "@types/node": "^24.10.10",
-    "typescript": "~5.9.3",
-    "tsx": "^4.19.4",
-    "vitest": "^4.0.18",
+    "@types/ws": "^8.5.14",
     "mongodb-memory-server": "^10.1.4",
-    "@p1i/types": "workspace:*"
+    "tsx": "^4.19.4",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.18"
   }
 }

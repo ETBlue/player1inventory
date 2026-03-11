@@ -34,3 +34,6 @@ storybook-static
 # Playwright
 playwright-report
 test-results
+
+# Environment variables
+apps/server/.env

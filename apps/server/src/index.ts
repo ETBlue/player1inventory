@@ -1,14 +1,17 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
+import { connectDB } from './db.js'
 import { typeDefs } from './schema/index.js'
 import { resolvers } from './resolvers/index.js'
 import type { Context } from './context.js'
 
-const app = express()
+await connectDB()
 
+const app = express()
 app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN }))
 app.use(express.json())
 
