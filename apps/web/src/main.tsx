@@ -1,4 +1,5 @@
 import './i18n'
+import { ClerkProvider } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
@@ -7,6 +8,9 @@ import { db } from './db'
 import { migrateItemsToV2 } from './db/migrate'
 import { routeTree } from './routeTree.gen'
 import './index.css'
+
+const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+if (!publishableKey) throw new Error('VITE_CLERK_PUBLISHABLE_KEY is not set')
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,10 +43,12 @@ db.open()
     console.log('Database migration complete')
     createRoot(rootElement).render(
       <StrictMode>
-        <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-          {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-        </QueryClientProvider>
+        <ClerkProvider publishableKey={publishableKey}>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+            {/* <ReactQueryDevtools initialIsOpen={false} /> */}
+          </QueryClientProvider>
+        </ClerkProvider>
       </StrictMode>,
     )
   })
@@ -51,10 +57,12 @@ db.open()
     // Still render the app even if migration fails
     createRoot(rootElement).render(
       <StrictMode>
-        <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-          {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-        </QueryClientProvider>
+        <ClerkProvider publishableKey={publishableKey}>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+            {/* <ReactQueryDevtools initialIsOpen={false} /> */}
+          </QueryClientProvider>
+        </ClerkProvider>
       </StrictMode>,
     )
   })
