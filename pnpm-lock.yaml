@@ -8,9 +8,18 @@ importers:
 
   .:
     devDependencies:
+      '@commitlint/cli':
+        specifier: ^20.4.1
+        version: 20.4.1(@types/node@24.10.10)(typescript@5.9.3)
+      '@commitlint/config-conventional':
+        specifier: ^20.4.1
+        version: 20.4.1
       husky:
         specifier: ^9.1.7
         version: 9.1.7
+      lint-staged:
+        specifier: ^16.2.7
+        version: 16.2.7
 
   apps/web:
     dependencies:
@@ -114,12 +123,6 @@ importers:
       '@chromatic-com/storybook':
         specifier: ^5.0.0
         version: 5.0.0(storybook@10.2.6(@testing-library/dom@10.4.1)(prettier@3.8.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
-      '@commitlint/cli':
-        specifier: ^20.4.1
-        version: 20.4.1(@types/node@24.10.10)(typescript@5.9.3)
-      '@commitlint/config-conventional':
-        specifier: ^20.4.1
-        version: 20.4.1
       '@playwright/test':
         specifier: ^1.58.2
         version: 1.58.2
@@ -177,15 +180,9 @@ importers:
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
-      husky:
-        specifier: ^9.1.7
-        version: 9.1.7
       jsdom:
         specifier: ^28.0.0
         version: 28.0.0
-      lint-staged:
-        specifier: ^16.2.7
-        version: 16.2.7
       playwright:
         specifier: ^1.58.1
         version: 1.58.2

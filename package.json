@@ -21,5 +21,14 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "husky": "^9.1.7"
-  }}
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7"
+  },
+  "lint-staged": {
+    "apps/web/src/**/*.{ts,tsx}": [
+      "pnpm --filter web check --write --unsafe"
+    ]
+  }
+}
