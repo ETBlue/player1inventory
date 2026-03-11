@@ -19,4 +19,7 @@
     "storybook": "pnpm --filter web storybook",
     "dev:server": "pnpm --filter server dev",
     "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }}
