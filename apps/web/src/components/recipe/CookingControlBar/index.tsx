@@ -48,7 +48,14 @@ export function CookingControlBar({
       q: string
     }>,
   ) => {
-    navigate({ to: '/cooking', search: (prev) => ({ ...prev, ...updates }) })
+    navigate({
+      to: '/cooking',
+      search: (prev) => ({
+        sort: updates.sort ?? prev.sort ?? 'name',
+        dir: updates.dir ?? prev.dir ?? 'asc',
+        q: updates.q ?? prev.q ?? '',
+      }),
+    })
   }
 
   const lowerQ = q.toLowerCase().trim()

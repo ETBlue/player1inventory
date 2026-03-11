@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { TagDetailDialog } from '.'
-import { Button } from './ui/button'
 
 const queryClient = new QueryClient()
 

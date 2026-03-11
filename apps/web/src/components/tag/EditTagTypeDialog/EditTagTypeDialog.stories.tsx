@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { TagColor } from '@/types'
 import { EditTagTypeDialog } from '.'
-import { Button } from './ui/button'
 
 const meta: Meta<typeof EditTagTypeDialog> = {
   title: 'Components/EditTagTypeDialog',

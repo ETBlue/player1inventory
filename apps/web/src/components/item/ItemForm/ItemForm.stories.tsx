@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { fn } from 'vitest'
 import type { ItemFormValues } from '.'
 import { ItemForm } from '.'
 
@@ -7,8 +6,8 @@ const meta: Meta<typeof ItemForm> = {
   title: 'Components/ItemForm',
   component: ItemForm,
   args: {
-    onSubmit: fn(),
-    onDirtyChange: fn(),
+    onSubmit: () => {},
+    onDirtyChange: () => {},
   },
 }
 

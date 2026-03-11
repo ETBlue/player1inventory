@@ -29,7 +29,11 @@ function RecipeSettings() {
           </Button>
           <h1>Recipes</h1>
         </div>
-        <Button onClick={() => navigate({ to: '/settings/recipes/new' })}>
+        <Button
+          onClick={() =>
+            navigate({ to: '/settings/recipes/new', search: { name: '' } })
+          }
+        >
           <Plus className="h-4 w-4" />
           New Recipe
         </Button>

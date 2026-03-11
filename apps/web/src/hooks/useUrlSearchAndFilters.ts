@@ -75,7 +75,6 @@ export function useUrlSearchAndFilters() {
         router.history.replace(`${router.state.location.pathname}?${stored}`)
       }
     }
-    // biome-ignore lint: run once on mount only to seed from sessionStorage
   }, [
     router.history,
     router.state.location.pathname,

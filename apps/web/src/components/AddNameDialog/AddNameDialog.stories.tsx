@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { AddNameDialog } from '.'
-import { Button } from './ui/button'
 
 const meta: Meta<typeof AddNameDialog> = {
   title: 'Components/AddNameDialog',
