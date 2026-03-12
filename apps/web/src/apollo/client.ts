@@ -8,9 +8,10 @@ import { setContext } from '@apollo/client/link/context'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
+import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
 
 const httpLink = createHttpLink({
-  uri: import.meta.env.VITE_GRAPHQL_HTTP_URL ?? 'http://localhost:4000/graphql',
+  uri: import.meta.env.VITE_GRAPHQL_HTTP_URL ?? DEFAULT_GRAPHQL_HTTP_URL,
 })
 
 export function createApolloClient(getToken: () => Promise<string | null>) {
@@ -26,7 +27,7 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
 
   const wsLink = new GraphQLWsLink(
     createClient({
-      url: import.meta.env.VITE_GRAPHQL_WS_URL ?? 'ws://localhost:4000/graphql',
+      url: import.meta.env.VITE_GRAPHQL_WS_URL ?? DEFAULT_GRAPHQL_WS_URL,
       connectionParams: async () => {
         const token = await getToken()
         return token ? { authorization: `Bearer ${token}` } : {}
