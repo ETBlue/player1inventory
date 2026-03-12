@@ -806,6 +806,12 @@ For minor changes that don't require brainstorming, ask the user whether to crea
 
 Quick documentation fixes (like fixing a typo in CLAUDE.md) can go directly to main without asking.
 
+**Design docs and brainstorming logs must never be committed directly to `main`:**
+- `docs/plans/` — always requires a branch or worktree
+- `docs/brainstorming-logs/` — always requires a branch or worktree
+
+This applies even for minor additions. The CLAUDE.md typo exception does not extend to these directories.
+
 **General Rule:** If the work involves brainstorming, design decisions, or implementation planning, it should go through the full branch workflow. If it's a quick fix or minor adjustment, check with the user about their preference.
 
 **Before Finishing a Branch:**
