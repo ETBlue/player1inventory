@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, split } from '@apollo/client'
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { SetContextLink } from '@apollo/client/link/context'
 import { HttpLink } from '@apollo/client/link/http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
@@ -31,7 +31,7 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
     }),
   )
 
-  const splitLink = split(
+  const splitLink = ApolloLink.split(
     ({ query }) => {
       const def = getMainDefinition(query)
       return (
