@@ -1,0 +1,20 @@
+type FamilyGroup {
+  id: ID!
+  name: String!
+  code: String!
+  ownerUserId: String!
+  memberUserIds: [String!]!
+  createdAt: String!
+  updatedAt: String!
+}
+
+extend type Query {
+  myFamilyGroup: FamilyGroup
+}
+
+extend type Mutation {
+  createFamilyGroup(name: String!): FamilyGroup!
+  joinFamilyGroup(code: String!): FamilyGroup!
+  leaveFamilyGroup: Boolean!
+  disbandFamilyGroup: Boolean!
+}
