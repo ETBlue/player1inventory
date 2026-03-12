@@ -11,7 +11,7 @@ class ItemClass implements Omit<Item, 'id'> {
   @prop({ type: [String], default: [] })
   tagIds!: string[]
 
-  @prop({ type: [String], default: [] })
+  @prop({ type: [String] })
   vendorIds?: string[]
 
   @prop({ type: String })
@@ -63,3 +63,4 @@ class ItemClass implements Omit<Item, 'id'> {
 }
 
 export const ItemModel = getModelForClass(ItemClass)
+export type { ItemClass }
