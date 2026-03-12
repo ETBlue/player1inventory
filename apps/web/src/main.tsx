@@ -1,6 +1,7 @@
 import './i18n'
 import './index.css'
-import { ApolloClient, ApolloProvider, InMemoryCache } from '@apollo/client'
+import { ApolloClient, InMemoryCache } from '@apollo/client'
+import { ApolloProvider } from '@apollo/client/react'
 import { ClerkProvider } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
