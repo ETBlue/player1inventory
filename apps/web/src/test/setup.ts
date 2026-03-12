@@ -3,6 +3,20 @@ import 'fake-indexeddb/auto'
 import { vi } from 'vitest'
 import '../i18n'
 
+// Mock generated Apollo hooks so tests don't require an ApolloProvider.
+// All tests run in local mode (Dexie); cloud hooks are never exercised.
+vi.mock('@/generated/graphql', () => ({
+  useGetItemsQuery: () => ({
+    data: undefined,
+    loading: false,
+    error: undefined,
+  }),
+  useCreateItemMutation: () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ],
+}))
+
 // Mock ResizeObserver for Radix UI components
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
