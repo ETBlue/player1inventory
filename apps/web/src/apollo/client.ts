@@ -1,16 +1,12 @@
-import {
-  ApolloClient,
-  createHttpLink,
-  InMemoryCache,
-  split,
-} from '@apollo/client'
+import { ApolloClient, InMemoryCache, split } from '@apollo/client'
 import { setContext } from '@apollo/client/link/context'
+import { HttpLink } from '@apollo/client/link/http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
 
-const httpLink = createHttpLink({
+const httpLink = new HttpLink({
   uri: import.meta.env.VITE_GRAPHQL_HTTP_URL ?? DEFAULT_GRAPHQL_HTTP_URL,
 })
 
