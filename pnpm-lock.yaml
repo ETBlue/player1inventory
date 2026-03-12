@@ -32,6 +32,9 @@ importers:
       '@clerk/express':
         specifier: ^1.5.0
         version: 1.7.76(express@5.2.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@p1i/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@typegoose/typegoose':
         specifier: ^12.10.0
         version: 12.21.1(mongoose@8.23.0)
@@ -60,9 +63,6 @@ importers:
         specifier: ^8.18.0
         version: 8.19.0
     devDependencies:
-      '@p1i/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       '@types/cors':
         specifier: ^2.8.17
         version: 2.8.19
