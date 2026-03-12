@@ -677,15 +677,17 @@ grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || ech
 
 ### Always Commit Before Done
 
-Before telling the user "done" (or any equivalent wrap-up signal), **all changes must be committed** — no exceptions:
+Before responding to a completed task, step, or session wrap-up, **all changes must be committed** — no exceptions:
 
-- Code files
+- Code files (including any updated inline comments)
 - Storybook stories
 - Tests
 - CLAUDE.md updates
-- Inline comments
+- Design docs (`docs/plans/`, `docs/brainstorming-logs/`)
 
-Run `git status` to confirm the working tree is clean before wrapping up. If any uncommitted changes remain, commit them first.
+Run `git status` to confirm the working tree is clean. If any uncommitted changes remain, commit them first.
+
+See also: **Before Finishing a Branch** (in the Workflow section below) for branch-level wrap-up steps.
 
 ### Human Code Changes
 
