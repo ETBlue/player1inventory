@@ -46,7 +46,7 @@ describe('Item resolvers', () => {
     // Then item is returned with userId
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
-      const item = response.body.singleResult.data?.createItem
+      const item = response.body.singleResult.data?.createItem as { id: string; name: string; userId: string }
       expect(item.name).toBe('Milk')
       expect(item.userId).toBe('user_test123')
       expect(item.id).toBeDefined()
@@ -75,7 +75,7 @@ describe('Item resolvers', () => {
 
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
-      const items = response.body.singleResult.data?.items
+      const items = response.body.singleResult.data?.items as Array<{ id: string; name: string }>
       expect(Array.isArray(items)).toBe(true)
       expect(items.length).toBeGreaterThan(0)
     }
@@ -93,7 +93,7 @@ describe('Item resolvers', () => {
     )
     const id =
       createResponse.body.kind === 'single'
-        ? createResponse.body.singleResult.data?.createItem.id
+        ? (createResponse.body.singleResult.data?.createItem as { id: string }).id
         : null
 
     // When fetching by id
@@ -104,7 +104,7 @@ describe('Item resolvers', () => {
 
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
-      expect(response.body.singleResult.data?.item.name).toBe('Butter')
+      expect((response.body.singleResult.data?.item as { name: string }).name).toBe('Butter')
     }
   })
 
@@ -118,7 +118,7 @@ describe('Item resolvers', () => {
     )
     const id =
       createResponse.body.kind === 'single'
-        ? createResponse.body.singleResult.data?.createItem.id
+        ? (createResponse.body.singleResult.data?.createItem as { id: string }).id
         : null
 
     // When updating
@@ -134,7 +134,7 @@ describe('Item resolvers', () => {
 
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
-      expect(response.body.singleResult.data?.updateItem.name).toBe('Olive Oil')
+      expect((response.body.singleResult.data?.updateItem as { name: string }).name).toBe('Olive Oil')
     }
   })
 
@@ -148,7 +148,7 @@ describe('Item resolvers', () => {
     )
     const id =
       createResponse.body.kind === 'single'
-        ? createResponse.body.singleResult.data?.createItem.id
+        ? (createResponse.body.singleResult.data?.createItem as { id: string }).id
         : null
 
     // When deleting

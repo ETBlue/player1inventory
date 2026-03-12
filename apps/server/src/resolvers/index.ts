@@ -1,6 +1,7 @@
+import type { Resolvers } from '../generated/graphql.js'
 import { itemResolvers } from './item.resolver.js'
 
-export const resolvers = {
+export const resolvers: Resolvers = {
   Query: {
     health: () => 'ok',
     ...itemResolvers.Query,

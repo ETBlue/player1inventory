@@ -2,40 +2,23 @@ import { GraphQLError } from 'graphql'
 import { ItemModel } from '../models/Item.model.js'
 import { requireAuth } from '../context.js'
 import type { Context } from '../context.js'
+import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 
-interface UpdateItemInput {
-  name?: string
-  tagIds?: string[]
-  vendorIds?: string[]
-  targetUnit?: string
-  targetQuantity?: number
-  refillThreshold?: number
-  packedQuantity?: number
-  unpackedQuantity?: number
-  consumeAmount?: number
-  packageUnit?: string
-  measurementUnit?: string
-  amountPerPackage?: number
-  dueDate?: string
-  estimatedDueDays?: number
-  expirationThreshold?: number
-}
-
-export const itemResolvers = {
+export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
   Query: {
-    items: async (_: unknown, __: unknown, ctx: Context) => {
+    items: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
       return ItemModel.find({ userId })
     },
-    item: async (_: unknown, { id }: { id: string }, ctx: Context) => {
+    item: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
       return ItemModel.findOne({ _id: id, userId })
     },
   },
   Mutation: {
-    createItem: async (_: unknown, { name }: { name: string }, ctx: Context) => {
+    createItem: async (_, { name }, ctx) => {
       const userId = requireAuth(ctx)
-      return ItemModel.create({
+      const doc = await ItemModel.create({
         name,
         tagIds: [],
         targetUnit: 'package',
@@ -46,32 +29,33 @@ export const itemResolvers = {
         consumeAmount: 1,
         userId,
       })
+      // Cast needed: Mongoose document has Date fields; Item field resolvers convert them to strings
+      return doc as unknown as Item
     },
-    updateItem: async (
-      _: unknown,
-      { id, input }: { id: string; input: UpdateItemInput },
-      ctx: Context,
-    ) => {
+    updateItem: async (_, { id, input }, ctx) => {
       const userId = requireAuth(ctx)
       const item = await ItemModel.findOneAndUpdate(
         { _id: id, userId },
-        { $set: input },
+        { $set: input as UpdateItemInput },
         { new: true },
       )
       if (!item) throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
-      return item
+      // Cast needed: Mongoose document has Date fields; Item field resolvers convert them to strings
+      return item as unknown as Item
     },
-    deleteItem: async (_: unknown, { id }: { id: string }, ctx: Context) => {
+    deleteItem: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
       const result = await ItemModel.deleteOne({ _id: id, userId })
       return result.deletedCount > 0
     },
   },
   Item: {
-    id: (item: { _id: { toString(): string } }) => item._id.toString(),
-    createdAt: (item: { createdAt: Date }) => item.createdAt.toISOString(),
-    updatedAt: (item: { updatedAt: Date }) => item.updatedAt.toISOString(),
-    dueDate: (item: { dueDate?: Date }) =>
-      item.dueDate ? item.dueDate.toISOString() : null,
+    id: (item) => (item as unknown as { _id: { toString(): string } })._id.toString(),
+    createdAt: (item) => (item as unknown as { createdAt: Date }).createdAt.toISOString(),
+    updatedAt: (item) => (item as unknown as { updatedAt: Date }).updatedAt.toISOString(),
+    dueDate: (item) => {
+      const d = (item as unknown as { dueDate?: Date }).dueDate
+      return d ? d.toISOString() : null
+    },
   },
 }
