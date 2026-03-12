@@ -1,0 +1,39 @@
+query MyFamilyGroup {
+  myFamilyGroup {
+    id
+    name
+    code
+    ownerUserId
+    memberUserIds
+    createdAt
+    updatedAt
+  }
+}
+
+mutation CreateFamilyGroup($name: String!) {
+  createFamilyGroup(name: $name) {
+    id
+    name
+    code
+    ownerUserId
+    memberUserIds
+  }
+}
+
+mutation JoinFamilyGroup($code: String!) {
+  joinFamilyGroup(code: $code) {
+    id
+    name
+    code
+    ownerUserId
+    memberUserIds
+  }
+}
+
+mutation LeaveFamilyGroup {
+  leaveFamilyGroup
+}
+
+mutation DisbandFamilyGroup {
+  disbandFamilyGroup
+}
