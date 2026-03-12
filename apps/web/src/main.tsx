@@ -33,12 +33,12 @@ declare module '@tanstack/react-router' {
 }
 
 const rootElement = document.getElementById('root')
-if (!rootElement) {
-  throw new Error('Root element not found')
-}
+if (!rootElement) throw new Error('Root element not found')
+
+const root = createRoot(rootElement)
 
 function renderApp() {
-  createRoot(rootElement).render(
+  root.render(
     <StrictMode>
       <ClerkProvider publishableKey={publishableKey}>
         <ApolloWrapper>
