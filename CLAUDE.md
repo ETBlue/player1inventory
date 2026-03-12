@@ -656,6 +656,21 @@ When the user reports a bug (post-implementation or otherwise), treat it as **su
 
 This applies even when the fix seems obvious. The test serves as a regression guard.
 
+### Verification Gate
+
+After each implementation phase (each numbered step in an implementation plan), run the full quality gate from the `apps/web` directory:
+
+```bash
+cd apps/web && pnpm lint && pnpm build && pnpm build-storybook && pnpm check
+```
+
+**Rules:**
+- If any command fails → stop and fix all errors before proceeding to the next step
+- After `pnpm build`, scan the **full output** for `@deprecated` warnings (TypeScript diagnostic `TS6385`) — treat deprecated import usage as a failure even if the exit code is 0
+- All four commands must pass clean (zero errors, zero deprecation warnings) before moving on
+
+**Applies to:** all implementation workflows — executing-plans, subagent-driven-development, and manual coding sessions.
+
 ### Human Code Changes
 
 When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
