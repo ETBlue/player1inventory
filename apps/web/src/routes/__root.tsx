@@ -2,6 +2,7 @@ import { useAuth } from '@clerk/react'
 import { createRootRoute, Outlet, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { Layout } from '@/components/Layout'
+import { PostLoginMigrationDialog } from '@/components/PostLoginMigrationDialog'
 import { Toaster } from '@/components/ui/sonner'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useNavigationTracker } from '@/hooks/useNavigationTracker'
@@ -33,7 +34,12 @@ function RootComponent() {
 
   return (
     <>
-      {mode === 'cloud' && <CloudAuthGuard />}
+      {mode === 'cloud' && (
+        <>
+          <CloudAuthGuard />
+          <PostLoginMigrationDialog />
+        </>
+      )}
       <Layout>
         <Outlet />
       </Layout>
