@@ -26,7 +26,21 @@ export function useItems() {
 
   const cloud = useGetItemsQuery({ skip: !isCloud })
 
-  return isCloud ? cloud : local
+  if (isCloud) {
+    return {
+      data: cloud.data?.items as Item[] | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+      refetch: cloud.refetch,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+    refetch: local.refetch,
+  }
 }
 
 export function useItem(id: string) {

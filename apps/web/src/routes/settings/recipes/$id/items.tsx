@@ -185,6 +185,7 @@ function RecipeItemsTab() {
         consumeAmount: 0,
       })
       // Immediately add the new item to the recipe
+      if (!newItem) return
       const newRecipeItems = [
         ...recipeItems,
         { itemId: newItem.id, defaultAmount: newItem.consumeAmount },

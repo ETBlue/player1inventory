@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { FamilyGroupModel } from '../models/FamilyGroup.model.js'
 import { requireAuth } from '../context.js'
-import type { Resolvers } from '../generated/graphql.js'
+import type { FamilyGroup, Resolvers } from '../generated/graphql.js'
 
 function generateCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -28,12 +28,13 @@ export const familyGroupResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Famil
         code = generateCode()
       }
 
+      // Cast needed: Mongoose document has Date fields; FamilyGroup field resolvers convert them to strings
       return FamilyGroupModel.create({
         name,
         code,
         ownerUserId: userId,
         memberUserIds: [userId],
-      })
+      }) as unknown as Promise<FamilyGroup>
     },
     joinFamilyGroup: async (_, { code }, ctx) => {
       const userId = requireAuth(ctx)
@@ -46,7 +47,8 @@ export const familyGroupResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Famil
         group.memberUserIds.push(userId)
         await group.save()
       }
-      return group
+      // Cast needed: Mongoose document has Date fields; FamilyGroup field resolvers convert them to strings
+      return group as unknown as FamilyGroup
     },
     leaveFamilyGroup: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
