@@ -1,6 +1,6 @@
 import './i18n'
 import './index.css'
-import { ApolloClient, InMemoryCache } from '@apollo/client'
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { ClerkProvider } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -20,7 +20,10 @@ const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ??
 
 // Minimal Apollo client for local mode — satisfies useGetItemsQuery context requirement
 // without making any network requests (all Apollo hooks are skipped in local mode)
-const localModeApolloClient = new ApolloClient({ cache: new InMemoryCache() })
+const localModeApolloClient = new ApolloClient({
+  link: new ApolloLink(() => null), // no-op: all Apollo hooks are skipped in local mode
+  cache: new InMemoryCache(),
+})
 
 const queryClient = new QueryClient({
   defaultOptions: {
