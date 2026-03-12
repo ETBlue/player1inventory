@@ -1,12 +1,11 @@
-import { itemTypeDefs } from './item.graphql.js'
+import { readFileSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 
-export const typeDefs = `#graphql
-  type Query
-  type Mutation
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
-  ${itemTypeDefs}
+function load(filename: string): string {
+  return readFileSync(join(__dirname, filename), 'utf-8')
+}
 
-  extend type Query {
-    health: String!
-  }
-`
+export const typeDefs = [load('schema.graphql'), load('item.graphql')]
