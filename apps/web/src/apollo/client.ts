@@ -1,5 +1,5 @@
 import { ApolloClient, InMemoryCache, split } from '@apollo/client'
-import { setContext } from '@apollo/client/link/context'
+import { SetContextLink } from '@apollo/client/link/context'
 import { HttpLink } from '@apollo/client/link/http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
@@ -11,7 +11,7 @@ const httpLink = new HttpLink({
 })
 
 export function createApolloClient(getToken: () => Promise<string | null>) {
-  const authLink = setContext(async (_, { headers }) => {
+  const authLink = new SetContextLink(async ({ headers }) => {
     const token = await getToken()
     return {
       headers: {
