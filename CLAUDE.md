@@ -658,18 +658,22 @@ This applies even when the fix seems obvious. The test serves as a regression gu
 
 ### Verification Gate
 
-After each implementation phase (each numbered step in an implementation plan), run the full quality gate from the `apps/web` directory:
+After each implementation phase (each numbered step in an implementation plan), run the full quality gate. **Each command must be run with an explicit path** — do not rely on `cd` persisting between Bash tool calls:
 
 ```bash
-cd apps/web && pnpm lint && pnpm build && pnpm build-storybook && pnpm check
+(cd apps/web && pnpm lint)
+(cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+(cd apps/web && pnpm build-storybook)
+(cd apps/web && pnpm check)
+grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
 ```
 
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
-- After `pnpm build`, scan the **full output** for `@deprecated` warnings (TypeScript diagnostic `TS6385`) — treat deprecated import usage as a failure even if the exit code is 0
-- All four commands must pass clean (zero errors, zero deprecation warnings) before moving on
+- After `pnpm build`, run `grep 'TS6385' /tmp/p1i-build.log` to check for `@deprecated` warnings — any match is a failure even if the build exit code is 0
+- All four commands must pass and `grep` must return no matches before moving on
 
-**Applies to:** all implementation workflows — executing-plans, subagent-driven-development, and manual coding sessions.
+**Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.
 
 ### Human Code Changes
 
