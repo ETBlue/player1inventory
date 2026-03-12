@@ -1,10 +1,16 @@
 import './i18n'
+import { ApolloClient, ApolloProvider, InMemoryCache } from '@apollo/client'
 import { ClerkProvider } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
+
+// Minimal Apollo client for local mode — satisfies useGetItemsQuery context requirement
+// without making any network requests (all Apollo hooks are skipped in local mode)
+const localModeApolloClient = new ApolloClient({ cache: new InMemoryCache() })
+
 import { db } from './db'
 import { migrateItemsToV2 } from './db/migrate'
 import type { DataMode } from './lib/dataMode'
@@ -60,9 +66,11 @@ function renderApp() {
   } else {
     root.render(
       <StrictMode>
-        <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
-        </QueryClientProvider>
+        <ApolloProvider client={localModeApolloClient}>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </ApolloProvider>
       </StrictMode>,
     )
   }
