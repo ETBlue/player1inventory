@@ -7,11 +7,14 @@ import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
 import { db } from './db'
 import { migrateItemsToV2 } from './db/migrate'
+import type { DataMode } from './lib/dataMode'
+import { DATA_MODE_STORAGE_KEY, DEFAULT_DATA_MODE } from './lib/dataMode'
 import { routeTree } from './routeTree.gen'
 import './index.css'
 
-const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-if (!publishableKey) throw new Error('VITE_CLERK_PUBLISHABLE_KEY is not set')
+// Read mode before React mounts — determines provider tree for this page lifetime
+const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ??
+  DEFAULT_DATA_MODE) as DataMode
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,29 +41,45 @@ if (!rootElement) throw new Error('Root element not found')
 const root = createRoot(rootElement)
 
 function renderApp() {
-  root.render(
-    <StrictMode>
-      <ClerkProvider publishableKey={publishableKey}>
-        <ApolloWrapper>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider router={router} />
-            {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-          </QueryClientProvider>
-        </ApolloWrapper>
-      </ClerkProvider>
-    </StrictMode>,
-  )
+  if (mode === 'cloud') {
+    const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+    if (!publishableKey)
+      throw new Error('VITE_CLERK_PUBLISHABLE_KEY is not set')
+
+    root.render(
+      <StrictMode>
+        <ClerkProvider publishableKey={publishableKey}>
+          <ApolloWrapper>
+            <QueryClientProvider client={queryClient}>
+              <RouterProvider router={router} />
+            </QueryClientProvider>
+          </ApolloWrapper>
+        </ClerkProvider>
+      </StrictMode>,
+    )
+  } else {
+    root.render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </StrictMode>,
+    )
+  }
 }
 
-// Run database migration on app start
-db.open()
-  .then(() => migrateItemsToV2())
-  .then(() => {
-    console.log('Database migration complete')
-    renderApp()
-  })
-  .catch((error) => {
-    console.error('Database migration failed:', error)
-    // Still render the app even if migration fails
-    renderApp()
-  })
+if (mode === 'local') {
+  // Only run IndexedDB migration in local mode
+  db.open()
+    .then(() => migrateItemsToV2())
+    .then(() => {
+      console.log('Database migration complete')
+      renderApp()
+    })
+    .catch((error) => {
+      console.error('Database migration failed:', error)
+      renderApp()
+    })
+} else {
+  renderApp()
+}
