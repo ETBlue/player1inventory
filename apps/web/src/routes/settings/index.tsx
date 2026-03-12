@@ -2,14 +2,26 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   ChevronRight,
   CookingPot,
+  Database,
   Globe,
   Moon,
   Store,
   Sun,
   Tags,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Toolbar } from '@/components/Toolbar'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -19,8 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useTheme } from '@/hooks/useTheme'
+import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 import type { LanguagePreference } from '@/lib/language'
 
 export const Route = createFileRoute('/settings/')({
@@ -35,6 +49,17 @@ function Settings() {
     setPreference: setLangPreference,
   } = useLanguage()
   const { t } = useTranslation()
+  const { mode } = useDataMode()
+  const [showEnableConfirm, setShowEnableConfirm] = useState(false)
+
+  function handleEnableSharing() {
+    setShowEnableConfirm(true)
+  }
+
+  function confirmEnableSharing() {
+    localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
+    window.location.reload()
+  }
 
   return (
     <div>
@@ -128,6 +153,59 @@ function Settings() {
             </Select>
           </CardContent>
         </Card>
+
+        {/* Data Mode Card */}
+        <Card>
+          <CardContent className="px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Database className="h-5 w-5 text-foreground-muted" />
+                <div>
+                  <p className="font-medium">
+                    {mode === 'local' ? 'Login-free mode' : 'Sharing enabled'}
+                  </p>
+                  <p className="text-sm text-foreground-muted">
+                    {mode === 'local'
+                      ? 'Data stored on this device only'
+                      : 'Data synced to the cloud'}
+                  </p>
+                </div>
+              </div>
+              {mode === 'local' && (
+                <Button variant="neutral-outline" onClick={handleEnableSharing}>
+                  Enable sharing →
+                </Button>
+              )}
+              {mode === 'cloud' && (
+                <Button variant="neutral-outline" onClick={() => {}}>
+                  Disable sharing
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Enable Sharing Confirm Dialog */}
+        <AlertDialog
+          open={showEnableConfirm}
+          onOpenChange={setShowEnableConfirm}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Enable sharing?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Sharing requires signing in. Once enabled, your data will be
+                stored in the cloud and a login will be required each session.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmEnableSharing}>
+                Enable
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Tags Card */}
         <Link to="/settings/tags" className="block">
