@@ -675,6 +675,18 @@ grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || ech
 
 **Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.
 
+### Always Commit Before Done
+
+Before telling the user "done" (or any equivalent wrap-up signal), **all changes must be committed** — no exceptions:
+
+- Code files
+- Storybook stories
+- Tests
+- CLAUDE.md updates
+- Inline comments
+
+Run `git status` to confirm the working tree is clean before wrapping up. If any uncommitted changes remain, commit them first.
+
 ### Human Code Changes
 
 When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
