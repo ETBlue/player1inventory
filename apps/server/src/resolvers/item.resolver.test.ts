@@ -80,4 +80,120 @@ describe('Item resolvers', () => {
       expect(items.length).toBeGreaterThan(0)
     }
   })
+
+  it('user can fetch a single item by id', async () => {
+    const context: Context = { userId: 'user_test123' }
+
+    // Given an item exists
+    const createResponse = await server.executeOperation(
+      {
+        query: `mutation { createItem(name: "Butter") { id } }`,
+      },
+      { contextValue: context },
+    )
+    const id =
+      createResponse.body.kind === 'single'
+        ? createResponse.body.singleResult.data?.createItem.id
+        : null
+
+    // When fetching by id
+    const response = await server.executeOperation(
+      { query: `query GetItem($id: ID!) { item(id: $id) { id name } }`, variables: { id } },
+      { contextValue: context },
+    )
+
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.data?.item.name).toBe('Butter')
+    }
+  })
+
+  it('user can update an item', async () => {
+    const context: Context = { userId: 'user_test123' }
+
+    // Given an item exists
+    const createResponse = await server.executeOperation(
+      { query: `mutation { createItem(name: "Oil") { id } }` },
+      { contextValue: context },
+    )
+    const id =
+      createResponse.body.kind === 'single'
+        ? createResponse.body.singleResult.data?.createItem.id
+        : null
+
+    // When updating
+    const response = await server.executeOperation(
+      {
+        query: `mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
+        updateItem(id: $id, input: $input) { id name }
+      }`,
+        variables: { id, input: { name: 'Olive Oil' } },
+      },
+      { contextValue: context },
+    )
+
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.data?.updateItem.name).toBe('Olive Oil')
+    }
+  })
+
+  it('user can delete an item', async () => {
+    const context: Context = { userId: 'user_test123' }
+
+    // Given an item exists
+    const createResponse = await server.executeOperation(
+      { query: `mutation { createItem(name: "Trash") { id } }` },
+      { contextValue: context },
+    )
+    const id =
+      createResponse.body.kind === 'single'
+        ? createResponse.body.singleResult.data?.createItem.id
+        : null
+
+    // When deleting
+    const response = await server.executeOperation(
+      {
+        query: `mutation DeleteItem($id: ID!) { deleteItem(id: $id) }`,
+        variables: { id },
+      },
+      { contextValue: context },
+    )
+
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.data?.deleteItem).toBe(true)
+    }
+  })
+
+  it('does not return items belonging to another user', async () => {
+    // Given user A creates an item
+    await server.executeOperation(
+      { query: `mutation { createItem(name: "UserA Item") { id } }` },
+      { contextValue: { userId: 'user_A' } },
+    )
+
+    // When user B queries items
+    const response = await server.executeOperation(
+      { query: `query { items { id name } }` },
+      { contextValue: { userId: 'user_B' } },
+    )
+
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.data?.items).toHaveLength(0)
+    }
+  })
+
+  it('rejects unauthenticated requests', async () => {
+    const response = await server.executeOperation(
+      { query: `query { items { id name } }` },
+      { contextValue: { userId: null } },
+    )
+
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors?.[0].extensions?.code).toBe('UNAUTHENTICATED')
+    }
+  })
 })

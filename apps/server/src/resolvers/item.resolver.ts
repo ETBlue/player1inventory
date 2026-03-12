@@ -1,6 +1,25 @@
+import { GraphQLError } from 'graphql'
 import { ItemModel } from '../models/Item.model.js'
 import { requireAuth } from '../context.js'
 import type { Context } from '../context.js'
+
+interface UpdateItemInput {
+  name?: string
+  tagIds?: string[]
+  vendorIds?: string[]
+  targetUnit?: string
+  targetQuantity?: number
+  refillThreshold?: number
+  packedQuantity?: number
+  unpackedQuantity?: number
+  consumeAmount?: number
+  packageUnit?: string
+  measurementUnit?: string
+  amountPerPackage?: number
+  dueDate?: string
+  estimatedDueDays?: number
+  expirationThreshold?: number
+}
 
 export const itemResolvers = {
   Query: {
@@ -30,25 +49,29 @@ export const itemResolvers = {
     },
     updateItem: async (
       _: unknown,
-      { id, input }: { id: string; input: Record<string, unknown> },
+      { id, input }: { id: string; input: UpdateItemInput },
       ctx: Context,
     ) => {
       const userId = requireAuth(ctx)
-      return ItemModel.findOneAndUpdate(
+      const item = await ItemModel.findOneAndUpdate(
         { _id: id, userId },
         { $set: input },
         { new: true },
       )
+      if (!item) throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
+      return item
     },
     deleteItem: async (_: unknown, { id }: { id: string }, ctx: Context) => {
       const userId = requireAuth(ctx)
-      await ItemModel.deleteOne({ _id: id, userId })
-      return true
+      const result = await ItemModel.deleteOne({ _id: id, userId })
+      return result.deletedCount > 0
     },
   },
   Item: {
     id: (item: { _id: { toString(): string } }) => item._id.toString(),
     createdAt: (item: { createdAt: Date }) => item.createdAt.toISOString(),
     updatedAt: (item: { updatedAt: Date }) => item.updatedAt.toISOString(),
+    dueDate: (item: { dueDate?: Date }) =>
+      item.dueDate ? item.dueDate.toISOString() : null,
   },
 }
