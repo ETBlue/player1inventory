@@ -656,6 +656,39 @@ When the user reports a bug (post-implementation or otherwise), treat it as **su
 
 This applies even when the fix seems obvious. The test serves as a regression guard.
 
+### Verification Gate
+
+After each implementation phase (each numbered step in an implementation plan), run the full quality gate. **Each command must be run with an explicit path** — do not rely on `cd` persisting between Bash tool calls:
+
+```bash
+(cd apps/web && pnpm lint)
+(cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+(cd apps/web && pnpm build-storybook)
+(cd apps/web && pnpm check)
+grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
+```
+
+**Rules:**
+- If any command fails → stop and fix all errors before proceeding to the next step
+- After `pnpm build`, run `grep 'TS6385' /tmp/p1i-build.log` to check for `@deprecated` warnings — any match is a failure even if the build exit code is 0
+- All four commands must pass and `grep` must return no matches before moving on
+
+**Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.
+
+### Always Commit Before Done
+
+Before responding to a completed task, step, or session wrap-up, **all changes must be committed** — no exceptions:
+
+- Code files (including any updated inline comments)
+- Storybook stories
+- Tests
+- CLAUDE.md updates
+- Design docs (`docs/plans/`, `docs/brainstorming-logs/`)
+
+Run `git status` to confirm the working tree is clean. If any uncommitted changes remain, commit them first.
+
+See also: **Before Finishing a Branch** (in the Workflow section below) for branch-level wrap-up steps.
+
 ### Human Code Changes
 
 When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
@@ -772,6 +805,12 @@ For minor changes that don't require brainstorming, ask the user whether to crea
 - Other trivial updates
 
 Quick documentation fixes (like fixing a typo in CLAUDE.md) can go directly to main without asking.
+
+**Design docs and brainstorming logs must always go through a branch — never committed directly to `main`:**
+- `docs/plans/` — always requires a branch or worktree
+- `docs/brainstorming-logs/` — always requires a branch or worktree
+
+This applies even for minor additions. The CLAUDE.md typo exception does not extend to these directories.
 
 **General Rule:** If the work involves brainstorming, design decisions, or implementation planning, it should go through the full branch workflow. If it's a quick fix or minor adjustment, check with the user about their preference.
 
