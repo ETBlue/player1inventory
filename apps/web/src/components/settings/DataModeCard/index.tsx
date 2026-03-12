@@ -1,4 +1,4 @@
-import { useClerk, useUser } from '@clerk/react'
+import { useUser } from '@clerk/react'
 import { Cloud, Database } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -38,14 +38,13 @@ function CloudModeCard({ onDisable }: { onDisable: () => void }) {
 }
 
 function CloudDisableFlow() {
-  const { signOut } = useClerk()
   const { data: familyGroupData } = useMyFamilyGroupQuery()
   const isInFamilyGroup = !!familyGroupData?.myFamilyGroup
   const [disableFlow, setDisableFlow] = useState<
     'idle' | 'familyWarn' | 'copy' | 'conflict'
   >('idle')
 
-  async function doDisable(
+  function doDisable(
     copyChoice: 'copy' | 'skip',
     conflictRes?: 'append' | 'replace',
   ) {
@@ -56,7 +55,7 @@ function CloudDisableFlow() {
         conflictRes,
       )
     }
-    await signOut()
+    // No sign-out: Clerk session stays alive so re-enabling sharing is seamless
     localStorage.setItem('data-mode', 'local')
     window.location.reload()
   }
@@ -102,7 +101,7 @@ function CloudDisableFlow() {
               Copy your cloud data to local storage?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Your cloud data will be copied to this device before signing out.
+              Your cloud data will be copied to this device.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

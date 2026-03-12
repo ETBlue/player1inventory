@@ -104,7 +104,9 @@ This pattern applies to every entity hook incrementally: `useItems`, `useTags`, 
 3. *"Copy your cloud data to local storage?"* **[Copy] [Start Fresh]**
 4. If [Copy] AND local already has data → *"Local storage already has items. How should we handle this?"* **[Append — keep both, duplicates may appear] [Replace — overwrite local data]**
 5. Perform copy accordingly
-6. `signOut()` → `localStorage.setItem('data-mode', 'local')` → full page reload
+6. `localStorage.setItem('data-mode', 'local')` → full page reload
+
+Note: **no sign-out**. The Clerk session stays alive in the browser. When the user re-enables sharing, Clerk auto-authenticates without showing the login form — mode switching feels like a lightweight preference toggle rather than a session lifecycle event.
 
 ### Conflict Resolution Strategy
 
