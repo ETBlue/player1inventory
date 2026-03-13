@@ -78,6 +78,72 @@
         "en": "English",
         "tw": "Traditional Chinese"
       }
+    },
+    "dataMode": {
+      "local": {
+        "title": "Offline Mode",
+        "description": "Data is stored on this device only. No internet connection needed. Cannot share with family members.",
+        "enableButton": "Switch..."
+      },
+      "cloud": {
+        "title": "Cloud Mode",
+        "signedInAs": "Signed in as {{email}}",
+        "disableButton": "Switch..."
+      },
+      "familyWarnDialog": {
+        "title": "You're in a family group",
+        "description": "Other family members may lose access to shared items or see outdated versions in the future. Do you want to continue?",
+        "continue": "Continue"
+      },
+      "copyDialog": {
+        "title": "Copy your cloud data to local storage?",
+        "description": "Your cloud data will be copied to this device.",
+        "startFresh": "Start Fresh",
+        "copy": "Copy"
+      },
+      "conflictDialog": {
+        "title": "Local storage already has items",
+        "description": "How should we handle your existing local data?",
+        "append": "Append — keep both (duplicates may appear)",
+        "replace": "Replace — overwrite local data"
+      },
+      "enableDialog": {
+        "title": "Switch to cloud mode?",
+        "description": "Once switched, your data will be stored in the cloud. You will be able to collaborate with family members, but signing in will be required.",
+        "enable": "Switch to cloud"
+      }
+    },
+    "familyGroup": {
+      "title": "Family group",
+      "titleWithName": "Family group · {{name}}",
+      "groupCode": "Group code: {{code}}",
+      "copyCode": "Copy",
+      "description": "Share your pantry with family members",
+      "createButton": "Create group",
+      "joinButton": "Join with code",
+      "disbandButton": "Disband group",
+      "leaveButton": "Leave group",
+      "createDialog": {
+        "title": "Create a family group",
+        "namePlaceholder": "Group name",
+        "create": "Create"
+      },
+      "joinDialog": {
+        "title": "Join a family group",
+        "description": "Enter the 6-character group code.",
+        "codePlaceholder": "ABC123",
+        "join": "Join"
+      },
+      "leaveDialog": {
+        "title": "Leave family group?",
+        "description": "You will no longer have access to the shared pantry.",
+        "leave": "Leave"
+      },
+      "disbandDialog": {
+        "title": "Disband family group?",
+        "description": "All members will lose access to the shared pantry. This cannot be undone.",
+        "disband": "Disband"
+      }
     }
   }
 }

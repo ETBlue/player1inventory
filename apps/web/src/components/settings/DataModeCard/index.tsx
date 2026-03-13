@@ -1,6 +1,7 @@
 import { useUser } from '@clerk/react'
 import { Cloud, Database } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,21 +20,22 @@ import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 
 function CloudModeCard({ onDisable }: { onDisable: () => void }) {
   const { user } = useUser()
+  const { t } = useTranslation()
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <Cloud className="h-5 w-5 text-foreground-muted" />
-        <div>
-          <p className="font-medium">Sharing enabled</p>
-          <p className="text-sm text-foreground-muted">
-            Signed in as {user?.primaryEmailAddress?.emailAddress}
-          </p>
-        </div>
+    <>
+      <Cloud className="h-5 w-5 text-foreground-muted " />
+      <div className="flex-1">
+        <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
+        <p className="text-sm text-foreground-muted">
+          {t('settings.dataMode.cloud.signedInAs', {
+            email: user?.primaryEmailAddress?.emailAddress,
+          })}
+        </p>
       </div>
       <Button variant="neutral-outline" onClick={onDisable}>
-        Disable sharing
+        {t('settings.dataMode.cloud.disableButton')}
       </Button>
-    </div>
+    </>
   )
 }
 
@@ -43,6 +45,7 @@ function CloudDisableFlow() {
   const [disableFlow, setDisableFlow] = useState<
     'idle' | 'familyWarn' | 'copy' | 'conflict'
   >('idle')
+  const { t } = useTranslation()
 
   function doDisable(
     copyChoice: 'copy' | 'skip',
@@ -75,16 +78,17 @@ function CloudDisableFlow() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>You're in a family group</AlertDialogTitle>
-            <AlertDialogDescription>
-              Other family members may lose access to shared items or see
-              outdated versions in the future. Do you want to continue?
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.dataMode.familyWarnDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.familyWarnDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => setDisableFlow('copy')}>
-              Continue
+              {t('settings.dataMode.familyWarnDialog.continue')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -98,18 +102,18 @@ function CloudDisableFlow() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Copy your cloud data to local storage?
+              {t('settings.dataMode.copyDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Your cloud data will be copied to this device.
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.copyDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => doDisable('skip')}>
-              Start Fresh
+              {t('settings.dataMode.copyDialog.startFresh')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => setDisableFlow('conflict')}>
-              Copy
+              {t('settings.dataMode.copyDialog.copy')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -122,17 +126,19 @@ function CloudDisableFlow() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Local storage already has items</AlertDialogTitle>
-            <AlertDialogDescription>
-              How should we handle your existing local data?
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.dataMode.conflictDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.conflictDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => doDisable('copy', 'append')}>
-              Append — keep both (duplicates may appear)
+              {t('settings.dataMode.conflictDialog.append')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => doDisable('copy', 'replace')}>
-              Replace — overwrite local data
+              {t('settings.dataMode.conflictDialog.replace')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -144,6 +150,7 @@ function CloudDisableFlow() {
 export function DataModeCard() {
   const { mode } = useDataMode()
   const [showEnableConfirm, setShowEnableConfirm] = useState(false)
+  const { t } = useTranslation()
 
   function handleEnableSharing() {
     setShowEnableConfirm(true)
@@ -157,22 +164,22 @@ export function DataModeCard() {
   return (
     <>
       <Card>
-        <CardContent className="px-3 py-3">
+        <CardContent className="px-3 flex items-center gap-3">
           {mode === 'local' && (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Database className="h-5 w-5 text-foreground-muted" />
-                <div>
-                  <p className="font-medium">Login-free mode</p>
-                  <p className="text-sm text-foreground-muted">
-                    Data stored on this device only
-                  </p>
-                </div>
+            <>
+              <Database className="h-5 w-5 text-foreground-muted" />
+              <div className="flex-1">
+                <p className="font-medium">
+                  {t('settings.dataMode.local.title')}
+                </p>
+                <p className="text-sm text-foreground-muted">
+                  {t('settings.dataMode.local.description')}
+                </p>
               </div>
               <Button variant="neutral-outline" onClick={handleEnableSharing}>
-                Enable sharing →
+                {t('settings.dataMode.local.enableButton')}
               </Button>
-            </div>
+            </>
           )}
           {mode === 'cloud' && <CloudDisableFlow />}
         </CardContent>
@@ -182,16 +189,17 @@ export function DataModeCard() {
       <AlertDialog open={showEnableConfirm} onOpenChange={setShowEnableConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Enable sharing?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sharing requires signing in. Once enabled, your data will be
-              stored in the cloud and a login will be required each session.
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.dataMode.enableDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.enableDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmEnableSharing}>
-              Enable
+              {t('settings.dataMode.enableDialog.enable')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,7 @@
 import { useUser } from '@clerk/react'
 import { Users } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +24,7 @@ import {
 
 export function FamilyGroupCard() {
   const { user } = useUser()
+  const { t } = useTranslation()
   const { data, refetch } = useMyFamilyGroupQuery()
   const [createGroup] = useCreateFamilyGroupMutation({
     onCompleted: () => refetch(),
@@ -76,70 +78,67 @@ export function FamilyGroupCard() {
 
   return (
     <Card>
-      <CardContent className="px-3 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-foreground-muted" />
-            <div>
-              <p className="font-medium">
-                {group ? `Family group · ${group.name}` : 'Family group'}
+      <CardContent className="px-3 space-y-2">
+        <div className="flex items-center gap-3">
+          <Users className="h-5 w-5 text-foreground-muted" />
+          <div className="flex-1">
+            <p className="font-medium">
+              {group
+                ? t('settings.familyGroup.titleWithName', {
+                    name: group.name,
+                  })
+                : t('settings.familyGroup.title')}
+            </p>
+            {group ? (
+              <div className="flex items-center gap-2 text-sm text-foreground-muted">
+                <span>
+                  {t('settings.familyGroup.groupCode', { code: group.code })}
+                </span>
+                <Button
+                  variant="neutral-ghost"
+                  size="sm"
+                  className="h-auto px-1 py-0 text-xs"
+                  onClick={copyCode}
+                >
+                  {t('settings.familyGroup.copyCode')}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground-muted">
+                {t('settings.familyGroup.description')}
               </p>
-              {group ? (
-                <div className="flex items-center gap-2 text-sm text-foreground-muted">
-                  <span>Group code: {group.code}</span>
-                  <Button
-                    variant="neutral-ghost"
-                    size="sm"
-                    className="h-auto px-1 py-0 text-xs"
-                    onClick={copyCode}
-                  >
-                    Copy
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-sm text-foreground-muted">
-                  Share your pantry with family members
-                </p>
-              )}
-            </div>
+            )}
           </div>
-          {!group && (
-            <div className="flex gap-2">
-              <Button
-                variant="neutral-outline"
-                size="sm"
-                onClick={() => setDialog('create')}
-              >
-                Create group
-              </Button>
-              <Button
-                variant="neutral-outline"
-                size="sm"
-                onClick={() => setDialog('join')}
-              >
-                Join with code
-              </Button>
-            </div>
-          )}
           {group && isOwner && (
             <Button
               variant="neutral-outline"
-              size="sm"
               onClick={() => setDialog('disband')}
             >
-              Disband group
+              {t('settings.familyGroup.disbandButton')}
             </Button>
           )}
           {group && !isOwner && (
             <Button
               variant="neutral-outline"
-              size="sm"
               onClick={() => setDialog('leave')}
             >
-              Leave group
+              {t('settings.familyGroup.leaveButton')}
             </Button>
           )}
         </div>
+        {!group && (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="neutral-outline"
+              onClick={() => setDialog('create')}
+            >
+              {t('settings.familyGroup.createButton')}
+            </Button>
+            <Button variant="neutral-outline" onClick={() => setDialog('join')}>
+              {t('settings.familyGroup.joinButton')}
+            </Button>
+          </div>
+        )}
       </CardContent>
 
       {/* Create group dialog */}
@@ -149,20 +148,21 @@ export function FamilyGroupCard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Create a family group</AlertDialogTitle>
-            <AlertDialogDescription>
-              Choose a name for your group.
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.familyGroup.createDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <input
             className="w-full rounded border px-3 py-2 text-sm"
-            placeholder="Group name"
+            placeholder={t('settings.familyGroup.createDialog.namePlaceholder')}
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
           />
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCreate}>Create</AlertDialogAction>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCreate}>
+              {t('settings.familyGroup.createDialog.create')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -174,21 +174,25 @@ export function FamilyGroupCard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Join a family group</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter the 6-character group code.
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.familyGroup.joinDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.familyGroup.joinDialog.description')}
+          </AlertDialogDescription>
           <input
             className="w-full rounded border px-3 py-2 text-sm uppercase"
-            placeholder="ABC123"
+            placeholder={t('settings.familyGroup.joinDialog.codePlaceholder')}
             maxLength={6}
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value)}
           />
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleJoin}>Join</AlertDialogAction>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleJoin}>
+              {t('settings.familyGroup.joinDialog.join')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -200,14 +204,18 @@ export function FamilyGroupCard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Leave family group?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You will no longer have access to the shared pantry.
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.familyGroup.leaveDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.familyGroup.leaveDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleLeave}>Leave</AlertDialogAction>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLeave}>
+              {t('settings.familyGroup.leaveDialog.leave')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -219,16 +227,17 @@ export function FamilyGroupCard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disband family group?</AlertDialogTitle>
-            <AlertDialogDescription>
-              All members will lose access to the shared pantry. This cannot be
-              undone.
-            </AlertDialogDescription>
+            <AlertDialogTitle>
+              {t('settings.familyGroup.disbandDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.familyGroup.disbandDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDisband}>
-              Disband
+              {t('settings.familyGroup.disbandDialog.disband')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,10 +1,54 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRouter,
+  getRouterContext,
+} from '@tanstack/react-router'
+import type { ReactNode } from 'react'
+import { useState } from 'react'
+import { routeTree } from '@/routeTree.gen'
 import type { Vendor } from '@/types'
 import { VendorCard } from '.'
+
+// VendorCard uses <Link> from @tanstack/react-router, which needs RouterContext.
+// We provide the context directly via getRouterContext() so we can render the
+// card without running a full route (avoids Dexie/QueryClient side-effects).
+const RouterCtx = getRouterContext()
+
+function WithRouter({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  )
+  const [router] = useState(() =>
+    createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+      context: { queryClient },
+    }),
+  )
+  return (
+    <QueryClientProvider client={queryClient}>
+      {/* Provide RouterContext so <Link> can compute hrefs without rendering routes */}
+      <RouterCtx.Provider
+        value={router as Parameters<typeof RouterCtx.Provider>[0]['value']}
+      >
+        {children}
+      </RouterCtx.Provider>
+    </QueryClientProvider>
+  )
+}
 
 const meta: Meta<typeof VendorCard> = {
   title: 'Components/VendorCard',
   component: VendorCard,
+  decorators: [
+    (Story) => (
+      <WithRouter>
+        <Story />
+      </WithRouter>
+    ),
+  ],
 }
 
 export default meta

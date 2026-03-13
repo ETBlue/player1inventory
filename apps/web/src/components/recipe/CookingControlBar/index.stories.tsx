@@ -1,3 +1,5 @@
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -6,6 +8,12 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { routeTree } from '@/routeTree.gen'
+
+// No-op Apollo client — satisfies ApolloContext for skip:true hooks in the cooking route.
+const noopApolloClient = new ApolloClient({
+  link: new ApolloLink(() => null),
+  cache: new InMemoryCache(),
+})
 
 const meta = {
   title: 'Recipe/CookingControlBar',
@@ -27,9 +35,11 @@ function ControlBarStory({ initialUrl = '/cooking' }: { initialUrl?: string }) {
     context: { queryClient },
   })
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 

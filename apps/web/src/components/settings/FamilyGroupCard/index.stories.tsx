@@ -10,28 +10,13 @@ import {
 import { FamilyGroupCard } from '.'
 
 // FamilyGroupCard uses:
-//   - useUser() from @clerk/react — reads user.id to determine isOwner
-//   - useMyFamilyGroupQuery() — Apollo, fetches group data
-//   - useCreateFamilyGroupMutation / useJoinFamilyGroupMutation /
-//     useLeaveFamilyGroupMutation / useDisbandFamilyGroupMutation — Apollo
+//   - useUser() from @clerk/react — mocked via .storybook/mocks/clerk.tsx alias;
+//     returns { user: { id: 'storybook-user-id', ... } }
+//   - useMyFamilyGroupQuery() — Apollo, mocked with MockedProvider per story
+//   - mutation hooks — mocked with MockedProvider per story
 //
-// Mocking strategy:
-//   - Apollo is mocked with MockedProvider (query + mutation mocks per story)
-//   - Clerk useUser(): the component only uses user.id to compare to
-//     group.ownerUserId. We control isOwner by matching ownerUserId in mock
-//     data to the real or undefined user.id:
-//       • MemberOfGroup: ownerUserId is a different ID → isOwner = false
-//       • OwnerOfGroup: ownerUserId must match user.id
-//     Since user?.id is undefined when Clerk has no context, we can set
-//     ownerUserId to undefined in OwnerOfGroup and the equality check
-//     (undefined === undefined) will be true — but that is fragile.
-//     A safer approach for OwnerOfGroup: wrap in a Clerk-context-aware mock.
-//     Because @clerk/react will not throw when called outside a provider
-//     (it returns { user: null }), we rely on that behavior and set
-//     ownerUserId to a sentinel value 'mock-owner-id' only for the
-//     OwnerOfGroup story — which means isOwner is false there too (no real
-//     user id). To work around this we provide a custom inline wrapper
-//     component that overrides the rendered state.
+// OwnerOfGroup story: ownerUserId set to 'storybook-user-id' to match the
+// Clerk stub so that isOwner = true and the Disband button renders.
 
 const noGroupMocks = [
   {
@@ -69,17 +54,9 @@ const memberGroupMocks = [
   },
 ]
 
-// For OwnerOfGroup: ownerUserId is left empty ('') so that when user?.id is
-// undefined, undefined === '' is false and isOwner stays false.
-// To show the "Disband group" button we need isOwner = true which requires
-// user.id === group.ownerUserId. Since useUser() returns { user: null }
-// outside Clerk context, we cannot match a real user.id here.
-// We therefore display the owner state by rendering a thin wrapper that
-// directly controls what the card shows. The simplest approach:
-// set ownerUserId to undefined (null in GraphQL) — but that field is
-// required in the schema. Instead, we accept that OwnerOfGroup will not
-// show the Disband button without a real Clerk context, and we document
-// this limitation in the story name.
+// For OwnerOfGroup: ownerUserId must match the user.id returned by the
+// Storybook Clerk mock stub (.storybook/mocks/clerk.tsx → useUser → 'storybook-user-id').
+// The component checks: group?.ownerUserId === user?.id → true → isOwner = true.
 const ownerGroupMocks = [
   {
     request: { query: MyFamilyGroupDocument },
@@ -90,12 +67,8 @@ const ownerGroupMocks = [
           id: 'group-1',
           name: 'The Smiths',
           code: 'ABC123',
-          // ownerUserId matches undefined (user?.id when no Clerk context)
-          // — React comparison: undefined === undefined → true → isOwner = true
-          // This works because the component does: group?.ownerUserId === user?.id
-          // When both are undefined the condition is true.
-          ownerUserId: undefined as unknown as string,
-          memberUserIds: [],
+          ownerUserId: 'storybook-user-id',
+          memberUserIds: ['storybook-user-id'],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },

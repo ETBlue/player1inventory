@@ -1,3 +1,5 @@
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -9,6 +11,13 @@ import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+
+// No-op Apollo client for local mode — satisfies Apollo context requirement
+// for hooks called with skip:true inside routes rendered by the cooking page.
+const noopApolloClient = new ApolloClient({
+  link: new ApolloLink(() => null),
+  cache: new InMemoryCache(),
+})
 
 const meta = {
   title: 'Routes/Cooking',
@@ -54,9 +63,11 @@ function CookingStory({
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 
