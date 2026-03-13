@@ -695,7 +695,7 @@ Every time the agent commits — whether triggered by "commit my changes", at th
 
 **Grouping algorithm:**
 
-1. Run `git diff HEAD` (or `git diff` for unstaged) to survey all changes
+1. Run `git diff HEAD` to survey all pending changes (staged and unstaged combined)
 2. Identify distinct logical concerns — each purpose becomes one commit:
    - Bug fix → one commit
    - New feature (code + its tests + its stories) → one commit
@@ -707,6 +707,8 @@ Every time the agent commits — whether triggered by "commit my changes", at th
 **When uncertain:** lean toward more commits rather than fewer. A commit that does one thing is always better than one that does several.
 
 **Large refactors:** size alone is not a reason to split. A refactor touching 30 files for one purpose is still one commit.
+
+**Mid-task atomicity:** Do not apply this rule within a TDD red/green cycle — those commits are intentionally atomic and should not be split.
 
 ### Human Code Changes
 
