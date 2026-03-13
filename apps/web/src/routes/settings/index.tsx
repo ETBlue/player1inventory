@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   ChevronRight,
   CookingPot,
+  Download,
   Globe,
   Moon,
   Store,
@@ -24,6 +25,7 @@ import {
 import { useDataMode } from '@/hooks/useDataMode'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useTheme } from '@/hooks/useTheme'
+import { exportAllData } from '@/lib/exportData'
 import type { LanguagePreference } from '@/lib/language'
 
 export const Route = createFileRoute('/settings/')({
@@ -138,6 +140,24 @@ function Settings() {
 
         {/* Family Group Card — cloud mode only */}
         {mode === 'cloud' && <FamilyGroupCard />}
+
+        {/* Export Card — local mode only */}
+        {mode === 'local' && (
+          <Card>
+            <CardContent className="px-3 flex items-center gap-3">
+              <Download className="h-5 w-5 text-foreground-muted" />
+              <div className="flex-1">
+                <p className="font-medium">Download my data</p>
+                <p className="text-sm text-foreground-muted">
+                  Export all local data as a JSON backup
+                </p>
+              </div>
+              <Button variant="neutral-outline" onClick={exportAllData}>
+                Download
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tags Card */}
         <Link to="/settings/tags" className="block">
