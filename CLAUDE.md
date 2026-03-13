@@ -714,7 +714,7 @@ Every time the agent commits — whether triggered by "commit my changes", at th
 
 When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
 
-1. Run `git diff` to review exactly what changed
+1. Run `git diff HEAD` to review exactly what changed (staged and unstaged combined)
 2. For each modified component or behavior: check if tests exist and are up to date — add or update tests as needed
 3. For each modified component: check if Storybook stories exist and are up to date — add or update stories as needed
 4. Update `CLAUDE.md` and inline comments if architecture or patterns changed
@@ -940,6 +940,8 @@ Always include scope in commit messages:
 - `feat(cart): add checkout confirmation`
 - `fix(tags): prevent duplicate tag names`
 - `docs(readme): update setup instructions`
+
+Apply the **Commit Splitting** rule — one commit per logical concern. See `### Commit Splitting` above.
 
 ### Pull Requests
 
