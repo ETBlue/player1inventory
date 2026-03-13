@@ -689,6 +689,25 @@ Run `git status` to confirm the working tree is clean. If any uncommitted change
 
 See also: **Before Finishing a Branch** (in the Workflow section below) for branch-level wrap-up steps.
 
+### Commit Splitting
+
+Every time the agent commits — whether triggered by "commit my changes", at the end of a task, or any other moment — split the diff into logical groups and make **one commit per group**.
+
+**Grouping algorithm:**
+
+1. Run `git diff HEAD` (or `git diff` for unstaged) to survey all changes
+2. Identify distinct logical concerns — each purpose becomes one commit:
+   - Bug fix → one commit
+   - New feature (code + its tests + its stories) → one commit
+   - Config or docs update → one commit
+   - Refactor → one commit
+3. Tests and stories for a feature travel in the **same commit** as the feature code — do not split by file type or layer
+4. **Best-effort when inseparable:** if changes genuinely span concerns (e.g. a refactor that also fixes an incidental bug in a touched file), combine them into one commit whose message explains the mix — e.g. `refactor(items): extract helper — also fixes off-by-one in quantity calc`
+
+**When uncertain:** lean toward more commits rather than fewer. A commit that does one thing is always better than one that does several.
+
+**Large refactors:** size alone is not a reason to split. A refactor touching 30 files for one purpose is still one commit.
+
 ### Human Code Changes
 
 When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
