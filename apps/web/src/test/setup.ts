@@ -15,6 +15,28 @@ vi.mock('@/generated/graphql', () => ({
     vi.fn().mockResolvedValue({ data: undefined }),
     {},
   ],
+  useMyFamilyGroupQuery: () => ({
+    data: undefined,
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
+  useCreateFamilyGroupMutation: () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ],
+  useJoinFamilyGroupMutation: () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ],
+  useLeaveFamilyGroupMutation: () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ],
+  useDisbandFamilyGroupMutation: () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ],
 }))
 
 // Mock ResizeObserver for Radix UI components
