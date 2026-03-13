@@ -941,7 +941,7 @@ Always include scope in commit messages:
 - `fix(tags): prevent duplicate tag names`
 - `docs(readme): update setup instructions`
 
-Apply the **Commit Splitting** rule — one commit per logical concern. See `### Commit Splitting` above.
+Apply the **Commit Splitting** rule — one commit per logical concern. See `### Commit Splitting` (in AI Agent SOP, above).
 
 ### Pull Requests
 
