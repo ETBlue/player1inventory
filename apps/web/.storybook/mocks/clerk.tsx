@@ -1,5 +1,6 @@
 // Stub for @clerk/react used in Storybook only.
 // Prevents "Missing ClerkProvider" errors for components that call useUser/useAuth.
+// Add exports here as new Clerk APIs are used in the app.
 import type { ReactNode } from 'react'
 
 export function useUser() {
@@ -27,4 +28,8 @@ export function useClerk() {
 
 export function ClerkProvider({ children }: { children: ReactNode }) {
   return <>{children}</>
+}
+
+export function SignIn() {
+  return <div data-testid="clerk-sign-in-stub" />
 }

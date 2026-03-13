@@ -1,5 +1,8 @@
+import { fileURLToPath } from 'url'
 import path from 'path'
 import type { StorybookConfig } from '@storybook/react-vite'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const config: StorybookConfig = {
   stories: [
