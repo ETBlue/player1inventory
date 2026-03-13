@@ -49,8 +49,8 @@ function Settings() {
       <div className="space-y-px">
         {/* Theme Control Card */}
         <Card>
-          <CardContent className="px-3 py-1">
-            <div className="flex items-center gap-3 mb-3">
+          <CardContent className="px-3 pb-1 space-y-2">
+            <div className="flex items-center gap-3">
               {theme === 'dark' ? (
                 <Moon className="h-5 w-5 text-foreground-muted" />
               ) : (
@@ -94,8 +94,8 @@ function Settings() {
 
         {/* Language Control Card */}
         <Card>
-          <CardContent className="px-3 py-1">
-            <div className="flex items-center gap-3 mb-3">
+          <CardContent className="px-3 pb-1 space-y-2">
+            <div className="flex items-center gap-3">
               <Globe className="h-5 w-5 text-foreground-muted" />
               <div>
                 <p className="font-medium">{t('settings.language.label')}</p>

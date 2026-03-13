@@ -22,22 +22,20 @@ function CloudModeCard({ onDisable }: { onDisable: () => void }) {
   const { user } = useUser()
   const { t } = useTranslation()
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <Cloud className="h-5 w-5 text-foreground-muted" />
-        <div>
-          <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
-          <p className="text-sm text-foreground-muted">
-            {t('settings.dataMode.cloud.signedInAs', {
-              email: user?.primaryEmailAddress?.emailAddress,
-            })}
-          </p>
-        </div>
+    <>
+      <Cloud className="h-5 w-5 text-foreground-muted " />
+      <div className="flex-1">
+        <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
+        <p className="text-sm text-foreground-muted">
+          {t('settings.dataMode.cloud.signedInAs', {
+            email: user?.primaryEmailAddress?.emailAddress,
+          })}
+        </p>
       </div>
       <Button variant="neutral-outline" onClick={onDisable}>
         {t('settings.dataMode.cloud.disableButton')}
       </Button>
-    </div>
+    </>
   )
 }
 
@@ -83,10 +81,10 @@ function CloudDisableFlow() {
             <AlertDialogTitle>
               {t('settings.dataMode.familyWarnDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dataMode.familyWarnDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.familyWarnDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={() => setDisableFlow('copy')}>
@@ -106,10 +104,10 @@ function CloudDisableFlow() {
             <AlertDialogTitle>
               {t('settings.dataMode.copyDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dataMode.copyDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.copyDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => doDisable('skip')}>
               {t('settings.dataMode.copyDialog.startFresh')}
@@ -131,10 +129,10 @@ function CloudDisableFlow() {
             <AlertDialogTitle>
               {t('settings.dataMode.conflictDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dataMode.conflictDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.conflictDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => doDisable('copy', 'append')}>
               {t('settings.dataMode.conflictDialog.append')}
@@ -166,24 +164,22 @@ export function DataModeCard() {
   return (
     <>
       <Card>
-        <CardContent className="px-3 py-3">
+        <CardContent className="px-3 flex items-center gap-3">
           {mode === 'local' && (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Database className="h-5 w-5 text-foreground-muted" />
-                <div>
-                  <p className="font-medium">
-                    {t('settings.dataMode.local.title')}
-                  </p>
-                  <p className="text-sm text-foreground-muted">
-                    {t('settings.dataMode.local.description')}
-                  </p>
-                </div>
+            <>
+              <Database className="h-5 w-5 text-foreground-muted" />
+              <div className="flex-1">
+                <p className="font-medium">
+                  {t('settings.dataMode.local.title')}
+                </p>
+                <p className="text-sm text-foreground-muted">
+                  {t('settings.dataMode.local.description')}
+                </p>
               </div>
               <Button variant="neutral-outline" onClick={handleEnableSharing}>
                 {t('settings.dataMode.local.enableButton')}
               </Button>
-            </div>
+            </>
           )}
           {mode === 'cloud' && <CloudDisableFlow />}
         </CardContent>
@@ -196,10 +192,10 @@ export function DataModeCard() {
             <AlertDialogTitle>
               {t('settings.dataMode.enableDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dataMode.enableDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.enableDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmEnableSharing}>

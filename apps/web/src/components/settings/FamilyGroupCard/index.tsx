@@ -78,61 +78,40 @@ export function FamilyGroupCard() {
 
   return (
     <Card>
-      <CardContent className="px-3 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-foreground-muted" />
-            <div>
-              <p className="font-medium">
-                {group
-                  ? t('settings.familyGroup.titleWithName', {
-                      name: group.name,
-                    })
-                  : t('settings.familyGroup.title')}
+      <CardContent className="px-3 space-y-2">
+        <div className="flex items-center gap-3">
+          <Users className="h-5 w-5 text-foreground-muted" />
+          <div className="flex-1">
+            <p className="font-medium">
+              {group
+                ? t('settings.familyGroup.titleWithName', {
+                    name: group.name,
+                  })
+                : t('settings.familyGroup.title')}
+            </p>
+            {group ? (
+              <div className="flex items-center gap-2 text-sm text-foreground-muted">
+                <span>
+                  {t('settings.familyGroup.groupCode', { code: group.code })}
+                </span>
+                <Button
+                  variant="neutral-ghost"
+                  size="sm"
+                  className="h-auto px-1 py-0 text-xs"
+                  onClick={copyCode}
+                >
+                  {t('settings.familyGroup.copyCode')}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground-muted">
+                {t('settings.familyGroup.description')}
               </p>
-              {group ? (
-                <div className="flex items-center gap-2 text-sm text-foreground-muted">
-                  <span>
-                    {t('settings.familyGroup.groupCode', { code: group.code })}
-                  </span>
-                  <Button
-                    variant="neutral-ghost"
-                    size="sm"
-                    className="h-auto px-1 py-0 text-xs"
-                    onClick={copyCode}
-                  >
-                    {t('settings.familyGroup.copyCode')}
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-sm text-foreground-muted">
-                  {t('settings.familyGroup.description')}
-                </p>
-              )}
-            </div>
+            )}
           </div>
-          {!group && (
-            <div className="flex gap-2">
-              <Button
-                variant="neutral-outline"
-                size="sm"
-                onClick={() => setDialog('create')}
-              >
-                {t('settings.familyGroup.createButton')}
-              </Button>
-              <Button
-                variant="neutral-outline"
-                size="sm"
-                onClick={() => setDialog('join')}
-              >
-                {t('settings.familyGroup.joinButton')}
-              </Button>
-            </div>
-          )}
           {group && isOwner && (
             <Button
               variant="neutral-outline"
-              size="sm"
               onClick={() => setDialog('disband')}
             >
               {t('settings.familyGroup.disbandButton')}
@@ -141,13 +120,25 @@ export function FamilyGroupCard() {
           {group && !isOwner && (
             <Button
               variant="neutral-outline"
-              size="sm"
               onClick={() => setDialog('leave')}
             >
               {t('settings.familyGroup.leaveButton')}
             </Button>
           )}
         </div>
+        {!group && (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="neutral-outline"
+              onClick={() => setDialog('create')}
+            >
+              {t('settings.familyGroup.createButton')}
+            </Button>
+            <Button variant="neutral-outline" onClick={() => setDialog('join')}>
+              {t('settings.familyGroup.joinButton')}
+            </Button>
+          </div>
+        )}
       </CardContent>
 
       {/* Create group dialog */}
@@ -160,9 +151,6 @@ export function FamilyGroupCard() {
             <AlertDialogTitle>
               {t('settings.familyGroup.createDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.familyGroup.createDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
           <input
             className="w-full rounded border px-3 py-2 text-sm"
@@ -189,10 +177,10 @@ export function FamilyGroupCard() {
             <AlertDialogTitle>
               {t('settings.familyGroup.joinDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.familyGroup.joinDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.familyGroup.joinDialog.description')}
+          </AlertDialogDescription>
           <input
             className="w-full rounded border px-3 py-2 text-sm uppercase"
             placeholder={t('settings.familyGroup.joinDialog.codePlaceholder')}
@@ -219,10 +207,10 @@ export function FamilyGroupCard() {
             <AlertDialogTitle>
               {t('settings.familyGroup.leaveDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.familyGroup.leaveDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.familyGroup.leaveDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleLeave}>
@@ -242,10 +230,10 @@ export function FamilyGroupCard() {
             <AlertDialogTitle>
               {t('settings.familyGroup.disbandDialog.title')}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.familyGroup.disbandDialog.description')}
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.familyGroup.disbandDialog.description')}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDisband}>
