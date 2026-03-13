@@ -145,7 +145,7 @@
     },
     "export": {
       "label": "下載我的資料",
-      "description": "將本機所有資料匯出為 JSON 備份檔",
+      "description": "將本機資料匯出為 JSON 格式的檔案，以供備份",
       "button": "下載"
     }
   }
