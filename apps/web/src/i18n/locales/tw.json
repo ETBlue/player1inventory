@@ -142,6 +142,11 @@
         "description": "所有成員將無法再存取共享的庫存清單，此操作無法復原。",
         "disband": "解散"
       }
+    },
+    "export": {
+      "label": "下載我的資料",
+      "description": "將本機資料匯出為 JSON 格式的檔案，以供備份",
+      "button": "下載"
     }
   }
 }

@@ -1,0 +1,7 @@
+type ImportResult {
+  itemCount: Int!
+}
+
+extend type Mutation {
+  importData(payload: String!): ImportResult!
+}

@@ -14,6 +14,7 @@
     "test:e2e": "pnpm --filter web test:e2e",
     "test:e2e:ui": "pnpm --filter web test:e2e:ui",
     "test:e2e:debug": "pnpm --filter web test:e2e:debug",
+    "typecheck": "pnpm --filter web typecheck",
     "test:all": "pnpm -r test",
     "lint": "pnpm --filter web lint",
     "format": "pnpm --filter web format",
