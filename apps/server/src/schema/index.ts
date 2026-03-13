@@ -8,4 +8,4 @@ function load(filename: string): string {
   return readFileSync(join(__dirname, filename), 'utf-8')
 }
 
-export const typeDefs = [load('schema.graphql'), load('item.graphql'), load('familyGroup.graphql')]
+export const typeDefs = [load('schema.graphql'), load('item.graphql'), load('familyGroup.graphql'), load('import.graphql')]
