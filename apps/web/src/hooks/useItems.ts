@@ -9,10 +9,27 @@ import {
   getLastPurchaseDate,
   updateItem,
 } from '@/db/operations'
-import { useCreateItemMutation, useGetItemsQuery } from '@/generated/graphql'
+import type { UpdateItemInput } from '@/generated/graphql'
+import {
+  GetItemsDocument,
+  useCreateItemMutation,
+  useDeleteItemMutation,
+  useGetItemsQuery,
+  useUpdateItemMutation,
+} from '@/generated/graphql'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 import { useDataMode } from './useDataMode'
+
+// Map frontend Item partial to the GraphQL UpdateItemInput shape.
+// Strips non-updatable fields and converts dueDate from Date to ISO string.
+function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
+  const { id: _id, createdAt: _c, updatedAt: _u, dueDate, ...rest } = updates
+  return {
+    ...rest,
+    dueDate: dueDate instanceof Date ? dueDate.toISOString() : undefined,
+  }
+}
 
 export function useItems() {
   const { mode } = useDataMode()
@@ -106,8 +123,9 @@ export function useCreateItem() {
 
 export function useUpdateItem() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
       updateItem(id, updates),
     onSuccess: (_, { id }) => {
@@ -115,18 +133,52 @@ export function useUpdateItem() {
       queryClient.invalidateQueries({ queryKey: ['items', id] })
     },
   })
+
+  const [cloudUpdate] = useUpdateItemMutation({
+    refetchQueries: [{ query: GetItemsDocument }],
+  })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
+        cloudUpdate({ variables: { id, input: toUpdateItemInput(updates) } }),
+      mutateAsync: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
+        cloudUpdate({
+          variables: { id, input: toUpdateItemInput(updates) },
+        }).then((r) => r.data?.updateItem),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useDeleteItem() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: deleteItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] }) // cascade invalidation
     },
   })
+
+  const [cloudDelete] = useDeleteItemMutation({
+    refetchQueries: [{ query: GetItemsDocument }],
+  })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutateAsync: (id: string) =>
+        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteItem),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useInventoryLogCountByItem(itemId: string) {
