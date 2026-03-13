@@ -43,8 +43,8 @@ describe('DataModeCard', () => {
     // When DataModeCard is rendered
     render(<DataModeCard />)
 
-    // Then "Login-free mode" text is shown
-    expect(screen.getByText('Login-free mode')).toBeInTheDocument()
+    // Then "Local" text is shown
+    expect(screen.getByText('Local')).toBeInTheDocument()
 
     // And "Enable sharing →" button is shown
     expect(
