@@ -1,0 +1,66 @@
+query GetItems {
+  items {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    userId
+    familyId
+    createdAt
+    updatedAt
+  }
+}
+
+mutation CreateItem($name: String!) {
+  createItem(name: $name) {
+    id
+    name
+    tagIds
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    createdAt
+    updatedAt
+  }
+}
+
+mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
+  updateItem(id: $id, input: $input) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    updatedAt
+  }
+}
+
+mutation DeleteItem($id: ID!) {
+  deleteItem(id: $id)
+}
