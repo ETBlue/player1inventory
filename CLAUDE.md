@@ -689,15 +689,36 @@ Run `git status` to confirm the working tree is clean. If any uncommitted change
 
 See also: **Before Finishing a Branch** (in the Workflow section below) for branch-level wrap-up steps.
 
+### Commit Splitting
+
+Every time the agent commits — whether triggered by "commit my changes", at the end of a task, or any other moment — split the diff into logical groups and make **one commit per group**.
+
+**Grouping algorithm:**
+
+1. Run `git diff HEAD` to survey all pending changes (staged and unstaged combined)
+2. Identify distinct logical concerns — each purpose becomes one commit:
+   - Bug fix → one commit
+   - New feature (code + its tests + its stories) → one commit
+   - Config or docs update → one commit
+   - Refactor → one commit
+3. Tests and stories for a feature travel in the **same commit** as the feature code — do not split by file type or layer
+4. **Best-effort when inseparable:** if changes genuinely span concerns (e.g. a refactor that also fixes an incidental bug in a touched file), combine them into one commit whose message explains the mix — e.g. `refactor(items): extract helper — also fixes off-by-one in quantity calc`
+
+**When uncertain:** lean toward more commits rather than fewer. A commit that does one thing is always better than one that does several.
+
+**Large refactors:** size alone is not a reason to split. A refactor touching 30 files for one purpose is still one commit.
+
+**Mid-task atomicity:** Do not apply this rule within a TDD red/green cycle — those commits are intentionally atomic and should not be split.
+
 ### Human Code Changes
 
 When the user asks the AI agent to commit code they wrote manually (e.g. "commit my changes", "commit this"):
 
-1. Run `git diff` to review exactly what changed
+1. Run `git diff HEAD` to review exactly what changed (staged and unstaged combined)
 2. For each modified component or behavior: check if tests exist and are up to date — add or update tests as needed
 3. For each modified component: check if Storybook stories exist and are up to date — add or update stories as needed
 4. Update `CLAUDE.md` and inline comments if architecture or patterns changed
-5. Only then commit — include test/story/doc updates **in the same commit** as the human's code
+5. Apply the **Commit Splitting** rule — survey all staged changes and split into one commit per logical concern. Tests and stories for a feature go in the same commit as the feature code.
 
 Human code changes receive the same completeness audit as agent-authored changes. There is no "just commit it" shortcut.
 
@@ -919,6 +940,8 @@ Always include scope in commit messages:
 - `feat(cart): add checkout confirmation`
 - `fix(tags): prevent duplicate tag names`
 - `docs(readme): update setup instructions`
+
+Apply the **Commit Splitting** rule — one commit per logical concern. See `### Commit Splitting` (in AI Agent SOP, above).
 
 ### Pull Requests
 
