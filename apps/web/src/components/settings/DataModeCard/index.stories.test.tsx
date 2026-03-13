@@ -14,7 +14,7 @@ describe('DataModeCard stories smoke tests', () => {
 
     it('renders without error', () => {
       render(<LocalMode />)
-      expect(screen.getByText('Local')).toBeInTheDocument()
+      expect(screen.getByText('Offline Mode')).toBeInTheDocument()
     })
   })
 
@@ -24,7 +24,7 @@ describe('DataModeCard stories smoke tests', () => {
 
     it('renders without error', () => {
       render(<CloudMode />)
-      expect(screen.getByText('Sharing enabled')).toBeInTheDocument()
+      expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
     })
   })
 
@@ -34,7 +34,7 @@ describe('DataModeCard stories smoke tests', () => {
 
     it('renders without error', () => {
       render(<CloudModeInGroup />)
-      expect(screen.getByText('Sharing enabled')).toBeInTheDocument()
+      expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
     })
   })
 })

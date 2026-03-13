@@ -81,14 +81,14 @@
     },
     "dataMode": {
       "local": {
-        "title": "Local",
-        "description": "Data stored on this device only",
-        "enableButton": "Enable sharing →"
+        "title": "Offline Mode",
+        "description": "Data is stored on this device only. No internet connection needed. Cannot share with family members.",
+        "enableButton": "Switch..."
       },
       "cloud": {
-        "title": "Sharing enabled",
+        "title": "Cloud Mode",
         "signedInAs": "Signed in as {{email}}",
-        "disableButton": "Disable sharing"
+        "disableButton": "Switch..."
       },
       "familyWarnDialog": {
         "title": "You're in a family group",
@@ -108,9 +108,9 @@
         "replace": "Replace — overwrite local data"
       },
       "enableDialog": {
-        "title": "Enable sharing?",
-        "description": "Sharing requires signing in. Once enabled, your data will be stored in the cloud and a login will be required each session.",
-        "enable": "Enable"
+        "title": "Switch to cloud mode?",
+        "description": "Once switched, your data will be stored in the cloud. You will be able to collaborate with family members, but signing in will be required.",
+        "enable": "Switch to cloud"
       }
     },
     "familyGroup": {
@@ -125,7 +125,6 @@
       "leaveButton": "Leave group",
       "createDialog": {
         "title": "Create a family group",
-        "description": "Choose a name for your group.",
         "namePlaceholder": "Group name",
         "create": "Create"
       },

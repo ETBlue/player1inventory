@@ -43,18 +43,16 @@ describe('DataModeCard', () => {
     // When DataModeCard is rendered
     render(<DataModeCard />)
 
-    // Then "Local" text is shown
-    expect(screen.getByText('Local')).toBeInTheDocument()
+    // Then "Offline Mode" text is shown
+    expect(screen.getByText('Offline Mode')).toBeInTheDocument()
 
-    // And "Enable sharing →" button is shown
+    // And "Switch..." button is shown
     expect(
-      screen.getByRole('button', { name: 'Enable sharing →' }),
+      screen.getByRole('button', { name: 'Switch...' }),
     ).toBeInTheDocument()
 
-    // And "Disable sharing" button is NOT shown
-    expect(
-      screen.queryByRole('button', { name: /disable sharing/i }),
-    ).not.toBeInTheDocument()
+    // And cloud mode button is NOT shown (only one "Switch..." button exists)
+    expect(screen.getAllByRole('button', { name: 'Switch...' })).toHaveLength(1)
   })
 
   it('shows confirm dialog when user clicks Enable sharing', async () => {
@@ -62,13 +60,13 @@ describe('DataModeCard', () => {
     const user = userEvent.setup()
     render(<DataModeCard />)
 
-    // When user clicks "Enable sharing →"
-    await user.click(screen.getByRole('button', { name: 'Enable sharing →' }))
+    // When user clicks "Switch..."
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
 
-    // Then dialog with "Enable sharing?" title appears
+    // Then dialog with "Switch to cloud mode?" title appears
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: 'Enable sharing?' }),
+      screen.getByRole('heading', { name: 'Switch to cloud mode?' }),
     ).toBeInTheDocument()
   })
 
@@ -82,9 +80,9 @@ describe('DataModeCard', () => {
     })
     render(<DataModeCard />)
 
-    // When user clicks "Enable sharing →", then confirms with "Enable"
-    await user.click(screen.getByRole('button', { name: 'Enable sharing →' }))
-    await user.click(screen.getByRole('button', { name: /^enable$/i }))
+    // When user clicks "Switch...", then confirms with "Switch to cloud"
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
 
     // Then localStorage is set to 'cloud'
     expect(localStorage.getItem('data-mode')).toBe('cloud')
@@ -100,17 +98,12 @@ describe('DataModeCard', () => {
     // When DataModeCard is rendered
     render(<DataModeCard />)
 
-    // Then "Sharing enabled" text is shown
-    expect(screen.getByText('Sharing enabled')).toBeInTheDocument()
+    // Then "Cloud Mode" text is shown
+    expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
 
-    // And "Disable sharing" button is shown
+    // And "Switch..." button is shown
     expect(
-      screen.getByRole('button', { name: /disable sharing/i }),
+      screen.getByRole('button', { name: 'Switch...' }),
     ).toBeInTheDocument()
-
-    // And "Enable sharing →" button is NOT shown
-    expect(
-      screen.queryByRole('button', { name: 'Enable sharing →' }),
-    ).not.toBeInTheDocument()
   })
 })
