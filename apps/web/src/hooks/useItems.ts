@@ -9,14 +9,24 @@ import {
   getLastPurchaseDate,
   updateItem,
 } from '@/db/operations'
+import { useCreateItemMutation, useGetItemsQuery } from '@/generated/graphql'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
+import { useDataMode } from './useDataMode'
 
 export function useItems() {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['items'],
     queryFn: getAllItems,
+    enabled: !isCloud,
   })
+
+  const cloud = useGetItemsQuery({ skip: !isCloud })
+
+  return isCloud ? cloud : local
 }
 
 export function useItem(id: string) {
@@ -53,14 +63,31 @@ export function useLastPurchaseDate(itemId: string) {
 
 export function useCreateItem() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) =>
       createItem(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
     },
   })
+
+  const [cloudCreate] = useCreateItemMutation()
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (input: { name: string }) =>
+        cloudCreate({ variables: { name: input.name } }),
+      mutateAsync: (input: { name: string }) =>
+        cloudCreate({ variables: { name: input.name } }).then(
+          (r) => r.data?.createItem,
+        ),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useUpdateItem() {

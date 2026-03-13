@@ -12,9 +12,19 @@ const config: CodegenConfig = {
     },
     'apps/web/src/generated/graphql.ts': {
       documents: 'apps/web/src/apollo/operations/*.graphql',
-      plugins: ['typescript', 'typescript-operations', 'typescript-react-apollo'],
+      plugins: [
+        { add: { content: '/* eslint-disable */\n// @ts-nocheck' } },
+        'typescript',
+        'typescript-operations',
+        'typescript-react-apollo',
+      ],
       config: {
         withHooks: true,
+        apolloReactHooksImportFrom: '@apollo/client/react',
+        apolloReactCommonImportFrom: '@apollo/client/react',
+        withResultType: false,
+        withMutationOptionsType: false,
+        withMutationFn: false,
       },
     },
   },
