@@ -144,6 +144,11 @@
         "description": "All members will lose access to the shared pantry. This cannot be undone.",
         "disband": "Disband"
       }
+    },
+    "export": {
+      "label": "Download my data",
+      "description": "Export all local data as a JSON backup",
+      "button": "Download"
     }
   }
 }

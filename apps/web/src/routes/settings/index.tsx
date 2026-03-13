@@ -147,13 +147,13 @@ function Settings() {
             <CardContent className="px-3 flex items-center gap-3">
               <Download className="h-5 w-5 text-foreground-muted" />
               <div className="flex-1">
-                <p className="font-medium">Download my data</p>
+                <p className="font-medium">{t('settings.export.label')}</p>
                 <p className="text-sm text-foreground-muted">
-                  Export all local data as a JSON backup
+                  {t('settings.export.description')}
                 </p>
               </div>
               <Button variant="neutral-outline" onClick={exportAllData}>
-                Download
+                {t('settings.export.button')}
               </Button>
             </CardContent>
           </Card>
