@@ -63,6 +63,8 @@ function VendorsTab() {
           return (
             <Badge
               key={vendor.id}
+              role="button"
+              aria-pressed={isAssigned}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
               className="cursor-pointer normal-case"
               onClick={() => toggleVendor(vendor.id)}

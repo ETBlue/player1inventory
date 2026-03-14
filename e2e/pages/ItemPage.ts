@@ -56,8 +56,13 @@ export class ItemPage {
   async delete() {
     // Trigger the delete confirmation dialog
     await this.page.getByRole('button', { name: /delete/i }).click()
-    // Confirm inside the alertdialog (scoped to avoid matching other delete buttons)
-    await this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click()
+    // Confirm inside the alertdialog (scoped to avoid matching other delete buttons).
+    // Wait for navigation away from /items/... — this confirms onSuccess fired and the
+    // TanStack Query cache was invalidated before the caller checks the pantry list.
+    await Promise.all([
+      this.page.waitForURL((url) => !url.pathname.startsWith('/items/'), { timeout: 10000 }),
+      this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click(),
+    ])
   }
 
   async createAndAssignTag(name: string) {
@@ -70,8 +75,9 @@ export class ItemPage {
     // AddNameDialog label is "Name" (src/components/AddNameDialog/index.tsx:41)
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
     await this.page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
-    // Tag is created but NOT yet assigned — click the badge to assign it
-    await this.page.getByRole('main').getByText(name, { exact: false }).click()
+    // Tag is created but NOT yet assigned — click the unassigned badge to assign it.
+    // Use .first() since same-named seeded tags may also appear as unassigned.
+    await this.page.getByRole('button', { name, pressed: false }).first().click()
   }
 
   getPackedQuantityInput(): Locator {
