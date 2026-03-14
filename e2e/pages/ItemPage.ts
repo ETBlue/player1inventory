@@ -56,8 +56,13 @@ export class ItemPage {
   async delete() {
     // Trigger the delete confirmation dialog
     await this.page.getByRole('button', { name: /delete/i }).click()
-    // Confirm inside the alertdialog (scoped to avoid matching other delete buttons)
-    await this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click()
+    // Confirm inside the alertdialog (scoped to avoid matching other delete buttons).
+    // Wait for navigation away from /items/... — this confirms onSuccess fired and the
+    // TanStack Query cache was invalidated before the caller checks the pantry list.
+    await Promise.all([
+      this.page.waitForURL((url) => !url.pathname.startsWith('/items/'), { timeout: 10000 }),
+      this.page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click(),
+    ])
   }
 
   async createAndAssignTag(name: string) {
