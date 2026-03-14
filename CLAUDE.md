@@ -612,7 +612,7 @@ it('user can create an item', async () => {
 
 ### E2E Test Format
 
-E2E tests use Playwright. Test files live in `e2e/tests/`, page objects in `e2e/pages/`.
+E2E tests use Playwright. The `e2e/` directory lives at the **monorepo root** (not inside `apps/web/`) because e2e tests cover the full stack. Test files live in `e2e/tests/`, page objects in `e2e/pages/`, config at `e2e/playwright.config.ts`.
 
 **Page objects** — one class per page, encapsulating selectors and actions. Include a comment on each method citing the aria-label string and source file location:
 
@@ -636,7 +636,7 @@ export class CookingPage {
 1. **UI-driven** (default): Navigate through the app to create test data. Use for simple setup (1–5 steps).
 2. **`page.evaluate()` seeding**: Seed IndexedDB directly for complex multi-entity setup. Navigate to `/` first so Dexie initialises the schema, then open `indexedDB.open('Player1Inventory')` and use `readwrite` transactions. Use when UI setup would require 10+ steps (e.g. creating items + linking them to a recipe).
 
-**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
+**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
 
 **Test naming** — same "user can ..." convention with Given-When-Then comments as unit tests.
 

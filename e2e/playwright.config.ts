@@ -17,9 +17,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-  },
+  webServer: [
+    {
+      command: 'pnpm --filter web dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: true,
+    },
+    {
+      command: 'pnpm --filter server dev',
+      url: 'http://localhost:4000/graphql',
+      reuseExistingServer: true,
+    },
+  ],
 })
