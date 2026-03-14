@@ -21,7 +21,7 @@ const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ??
 // Minimal Apollo client for local mode — satisfies useGetItemsQuery context requirement
 // without making any network requests (all Apollo hooks are skipped in local mode)
 const localModeApolloClient = new ApolloClient({
-  link: new ApolloLink(() => null), // no-op: all Apollo hooks are skipped in local mode
+  link: ApolloLink.empty(), // no-op: all Apollo hooks are skipped in local mode
   cache: new InMemoryCache(),
 })
 
