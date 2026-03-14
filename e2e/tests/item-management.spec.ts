@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { SettingsPage } from '../pages/SettingsPage'
 
-const CLOUD_SERVER_URL = 'http://localhost:4001'
-const E2E_USER_ID = 'e2e-test-user'
-
 test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL?.includes(':5174')) {
+  if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
     await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
       headers: { 'x-e2e-user-id': E2E_USER_ID },
@@ -100,7 +98,7 @@ test('user can edit an item name', async ({ page }) => {
 })
 
 test('user can assign a tag to an item', async ({ page, baseURL }) => {
-  test.skip(!!baseURL?.includes(':5174'), 'Cloud tag migration not yet implemented')
+  test.skip(baseURL === CLOUD_WEB_URL, 'Cloud tag migration not yet implemented')
 
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
@@ -121,7 +119,7 @@ test('user can assign a tag to an item', async ({ page, baseURL }) => {
 })
 
 test('user can assign a vendor to an item', async ({ page, baseURL }) => {
-  test.skip(!!baseURL?.includes(':5174'), 'Cloud vendor migration not yet implemented')
+  test.skip(baseURL === CLOUD_WEB_URL, 'Cloud vendor migration not yet implemented')
 
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
