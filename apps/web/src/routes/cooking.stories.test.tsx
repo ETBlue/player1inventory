@@ -7,8 +7,16 @@ import * as stories from './cooking.stories'
 // and ApolloProvider (no-op client, set up in the story itself).
 // Each story initialises IndexedDB in a useEffect — the initial render shows
 // "Loading..." while that runs, which is enough for a smoke test.
-const { Default, WithRecipes, WithSearch, SortByRecent, SortByCount } =
-  composeStories(stories)
+const {
+  Default,
+  WithRecipes,
+  WithCheckedRecipe,
+  WithExpandedRecipe,
+  WithActiveToolbar,
+  WithSearch,
+  SortByRecent,
+  SortByCount,
+} = composeStories(stories)
 
 describe('Cooking stories smoke tests', () => {
   it('Default renders without error', () => {
@@ -28,6 +36,21 @@ describe('Cooking stories smoke tests', () => {
 
   it('SortByRecent renders without error', () => {
     render(<SortByRecent />)
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('WithCheckedRecipe renders without error', () => {
+    render(<WithCheckedRecipe />)
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('WithExpandedRecipe renders without error', () => {
+    render(<WithExpandedRecipe />)
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+  })
+
+  it('WithActiveToolbar renders without error', () => {
+    render(<WithActiveToolbar />)
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 
