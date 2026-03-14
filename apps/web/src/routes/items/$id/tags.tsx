@@ -86,6 +86,8 @@ function TagsTab() {
                       return (
                         <Badge
                           key={tag.id}
+                          role="button"
+                          aria-pressed={isSelected}
                           variant={
                             isSelected ? tagType.color : 'neutral-outline'
                           }

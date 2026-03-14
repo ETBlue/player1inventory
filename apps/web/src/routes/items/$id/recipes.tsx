@@ -68,6 +68,8 @@ function RecipesTab() {
           return (
             <Badge
               key={recipe.id}
+              role="button"
+              aria-pressed={isAssigned}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
               className="cursor-pointer capitalize"
               onClick={() => toggleRecipe(recipe)}
