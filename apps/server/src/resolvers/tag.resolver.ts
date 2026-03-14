@@ -17,6 +17,10 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
       const userId = requireAuth(ctx)
       return TagModel.find({ userId, typeId })
     },
+    tagCountByType: async (_, { typeId }, ctx) => {
+      const userId = requireAuth(ctx)
+      return TagModel.countDocuments({ userId, typeId })
+    },
   },
   Mutation: {
     createTagType: async (_, { name, color }, ctx) => {

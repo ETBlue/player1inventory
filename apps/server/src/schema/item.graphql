@@ -24,6 +24,7 @@ type Item {
 extend type Query {
   items: [Item!]!
   item(id: ID!): Item
+  itemCountByTag(tagId: String!): Int!
 }
 
 extend type Mutation {
