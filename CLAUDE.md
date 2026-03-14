@@ -461,19 +461,19 @@ This ensures the design token system remains consistent across the entire codeba
 
 **Branch Management:**
 
-After completing a brainstorming session and before documenting the results, create a new branch. This branch will contain all related work:
-- The brainstorming log itself
-- Any design documents produced
+After completing a brainstorming session and before writing the design document, create a new branch and worktree, then enter the worktree. All feature work happens inside the worktree from this point on:
+- The design document
+- The brainstorming log
 - Implementation plans
 - The actual code implementation
 
-The timing is important: create the branch after brainstorming is complete but before writing the design document. This keeps all related work isolated and makes it easy to review the complete feature or change in one PR.
+The timing is important: create the branch and worktree after brainstorming is complete but before writing the design document. This keeps all related work in one place and ensures the entire feature history (docs + code) lives in the worktree.
 
 **Default Workflow: Git Worktrees**
 
 Use git worktrees by default for feature work. Create isolated workspaces in `.worktrees/` directory. See "Advanced: Git Worktrees" section below for setup details.
 
-**Worktree before implementation (mandatory):** After the implementation plan is written (via `writing-plans` skill) and before writing any code, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). Branch name is auto-derived from the plan topic: strip the `YYYY-MM-DD-` date prefix and `-design`/`-plan` suffix, then prefix with `feature/`, `fix/`, or `refactor/` based on context (e.g. `2026-03-08-cooking-expand-design.md` → `feature/cooking-expand`).
+**Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
 
 **Alternative: Regular Branches**
 
