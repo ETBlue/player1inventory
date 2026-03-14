@@ -32,7 +32,7 @@ export default defineConfig({
       timeout: 60000,
     },
     {
-      command: 'E2E_TEST_MODE=true PORT=4001 pnpm --filter server dev',
+      command: 'E2E_TEST_MODE=true PORT=4001 MONGODB_URI=mongodb://localhost:27017/player1inventory-e2e pnpm --filter server dev',
       url: 'http://localhost:4001/graphql',
       reuseExistingServer: false,
       timeout: 60000,
