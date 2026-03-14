@@ -8,6 +8,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
+import { createApolloClientForE2E } from './apollo/client'
 import { db } from './db'
 import { migrateItemsToV2 } from './db/migrate'
 import type { DataMode } from './lib/dataMode'
@@ -50,7 +51,23 @@ if (!rootElement) throw new Error('Root element not found')
 const root = createRoot(rootElement)
 
 function renderApp() {
-  if (mode === 'cloud') {
+  const e2eTestUserId = import.meta.env.VITE_E2E_TEST_USER_ID as
+    | string
+    | undefined
+
+  if (mode === 'cloud' && e2eTestUserId) {
+    // E2E test mode: bypass Clerk, send a static user ID header to the server.
+    // Only active when VITE_E2E_TEST_USER_ID is set (never in production).
+    root.render(
+      <StrictMode>
+        <ApolloProvider client={createApolloClientForE2E(e2eTestUserId)}>
+          <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>
+        </ApolloProvider>
+      </StrictMode>,
+    )
+  } else if (mode === 'cloud') {
     const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
     if (!publishableKey)
       throw new Error('VITE_CLERK_PUBLISHABLE_KEY is not set')

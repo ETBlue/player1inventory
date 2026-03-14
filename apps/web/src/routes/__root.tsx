@@ -13,6 +13,10 @@ const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ?? 'local') as
   | 'local'
   | 'cloud'
 
+// E2E test mode: VITE_E2E_TEST_USER_ID bypasses Clerk, so CloudAuthGuard
+// must not mount (it calls useAuth() which requires ClerkProvider context).
+const isE2ETestMode = !!import.meta.env.VITE_E2E_TEST_USER_ID
+
 function CloudAuthGuard() {
   const { isSignedIn, isLoaded } = useAuth()
   const navigate = useNavigate()
@@ -34,7 +38,7 @@ function RootComponent() {
 
   return (
     <>
-      {mode === 'cloud' && (
+      {mode === 'cloud' && !isE2ETestMode && (
         <>
           <CloudAuthGuard />
           <PostLoginMigrationDialog />
