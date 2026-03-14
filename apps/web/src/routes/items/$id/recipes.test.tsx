@@ -84,6 +84,43 @@ describe('Recipes Tab', () => {
     })
   })
 
+  it('recipe badge has aria-pressed reflecting assigned state', async () => {
+    // Given a recipe not assigned to the item
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await createRecipe({ name: 'Pasta Sauce' })
+
+    renderRecipesTab(item.id)
+    const user = userEvent.setup()
+
+    // Then the unassigned badge has aria-pressed="false"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Pasta Sauce', pressed: false }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks to assign
+    await user.click(
+      screen.getByRole('button', { name: 'Pasta Sauce', pressed: false }),
+    )
+
+    // Then the badge has aria-pressed="true"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /pasta sauce/i, pressed: true }),
+      ).toBeInTheDocument()
+    })
+  })
+
   it('user can assign a recipe to an item', async () => {
     // Given an item and a recipe that does not contain the item
     const item = await createItem({

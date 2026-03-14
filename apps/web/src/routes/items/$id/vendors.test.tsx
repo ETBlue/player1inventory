@@ -181,6 +181,49 @@ describe('Vendors Tab', () => {
     })
   })
 
+  it('vendor badge has aria-pressed reflecting assigned state', async () => {
+    // Given a vendor not assigned to the item
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // Then the unassigned badge has aria-pressed="false"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Costco', pressed: false }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks to assign
+    await user.click(
+      screen.getByRole('button', { name: 'Costco', pressed: false }),
+    )
+
+    // Then the badge has aria-pressed="true"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Costco/i, pressed: true }),
+      ).toBeInTheDocument()
+    })
+
+    // And the vendor is assigned in the database
+    await waitFor(async () => {
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds).toContain(vendor.id)
+    })
+  })
+
   it('user can unassign a vendor from an item', async () => {
     // Given an item with a vendor already assigned
     const vendor = await createVendor('Costco')

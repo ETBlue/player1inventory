@@ -8,7 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem, createTagType } from '@/db/operations'
+import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Tags Tab - Add Tag Functionality', () => {
@@ -67,5 +67,49 @@ describe('Tags Tab - Add Tag Functionality', () => {
 
     // And dialog is closed
     expect(screen.queryByLabelText(/name/i)).not.toBeInTheDocument()
+  })
+
+  it('tag badge has aria-pressed reflecting assigned state', async () => {
+    // Given a tag type with a tag not yet assigned to the item
+    const tagType = await createTagType({ name: 'Category', color: 'blue' })
+    const _tag = await createTag({ name: 'dairy', typeId: tagType.id })
+    const item = await createItem({
+      name: 'Test Item',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${item.id}/tags`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then the unassigned badge has aria-pressed="false"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'dairy', pressed: false }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks the badge to assign it
+    await userEvent.click(
+      screen.getByRole('button', { name: 'dairy', pressed: false }),
+    )
+
+    // Then the badge has aria-pressed="true"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /dairy/i, pressed: true }),
+      ).toBeInTheDocument()
+    })
   })
 })
