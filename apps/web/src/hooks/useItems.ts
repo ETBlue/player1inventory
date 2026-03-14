@@ -124,7 +124,9 @@ export function useCreateItem() {
     },
   })
 
-  const [cloudCreate] = useCreateItemMutation()
+  const [cloudCreate] = useCreateItemMutation({
+    refetchQueries: [{ query: GetItemsDocument }],
+  })
 
   if (mode === 'cloud') {
     return {

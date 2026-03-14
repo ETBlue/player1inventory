@@ -41,11 +41,11 @@ function NewItemPage() {
   const navigate = useNavigate()
   const createItem = useCreateItem()
 
-  const handleSubmit = (values: ItemFormValues) => {
-    createItem.mutate(buildCreateData(values), {
-      onSuccess: (newItem) => {
-        navigate({ to: '/items/$id', params: { id: newItem.id } })
-      },
+  const handleSubmit = async (values: ItemFormValues) => {
+    const newItem = await createItem.mutateAsync(buildCreateData(values))
+    navigate({
+      to: '/items/$id',
+      params: { id: (newItem as { id: string }).id },
     })
   }
 
