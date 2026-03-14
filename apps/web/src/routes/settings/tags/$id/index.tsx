@@ -60,23 +60,16 @@ function TagInfoTab() {
     registerDirtyState(isDirty)
   }, [isDirty, registerDirtyState])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!tag || !isDirty) return
-    updateTag.mutate(
-      { id, updates: { name, typeId } },
-      {
-        onSuccess: () => {
-          setSavedAt((n) => n + 1)
-          goBack()
-        },
-      },
-    )
+    await updateTag.mutateAsync({ id, updates: { name, typeId } })
+    setSavedAt((n) => n + 1)
+    goBack()
   }
 
   const handleDelete = async () => {
-    deleteTag.mutate(id, {
-      onSuccess: () => goBack(),
-    })
+    await deleteTag.mutateAsync(id)
+    goBack()
   }
 
   // Don't render until we have both tag and tagTypes loaded
