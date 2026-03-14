@@ -14,7 +14,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags done; most pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts all done |
-| [testing](global/testing/) | ⚠️ Partial | Playwright setup done; some E2E suites pending |
+| [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; some E2E suites pending |
 | [ui-polish](global/ui-polish/) | ✅ Implemented | Dialogs, toolbars, delete flows, component extraction done |
 
 ---
