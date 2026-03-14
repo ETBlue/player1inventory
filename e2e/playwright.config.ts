@@ -42,7 +42,7 @@ export default defineConfig({
           ],
         },
       },
-      testMatch: '**/item-management.spec.ts',
+      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts'],
     },
   ],
   webServer: [
