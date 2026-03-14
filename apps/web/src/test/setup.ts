@@ -32,6 +32,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    useGetItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useGetItemsQuery: () => ({
       data: undefined,
       loading: false,

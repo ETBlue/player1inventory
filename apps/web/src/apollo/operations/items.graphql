@@ -1,3 +1,28 @@
+query GetItem($id: ID!) {
+  item(id: $id) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    userId
+    familyId
+    createdAt
+    updatedAt
+  }
+}
+
 query GetItems {
   items {
     id
