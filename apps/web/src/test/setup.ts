@@ -76,6 +76,45 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useGetTagTypesQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useGetTagsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useGetTagsByTypeQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCreateTagTypeMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateTagTypeMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteTagTypeMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateTagMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateTagMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteTagMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 
