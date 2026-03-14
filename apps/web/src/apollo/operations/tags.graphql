@@ -69,3 +69,7 @@ mutation UpdateTag($id: ID!, $name: String, $typeId: String) {
 mutation DeleteTag($id: ID!) {
   deleteTag(id: $id)
 }
+
+query TagCountByType($typeId: String!) {
+  tagCountByType(typeId: $typeId)
+}

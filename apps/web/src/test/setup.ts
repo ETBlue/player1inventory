@@ -115,6 +115,16 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useItemCountByTagQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useTagCountByTypeQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
   }
 })
 

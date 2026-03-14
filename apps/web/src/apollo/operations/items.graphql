@@ -89,3 +89,7 @@ mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
 mutation DeleteItem($id: ID!) {
   deleteItem(id: $id)
 }
+
+query ItemCountByTag($tagId: String!) {
+  itemCountByTag(tagId: $tagId)
+}

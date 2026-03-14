@@ -22,6 +22,8 @@ import {
   useGetTagsByTypeQuery,
   useGetTagsQuery,
   useGetTagTypesQuery,
+  useItemCountByTagQuery,
+  useTagCountByTypeQuery,
   useUpdateTagMutation,
   useUpdateTagTypeMutation,
 } from '@/generated/graphql'
@@ -316,17 +318,61 @@ export function useDeleteTag() {
 }
 
 export function useItemCountByTag(tagId: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['items', 'countByTag', tagId],
     queryFn: () => getItemCountByTag(tagId),
-    enabled: !!tagId,
+    enabled: !!tagId && !isCloud,
   })
+
+  const cloud = useItemCountByTagQuery({
+    variables: { tagId },
+    skip: !isCloud || !tagId,
+  })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.itemCountByTag as number | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
 
 export function useTagCountByType(typeId: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['tags', 'countByType', typeId],
     queryFn: () => getTagCountByType(typeId),
-    enabled: !!typeId,
+    enabled: !!typeId && !isCloud,
   })
+
+  const cloud = useTagCountByTypeQuery({
+    variables: { typeId },
+    skip: !isCloud || !typeId,
+  })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.tagCountByType as number | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
