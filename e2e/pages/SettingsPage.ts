@@ -13,7 +13,8 @@ export class SettingsPage {
     await this.page.getByLabel('Name').fill(name)
     // Button label is "New Tag Type" (src/routes/settings/tags/index.tsx:435)
     await this.page.getByRole('button', { name: /new tag type/i }).click()
-    // Wait for the tag type card heading to appear
-    await this.page.getByRole('heading', { name, level: 3 }).waitFor()
+    // Wait for the tag type card heading to appear.
+    // Use .first() to avoid strict-mode violations when a same-named default tag type is already seeded.
+    await this.page.getByRole('heading', { name, level: 3 }).first().waitFor()
   }
 }

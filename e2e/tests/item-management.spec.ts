@@ -83,8 +83,9 @@ test('user can assign a tag to an item', async ({ page }) => {
   // When user creates and assigns a tag inline
   await item.createAndAssignTag('Dairy')
 
-  // Then the tag badge appears on the item's tags tab
-  await expect(page.getByRole('main').getByText('Dairy')).toBeVisible()
+  // Then the tag badge appears on the item's tags tab.
+  // Use .first() — the tags tab shows the tag both as an assigned badge and in the available list.
+  await expect(page.getByRole('main').getByText('Dairy').first()).toBeVisible()
 })
 
 test('user can assign a vendor to an item', async ({ page }) => {
