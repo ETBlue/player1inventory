@@ -3,30 +3,41 @@ import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { SettingsPage } from '../pages/SettingsPage'
 
-test.afterEach(async ({ page }) => {
-  // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
-  // We must stay on the same origin to call indexedDB.databases().
-  // Use onblocked to force-close any lingering connections before the delete proceeds.
-  await page.goto('/')
-  await page.evaluate(async () => {
-    const dbs = await indexedDB.databases()
-    await Promise.all(dbs.map(({ name }) => {
-      return new Promise<void>((resolve, reject) => {
-        if (!name) { resolve(); return }
-        const req = indexedDB.deleteDatabase(name)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
-        // If existing connections block deletion, the blocked event fires.
-        // We resolve anyway since the app will be reset on next navigation.
-        req.onblocked = () => {
-          console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
-          resolve()
-        }
-      })
-    }))
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+const CLOUD_SERVER_URL = 'http://localhost:4001'
+const E2E_USER_ID = 'e2e-test-user'
+
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL?.includes(':5174')) {
+    // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  } else {
+    // Local mode: clear IndexedDB, localStorage, and sessionStorage.
+    // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
+    // We must stay on the same origin to call indexedDB.databases().
+    // Use onblocked to force-close any lingering connections before the delete proceeds.
+    await page.goto('/')
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases()
+      await Promise.all(dbs.map(({ name }) => {
+        return new Promise<void>((resolve, reject) => {
+          if (!name) { resolve(); return }
+          const req = indexedDB.deleteDatabase(name)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+          // If existing connections block deletion, the blocked event fires.
+          // We resolve anyway since the app will be reset on next navigation.
+          req.onblocked = () => {
+            console.warn(`[afterEach] IndexedDB delete blocked for "${name}" — data may persist`)
+            resolve()
+          }
+        })
+      }))
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+  }
 })
 
 test('user can create an item', async ({ page }) => {
@@ -39,11 +50,31 @@ test('user can create an item', async ({ page }) => {
   // When user creates a new item
   await pantry.clickAddItem()
   await item.fillName('Test Milk')
+  // save() waits for navigation to /items/:id — verifies the app redirects after create
   await item.save()
 
   // Then the item appears in the pantry list
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Test Milk')).toBeVisible()
+})
+
+test('user can view item details after navigating from pantry', async ({ page }) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given an item exists
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Detail Item')
+  await item.save()
+
+  // When user navigates to pantry and clicks the item card
+  await pantry.navigateTo()
+  await pantry.getItemCard('Detail Item').click()
+
+  // Then the item detail page loads correctly (not "Item not found")
+  await expect(page.getByText('Item not found')).not.toBeVisible()
+  await expect(page.getByLabel('Name')).toBeVisible()
 })
 
 test('user can edit an item name', async ({ page }) => {
@@ -68,7 +99,9 @@ test('user can edit an item name', async ({ page }) => {
   await expect(pantry.getItemCard('Edit Me')).not.toBeVisible()
 })
 
-test('user can assign a tag to an item', async ({ page }) => {
+test('user can assign a tag to an item', async ({ page, baseURL }) => {
+  test.skip(!!baseURL?.includes(':5174'), 'Cloud tag migration not yet implemented')
+
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
   const settings = new SettingsPage(page)
@@ -87,7 +120,9 @@ test('user can assign a tag to an item', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Dairy', pressed: true })).toBeVisible()
 })
 
-test('user can assign a vendor to an item', async ({ page }) => {
+test('user can assign a vendor to an item', async ({ page, baseURL }) => {
+  test.skip(!!baseURL?.includes(':5174'), 'Cloud vendor migration not yet implemented')
+
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
