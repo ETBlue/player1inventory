@@ -320,9 +320,10 @@ const { t } = useTranslation()
 Before creating a PR, update all relevant documentation:
 
 1. **CLAUDE.md** - Update if architecture, commands, or patterns change
-2. **Design docs** (`docs/plans/*`) - Update if implementation diverges from plan
+2. **Design docs** (`docs/global/<area>/` or `docs/features/<area>/`) - Update if implementation diverges from plan
 3. **Inline comments** - Ensure code comments reflect the changes
-4. **Brainstorming logs** (`docs/brainstorming-logs/*`) - Create when brainstorming leads to decisions
+4. **Brainstorming logs** (same folder as the design doc for that topic) - Create when brainstorming leads to decisions
+5. **`docs/INDEX.md`** - Update the status column when creating new plans (🔲 Pending) or completing implementations (✅)
 
 ### Component Development
 
@@ -378,7 +379,8 @@ Before responding to a completed task, step, or session wrap-up, **all changes m
 - Storybook stories
 - Tests
 - CLAUDE.md updates
-- Design docs (`docs/plans/`, `docs/brainstorming-logs/`)
+- Design docs and brainstorming logs (`docs/global/<area>/` or `docs/features/<area>/`)
+- `docs/INDEX.md` status update
 
 Run `git status` to confirm the working tree is clean. If any uncommitted changes remain, commit them first.
 
@@ -431,7 +433,7 @@ When you detect or perform a CSS variable rename:
    - Test files (`.test.ts`, `.test.tsx`)
    - Storybook files (`.stories.tsx`)
    - Current documentation (`.md`) - CLAUDE.md, README.md, etc.
-   - **Do NOT update** historical docs in `docs/plans/` or `docs/brainstorming-logs/`
+   - **Do NOT update** historical docs in `docs/global/` or `docs/features/`
 
 Use Grep to find all references:
 ```bash
@@ -448,7 +450,9 @@ This ensures the design token system remains consistent across the entire codeba
 - Not needed for exploratory discussions without decisions
 
 **Format:**
-- Location: `docs/brainstorming-logs/`
+- Location: same folder as the design doc for the topic
+  - Global concerns → `docs/global/<area>/` (e.g. `docs/global/ai-sop/`)
+  - Feature-specific → `docs/features/<area>/` (e.g. `docs/features/cooking/`)
 - Naming: `YYYY-MM-DD-brainstorming-<topic>.md`
 - Date: Session date (when brainstorming occurred)
 
@@ -523,8 +527,8 @@ For minor changes that don't require brainstorming, ask the user whether to crea
 Quick documentation fixes (like fixing a typo in CLAUDE.md) can go directly to main without asking.
 
 **Design docs and brainstorming logs must always go through a branch — never committed directly to `main`:**
-- `docs/plans/` — always requires a branch or worktree
-- `docs/brainstorming-logs/` — always requires a branch or worktree
+- `docs/global/` — always requires a branch or worktree
+- `docs/features/` — always requires a branch or worktree
 
 This applies even for minor additions. The CLAUDE.md typo exception does not extend to these directories.
 
@@ -540,8 +544,8 @@ git status
 
 **If there are uncommitted changes:**
 1. Review what's uncommitted - common culprits:
-   - Design documents in `docs/plans/`
-   - Brainstorming logs in `docs/brainstorming-logs/`
+   - Design documents in `docs/global/<area>/` or `docs/features/<area>/`
+   - Brainstorming logs (same folders as design docs)
    - Implementation plans
    - Test files or Storybook stories
 2. Commit all relevant changes with appropriate commit messages
