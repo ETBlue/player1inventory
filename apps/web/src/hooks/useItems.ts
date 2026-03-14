@@ -27,7 +27,7 @@ function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
   const { id: _id, createdAt: _c, updatedAt: _u, dueDate, ...rest } = updates
   return {
     ...rest,
-    dueDate: dueDate instanceof Date ? dueDate.toISOString() : undefined,
+    ...(dueDate instanceof Date ? { dueDate: dueDate.toISOString() } : {}),
   }
 }
 
