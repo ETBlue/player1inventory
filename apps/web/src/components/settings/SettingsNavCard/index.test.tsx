@@ -31,7 +31,7 @@ describe('SettingsNavCard', () => {
     to: '/settings/tags',
   }
 
-  it('renders label and description', () => {
+  it('user can see the label and description', () => {
     // Given a settings nav card
     render(<SettingsNavCard {...defaultProps} />)
 
@@ -40,7 +40,7 @@ describe('SettingsNavCard', () => {
     expect(screen.getByText('Manage your tags')).toBeInTheDocument()
   })
 
-  it('renders as a link to the correct route', () => {
+  it('user can navigate to the linked route', () => {
     // Given a settings nav card
     render(<SettingsNavCard {...defaultProps} />)
 
@@ -49,11 +49,15 @@ describe('SettingsNavCard', () => {
     expect(link).toHaveAttribute('href', '/settings/tags')
   })
 
-  it('renders a chevron icon', () => {
+  it('user can see a navigation indicator chevron', () => {
     // Given a settings nav card
     render(<SettingsNavCard {...defaultProps} />)
 
-    // Then the card renders (chevron is a decorative svg, confirm card is present)
-    expect(screen.getByText('Tags').closest('a')).toBeInTheDocument()
+    // Then a chevron svg is present in the card
+    const link = screen.getByRole('link')
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const svgs = link.querySelectorAll('svg')
+    // Two svgs: one for the icon prop (Tags), one for ChevronRight
+    expect(svgs.length).toBe(2)
   })
 })
