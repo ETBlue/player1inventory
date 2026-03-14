@@ -479,6 +479,14 @@ Use git worktrees by default for feature work. Create isolated workspaces in `.w
 
 **Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
 
+**Absorbing upstream changes: always rebase, never merge**
+
+When a feature branch needs to incorporate changes from `main`, use rebase:
+```bash
+git rebase origin/main
+```
+Never use `git merge origin/main` on a feature branch. Rebase keeps history linear and avoids merge commits.
+
 **Alternative: Regular Branches**
 
 For GUI tool users (GitHub Desktop, VS Code) or when worktrees are not suitable, use standard git branches instead.
