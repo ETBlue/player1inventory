@@ -364,10 +364,19 @@ After each implementation phase (each numbered step in an implementation plan), 
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
 ```
 
+**Final phase only** — after all steps are complete, also run related E2E tests:
+
+```bash
+pnpm test:e2e --grep "<feature-areas>"
+```
+
+Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, `cooking`, `items`, `tags`, `vendors`, `settings`). Combine multiple areas with a pipe: `--grep "shopping|tags"`. Playwright's `webServer` config handles server startup automatically.
+
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
 - After `pnpm build`, run `grep 'TS6385' /tmp/p1i-build.log` to check for `@deprecated` warnings — any match is a failure even if the build exit code is 0
 - All four commands must pass and `grep` must return no matches before moving on
+- E2E failures on the final phase are also a hard stop — fix before finishing the branch
 
 **Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.
 
