@@ -1,10 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { Fragment, useMemo, useState } from 'react'
+import { createFileRoute, useRouterState } from '@tanstack/react-router'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -24,7 +25,7 @@ export const Route = createFileRoute('/settings/vendors/$id/items')({
 
 function VendorItemsTab() {
   const { id: vendorId } = Route.useParams()
-  const { data: items = [] } = useItems()
+  const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const updateItem = useUpdateItem()
@@ -45,6 +46,15 @@ function VendorItemsTab() {
     toggleVendorId,
     toggleRecipeId,
   } = useUrlSearchAndFilters()
+
+  // Scroll restoration: save on unmount, restore after data loads
+  const currentUrl = useRouterState({
+    select: (s) => s.location.pathname + (s.location.search ?? ''),
+  })
+  const { restoreScroll } = useScrollRestoration(currentUrl)
+  useEffect(() => {
+    if (!isLoading) restoreScroll()
+  }, [isLoading, restoreScroll])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
 

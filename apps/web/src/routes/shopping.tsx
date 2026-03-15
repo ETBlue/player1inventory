@@ -1,6 +1,10 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router'
 import { Check, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { Toolbar } from '@/components/Toolbar'
@@ -40,6 +44,7 @@ import {
 } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
@@ -53,7 +58,7 @@ export const Route = createFileRoute('/shopping')({
 
 function Shopping() {
   const navigate = useNavigate()
-  const { data: items = [] } = useItems()
+  const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -95,6 +100,15 @@ function Shopping() {
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('shopping')
   const { search, filterState, selectedRecipeIds } = useUrlSearchAndFilters()
+
+  // Scroll restoration: save on unmount, restore after data loads
+  const currentUrl = useRouterState({
+    select: (s) => s.location.pathname + (s.location.search ?? ''),
+  })
+  const { restoreScroll } = useScrollRestoration(currentUrl)
+  useEffect(() => {
+    if (!isLoading) restoreScroll()
+  }, [isLoading, restoreScroll])
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
