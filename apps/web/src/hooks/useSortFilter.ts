@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { SortDirection, SortField } from '@/lib/sortUtils'
 
-function loadSortPrefs(storageKey: string): {
+function loadSortPrefs(
+  storageKey: string,
+  defaultSortBy: SortField,
+): {
   sortBy: SortField
   sortDirection: SortDirection
 } {
   try {
     const stored = localStorage.getItem(`${storageKey}-sort-prefs`)
-    // Default to 'name' for assignment pages (tag, vendor, recipe items tabs, shopping).
-    // Pantry page defaults to 'expiring' — it has its own persistence in sessionStorage.ts.
-    if (!stored) return { sortBy: 'name', sortDirection: 'asc' }
+    if (!stored) return { sortBy: defaultSortBy, sortDirection: 'asc' }
     const parsed = JSON.parse(stored)
     const validFields: SortField[] = ['name', 'stock', 'purchased', 'expiring']
     const validDirections: SortDirection[] = ['asc', 'desc']
     const sortBy: SortField = validFields.includes(parsed.sortBy)
       ? parsed.sortBy
-      : 'name'
+      : defaultSortBy
     const sortDirection: SortDirection = validDirections.includes(
       parsed.sortDirection,
     )
@@ -24,13 +25,17 @@ function loadSortPrefs(storageKey: string): {
     return { sortBy, sortDirection }
   } catch (error) {
     console.error('Failed to load sort prefs from localStorage:', error)
-    return { sortBy: 'name', sortDirection: 'asc' }
+    return { sortBy: defaultSortBy, sortDirection: 'asc' }
   }
 }
 
-export function useSortFilter(storageKey: string) {
+export function useSortFilter(
+  storageKey: string,
+  options?: { defaultSortBy?: SortField },
+) {
+  const defaultSortBy = options?.defaultSortBy ?? 'name'
   const [sortPrefs, setSortPrefsState] = useState(() =>
-    loadSortPrefs(storageKey),
+    loadSortPrefs(storageKey, defaultSortBy),
   )
   const sortBy = sortPrefs.sortBy
   const sortDirection = sortPrefs.sortDirection

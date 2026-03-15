@@ -1,12 +1,14 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouterState } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
+import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
@@ -16,11 +18,6 @@ import {
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
-import {
-  loadSortPrefs,
-  type SortDirection,
-  type SortField,
-} from '@/lib/sessionStorage'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -56,9 +53,9 @@ function PantryView() {
   }
 
   // Sort prefs from localStorage (pantry defaults to 'expiring')
-  const [sortBy, setSortBy] = useState<SortField>(() => loadSortPrefs().sortBy)
-  const [sortDirection, setSortDirection] = useState<SortDirection>(
-    () => loadSortPrefs().sortDirection,
+  const { sortBy, sortDirection, setSortBy, setSortDirection } = useSortFilter(
+    'pantry',
+    { defaultSortBy: 'expiring' },
   )
 
   const {
@@ -71,6 +68,15 @@ function PantryView() {
     toggleVendorId,
     toggleRecipeId,
   } = useUrlSearchAndFilters()
+
+  // Scroll restoration: save on unmount, restore after data loads
+  const currentUrl = useRouterState({
+    select: (s) => s.location.pathname + (s.location.search ?? ''),
+  })
+  const { restoreScroll } = useScrollRestoration(currentUrl)
+  useEffect(() => {
+    if (!isLoading) restoreScroll()
+  }, [isLoading, restoreScroll])
 
   const vendorMap = useMemo(() => {
     const map = new Map<string, Vendor[]>()
