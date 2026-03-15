@@ -51,6 +51,14 @@ export class TagsPage {
     return this.page.getByRole('button', { name: new RegExp(`^${name} \\(`) })
   }
 
+  async clickTagBadgeToNavigate(name: string) {
+    // Click the tag badge to navigate to its detail page. The TagBadge inside the dnd-kit
+    // drag wrapper has an onClick that calls navigate(). A plain click (< 8px movement)
+    // passes through the PointerSensor without activating drag mode.
+    // (src/routes/settings/tags/index.tsx:131-136)
+    await this.getTagBadge(name).click()
+  }
+
   async clickDeleteTag(name: string) {
     // The dnd-kit drag wrapper has role="button" with the tag name text.
     // Inside it, the X delete button (from DeleteButton) is a real <button> element.

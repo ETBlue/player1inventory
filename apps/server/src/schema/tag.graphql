@@ -1,0 +1,31 @@
+type TagType {
+  id: ID!
+  name: String!
+  color: String!
+  userId: String!
+  familyId: String
+}
+
+type Tag {
+  id: ID!
+  name: String!
+  typeId: String!
+  userId: String!
+  familyId: String
+}
+
+extend type Query {
+  tagTypes: [TagType!]!
+  tags: [Tag!]!
+  tagsByType(typeId: String!): [Tag!]!
+  tagCountByType(typeId: String!): Int!
+}
+
+extend type Mutation {
+  createTagType(name: String!, color: String!): TagType!
+  updateTagType(id: ID!, name: String, color: String): TagType!
+  deleteTagType(id: ID!): Boolean!
+  createTag(name: String!, typeId: String!): Tag!
+  updateTag(id: ID!, name: String, typeId: String): Tag!
+  deleteTag(id: ID!): Boolean!
+}

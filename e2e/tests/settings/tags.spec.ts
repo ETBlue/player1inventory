@@ -1,4 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../../constants'
+import { ItemPage } from '../../pages/ItemPage'
+import { PantryPage } from '../../pages/PantryPage'
 import { TagsPage } from '../../pages/settings/TagsPage'
 import { TagDetailPage } from '../../pages/settings/TagDetailPage'
 
@@ -57,7 +60,7 @@ async function seedTags(
   return { tagTypeIds, tagIds }
 }
 
-// Seed an item directly into IndexedDB (used for Items tab test)
+// Seed an item directly into IndexedDB (used for Items tab test in local mode)
 async function seedItem(page: Page, name: string, tagIds: string[] = []): Promise<string> {
   const itemId = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -95,27 +98,35 @@ async function seedItem(page: Page, name: string, tagIds: string[] = []): Promis
   return itemId
 }
 
-test.afterEach(async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(async () => {
-    const dbs = await indexedDB.databases()
-    await Promise.all(
-      dbs.map(({ name }) => {
-        return new Promise<void>((resolve, reject) => {
-          if (!name) { resolve(); return }
-          const req = indexedDB.deleteDatabase(name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-          req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
-            resolve()
-          }
-        })
-      }),
-    )
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  } else {
+    // Local mode: clear IndexedDB, localStorage, and sessionStorage.
+    await page.goto('/')
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases()
+      await Promise.all(
+        dbs.map(({ name }) => {
+          return new Promise<void>((resolve, reject) => {
+            if (!name) { resolve(); return }
+            const req = indexedDB.deleteDatabase(name)
+            req.onsuccess = () => resolve()
+            req.onerror = () => reject(req.error)
+            req.onblocked = () => {
+              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              resolve()
+            }
+          })
+        }),
+      )
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+  }
 })
 
 test.skip('user can move a tag to a different type via drag-and-drop', async ({ page }) => {
@@ -153,21 +164,44 @@ test.skip('user can move a tag to a different type via drag-and-drop', async ({ 
   await expect(tagsPage.getTagBadge('Rice')).toBeVisible()
 })
 
-test('user can edit tag name and type on Info tab', async ({ page }) => {
+test('user can edit tag name and type on Info tab', async ({ page, baseURL }) => {
   const detail = new TagDetailPage(page)
+  const tagsPage = new TagsPage(page)
 
-  // Given: two tag types "Protein" and "Dairy", with tag "Chicken" under "Protein"
-  const { tagIds } = await seedTags(
-    page,
-    [{ name: 'Protein', color: 'green' }, { name: 'Dairy', color: 'blue' }],
-    [{ name: 'Chicken', typeIndex: 0 }],
-  )
-  const tagId = tagIds[0]
+  let tagId: string
 
-  // When: navigate to tag detail page (Info tab is default)
-  await detail.navigateTo(tagId)
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: UI-driven setup — create two tag types and a tag
+    await tagsPage.navigateTo()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.clickNewTagType()
+    await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
+    await tagsPage.fillTagTypeName('Dairy')
+    await tagsPage.clickNewTagType()
+    await expect(tagsPage.getTagTypeCard('Dairy')).toBeVisible()
+    await tagsPage.clickNewTag('Protein')
+    await tagsPage.fillTagName('Chicken')
+    await tagsPage.submitTagDialog()
+    await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
-  // And: change the name to "Turkey"
+    // Navigate to tag detail via badge click; extract ID from URL.
+    // TanStack Router's index child renders at /settings/tags/{id}/ (trailing slash),
+    // so use a path-contains check and strip the trailing slash when extracting the ID.
+    await tagsPage.clickTagBadgeToNavigate('Chicken')
+    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
+  } else {
+    // Local: seed directly into IndexedDB and navigate by ID
+    const { tagIds } = await seedTags(
+      page,
+      [{ name: 'Protein', color: 'green' }, { name: 'Dairy', color: 'blue' }],
+      [{ name: 'Chicken', typeIndex: 0 }],
+    )
+    tagId = tagIds[0]
+    await detail.navigateTo(tagId)
+  }
+
+  // When: change the name to "Turkey"
   await detail.fillName('Turkey')
 
   // And: change the type to "Dairy"
@@ -185,20 +219,50 @@ test('user can edit tag name and type on Info tab', async ({ page }) => {
   await expect(page.getByLabel('Name')).toHaveValue('Turkey')
 })
 
-test('user can assign and unassign an item on Items tab', async ({ page }) => {
+test('user can assign and unassign an item on Items tab', async ({ page, baseURL }) => {
   const detail = new TagDetailPage(page)
 
-  // Given: tag type "Protein" + tag "Chicken" + item "Eggs" (unassigned)
-  const { tagIds } = await seedTags(
-    page,
-    [{ name: 'Protein', color: 'green' }],
-    [{ name: 'Chicken', typeIndex: 0 }],
-  )
-  const tagId = tagIds[0]
-  await seedItem(page, 'Eggs')
+  let tagId: string
 
-  // When: navigate to tag detail Items tab
-  await detail.navigateToItems(tagId)
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: UI-driven setup — create tag type, tag, and item
+    const tagsPage = new TagsPage(page)
+    const pantry = new PantryPage(page)
+    const item = new ItemPage(page)
+
+    await tagsPage.navigateTo()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.clickNewTagType()
+    await tagsPage.clickNewTag('Protein')
+    await tagsPage.fillTagName('Chicken')
+    await tagsPage.submitTagDialog()
+    await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+
+    // Get tag ID from URL before navigating away to create item.
+    // TanStack Router renders the index child at /settings/tags/{id}/ (trailing slash).
+    await tagsPage.clickTagBadgeToNavigate('Chicken')
+    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
+
+    // Create item via pantry UI
+    await pantry.navigateTo()
+    await pantry.clickAddItem()
+    await item.fillName('Eggs')
+    await item.save()
+
+    // Navigate to tag detail Items tab
+    await detail.navigateToItems(tagId)
+  } else {
+    // Local: seed tag and item directly into IndexedDB
+    const { tagIds } = await seedTags(
+      page,
+      [{ name: 'Protein', color: 'green' }],
+      [{ name: 'Chicken', typeIndex: 0 }],
+    )
+    tagId = tagIds[0]
+    await seedItem(page, 'Eggs')
+    await detail.navigateToItems(tagId)
+  }
 
   // Then: "Eggs" shows as unassigned (Add checkbox visible)
   await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
@@ -216,17 +280,23 @@ test('user can assign and unassign an item on Items tab', async ({ page }) => {
   await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
 })
 
-test('user can delete a tag type', async ({ page }) => {
+test('user can delete a tag type', async ({ page, baseURL }) => {
   const tagsPage = new TagsPage(page)
 
-  // Given: tag type "Protein" with no tags seeded via IndexedDB
-  await seedTags(page, [{ name: 'Protein', color: 'green' }])
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: create via UI
+    await tagsPage.navigateTo()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.clickNewTagType()
+  } else {
+    // Local: seed via IndexedDB and navigate
+    await seedTags(page, [{ name: 'Protein', color: 'green' }])
+    await tagsPage.navigateTo()
+  }
 
-  // When: navigate to tags page
-  await tagsPage.navigateTo()
   await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
 
-  // And: user clicks the delete (trash) button on the tag type card
+  // When: user clicks the delete (trash) button on the tag type card
   await tagsPage.clickDeleteTagType('Protein')
 
   // And: confirms deletion
@@ -236,21 +306,30 @@ test('user can delete a tag type', async ({ page }) => {
   await expect(tagsPage.getTagTypeCard('Protein')).not.toBeVisible()
 })
 
-test('user can delete a tag', async ({ page }) => {
+test('user can delete a tag', async ({ page, baseURL }) => {
   const tagsPage = new TagsPage(page)
 
-  // Given: tag type "Protein" with tag "Chicken" seeded via IndexedDB
-  await seedTags(
-    page,
-    [{ name: 'Protein', color: 'green' }],
-    [{ name: 'Chicken', typeIndex: 0 }],
-  )
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: create via UI
+    await tagsPage.navigateTo()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.clickNewTagType()
+    await tagsPage.clickNewTag('Protein')
+    await tagsPage.fillTagName('Chicken')
+    await tagsPage.submitTagDialog()
+  } else {
+    // Local: seed via IndexedDB and navigate
+    await seedTags(
+      page,
+      [{ name: 'Protein', color: 'green' }],
+      [{ name: 'Chicken', typeIndex: 0 }],
+    )
+    await tagsPage.navigateTo()
+  }
 
-  // When: navigate to tags page
-  await tagsPage.navigateTo()
   await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
-  // And: user clicks the X button on the "Chicken" badge
+  // When: user clicks the X button on the "Chicken" badge
   await tagsPage.clickDeleteTag('Chicken')
 
   // And: confirms deletion
@@ -263,7 +342,7 @@ test('user can delete a tag', async ({ page }) => {
 test('user can add a tag to a tag type', async ({ page }) => {
   const tagsPage = new TagsPage(page)
 
-  // Given: tag type "Protein" exists (created via UI)
+  // Given: tag type "Protein" exists (created via UI — works in both local and cloud mode)
   await tagsPage.navigateTo()
   await tagsPage.fillTagTypeName('Protein')
   await tagsPage.clickNewTagType()

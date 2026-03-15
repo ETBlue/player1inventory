@@ -10,11 +10,11 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 |------|--------|-------|
 | [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent |
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
-| [backend](global/backend/) | 🔲 Pending | Backend migration, dual-mode, GraphQL codegen not started |
+| [backend](global/backend/) | 🔄 In Progress | Monorepo + Items + TagType/Tag done; remaining entities (Vendor, Recipe, etc.) pending |
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags done; most pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts all done |
-| [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; some E2E suites pending |
+| [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; items + tags E2E (local + cloud) done; cooking E2E pending |
 | [ui-polish](global/ui-polish/) | ✅ Implemented | Dialogs, toolbars, delete flows, component extraction done |
 
 ---

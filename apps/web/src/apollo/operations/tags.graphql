@@ -1,0 +1,75 @@
+query GetTagTypes {
+  tagTypes {
+    id
+    name
+    color
+    userId
+    familyId
+  }
+}
+
+query GetTags {
+  tags {
+    id
+    name
+    typeId
+    userId
+    familyId
+  }
+}
+
+query GetTagsByType($typeId: String!) {
+  tagsByType(typeId: $typeId) {
+    id
+    name
+    typeId
+    userId
+    familyId
+  }
+}
+
+mutation CreateTagType($name: String!, $color: String!) {
+  createTagType(name: $name, color: $color) {
+    id
+    name
+    color
+    userId
+  }
+}
+
+mutation UpdateTagType($id: ID!, $name: String, $color: String) {
+  updateTagType(id: $id, name: $name, color: $color) {
+    id
+    name
+    color
+  }
+}
+
+mutation DeleteTagType($id: ID!) {
+  deleteTagType(id: $id)
+}
+
+mutation CreateTag($name: String!, $typeId: String!) {
+  createTag(name: $name, typeId: $typeId) {
+    id
+    name
+    typeId
+    userId
+  }
+}
+
+mutation UpdateTag($id: ID!, $name: String, $typeId: String) {
+  updateTag(id: $id, name: $name, typeId: $typeId) {
+    id
+    name
+    typeId
+  }
+}
+
+mutation DeleteTag($id: ID!) {
+  deleteTag(id: $id)
+}
+
+query TagCountByType($typeId: String!) {
+  tagCountByType(typeId: $typeId)
+}

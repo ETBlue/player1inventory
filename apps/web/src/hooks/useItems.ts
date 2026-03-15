@@ -14,6 +14,7 @@ import {
   GetItemsDocument,
   useCreateItemMutation,
   useDeleteItemMutation,
+  useGetItemQuery,
   useGetItemsQuery,
   useUpdateItemMutation,
 } from '@/generated/graphql'
@@ -61,11 +62,30 @@ export function useItems() {
 }
 
 export function useItem(id: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['items', id],
     queryFn: () => getItem(id),
-    enabled: !!id,
+    enabled: !!id && !isCloud,
   })
+
+  const cloud = useGetItemQuery({ variables: { id }, skip: !isCloud || !id })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.item as Item | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isLoading,
+    isError: local.isError,
+  }
 }
 
 export function useItemWithQuantity(id: string) {
@@ -104,7 +124,9 @@ export function useCreateItem() {
     },
   })
 
-  const [cloudCreate] = useCreateItemMutation()
+  const [cloudCreate] = useCreateItemMutation({
+    refetchQueries: [{ query: GetItemsDocument }],
+  })
 
   if (mode === 'cloud') {
     return {

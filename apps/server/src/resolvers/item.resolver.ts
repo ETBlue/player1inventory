@@ -1,7 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { ItemModel } from '../models/Item.model.js'
 import { requireAuth } from '../context.js'
-import type { Context } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 
 export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
@@ -13,6 +12,10 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
     item: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
       return ItemModel.findOne({ _id: id, userId })
+    },
+    itemCountByTag: async (_, { tagId }, ctx) => {
+      const userId = requireAuth(ctx)
+      return ItemModel.countDocuments({ userId, tagIds: tagId })
     },
   },
   Mutation: {

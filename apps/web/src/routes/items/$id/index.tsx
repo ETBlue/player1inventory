@@ -92,22 +92,15 @@ function ItemDetailTab() {
 
   const formValues = itemToFormValues(item)
 
-  const handleSubmit = (values: ItemFormValues) => {
-    updateItem.mutate(
-      { id, updates: buildUpdates(values) },
-      {
-        onSuccess: () => {
-          setSavedAt((n) => n + 1)
-          goBack()
-        },
-      },
-    )
+  const handleSubmit = async (values: ItemFormValues) => {
+    await updateItem.mutateAsync({ id, updates: buildUpdates(values) })
+    setSavedAt((n) => n + 1)
+    goBack()
   }
 
   const handleDelete = async () => {
-    deleteItem.mutate(item.id, {
-      onSuccess: () => goBack(),
-    })
+    await deleteItem.mutateAsync(item.id)
+    goBack()
   }
 
   return (

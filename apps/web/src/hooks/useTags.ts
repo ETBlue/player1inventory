@@ -12,43 +12,132 @@ import {
   updateTag,
   updateTagType,
 } from '@/db/operations'
+import {
+  GetTagsDocument,
+  GetTagTypesDocument,
+  useCreateTagMutation,
+  useCreateTagTypeMutation,
+  useDeleteTagMutation,
+  useDeleteTagTypeMutation,
+  useGetTagsByTypeQuery,
+  useGetTagsQuery,
+  useGetTagTypesQuery,
+  useItemCountByTagQuery,
+  useTagCountByTypeQuery,
+  useUpdateTagMutation,
+  useUpdateTagTypeMutation,
+} from '@/generated/graphql'
 import type { Tag, TagColor, TagType } from '@/types'
+import { useDataMode } from './useDataMode'
 
 export function useTagTypes() {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['tagTypes'],
     queryFn: getAllTagTypes,
+    enabled: !isCloud,
   })
+
+  const cloud = useGetTagTypesQuery({ skip: !isCloud })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.tagTypes as TagType[] | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
 
 export function useCreateTagType() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: (input: { name: string; color?: TagColor }) =>
       createTagType(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
     },
   })
+
+  const [cloudCreate] = useCreateTagTypeMutation({
+    refetchQueries: [{ query: GetTagTypesDocument }],
+  })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (input: { name: string; color?: TagColor }) =>
+        cloudCreate({
+          variables: { name: input.name, color: input.color ?? 'teal' },
+        }),
+      mutateAsync: (input: { name: string; color?: TagColor }) =>
+        cloudCreate({
+          variables: { name: input.name, color: input.color ?? 'teal' },
+        }).then((r) => r.data?.createTagType),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useUpdateTagType() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<TagType> }) =>
       updateTagType(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
     },
   })
+
+  const [cloudUpdate] = useUpdateTagTypeMutation({
+    refetchQueries: [{ query: GetTagTypesDocument }],
+  })
+
+  if (mode === 'cloud') {
+    const toVars = (id: string, updates: Partial<TagType>) => {
+      const vars: { id: string; name?: string; color?: string } = { id }
+      if (updates.name !== undefined) vars.name = updates.name
+      if (updates.color !== undefined) vars.color = updates.color
+      return vars
+    }
+    return {
+      mutate: ({ id, updates }: { id: string; updates: Partial<TagType> }) =>
+        cloudUpdate({ variables: toVars(id, updates) }),
+      mutateAsync: ({
+        id,
+        updates,
+      }: {
+        id: string
+        updates: Partial<TagType>
+      }) =>
+        cloudUpdate({ variables: toVars(id, updates) }).then(
+          (r) => r.data?.updateTagType,
+        ),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useDeleteTagType() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: deleteTagType,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tagTypes'] })
@@ -56,70 +145,234 @@ export function useDeleteTagType() {
       queryClient.invalidateQueries({ queryKey: ['items'] })
     },
   })
+
+  const [cloudDelete] = useDeleteTagTypeMutation({
+    refetchQueries: [
+      { query: GetTagTypesDocument },
+      { query: GetTagsDocument },
+    ],
+  })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutateAsync: (id: string) =>
+        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteTagType),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useTags() {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['tags'],
     queryFn: getAllTags,
+    enabled: !isCloud,
   })
+
+  const cloud = useGetTagsQuery({ skip: !isCloud })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.tags as Tag[] | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
 
 export function useTagsByType(typeId: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['tags', 'byType', typeId],
     queryFn: () => getTagsByType(typeId),
-    enabled: !!typeId,
+    enabled: !!typeId && !isCloud,
   })
+
+  const cloud = useGetTagsByTypeQuery({
+    variables: { typeId },
+    skip: !isCloud || !typeId,
+  })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.tagsByType as Tag[] | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
 
 export function useCreateTag() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: (input: Omit<Tag, 'id'>) => createTag(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
     },
   })
+
+  const [cloudCreate] = useCreateTagMutation({
+    refetchQueries: [{ query: GetTagsDocument }],
+  })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (input: Omit<Tag, 'id'>) =>
+        cloudCreate({ variables: { name: input.name, typeId: input.typeId } }),
+      mutateAsync: (input: Omit<Tag, 'id'>) =>
+        cloudCreate({
+          variables: { name: input.name, typeId: input.typeId },
+        }).then((r) => r.data?.createTag),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useUpdateTag() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Partial<Tag> }) =>
       updateTag(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
     },
   })
+
+  const [cloudUpdate] = useUpdateTagMutation({
+    refetchQueries: [{ query: GetTagsDocument }],
+  })
+
+  if (mode === 'cloud') {
+    const toVars = (id: string, updates: Partial<Tag>) => {
+      const vars: { id: string; name?: string; typeId?: string } = { id }
+      if (updates.name !== undefined) vars.name = updates.name
+      if (updates.typeId !== undefined) vars.typeId = updates.typeId
+      return vars
+    }
+    return {
+      mutate: ({ id, updates }: { id: string; updates: Partial<Tag> }) =>
+        cloudUpdate({ variables: toVars(id, updates) }),
+      mutateAsync: ({ id, updates }: { id: string; updates: Partial<Tag> }) =>
+        cloudUpdate({ variables: toVars(id, updates) }).then(
+          (r) => r.data?.updateTag,
+        ),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useDeleteTag() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
 
-  return useMutation({
+  const localMutation = useMutation({
     mutationFn: deleteTag,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
       queryClient.invalidateQueries({ queryKey: ['items'] })
     },
   })
+
+  const [cloudDelete] = useDeleteTagMutation({
+    refetchQueries: [{ query: GetTagsDocument }],
+  })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutateAsync: (id: string) =>
+        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteTag),
+      isPending: false,
+    }
+  }
+
+  return localMutation
 }
 
 export function useItemCountByTag(tagId: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['items', 'countByTag', tagId],
     queryFn: () => getItemCountByTag(tagId),
-    enabled: !!tagId,
+    enabled: !!tagId && !isCloud,
   })
+
+  const cloud = useItemCountByTagQuery({
+    variables: { tagId },
+    skip: !isCloud || !tagId,
+  })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.itemCountByTag as number | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
 
 export function useTagCountByType(typeId: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
     queryKey: ['tags', 'countByType', typeId],
     queryFn: () => getTagCountByType(typeId),
-    enabled: !!typeId,
+    enabled: !!typeId && !isCloud,
   })
+
+  const cloud = useTagCountByTypeQuery({
+    variables: { typeId },
+    skip: !isCloud || !typeId,
+  })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.tagCountByType as number | undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }

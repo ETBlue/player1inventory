@@ -1,3 +1,28 @@
+query GetItem($id: ID!) {
+  item(id: $id) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    userId
+    familyId
+    createdAt
+    updatedAt
+  }
+}
+
 query GetItems {
   items {
     id
@@ -63,4 +88,8 @@ mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
 
 mutation DeleteItem($id: ID!) {
   deleteItem(id: $id)
+}
+
+query ItemCountByTag($tagId: String!) {
+  itemCountByTag(tagId: $tagId)
 }

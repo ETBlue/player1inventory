@@ -114,6 +114,18 @@ Seven tests in `e2e/tests/settings/tags.spec.ts`:
 
 All tests share the same `afterEach` teardown (clear IndexedDB + localStorage + sessionStorage), matching the pattern in `shopping.spec.ts` and `cooking.spec.ts`.
 
+## Implementation Notes (post-design additions)
+
+**Cloud-mode support added:** The spec was extended to run in both `local` and `cloud` Playwright projects. Key additions:
+
+- `afterEach` is now dual-mode: cloud → `DELETE /e2e/cleanup` with `x-e2e-user-id` header; local → clear IndexedDB/localStorage/sessionStorage
+- Tests 3–7 use conditional setup: cloud uses UI-driven flow (navigate + create via app), local uses `page.evaluate()` IndexedDB seeding
+- `playwright.config.ts` expanded `testMatch` to include `**/settings/tags.spec.ts` in the cloud project
+- `TagsPage` gained a `clickTagBadgeToNavigate()` method for cloud-mode tag detail navigation
+- TanStack Router index routes append a trailing slash (`/settings/tags/$id/`) — `waitForURL` must avoid end-anchor regexes; extract ID with `filter(Boolean)`
+- Cloud hooks use `mutateAsync` (not `mutate({onSuccess})`): cloud shims ignore the options argument
+- Apollo Client freezes cached arrays — use `[...array].sort()` never `array.sort()` in place
+
 ## Drag-and-Drop Notes
 
 Use Playwright's `dragTo()` API targeting the tag badge source and the target type card. The `PointerSensor` in the app uses an 8px activation distance — Playwright's `dragTo()` simulates a sufficiently long movement to trigger the drag. If `dragTo()` proves flaky, fall back to manual `mouse.move()` with intermediate steps.
