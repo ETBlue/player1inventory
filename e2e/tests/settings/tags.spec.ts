@@ -184,10 +184,12 @@ test('user can edit tag name and type on Info tab', async ({ page, baseURL }) =>
     await tagsPage.submitTagDialog()
     await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
-    // Navigate to tag detail via badge click; extract ID from URL
+    // Navigate to tag detail via badge click; extract ID from URL.
+    // TanStack Router's index child renders at /settings/tags/{id}/ (trailing slash),
+    // so use a path-contains check and strip the trailing slash when extracting the ID.
     await tagsPage.clickTagBadgeToNavigate('Chicken')
-    await page.waitForURL(/\/settings\/tags\/[^/]+$/)
-    tagId = page.url().split('/').pop()!
+    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
   } else {
     // Local: seed directly into IndexedDB and navigate by ID
     const { tagIds } = await seedTags(
@@ -236,10 +238,11 @@ test('user can assign and unassign an item on Items tab', async ({ page, baseURL
     await tagsPage.submitTagDialog()
     await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
 
-    // Get tag ID from URL before navigating away to create item
+    // Get tag ID from URL before navigating away to create item.
+    // TanStack Router renders the index child at /settings/tags/{id}/ (trailing slash).
     await tagsPage.clickTagBadgeToNavigate('Chicken')
-    await page.waitForURL(/\/settings\/tags\/[^/]+$/)
-    tagId = page.url().split('/').pop()!
+    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
 
     // Create item via pantry UI
     await pantry.navigateTo()
