@@ -2,10 +2,7 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  loadSearchPrefs,
-  useUrlSearchAndFilters,
-} from './useUrlSearchAndFilters'
+import { useUrlSearchAndFilters } from './useUrlSearchAndFilters'
 
 // Mock TanStack Router
 vi.mock('@tanstack/react-router', () => ({
@@ -102,7 +99,7 @@ describe('useUrlSearchAndFilters', () => {
     })
   })
 
-  it('setSearch updates URL and saves to sessionStorage', () => {
+  it('setSearch updates URL', () => {
     // Given no URL params
     const { result } = renderHook(() => useUrlSearchAndFilters())
 
@@ -113,9 +110,6 @@ describe('useUrlSearchAndFilters', () => {
 
     // Then URL is updated
     expect(mockHistoryReplace).toHaveBeenCalledWith('/?q=apple')
-
-    // And sessionStorage is updated
-    expect(loadSearchPrefs()).toBe('q=apple')
   })
 
   it('setSearch removes q param when empty', () => {
@@ -148,8 +142,6 @@ describe('useUrlSearchAndFilters', () => {
     expect(mockHistoryReplace).toHaveBeenCalledWith(
       expect.stringContaining('f_type-1='),
     )
-    // And sessionStorage is updated
-    expect(loadSearchPrefs()).toContain('f_type-1=')
   })
 
   it('setFilterState replaces existing filter params', () => {
@@ -245,47 +237,6 @@ describe('useUrlSearchAndFilters', () => {
     expect(callArg).toContain('tags=1')
   })
 
-  it('seeds URL from sessionStorage on mount when URL has no params', () => {
-    // Given sessionStorage has stored prefs
-    sessionStorage.setItem('item-list-search-prefs', 'q=apple&filters=1')
-
-    // And URL has no params (already set in beforeEach)
-    const { result } = renderHook(() => useUrlSearchAndFilters())
-
-    // Verify hook renders without error
-    expect(result.current).toBeDefined()
-
-    // Then URL is seeded from sessionStorage
-    expect(mockHistoryReplace).toHaveBeenCalledWith('/?q=apple&filters=1')
-  })
-
-  it('does not seed from sessionStorage when URL already has params', () => {
-    // Given sessionStorage has stored prefs
-    sessionStorage.setItem('item-list-search-prefs', 'q=old')
-
-    // And URL already has params
-    mockRouterState.location.search = '?q=new'
-
-    const { result } = renderHook(() => useUrlSearchAndFilters())
-
-    // Verify hook renders
-    expect(result.current.search).toBe('new')
-
-    // Then URL is NOT overwritten from sessionStorage
-    expect(mockHistoryReplace).not.toHaveBeenCalled()
-  })
-
-  it('does not seed when sessionStorage is empty', () => {
-    // Given no stored prefs
-    // And URL has no params
-
-    const { result } = renderHook(() => useUrlSearchAndFilters())
-
-    expect(result.current.search).toBe('')
-    // Then URL is not modified
-    expect(mockHistoryReplace).not.toHaveBeenCalled()
-  })
-
   it('selectedVendorIds reads from ?f_vendor= param', () => {
     mockRouterState.location.search = '?f_vendor=v1%2Cv2'
     const { result } = renderHook(() => useUrlSearchAndFilters())
@@ -375,6 +326,31 @@ describe('useUrlSearchAndFilters', () => {
     expect(mockHistoryReplace).toHaveBeenCalledWith('/')
   })
 
+  it('setSearch does NOT write to sessionStorage', () => {
+    // Given no URL params
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+
+    // When setSearch is called
+    act(() => {
+      result.current.setSearch('apple')
+    })
+
+    // Then sessionStorage is NOT written (no cross-page carry-over)
+    expect(sessionStorage.getItem('item-list-search-prefs')).toBeNull()
+  })
+
+  it('does NOT seed URL from sessionStorage on mount', () => {
+    // Given sessionStorage has old prefs from another page
+    sessionStorage.setItem('item-list-search-prefs', 'q=old')
+    // And URL has no params
+
+    const { result } = renderHook(() => useUrlSearchAndFilters())
+
+    // Then URL is NOT seeded from sessionStorage (pages are independent)
+    expect(result.current.search).toBe('')
+    expect(mockHistoryReplace).not.toHaveBeenCalled()
+  })
+
   it('clearAllFilters removes all f_ params but preserves q, filters, tags params', () => {
     mockRouterState.location.search =
       '?q=apple&filters=1&f_vendor=v1&f_recipe=r1&f_type-1=tag-a'
@@ -391,20 +367,5 @@ describe('useUrlSearchAndFilters', () => {
     expect(callArg).not.toContain('f_type-1')
     expect(callArg).toContain('q=apple')
     expect(callArg).toContain('filters=1')
-  })
-})
-
-describe('loadSearchPrefs', () => {
-  beforeEach(() => {
-    sessionStorage.clear()
-  })
-
-  it('returns empty string when nothing stored', () => {
-    expect(loadSearchPrefs()).toBe('')
-  })
-
-  it('returns stored string', () => {
-    sessionStorage.setItem('item-list-search-prefs', 'q=apple')
-    expect(loadSearchPrefs()).toBe('q=apple')
   })
 })
