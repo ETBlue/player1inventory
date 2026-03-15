@@ -99,10 +99,25 @@ describe('isSamePage', () => {
       false,
     )
   })
+
+  it('treats full URLs with matching pathnames as same page regardless of search params', () => {
+    expect(isSamePage('/items/123?tab=tags', '/items/123?tab=vendors')).toBe(
+      true,
+    )
+    expect(
+      isSamePage('/settings/vendors/abc?q=foo', '/settings/vendors/abc/items'),
+    ).toBe(true)
+  })
+
+  it('treats full URLs with different pathnames as different pages', () => {
+    expect(isSamePage('/?q=milk', '/shopping?q=milk')).toBe(false)
+    expect(isSamePage('/items/123?tab=tags', '/items/456?tab=tags')).toBe(false)
+  })
 })
 
 describe('useAppNavigation', () => {
   let mockNavigate: ReturnType<typeof vi.fn>
+  let mockHistoryPush: ReturnType<typeof vi.fn>
   let mockUseRouter: ReturnType<typeof vi.fn>
   let mockLoadNavigationHistory: ReturnType<typeof vi.fn>
   let mockSaveNavigationHistory: ReturnType<typeof vi.fn>
@@ -112,10 +127,12 @@ describe('useAppNavigation', () => {
 
     // Setup mocks
     mockNavigate = vi.fn()
+    mockHistoryPush = vi.fn()
     mockLoadNavigationHistory = vi.fn()
     mockSaveNavigationHistory = vi.fn()
 
     mockUseRouter = vi.fn(() => ({
+      history: { push: mockHistoryPush },
       state: {
         location: {
           pathname: '/current-page',
@@ -146,6 +163,7 @@ describe('useAppNavigation', () => {
       '/settings/recipes/new',
     ])
     mockUseRouter.mockReturnValue({
+      history: { push: mockHistoryPush },
       state: { location: { pathname: '/settings/recipes/abc' } },
     })
 
@@ -153,14 +171,15 @@ describe('useAppNavigation', () => {
     const { result } = renderHook(() => useAppNavigation('/settings/recipes'))
     result.current.goBack()
 
-    // Then navigates to the list page, skipping /new
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/recipes' })
+    // Then navigates to the list page using history.push to preserve full URL
+    expect(mockHistoryPush).toHaveBeenCalledWith('/settings/recipes')
   })
 
   it('user can navigate back when only /new pages are in history', () => {
     // Given history only has a /new page
     mockLoadNavigationHistory.mockReturnValue(['/settings/recipes/new'])
     mockUseRouter.mockReturnValue({
+      history: { push: mockHistoryPush },
       state: { location: { pathname: '/settings/recipes/abc' } },
     })
 
@@ -168,13 +187,18 @@ describe('useAppNavigation', () => {
     const { result } = renderHook(() => useAppNavigation('/settings/recipes'))
     result.current.goBack()
 
-    // Then falls back to the fallback path
+    // Then falls back to the fallback path via navigate (not history.push)
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/recipes' })
+    expect(mockHistoryPush).not.toHaveBeenCalled()
   })
 
   it('user can navigate back when history is empty and fallback provided', () => {
     // Given empty history and a fallback path
     mockLoadNavigationHistory.mockReturnValue([])
+    mockUseRouter.mockReturnValue({
+      history: { push: mockHistoryPush },
+      state: { location: { pathname: '/settings/recipes/abc' } },
+    })
 
     // When user calls goBack with fallback
     const { result } = renderHook(() => useAppNavigation('/settings'))
@@ -182,11 +206,16 @@ describe('useAppNavigation', () => {
 
     // Then navigates to fallback path
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings' })
+    expect(mockHistoryPush).not.toHaveBeenCalled()
   })
 
   it('user can navigate back when history is empty and no fallback provided', () => {
     // Given empty history and no fallback
     mockLoadNavigationHistory.mockReturnValue([])
+    mockUseRouter.mockReturnValue({
+      history: { push: mockHistoryPush },
+      state: { location: { pathname: '/settings/recipes/abc' } },
+    })
 
     // When user calls goBack without fallback
     const { result } = renderHook(() => useAppNavigation())
@@ -194,5 +223,25 @@ describe('useAppNavigation', () => {
 
     // Then navigates to default home path
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/' })
+    expect(mockHistoryPush).not.toHaveBeenCalled()
+  })
+
+  it('user can navigate back to full URL including search params', () => {
+    // Given history has a full URL with search params
+    mockLoadNavigationHistory.mockReturnValue([
+      '/?q=milk&f_tag1=abc',
+      '/items/123',
+    ])
+    mockUseRouter.mockReturnValue({
+      history: { push: mockHistoryPush },
+      state: { location: { pathname: '/items/123' } },
+    })
+
+    // When user calls goBack
+    const { result } = renderHook(() => useAppNavigation())
+    result.current.goBack()
+
+    // Then navigates to full URL preserving search params
+    expect(mockHistoryPush).toHaveBeenCalledWith('/?q=milk&f_tag1=abc')
   })
 })
