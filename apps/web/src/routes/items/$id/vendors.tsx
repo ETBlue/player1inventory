@@ -31,21 +31,20 @@ function VendorsTab() {
     updateItem.mutate({ id, updates: { vendorIds: newVendorIds } })
   }
 
-  const handleAddVendor = () => {
+  const handleAddVendor = async () => {
     if (!newVendorName.trim()) return
 
-    createVendor.mutate(newVendorName.trim(), {
-      onSuccess: (newVendor) => {
-        // Immediately assign to current item
-        const currentVendorIds = item?.vendorIds ?? []
-        updateItem.mutate({
-          id,
-          updates: { vendorIds: [...currentVendorIds, newVendor.id] },
-        })
-        setNewVendorName('')
-        setShowDialog(false)
-      },
-    })
+    const newVendor = await createVendor.mutateAsync(newVendorName.trim())
+    if (newVendor?.id) {
+      // Immediately assign to current item
+      const currentVendorIds = item?.vendorIds ?? []
+      updateItem.mutate({
+        id,
+        updates: { vendorIds: [...currentVendorIds, newVendor.id] },
+      })
+    }
+    setNewVendorName('')
+    setShowDialog(false)
   }
 
   if (!item) return null

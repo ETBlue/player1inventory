@@ -98,8 +98,6 @@ test('user can edit an item name', async ({ page }) => {
 })
 
 test('user can assign a tag to an item', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Cloud tag migration not yet implemented')
-
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
   const settings = new SettingsPage(page)
@@ -119,8 +117,6 @@ test('user can assign a tag to an item', async ({ page, baseURL }) => {
 })
 
 test('user can assign a vendor to an item', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Cloud vendor migration not yet implemented')
-
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
