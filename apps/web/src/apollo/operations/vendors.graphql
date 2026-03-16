@@ -1,0 +1,27 @@
+query GetVendors {
+  vendors {
+    id
+    name
+    userId
+    familyId
+  }
+}
+
+mutation CreateVendor($name: String!) {
+  createVendor(name: $name) {
+    id
+    name
+    userId
+  }
+}
+
+mutation UpdateVendor($id: ID!, $name: String) {
+  updateVendor(id: $id, name: $name) {
+    id
+    name
+  }
+}
+
+mutation DeleteVendor($id: ID!) {
+  deleteVendor(id: $id)
+}
