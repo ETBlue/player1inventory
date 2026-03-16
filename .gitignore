@@ -31,6 +31,9 @@ storybook-static
 # Git worktrees
 .worktrees
 
+# Claude Code local settings (personal approval history, not for sharing)
+.claude/settings.local.json
+
 # Playwright
 playwright-report
 test-results
