@@ -77,7 +77,10 @@ test('user can create a vendor', async ({ page }) => {
   await vendorsPage.fillVendorName('Costco')
   await vendorsPage.clickSave()
 
-  // Then: vendor list shows "Costco"
+  // Wait for navigation to vendor detail page (post-save redirect — not /new)
+  await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
+
+  // Then: navigating back to vendor list shows "Costco"
   await vendorsPage.navigateTo()
   await expect(vendorsPage.getVendorCard('Costco')).toBeVisible()
 })
