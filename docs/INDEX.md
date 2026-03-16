@@ -29,7 +29,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; settings-refactor pending |
 | [shopping](features/shopping/) | ✅ Implemented | Redesign, pin, checkout, package unit display done |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
-| [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, combined input all done |
+| [vendors](features/vendors/) | 🔄 In Progress | CRUD + assignment done; backend migration in progress |
 | [item-list-state-restore](features/item-list-state-restore/) | ✅ Done | Back-navigation state preservation: filters, sort, search, scroll |
 
 ---
