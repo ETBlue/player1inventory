@@ -246,31 +246,21 @@ test('user can navigate to item detail and back with scroll position restored', 
   // Wait until the page is actually scrollable (content taller than viewport)
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
 
-  // When user scrolls to a mid-page position where items are in the viewport.
-  // Use a fixed Y so the scroll key is stable; stop before bottom to keep items in view
-  // (Playwright auto-scrolls off-screen elements into view on click, corrupting scrollYBefore).
-  await page.evaluate(() => window.scrollTo({ top: 800, behavior: 'instant' }))
+  // When user scrolls to the bottom so the last item is in the viewport
+  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
   await page.waitForFunction(() => window.scrollY > 0)
+
+  // The last heading in the list (lexicographic key order: seed-item-9 / "Item 10" sorts last)
+  const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
+  // Verify it is already in the viewport — Playwright will not auto-scroll it, so
+  // scrollYBefore is not corrupted by the subsequent click
+  await expect(lastItemHeading).toBeInViewport()
 
   // Record the scroll position before navigating
   const scrollYBefore = await page.evaluate(() => window.scrollY)
 
-  // Navigate to the first heading currently in the viewport (same logic as filter-panel test)
-  const headings = page.getByRole('heading', { level: 3 })
-  const headingCount = await headings.count()
-  let headingToClick = headings.nth(0)
-  for (let i = 0; i < headingCount; i++) {
-    const h = headings.nth(i)
-    const inViewport = await h.evaluate((el) => {
-      const rect = el.getBoundingClientRect()
-      return rect.top >= 0 && rect.top < window.innerHeight
-    })
-    if (inViewport) {
-      headingToClick = h
-      break
-    }
-  }
-  await headingToClick.click()
+  // And navigates to the last item
+  await lastItemHeading.click()
   await page.waitForURL(/\/items\//)
 
   // And clicks back
@@ -323,33 +313,21 @@ test('user can navigate to item detail and back with scroll position restored wh
   // Wait until the page is scrollable
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
 
-  // And user scrolls down so the filter panel is no longer in the viewport,
-  // but stops at a position where some items are still in the viewport (so we
-  // can click one without Playwright auto-scrolling it into view)
-  await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }))
+  // When user scrolls to the bottom so the last item is in the viewport
+  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
   await page.waitForFunction(() => window.scrollY > 0)
+
+  // The last heading in the list (lexicographic key order: seed-item-9 / "Item 10" sorts last)
+  const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
+  // Verify it is already in the viewport — Playwright will not auto-scroll it, so
+  // scrollYBefore is not corrupted by the subsequent click
+  await expect(lastItemHeading).toBeInViewport()
 
   // Record the scroll position before navigating
   const scrollYBefore = await page.evaluate(() => window.scrollY)
 
-  // And navigates to an item that is currently in the viewport.
-  // IMPORTANT: do NOT click an off-screen element — Playwright auto-scrolls it into
-  // view before clicking, which changes window.scrollY and corrupts scrollYBefore.
-  const headings = page.getByRole('heading', { level: 3 })
-  const headingCount = await headings.count()
-  let headingToClick = headings.nth(0) // fallback (will be auto-scrolled into view if needed)
-  for (let i = 0; i < headingCount; i++) {
-    const h = headings.nth(i)
-    const inViewport = await h.evaluate((el) => {
-      const rect = el.getBoundingClientRect()
-      return rect.top >= 0 && rect.top < window.innerHeight
-    })
-    if (inViewport) {
-      headingToClick = h
-      break
-    }
-  }
-  await headingToClick.click()
+  // And navigates to the last item
+  await lastItemHeading.click()
   await page.waitForURL(/\/items\//)
 
   // And clicks back
