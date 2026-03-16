@@ -27,10 +27,10 @@ export const Route = createFileRoute('/')({
 
 function PantryView() {
   const { data: items = [], isLoading } = useItems()
-  const { data: tags = [] } = useTags()
-  const { data: tagTypes = [] } = useTagTypes()
-  const { data: vendors = [] } = useVendors()
-  const { data: recipes = [] } = useRecipes()
+  const { data: tags = [], isLoading: isTagsLoading } = useTags()
+  const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
+  const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
+  const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
 
@@ -69,14 +69,23 @@ function PantryView() {
     toggleRecipeId,
   } = useUrlSearchAndFilters()
 
-  // Scroll restoration: save on unmount, restore after data loads
+  // Scroll restoration: save on unmount, restore after ALL layout-affecting data loads.
+  // The filter panel height depends on tagTypes/vendors/recipes; item card heights depend
+  // on tags (when isTagsVisible). Restoring scroll before these load causes layout shifts
+  // that land the page at the wrong position when the filter panel is open.
+  const allDataLoaded =
+    !isLoading &&
+    !isTagsLoading &&
+    !isTagTypesLoading &&
+    !isVendorsLoading &&
+    !isRecipesLoading
   const currentUrl = useRouterState({
     select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
   const { restoreScroll } = useScrollRestoration(currentUrl)
   useEffect(() => {
-    if (!isLoading) restoreScroll()
-  }, [isLoading, restoreScroll])
+    if (allDataLoaded) restoreScroll()
+  }, [allDataLoaded, restoreScroll])
 
   const vendorMap = useMemo(() => {
     const map = new Map<string, Vendor[]>()

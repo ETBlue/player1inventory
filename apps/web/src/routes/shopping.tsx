@@ -59,8 +59,8 @@ export const Route = createFileRoute('/shopping')({
 function Shopping() {
   const navigate = useNavigate()
   const { data: items = [], isLoading } = useItems()
-  const { data: tags = [] } = useTags()
-  const { data: tagTypes = [] } = useTagTypes()
+  const { data: tags = [], isLoading: isTagsLoading } = useTags()
+  const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
   const { data: cart } = useActiveCart()
   const { data: cartItems = [] } = useCartItems(cart?.id)
@@ -95,20 +95,24 @@ function Shopping() {
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
 
-  const { data: recipes = [] } = useRecipes()
+  const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
 
   const { sortBy, sortDirection, setSortBy, setSortDirection } =
     useSortFilter('shopping')
   const { search, filterState, selectedRecipeIds } = useUrlSearchAndFilters()
 
-  // Scroll restoration: save on unmount, restore after data loads
+  // Scroll restoration: save on unmount, restore after ALL layout-affecting data loads.
+  // The filter panel height depends on tagTypes/recipes; item card heights depend on tags
+  // (when isTagsVisible). Restoring scroll before these load causes layout shifts.
+  const allDataLoaded =
+    !isLoading && !isTagsLoading && !isTagTypesLoading && !isRecipesLoading
   const currentUrl = useRouterState({
     select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
   const { restoreScroll } = useScrollRestoration(currentUrl)
   useEffect(() => {
-    if (!isLoading) restoreScroll()
-  }, [isLoading, restoreScroll])
+    if (allDataLoaded) restoreScroll()
+  }, [allDataLoaded, restoreScroll])
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))

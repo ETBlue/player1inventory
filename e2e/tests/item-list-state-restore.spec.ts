@@ -1,6 +1,40 @@
 import { test, expect } from '@playwright/test'
 import { PantryPage } from '../pages/PantryPage'
 
+// Seed tag types directly into IndexedDB.
+// Requires navigating to '/' first so Dexie initialises the schema.
+async function seedTagTypes(page: import('@playwright/test').Page, names: string[]) {
+  await page.evaluate(async (typeNames) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+
+    const now = new Date().toISOString()
+    const tx = db.transaction('tagTypes', 'readwrite')
+    const store = tx.objectStore('tagTypes')
+    const colors = ['red', 'blue', 'green', 'orange', 'purple']
+
+    for (let i = 0; i < typeNames.length; i++) {
+      store.put({
+        id: `seed-tagtype-${i}`,
+        name: typeNames[i],
+        color: colors[i % colors.length],
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+
+    db.close()
+  }, names)
+}
+
 test.afterEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(async () => {
@@ -155,6 +189,47 @@ test('user can navigate to item detail and back with scroll position restored', 
   await page.waitForTimeout(400)
 
   // Then scroll position is restored to approximately where it was
+  const scrollY = await page.evaluate(() => window.scrollY)
+  expect(scrollY).toBeGreaterThan(100)
+})
+
+test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page }) => {
+  const pantry = new PantryPage(page)
+
+  // Given many items exist and several tag types (so filter panel has real content)
+  const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
+  await seedItems(page, itemNames)
+  // Tag types populate the filter panel — seeded after items to maximise chance
+  // of tagTypes query resolving after items query on back navigation
+  await seedTagTypes(page, ['Category', 'Location', 'Diet', 'Store', 'Season'])
+  await pantry.navigateTo()
+  await expect(pantry.getItemCard('Item 01')).toBeVisible()
+
+  // When user opens the filter panel (adds a row above the item list)
+  // Filter toggle: aria-label="Toggle filters" (src/components/item/ItemListToolbar/index.tsx:207)
+  await page.getByRole('button', { name: 'Toggle filters' }).click()
+  await page.waitForTimeout(100) // let URL param update settle
+
+  // Wait until the page is scrollable
+  await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
+
+  // And user scrolls down
+  await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }))
+  await page.waitForFunction(() => window.scrollY > 0)
+
+  // And navigates to an item detail
+  await pantry.getItemCard('Item 40').click()
+  await page.waitForURL(/\/items\//)
+
+  // And clicks back
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.waitForURL((url) => url.pathname === '/')
+
+  // Wait for items to load (useScrollRestoration triggers after all layout data loads)
+  await expect(pantry.getItemCard('Item 01')).toBeVisible()
+  await page.waitForTimeout(400)
+
+  // Then scroll position is restored (filter panel is still visible, items at same position)
   const scrollY = await page.evaluate(() => window.scrollY)
   expect(scrollY).toBeGreaterThan(100)
 })
