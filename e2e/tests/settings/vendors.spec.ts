@@ -32,6 +32,14 @@ async function seedVendor(page: Page, name: string): Promise<string> {
   return vendorId
 }
 
+test.beforeEach(async ({ request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  }
+})
+
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
@@ -85,6 +93,7 @@ test('user can create a vendor', async ({ page }) => {
   await expect(vendorsPage.getVendorCard('Costco')).toBeVisible()
 })
 
+
 test('user can delete a vendor', async ({ page, baseURL }) => {
   const vendorsPage = new VendorsPage(page)
 
@@ -94,6 +103,7 @@ test('user can delete a vendor', async ({ page, baseURL }) => {
     await vendorsPage.clickNewVendor()
     await vendorsPage.fillVendorName('Walmart')
     await vendorsPage.clickSave()
+    await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
     await vendorsPage.navigateTo()
   } else {
     // Local: seed via IndexedDB and navigate
