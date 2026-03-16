@@ -19,13 +19,12 @@ function NewVendorPage() {
 
   const isDirty = name.trim() !== ''
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isDirty) return
-    createVendor.mutate(name.trim(), {
-      onSuccess: (vendor) => {
-        navigate({ to: '/settings/vendors/$id', params: { id: vendor.id } })
-      },
-    })
+    const vendor = await createVendor.mutateAsync(name.trim())
+    if (vendor?.id) {
+      navigate({ to: '/settings/vendors/$id', params: { id: vendor.id } })
+    }
   }
 
   return (

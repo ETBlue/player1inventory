@@ -10,7 +10,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 |------|--------|-------|
 | [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent |
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
-| [backend](global/backend/) | 🔄 In Progress | Monorepo + Items + TagType/Tag done; remaining entities (Vendor, Recipe, etc.) pending |
+| [backend](global/backend/) | 🔄 In Progress | Monorepo + Items + TagType/Tag + Vendor done; remaining entities (Recipe, etc.) pending |
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags done; most pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts all done |
@@ -29,7 +29,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; settings-refactor pending |
 | [shopping](features/shopping/) | ✅ Implemented | Redesign, pin, checkout, package unit display done |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
-| [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, combined input all done |
+| [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, dual-mode hooks, cloud backend + E2E done |
 | [item-list-state-restore](features/item-list-state-restore/) | ✅ Done | Back-navigation state preservation: filters, sort, search, scroll |
 
 ---

@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { ItemModel } from '../models/Item.model.js'
 import { TagModel, TagTypeModel } from '../models/Tag.model.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers } from '../generated/graphql.js'
@@ -42,6 +43,13 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
     },
     deleteTagType: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
+      // Cascade: remove all tags of this type, then clean up items
+      const tags = await TagModel.find({ userId, typeId: id }, { _id: 1 })
+      const tagIds = tags.map((t) => (t as unknown as { _id: { toString(): string } })._id.toString())
+      if (tagIds.length > 0) {
+        await ItemModel.updateMany({ userId, tagIds: { $in: tagIds } }, { $pull: { tagIds: { $in: tagIds } } })
+        await TagModel.deleteMany({ userId, typeId: id })
+      }
       const result = await TagTypeModel.deleteOne({ _id: id, userId })
       return result.deletedCount > 0
     },
@@ -64,6 +72,8 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
     },
     deleteTag: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
+      // Cascade: remove tagId from all items before deleting
+      await ItemModel.updateMany({ userId, tagIds: id }, { $pull: { tagIds: id } })
       const result = await TagModel.deleteOne({ _id: id, userId })
       return result.deletedCount > 0
     },

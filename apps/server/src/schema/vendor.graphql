@@ -1,0 +1,16 @@
+type Vendor {
+  id: ID!
+  name: String!
+  userId: String!
+  familyId: String
+}
+
+extend type Query {
+  vendors: [Vendor!]!
+}
+
+extend type Mutation {
+  createVendor(name: String!): Vendor!
+  updateVendor(id: ID!, name: String): Vendor!
+  deleteVendor(id: ID!): Boolean!
+}

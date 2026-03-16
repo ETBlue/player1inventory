@@ -93,3 +93,7 @@ mutation DeleteItem($id: ID!) {
 query ItemCountByTag($tagId: String!) {
   itemCountByTag(tagId: $tagId)
 }
+
+query ItemCountByVendor($vendorId: String!) {
+  itemCountByVendor(vendorId: $vendorId)
+}
