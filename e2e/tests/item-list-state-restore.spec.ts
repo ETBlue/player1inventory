@@ -213,11 +213,12 @@ test('user can navigate to item detail and back with scroll position restored wh
   // Wait until the page is scrollable
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
 
-  // And user scrolls down
-  await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }))
+  // And user scrolls to the bottom so Item 40 is in the viewport
+  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
   await page.waitForFunction(() => window.scrollY > 0)
+  await expect(pantry.getItemCard('Item 40')).toBeInViewport()
 
-  // And navigates to an item detail
+  // And navigates to Item 40 (the last item — it is in the viewport)
   await pantry.getItemCard('Item 40').click()
   await page.waitForURL(/\/items\//)
 
@@ -229,7 +230,7 @@ test('user can navigate to item detail and back with scroll position restored wh
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
-  // Then scroll position is restored (filter panel is still visible, items at same position)
-  const scrollY = await page.evaluate(() => window.scrollY)
-  expect(scrollY).toBeGreaterThan(100)
+  // Then Item 40 is still in the viewport — if scroll is off by the filter panel height,
+  // Item 40 scrolls out of view and this assertion fails
+  await expect(pantry.getItemCard('Item 40')).toBeInViewport()
 })
