@@ -14,7 +14,11 @@ const MAX_HISTORY_SIZE = 50
  */
 export function useNavigationTracker() {
   const currentUrl = useRouterState({
-    select: (state) => state.location.pathname + (state.location.search ?? ''),
+    // Use searchStr (raw query string) not search (parsed object) to get correct URL strings.
+    // state.location.search is Record<string,unknown> in TanStack Router v1 — concatenating
+    // it with pathname would produce "/[object Object]" instead of "/?q=milk".
+    select: (state) =>
+      state.location.pathname + (state.location.searchStr ?? ''),
   })
 
   useEffect(() => {

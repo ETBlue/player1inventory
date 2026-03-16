@@ -103,7 +103,7 @@ function Shopping() {
 
   // Scroll restoration: save on unmount, restore after data loads
   const currentUrl = useRouterState({
-    select: (s) => s.location.pathname + (s.location.search ?? ''),
+    select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
   const { restoreScroll } = useScrollRestoration(currentUrl)
   useEffect(() => {
