@@ -1,0 +1,60 @@
+query GetRecipes {
+  recipes {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+    userId
+    familyId
+  }
+}
+
+query GetRecipe($id: ID!) {
+  recipe(id: $id) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+    userId
+    familyId
+  }
+}
+
+mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
+  createRecipe(name: $name, items: $items) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+  }
+}
+
+mutation UpdateRecipe($id: ID!, $name: String, $items: [RecipeItemInput!]) {
+  updateRecipe(id: $id, name: $name, items: $items) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+  }
+}
+
+mutation UpdateRecipeLastCookedAt($id: ID!) {
+  updateRecipeLastCookedAt(id: $id) {
+    id
+    lastCookedAt
+  }
+}
+
+mutation DeleteRecipe($id: ID!) {
+  deleteRecipe(id: $id)
+}
