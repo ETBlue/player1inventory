@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { ItemModel } from '../models/Item.model.js'
+import { RecipeModel } from '../models/Recipe.model.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 
@@ -20,6 +21,11 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
     itemCountByVendor: async (_, { vendorId }, ctx) => {
       const userId = requireAuth(ctx)
       return ItemModel.countDocuments({ userId, vendorIds: vendorId })
+    },
+    itemCountByRecipe: async (_, { recipeId }, ctx) => {
+      const userId = requireAuth(ctx)
+      const recipe = await RecipeModel.findOne({ _id: recipeId, userId })
+      return recipe?.items.length ?? 0
     },
   },
   Mutation: {
@@ -52,6 +58,11 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
     },
     deleteItem: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
+      // Cascade: remove itemId from all recipes before deleting
+      await RecipeModel.updateMany(
+        { userId, 'items.itemId': id },
+        { $pull: { items: { itemId: id } } },
+      )
       const result = await ItemModel.deleteOne({ _id: id, userId })
       return result.deletedCount > 0
     },
