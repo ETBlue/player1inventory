@@ -5,6 +5,7 @@ import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import { ItemModel } from '../models/Item.model.js'
+import { RecipeModel } from '../models/Recipe.model.js'
 import type { Context } from '../context.js'
 
 let mongod: MongoMemoryServer
@@ -25,6 +26,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   await ItemModel.deleteMany({})
+  await RecipeModel.deleteMany({})
 })
 
 describe('Item resolvers', () => {
@@ -182,6 +184,40 @@ describe('Item resolvers', () => {
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.data?.items).toHaveLength(0)
+    }
+  })
+
+  it('deleting an item removes it from all recipe items arrays (cascade)', async () => {
+    const context: Context = { userId: 'user_test123' }
+
+    // Given an item and two recipes that reference it
+    const createResponse = await server.executeOperation(
+      { query: `mutation { createItem(name: "Eggs") { id } }` },
+      { contextValue: context },
+    )
+    const itemId =
+      createResponse.body.kind === 'single'
+        ? (createResponse.body.singleResult.data?.createItem as { id: string }).id
+        : null
+
+    await RecipeModel.create([
+      { name: 'Omelette', items: [{ itemId, defaultAmount: 3 }], userId: 'user_test123' },
+      { name: 'Fried Eggs', items: [{ itemId, defaultAmount: 2 }], userId: 'user_test123' },
+    ])
+
+    // When deleting the item
+    await server.executeOperation(
+      {
+        query: `mutation DeleteItem($id: ID!) { deleteItem(id: $id) }`,
+        variables: { id: itemId },
+      },
+      { contextValue: context },
+    )
+
+    // Then the itemId is removed from all recipes
+    const recipes = await RecipeModel.find({ userId: 'user_test123' })
+    for (const recipe of recipes) {
+      expect(recipe.items.map((ri) => ri.itemId)).not.toContain(itemId)
     }
   })
 
