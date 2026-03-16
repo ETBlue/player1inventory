@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
-import { RecipesPage } from '../../pages/settings/RecipesPage'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../../constants'
 import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
+import { RecipesPage } from '../../pages/settings/RecipesPage'
 
 // Seed a recipe (and optionally items) directly into IndexedDB.
 // Navigate to '/' first so Dexie initialises the DB schema.
@@ -107,30 +108,44 @@ async function seedItem(page: Page, name: string): Promise<string> {
   return itemId
 }
 
-test.afterEach(async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(async () => {
-    const dbs = await indexedDB.databases()
-    await Promise.all(
-      dbs.map(({ name }) => {
-        return new Promise<void>((resolve, reject) => {
-          if (!name) {
-            resolve()
-            return
-          }
-          const req = indexedDB.deleteDatabase(name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-          req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
-            resolve()
-          }
-        })
-      }),
-    )
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+test.beforeEach(async ({ request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  }
+})
+
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  } else {
+    await page.goto('/')
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases()
+      await Promise.all(
+        dbs.map(({ name }) => {
+          return new Promise<void>((resolve, reject) => {
+            if (!name) {
+              resolve()
+              return
+            }
+            const req = indexedDB.deleteDatabase(name)
+            req.onsuccess = () => resolve()
+            req.onerror = () => reject(req.error)
+            req.onblocked = () => {
+              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              resolve()
+            }
+          })
+        }),
+      )
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+  }
 })
 
 test('user can create a recipe', async ({ page }) => {
@@ -262,4 +277,46 @@ test('user can edit recipe name on Info tab', async ({ page }) => {
   await detail.navigateTo(recipeId)
   await page.waitForURL((url) => url.pathname.includes(recipeId))
   await expect(page.getByLabel('Name')).toHaveValue('Waffles')
+})
+
+// ─── Cloud mode tests ────────────────────────────────────────────────────────
+
+test('user can create a recipe in cloud mode', async ({ page, baseURL }) => {
+  test.skip(baseURL !== CLOUD_WEB_URL, 'Cloud mode only')
+  const recipes = new RecipesPage(page)
+
+  // Given: recipes list is empty (cleared in beforeEach)
+  await recipes.navigateTo()
+
+  // When: user creates a recipe
+  await recipes.clickNewRecipe()
+  await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
+  await recipes.fillRecipeName('Cloud Pancakes')
+  await recipes.clickSave()
+
+  // Then: recipe appears in list
+  await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+  await recipes.navigateTo()
+  await expect(recipes.getRecipeCard('Cloud Pancakes')).toBeVisible()
+})
+
+test('user can delete a recipe in cloud mode', async ({ page, baseURL }) => {
+  test.skip(baseURL !== CLOUD_WEB_URL, 'Cloud mode only')
+  const recipes = new RecipesPage(page)
+
+  // Given: a recipe exists (created via UI)
+  await recipes.navigateTo()
+  await recipes.clickNewRecipe()
+  await recipes.fillRecipeName('Cloud Waffles')
+  await recipes.clickSave()
+  await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+  await recipes.navigateTo()
+  await expect(recipes.getRecipeCard('Cloud Waffles')).toBeVisible()
+
+  // When: user deletes the recipe
+  await recipes.clickDeleteRecipe('Cloud Waffles')
+  await recipes.confirmDelete()
+
+  // Then: recipe is gone
+  await expect(recipes.getRecipeCard('Cloud Waffles')).not.toBeVisible()
 })

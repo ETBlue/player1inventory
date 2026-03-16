@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { CookingPage } from '../pages/CookingPage'
-import { PantryPage } from '../pages/PantryPage'
 import { ItemPage } from '../pages/ItemPage'
+import { PantryPage } from '../pages/PantryPage'
 
 // Seed items and a recipe directly into IndexedDB.
 // This avoids 10-15 UI steps for creating items + recipe before testing cooking.
@@ -79,30 +80,44 @@ async function seedDatabase(page: Page) {
   return { flourId, eggsId, recipeId }
 }
 
-test.afterEach(async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(async () => {
-    const dbs = await indexedDB.databases()
-    await Promise.all(
-      dbs.map(({ name }) => {
-        return new Promise<void>((resolve, reject) => {
-          if (!name) {
-            resolve()
-            return
-          }
-          const req = indexedDB.deleteDatabase(name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-          req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
-            resolve()
-          }
-        })
-      }),
-    )
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+test.beforeEach(async ({ request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  }
+})
+
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  } else {
+    await page.goto('/')
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases()
+      await Promise.all(
+        dbs.map(({ name }) => {
+          return new Promise<void>((resolve, reject) => {
+            if (!name) {
+              resolve()
+              return
+            }
+            const req = indexedDB.deleteDatabase(name)
+            req.onsuccess = () => resolve()
+            req.onerror = () => reject(req.error)
+            req.onblocked = () => {
+              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              resolve()
+            }
+          })
+        }),
+      )
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+  }
 })
 
 test('user can cook a recipe with partial items and multiple servings', async ({ page }) => {
@@ -145,4 +160,48 @@ test('user can cook a recipe with partial items and multiple servings', async ({
   await expect(pantry.getItemCard('Eggs')).toBeVisible()
   await pantry.getItemCard('Eggs').click()
   await expect(item.getPackedQuantityInput()).toHaveValue('12')
+})
+
+// ─── Cloud mode tests ────────────────────────────────────────────────────────
+
+test('user can view recipes in cloud mode', async ({ page, baseURL }) => {
+  test.skip(baseURL !== CLOUD_WEB_URL, 'Cloud mode only')
+  const cooking = new CookingPage(page)
+
+  // Given: a recipe is created via the settings UI
+  await page.goto('/settings/recipes')
+  await page.getByRole('button', { name: /new recipe/i }).click()
+  await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
+  await page.getByLabel('Name').fill('Cloud Pancakes')
+  await page.getByRole('button', { name: /save/i }).click()
+  await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+
+  // When: navigate to cooking page
+  await cooking.navigateTo()
+
+  // Then: "Cloud Pancakes" recipe is visible
+  await expect(page.getByRole('checkbox', { name: 'Cloud Pancakes' })).toBeVisible()
+})
+
+test('user can mark a recipe as last cooked in cloud mode', async ({ page, baseURL }) => {
+  test.skip(baseURL !== CLOUD_WEB_URL, 'Cloud mode only')
+  const cooking = new CookingPage(page)
+
+  // Given: a recipe exists (created via UI, no items needed)
+  await page.goto('/settings/recipes')
+  await page.getByRole('button', { name: /new recipe/i }).click()
+  await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
+  await page.getByLabel('Name').fill('Cloud Omelette')
+  await page.getByRole('button', { name: /save/i }).click()
+  await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+
+  // When: navigate to cooking, check the recipe, and confirm done
+  await cooking.navigateTo()
+  await cooking.checkRecipe('Cloud Omelette')
+  await cooking.clickDone()
+  await cooking.confirmDone()
+
+  // Then: navigating back to cooking still shows the recipe (lastCookedAt updated, recipe not deleted)
+  await cooking.navigateTo()
+  await expect(page.getByRole('checkbox', { name: 'Cloud Omelette' })).toBeVisible()
 })
