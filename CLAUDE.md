@@ -670,3 +670,11 @@ Include these sections in PR description:
 ## Test Plan
 - [ ] <verification steps>
 ```
+
+After creating the PR, attach it to the relevant milestone:
+
+```bash
+gh pr edit <number> --milestone "<milestone title>"
+```
+
+Match the milestone to the feature area being worked on (e.g. `v0.2.0 — Cloud Foundation` for cloud work). If no milestone fits, skip this step.
