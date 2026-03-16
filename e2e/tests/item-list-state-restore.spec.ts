@@ -171,13 +171,15 @@ test('user can navigate to item detail and back with scroll position restored', 
   // Wait until the page is actually scrollable (content taller than viewport)
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
 
-  // When user scrolls down
-  await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }))
-  // Verify the scroll actually happened before navigating
+  // When user scrolls to the bottom so the last item is in the viewport
+  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
   await page.waitForFunction(() => window.scrollY > 0)
+  const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
+  const lastItemName = await lastItemHeading.textContent()
+  await expect(lastItemHeading).toBeInViewport()
 
-  // And navigates to an item detail (Item 40 is at the bottom of the sorted list)
-  await pantry.getItemCard('Item 40').click()
+  // And navigates to the last item
+  await lastItemHeading.click()
   await page.waitForURL(/\/items\//)
 
   // And clicks back
@@ -188,9 +190,8 @@ test('user can navigate to item detail and back with scroll position restored', 
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
-  // Then scroll position is restored to approximately where it was
-  const scrollY = await page.evaluate(() => window.scrollY)
-  expect(scrollY).toBeGreaterThan(100)
+  // Then the last item is still in the viewport
+  await expect(pantry.getItemCard(lastItemName!)).toBeInViewport()
 })
 
 test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page }) => {
@@ -210,27 +211,60 @@ test('user can navigate to item detail and back with scroll position restored wh
   await page.getByRole('button', { name: 'Toggle filters' }).click()
   await page.waitForTimeout(100) // let URL param update settle
 
+  // Wait for filter panel content to be visible (tag type buttons rendered by ItemFilters)
+  // "Category" is the first seeded tag type name
+  await expect(page.getByRole('button', { name: 'Category' })).toBeVisible()
+
   // Wait until the page is scrollable
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
 
-  // And user scrolls to the bottom so Item 40 is in the viewport
-  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
+  // And user scrolls down so the filter panel is no longer in the viewport,
+  // but stops at a position where some items are still in the viewport (so we
+  // can click one without Playwright auto-scrolling it into view)
+  await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }))
   await page.waitForFunction(() => window.scrollY > 0)
-  await expect(pantry.getItemCard('Item 40')).toBeInViewport()
 
-  // And navigates to Item 40 (the last item — it is in the viewport)
-  await pantry.getItemCard('Item 40').click()
+  // Record the scroll position before navigating
+  const scrollYBefore = await page.evaluate(() => window.scrollY)
+
+  // And navigates to an item that is currently in the viewport.
+  // IMPORTANT: do NOT click an off-screen element — Playwright auto-scrolls it into
+  // view before clicking, which changes window.scrollY and corrupts scrollYBefore.
+  const headings = page.getByRole('heading', { level: 3 })
+  const headingCount = await headings.count()
+  let headingToClick = headings.nth(0) // fallback (will be auto-scrolled into view if needed)
+  for (let i = 0; i < headingCount; i++) {
+    const h = headings.nth(i)
+    const inViewport = await h.evaluate((el) => {
+      const rect = el.getBoundingClientRect()
+      return rect.top >= 0 && rect.top < window.innerHeight
+    })
+    if (inViewport) {
+      headingToClick = h
+      break
+    }
+  }
+  await headingToClick.click()
   await page.waitForURL(/\/items\//)
 
   // And clicks back
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.waitForURL((url) => url.pathname === '/')
 
-  // Wait for items to load (useScrollRestoration triggers after all layout data loads)
+  // Verify the filter panel is open (back navigation preserved URL params)
+  // If this fails, the filter panel state was not preserved — a separate navigation bug
+  await expect(page).toHaveURL(/filters=1/)
+  await expect(page.getByRole('button', { name: 'Category' })).toBeVisible()
+
+  // Wait for items and scroll restoration to complete
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
-  // Then Item 40 is still in the viewport — if scroll is off by the filter panel height,
-  // Item 40 scrolls out of view and this assertion fails
-  await expect(pantry.getItemCard('Item 40')).toBeInViewport()
+  // Then scroll position is restored to approximately where it was before navigation.
+  // Bug: restoreScroll() fires before tagTypes loads, filter panel is not yet rendered,
+  // so scroll lands at scrollYBefore - filterPanelHeight (wrong position).
+  // Fix: wait for all layout-affecting data before restoring scroll.
+  const scrollYAfter = await page.evaluate(() => window.scrollY)
+  expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
+  expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
 })
