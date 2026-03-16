@@ -17,6 +17,10 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
       const userId = requireAuth(ctx)
       return ItemModel.countDocuments({ userId, tagIds: tagId })
     },
+    itemCountByVendor: async (_, { vendorId }, ctx) => {
+      const userId = requireAuth(ctx)
+      return ItemModel.countDocuments({ userId, vendorIds: vendorId })
+    },
   },
   Mutation: {
     createItem: async (_, { name }, ctx) => {
