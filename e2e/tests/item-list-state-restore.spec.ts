@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test'
 import { PantryPage } from '../pages/PantryPage'
 
 // Seed tag types directly into IndexedDB.
+// Clears existing tagTypes and tags first to avoid conflicts with Dexie's default
+// populate event (which seeds 'Category', 'Diet', 'Storage' on fresh DBs).
 // Requires navigating to '/' first so Dexie initialises the schema.
 async function seedTagTypes(page: import('@playwright/test').Page, names: string[]) {
   await page.evaluate(async (typeNames) => {
@@ -9,6 +11,15 @@ async function seedTagTypes(page: import('@playwright/test').Page, names: string
       const req = indexedDB.open('Player1Inventory')
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
+    })
+
+    // Clear default-seeded tag types and tags first so there are no name duplicates
+    const clearTx = db.transaction(['tagTypes', 'tags'], 'readwrite')
+    clearTx.objectStore('tagTypes').clear()
+    clearTx.objectStore('tags').clear()
+    await new Promise<void>((resolve, reject) => {
+      clearTx.oncomplete = () => resolve()
+      clearTx.onerror = () => reject(clearTx.error)
     })
 
     const now = new Date().toISOString()
@@ -33,6 +44,60 @@ async function seedTagTypes(page: import('@playwright/test').Page, names: string
 
     db.close()
   }, names)
+}
+
+// Seed tags into IndexedDB and assign them to every item already in the DB.
+// Tag types (seed-tagtype-{typeIndex}) must exist before calling this.
+// Requires the Dexie schema to be initialised (navigate to '/' first).
+async function seedTagsForAllItems(
+  page: import('@playwright/test').Page,
+  tags: { typeIndex: number; name: string }[],
+) {
+  await page.evaluate(async (tagDefs) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+
+    // Create tag records
+    const tagIds: string[] = tagDefs.map((_, i) => `seed-tag-${i}`)
+    const tagTx = db.transaction('tags', 'readwrite')
+    const tagStore = tagTx.objectStore('tags')
+    for (let i = 0; i < tagDefs.length; i++) {
+      tagStore.put({
+        id: tagIds[i],
+        name: tagDefs[i].name,
+        typeId: `seed-tagtype-${tagDefs[i].typeIndex}`,
+      })
+    }
+    await new Promise<void>((resolve, reject) => {
+      tagTx.oncomplete = () => resolve()
+      tagTx.onerror = () => reject(tagTx.error)
+    })
+
+    // Read all items in a readonly transaction first (awaiting inside a readwrite
+    // transaction auto-commits it, making subsequent puts silently fail).
+    const items: object[] = await new Promise((resolve, reject) => {
+      const readTx = db.transaction('items', 'readonly')
+      const req = readTx.objectStore('items').getAll()
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+
+    // Write all items back with the new tagIds in a fresh readwrite transaction
+    const writeTx = db.transaction('items', 'readwrite')
+    const writeStore = writeTx.objectStore('items')
+    for (const item of items) {
+      writeStore.put({ ...(item as object), tagIds })
+    }
+    await new Promise<void>((resolve, reject) => {
+      writeTx.oncomplete = () => resolve()
+      writeTx.onerror = () => reject(writeTx.error)
+    })
+
+    db.close()
+  }, tags)
 }
 
 test.afterEach(async ({ page }) => {
@@ -162,47 +227,81 @@ test('user can navigate to item detail and back with sort state preserved', asyn
 test('user can navigate to item detail and back with scroll position restored', async ({ page }) => {
   const pantry = new PantryPage(page)
 
-  // Given many items exist (enough to make the page scrollable)
+  // Given many items exist (enough to make the page scrollable), each with tags
   const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
   await seedItems(page, itemNames)
+  await seedTagTypes(page, ['Category', 'Location'])
+  await seedTagsForAllItems(page, [
+    { typeIndex: 0, name: 'Pantry' },
+    { typeIndex: 1, name: 'Fridge' },
+  ])
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
+
+  // And tags are toggled visible (adds tag badges to each item card, increasing card height)
+  // Tag toggle: aria-label="Toggle tags" (src/components/item/ItemListToolbar/index.tsx:198)
+  await page.getByRole('button', { name: 'Toggle tags' }).click()
+  await expect(page).toHaveURL(/tags=1/)
 
   // Wait until the page is actually scrollable (content taller than viewport)
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
 
-  // When user scrolls to the bottom so the last item is in the viewport
-  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
+  // When user scrolls to a mid-page position where items are in the viewport.
+  // Use a fixed Y so the scroll key is stable; stop before bottom to keep items in view
+  // (Playwright auto-scrolls off-screen elements into view on click, corrupting scrollYBefore).
+  await page.evaluate(() => window.scrollTo({ top: 800, behavior: 'instant' }))
   await page.waitForFunction(() => window.scrollY > 0)
-  const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
-  const lastItemName = await lastItemHeading.textContent()
-  await expect(lastItemHeading).toBeInViewport()
 
-  // And navigates to the last item
-  await lastItemHeading.click()
+  // Record the scroll position before navigating
+  const scrollYBefore = await page.evaluate(() => window.scrollY)
+
+  // Navigate to the first heading currently in the viewport (same logic as filter-panel test)
+  const headings = page.getByRole('heading', { level: 3 })
+  const headingCount = await headings.count()
+  let headingToClick = headings.nth(0)
+  for (let i = 0; i < headingCount; i++) {
+    const h = headings.nth(i)
+    const inViewport = await h.evaluate((el) => {
+      const rect = el.getBoundingClientRect()
+      return rect.top >= 0 && rect.top < window.innerHeight
+    })
+    if (inViewport) {
+      headingToClick = h
+      break
+    }
+  }
+  await headingToClick.click()
   await page.waitForURL(/\/items\//)
 
   // And clicks back
   await page.getByRole('button', { name: 'Go back' }).click()
-  await page.waitForURL('/')
+  await page.waitForURL((url) => url.pathname === '/')
 
-  // Wait for items to load (useScrollRestoration triggers after isLoading → false)
+  // Wait for items and scroll restoration to complete
+  // (useScrollRestoration waits for tags to finish loading since tag badges affect item height)
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
-  // Then the last item is still in the viewport
-  await expect(pantry.getItemCard(lastItemName!)).toBeInViewport()
+  // Then scroll position is restored to approximately where it was before navigation
+  const scrollYAfter = await page.evaluate(() => window.scrollY)
+  expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
+  expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
 })
 
 test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page }) => {
   const pantry = new PantryPage(page)
 
-  // Given many items exist and several tag types (so filter panel has real content)
+  // Given many items exist, each with tags, and several tag types (for the filter panel)
   const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
   await seedItems(page, itemNames)
   // Tag types populate the filter panel — seeded after items to maximise chance
   // of tagTypes query resolving after items query on back navigation
   await seedTagTypes(page, ['Category', 'Location', 'Diet', 'Store', 'Season'])
+  await seedTagsForAllItems(page, [
+    { typeIndex: 0, name: 'Pantry' },
+    { typeIndex: 1, name: 'Fridge' },
+    { typeIndex: 2, name: 'Vegan' },
+  ])
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
@@ -214,6 +313,12 @@ test('user can navigate to item detail and back with scroll position restored wh
   // Wait for filter panel content to be visible (tag type buttons rendered by ItemFilters)
   // "Category" is the first seeded tag type name
   await expect(page.getByRole('button', { name: 'Category' })).toBeVisible()
+
+  // And tags are toggled visible (tag badges affect item card height, exercising the
+  // allDataLoaded guard in useScrollRestoration)
+  // Tag toggle: aria-label="Toggle tags" (src/components/item/ItemListToolbar/index.tsx:198)
+  await page.getByRole('button', { name: 'Toggle tags' }).click()
+  await expect(page).toHaveURL(/tags=1/)
 
   // Wait until the page is scrollable
   await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
@@ -251,18 +356,21 @@ test('user can navigate to item detail and back with scroll position restored wh
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.waitForURL((url) => url.pathname === '/')
 
-  // Verify the filter panel is open (back navigation preserved URL params)
-  // If this fails, the filter panel state was not preserved — a separate navigation bug
+  // Verify URL params are preserved (filter panel and tag visibility)
+  // If these fail, URL state was not preserved — a separate navigation bug
   await expect(page).toHaveURL(/filters=1/)
-  await expect(page.getByRole('button', { name: 'Category' })).toBeVisible()
+  await expect(page).toHaveURL(/tags=1/)
+  // Use first() because with both ?filters=1 and ?tags=1 active, "Category" appears
+  // in both the filter panel dropdown and the tags-visible row
+  await expect(page.getByRole('button', { name: 'Category' }).first()).toBeVisible()
 
   // Wait for items and scroll restoration to complete
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
   // Then scroll position is restored to approximately where it was before navigation.
-  // Bug: restoreScroll() fires before tagTypes loads, filter panel is not yet rendered,
-  // so scroll lands at scrollYBefore - filterPanelHeight (wrong position).
+  // Bug: restoreScroll() fires before tagTypes/tags load, filter panel and tag badges are
+  // not yet rendered, so scroll lands at scrollYBefore - (filterPanelHeight + tagBadgesHeight).
   // Fix: wait for all layout-affecting data before restoring scroll.
   const scrollYAfter = await page.evaluate(() => window.scrollY)
   expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
