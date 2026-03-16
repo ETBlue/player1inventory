@@ -30,6 +30,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [shopping](features/shopping/) | ✅ Implemented | Redesign, pin, checkout, package unit display done |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
 | [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, dual-mode hooks, cloud backend + E2E done |
+| [recipes](features/recipes/) | 🔲 Pending | Cloud backend migration: model, schema, resolver, dual-mode hooks, E2E |
 | [item-list-state-restore](features/item-list-state-restore/) | ✅ Done | Back-navigation state preservation: filters, sort, search, scroll |
 
 ---
