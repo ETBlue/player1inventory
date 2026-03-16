@@ -1,0 +1,30 @@
+type RecipeItem {
+  itemId: String!
+  defaultAmount: Float!
+}
+
+input RecipeItemInput {
+  itemId: String!
+  defaultAmount: Float!
+}
+
+type Recipe {
+  id: ID!
+  name: String!
+  items: [RecipeItem!]!
+  lastCookedAt: String
+  userId: String!
+  familyId: String
+}
+
+extend type Query {
+  recipes: [Recipe!]!
+  recipe(id: ID!): Recipe
+}
+
+extend type Mutation {
+  createRecipe(name: String!, items: [RecipeItemInput!]): Recipe!
+  updateRecipe(id: ID!, name: String, items: [RecipeItemInput!]): Recipe!
+  updateRecipeLastCookedAt(id: ID!): Recipe!
+  deleteRecipe(id: ID!): Boolean!
+}
