@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowUp, Filter, Plus, Search, Tags, X } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FilterStatus } from '@/components/FilterStatus'
 import { ItemFilters } from '@/components/item/ItemFilters'
 import { Toolbar } from '@/components/Toolbar'
@@ -88,8 +88,13 @@ export function ItemListToolbar({
     clearAllFilters,
   } = useUrlSearchAndFilters()
 
-  // searchVisible is internal state, initialized to true when q is non-empty
+  // searchVisible is internal state, initialized to true when q is non-empty.
+  // The effect ensures the search row opens when navigating back to a URL with ?q=
+  // (the lazy initializer may fire before the router state catches up on SPA navigation).
   const [searchVisible, setSearchVisible] = useState(() => search !== '')
+  useEffect(() => {
+    if (search) setSearchVisible(true)
+  }, [search])
 
   const hasActiveFilters =
     Object.values(filterState).some((tagIds) => tagIds.length > 0) ||

@@ -30,6 +30,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [shopping](features/shopping/) | ✅ Implemented | Redesign, pin, checkout, package unit display done |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
 | [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, combined input all done |
+| [item-list-state-restore](features/item-list-state-restore/) | ✅ Done | Back-navigation state preservation: filters, sort, search, scroll |
 
 ---
 

@@ -1,29 +1,14 @@
 // src/hooks/useUrlSearchAndFilters.ts
 
 import { useRouter, useRouterState } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import type { FilterState } from '@/lib/filterUtils'
 
-const STORAGE_KEY = 'item-list-search-prefs'
 const RESERVED_FILTER_KEYS = new Set(['vendor', 'recipe'])
 
 function buildSearchString(params: URLSearchParams): string {
   const str = params.toString()
   return str ? `?${str}` : ''
-}
-
-export function loadSearchPrefs(): string {
-  try {
-    return sessionStorage.getItem(STORAGE_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function saveSearchPrefs(str: string): void {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, str)
-  } catch {}
 }
 
 export function useUrlSearchAndFilters() {
@@ -63,30 +48,10 @@ export function useUrlSearchAndFilters() {
     [params],
   )
 
-  // On mount: seed URL from sessionStorage if no search params present
-  const seededRef = useRef(false)
-  useEffect(() => {
-    if (seededRef.current) return
-    seededRef.current = true
-
-    if (!router.state.location.search) {
-      const stored = loadSearchPrefs()
-      if (stored) {
-        router.history.replace(`${router.state.location.pathname}?${stored}`)
-      }
-    }
-  }, [
-    router.history,
-    router.state.location.pathname,
-    router.state.location.search,
-  ])
-
-  // Write helpers — update URL params and sync to sessionStorage
+  // Write helpers — update URL params only (no sessionStorage; state lives in nav history)
   function updateParams(updater: (p: URLSearchParams) => void): void {
     const next = new URLSearchParams(locationSearch)
     updater(next)
-    const str = next.toString()
-    saveSearchPrefs(str)
     router.history.replace(
       router.state.location.pathname + buildSearchString(next),
     )

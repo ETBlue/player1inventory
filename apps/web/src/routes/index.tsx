@@ -1,12 +1,14 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouterState } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
+import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
@@ -16,11 +18,6 @@ import {
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
-import {
-  loadSortPrefs,
-  type SortDirection,
-  type SortField,
-} from '@/lib/sessionStorage'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -30,10 +27,10 @@ export const Route = createFileRoute('/')({
 
 function PantryView() {
   const { data: items = [], isLoading } = useItems()
-  const { data: tags = [] } = useTags()
-  const { data: tagTypes = [] } = useTagTypes()
-  const { data: vendors = [] } = useVendors()
-  const { data: recipes = [] } = useRecipes()
+  const { data: tags = [], isLoading: isTagsLoading } = useTags()
+  const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
+  const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
+  const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
 
@@ -56,9 +53,9 @@ function PantryView() {
   }
 
   // Sort prefs from localStorage (pantry defaults to 'expiring')
-  const [sortBy, setSortBy] = useState<SortField>(() => loadSortPrefs().sortBy)
-  const [sortDirection, setSortDirection] = useState<SortDirection>(
-    () => loadSortPrefs().sortDirection,
+  const { sortBy, sortDirection, setSortBy, setSortDirection } = useSortFilter(
+    'pantry',
+    { defaultSortBy: 'expiring' },
   )
 
   const {
@@ -71,6 +68,24 @@ function PantryView() {
     toggleVendorId,
     toggleRecipeId,
   } = useUrlSearchAndFilters()
+
+  // Scroll restoration: save on unmount, restore after ALL layout-affecting data loads.
+  // The filter panel height depends on tagTypes/vendors/recipes; item card heights depend
+  // on tags (when isTagsVisible). Restoring scroll before these load causes layout shifts
+  // that land the page at the wrong position when the filter panel is open.
+  const allDataLoaded =
+    !isLoading &&
+    !isTagsLoading &&
+    !isTagTypesLoading &&
+    !isVendorsLoading &&
+    !isRecipesLoading
+  const currentUrl = useRouterState({
+    select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
+  })
+  const { restoreScroll } = useScrollRestoration(currentUrl)
+  useEffect(() => {
+    if (allDataLoaded) restoreScroll()
+  }, [allDataLoaded, restoreScroll])
 
   const vendorMap = useMemo(() => {
     const map = new Map<string, Vendor[]>()

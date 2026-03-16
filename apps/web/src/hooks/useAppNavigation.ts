@@ -5,8 +5,16 @@ import {
   saveNavigationHistory,
 } from '@/lib/sessionStorage'
 
-// Export for testing
-export function isSamePage(path1: string, path2: string): boolean {
+// Extract pathname from a full URL string (strips search params)
+function getPathname(url: string): string {
+  return url.split('?')[0] ?? url
+}
+
+// Export for testing. Accepts full URLs or plain pathnames — compares pathnames only.
+export function isSamePage(url1: string, url2: string): boolean {
+  const path1 = getPathname(url1)
+  const path2 = getPathname(url2)
+
   // Item detail pages: /items/:id/*
   const itemMatch1 = path1.match(/^\/items\/([^/]+)/)
   const itemMatch2 = path2.match(/^\/items\/([^/]+)/)
@@ -45,38 +53,42 @@ export function useAppNavigation(fallbackPath?: string) {
   const goBack = useCallback(() => {
     // Read fresh history from sessionStorage to ensure cross-tab/cross-component consistency
     const history = loadNavigationHistory()
-    const currentPath = router.state.location.pathname
+    const currentPathname = router.state.location.pathname
 
     // Filter out same-page navigation and "new" pages to find the previous different page
-    let previousPath: string | undefined
+    let previousUrl: string | undefined
     for (let i = history.length - 1; i >= 0; i--) {
-      const path = history[i]
+      const entry = history[i]
+      const entryPathname = getPathname(entry ?? '')
       if (
-        path &&
-        path !== currentPath &&
-        !isSamePage(path, currentPath) &&
-        !path.endsWith('/new')
+        entry &&
+        entryPathname !== currentPathname &&
+        !isSamePage(entry, currentPathname) &&
+        !entryPathname.endsWith('/new')
       ) {
-        previousPath = path
+        previousUrl = entry
         break
       }
     }
 
-    if (previousPath) {
+    if (previousUrl) {
       // Remove all same-page entries, current page, and "new" pages from history
-      const newHistory = history.filter(
-        (path) =>
-          !isSamePage(path, currentPath) &&
-          path !== currentPath &&
-          !path.endsWith('/new'),
-      )
+      const newHistory = history.filter((entry) => {
+        const entryPathname = getPathname(entry)
+        return (
+          !isSamePage(entry, currentPathname) &&
+          entryPathname !== currentPathname &&
+          !entryPathname.endsWith('/new')
+        )
+      })
       saveNavigationHistory(newHistory)
-      navigate({ to: previousPath })
+      // Use router.history.push to navigate to the full URL (preserving search params)
+      router.history.push(previousUrl)
     } else {
       // No valid previous page - use fallback or default to home
       navigate({ to: fallbackPath || '/' })
     }
-  }, [navigate, router.state.location.pathname, fallbackPath])
+  }, [navigate, router, fallbackPath])
 
   return { goBack }
 }

@@ -15,7 +15,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -32,6 +36,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import {
   useCreateTag,
   useCreateTagType,
@@ -244,7 +249,16 @@ function TagSettings() {
   const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
-  const { data: tags = [] } = useTags()
+  const { data: tags = [], isLoading } = useTags()
+
+  // Scroll restoration: save on unmount, restore after data loads
+  const currentUrl = useRouterState({
+    select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
+  })
+  const { restoreScroll } = useScrollRestoration(currentUrl)
+  useEffect(() => {
+    if (!isLoading) restoreScroll()
+  }, [isLoading, restoreScroll])
   const createTagType = useCreateTagType()
   const updateTagType = useUpdateTagType()
   const deleteTagType = useDeleteTagType()

@@ -10,6 +10,20 @@ vi.mock('@tanstack/react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    useRouterState: (opts?: {
+      select?: (state: {
+        location: {
+          pathname: string
+          searchStr: string
+          search: Record<string, unknown>
+        }
+      }) => unknown
+    }) => {
+      const state = {
+        location: { pathname: '/settings/vendors', searchStr: '', search: {} },
+      }
+      return opts?.select ? opts.select(state) : state
+    },
     Link: ({
       children,
       to,

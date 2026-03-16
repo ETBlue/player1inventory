@@ -1,9 +1,15 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
+import { useEffect } from 'react'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { VendorCard } from '@/components/vendor/VendorCard'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import { useDeleteVendor, useVendors } from '@/hooks/useVendors'
 
@@ -14,9 +20,18 @@ export const Route = createFileRoute('/settings/vendors/')({
 function VendorSettings() {
   const navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings')
-  const { data: vendors = [] } = useVendors()
+  const { data: vendors = [], isLoading } = useVendors()
   const deleteVendor = useDeleteVendor()
   const vendorCounts = useVendorItemCounts()
+
+  // Scroll restoration: save on unmount, restore after data loads
+  const currentUrl = useRouterState({
+    select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
+  })
+  const { restoreScroll } = useScrollRestoration(currentUrl)
+  useEffect(() => {
+    if (!isLoading) restoreScroll()
+  }, [isLoading, restoreScroll])
 
   const sortedVendors = [...vendors].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
