@@ -65,6 +65,42 @@ describe('New item page', () => {
     expect(trackSwitch).toHaveAttribute('data-state', 'checked')
   })
 
+  it('user can create item with days-from-purchase expiration and it persists', async () => {
+    const user = userEvent.setup()
+
+    // Given the new item page
+    renderNewItemPage()
+    await waitFor(() => screen.getByLabelText(/name/i))
+
+    // When user fills in the name
+    await user.type(screen.getByLabelText(/name/i), 'Milk')
+
+    // And selects "Days from Purchase" expiration mode
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+    await user.click(
+      screen.getByRole('combobox', { name: /calculate expiration/i }),
+    )
+    await user.click(
+      screen.getByRole('option', { name: /days from purchase/i }),
+    )
+
+    // And enters 30 days (the input now appears in the info section)
+    await waitFor(() => screen.getByLabelText(/expires in/i))
+    await user.clear(screen.getByLabelText(/expires in/i))
+    await user.type(screen.getByLabelText(/expires in/i), '30')
+
+    // And submits
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the item is saved with estimatedDueDays = 30
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      expect(items).toHaveLength(1)
+      expect(items[0].estimatedDueDays).toBe(30)
+    })
+  })
+
   it('save button is disabled and validation message shown when measurement mode requires missing fields', async () => {
     const user = userEvent.setup()
 

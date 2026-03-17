@@ -1151,3 +1151,102 @@ describe('Item detail page - delete dialog', () => {
     expect(stillExists?.name).toBe('Milk')
   })
 })
+
+describe('Item detail page - expiration field split', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (itemId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  it('user sees "Expires in" in info section when expiration mode is days-from-purchase', async () => {
+    // Given an item with estimatedDueDays set (days mode)
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      estimatedDueDays: 30,
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => screen.getByText('Milk'))
+
+    // Then "Expires in (days)" is visible
+    expect(screen.getByLabelText(/expires in/i)).toBeInTheDocument()
+
+    // And "Expires on" date input is NOT visible in stock section
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+  })
+
+  it('user can change expiration mode from days to date and it persists after reload', async () => {
+    const user = userEvent.setup()
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    // Given an item with estimatedDueDays set (days mode)
+    const item = await createItem({
+      name: 'Cheese',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      estimatedDueDays: 30,
+    })
+
+    renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Cheese'))
+
+    // When user changes expiration mode to "Specific Date"
+    const modeSelect = screen.getByRole('combobox', {
+      name: /calculate expiration/i,
+    })
+    await user.click(modeSelect)
+    const specificDateOption = await screen.findByRole('option', {
+      name: /specific date/i,
+    })
+    await user.click(specificDateOption)
+
+    // And saves
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the saved item has estimatedDueDays cleared so mode resolves to 'date' on reload
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      // The item should NOT still have estimatedDueDays set
+      expect(updated?.estimatedDueDays).toBeFalsy()
+    })
+  })
+})

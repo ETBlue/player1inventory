@@ -13,9 +13,9 @@ function buildCreateData(
   values: ItemFormValues,
 ): Omit<Item, 'id' | 'createdAt' | 'updatedAt'> {
   return {
-    // dueDate and estimatedDueDays are intentionally omitted:
-    // the Stock section is not shown on new item creation, so these fields
-    // are never populated. Users set expiration values after creation.
+    // dueDate is intentionally omitted: the Stock section is not shown on
+    // new item creation. estimatedDueDays IS persisted when mode is 'days'
+    // because the "Expires in (days)" input lives in the Item Info section.
     name: values.name,
     targetUnit: values.targetUnit,
     targetQuantity: values.targetQuantity,
@@ -33,6 +33,9 @@ function buildCreateData(
       : {}),
     ...(values.expirationThreshold
       ? { expirationThreshold: Number(values.expirationThreshold) }
+      : {}),
+    ...(values.expirationMode === 'days' && values.estimatedDueDays
+      ? { estimatedDueDays: Number(values.estimatedDueDays) }
       : {}),
   }
 }

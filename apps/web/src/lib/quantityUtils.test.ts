@@ -8,6 +8,7 @@ import {
   isInactive,
   normalizeUnpacked,
   packUnpacked,
+  roundToStep,
 } from './quantityUtils'
 
 describe('getCurrentQuantity', () => {
@@ -555,5 +556,61 @@ describe('getStockStatus', () => {
 
   it('returns ok when threshold is zero (no tracking)', () => {
     expect(getStockStatus(0, 0)).toBe('ok')
+  })
+})
+
+describe('roundToStep', () => {
+  it('rounds to integer when step is whole number', () => {
+    expect(roundToStep(3.0000000000000004, 1)).toBe(3)
+  })
+
+  it('rounds to 1 decimal place when step is 0.1', () => {
+    expect(roundToStep(0.30000000000000004, 0.1)).toBe(0.3)
+  })
+
+  it('rounds to 2 decimal places when step is 0.01', () => {
+    expect(roundToStep(0.010000000000000002, 0.01)).toBe(0.01)
+  })
+
+  it('handles step with trailing zeros (e.g. 0.10)', () => {
+    expect(roundToStep(0.30000000000000004, 0.1)).toBe(0.3)
+  })
+})
+
+describe('addItem float precision', () => {
+  it('user can add 0.1 three times without float drift', () => {
+    // Given item with consumeAmount 0.1 and unpackedQuantity 0
+    const item: Partial<Item> = {
+      targetUnit: 'package',
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 0.1,
+    }
+
+    // When adding 0.1 three times
+    addItem(item as Item, 0.1)
+    addItem(item as Item, 0.1)
+    addItem(item as Item, 0.1)
+
+    // Then unpackedQuantity is exactly 0.3 (not 0.30000000000000004)
+    expect(item.unpackedQuantity).toBe(0.3)
+  })
+})
+
+describe('consumeItem float precision', () => {
+  it('user can consume 0.1 without float drift', () => {
+    // Given item with consumeAmount 0.1 and unpackedQuantity 0.5
+    const item: Partial<Item> = {
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0.5,
+      consumeAmount: 0.1,
+    }
+
+    // When consuming 0.1
+    consumeItem(item as Item, 0.1)
+
+    // Then unpackedQuantity is exactly 0.4 (not 0.4000000000000001)
+    expect(item.unpackedQuantity).toBe(0.4)
   })
 })
