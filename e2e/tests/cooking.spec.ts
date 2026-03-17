@@ -1,8 +1,9 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
-import { CLOUD_GRAPHQL_URL, CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
+import { makeGql } from '../utils/cloud'
 
 // Seed items and a recipe for the cooking test.
 // Local mode: seeds directly into IndexedDB (avoids 10-15 UI steps).
@@ -14,15 +15,9 @@ async function seedDatabase(
 ): Promise<{ flourId: string; eggsId: string; recipeId: string }> {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: create items and recipe via GraphQL API
-    const gql = async (query: string, variables: Record<string, unknown>) => {
-      const res = await request.post(CLOUD_GRAPHQL_URL, {
-        headers: { 'x-e2e-user-id': E2E_USER_ID, 'Content-Type': 'application/json' },
-        data: { query, variables },
-      })
-      return (await res.json()).data
-    }
+    const gql = makeGql(request)
 
-    const { createItem: flour } = await gql(
+    const { createItem: flour } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
       { name: 'Flour' },
     )
@@ -31,7 +26,7 @@ async function seedDatabase(
       { id: flour.id, input: { packedQuantity: 10 } },
     )
 
-    const { createItem: eggs } = await gql(
+    const { createItem: eggs } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
       { name: 'Eggs' },
     )
@@ -40,7 +35,7 @@ async function seedDatabase(
       { id: eggs.id, input: { packedQuantity: 12 } },
     )
 
-    const { createRecipe: recipe } = await gql(
+    const { createRecipe: recipe } = await gql<{ createRecipe: { id: string } }>(
       `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
         createRecipe(name: $name, items: $items) { id }
       }`,
