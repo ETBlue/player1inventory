@@ -192,10 +192,13 @@ describe('useUpdateRecipe (cloud mode)', () => {
       updates: { name: 'Waffles' },
     })
 
-    // Then it delegates to cloudUpdate
-    expect(mockCloudUpdateRecipe).toHaveBeenCalledWith({
-      variables: { id: 'r-1', name: 'Waffles' },
-    })
+    // Then it delegates to cloudUpdate with variables + refetch config
+    expect(mockCloudUpdateRecipe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: { id: 'r-1', name: 'Waffles' },
+        awaitRefetchQueries: true,
+      }),
+    )
     expect((updated as { name: string } | undefined)?.name).toBe('Waffles')
   })
 })
