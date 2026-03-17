@@ -1,5 +1,17 @@
 import type { Item } from '@/types'
 
+function decimalPlaces(n: number): number {
+  const s = n.toString()
+  const dot = s.indexOf('.')
+  return dot === -1 ? 0 : s.length - dot - 1
+}
+
+export function roundToStep(value: number, step: number | undefined): number {
+  if (step === undefined || step <= 0) return value
+  const places = decimalPlaces(step)
+  return Math.round(value * 10 ** places) / 10 ** places
+}
+
 export function getCurrentQuantity(item: Item): number {
   if (
     item.targetUnit === 'measurement' &&
@@ -78,8 +90,10 @@ export function consumeItem(item: Item, amount: number): void {
   ) {
     // Tracking in measurement: amount and unpacked are both in measurement units
     if (item.unpackedQuantity >= amount) {
-      item.unpackedQuantity =
-        Math.round((item.unpackedQuantity - amount) * 1000) / 1000
+      item.unpackedQuantity = roundToStep(
+        item.unpackedQuantity - amount,
+        item.consumeAmount,
+      )
     } else {
       // Need to break into packed
       const remaining = amount - item.unpackedQuantity
@@ -89,10 +103,10 @@ export function consumeItem(item: Item, amount: number): void {
       item.packedQuantity -= packagesToOpen
 
       // Calculate leftover from opened packages (in measurement units)
-      item.unpackedQuantity =
-        Math.round(
-          (packagesToOpen * item.amountPerPackage - remaining) * 1000,
-        ) / 1000
+      item.unpackedQuantity = roundToStep(
+        packagesToOpen * item.amountPerPackage - remaining,
+        item.consumeAmount,
+      )
 
       // Prevent negative quantities
       if (item.packedQuantity < 0) {
@@ -103,8 +117,10 @@ export function consumeItem(item: Item, amount: number): void {
   } else {
     // Tracking in packages (or simple mode): amount and unpacked are both in packages
     if (item.unpackedQuantity >= amount) {
-      item.unpackedQuantity =
-        Math.round((item.unpackedQuantity - amount) * 1000) / 1000
+      item.unpackedQuantity = roundToStep(
+        item.unpackedQuantity - amount,
+        item.consumeAmount,
+      )
     } else {
       // Need to open packages - open minimum needed
       if (item.packedQuantity > 0) {
@@ -113,10 +129,10 @@ export function consumeItem(item: Item, amount: number): void {
 
         if (packagesToOpen <= item.packedQuantity) {
           item.packedQuantity -= packagesToOpen
-          item.unpackedQuantity =
-            Math.round(
-              (item.unpackedQuantity + packagesToOpen - amount) * 1000,
-            ) / 1000
+          item.unpackedQuantity = roundToStep(
+            item.unpackedQuantity + packagesToOpen - amount,
+            item.consumeAmount,
+          )
         } else {
           // Not enough packages - consume everything
           item.packedQuantity = 0
@@ -141,7 +157,16 @@ export function addItem(
   purchaseDate: Date = new Date(),
 ): void {
   // Always add to unpacked (removed mode branching)
-  item.unpackedQuantity += amount
+  // Use roundToStep only when consumeAmount has sub-unit precision (e.g. 0.1) to fix
+  // float drift (0.1 + 0.1 + 0.1 = 0.30000000000000004). Integer consumeAmounts and
+  // undefined consumeAmount skip rounding so existing unpacked fractions are preserved.
+  const consumePlaces = item.consumeAmount
+    ? decimalPlaces(item.consumeAmount)
+    : 0
+  item.unpackedQuantity =
+    consumePlaces > 0
+      ? roundToStep(item.unpackedQuantity + amount, item.consumeAmount)
+      : item.unpackedQuantity + amount
 
   // Recalculate dueDate if quantity was 0 and estimatedDueDays exists
   if (item.estimatedDueDays && !item.dueDate && getCurrentQuantity(item) > 0) {
