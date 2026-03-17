@@ -40,26 +40,19 @@ function RecipeInfoTab() {
     registerDirtyState(isDirty)
   }, [isDirty, registerDirtyState])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!recipe || !isDirty) return
-    updateRecipe.mutate(
-      { id, updates: { name } },
-      {
-        onSuccess: () => {
-          setSavedAt((n) => n + 1)
-          goBack()
-        },
-      },
-    )
+    const updated = await updateRecipe.mutateAsync({ id, updates: { name } })
+    if (updated) {
+      setSavedAt((n) => n + 1)
+      goBack()
+    }
   }
 
   const handleDelete = async () => {
     if (!recipe) return
-    deleteRecipe.mutate(id, {
-      onSuccess: () => {
-        goBack()
-      },
-    })
+    await deleteRecipe.mutateAsync(id)
+    goBack()
   }
 
   if (!recipe) return null
