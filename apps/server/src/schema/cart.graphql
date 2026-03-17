@@ -7,19 +7,19 @@ type Cart {
 
 type CartItem {
   id: ID!
-  cartId: String!
-  itemId: String!
+  cartId: ID!
+  itemId: ID!
   quantity: Int!
 }
 
 extend type Query {
   activeCart: Cart!
   cartItems(cartId: ID!): [CartItem!]!
-  cartItemCountByItem(itemId: String!): Int!
+  cartItemCountByItem(itemId: ID!): Int!
 }
 
 extend type Mutation {
-  addToCart(cartId: ID!, itemId: String!, quantity: Int!): CartItem!
+  addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
   updateCartItem(id: ID!, quantity: Int!): CartItem!
   removeFromCart(id: ID!): Boolean!
   checkout(cartId: ID!): Cart!
