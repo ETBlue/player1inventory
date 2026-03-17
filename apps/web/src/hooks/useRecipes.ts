@@ -159,6 +159,7 @@ export function useUpdateRecipe() {
             { query: GetRecipesDocument },
             { query: GetRecipeDocument, variables: { id } },
           ],
+          awaitRefetchQueries: true,
         }),
       mutateAsync: ({
         id,
@@ -173,6 +174,7 @@ export function useUpdateRecipe() {
             { query: GetRecipesDocument },
             { query: GetRecipeDocument, variables: { id } },
           ],
+          awaitRefetchQueries: true,
         }).then((r) => r.data?.updateRecipe),
       isPending: false,
     }
