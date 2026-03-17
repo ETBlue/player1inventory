@@ -224,7 +224,11 @@ export function ItemForm({
   const showAdvanced = sections.includes('advanced')
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl mx-auto">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4 max-w-2xl mx-auto"
+      noValidate
+    >
       {showStock && (
         <div className="space-y-2">
           <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
