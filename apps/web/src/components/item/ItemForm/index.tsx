@@ -43,7 +43,7 @@ const DEFAULT_VALUES: ItemFormValues = {
   packageUnit: '',
   targetQuantity: 0,
   refillThreshold: 0,
-  consumeAmount: 0,
+  consumeAmount: 1,
   expirationMode: 'date',
   expirationThreshold: '',
   targetUnit: 'package',
@@ -209,7 +209,9 @@ export function ItemForm({
     : null
 
   const isSubmitDisabled =
-    isValidationFailed || (onDirtyChange !== undefined && !isDirty)
+    isValidationFailed ||
+    consumeAmount <= 0 ||
+    (onDirtyChange !== undefined && !isDirty)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -430,13 +432,14 @@ export function ItemForm({
                 id="consumeAmount"
                 type="number"
                 step="0.01"
-                min={0}
+                min={0.01}
                 value={consumeAmount}
                 onChange={(e) => setConsumeAmount(Number(e.target.value))}
                 required
               />
               <p className="text-xs text-foreground-muted">
-                Amount added/removed per +/- button click
+                Amount added/removed per +/- button click. Must be greater than
+                0.
               </p>
             </div>
           </div>
