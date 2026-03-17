@@ -113,6 +113,7 @@ Self-contained card components for the settings page. Each lives in `src/compone
 > - `apps/web/src/routes/settings/CLAUDE.md` — cascade deletion
 > - `apps/web/src/routes/settings/tags/CLAUDE.md` — tag management
 > - `apps/web/src/routes/settings/vendors/CLAUDE.md` — vendor management
+> - `apps/web/src/routes/settings/recipes/CLAUDE.md` — recipe management
 
 ## Design Tokens
 
