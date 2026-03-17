@@ -1,11 +1,32 @@
 import { test, expect } from '@playwright/test'
+import type { APIRequestContext } from '@playwright/test'
 import { PantryPage } from '../pages/PantryPage'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { makeGql } from '../utils/cloud'
 
 // Seed tag types directly into IndexedDB.
 // Clears existing tagTypes and tags first to avoid conflicts with Dexie's default
 // populate event (which seeds 'Category', 'Diet', 'Storage' on fresh DBs).
 // Requires navigating to '/' first so Dexie initialises the schema.
-async function seedTagTypes(page: import('@playwright/test').Page, names: string[]) {
+async function seedTagTypes(
+  page: import('@playwright/test').Page,
+  names: string[],
+  options?: { request?: APIRequestContext; baseURL?: string },
+): Promise<string[]> {
+  if (options?.baseURL === CLOUD_WEB_URL && options.request) {
+    const gql = makeGql(options.request)
+    const colors = ['red', 'blue', 'green', 'orange', 'purple']
+    const ids: string[] = []
+    for (let i = 0; i < names.length; i++) {
+      const result = await gql<{ createTagType: { id: string } }>(
+        'mutation CreateTagType($name: String!, $color: String!) { createTagType(name: $name, color: $color) { id } }',
+        { name: names[i], color: colors[i % colors.length] },
+      )
+      ids.push(result.createTagType.id)
+    }
+    return ids
+  }
+
   await page.evaluate(async (typeNames) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('Player1Inventory')
@@ -44,6 +65,8 @@ async function seedTagTypes(page: import('@playwright/test').Page, names: string
 
     db.close()
   }, names)
+
+  return names.map((_, i) => `seed-tagtype-${i}`)
 }
 
 // Seed tags into IndexedDB and assign them to every item already in the DB.
@@ -52,7 +75,35 @@ async function seedTagTypes(page: import('@playwright/test').Page, names: string
 async function seedTagsForAllItems(
   page: import('@playwright/test').Page,
   tags: { typeIndex: number; name: string }[],
+  options?: { request?: APIRequestContext; baseURL?: string; tagTypeIds?: string[] },
 ) {
+  if (options?.baseURL === CLOUD_WEB_URL && options.request) {
+    const gql = makeGql(options.request)
+    const tagTypeIds = options.tagTypeIds ?? []
+
+    // Get all item IDs
+    const { items } = await gql<{ items: { id: string }[] }>('query { items { id } }')
+
+    // Create tags
+    const tagIds: string[] = []
+    for (const tag of tags) {
+      const result = await gql<{ createTag: { id: string } }>(
+        'mutation CreateTag($name: String!, $typeId: String!) { createTag(name: $name, typeId: $typeId) { id } }',
+        { name: tag.name, typeId: tagTypeIds[tag.typeIndex] },
+      )
+      tagIds.push(result.createTag.id)
+    }
+
+    // Assign all tags to every item
+    for (const item of items) {
+      await gql(
+        'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
+        { id: item.id, input: { tagIds } },
+      )
+    }
+    return
+  }
+
   await page.evaluate(async (tagDefs) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('Player1Inventory')
@@ -100,7 +151,22 @@ async function seedTagsForAllItems(
   }, tags)
 }
 
-test.afterEach(async ({ page }) => {
+test.beforeEach(async ({ request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  }
+})
+
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+    return
+  }
+
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
@@ -123,7 +189,19 @@ test.afterEach(async ({ page }) => {
 
 // Seed items directly into IndexedDB for fast setup.
 // Navigate to '/' first so Dexie initialises the schema.
-async function seedItems(page: import('@playwright/test').Page, names: string[]) {
+async function seedItems(
+  page: import('@playwright/test').Page,
+  names: string[],
+  options?: { request?: APIRequestContext; baseURL?: string },
+) {
+  if (options?.baseURL === CLOUD_WEB_URL && options.request) {
+    const gql = makeGql(options.request)
+    for (const name of names) {
+      await gql('mutation CreateItem($name: String!) { createItem(name: $name) { id } }', { name })
+    }
+    return
+  }
+
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
@@ -165,11 +243,11 @@ async function seedItems(page: import('@playwright/test').Page, names: string[])
   }, names)
 }
 
-test('user can navigate to item detail and back with search state preserved', async ({ page }) => {
+test('user can navigate to item detail and back with search state preserved', async ({ page, request, baseURL }) => {
   const pantry = new PantryPage(page)
 
   // Given items exist including "Milk"
-  await seedItems(page, ['Apple', 'Banana', 'Milk', 'Cheese', 'Bread'])
+  await seedItems(page, ['Apple', 'Banana', 'Milk', 'Cheese', 'Bread'], { request, baseURL })
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Milk')).toBeVisible()
 
@@ -194,11 +272,11 @@ test('user can navigate to item detail and back with search state preserved', as
   await expect(page.getByPlaceholder('Search items...')).toHaveValue('milk')
 })
 
-test('user can navigate to item detail and back with sort state preserved', async ({ page }) => {
+test('user can navigate to item detail and back with sort state preserved', async ({ page, request, baseURL }) => {
   const pantry = new PantryPage(page)
 
   // Given a few items exist
-  await seedItems(page, ['Apple', 'Banana', 'Milk'])
+  await seedItems(page, ['Apple', 'Banana', 'Milk'], { request, baseURL })
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Apple')).toBeVisible()
 
@@ -224,17 +302,17 @@ test('user can navigate to item detail and back with sort state preserved', asyn
   expect(JSON.parse(sortPrefs!).sortBy).toBe('name')
 })
 
-test('user can navigate to item detail and back with scroll position restored', async ({ page }) => {
+test('user can navigate to item detail and back with scroll position restored', async ({ page, request, baseURL }) => {
   const pantry = new PantryPage(page)
 
   // Given many items exist (enough to make the page scrollable), each with tags
   const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
-  await seedItems(page, itemNames)
-  await seedTagTypes(page, ['Category', 'Location'])
+  await seedItems(page, itemNames, { request, baseURL })
+  const tagTypeIds = await seedTagTypes(page, ['Category', 'Location'], { request, baseURL })
   await seedTagsForAllItems(page, [
     { typeIndex: 0, name: 'Pantry' },
     { typeIndex: 1, name: 'Fridge' },
-  ])
+  ], { request, baseURL, tagTypeIds })
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
@@ -278,20 +356,20 @@ test('user can navigate to item detail and back with scroll position restored', 
   expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
 })
 
-test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page }) => {
+test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page, request, baseURL }) => {
   const pantry = new PantryPage(page)
 
   // Given many items exist, each with tags, and several tag types (for the filter panel)
   const itemNames = Array.from({ length: 40 }, (_, i) => `Item ${String(i + 1).padStart(2, '0')}`)
-  await seedItems(page, itemNames)
+  await seedItems(page, itemNames, { request, baseURL })
   // Tag types populate the filter panel — seeded after items to maximise chance
   // of tagTypes query resolving after items query on back navigation
-  await seedTagTypes(page, ['Category', 'Location', 'Diet', 'Store', 'Season'])
+  const tagTypeIds = await seedTagTypes(page, ['Category', 'Location', 'Diet', 'Store', 'Season'], { request, baseURL })
   await seedTagsForAllItems(page, [
     { typeIndex: 0, name: 'Pantry' },
     { typeIndex: 1, name: 'Fridge' },
     { typeIndex: 2, name: 'Vegan' },
-  ])
+  ], { request, baseURL, tagTypeIds })
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
