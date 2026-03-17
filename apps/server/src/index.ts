@@ -12,6 +12,7 @@ import { ItemModel } from './models/Item.model.js'
 import { TagModel, TagTypeModel } from './models/Tag.model.js'
 import { VendorModel } from './models/Vendor.model.js'
 import { RecipeModel } from './models/Recipe.model.js'
+import { CartItemModel, CartModel } from './models/Cart.model.js'
 import type { Context } from './context.js'
 
 const E2E_TEST_MODE = !!process.env.E2E_TEST_MODE
@@ -38,6 +39,8 @@ if (E2E_TEST_MODE) {
       TagTypeModel.deleteMany({ userId }),
       VendorModel.deleteMany({ userId }),
       RecipeModel.deleteMany({ userId }),
+      CartModel.deleteMany({ userId }),
+      CartItemModel.deleteMany({ userId }),
     ])
     res.json({ ok: true })
   })
