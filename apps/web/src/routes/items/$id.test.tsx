@@ -1151,3 +1151,56 @@ describe('Item detail page - delete dialog', () => {
     expect(stillExists?.name).toBe('Milk')
   })
 })
+
+describe('Item detail page - expiration field split', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (itemId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  it('user sees "Expires in" in info section when expiration mode is days-from-purchase', async () => {
+    // Given an item with estimatedDueDays set (days mode)
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      estimatedDueDays: 30,
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => screen.getByText('Milk'))
+
+    // Then "Expires in (days)" is visible
+    expect(screen.getByLabelText(/expires in/i)).toBeInTheDocument()
+
+    // And "Expires on" date input is NOT visible in stock section
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+  })
+})

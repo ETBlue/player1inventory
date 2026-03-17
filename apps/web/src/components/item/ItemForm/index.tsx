@@ -318,36 +318,19 @@ export function ItemForm({
             Pack unpacked
           </Button>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="expirationValue">
-                {expirationMode === 'date' ? (
-                  'Expires on'
-                ) : (
-                  <>
-                    Expires in{' '}
-                    <span className="text-xs font-normal">(days)</span>
-                  </>
-                )}
-              </Label>
-              {expirationMode === 'date' ? (
+          {expirationMode === 'date' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="expirationDueDate">Expires on</Label>
                 <Input
-                  id="expirationValue"
+                  id="expirationDueDate"
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                 />
-              ) : (
-                <Input
-                  id="expirationValue"
-                  type="number"
-                  min={1}
-                  value={estimatedDueDays}
-                  onChange={(e) => setEstimatedDueDays(e.target.value)}
-                />
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -487,6 +470,23 @@ export function ItemForm({
               </SelectContent>
             </Select>
           </div>
+
+          {expirationMode === 'days' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="expirationDueDays">
+                  Expires in <span className="text-xs font-normal">(days)</span>
+                </Label>
+                <Input
+                  id="expirationDueDays"
+                  type="number"
+                  min={1}
+                  value={estimatedDueDays}
+                  onChange={(e) => setEstimatedDueDays(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
