@@ -1203,4 +1203,50 @@ describe('Item detail page - expiration field split', () => {
     // And "Expires on" date input is NOT visible in stock section
     expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
   })
+
+  it('user can change expiration mode from days to date and it persists after reload', async () => {
+    const user = userEvent.setup()
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    // Given an item with estimatedDueDays set (days mode)
+    const item = await createItem({
+      name: 'Cheese',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      estimatedDueDays: 30,
+    })
+
+    renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Cheese'))
+
+    // When user changes expiration mode to "Specific Date"
+    const modeSelect = screen.getByRole('combobox', {
+      name: /calculate expiration/i,
+    })
+    await user.click(modeSelect)
+    const specificDateOption = await screen.findByRole('option', {
+      name: /specific date/i,
+    })
+    await user.click(specificDateOption)
+
+    // And saves
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the saved item has estimatedDueDays cleared so mode resolves to 'date' on reload
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      // The item should NOT still have estimatedDueDays set
+      expect(updated?.estimatedDueDays).toBeFalsy()
+    })
+  })
 })

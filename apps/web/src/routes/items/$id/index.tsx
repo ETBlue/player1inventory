@@ -33,8 +33,17 @@ function itemToFormValues(item: Item): ItemFormValues {
   }
 }
 
-function buildUpdates(values: ItemFormValues): Partial<Item> {
-  const updates: Partial<Item> = {
+// A wider update type that allows explicit `undefined` for optional expiration fields.
+// Passing `undefined` tells Dexie to delete those properties from the stored record.
+// We need a separate type here because `exactOptionalPropertyTypes: true` prevents assigning
+// `undefined` to fields typed as `?: T` on `Partial<Item>`.
+type ItemUpdatePayload = Omit<Partial<Item>, 'dueDate' | 'estimatedDueDays'> & {
+  dueDate?: Date | undefined
+  estimatedDueDays?: number | undefined
+}
+
+function buildUpdates(values: ItemFormValues): ItemUpdatePayload {
+  const updates: ItemUpdatePayload = {
     packedQuantity: values.packedQuantity,
     unpackedQuantity: values.unpackedQuantity,
     name: values.name,
@@ -44,15 +53,21 @@ function buildUpdates(values: ItemFormValues): Partial<Item> {
     consumeAmount: values.consumeAmount,
   }
 
-  if (values.expirationMode === 'date' && values.dueDate) {
-    updates.dueDate = new Date(values.dueDate)
-    delete updates.estimatedDueDays
-  } else if (values.expirationMode === 'days' && values.estimatedDueDays) {
-    updates.estimatedDueDays = Number(values.estimatedDueDays)
-    delete updates.dueDate
+  if (values.expirationMode === 'date') {
+    // Explicitly set estimatedDueDays to undefined so Dexie removes the field from the record.
+    // Without this, switching from "days" to "date" mode leaves estimatedDueDays in the DB,
+    // causing itemToFormValues to re-infer the mode as 'days' on reload.
+    updates.estimatedDueDays = undefined
+    updates.dueDate = values.dueDate ? new Date(values.dueDate) : undefined
+  } else if (values.expirationMode === 'days') {
+    // Explicitly set dueDate to undefined so Dexie removes the field from the record.
+    updates.dueDate = undefined
+    updates.estimatedDueDays = values.estimatedDueDays
+      ? Number(values.estimatedDueDays)
+      : undefined
   } else {
-    delete updates.dueDate
-    delete updates.estimatedDueDays
+    updates.dueDate = undefined
+    updates.estimatedDueDays = undefined
   }
 
   if (values.packageUnit) {
@@ -93,7 +108,12 @@ function ItemDetailTab() {
   const formValues = itemToFormValues(item)
 
   const handleSubmit = async (values: ItemFormValues) => {
-    await updateItem.mutateAsync({ id, updates: buildUpdates(values) })
+    // Cast to Partial<Item> — the wider ItemUpdatePayload type is compatible at runtime;
+    // the cast is needed because exactOptionalPropertyTypes disallows undefined on Partial<Item>.
+    await updateItem.mutateAsync({
+      id,
+      updates: buildUpdates(values) as Partial<Item>,
+    })
     setSavedAt((n) => n + 1)
     goBack()
   }
