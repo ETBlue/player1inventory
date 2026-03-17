@@ -120,7 +120,8 @@ test.afterEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test('user can cook a recipe with partial items and multiple servings', async ({ page }) => {
+test('user can cook a recipe with partial items and multiple servings', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — uses IndexedDB seeding')
   const cooking = new CookingPage(page)
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)

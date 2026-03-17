@@ -148,7 +148,8 @@ test.afterEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test('user can create a recipe', async ({ page }) => {
+test('user can create a recipe', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — cloud has its own create test')
   const recipes = new RecipesPage(page)
 
   // Given: recipes list is empty
@@ -169,7 +170,8 @@ test('user can create a recipe', async ({ page }) => {
   await expect(recipes.getRecipeCard('Pancakes')).toBeVisible()
 })
 
-test('user can delete a recipe', async ({ page }) => {
+test('user can delete a recipe', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — uses IndexedDB seeding')
   const recipes = new RecipesPage(page)
 
   // Given: recipe "Pancakes" exists (seeded via IndexedDB)
@@ -187,7 +189,8 @@ test('user can delete a recipe', async ({ page }) => {
   await expect(recipes.getRecipeCard('Pancakes')).not.toBeVisible()
 })
 
-test('user can navigate to recipe detail after creating', async ({ page }) => {
+test('user can navigate to recipe detail after creating', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — cloud has its own create test')
   const recipes = new RecipesPage(page)
 
   // Given: recipes list is empty
@@ -202,7 +205,8 @@ test('user can navigate to recipe detail after creating', async ({ page }) => {
   await expect(page).toHaveURL(/\/settings\/recipes\/[^/]+$/)
 })
 
-test('user can assign and unassign an item on Items tab', async ({ page }) => {
+test('user can assign and unassign an item on Items tab', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — uses IndexedDB seeding')
   const detail = new RecipeDetailPage(page)
 
   // Given: recipe "Pancakes" (no items) and unassigned item "Eggs"
@@ -228,7 +232,8 @@ test('user can assign and unassign an item on Items tab', async ({ page }) => {
   await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
 })
 
-test('user can adjust default amount for an assigned item', async ({ page }) => {
+test('user can adjust default amount for an assigned item', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — uses IndexedDB seeding')
   const detail = new RecipeDetailPage(page)
 
   // Given: recipe "Pancakes" with "Flour" assigned at defaultAmount=2
@@ -257,7 +262,8 @@ test('user can adjust default amount for an assigned item', async ({ page }) => 
   await expect(detail.getAmountDisplay('Flour')).toHaveText('1')
 })
 
-test('user can edit recipe name on Info tab', async ({ page }) => {
+test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Local mode only — uses IndexedDB seeding')
   const detail = new RecipeDetailPage(page)
 
   // Given: recipe "Pancakes" exists
