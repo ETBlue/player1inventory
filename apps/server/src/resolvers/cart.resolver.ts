@@ -54,8 +54,8 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
 
     removeFromCart: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
-      await CartItemModel.deleteOne({ _id: id, userId })
-      return true
+      const result = await CartItemModel.deleteOne({ _id: id, userId })
+      return result.deletedCount > 0
     },
 
     checkout: async (_, { cartId }, ctx) => {
