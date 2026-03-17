@@ -26,7 +26,11 @@ import {
 } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes, useUpdateRecipeLastCookedAt } from '@/hooks/useRecipes'
-import { consumeItem, getCurrentQuantity } from '@/lib/quantityUtils'
+import {
+  consumeItem,
+  getCurrentQuantity,
+  roundToStep,
+} from '@/lib/quantityUtils'
 
 function highlight(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text
@@ -244,7 +248,7 @@ function CookingPage() {
     const current = recipeAmounts.get(itemId) ?? 0
     const item = items.find((i) => i.id === itemId)
     const step = (item?.consumeAmount ?? 0) > 0 ? (item?.consumeAmount ?? 1) : 1
-    const next = Math.max(0, current + delta * step)
+    const next = roundToStep(Math.max(0, current + delta * step), step)
     recipeAmounts.set(itemId, next)
     newAmounts.set(recipeId, recipeAmounts)
     setSessionAmounts(newAmounts)

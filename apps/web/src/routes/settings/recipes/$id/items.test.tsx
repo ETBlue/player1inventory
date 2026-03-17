@@ -692,4 +692,41 @@ describe('Recipe Detail - Items Tab', () => {
       expect(badge.className).toContain('bg-blue-tint')
     })
   })
+
+  it('user can adjust default amount without float drift when consumeAmount is 0.1', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with consumeAmount 0.1 linked to a recipe with defaultAmount 0.1
+    const item = await makeItem('Oil', 0.1)
+    const recipe = await makeRecipe('Salad', [
+      { itemId: item.id, defaultAmount: 0.1 },
+    ])
+
+    renderItemsTab(recipe.id)
+
+    // When clicking + twice (0.1 → 0.2 → 0.3)
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Oil')).toBeInTheDocument()
+    })
+
+    // First click: 0.1 → 0.2
+    await user.click(screen.getByLabelText('Increase quantity of Oil'))
+    // Wait for first mutation to commit before second click (avoids stale closure race)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBeCloseTo(0.2, 10)
+    })
+
+    // Second click: 0.2 → 0.3
+    await user.click(screen.getByLabelText('Increase quantity of Oil'))
+
+    // Then the displayed amount is 0.3 (no float drift)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
+      expect(recipeItem?.defaultAmount).toBe(0.3)
+      expect(recipeItem?.defaultAmount).not.toBe(0.30000000000000004)
+    })
+  })
 })

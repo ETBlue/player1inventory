@@ -1548,4 +1548,47 @@ describe('Use (Cooking) Page', () => {
       expect(buttons[1].textContent?.trim()).toBe('Alpha')
     })
   })
+
+  it('user can adjust ingredient amount without float drift when consumeAmount is 0.1', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with consumeAmount 0.1 linked to a recipe
+    const item = await makeItem('Oil', 0.1)
+    await createRecipe({
+      name: 'Salad',
+      items: [{ itemId: item.id, defaultAmount: 0.1 }],
+    })
+
+    renderPage()
+
+    // Expand the recipe first
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Salad/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /Expand Salad/i }))
+
+    // When the recipe is checked
+    await waitFor(() => screen.getByLabelText('Salad'))
+    await user.click(screen.getByLabelText('Salad'))
+
+    // Then the initial amount shows as 0.1
+    await waitFor(() => {
+      expect(screen.getByText('0.1')).toBeInTheDocument()
+    })
+
+    // When clicking + twice (0.1 → 0.2 → 0.3)
+    const plusButton = screen.getByRole('button', {
+      name: /Increase quantity of Oil/i,
+    })
+    await user.click(plusButton)
+    await user.click(plusButton)
+
+    // Then the amount is exactly 0.3 (no float drift)
+    await waitFor(() => {
+      expect(screen.getByText('0.3')).toBeInTheDocument()
+      expect(screen.queryByText('0.30000000000000004')).not.toBeInTheDocument()
+    })
+  })
 })

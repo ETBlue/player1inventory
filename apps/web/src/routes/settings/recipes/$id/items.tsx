@@ -14,7 +14,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive } from '@/lib/quantityUtils'
+import { isInactive, roundToStep } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -260,7 +260,7 @@ function RecipeItemsTab() {
     const item = items.find((i) => i.id === itemId)
     const step = (item?.consumeAmount ?? 0) > 0 ? (item?.consumeAmount ?? 1) : 1
     const current = getDefaultAmount(itemId)
-    const next = Math.max(0, current + delta * step)
+    const next = roundToStep(Math.max(0, current + delta * step), step)
     await handleDefaultAmountChange(itemId, next)
   }
 

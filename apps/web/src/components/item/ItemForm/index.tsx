@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { roundToStep } from '@/lib/quantityUtils'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 export type ItemFormValues = {
@@ -268,7 +269,11 @@ export function ItemForm({
                 min={0}
                 step={consumeAmount || 1}
                 value={unpackedQuantity}
-                onChange={(e) => setUnpackedQuantity(Number(e.target.value))}
+                onChange={(e) =>
+                  setUnpackedQuantity(
+                    roundToStep(Number(e.target.value), consumeAmount || 1),
+                  )
+                }
               />
               <p className="text-xs text-foreground-muted">
                 Loose amount from opened package(s)
