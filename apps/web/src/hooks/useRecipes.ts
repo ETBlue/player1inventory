@@ -9,6 +9,7 @@ import {
   updateRecipeLastCookedAt,
 } from '@/db/operations'
 import {
+  GetRecipeDocument,
   GetRecipesDocument,
   useCreateRecipeMutation,
   useDeleteRecipeMutation,
@@ -132,9 +133,7 @@ export function useUpdateRecipe() {
     },
   })
 
-  const [cloudUpdate] = useUpdateRecipeMutation({
-    refetchQueries: [{ query: GetRecipesDocument }],
-  })
+  const [cloudUpdate] = useUpdateRecipeMutation()
 
   if (mode === 'cloud') {
     const toVars = (
@@ -153,7 +152,14 @@ export function useUpdateRecipe() {
       }: {
         id: string
         updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
-      }) => cloudUpdate({ variables: toVars(id, updates) }),
+      }) =>
+        cloudUpdate({
+          variables: toVars(id, updates),
+          refetchQueries: [
+            { query: GetRecipesDocument },
+            { query: GetRecipeDocument, variables: { id } },
+          ],
+        }),
       mutateAsync: ({
         id,
         updates,
@@ -161,9 +167,13 @@ export function useUpdateRecipe() {
         id: string
         updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
       }) =>
-        cloudUpdate({ variables: toVars(id, updates) }).then(
-          (r) => r.data?.updateRecipe,
-        ),
+        cloudUpdate({
+          variables: toVars(id, updates),
+          refetchQueries: [
+            { query: GetRecipesDocument },
+            { query: GetRecipeDocument, variables: { id } },
+          ],
+        }).then((r) => r.data?.updateRecipe),
       isPending: false,
     }
   }
