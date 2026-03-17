@@ -1,0 +1,27 @@
+type Cart {
+  id: ID!
+  status: String!
+  createdAt: String!
+  completedAt: String
+}
+
+type CartItem {
+  id: ID!
+  cartId: String!
+  itemId: String!
+  quantity: Int!
+}
+
+extend type Query {
+  activeCart: Cart!
+  cartItems(cartId: ID!): [CartItem!]!
+  cartItemCountByItem(itemId: String!): Int!
+}
+
+extend type Mutation {
+  addToCart(cartId: ID!, itemId: String!, quantity: Int!): CartItem!
+  updateCartItem(id: ID!, quantity: Int!): CartItem!
+  removeFromCart(id: ID!): Boolean!
+  checkout(cartId: ID!): Cart!
+  abandonCart(cartId: ID!): Cart!
+}
