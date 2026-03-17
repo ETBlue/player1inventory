@@ -23,19 +23,15 @@ function NewRecipePage() {
 
   const isDirty = name.trim() !== ''
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isDirty) return
-    createRecipe.mutate(
-      { name: name.trim() },
-      {
-        onSuccess: (recipe) => {
-          navigate({
-            to: '/settings/recipes/$id',
-            params: { id: recipe.id },
-          })
-        },
-      },
-    )
+    const recipe = await createRecipe.mutateAsync({ name: name.trim() })
+    if (recipe?.id) {
+      navigate({
+        to: '/settings/recipes/$id',
+        params: { id: recipe.id },
+      })
+    }
   }
 
   return (

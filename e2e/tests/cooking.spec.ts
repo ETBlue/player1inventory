@@ -1,15 +1,64 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import { CLOUD_GRAPHQL_URL, CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { CookingPage } from '../pages/CookingPage'
-import { PantryPage } from '../pages/PantryPage'
 import { ItemPage } from '../pages/ItemPage'
+import { PantryPage } from '../pages/PantryPage'
 
-// Seed items and a recipe directly into IndexedDB.
-// This avoids 10-15 UI steps for creating items + recipe before testing cooking.
-// The app must load at '/' first so Dexie initialises the DB schema.
-async function seedDatabase(page: Page) {
+// Seed items and a recipe for the cooking test.
+// Local mode: seeds directly into IndexedDB (avoids 10-15 UI steps).
+// Cloud mode: seeds via GraphQL API (IndexedDB is irrelevant, data lives in MongoDB).
+async function seedDatabase(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+): Promise<{ flourId: string; eggsId: string; recipeId: string }> {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: create items and recipe via GraphQL API
+    const gql = async (query: string, variables: Record<string, unknown>) => {
+      const res = await request.post(CLOUD_GRAPHQL_URL, {
+        headers: { 'x-e2e-user-id': E2E_USER_ID, 'Content-Type': 'application/json' },
+        data: { query, variables },
+      })
+      return (await res.json()).data
+    }
+
+    const { createItem: flour } = await gql(
+      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      { name: 'Flour' },
+    )
+    await gql(
+      'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
+      { id: flour.id, input: { packedQuantity: 10 } },
+    )
+
+    const { createItem: eggs } = await gql(
+      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      { name: 'Eggs' },
+    )
+    await gql(
+      'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
+      { id: eggs.id, input: { packedQuantity: 12 } },
+    )
+
+    const { createRecipe: recipe } = await gql(
+      `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
+        createRecipe(name: $name, items: $items) { id }
+      }`,
+      {
+        name: 'Pancakes',
+        items: [
+          { itemId: flour.id, defaultAmount: 2 },
+          { itemId: eggs.id, defaultAmount: 3 },
+        ],
+      },
+    )
+
+    return { flourId: flour.id, eggsId: eggs.id, recipeId: recipe.id }
+  }
+
+  // Local: seed directly into IndexedDB
   await page.goto('/')
 
-  // Generate IDs in Node context so we can return them for later verification
   const flourId = crypto.randomUUID()
   const eggsId = crypto.randomUUID()
   const recipeId = crypto.randomUUID()
@@ -17,7 +66,6 @@ async function seedDatabase(page: Page) {
 
   await page.evaluate(
     async ({ flourId, eggsId, recipeId, now }) => {
-      // Open the already-initialised DB (Dexie created it on page load)
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open('Player1Inventory')
         req.onsuccess = () => resolve(req.result)
@@ -79,39 +127,55 @@ async function seedDatabase(page: Page) {
   return { flourId, eggsId, recipeId }
 }
 
-test.afterEach(async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(async () => {
-    const dbs = await indexedDB.databases()
-    await Promise.all(
-      dbs.map(({ name }) => {
-        return new Promise<void>((resolve, reject) => {
-          if (!name) {
-            resolve()
-            return
-          }
-          const req = indexedDB.deleteDatabase(name)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-          req.onblocked = () => {
-            console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
-            resolve()
-          }
-        })
-      }),
-    )
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+test.beforeEach(async ({ request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  }
 })
 
-test('user can cook a recipe with partial items and multiple servings', async ({ page }) => {
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  } else {
+    // Local mode: clear IndexedDB, localStorage, and sessionStorage.
+    await page.goto('/')
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases()
+      await Promise.all(
+        dbs.map(({ name }) => {
+          return new Promise<void>((resolve, reject) => {
+            if (!name) {
+              resolve()
+              return
+            }
+            const req = indexedDB.deleteDatabase(name)
+            req.onsuccess = () => resolve()
+            req.onerror = () => reject(req.error)
+            req.onblocked = () => {
+              console.warn(`[afterEach] IndexedDB delete blocked for "${name}"...`)
+              resolve()
+            }
+          })
+        }),
+      )
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+  }
+})
+
+test('user can cook a recipe with partial items and multiple servings', async ({ page, request, baseURL }) => {
   const cooking = new CookingPage(page)
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
 
   // Given: items "Flour" (qty 10) and "Eggs" (qty 12) exist, linked in "Pancakes" recipe
-  await seedDatabase(page)
+  await seedDatabase(page, request, baseURL)
 
   // When: navigate to cooking page
   await cooking.navigateTo()

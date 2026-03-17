@@ -147,6 +147,37 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    useGetRecipesQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useGetRecipeQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCreateRecipeMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateRecipeMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteRecipeMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateRecipeLastCookedAtMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useItemCountByRecipeQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
   }
 })
 

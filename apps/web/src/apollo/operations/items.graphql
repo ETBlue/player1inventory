@@ -97,3 +97,7 @@ query ItemCountByTag($tagId: String!) {
 query ItemCountByVendor($vendorId: String!) {
   itemCountByVendor(vendorId: $vendorId)
 }
+
+query ItemCountByRecipe($recipeId: String!) {
+  itemCountByRecipe(recipeId: $recipeId)
+}

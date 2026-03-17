@@ -26,6 +26,7 @@ extend type Query {
   item(id: ID!): Item
   itemCountByTag(tagId: String!): Int!
   itemCountByVendor(vendorId: String!): Int!
+  itemCountByRecipe(recipeId: String!): Int!
 }
 
 extend type Mutation {
