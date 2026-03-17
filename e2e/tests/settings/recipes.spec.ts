@@ -1,5 +1,6 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
-import { CLOUD_GRAPHQL_URL, CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../../constants'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../../constants'
+import { makeGql } from '../../utils/cloud'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
 import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
@@ -117,36 +118,28 @@ async function seedRecipeViaApi(
   recipeName: string,
   items: { name: string; defaultAmount: number }[] = [],
 ): Promise<{ recipeId: string; itemIds: string[] }> {
+  const gql = makeGql(request)
   const itemIds: string[] = []
 
   for (const item of items) {
-    const res = await request.post(CLOUD_GRAPHQL_URL, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID, 'Content-Type': 'application/json' },
-      data: {
-        query: 'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
-        variables: { name: item.name },
-      },
-    })
-    const json = await res.json()
-    itemIds.push(json.data.createItem.id)
+    const data = await gql<{ createItem: { id: string } }>(
+      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      { name: item.name },
+    )
+    itemIds.push(data.createItem.id)
   }
 
-  const res = await request.post(CLOUD_GRAPHQL_URL, {
-    headers: { 'x-e2e-user-id': E2E_USER_ID, 'Content-Type': 'application/json' },
-    data: {
-      query: `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
-        createRecipe(name: $name, items: $items) { id }
-      }`,
-      variables: {
-        name: recipeName,
-        items: items.map((item, i) => ({ itemId: itemIds[i], defaultAmount: item.defaultAmount })),
-      },
+  const data = await gql<{ createRecipe: { id: string } }>(
+    `mutation CreateRecipe($name: String!, $items: [RecipeItemInput!]) {
+      createRecipe(name: $name, items: $items) { id }
+    }`,
+    {
+      name: recipeName,
+      items: items.map((item, i) => ({ itemId: itemIds[i], defaultAmount: item.defaultAmount })),
     },
-  })
-  const json = await res.json()
-  const recipeId = json.data.createRecipe.id
+  )
 
-  return { recipeId, itemIds }
+  return { recipeId: data.createRecipe.id, itemIds }
 }
 
 test.beforeEach(async ({ request, baseURL }) => {
