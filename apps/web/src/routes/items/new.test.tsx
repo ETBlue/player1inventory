@@ -101,6 +101,44 @@ describe('New item page', () => {
     })
   })
 
+  it('user cannot save item when consumeAmount is 0', async () => {
+    const user = userEvent.setup()
+
+    // Given the new item page
+    renderNewItemPage()
+    await waitFor(() => screen.getByLabelText(/name/i))
+
+    // When user fills in the name but sets consumeAmount to 0
+    await user.type(screen.getByLabelText(/name/i), 'Milk')
+    const consumeInput = screen.getByLabelText(
+      /amount per consume/i,
+    ) as HTMLInputElement
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '0')
+
+    // Then the save button is disabled
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
+
+  it('user can save item when consumeAmount is 0.01', async () => {
+    const user = userEvent.setup()
+
+    // Given the new item page
+    renderNewItemPage()
+    await waitFor(() => screen.getByLabelText(/name/i))
+
+    // When user fills in name and sets consumeAmount to 0.01
+    await user.type(screen.getByLabelText(/name/i), 'Salt')
+    const consumeInput = screen.getByLabelText(
+      /amount per consume/i,
+    ) as HTMLInputElement
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '0.01')
+
+    // Then the save button is enabled
+    expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
+  })
+
   it('save button is disabled and validation message shown when measurement mode requires missing fields', async () => {
     const user = userEvent.setup()
 

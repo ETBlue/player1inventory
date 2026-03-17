@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { createItem } from '@/db/operations'
+import { createItem, createRecipe, getRecipes } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Item detail page - manual quantity input', () => {
@@ -1247,6 +1247,201 @@ describe('Item detail page - expiration field split', () => {
       const updated = await db.items.get(item.id)
       // The item should NOT still have estimatedDueDays set
       expect(updated?.estimatedDueDays).toBeFalsy()
+    })
+  })
+})
+
+describe('consumeAmount change — recipe adjustment', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.recipes.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = async (itemId: string) => {
+    // Pre-seed the recipes query cache so useRecipes() returns data synchronously on mount,
+    // eliminating race conditions between the item loading and the recipe data being available.
+    await queryClient.prefetchQuery({
+      queryKey: ['recipes'],
+      queryFn: getRecipes,
+    })
+
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  it('user sees confirm dialog when changing consumeAmount affects a recipe', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with consumeAmount 2 linked to a recipe with defaultAmount 4
+    const item = await createItem({
+      name: 'Flour',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+    await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Flour'))
+
+    // When user changes consumeAmount from 2 to 3
+    const consumeInput = screen.getByLabelText(
+      /amount per consume/i,
+    ) as HTMLInputElement
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '3')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a confirm dialog appears listing the affected recipe
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+      expect(screen.getByText(/update recipe amounts/i)).toBeInTheDocument()
+      expect(screen.getByText('Bread')).toBeInTheDocument()
+    })
+  })
+
+  it('user can confirm and recipe defaultAmount is adjusted to nearest multiple', async () => {
+    const user = userEvent.setup()
+
+    // Given item with consumeAmount 2, recipe with defaultAmount 4 (2 servings)
+    const item = await createItem({
+      name: 'Flour',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+    const recipe = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Flour'))
+
+    // When changing consumeAmount to 3 and confirming
+    const consumeInput = screen.getByLabelText(
+      /amount per consume/i,
+    ) as HTMLInputElement
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '3')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => screen.getByRole('alertdialog'))
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then recipe defaultAmount is adjusted: round(4/3)*3 = 3
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const ri = updated?.items.find((r) => r.itemId === item.id)
+      expect(ri?.defaultAmount).toBe(3)
+    })
+  })
+
+  it('recipes with defaultAmount 0 are not affected', async () => {
+    const user = userEvent.setup()
+
+    // Given item with consumeAmount 2, recipe with defaultAmount 0 (optional ingredient)
+    const item = await createItem({
+      name: 'Salt',
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+    await createRecipe({
+      name: 'Soup',
+      items: [{ itemId: item.id, defaultAmount: 0 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Salt'))
+
+    // When changing consumeAmount to 3 and saving
+    const consumeInput = screen.getByLabelText(
+      /amount per consume/i,
+    ) as HTMLInputElement
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '3')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then NO dialog appears (no affected recipes)
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      expect(updated?.consumeAmount).toBe(3)
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('rounds up to new consumeAmount when nearest multiple would be 0', async () => {
+    const user = userEvent.setup()
+
+    // Given item with consumeAmount 2, recipe with defaultAmount 1
+    // round(1/3)*3 = 0, but we round up to 3 (1× newConsumeAmount)
+    const item = await createItem({
+      name: 'Oil',
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+    const recipe = await createRecipe({
+      name: 'Salad',
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Oil'))
+
+    // When changing consumeAmount to 3 and confirming
+    const consumeInput = screen.getByLabelText(
+      /amount per consume/i,
+    ) as HTMLInputElement
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '3')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => screen.getByRole('alertdialog'))
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then defaultAmount is rounded up to 3 (not 0)
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const ri = updated?.items.find((r) => r.itemId === item.id)
+      expect(ri?.defaultAmount).toBe(3)
     })
   })
 })
