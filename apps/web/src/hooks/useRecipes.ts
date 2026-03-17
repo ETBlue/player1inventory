@@ -98,7 +98,12 @@ export function useCreateRecipe() {
   if (mode === 'cloud') {
     const toVars = (input: { name: string; items?: RecipeItem[] }) => {
       const vars: { name: string; items?: RecipeItem[] } = { name: input.name }
-      if (input.items !== undefined) vars.items = input.items
+      if (input.items !== undefined) {
+        vars.items = input.items.map(({ itemId, defaultAmount }) => ({
+          itemId,
+          defaultAmount,
+        }))
+      }
       return vars
     }
     return {
@@ -142,7 +147,12 @@ export function useUpdateRecipe() {
     ) => {
       const vars: { id: string; name?: string; items?: RecipeItem[] } = { id }
       if (updates.name !== undefined) vars.name = updates.name
-      if (updates.items !== undefined) vars.items = updates.items
+      if (updates.items !== undefined) {
+        vars.items = updates.items.map(({ itemId, defaultAmount }) => ({
+          itemId,
+          defaultAmount,
+        }))
+      }
       return vars
     }
     return {
