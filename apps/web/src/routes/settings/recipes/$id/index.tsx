@@ -42,11 +42,9 @@ function RecipeInfoTab() {
 
   const handleSave = async () => {
     if (!recipe || !isDirty) return
-    const updated = await updateRecipe.mutateAsync({ id, updates: { name } })
-    if (updated) {
-      setSavedAt((n) => n + 1)
-      goBack()
-    }
+    await updateRecipe.mutateAsync({ id, updates: { name } })
+    setSavedAt((n) => n + 1)
+    goBack()
   }
 
   const handleDelete = async () => {
