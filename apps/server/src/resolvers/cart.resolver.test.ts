@@ -186,6 +186,111 @@ describe('addToCart', () => {
   })
 })
 
+// ─── updateCartItem ──────────────────────────────────────────────────────────
+
+describe('updateCartItem', () => {
+  it('user can update the quantity of a cart item', async () => {
+    // Given a cart with an item
+    const cart = await getActiveCart()
+    const cartItem = await addToCart(cart.id, 'item_milk', 2)
+
+    // When updating the quantity
+    const response = await server.executeOperation(
+      {
+        query: `mutation UpdateCartItem($id: ID!, $quantity: Int!) {
+          updateCartItem(id: $id, quantity: $quantity) { id quantity }
+        }`,
+        variables: { id: cartItem.id, quantity: 5 },
+      },
+      { contextValue: ctx },
+    )
+
+    // Then the quantity is updated
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      const updated = response.body.singleResult.data?.updateCartItem as { id: string; quantity: number }
+      expect(updated.id).toBe(cartItem.id)
+      expect(updated.quantity).toBe(5)
+    }
+  })
+
+  it('updating a cart item belonging to another user throws NOT_FOUND', async () => {
+    // Given user A has a cart item
+    const cartA = await getActiveCart({ userId: 'user_A' })
+    const cartItem = await addToCart(cartA.id, 'item_milk', 2, { userId: 'user_A' })
+
+    // When user B tries to update it
+    const response = await server.executeOperation(
+      {
+        query: `mutation UpdateCartItem($id: ID!, $quantity: Int!) {
+          updateCartItem(id: $id, quantity: $quantity) { id quantity }
+        }`,
+        variables: { id: cartItem.id, quantity: 99 },
+      },
+      { contextValue: { userId: 'user_B' } },
+    )
+
+    // Then a NOT_FOUND error is returned
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeDefined()
+      expect(response.body.singleResult.errors![0].extensions?.code).toBe('NOT_FOUND')
+    }
+
+    // And the original quantity is unchanged
+    const unchanged = await CartItemModel.findById(cartItem.id)
+    expect(unchanged?.quantity).toBe(2)
+  })
+})
+
+// ─── cartItemCountByItem ──────────────────────────────────────────────────────
+
+describe('cartItemCountByItem', () => {
+  it('user can get the count of cart items for a given item', async () => {
+    // Given the user has the same item in their active cart
+    const cart = await getActiveCart()
+    const item = await createItem('Milk')
+    await addToCart(cart.id, item._id.toString(), 3)
+
+    // When querying the count for that item
+    const response = await server.executeOperation(
+      {
+        query: `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
+        variables: { itemId: item._id.toString() },
+      },
+      { contextValue: ctx },
+    )
+
+    // Then the count is 1 (one cart item document for this item in the user's carts)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.data?.cartItemCountByItem).toBe(1)
+    }
+  })
+
+  it('count is scoped to the requesting user — other users\' carts are excluded', async () => {
+    // Given user A has an item in their cart
+    const cartA = await getActiveCart({ userId: 'user_A' })
+    const item = await createItem('Shared Item')
+    await addToCart(cartA.id, item._id.toString(), 1, { userId: 'user_A' })
+
+    // When user B queries the count for the same item
+    const response = await server.executeOperation(
+      {
+        query: `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
+        variables: { itemId: item._id.toString() },
+      },
+      { contextValue: { userId: 'user_B' } },
+    )
+
+    // Then the count is 0 for user B
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.data?.cartItemCountByItem).toBe(0)
+    }
+  })
+})
+
 // ─── removeFromCart ──────────────────────────────────────────────────────────
 
 describe('removeFromCart', () => {
