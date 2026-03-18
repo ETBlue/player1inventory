@@ -26,3 +26,16 @@ export function detectBrowserLanguage(): Language {
   if (lang.startsWith('zh')) return 'tw'
   return 'en'
 }
+
+/**
+ * Normalises a raw language string (from localStorage or navigator) to a
+ * supported Language value. Handles both stored custom values ('en', 'tw')
+ * and BCP 47 navigator codes (e.g. 'zh-TW').
+ *
+ * Used by i18next `convertDetectedLanguage` so the same logic applies
+ * regardless of detection source.
+ */
+export function convertDetectedLanguage(lng: string): Language {
+  if (lng === 'tw' || lng.startsWith('zh')) return 'tw'
+  return 'en'
+}
