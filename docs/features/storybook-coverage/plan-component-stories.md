@@ -10,9 +10,8 @@ that had no coverage. Every other component already has both.
 **Pattern (universal across this codebase):**
 - Each `*.stories.tsx` has a matching `*.stories.test.tsx` smoke test
 - Smoke tests use `composeStories` + React Testing Library
-- Assertion: a key UI element (button, heading, role) — not just "Loading..."
-- Exception: stories that require async db init assert "Loading..." on the synchronous
-  initial render (same as all route-level stories)
+- Assertion: a key UI element (role, text, heading) — never `container.firstChild` or `'Loading...'`
+- Route stories with db-init wrappers: use `findBy*` (async) to wait for actual page content
 
 **Components already covered:** 38 / 43 components had stories + smoke tests.
 
@@ -45,15 +44,17 @@ that had no coverage. Every other component already has both.
 **File:** `src/components/Navigation/Navigation.stories.tsx`
 **Stories:** PantryActive, CartActive, CookingActive, SettingsActive, HiddenOnFullscreen
 **Pattern:** RouterProvider + routeTree + db init wrapper (same as route stories)
-**Smoke test:** `getByText('Loading...')` — Navigation is always part of the root
-  layout; the synchronous loading state is sufficient for a smoke test
+**Smoke test:** `findByRole('navigation')` (async, waits for router to mount)
+**Apollo fix:** wrapped RouterProvider in `<ApolloProvider client={noopApolloClient}>` —
+  routes at `/` call Apollo hooks with `skip:true` which still need context in Storybook
 
 ### Step 4 — `Layout` stories + smoke test ✅ DONE
 
 **File:** `src/components/Layout/Layout.stories.tsx`
 **Stories:** Default (path `/`), FullscreenPage (path `/settings/vendors`)
 **Pattern:** RouterProvider + routeTree + db init wrapper
-**Smoke test:** `getByText('Loading...')`
+**Smoke test:** `findByRole('main')` (async)
+**Apollo fix:** same as Navigation — `noopApolloClient` + `ApolloProvider` wrapper
 
 ### Step 5 — `PostLoginMigrationDialog` stories + smoke test ✅ DONE
 
@@ -62,8 +63,7 @@ that had no coverage. Every other component already has both.
 - `Idle` — `migration-prompted` set in localStorage; dialog stays closed
 - `Prompting` — db seeded with 1 item; dialog opens after async hook resolves
 **Smoke test:**
-- `Idle`: `container.toBeInTheDocument()` + `queryByRole('alertdialog').toBeNull()`
-- `Prompting`: `getByText('Loading...')` (synchronous initial render)
+- `Prompting`: `findByText('Import your local data to the cloud?')` (async, waits for dialog)
 
 ## Verification
 
