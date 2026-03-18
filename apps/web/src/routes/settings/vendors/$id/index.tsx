@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
 import { VendorNameForm } from '@/components/vendor/VendorNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/settings/vendors/$id/')({
 })
 
 function VendorInfoTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: vendors = [] } = useVendors()
   const vendor = vendors.find((v) => v.id === id)
@@ -77,20 +79,16 @@ function VendorInfoTab() {
       />
 
       <DeleteButton
-        trigger="Delete"
-        dialogTitle="Delete Vendor?"
+        trigger={t('common.delete')}
+        dialogTitle={t('settings.vendors.deleteTitle')}
         buttonClassName="mt-4 w-full max-w-2xl"
         dialogDescription={
-          affectedItemCount > 0 ? (
-            <>
-              <strong>{vendor.name}</strong> will be removed from{' '}
-              {affectedItemCount} item{affectedItemCount !== 1 ? 's' : ''}.
-            </>
-          ) : (
-            <>
-              No items are assigned to <strong>{vendor.name}</strong>.
-            </>
-          )
+          affectedItemCount > 0
+            ? t('settings.vendors.deleteWithItems', {
+                name: vendor.name,
+                count: affectedItemCount,
+              })
+            : t('settings.vendors.deleteNoItems', { name: vendor.name })
         }
         onDelete={handleDelete}
       />

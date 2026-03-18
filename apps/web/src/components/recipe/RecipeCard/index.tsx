@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { CookingPot, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Recipe } from '@/types'
@@ -11,6 +12,7 @@ interface RecipeCardProps {
 }
 
 export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
+  const { t } = useTranslation()
   return (
     <Card className="py-1">
       <CardContent className="flex items-center justify-between">
@@ -25,7 +27,7 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
           </Link>
           {itemCount !== undefined && (
             <span className="text-sm text-foreground-muted">
-              · {itemCount} items
+              {t('settings.recipes.itemCount', { count: itemCount })}
             </span>
           )}
         </div>
@@ -34,20 +36,17 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
           buttonVariant="destructive-ghost"
           buttonSize="icon"
           buttonClassName="h-8 w-8"
-          buttonAriaLabel={`Delete ${recipe.name}`}
-          dialogTitle="Delete Recipe?"
+          buttonAriaLabel={t('settings.recipes.deleteAriaLabel', {
+            name: recipe.name,
+          })}
+          dialogTitle={t('settings.recipes.deleteTitle')}
           dialogDescription={
-            (itemCount ?? 0) > 0 ? (
-              <>
-                <strong>{recipe.name}</strong> will be deleted. It contains{' '}
-                {itemCount} item{itemCount !== 1 ? 's' : ''}. Your inventory
-                will not be affected.
-              </>
-            ) : (
-              <>
-                <strong>{recipe.name}</strong> will be deleted. It has no items.
-              </>
-            )
+            (itemCount ?? 0) > 0
+              ? t('settings.recipes.deleteWithItems', {
+                  name: recipe.name,
+                  count: itemCount ?? 0,
+                })
+              : t('settings.recipes.deleteNoItems', { name: recipe.name })
           }
           onDelete={onDelete}
         />

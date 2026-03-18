@@ -5,11 +5,9 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useCheckout } from './useShoppingCart'
 
-const mockCloudCheckout = vi
-  .fn()
-  .mockResolvedValue({
-    data: { checkout: { id: 'cart-1', status: 'completed' } },
-  })
+const mockCloudCheckout = vi.fn().mockResolvedValue({
+  data: { checkout: { id: 'cart-1', status: 'completed' } },
+})
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()

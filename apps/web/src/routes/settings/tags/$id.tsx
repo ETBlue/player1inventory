@@ -97,7 +97,7 @@ function TagDetailLayoutInner() {
             variant="neutral-ghost"
             size="icon"
             onClick={handleBackClick}
-            aria-label={t('settings.tags.detail.goBack')}
+            aria-label={t('common.goBack')}
           >
             <ArrowLeft />
           </Button>
@@ -139,19 +139,17 @@ function TagDetailLayoutInner() {
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('settings.tags.detail.unsavedTitle')}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            {t('settings.tags.detail.unsavedDescription')}
+            {t('common.unsavedDescription')}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelDiscard}>
-              {t('settings.tags.detail.cancel')}
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDiscard}>
-              {t('settings.tags.detail.discard')}
+              {t('common.discard')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

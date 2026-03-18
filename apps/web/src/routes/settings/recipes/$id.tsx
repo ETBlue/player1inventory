@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { ArrowLeft, ListTodo, Settings2 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +35,7 @@ function RecipeDetailLayoutInner() {
   const recipe = recipes.find((r) => r.id === id)
   const { isDirty } = useRecipeLayout()
   const { goBack } = useAppNavigation('/settings/recipes')
+  const { t } = useTranslation()
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -78,7 +80,7 @@ function RecipeDetailLayoutInner() {
   }
 
   if (!recipe) {
-    return <div className="p-4">Recipe not found</div>
+    return <div className="p-4">{t('settings.recipes.notFound')}</div>
   }
 
   return (
@@ -95,7 +97,7 @@ function RecipeDetailLayoutInner() {
             variant="neutral-ghost"
             size="icon"
             onClick={handleBackClick}
-            aria-label="Go back"
+            aria-label={t('common.goBack')}
           >
             <ArrowLeft />
           </Button>
@@ -139,17 +141,17 @@ function RecipeDetailLayoutInner() {
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            You have unsaved changes. Discard changes?
+            {t('common.unsavedDescription')}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelDiscard}>
-              Cancel
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDiscard}>
-              Discard
+              {t('common.discard')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

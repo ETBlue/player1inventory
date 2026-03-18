@@ -3,7 +3,13 @@
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",
-    "nameLabel": "名稱"
+    "nameLabel": "名稱",
+    "save": "存檔",
+    "saving": "存檔中...",
+    "discard": "丟掉",
+    "goBack": "回上一頁",
+    "unsavedTitle": "未存檔的變更",
+    "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？"
   },
   "settings": {
     "title": "設定",
@@ -45,14 +51,7 @@
         "undoFailed": "復原失敗了..."
       },
       "detail": {
-        "notFound": "查無此標籤",
-        "goBack": "回上一頁",
-        "unsavedTitle": "未存檔的變更",
-        "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？",
-        "cancel": "取消",
-        "discard": "丟掉",
-        "save": "存檔",
-        "saving": "存檔中..."
+        "notFound": "查無此標籤"
       },
       "items": {
         "empty": "還沒建立任何品項。",
@@ -61,11 +60,29 @@
     },
     "vendors": {
       "label": "供應商",
-      "description": "管理供應商"
+      "description": "管理供應商",
+      "newButton": "新增供應商",
+      "empty": "還沒建立任何供應商。",
+      "itemCount_one": "· 1 個品項",
+      "itemCount_other": "· {{count}} 個品項",
+      "deleteAriaLabel": "刪除{{name}}",
+      "deleteTitle": "刪除供應商？",
+      "deleteWithItems_other": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
+      "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
+      "notFound": "查無此供應商"
     },
     "recipes": {
       "label": "食譜",
-      "description": "管理食譜"
+      "description": "管理食譜",
+      "newButton": "新增食譜",
+      "empty": "還沒建立任何食譜。",
+      "itemCount_one": "· 1 個品項",
+      "itemCount_other": "· {{count}} 個品項",
+      "deleteAriaLabel": "刪除{{name}}",
+      "deleteTitle": "刪除食譜？",
+      "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
+      "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有關聯到任何品項，可以安心刪除。",
+      "notFound": "查無此食譜"
     },
     "language": {
       "label": "語言",

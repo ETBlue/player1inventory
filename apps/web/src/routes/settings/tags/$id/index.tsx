@@ -126,9 +126,7 @@ function TagInfoTab() {
         className="w-full"
         disabled={!isDirty || updateTag.isPending}
       >
-        {updateTag.isPending
-          ? t('settings.tags.detail.saving')
-          : t('settings.tags.detail.save')}
+        {updateTag.isPending ? t('common.saving') : t('common.save')}
       </Button>
 
       <DeleteButton
