@@ -52,9 +52,11 @@ function PageStory({ setup }: { setup?: () => void | Promise<void> }) {
 
 **Smoke test pattern:**
 ```ts
-it('Default renders without error', () => {
+// Use findBy* (async) to wait for a key element once the router has mounted.
+// Choose an element specific to the page — a heading, button label, or landmark.
+it('Default renders without error', async () => {
   render(<Default />)
-  expect(screen.getByText('Loading...')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /pantry/i })).toBeInTheDocument()
 })
 ```
 

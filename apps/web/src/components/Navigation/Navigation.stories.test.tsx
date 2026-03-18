@@ -3,31 +3,30 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './Navigation.stories'
 
-// Stories use the db-init wrapper pattern: initial render shows "Loading..."
-// while the db initialises, then the router mounts and the nav bar appears.
-// Smoke tests assert the synchronous "Loading..." state — enough to confirm
-// the story mounts without throwing.
+// Stories use the db-init wrapper: "Loading..." shows synchronously, then the
+// router mounts and the <nav> bar appears. Smoke tests use findByRole (async)
+// to assert the nav element is present once the router finishes mounting.
 const { PantryActive, CartActive, CookingActive, SettingsActive } =
   composeStories(stories)
 
 describe('Navigation stories smoke tests', () => {
-  it('PantryActive renders without error', () => {
+  it('PantryActive renders without error', async () => {
     render(<PantryActive />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(await screen.findByRole('navigation')).toBeInTheDocument()
   })
 
-  it('CartActive renders without error', () => {
+  it('CartActive renders without error', async () => {
     render(<CartActive />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(await screen.findByRole('navigation')).toBeInTheDocument()
   })
 
-  it('CookingActive renders without error', () => {
+  it('CookingActive renders without error', async () => {
     render(<CookingActive />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(await screen.findByRole('navigation')).toBeInTheDocument()
   })
 
-  it('SettingsActive renders without error', () => {
+  it('SettingsActive renders without error', async () => {
     render(<SettingsActive />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(await screen.findByRole('navigation')).toBeInTheDocument()
   })
 })

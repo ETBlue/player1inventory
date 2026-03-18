@@ -3,19 +3,19 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './Layout.stories'
 
-// Stories use the db-init wrapper pattern: initial render shows "Loading..."
-// while the db initialises, then the router mounts and the layout appears.
-// Smoke tests assert the synchronous "Loading..." state.
+// Stories use the db-init wrapper: "Loading..." shows synchronously, then the
+// router mounts and the layout's <main> container appears. Smoke tests use
+// findByRole (async) to assert the main element is present once mounted.
 const { Default, FullscreenPage } = composeStories(stories)
 
 describe('Layout stories smoke tests', () => {
-  it('Default renders without error', () => {
+  it('Default renders without error', async () => {
     render(<Default />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(await screen.findByRole('main')).toBeInTheDocument()
   })
 
-  it('FullscreenPage renders without error', () => {
+  it('FullscreenPage renders without error', async () => {
     render(<FullscreenPage />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(await screen.findByRole('main')).toBeInTheDocument()
   })
 })

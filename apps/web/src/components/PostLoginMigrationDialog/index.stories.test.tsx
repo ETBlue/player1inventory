@@ -20,9 +20,11 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
   describe('Prompting', () => {
     afterEach(() => localStorage.removeItem('migration-prompted'))
 
-    it('renders without error — shows loading while db initializes', () => {
+    it('renders without error — dialog title visible once db is ready', async () => {
       render(<Prompting />)
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(
+        await screen.findByText('Import your local data to the cloud?'),
+      ).toBeInTheDocument()
     })
   })
 })
