@@ -339,7 +339,7 @@ describe('Use (Cooking) Page', () => {
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(logs[0].note).toBe('consumed via recipe')
+      expect(logs[0].note).toBe('consumed via Pasta')
       expect(logs[0].delta).toBeLessThan(0)
     })
 
@@ -1589,6 +1589,54 @@ describe('Use (Cooking) Page', () => {
     await waitFor(() => {
       expect(screen.getByText('0.3')).toBeInTheDocument()
       expect(screen.queryByText('0.30000000000000004')).not.toBeInTheDocument()
+    })
+  })
+
+  it('user can see recipe name in inventory log note after confirming done', async () => {
+    // Given a recipe named "Pasta Bolognese" with an item
+    const item = await makeItem('Flour', 1, 5)
+    await createRecipe({
+      name: 'Pasta Bolognese',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user expands, checks the recipe, and confirms Done
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta Bolognese/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(
+      screen.getByRole('button', { name: /Expand Pasta Bolognese/i }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta Bolognese')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta Bolognese'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /consume from 1 recipe/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then the inventory log note names the recipe
+    await waitFor(async () => {
+      const logs = await db.inventoryLogs
+        .filter((l) => l.itemId === item.id)
+        .toArray()
+      expect(logs.length).toBeGreaterThan(0)
+      expect(logs[0].note).toBe('consumed via Pasta Bolognese')
     })
   })
 })
