@@ -102,7 +102,7 @@ export function useAddToCart() {
   })
 
   const [cloudAddToCart] = useAddToCartMutation({
-    refetchQueries: [{ query: CartItemsDocument }],
+    refetchQueries: ['CartItems'],
   })
 
   if (mode === 'cloud') {
@@ -139,7 +139,7 @@ export function useUpdateCartItem() {
   })
 
   const [cloudUpdateCartItem] = useUpdateCartItemMutation({
-    refetchQueries: [{ query: CartItemsDocument }],
+    refetchQueries: ['CartItems'],
   })
 
   if (mode === 'cloud') {
@@ -180,7 +180,7 @@ export function useRemoveFromCart() {
   })
 
   const [cloudRemoveFromCart] = useRemoveFromCartMutation({
-    refetchQueries: [{ query: CartItemsDocument }],
+    refetchQueries: ['CartItems'],
   })
 
   if (mode === 'cloud') {
