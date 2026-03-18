@@ -588,8 +588,16 @@ For CLI users who want to work on multiple branches simultaneously without switc
 # Create worktree in .worktrees/ directory
 # Use dashes instead of slashes in the directory name (e.g. feature-xxx, not feature/xxx)
 git worktree add .worktrees/<feature-xxx> -b <branch-name>
+
+# Copy .env files from repo root into the worktree (run before cd — paths are relative to root)
+# Skip silently if a file doesn't exist
+cp apps/web/.env.local .worktrees/<feature-xxx>/apps/web/.env.local 2>/dev/null || true
+cp apps/server/.env .worktrees/<feature-xxx>/apps/server/.env 2>/dev/null || true
+
 cd .worktrees/<feature-xxx>
 ```
+
+Note: The `EnterWorktree` tool triggers the `WorktreeCreate` hook which copies `.env` files automatically. The manual `cp` step above is only needed when using raw `git worktree add`.
 
 **Directory Convention:**
 Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`. Use dashes instead of slashes in directory names (e.g. `feature-xxx`, not `feature/xxx`) to avoid creating subfolders.
