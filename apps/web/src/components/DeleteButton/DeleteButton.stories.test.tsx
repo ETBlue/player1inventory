@@ -30,13 +30,13 @@ describe('DeleteButton stories smoke tests', () => {
   })
 
   it('IconButton renders without error', () => {
-    const { container } = render(<IconButton />)
-    expect(container.firstChild).not.toBeNull()
+    render(<IconButton />)
+    expect(screen.getByRole('button')).toBeInTheDocument()
   })
 
   it('TrashIcon renders without error', () => {
-    const { container } = render(<TrashIcon />)
-    expect(container.firstChild).not.toBeNull()
+    render(<TrashIcon />)
+    expect(screen.getByRole('button')).toBeInTheDocument()
   })
 
   it('AsyncDelete renders without error', () => {

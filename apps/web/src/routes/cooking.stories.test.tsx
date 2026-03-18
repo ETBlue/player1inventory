@@ -5,8 +5,8 @@ import * as stories from './cooking.stories'
 
 // cooking.stories uses Dexie (fake-indexeddb/auto handles this in test setup)
 // and ApolloProvider (no-op client, set up in the story itself).
-// Each story initialises IndexedDB in a useEffect — the initial render shows
-// "Loading..." while that runs, which is enough for a smoke test.
+// Each story initialises IndexedDB in a useEffect. Once loaded, the cooking
+// page always renders a "Done" button (initially disabled).
 const {
   Default,
   WithRecipes,
@@ -19,43 +19,59 @@ const {
 } = composeStories(stories)
 
 describe('Cooking stories smoke tests', () => {
-  it('Default renders without error', () => {
+  it('Default renders without error', async () => {
     render(<Default />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('WithRecipes renders without error', () => {
+  it('WithRecipes renders without error', async () => {
     render(<WithRecipes />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('WithSearch renders without error', () => {
+  it('WithSearch renders without error', async () => {
     render(<WithSearch />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('SortByRecent renders without error', () => {
+  it('SortByRecent renders without error', async () => {
     render(<SortByRecent />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('WithCheckedRecipe renders without error', () => {
+  it('WithCheckedRecipe renders without error', async () => {
     render(<WithCheckedRecipe />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('WithExpandedRecipe renders without error', () => {
+  it('WithExpandedRecipe renders without error', async () => {
     render(<WithExpandedRecipe />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('WithActiveToolbar renders without error', () => {
+  it('WithActiveToolbar renders without error', async () => {
     render(<WithActiveToolbar />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
-  it('SortByCount renders without error', () => {
+  it('SortByCount renders without error', async () => {
     render(<SortByCount />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 })

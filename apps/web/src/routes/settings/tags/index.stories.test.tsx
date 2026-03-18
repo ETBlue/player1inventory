@@ -6,8 +6,10 @@ import * as stories from './index.stories'
 const { Default } = composeStories(stories)
 
 describe('Settings tags index stories smoke tests', () => {
-  it('Default renders without error', () => {
+  it('Default renders without error', async () => {
     render(<Default />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /tags/i }),
+    ).toBeInTheDocument()
   })
 })

@@ -6,18 +6,24 @@ import * as stories from './index.stories'
 const { Default, TraditionalChinese, ExplicitEnglish } = composeStories(stories)
 
 describe('Settings index stories smoke tests', () => {
-  it('Default renders without error', () => {
+  it('Default renders without error', async () => {
     render(<Default />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /settings/i }),
+    ).toBeInTheDocument()
   })
 
-  it('TraditionalChinese renders without error', () => {
+  it('TraditionalChinese renders without error', async () => {
     render(<TraditionalChinese />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /設定/i }),
+    ).toBeInTheDocument()
   })
 
-  it('ExplicitEnglish renders without error', () => {
+  it('ExplicitEnglish renders without error', async () => {
     render(<ExplicitEnglish />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /settings/i }),
+    ).toBeInTheDocument()
   })
 })
