@@ -281,7 +281,10 @@ export async function getCartItems(cartId: string): Promise<CartItem[]> {
   return db.cartItems.where('cartId').equals(cartId).toArray()
 }
 
-export async function checkout(cartId: string): Promise<void> {
+export async function checkout(
+  cartId: string,
+  note = 'purchased',
+): Promise<void> {
   const cartItems = await getCartItems(cartId)
   const now = new Date()
 
@@ -302,12 +305,13 @@ export async function checkout(cartId: string): Promise<void> {
       updatedAt: now,
     })
 
-    // 2. Then log with explicit final quantity
+    // 2. Then log with explicit final quantity and note
     await addInventoryLog({
       itemId: cartItem.itemId,
       delta: cartItem.quantity,
       quantity: finalQuantity,
       occurredAt: now,
+      note,
     })
   }
 

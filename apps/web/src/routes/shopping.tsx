@@ -355,7 +355,15 @@ function Shopping() {
             <AlertDialogCancel>Go back</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (cart) checkout.mutate(cart.id)
+                if (cart) {
+                  const selectedVendor = vendors.find(
+                    (v) => v.id === selectedVendorId,
+                  )
+                  const note = selectedVendor
+                    ? `purchased at ${selectedVendor.name}`
+                    : 'purchased'
+                  checkout.mutate({ cartId: cart.id, note })
+                }
               }}
             >
               Done
