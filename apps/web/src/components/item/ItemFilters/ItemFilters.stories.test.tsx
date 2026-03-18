@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ItemFilters.stories'
 
@@ -16,42 +16,48 @@ const {
 
 describe('ItemFilters stories smoke tests', () => {
   it('Default renders without error', async () => {
-    const { container } = render(<Default />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<Default />)
+    await waitFor(() =>
+      expect(screen.queryByText('Vendors')).not.toBeInTheDocument(),
+    )
   })
 
   it('EmptyItems renders without error', async () => {
-    const { container } = render(<EmptyItems />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<EmptyItems />)
+    await waitFor(() =>
+      expect(screen.queryByText('Vendors')).not.toBeInTheDocument(),
+    )
   })
 
   it('Disabled renders without error', async () => {
-    const { container } = render(<Disabled />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<Disabled />)
+    await waitFor(() =>
+      expect(screen.queryByText('Vendors')).not.toBeInTheDocument(),
+    )
   })
 
   it('WithVendors renders without error', async () => {
-    const { container } = render(<WithVendors />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<WithVendors />)
+    expect(await screen.findByText('Vendors')).toBeInTheDocument()
   })
 
   it('WithRecipes renders without error', async () => {
-    const { container } = render(<WithRecipes />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<WithRecipes />)
+    expect(await screen.findByText('Recipes')).toBeInTheDocument()
   })
 
   it('WithVendorsAndRecipes renders without error', async () => {
-    const { container } = render(<WithVendorsAndRecipes />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<WithVendorsAndRecipes />)
+    expect(await screen.findByText('Vendors')).toBeInTheDocument()
   })
 
   it('HideVendorFilter renders without error', async () => {
-    const { container } = render(<HideVendorFilter />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<HideVendorFilter />)
+    expect(await screen.findByText('Recipes')).toBeInTheDocument()
   })
 
   it('HideRecipeFilter renders without error', async () => {
-    const { container } = render(<HideRecipeFilter />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<HideRecipeFilter />)
+    expect(await screen.findByText('Vendors')).toBeInTheDocument()
   })
 })

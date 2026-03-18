@@ -18,7 +18,7 @@ const {
 describe('ItemProgressBar stories smoke tests', () => {
   it('Interactive renders without error', () => {
     const { container } = render(<Interactive />)
-    expect(container.firstChild).not.toBeNull()
+    expect(container.querySelector('[data-segment]')).not.toBeNull()
   })
 
   it('SegmentedBar renders without error', () => {
@@ -59,11 +59,11 @@ describe('ItemProgressBar stories smoke tests', () => {
 
   it('Inactive renders without error', () => {
     const { container } = render(<Inactive />)
-    expect(container.firstChild).not.toBeNull()
+    expect(container.firstChild).toHaveClass('flex-1')
   })
 
   it('InactiveWithStock renders without error', () => {
     const { container } = render(<InactiveWithStock />)
-    expect(container.firstChild).not.toBeNull()
+    expect(container.firstChild).toHaveClass('flex-1')
   })
 })

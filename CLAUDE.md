@@ -337,6 +337,14 @@ Before creating a PR, update all relevant documentation:
 - Include multiple stories showing different states and variants
 - Use realistic data that demonstrates the component's purpose
 
+**Smoke tests:** every `.stories.tsx` has a matching `.stories.test.tsx` using `composeStories` + React Testing Library. Assert a key UI element (role, text, heading) — not `container.firstChild` or `'Loading...'`.
+
+**Apollo context in route stories:** stories that render routes calling Apollo hooks with `skip:true` (e.g. local-mode guards) need `<ApolloProvider client={noopApolloClient}>` around the `RouterProvider`. Tests pass without it because `setup.ts` stubs all Apollo hooks via `vi.mock`. Import the shared stub:
+```ts
+import { noopApolloClient } from '@/test/apolloStub'
+import { ApolloProvider } from '@apollo/client/react'
+```
+
 **Before committing feature code:**
 1. **Check Storybook** - Update existing stories if component API changed
 2. **Check Tests** - Update or add tests for new functionality

@@ -7,8 +7,8 @@ const { Default, AllColors, WithLabel, InForm } = composeStories(stories)
 
 describe('ColorSelect stories smoke tests', () => {
   it('Default renders without error', () => {
-    const { container } = render(<Default />)
-    expect(container.firstChild).not.toBeNull()
+    render(<Default />)
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
   it('AllColors renders without error', () => {

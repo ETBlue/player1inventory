@@ -1,38 +1,48 @@
 import { composeStories } from '@storybook/react'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
 // CookingControlBar stories render the full /cooking route via RouterProvider.
-// RouterProvider resolves asynchronously, so we use waitFor to detect the
+// RouterProvider resolves asynchronously, so we use findByRole to detect the
 // cooking page content rather than asserting on the initial empty render.
-// The cooking page's toolbar always renders a sort-direction button.
+// The cooking page's toolbar always renders a "Done" button (initially disabled).
 const { Default, AllExpanded, SortByRecent, SortDescending, WithSearch } =
   composeStories(stories)
 
 describe('CookingControlBar stories smoke tests', () => {
   it('Default renders without error', async () => {
-    const { container } = render(<Default />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<Default />)
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
   it('AllExpanded renders without error', async () => {
-    const { container } = render(<AllExpanded />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<AllExpanded />)
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
   it('SortByRecent renders without error', async () => {
-    const { container } = render(<SortByRecent />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<SortByRecent />)
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
   it('SortDescending renders without error', async () => {
-    const { container } = render(<SortDescending />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<SortDescending />)
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 
   it('WithSearch renders without error', async () => {
-    const { container } = render(<WithSearch />)
-    await waitFor(() => expect(container.firstChild).not.toBeNull())
+    render(<WithSearch />)
+    expect(
+      await screen.findByRole('button', { name: /done/i }),
+    ).toBeInTheDocument()
   })
 })
