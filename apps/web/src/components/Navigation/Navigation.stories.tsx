@@ -1,4 +1,3 @@
-import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -10,14 +9,7 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { routeTree } from '@/routeTree.gen'
-
-// No-op Apollo client — satisfies Apollo context requirement for hooks called
-// with skip:true inside routes rendered when navigating to pantry/shopping/cooking.
-// Tests don't need this because setup.ts mocks all generated Apollo hooks via vi.mock.
-const noopApolloClient = new ApolloClient({
-  link: new ApolloLink(() => null),
-  cache: new InMemoryCache(),
-})
+import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
   title: 'Components/Navigation',
