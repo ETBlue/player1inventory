@@ -3,7 +3,13 @@
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",
-    "nameLabel": "名稱"
+    "nameLabel": "名稱",
+    "save": "存檔",
+    "saving": "存檔中...",
+    "discard": "丟掉",
+    "goBack": "回上一頁",
+    "unsavedTitle": "未存檔的變更",
+    "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？"
   },
   "settings": {
     "title": "設定",
@@ -69,7 +75,8 @@
       "deleteAriaLabel": "刪除{{name}}",
       "deleteTitle": "刪除供應商？",
       "deleteWithItems_other": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
-      "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。"
+      "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
+      "notFound": "查無此供應商"
     },
     "recipes": {
       "label": "食譜",
@@ -81,7 +88,8 @@
       "deleteAriaLabel": "刪除{{name}}",
       "deleteTitle": "刪除食譜？",
       "deleteWithItems_other": "即將刪除「{{name}}」，其中包含 {{count}} 個品項，您的庫存不會受到影響。",
-      "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有任何品項。"
+      "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有任何品項。",
+      "notFound": "查無此食譜"
     },
     "language": {
       "label": "語言",

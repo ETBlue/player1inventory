@@ -3,7 +3,13 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "deleting": "Deleting...",
-    "nameLabel": "Name"
+    "nameLabel": "Name",
+    "save": "Save",
+    "saving": "Saving...",
+    "discard": "Discard",
+    "goBack": "Go back",
+    "unsavedTitle": "Unsaved changes",
+    "unsavedDescription": "You have unsaved changes. Discard changes?"
   },
   "settings": {
     "title": "Settings",
@@ -72,7 +78,8 @@
       "deleteTitle": "Delete Vendor?",
       "deleteWithItems_one": "\"{{name}}\" will be removed from 1 item.",
       "deleteWithItems_other": "\"{{name}}\" will be removed from {{count}} items.",
-      "deleteNoItems": "No items are assigned to \"{{name}}\"."
+      "deleteNoItems": "No items are assigned to \"{{name}}\".",
+      "notFound": "Vendor not found"
     },
     "recipes": {
       "label": "Recipes",
@@ -85,7 +92,8 @@
       "deleteTitle": "Delete Recipe?",
       "deleteWithItems_one": "\"{{name}}\" will be deleted. It contains 1 item. Your inventory will not be affected.",
       "deleteWithItems_other": "\"{{name}}\" will be deleted. It contains {{count}} items. Your inventory will not be affected.",
-      "deleteNoItems": "\"{{name}}\" will be deleted. It has no items."
+      "deleteNoItems": "\"{{name}}\" will be deleted. It has no items.",
+      "notFound": "Recipe not found"
     },
     "language": {
       "label": "Language",
