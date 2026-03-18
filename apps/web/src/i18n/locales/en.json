@@ -53,14 +53,7 @@
         "undoFailed": "Failed to undo"
       },
       "detail": {
-        "notFound": "Tag not found",
-        "goBack": "Go back",
-        "unsavedTitle": "Unsaved changes",
-        "unsavedDescription": "You have unsaved changes. Discard changes?",
-        "cancel": "Cancel",
-        "discard": "Discard",
-        "save": "Save",
-        "saving": "Saving..."
+        "notFound": "Tag not found"
       },
       "items": {
         "empty": "No items yet.",

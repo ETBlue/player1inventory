@@ -51,14 +51,7 @@
         "undoFailed": "復原失敗了..."
       },
       "detail": {
-        "notFound": "查無此標籤",
-        "goBack": "回上一頁",
-        "unsavedTitle": "未存檔的變更",
-        "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？",
-        "cancel": "取消",
-        "discard": "丟掉",
-        "save": "存檔",
-        "saving": "存檔中..."
+        "notFound": "查無此標籤"
       },
       "items": {
         "empty": "還沒建立任何品項。",

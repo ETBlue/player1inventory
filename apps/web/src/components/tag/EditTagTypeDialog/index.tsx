@@ -69,7 +69,7 @@ export function EditTagTypeDialog({
           <Button variant="neutral-outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={onSave}>{t('settings.tags.detail.save')}</Button>
+          <Button onClick={onSave}>{t('common.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
