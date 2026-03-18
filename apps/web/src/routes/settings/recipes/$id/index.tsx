@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
 import { RecipeNameForm } from '@/components/recipe/RecipeNameForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
@@ -15,6 +16,7 @@ export const Route = createFileRoute('/settings/recipes/$id/')({
 })
 
 function RecipeInfoTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: recipes = [] } = useRecipes()
   const recipe = recipes.find((r) => r.id === id)
@@ -65,21 +67,16 @@ function RecipeInfoTab() {
         isPending={updateRecipe.isPending}
       />
       <DeleteButton
-        trigger="Delete"
+        trigger={t('common.delete')}
         buttonClassName="w-full max-w-2xl mt-4"
-        dialogTitle="Delete Recipe?"
+        dialogTitle={t('settings.recipes.deleteTitle')}
         dialogDescription={
-          recipe.items.length > 0 ? (
-            <>
-              <strong>{recipe.name}</strong> will be deleted. It contains{' '}
-              {recipe.items.length} item{recipe.items.length !== 1 ? 's' : ''}.
-              Your inventory will not be affected.
-            </>
-          ) : (
-            <>
-              <strong>{recipe.name}</strong> will be deleted. It has no items.
-            </>
-          )
+          recipe.items.length > 0
+            ? t('settings.recipes.deleteWithItems', {
+                name: recipe.name,
+                count: recipe.items.length,
+              })
+            : t('settings.recipes.deleteNoItems', { name: recipe.name })
         }
         onDelete={handleDelete}
       />

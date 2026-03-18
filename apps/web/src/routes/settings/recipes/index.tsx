@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { RecipeCard } from '@/components/recipe/RecipeCard'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/settings/recipes/')({
 })
 
 function RecipeSettings() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings')
   const { data: recipes = [] } = useRecipes()
@@ -27,7 +29,7 @@ function RecipeSettings() {
           <Button variant="neutral-ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1>Recipes</h1>
+          <h1>{t('settings.recipes.label')}</h1>
         </div>
         <Button
           onClick={() =>
@@ -35,14 +37,14 @@ function RecipeSettings() {
           }
         >
           <Plus className="h-4 w-4" />
-          New Recipe
+          {t('settings.recipes.newButton')}
         </Button>
       </Toolbar>
 
       <div className="space-y-px pb-4">
         {sortedRecipes.length === 0 ? (
           <p className="text-foreground-muted text-sm">
-            No recipes yet. Add your first recipe.
+            {t('settings.recipes.empty')}
           </p>
         ) : (
           sortedRecipes.map((recipe) => (
