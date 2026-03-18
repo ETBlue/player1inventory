@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { Store, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Vendor } from '@/types'
@@ -11,6 +12,7 @@ interface VendorCardProps {
 }
 
 export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
+  const { t } = useTranslation()
   return (
     <Card className="py-1">
       <CardContent className="flex items-center justify-between">
@@ -25,7 +27,7 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
           </Link>
           {itemCount !== undefined && (
             <span className="text-sm text-foreground-muted">
-              · {itemCount} items
+              {t('settings.vendors.itemCount', { count: itemCount })}
             </span>
           )}
         </div>
@@ -34,19 +36,17 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
           buttonVariant="destructive-ghost"
           buttonSize="icon"
           buttonClassName="h-8 w-8"
-          buttonAriaLabel={`Delete ${vendor.name}`}
-          dialogTitle="Delete Vendor?"
+          buttonAriaLabel={t('settings.vendors.deleteAriaLabel', {
+            name: vendor.name,
+          })}
+          dialogTitle={t('settings.vendors.deleteTitle')}
           dialogDescription={
-            (itemCount ?? 0) > 0 ? (
-              <>
-                <strong>{vendor.name}</strong> will be removed from {itemCount}{' '}
-                item{itemCount !== 1 ? 's' : ''}.
-              </>
-            ) : (
-              <>
-                No items are assigned to <strong>{vendor.name}</strong>.
-              </>
-            )
+            (itemCount ?? 0) > 0
+              ? t('settings.vendors.deleteWithItems', {
+                  name: vendor.name,
+                  count: itemCount ?? 0,
+                })
+              : t('settings.vendors.deleteNoItems', { name: vendor.name })
           }
           onDelete={onDelete}
         />

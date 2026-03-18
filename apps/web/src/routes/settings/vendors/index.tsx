@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { VendorCard } from '@/components/vendor/VendorCard'
@@ -18,6 +19,7 @@ export const Route = createFileRoute('/settings/vendors/')({
 })
 
 function VendorSettings() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings')
   const { data: vendors = [], isLoading } = useVendors()
@@ -44,18 +46,18 @@ function VendorSettings() {
           <Button variant="neutral-ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1>Vendors</h1>
+          <h1>{t('settings.vendors.label')}</h1>
         </div>
         <Button onClick={() => navigate({ to: '/settings/vendors/new' })}>
           <Plus className="h-4 w-4" />
-          New Vendor
+          {t('settings.vendors.newButton')}
         </Button>
       </Toolbar>
 
       <div className="space-y-px pb-4">
         {sortedVendors.length === 0 ? (
           <p className="text-foreground-muted text-sm">
-            No vendors yet. Add your first vendor.
+            {t('settings.vendors.empty')}
           </p>
         ) : (
           sortedVendors.map((vendor) => (
