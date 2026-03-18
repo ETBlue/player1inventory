@@ -81,7 +81,7 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id/vendors.test.tsx` - Vendors tab tests
 - `src/routes/items/$id/recipes.tsx` - Recipes tab implementation
 - `src/routes/items/$id/recipes.test.tsx` - Recipes tab tests
-- `src/routes/items/$id.log.tsx` - History/logs tab (view-only)
+- `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/routes/items/new.tsx` - New item form (uses ItemForm with info + advanced sections)
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
