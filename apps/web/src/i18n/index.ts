@@ -1,6 +1,7 @@
 import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
+import { convertDetectedLanguage } from '@/lib/language'
 import en from './locales/en.json'
 import tw from './locales/tw.json'
 
@@ -17,10 +18,7 @@ i18n
     detection: {
       order: ['localStorage', 'navigator'],
       lookupLocalStorage: 'i18n-language',
-      convertDetectedLanguage: (lng: string) => {
-        if (lng.startsWith('zh')) return 'tw'
-        return 'en'
-      },
+      convertDetectedLanguage,
     },
     interpolation: {
       escapeValue: false,
