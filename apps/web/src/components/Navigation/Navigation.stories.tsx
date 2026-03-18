@@ -1,3 +1,5 @@
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -9,10 +11,13 @@ import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { routeTree } from '@/routeTree.gen'
 
-// Navigation is part of the root layout and renders once RouterProvider mounts.
-// We use the same db-init wrapper as route stories so that:
-//   - Smoke tests can assert "Loading..." synchronously (before RouterProvider renders)
-//   - Storybook shows the nav bar once db is ready and the router mounts
+// No-op Apollo client — satisfies Apollo context requirement for hooks called
+// with skip:true inside routes rendered when navigating to pantry/shopping/cooking.
+// Tests don't need this because setup.ts mocks all generated Apollo hooks via vi.mock.
+const noopApolloClient = new ApolloClient({
+  link: new ApolloLink(() => null),
+  cache: new InMemoryCache(),
+})
 
 const meta = {
   title: 'Components/Navigation',
@@ -51,9 +56,11 @@ function NavigationStory({ path }: { path: string }) {
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 

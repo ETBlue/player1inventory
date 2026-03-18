@@ -1,3 +1,5 @@
+import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -9,12 +11,13 @@ import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { routeTree } from '@/routeTree.gen'
 
-// Layout wraps all pages with a <main> container and the Navigation bar.
-// It hides the nav and removes bottom padding on fullscreen pages
-// (items, tags, vendors, recipes detail pages).
-//
-// Uses the db-init wrapper pattern so smoke tests can assert "Loading..."
-// synchronously before the RouterProvider mounts.
+// No-op Apollo client — satisfies Apollo context requirement for hooks called
+// with skip:true inside routes rendered at / and /settings/vendors.
+// Tests don't need this because setup.ts mocks all generated Apollo hooks via vi.mock.
+const noopApolloClient = new ApolloClient({
+  link: new ApolloLink(() => null),
+  cache: new InMemoryCache(),
+})
 
 const meta = {
   title: 'Components/Layout',
@@ -53,9 +56,11 @@ function LayoutStory({ path }: { path: string }) {
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 
