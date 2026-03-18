@@ -1,9 +1,26 @@
 import { test, expect } from '@playwright/test'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
 
-test.afterEach(async ({ page }) => {
+test.beforeEach(async ({ request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+  }
+})
+
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
+    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+      headers: { 'x-e2e-user-id': E2E_USER_ID },
+    })
+    return
+  }
+  // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
   // We must stay on the same origin to call indexedDB.databases().
   // Use onblocked to force-close any lingering connections before the delete proceeds.
