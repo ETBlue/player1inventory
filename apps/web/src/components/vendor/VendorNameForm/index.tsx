@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,6 +18,7 @@ export function VendorNameForm({
   isDirty,
   isPending,
 }: VendorNameFormProps) {
+  const { t } = useTranslation()
   return (
     <form
       className="space-y-4 max-w-2xl"
@@ -26,7 +28,7 @@ export function VendorNameForm({
       }}
     >
       <div className="space-y-2">
-        <Label htmlFor="vendor-name">Name</Label>
+        <Label htmlFor="vendor-name">{t('common.nameLabel')}</Label>
         <Input
           id="vendor-name"
           value={name}
@@ -35,7 +37,7 @@ export function VendorNameForm({
         />
       </div>
       <Button type="submit" disabled={!isDirty || isPending} className="w-full">
-        Save
+        {t('common.save')}
       </Button>
     </form>
   )
