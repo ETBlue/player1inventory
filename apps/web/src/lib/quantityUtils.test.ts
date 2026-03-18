@@ -4,6 +4,7 @@ import {
   addItem,
   consumeItem,
   getCurrentQuantity,
+  getPackedTotal,
   getStockStatus,
   isInactive,
   normalizeUnpacked,
@@ -67,6 +68,63 @@ describe('getCurrentQuantity', () => {
 
     // 3 * 100 + 50 = 350g
     expect(getCurrentQuantity(item as Item)).toBe(350)
+  })
+})
+
+describe('getPackedTotal', () => {
+  it('returns packed + unpacked for package-only item', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+    }
+
+    expect(getPackedTotal(item as Item)).toBe(3)
+  })
+
+  it('returns packed + unpacked for package-only item with fractional unpacked', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      packedQuantity: 3,
+      unpackedQuantity: 0.5,
+    }
+
+    expect(getPackedTotal(item as Item)).toBe(3.5)
+  })
+
+  it('converts unpacked measurement to fractional packs for dual-unit item', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      packedQuantity: 2,
+      unpackedQuantity: 50,
+    }
+
+    // 2 + 50/100 = 2.5 packages
+    expect(getPackedTotal(item as Item)).toBe(2.5)
+  })
+
+  it('returns packed quantity when unpacked is zero for dual-unit item', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      measurementUnit: 'g',
+      amountPerPackage: 100,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+    }
+
+    expect(getPackedTotal(item as Item)).toBe(3)
+  })
+
+  it('returns 0 when all quantities are zero', () => {
+    const item: Partial<Item> = {
+      packageUnit: 'bottle',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    }
+
+    expect(getPackedTotal(item as Item)).toBe(0)
   })
 })
 
