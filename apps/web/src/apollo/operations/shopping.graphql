@@ -1,0 +1,58 @@
+query ActiveCart {
+  activeCart {
+    id
+    status
+    createdAt
+    completedAt
+  }
+}
+
+query CartItems($cartId: ID!) {
+  cartItems(cartId: $cartId) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+query CartItemCountByItem($itemId: ID!) {
+  cartItemCountByItem(itemId: $itemId)
+}
+
+mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
+  addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+mutation UpdateCartItem($id: ID!, $quantity: Int!) {
+  updateCartItem(id: $id, quantity: $quantity) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+mutation RemoveFromCart($id: ID!) {
+  removeFromCart(id: $id)
+}
+
+mutation Checkout($cartId: ID!) {
+  checkout(cartId: $cartId) {
+    id
+    status
+    completedAt
+  }
+}
+
+mutation AbandonCart($cartId: ID!) {
+  abandonCart(cartId: $cartId) {
+    id
+    status
+  }
+}

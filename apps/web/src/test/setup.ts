@@ -178,6 +178,36 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    useActiveCartQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCartItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useAddToCartMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateCartItemMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useRemoveFromCartMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCheckoutMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useAbandonCartMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 
