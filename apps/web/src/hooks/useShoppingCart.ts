@@ -216,9 +216,9 @@ export function useCheckout() {
 
   if (mode === 'cloud') {
     return {
-      mutate: ({ cartId }: { cartId: string; note?: string }) =>
+      mutate: ({ cartId, note }: { cartId: string; note?: string }) =>
         cloudCheckout({
-          variables: { cartId },
+          variables: { cartId, ...(note ? { note } : {}) },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
@@ -231,9 +231,15 @@ export function useCheckout() {
             queryKey: ['sort', 'purchaseDates'],
           })
         }),
-      mutateAsync: async ({ cartId }: { cartId: string; note?: string }) => {
+      mutateAsync: async ({
+        cartId,
+        note,
+      }: {
+        cartId: string
+        note?: string
+      }) => {
         const r = await cloudCheckout({
-          variables: { cartId },
+          variables: { cartId, ...(note ? { note } : {}) },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
