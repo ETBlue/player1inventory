@@ -22,6 +22,6 @@ extend type Mutation {
   addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
   updateCartItem(id: ID!, quantity: Int!): CartItem!
   removeFromCart(id: ID!): Boolean!
-  checkout(cartId: ID!): Cart!
+  checkout(cartId: ID!, note: String): Cart!
   abandonCart(cartId: ID!): Cart!
 }

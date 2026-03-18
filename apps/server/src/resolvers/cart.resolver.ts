@@ -58,7 +58,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
       return result.deletedCount > 0
     },
 
-    checkout: async (_, { cartId }, ctx) => {
+    checkout: async (_, { cartId, note }, ctx) => {
       const userId = requireAuth(ctx)
       const cartItems = await CartItemModel.find({ cartId, userId })
       const pinnedItems = cartItems.filter(ci => ci.quantity === 0)
@@ -75,6 +75,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
           delta: ci.quantity,
           loggedAt: now,
           userId,
+          ...(note ? { note } : {}),
         })
       }
 
