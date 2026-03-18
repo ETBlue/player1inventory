@@ -11,6 +11,7 @@ import {
 import {
   ActiveCartDocument,
   CartItemsDocument,
+  GetItemsDocument,
   useAbandonCartMutation,
   useActiveCartQuery,
   useAddToCartMutation,
@@ -220,6 +221,7 @@ export function useCheckout() {
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
+            { query: GetItemsDocument },
           ],
         }).then(async () => {
           await queryClient.invalidateQueries({ queryKey: ['cart'] })
@@ -234,6 +236,7 @@ export function useCheckout() {
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
+            { query: GetItemsDocument },
           ],
         })
         await queryClient.invalidateQueries({ queryKey: ['cart'] })
