@@ -61,11 +61,27 @@
     },
     "vendors": {
       "label": "供應商",
-      "description": "管理供應商"
+      "description": "管理供應商",
+      "newButton": "新增供應商",
+      "empty": "還沒建立任何供應商。",
+      "itemCount_one": "· 1 個品項",
+      "itemCount_other": "· {{count}} 個品項",
+      "deleteAriaLabel": "刪除{{name}}",
+      "deleteTitle": "刪除供應商？",
+      "deleteWithItems_other": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
+      "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。"
     },
     "recipes": {
       "label": "食譜",
-      "description": "管理食譜"
+      "description": "管理食譜",
+      "newButton": "新增食譜",
+      "empty": "還沒建立任何食譜。",
+      "itemCount_one": "· 1 個品項",
+      "itemCount_other": "· {{count}} 個品項",
+      "deleteAriaLabel": "刪除{{name}}",
+      "deleteTitle": "刪除食譜？",
+      "deleteWithItems_other": "即將刪除「{{name}}」，其中包含 {{count}} 個品項，您的庫存不會受到影響。",
+      "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有任何品項。"
     },
     "language": {
       "label": "語言",
