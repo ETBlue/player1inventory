@@ -115,8 +115,6 @@ export function useAddToCart() {
         quantity: number
       }) => cloudAddToCart({ variables: vars }).then((r) => r.data?.addToCart),
       isPending: false,
-      error: null,
-      reset: () => {},
     }
   }
 
@@ -164,8 +162,6 @@ export function useUpdateCartItem() {
           variables: { id: cartItemId, quantity },
         }).then((r) => r.data?.updateCartItem),
       isPending: false,
-      error: null,
-      reset: () => {},
     }
   }
 
@@ -195,8 +191,6 @@ export function useRemoveFromCart() {
           (r) => r.data?.removeFromCart,
         ),
       isPending: false,
-      error: null,
-      reset: () => {},
     }
   }
 
@@ -216,14 +210,18 @@ export function useCheckout() {
     },
   })
 
-  const [cloudCheckout] = useCheckoutMutation({
-    refetchQueries: [{ query: ActiveCartDocument }],
-  })
+  const [cloudCheckout] = useCheckoutMutation()
 
   if (mode === 'cloud') {
     return {
       mutate: (cartId: string) =>
-        cloudCheckout({ variables: { cartId } }).then(async () => {
+        cloudCheckout({
+          variables: { cartId },
+          refetchQueries: [
+            { query: ActiveCartDocument },
+            { query: CartItemsDocument, variables: { cartId } },
+          ],
+        }).then(async () => {
           await queryClient.invalidateQueries({ queryKey: ['cart'] })
           await queryClient.invalidateQueries({ queryKey: ['items'] })
           await queryClient.invalidateQueries({
@@ -231,7 +229,13 @@ export function useCheckout() {
           })
         }),
       mutateAsync: async (cartId: string) => {
-        const r = await cloudCheckout({ variables: { cartId } })
+        const r = await cloudCheckout({
+          variables: { cartId },
+          refetchQueries: [
+            { query: ActiveCartDocument },
+            { query: CartItemsDocument, variables: { cartId } },
+          ],
+        })
         await queryClient.invalidateQueries({ queryKey: ['cart'] })
         await queryClient.invalidateQueries({ queryKey: ['items'] })
         await queryClient.invalidateQueries({
@@ -240,8 +244,6 @@ export function useCheckout() {
         return r.data?.checkout
       },
       isPending: false,
-      error: null,
-      reset: () => {},
     }
   }
 
@@ -259,20 +261,27 @@ export function useAbandonCart() {
     },
   })
 
-  const [cloudAbandonCart] = useAbandonCartMutation({
-    refetchQueries: [{ query: ActiveCartDocument }],
-  })
+  const [cloudAbandonCart] = useAbandonCartMutation()
 
   if (mode === 'cloud') {
     return {
-      mutate: (cartId: string) => cloudAbandonCart({ variables: { cartId } }),
+      mutate: (cartId: string) =>
+        cloudAbandonCart({
+          variables: { cartId },
+          refetchQueries: [
+            { query: ActiveCartDocument },
+            { query: CartItemsDocument, variables: { cartId } },
+          ],
+        }),
       mutateAsync: (cartId: string) =>
-        cloudAbandonCart({ variables: { cartId } }).then(
-          (r) => r.data?.abandonCart,
-        ),
+        cloudAbandonCart({
+          variables: { cartId },
+          refetchQueries: [
+            { query: ActiveCartDocument },
+            { query: CartItemsDocument, variables: { cartId } },
+          ],
+        }).then((r) => r.data?.abandonCart),
       isPending: false,
-      error: null,
-      reset: () => {},
     }
   }
 
