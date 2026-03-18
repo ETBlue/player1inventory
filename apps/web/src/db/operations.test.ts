@@ -609,6 +609,52 @@ describe('ShoppingCart operations', () => {
     expect(updatedItem?.packedQuantity).toBe(8)
   })
 
+  it('checkout stores "purchased" note on logs when no note provided', async () => {
+    // Given an item in cart
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 2)
+
+    // When checkout with no note
+    await checkout(cart.id)
+
+    // Then log has "purchased" note
+    const logs = await getItemLogs(item.id)
+    expect(logs[0].note).toBe('purchased')
+  })
+
+  it('checkout stores custom note on logs when note is provided', async () => {
+    // Given an item in cart
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 2)
+
+    // When checkout with a vendor note
+    await checkout(cart.id, 'purchased at Costco')
+
+    // Then log has the vendor note
+    const logs = await getItemLogs(item.id)
+    expect(logs[0].note).toBe('purchased at Costco')
+  })
+
   it('checkout skips inventory update for cartItems with quantity=0 (pinned)', async () => {
     // Given an item with known packedQuantity
     const item = await createItem({
