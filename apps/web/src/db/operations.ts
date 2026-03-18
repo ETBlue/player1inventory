@@ -1,4 +1,5 @@
 import type { Language } from '@/lib/language'
+import { getPackedTotal } from '@/lib/quantityUtils'
 import type {
   CartItem,
   InventoryLog,
@@ -80,6 +81,7 @@ export async function getCartItemCountByItem(itemId: string): Promise<number> {
 type CreateLogInput = {
   itemId: string
   delta: number
+  quantity: number // final total in package units — provided by caller, not derived from log history
   occurredAt: Date
   note?: string
 }
@@ -87,14 +89,13 @@ type CreateLogInput = {
 export async function addInventoryLog(
   input: CreateLogInput,
 ): Promise<InventoryLog> {
-  const currentQty = await getCurrentQuantity(input.itemId)
   const now = new Date()
 
   const log: InventoryLog = {
     id: crypto.randomUUID(),
     itemId: input.itemId,
     delta: input.delta,
-    quantity: currentQty + input.delta,
+    quantity: input.quantity,
     occurredAt: input.occurredAt,
     createdAt: now,
   }
@@ -292,14 +293,21 @@ export async function checkout(cartId: string): Promise<void> {
     const item = await db.items.get(cartItem.itemId)
     if (!item) continue
 
-    await addInventoryLog({
-      itemId: cartItem.itemId,
-      delta: cartItem.quantity,
-      occurredAt: now,
-    })
+    // Compute final quantity BEFORE mutating anything
+    const finalQuantity = getPackedTotal(item) + cartItem.quantity
+
+    // 1. Update item first (log records state after the operation)
     await db.items.update(cartItem.itemId, {
       packedQuantity: item.packedQuantity + cartItem.quantity,
       updatedAt: now,
+    })
+
+    // 2. Then log with explicit final quantity
+    await addInventoryLog({
+      itemId: cartItem.itemId,
+      delta: cartItem.quantity,
+      quantity: finalQuantity,
+      occurredAt: now,
     })
   }
 

@@ -29,6 +29,7 @@ import { useRecipes, useUpdateRecipeLastCookedAt } from '@/hooks/useRecipes'
 import {
   consumeItem,
   getCurrentQuantity,
+  getPackedTotal,
   roundToStep,
 } from '@/lib/quantityUtils'
 
@@ -319,6 +320,7 @@ function CookingPage() {
       await addInventoryLog.mutateAsync({
         itemId,
         delta: -totalAmount,
+        quantity: getPackedTotal(updatedItem), // post-consumption packed total
         occurredAt: now,
         note: 'consumed via recipe',
       })
