@@ -87,8 +87,8 @@
       "itemCount_other": "· {{count}} 個品項",
       "deleteAriaLabel": "刪除{{name}}",
       "deleteTitle": "刪除食譜？",
-      "deleteWithItems_other": "即將刪除「{{name}}」，其中包含 {{count}} 個品項，您的庫存不會受到影響。",
-      "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有任何品項。",
+      "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
+      "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有關聯到任何品項，可以安心刪除。",
       "notFound": "查無此食譜"
     },
     "language": {
