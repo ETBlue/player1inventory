@@ -29,6 +29,7 @@ import { useRecipes, useUpdateRecipeLastCookedAt } from '@/hooks/useRecipes'
 import {
   consumeItem,
   getCurrentQuantity,
+  getPackedTotal,
   roundToStep,
 } from '@/lib/quantityUtils'
 
@@ -301,6 +302,18 @@ function CookingPage() {
   const handleConfirmDone = async () => {
     const now = new Date()
 
+    // Build item → contributing recipe names for log notes
+    const recipeNamesByItemId = new Map<string, string[]>()
+    for (const [recipeId, itemSet] of checkedItemIds) {
+      const recipe = recipes.find((r) => r.id === recipeId)
+      if (!recipe) continue
+      for (const itemId of itemSet) {
+        const names = recipeNamesByItemId.get(itemId) ?? []
+        names.push(recipe.name)
+        recipeNamesByItemId.set(itemId, names)
+      }
+    }
+
     for (const [itemId, totalAmount] of totalByItemId) {
       const item = items.find((i) => i.id === itemId)
       if (!item) continue
@@ -316,11 +329,18 @@ function CookingPage() {
         },
       })
 
+      const recipeNames = recipeNamesByItemId.get(itemId) ?? []
+      const note =
+        recipeNames.length > 0
+          ? `consumed via ${recipeNames.join(', ')}`
+          : 'consumed via recipe'
+
       await addInventoryLog.mutateAsync({
         itemId,
         delta: -totalAmount,
+        quantity: getPackedTotal(updatedItem), // post-consumption packed total
         occurredAt: now,
-        note: 'consumed via recipe',
+        note,
       })
     }
 

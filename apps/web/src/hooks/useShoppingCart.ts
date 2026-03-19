@@ -203,7 +203,8 @@ export function useCheckout() {
   const queryClient = useQueryClient()
 
   const localMutation = useMutation({
-    mutationFn: checkout,
+    mutationFn: ({ cartId, note }: { cartId: string; note?: string }) =>
+      checkout(cartId, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cart'] })
       queryClient.invalidateQueries({ queryKey: ['items'] })
@@ -215,9 +216,9 @@ export function useCheckout() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (cartId: string) =>
+      mutate: ({ cartId, note }: { cartId: string; note?: string }) =>
         cloudCheckout({
-          variables: { cartId },
+          variables: { cartId, ...(note ? { note } : {}) },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
@@ -230,9 +231,15 @@ export function useCheckout() {
             queryKey: ['sort', 'purchaseDates'],
           })
         }),
-      mutateAsync: async (cartId: string) => {
+      mutateAsync: async ({
+        cartId,
+        note,
+      }: {
+        cartId: string
+        note?: string
+      }) => {
         const r = await cloudCheckout({
-          variables: { cartId },
+          variables: { cartId, ...(note ? { note } : {}) },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },

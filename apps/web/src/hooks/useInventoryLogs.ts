@@ -16,6 +16,7 @@ export function useAddInventoryLog() {
     mutationFn: (input: {
       itemId: string
       delta: number
+      quantity: number
       occurredAt: Date
       note?: string
     }) => addInventoryLog(input),

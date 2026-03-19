@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useLastPurchaseDate } from '@/hooks'
 import {
   getCurrentQuantity,
+  getPackedTotal,
   getStockStatus,
   isInactive,
 } from '@/lib/quantityUtils'
@@ -101,9 +102,7 @@ export function ItemCard({
       : item.targetQuantity
 
   const packageProgressCurrent = isPackageDisplay
-    ? item.amountPerPackage
-      ? item.packedQuantity + item.unpackedQuantity / item.amountPerPackage
-      : item.packedQuantity + item.unpackedQuantity
+    ? getPackedTotal(item)
     : currentQuantity
 
   const packageProgressTarget = isPackageDisplay

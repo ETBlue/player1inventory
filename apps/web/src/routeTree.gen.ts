@@ -31,7 +31,7 @@ import { Route as SettingsRecipesIdRouteImport } from './routes/settings/recipes
 import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
 import { Route as ItemsIdRecipesRouteImport } from './routes/items/$id/recipes'
-import { Route as ItemsIdLogRouteImport } from './routes/items/$id.log'
+import { Route as ItemsIdLogRouteImport } from './routes/items/$id/log'
 import { Route as SettingsVendorsIdIndexRouteImport } from './routes/settings/vendors/$id/index'
 import { Route as SettingsTagsIdIndexRouteImport } from './routes/settings/tags/$id/index'
 import { Route as SettingsRecipesIdIndexRouteImport } from './routes/settings/recipes/$id/index'

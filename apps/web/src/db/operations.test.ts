@@ -213,6 +213,7 @@ describe('InventoryLog operations', () => {
     const log = await addInventoryLog({
       itemId: item.id,
       delta: 2,
+      quantity: 2, // item starts at packedQuantity: 0, delta: 2 → total: 2
       occurredAt: new Date(),
     })
 
@@ -234,10 +235,16 @@ describe('InventoryLog operations', () => {
       consumeAmount: 1,
     })
 
-    await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: 5,
+      quantity: 5,
+      occurredAt: new Date(),
+    })
     await addInventoryLog({
       itemId: item.id,
       delta: -2,
+      quantity: 3, // 5 - 2 = 3
       occurredAt: new Date(),
     })
 
@@ -258,10 +265,16 @@ describe('InventoryLog operations', () => {
       consumeAmount: 1,
     })
 
-    await addInventoryLog({ itemId: item.id, delta: 5, occurredAt: new Date() })
+    await addInventoryLog({
+      itemId: item.id,
+      delta: 5,
+      quantity: 5,
+      occurredAt: new Date(),
+    })
     await addInventoryLog({
       itemId: item.id,
       delta: -1,
+      quantity: 4, // 5 - 1 = 4
       occurredAt: new Date(),
     })
 
@@ -286,16 +299,19 @@ describe('InventoryLog operations', () => {
     await addInventoryLog({
       itemId: item.id,
       delta: -1,
+      quantity: -1, // item starts at packedQuantity: 0, delta: -1
       occurredAt: new Date('2026-01-15'),
     })
     await addInventoryLog({
       itemId: item.id,
       delta: 5,
+      quantity: 4, // -1 + 5 = 4
       occurredAt: purchaseDate,
     })
     await addInventoryLog({
       itemId: item.id,
       delta: -2,
+      quantity: 2, // 4 - 2 = 2
       occurredAt: new Date('2026-02-02'),
     })
 
@@ -542,6 +558,32 @@ describe('ShoppingCart operations', () => {
     expect(updatedCart?.status).toBe('completed')
   })
 
+  it('log quantity reflects item packed state at time of checkout', async () => {
+    // Given an item with pre-existing packedQuantity (simulating manual adjustment)
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 5, // pre-existing stock
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 3)
+
+    // When checkout is called
+    await checkout(cart.id)
+
+    // Then the log quantity reflects total after purchase (existing + bought)
+    const logs = await getItemLogs(item.id)
+    expect(logs).toHaveLength(1)
+    expect(logs[0].delta).toBe(3)
+    expect(logs[0].quantity).toBe(8) // 5 existing + 3 bought = 8
+  })
+
   it('checkout increments packedQuantity of each item', async () => {
     // Given an item with known packedQuantity
     const item = await createItem({
@@ -565,6 +607,52 @@ describe('ShoppingCart operations', () => {
     // Then item.packedQuantity should increase by the cart quantity
     const updatedItem = await getItem(item.id)
     expect(updatedItem?.packedQuantity).toBe(8)
+  })
+
+  it('checkout stores "purchased" note on logs when no note provided', async () => {
+    // Given an item in cart
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 2)
+
+    // When checkout with no note
+    await checkout(cart.id)
+
+    // Then log has "purchased" note
+    const logs = await getItemLogs(item.id)
+    expect(logs[0].note).toBe('purchased')
+  })
+
+  it('checkout stores custom note on logs when note is provided', async () => {
+    // Given an item in cart
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 2)
+
+    // When checkout with a vendor note
+    await checkout(cart.id, 'purchased at Costco')
+
+    // Then log has the vendor note
+    const logs = await getItemLogs(item.id)
+    expect(logs[0].note).toBe('purchased at Costco')
   })
 
   it('checkout skips inventory update for cartItems with quantity=0 (pinned)', async () => {

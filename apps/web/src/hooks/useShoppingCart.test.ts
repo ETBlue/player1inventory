@@ -67,7 +67,7 @@ describe('useCheckout (cloud mode)', () => {
     })
 
     await act(async () => {
-      await result.current.mutateAsync('cart-123')
+      await result.current.mutateAsync({ cartId: 'cart-123' })
     })
 
     // Then the Apollo mutation must be called with GetItemsDocument in refetchQueries

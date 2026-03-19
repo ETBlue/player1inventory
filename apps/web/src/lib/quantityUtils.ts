@@ -26,6 +26,17 @@ export function getCurrentQuantity(item: Item): number {
   return item.packedQuantity + item.unpackedQuantity
 }
 
+/**
+ * Returns the total quantity in package units, regardless of targetUnit.
+ * For dual-unit items, unpacked measurement quantity is converted to fractional packs.
+ */
+export function getPackedTotal(item: Item): number {
+  if (item.amountPerPackage && item.amountPerPackage > 0) {
+    return item.packedQuantity + item.unpackedQuantity / item.amountPerPackage
+  }
+  return item.packedQuantity + item.unpackedQuantity
+}
+
 export function getStockStatus(
   quantity: number,
   refillThreshold: number,

@@ -14,6 +14,9 @@ class InventoryLogClass {
 
   @prop({ required: true, type: String })
   userId!: string
+
+  @prop({ required: false, type: String })
+  note?: string
 }
 
 export const InventoryLogModel = getModelForClass(InventoryLogClass)
