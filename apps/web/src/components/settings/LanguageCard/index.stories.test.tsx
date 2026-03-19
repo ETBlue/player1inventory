@@ -8,6 +8,6 @@ const { Default } = composeStories(stories)
 describe('LanguageCard stories smoke tests', () => {
   it('renders without error', () => {
     render(<Default />)
-    expect(screen.getByText('Language')).toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 })
