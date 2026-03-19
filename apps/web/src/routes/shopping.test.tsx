@@ -316,7 +316,7 @@ describe('Shopping page', () => {
         screen.getByText('Abandon this shopping trip?'),
       ).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /go back/i }))
+    await user.click(screen.getByRole('button', { name: /nevermind/i }))
 
     // Then the dialog closes and cart item is still present
     await waitFor(() => {
@@ -372,7 +372,7 @@ describe('Shopping page', () => {
         screen.getByText('Abandon this shopping trip?'),
       ).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /^abandon$/i }))
+    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
 
     // Then abandonCart was called (cart items removed) and route stays at /shopping
     await waitFor(() => {
@@ -454,7 +454,7 @@ describe('Shopping page', () => {
     await waitFor(() => {
       expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /go back/i }))
+    await user.click(screen.getByRole('button', { name: /nevermind/i }))
 
     // Then the dialog closes and checkout was NOT called (cart item still present)
     await waitFor(() => {
@@ -507,9 +507,9 @@ describe('Shopping page', () => {
     await waitFor(() => {
       expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
     })
-    // Click the "Done" action button inside the dialog (AlertDialogAction)
-    const dialogDoneBtn = screen.getByRole('button', { name: /^done$/i })
-    await user.click(dialogDoneBtn)
+    // Click the "Confirm" action button inside the dialog (AlertDialogAction)
+    const dialogConfirmBtn = screen.getByRole('button', { name: /^confirm$/i })
+    await user.click(dialogConfirmBtn)
 
     // Then checkout was called (cart items removed) and route stays at /shopping
     await waitFor(() => {
@@ -593,7 +593,7 @@ describe('Shopping page', () => {
     await waitFor(() => {
       expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /^done$/i }))
+    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
 
     // Then the pinned item is still checked (in cart section)
     await waitFor(() => {
