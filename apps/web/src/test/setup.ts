@@ -208,6 +208,25 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useItemLogsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useInventoryLogCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useLastPurchaseDatesQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useAddInventoryLogMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 

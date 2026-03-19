@@ -1,0 +1,44 @@
+query ItemLogs($itemId: ID!) {
+  itemLogs(itemId: $itemId) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
+
+query InventoryLogCountByItem($itemId: ID!) {
+  inventoryLogCountByItem(itemId: $itemId)
+}
+
+query LastPurchaseDates($itemIds: [ID!]!) {
+  lastPurchaseDates(itemIds: $itemIds) {
+    itemId
+    date
+  }
+}
+
+mutation AddInventoryLog(
+  $itemId: ID!
+  $delta: Float!
+  $quantity: Float!
+  $occurredAt: String!
+  $note: String
+) {
+  addInventoryLog(
+    itemId: $itemId
+    delta: $delta
+    quantity: $quantity
+    occurredAt: $occurredAt
+    note: $note
+  ) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
