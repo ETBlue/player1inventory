@@ -7,7 +7,6 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { LANGUAGE_STORAGE_KEY } from '@/lib/language'
 import { routeTree } from '@/routeTree.gen'
 
 const meta = {
@@ -20,7 +19,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function SettingsStory({ setup }: { setup?: () => void }) {
+function SettingsStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -33,16 +32,9 @@ function SettingsStory({ setup }: { setup?: () => void }) {
     async function init() {
       await db.delete()
       await db.open()
-      setup?.()
       setReady(true)
     }
     init()
-  }, [setup])
-
-  useEffect(() => {
-    return () => {
-      localStorage.removeItem(LANGUAGE_STORAGE_KEY)
-    }
   }, [])
 
   if (!ready) return <div>Loading...</div>
@@ -60,50 +52,6 @@ function SettingsStory({ setup }: { setup?: () => void }) {
   )
 }
 
-// Story 1: Default — no localStorage preferences (auto language detection, system theme)
-function DefaultStory() {
-  return (
-    <SettingsStory
-      setup={() => {
-        localStorage.removeItem(LANGUAGE_STORAGE_KEY)
-        localStorage.removeItem('theme-preference')
-      }}
-    />
-  )
-}
-
 export const Default: Story = {
-  render: () => <DefaultStory />,
-}
-
-// Story 2: Traditional Chinese selected explicitly
-function TraditionalChineseStory() {
-  return (
-    <SettingsStory
-      setup={() => {
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, 'tw')
-        localStorage.removeItem('theme-preference')
-      }}
-    />
-  )
-}
-
-export const TraditionalChinese: Story = {
-  render: () => <TraditionalChineseStory />,
-}
-
-// Story 3: English selected explicitly
-function ExplicitEnglishStory() {
-  return (
-    <SettingsStory
-      setup={() => {
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en')
-        localStorage.removeItem('theme-preference')
-      }}
-    />
-  )
-}
-
-export const ExplicitEnglish: Story = {
-  render: () => <ExplicitEnglishStory />,
+  render: () => <SettingsStory />,
 }
