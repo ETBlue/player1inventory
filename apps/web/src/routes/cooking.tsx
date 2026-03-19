@@ -623,7 +623,8 @@ function CookingPage() {
                 {t('cooking.doneDialog.warningHeader')}
                 {insufficientItems.map(({ item, requested, available }) => (
                   <span key={item.id} className="block">
-                    {item.name}: {requested} {t('cooking.doneDialog.requested')}, {available} {t('cooking.doneDialog.available')}
+                    {item.name}: {requested} {t('cooking.doneDialog.requested')}
+                    , {available} {t('cooking.doneDialog.available')}
                   </span>
                 ))}
               </span>
@@ -642,7 +643,9 @@ function CookingPage() {
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('cooking.cancelDialog.title')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('cooking.cancelDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
             {t('cooking.cancelDialog.description')}

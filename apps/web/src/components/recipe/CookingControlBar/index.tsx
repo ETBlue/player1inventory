@@ -111,7 +111,11 @@ export function CookingControlBar({
         <Button
           variant="neutral-ghost"
           size="icon"
-          aria-label={dir === 'asc' ? t('cookingControlBar.sortAscending') : t('cookingControlBar.sortDescending')}
+          aria-label={
+            dir === 'asc'
+              ? t('cookingControlBar.sortAscending')
+              : t('cookingControlBar.sortDescending')
+          }
           onClick={() => setParam({ dir: dir === 'asc' ? 'desc' : 'asc' })}
         >
           {dir === 'asc' ? (
@@ -124,7 +128,11 @@ export function CookingControlBar({
         <Button
           variant="neutral-ghost"
           size="icon"
-          aria-label={allExpanded ? t('cookingControlBar.collapseAll') : t('cookingControlBar.expandAll')}
+          aria-label={
+            allExpanded
+              ? t('cookingControlBar.collapseAll')
+              : t('cookingControlBar.expandAll')
+          }
           onClick={allExpanded ? onCollapseAll : onExpandAll}
         >
           {allExpanded ? (
