@@ -317,7 +317,7 @@ describe('Use (Cooking) Page', () => {
     // Then the confirmation dialog appears
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', { name: /consume from 1 recipe/i }),
+        screen.getByRole('heading', { name: /consume from pasta/i }),
       ).toBeInTheDocument()
     })
 
@@ -390,7 +390,7 @@ describe('Use (Cooking) Page', () => {
     })
 
     // When user confirms
-    await user.click(screen.getByRole('button', { name: /discard/i }))
+    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
 
     // Then all recipes are deselected
     await waitFor(() => {
@@ -1067,7 +1067,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then count text shows 0 servings and Cancel button is absent
     await waitFor(() => {
-      expect(screen.getByText(/0 servings? cooked/i)).toBeInTheDocument()
+      expect(screen.getByText(/cooking 0 servings/i)).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /cancel/i }),
       ).not.toBeInTheDocument()
@@ -1089,7 +1089,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then count text updates to 1 serving cooked
     await waitFor(() => {
-      expect(screen.getByText(/1 serving cooked/i)).toBeInTheDocument()
+      expect(screen.getByText(/cooking 1 serving/i)).toBeInTheDocument()
     })
 
     // Then Cancel button appears
@@ -1625,7 +1625,9 @@ describe('Use (Cooking) Page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', { name: /consume from 1 recipe/i }),
+        screen.getByRole('heading', {
+          name: /consume from pasta bolognese/i,
+        }),
       ).toBeInTheDocument()
     })
     await user.click(screen.getByRole('button', { name: /confirm/i }))

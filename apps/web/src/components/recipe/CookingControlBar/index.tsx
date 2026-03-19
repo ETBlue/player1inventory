@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -31,9 +32,16 @@ export function CookingControlBar({
   onExpandAll,
   onCollapseAll,
 }: CookingControlBarProps) {
+  const { t } = useTranslation()
   const { sort, dir, q } = Route.useSearch()
   const navigate = useNavigate()
   const { data: recipes = [] } = useRecipes()
+
+  const sortLabels = {
+    name: t('cookingControlBar.sort.name'),
+    recent: t('cookingControlBar.sort.recent'),
+    count: t('cookingControlBar.sort.count'),
+  }
 
   const [searchVisible, setSearchVisible] = useState(!!q)
 
@@ -75,11 +83,7 @@ export function CookingControlBar({
               aria-label="Sort by criteria"
               className="px-2 font-normal"
             >
-              {
-                { name: 'Name', recent: 'Last Cooked', count: 'Item Count' }[
-                  sort
-                ]
-              }
+              {sortLabels[sort]}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
@@ -87,19 +91,19 @@ export function CookingControlBar({
               className={sort === 'name' ? 'bg-background-elevated' : ''}
               onClick={() => setParam({ sort: 'name' })}
             >
-              Name
+              {sortLabels.name}
             </DropdownMenuItem>
             <DropdownMenuItem
               className={sort === 'recent' ? 'bg-background-elevated' : ''}
               onClick={() => setParam({ sort: 'recent' })}
             >
-              Last Cooked
+              {sortLabels.recent}
             </DropdownMenuItem>
             <DropdownMenuItem
               className={sort === 'count' ? 'bg-background-elevated' : ''}
               onClick={() => setParam({ sort: 'count' })}
             >
-              Item Count
+              {sortLabels.count}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -107,7 +111,11 @@ export function CookingControlBar({
         <Button
           variant="neutral-ghost"
           size="icon"
-          aria-label={dir === 'asc' ? 'Sort ascending' : 'Sort descending'}
+          aria-label={
+            dir === 'asc'
+              ? t('cookingControlBar.sortAscending')
+              : t('cookingControlBar.sortDescending')
+          }
           onClick={() => setParam({ dir: dir === 'asc' ? 'desc' : 'asc' })}
         >
           {dir === 'asc' ? (
@@ -120,7 +128,11 @@ export function CookingControlBar({
         <Button
           variant="neutral-ghost"
           size="icon"
-          aria-label={allExpanded ? 'Collapse all' : 'Expand all'}
+          aria-label={
+            allExpanded
+              ? t('cookingControlBar.collapseAll')
+              : t('cookingControlBar.expandAll')
+          }
           onClick={allExpanded ? onCollapseAll : onExpandAll}
         >
           {allExpanded ? (
@@ -135,7 +147,7 @@ export function CookingControlBar({
         <Button
           variant={searchVisible ? 'neutral' : 'neutral-ghost'}
           size="icon"
-          aria-label="Toggle search"
+          aria-label={t('cookingControlBar.toggleSearch')}
           onClick={() => {
             if (searchVisible) setParam({ q: '' })
             setSearchVisible((v) => !v)
@@ -149,7 +161,7 @@ export function CookingControlBar({
       {searchVisible && (
         <div className="flex items-center gap-2 border-b-2 border-accessory-default px-3">
           <Input
-            placeholder="Search recipes or items..."
+            placeholder={t('cookingControlBar.searchPlaceholder')}
             value={q}
             onChange={(e) => setParam({ q: e.target.value })}
             onKeyDown={(e) => {

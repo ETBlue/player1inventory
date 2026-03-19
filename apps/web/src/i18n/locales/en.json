@@ -9,7 +9,74 @@
     "discard": "Discard",
     "goBack": "Go back",
     "unsavedTitle": "Unsaved changes",
-    "unsavedDescription": "You have unsaved changes. Discard changes?"
+    "unsavedDescription": "You have unsaved changes. Discard changes?",
+    "done": "Done",
+    "back": "Nevermind",
+    "confirm": "Confirm"
+  },
+  "shopping": {
+    "toolbar": {
+      "cartCount_one": "{{count}} pack in cart",
+      "cartCount_other": "{{count}} packs in cart"
+    },
+    "vendorFilter": {
+      "allVendors": "All vendors",
+      "manageVendors": "Manage vendors..."
+    },
+    "inactiveItems_one": "{{count}} inactive item",
+    "inactiveItems_other": "{{count}} inactive items",
+    "abandonDialog": {
+      "title": "Abandon this shopping trip?",
+      "description": "All items will be removed from the cart."
+    },
+    "checkoutDialog": {
+      "title": "Complete shopping trip?",
+      "description": "Quantities will be updated based on your cart."
+    },
+    "log": {
+      "purchasedAt": "purchased at {{vendor}}",
+      "purchased": "purchased"
+    }
+  },
+  "cooking": {
+    "toolbar": {
+      "servingCount_one": "Cooking {{count}} serving",
+      "servingCount_other": "Cooking {{count}} servings"
+    },
+    "emptyState": "No recipes yet. Create your first recipe to get started.",
+    "recipe": {
+      "itemCount_one": "{{count}} item selected",
+      "itemCount_other": "{{count}} items selected",
+      "noItems": "No items in this recipe."
+    },
+    "log": {
+      "consumedVia": "consumed via {{recipes}}",
+      "consumedViaRecipe": "consumed"
+    },
+    "doneDialog": {
+      "title": "Consume from {{names}}?",
+      "description": "This will reduce your inventory.",
+      "warningHeader": "Warning — insufficient stock:",
+      "requested": "requested",
+      "available": "available"
+    },
+    "cancelDialog": {
+      "title": "Discard all selections?",
+      "description": "All recipe selections and amount adjustments will be reset."
+    }
+  },
+  "cookingControlBar": {
+    "sort": {
+      "name": "Name",
+      "recent": "Last Cooked",
+      "count": "Item Count"
+    },
+    "sortAscending": "Sort ascending",
+    "sortDescending": "Sort descending",
+    "collapseAll": "Collapse all",
+    "expandAll": "Expand all",
+    "toggleSearch": "Toggle search",
+    "searchPlaceholder": "Search recipes or items..."
   },
   "settings": {
     "title": "Settings",
