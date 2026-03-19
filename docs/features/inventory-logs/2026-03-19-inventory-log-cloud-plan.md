@@ -124,10 +124,15 @@ type InventoryLog {
   note: String
 }
 
+type LastPurchaseDateResult {
+  itemId: ID!
+  date: String  # null if no positive-delta log exists for this item
+}
+
 extend type Query {
   itemLogs(itemId: ID!): [InventoryLog!]!
   inventoryLogCountByItem(itemId: ID!): Int!
-  lastPurchaseDate(itemId: ID!): String
+  lastPurchaseDates(itemIds: [ID!]!): [LastPurchaseDateResult!]!
 }
 
 extend type Mutation {
@@ -144,7 +149,7 @@ extend type Mutation {
 Notes:
 - `delta` and `quantity` use `Float!` to match the local type which allows fractional quantities (measurement mode)
 - `occurredAt` and return dates are ISO strings (same pattern as `Cart.createdAt`)
-- `lastPurchaseDate` returns `String` (nullable) — null when no positive-delta log exists
+- `lastPurchaseDates` is a **batch query** accepting multiple item IDs — avoids N individual queries and allows `useItemSortData` to use Apollo hooks directly (no imperative client calls needed)
 
 ---
 
@@ -174,15 +179,21 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       return InventoryLogModel.countDocuments({ itemId, userId })
     },
 
-    // Mirrors: getLastPurchaseDate(itemId) — most recent log with delta > 0
-    lastPurchaseDate: async (_, { itemId }, ctx) => {
+    // Mirrors: getLastPurchaseDate(itemId) — batch version for all requested items
+    lastPurchaseDates: async (_, { itemIds }, ctx) => {
       const userId = requireAuth(ctx)
-      const log = await InventoryLogModel.findOne(
-        { itemId, userId, delta: { $gt: 0 } },
-        null,
-        { sort: { occurredAt: -1 } },
+      // For each itemId, find the most recent positive-delta log
+      const results = await Promise.all(
+        itemIds.map(async (itemId) => {
+          const log = await InventoryLogModel.findOne(
+            { itemId, userId, delta: { $gt: 0 } },
+            null,
+            { sort: { occurredAt: -1 } },
+          )
+          return { itemId, date: log ? log.occurredAt.toISOString() : null }
+        }),
       )
-      return log ? log.occurredAt.toISOString() : null
+      return results
     },
   },
 
@@ -215,11 +226,11 @@ Follow the same pattern as `cart.resolver.test.ts` (MongoMemoryServer + ApolloSe
 - `user can get item logs — returns logs sorted by occurredAt ascending`
 - `user can get item logs — returns empty array when no logs exist`
 - `user can get inventory log count for an item`
-- `user can get last purchase date — returns most recent positive-delta log date`
-- `last purchase date is null when no positive-delta logs exist`
+- `user can get last purchase dates for multiple items — returns most recent positive-delta date per item`
+- `last purchase date is null for items with no positive-delta logs`
 - `user can add an inventory log`
 - `itemLogs is scoped to the requesting user — other users' logs excluded`
-- `lastPurchaseDate is scoped to the requesting user — other users' logs excluded`
+- `lastPurchaseDates is scoped to the requesting user — other users' logs excluded`
 
 ---
 
@@ -268,8 +279,11 @@ query InventoryLogCountByItem($itemId: ID!) {
   inventoryLogCountByItem(itemId: $itemId)
 }
 
-query LastPurchaseDate($itemId: ID!) {
-  lastPurchaseDate(itemId: $itemId)
+query LastPurchaseDates($itemIds: [ID!]!) {
+  lastPurchaseDates(itemIds: $itemIds) {
+    itemId
+    date
+  }
 }
 
 mutation AddInventoryLog(
@@ -302,7 +316,7 @@ After adding this file, run Apollo codegen to regenerate hooks:
 (cd apps/web && pnpm codegen)
 ```
 
-This generates `useItemLogsQuery`, `useInventoryLogCountByItemQuery`, `useLastPurchaseDateQuery`, and `useAddInventoryLogMutation` in `src/apollo/generated/hooks.ts`.
+This generates `useItemLogsQuery`, `useInventoryLogCountByItemQuery`, `useLastPurchaseDatesQuery`, and `useAddInventoryLogMutation` in `src/apollo/generated/hooks.ts`.
 
 ---
 
@@ -393,11 +407,9 @@ export function useAddInventoryLog() {
 
 **File:** `apps/web/src/hooks/useItemSortData.ts`
 
-`getLastPurchaseDate` is called inside TanStack Query `queryFn`s for both `expiryDates` and `purchaseDates`. The hook must support cloud mode by calling the `LastPurchaseDate` GraphQL query instead.
+`getLastPurchaseDate` is called inside TanStack Query `queryFn`s for both `expiryDates` and `purchaseDates`. For cloud mode, use the `useLastPurchaseDatesQuery` Apollo hook directly (same pattern as every other dual-mode hook in the codebase) — **no imperative Apollo client calls, no TanStack Query wrapping for cloud**.
 
-**Strategy:** Extract a `useLastPurchaseDate(itemId)` helper hook that returns the right value per mode. Then restructure the two queries to use it.
-
-However, since TanStack Query `queryFn` is async and hooks cannot be called inside callbacks, the cleanest approach is to check `mode` and conditionally call a cloud-capable helper:
+**Architecture:** Local mode uses TanStack Query (its own cache). Cloud mode uses Apollo (its own cache). They are fully separate — no shared queryKeys, no cross-mode pollution.
 
 ```ts
 import { useQuery } from '@tanstack/react-query'
@@ -405,16 +417,15 @@ import { useMemo } from 'react'
 import { getLastPurchaseDate } from '@/db/operations'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { useDataMode } from '@/hooks/useDataMode'
-import { useApolloClient } from '@apollo/client'
-import { LastPurchaseDateDocument } from '@/apollo/generated/graphql'
+import { useLastPurchaseDatesQuery } from '@/apollo/generated/hooks'
 import type { Item } from '@/types'
 
 export function useItemSortData(items: Item[] | undefined) {
   const safeItems = items ?? []
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
-  const apolloClient = useApolloClient()
 
+  // quantities: sync from item fields — already cloud-compatible, unchanged
   const quantities = useMemo(() => {
     const map = new Map<string, number>()
     for (const item of safeItems) {
@@ -423,18 +434,31 @@ export function useItemSortData(items: Item[] | undefined) {
     return map
   }, [safeItems])
 
+  // ── Cloud: batch Apollo query for all item purchase dates ─────────────────
+  const itemIds = safeItems.map((i) => i.id)
+  const { data: cloudDatesData } = useLastPurchaseDatesQuery({
+    variables: { itemIds },
+    skip: !isCloud || safeItems.length === 0,
+  })
+  const cloudPurchaseDates = useMemo(() => {
+    const map = new Map<string, Date | null>()
+    for (const r of cloudDatesData?.lastPurchaseDates ?? []) {
+      map.set(r.itemId, r.date ? new Date(r.date) : null)
+    }
+    return map
+  }, [cloudDatesData])
+
+  // ── Local: TanStack Query (unchanged from before) ─────────────────────────
   const expiryKey = safeItems
     .map((i) => `${i.id}:${String(i.dueDate)}:${String(i.estimatedDueDays)}`)
     .join(',')
 
-  const { data: expiryDates } = useQuery({
-    queryKey: ['sort', 'expiryDates', expiryKey, isCloud ? 'cloud' : 'local'],
+  const { data: localExpiryDates } = useQuery({
+    queryKey: ['sort', 'expiryDates', expiryKey],
     queryFn: async () => {
       const map = new Map<string, Date | undefined>()
       for (const item of safeItems) {
-        const lastPurchase = isCloud
-          ? await fetchLastPurchaseDateCloud(apolloClient, item.id)
-          : await getLastPurchaseDate(item.id)
+        const lastPurchase = await getLastPurchaseDate(item.id)
         const estimatedDate =
           item.estimatedDueDays && lastPurchase
             ? new Date(lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000)
@@ -443,46 +467,51 @@ export function useItemSortData(items: Item[] | undefined) {
       }
       return map
     },
-    enabled: safeItems.length > 0,
+    enabled: !isCloud && safeItems.length > 0,
   })
 
   const purchaseKey = safeItems.map((i) => i.id).join(',')
 
-  const { data: purchaseDates } = useQuery({
-    queryKey: ['sort', 'purchaseDates', purchaseKey, isCloud ? 'cloud' : 'local'],
+  const { data: localPurchaseDates } = useQuery({
+    queryKey: ['sort', 'purchaseDates', purchaseKey],
     queryFn: async () => {
       const map = new Map<string, Date | null>()
       for (const item of safeItems) {
-        map.set(
-          item.id,
-          isCloud
-            ? await fetchLastPurchaseDateCloud(apolloClient, item.id)
-            : await getLastPurchaseDate(item.id),
-        )
+        map.set(item.id, await getLastPurchaseDate(item.id))
       }
       return map
     },
-    enabled: safeItems.length > 0,
+    enabled: !isCloud && safeItems.length > 0,
   })
 
-  return { quantities, expiryDates, purchaseDates }
-}
+  // ── Compute cloud expiryDates from cloudPurchaseDates + item fields ───────
+  const cloudExpiryDates = useMemo(() => {
+    if (!isCloud) return undefined
+    const map = new Map<string, Date | undefined>()
+    for (const item of safeItems) {
+      const lastPurchase = cloudPurchaseDates.get(item.id) ?? null
+      const estimatedDate =
+        item.estimatedDueDays && lastPurchase
+          ? new Date(lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000)
+          : (item.dueDate ?? undefined)
+      map.set(item.id, estimatedDate)
+    }
+    return map
+  }, [isCloud, safeItems, cloudPurchaseDates])
 
-// Helper: fetch lastPurchaseDate from Apollo cache/network imperatively
-async function fetchLastPurchaseDateCloud(
-  apolloClient: ReturnType<typeof useApolloClient>,
-  itemId: string,
-): Promise<Date | null> {
-  const result = await apolloClient.query({
-    query: LastPurchaseDateDocument,
-    variables: { itemId },
-  })
-  const raw = result.data?.lastPurchaseDate as string | null
-  return raw ? new Date(raw) : null
+  return {
+    quantities,
+    expiryDates: isCloud ? cloudExpiryDates : localExpiryDates,
+    purchaseDates: isCloud ? cloudPurchaseDates : localPurchaseDates,
+  }
 }
 ```
 
-Note: including `isCloud ? 'cloud' : 'local'` in the queryKey ensures TanStack Query uses separate cache entries per mode, preventing stale local data from being returned in cloud mode.
+Key points:
+- Local TanStack queries use `enabled: !isCloud` — they are dormant in cloud mode
+- Cloud Apollo query uses `skip: !isCloud` — dormant in local mode
+- No queryKey suffix needed — the two caches are independent by design
+- `cloudExpiryDates` is derived synchronously from `cloudPurchaseDates` (already fetched) — no second network call
 
 ---
 
@@ -518,6 +547,6 @@ One commit per logical concern:
 | Commit | Files |
 |--------|-------|
 | `fix(inventory-log): rename loggedAt→occurredAt, add quantity field to model` | `InventoryLog.model.ts`, `cart.resolver.ts`, updated checkout test |
-| `feat(inventory-log): add cloud GraphQL schema and resolver` | `inventoryLog.graphql` (server), `inventoryLog.resolver.ts`, `inventoryLog.resolver.test.ts`, `index.ts` |
-| `feat(inventory-log): add client GraphQL operations and dual-mode hooks` | `inventoryLogs.graphql` (client), generated files, `useInventoryLogs.ts`, `useItemSortData.ts` |
+| `feat(inventory-log): add cloud GraphQL schema and resolver` | `inventoryLog.graphql` (server, includes batch `lastPurchaseDates`), `inventoryLog.resolver.ts`, `inventoryLog.resolver.test.ts`, `index.ts` |
+| `feat(inventory-log): add client GraphQL operations and dual-mode hooks` | `inventoryLogs.graphql` (client, includes `LastPurchaseDates` batch query), generated files, `useInventoryLogs.ts`, `useItemSortData.ts` |
 | `docs(inventory-log): add plan doc and update INDEX.md` | this file, `docs/INDEX.md` |
