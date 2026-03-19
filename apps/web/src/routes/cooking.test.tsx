@@ -317,7 +317,7 @@ describe('Use (Cooking) Page', () => {
     // Then the confirmation dialog appears
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', { name: /consume from 1 recipe/i }),
+        screen.getByRole('heading', { name: /consume from pasta recipe/i }),
       ).toBeInTheDocument()
     })
 
@@ -1625,7 +1625,9 @@ describe('Use (Cooking) Page', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', { name: /consume from 1 recipe/i }),
+        screen.getByRole('heading', {
+          name: /consume from pasta bolognese recipe/i,
+        }),
       ).toBeInTheDocument()
     })
     await user.click(screen.getByRole('button', { name: /confirm/i }))
