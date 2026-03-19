@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { GetRecipesDocument } from '@/generated/graphql'
 import {
   useCreateItem,
   useDeleteItem,
@@ -15,6 +16,7 @@ const mockUseGetItemsQuery = vi.fn()
 const mockCloudCreate = vi.fn()
 const mockCloudUpdate = vi.fn()
 const mockCloudDelete = vi.fn()
+const mockUseDeleteItemMutationOptions = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -24,7 +26,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useGetItemsQuery: () => mockUseGetItemsQuery(),
     useCreateItemMutation: () => [mockCloudCreate, {}],
     useUpdateItemMutation: () => [mockCloudUpdate, {}],
-    useDeleteItemMutation: () => [mockCloudDelete, {}],
+    useDeleteItemMutation: (options: unknown) => {
+      mockUseDeleteItemMutationOptions(options)
+      return [mockCloudDelete, {}]
+    },
   }
 })
 
@@ -239,5 +244,29 @@ describe('useDeleteItem (cloud mode)', () => {
       variables: { id: 'item-1' },
     })
     expect(deleted).toBe(true)
+  })
+
+  it('user can delete an item in cloud mode — recipes are refetched to fix stale item count', () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseGetItemsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: vi.fn(),
+    })
+
+    // When the hook is rendered (mutation is configured)
+    renderHook(() => useDeleteItem(), { wrapper: createWrapper() })
+
+    // Then useDeleteItemMutation is initialized with GetRecipesDocument in refetchQueries
+    // (ensures cooking page item counts update after item deletion)
+    expect(mockUseDeleteItemMutationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refetchQueries: expect.arrayContaining([
+          expect.objectContaining({ query: GetRecipesDocument }),
+        ]),
+      }),
+    )
   })
 })

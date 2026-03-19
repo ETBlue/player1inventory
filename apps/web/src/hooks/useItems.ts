@@ -12,6 +12,7 @@ import {
 import type { UpdateItemInput } from '@/generated/graphql'
 import {
   GetItemsDocument,
+  GetRecipesDocument,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
@@ -188,7 +189,10 @@ export function useDeleteItem() {
   })
 
   const [cloudDelete] = useDeleteItemMutation({
-    refetchQueries: [{ query: GetItemsDocument }],
+    refetchQueries: [
+      { query: GetItemsDocument },
+      { query: GetRecipesDocument },
+    ],
   })
 
   if (mode === 'cloud') {
