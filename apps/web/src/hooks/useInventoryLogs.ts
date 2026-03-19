@@ -23,8 +23,17 @@ export function useItemLogs(itemId: string) {
   })
 
   if (isCloud) {
+    // Map cloud response: occurredAt and createdAt come back as ISO strings from GraphQL,
+    // so convert them to Date objects to match the InventoryLog type contract.
+    const cloudLogs: InventoryLog[] | undefined = cloud.data?.itemLogs?.map(
+      (log) => ({
+        ...log,
+        occurredAt: new Date(log.occurredAt as unknown as string),
+        createdAt: new Date(log.createdAt as unknown as string),
+      }),
+    )
     return {
-      data: cloud.data?.itemLogs as InventoryLog[] | undefined,
+      data: cloudLogs,
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }
