@@ -105,8 +105,7 @@ Extract all hardcoded English strings from the shopping and cooking features int
 
 | Key | EN | TW |
 |---|---|---|
-| `title_one` | Consume from {{names}} recipe? | 從「{{names}}」食譜消耗？ |
-| `title_other` | Consume from {{names}} recipes? | 從「{{names}}」等食譜消耗？ |
+| `title` | Consume from {{names}}? | 製作「{{names}}」？ |
 | `description` | This will reduce your inventory. | 這將減少你的庫存。 |
 | `warningHeader` | Warning — insufficient stock: | 警告 — 庫存不足： |
 | `requested` | requested | 需要 |

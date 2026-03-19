@@ -12,7 +12,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
 | [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done |
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done |
-| [i18n](global/i18n/) | 🔄 In Progress | Core + settings/tags done; shopping + cooking i18n in progress |
+| [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags + shopping + cooking done; item list pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts all done |
 | [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; items + tags + vendors + recipes + cooking + state-restore E2E (local + cloud) done; shopping cloud E2E done |
 | [ui-polish](global/ui-polish/) | ✅ Implemented | Dialogs, toolbars, delete flows, component extraction done |
