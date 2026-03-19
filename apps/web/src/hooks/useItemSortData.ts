@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { getLastPurchaseDate } from '@/db/operations'
+import { useLastPurchaseDatesQuery } from '@/generated/graphql'
+import { useDataMode } from '@/hooks/useDataMode'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
 export function useItemSortData(items: Item[] | undefined) {
   const safeItems = items ?? []
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
 
-  // quantities: pure synchronous derivation — no race condition possible
+  // quantities: sync from item fields — already cloud-compatible, unchanged
   const quantities = useMemo(() => {
     const map = new Map<string, number>()
     for (const item of safeItems) {
@@ -16,13 +20,26 @@ export function useItemSortData(items: Item[] | undefined) {
     return map
   }, [safeItems])
 
-  // expiryDates: queryKey includes dueDate + estimatedDueDays per item so the key
-  // changes when items update, forcing a fresh queryFn run with current items
+  // ── Cloud: batch Apollo query for all item purchase dates ─────────────────
+  const itemIds = safeItems.map((i) => i.id)
+  const { data: cloudDatesData } = useLastPurchaseDatesQuery({
+    variables: { itemIds },
+    skip: !isCloud || safeItems.length === 0,
+  })
+  const cloudPurchaseDates = useMemo(() => {
+    const map = new Map<string, Date | null>()
+    for (const r of cloudDatesData?.lastPurchaseDates ?? []) {
+      map.set(r.itemId, r.date ? new Date(r.date) : null)
+    }
+    return map
+  }, [cloudDatesData])
+
+  // ── Local: TanStack Query (unchanged from before) ─────────────────────────
   const expiryKey = safeItems
     .map((i) => `${i.id}:${String(i.dueDate)}:${String(i.estimatedDueDays)}`)
     .join(',')
 
-  const { data: expiryDates } = useQuery({
+  const { data: localExpiryDates } = useQuery({
     queryKey: ['sort', 'expiryDates', expiryKey],
     queryFn: async () => {
       const map = new Map<string, Date | undefined>()
@@ -39,15 +56,12 @@ export function useItemSortData(items: Item[] | undefined) {
       }
       return map
     },
-    enabled: safeItems.length > 0,
+    enabled: !isCloud && safeItems.length > 0,
   })
 
-  // purchaseDates: queryKey uses item IDs — stable during item edits, changes when
-  // items are added/removed. After checkout, the checkout mutation explicitly
-  // invalidates ['sort', 'purchaseDates'] to refresh purchase dates.
   const purchaseKey = safeItems.map((i) => i.id).join(',')
 
-  const { data: purchaseDates } = useQuery({
+  const { data: localPurchaseDates } = useQuery({
     queryKey: ['sort', 'purchaseDates', purchaseKey],
     queryFn: async () => {
       const map = new Map<string, Date | null>()
@@ -56,8 +70,30 @@ export function useItemSortData(items: Item[] | undefined) {
       }
       return map
     },
-    enabled: safeItems.length > 0,
+    enabled: !isCloud && safeItems.length > 0,
   })
 
-  return { quantities, expiryDates, purchaseDates }
+  // ── Compute cloud expiryDates from cloudPurchaseDates + item fields ───────
+  const cloudExpiryDates = useMemo(() => {
+    if (!isCloud) return undefined
+    const map = new Map<string, Date | undefined>()
+    for (const item of safeItems) {
+      const lastPurchase = cloudPurchaseDates.get(item.id) ?? null
+      const estimatedDate =
+        item.estimatedDueDays && lastPurchase
+          ? new Date(
+              lastPurchase.getTime() +
+                item.estimatedDueDays * 24 * 60 * 60 * 1000,
+            )
+          : (item.dueDate ?? undefined)
+      map.set(item.id, estimatedDate)
+    }
+    return map
+  }, [isCloud, safeItems, cloudPurchaseDates])
+
+  return {
+    quantities,
+    expiryDates: isCloud ? cloudExpiryDates : localExpiryDates,
+    purchaseDates: isCloud ? cloudPurchaseDates : localPurchaseDates,
+  }
 }

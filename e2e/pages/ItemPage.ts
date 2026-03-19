@@ -94,4 +94,28 @@ export class ItemPage {
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
     await this.page.getByRole('dialog').getByRole('button', { name: /add/i }).click()
   }
+
+  // ── Log tab ──────────────────────────────────────────────────────────────────
+
+  async navigateToLogTab() {
+    // Log tab: navigates directly to /items/{id}/log (src/routes/items/$id/log.tsx)
+    await this.navigateToTab('log')
+  }
+
+  getEmptyLogMessage() {
+    // Empty state: text "No history yet." (src/routes/items/$id/log.tsx:21)
+    return this.page.getByText('No history yet.')
+  }
+
+  getLogEntries() {
+    // Each log entry shows a quantity change line like "+1 → 1 pkg" (src/routes/items/$id/log.tsx:34-38)
+    // The → character (Unicode U+2192) is the reliable unique identifier for log entry quantity lines.
+    // We use getByText with the arrow character since Tailwind v4 class names may not be stable DOM selectors.
+    return this.page.getByText(/→\s*\d+/)
+  }
+
+  getLogEntryByText(text: string) {
+    // Find a log entry containing specific text (note, quantity, etc.) (src/routes/items/$id/log.tsx)
+    return this.page.getByText(text)
+  }
 }

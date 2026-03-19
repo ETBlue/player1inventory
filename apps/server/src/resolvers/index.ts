@@ -2,6 +2,7 @@ import type { Resolvers } from '../generated/graphql.js'
 import { cartResolvers } from './cart.resolver.js'
 import { familyGroupResolvers } from './familyGroup.resolver.js'
 import { importResolvers } from './import.resolver.js'
+import { inventoryLogResolvers } from './inventoryLog.resolver.js'
 import { itemResolvers } from './item.resolver.js'
 import { recipeResolvers } from './recipe.resolver.js'
 import { tagResolvers } from './tag.resolver.js'
@@ -16,6 +17,7 @@ export const resolvers: Resolvers = {
     ...recipeResolvers.Query,
     ...familyGroupResolvers.Query,
     ...cartResolvers.Query,
+    ...inventoryLogResolvers.Query,
   },
   Mutation: {
     ...itemResolvers.Mutation,
@@ -25,6 +27,7 @@ export const resolvers: Resolvers = {
     ...familyGroupResolvers.Mutation,
     ...importResolvers.Mutation,
     ...cartResolvers.Mutation,
+    ...inventoryLogResolvers.Mutation,
   },
   Item: itemResolvers.Item,
   TagType: tagResolvers.TagType,
@@ -34,4 +37,5 @@ export const resolvers: Resolvers = {
   FamilyGroup: familyGroupResolvers.FamilyGroup,
   Cart: cartResolvers.Cart,
   CartItem: cartResolvers.CartItem,
+  InventoryLog: inventoryLogResolvers.InventoryLog,
 }

@@ -376,6 +376,8 @@ describe('checkout', () => {
     const log = await InventoryLogModel.findOne({ itemId: item._id.toString() })
     expect(log).not.toBeNull()
     expect(log?.delta).toBe(3)
+    expect(log?.occurredAt).toBeInstanceOf(Date)
+    expect(log?.quantity).toBe(3) // 0 initial packedQuantity + 3 purchased = 3
   })
 
   it('user can checkout — pinned items (qty === 0) are moved to a new active cart', async () => {

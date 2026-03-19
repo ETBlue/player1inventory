@@ -103,7 +103,9 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 **Data Utilities:**
 - `useVendorItemCounts()` (`src/hooks/useVendorItemCounts.ts`) - Returns `Map<vendorId, number>` of item counts per vendor, memoized with useMemo for performance
-- `useItemSortData(items)` (`src/hooks/useItemSortData.ts`) - Returns `{ quantities, expiryDates, purchaseDates }` for sort operations on item lists. `quantities` is a `useMemo` (synchronous, no race condition). `expiryDates` and `purchaseDates` are TanStack Query queries under the `['sort', ...]` key namespace, using items-derived queryKeys so cache entries invalidate automatically when items update. Used by all five item list pages (pantry, shopping, tag/vendor/recipe items tabs). Checkout explicitly invalidates `['sort', 'purchaseDates']` after purchase.
+- `useItemSortData(items)` (`src/hooks/useItemSortData.ts`) - Returns `{ quantities, expiryDates, purchaseDates }` for sort operations on item lists. `quantities` is a `useMemo` (synchronous, no race condition). Local mode: `expiryDates` and `purchaseDates` are TanStack Query queries under the `['sort', ...]` key namespace. Cloud mode: uses `useLastPurchaseDatesQuery` (Apollo batch query) and derives expiry dates synchronously — no TanStack Query involved. Used by all five item list pages. Checkout explicitly invalidates `['sort', 'purchaseDates']` after purchase (local mode).
+- `useItemLogs(itemId)` (`src/hooks/useInventoryLogs.ts`) - Returns inventory log entries for an item. Dual-mode: local uses TanStack Query + Dexie; cloud uses `useItemLogsQuery` (Apollo).
+- `useAddInventoryLog()` (`src/hooks/useInventoryLogs.ts`) - Mutation hook to add an inventory log entry. Dual-mode: local calls `addInventoryLog`; cloud calls `useAddInventoryLogMutation` (Apollo).
 
 ## Features
 

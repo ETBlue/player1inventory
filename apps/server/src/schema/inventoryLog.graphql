@@ -1,0 +1,29 @@
+type InventoryLog {
+  id: ID!
+  itemId: ID!
+  delta: Float!
+  quantity: Float!
+  occurredAt: String!
+  note: String
+}
+
+type LastPurchaseDateResult {
+  itemId: ID!
+  date: String
+}
+
+extend type Query {
+  itemLogs(itemId: ID!): [InventoryLog!]!
+  inventoryLogCountByItem(itemId: ID!): Int!
+  lastPurchaseDates(itemIds: [ID!]!): [LastPurchaseDateResult!]!
+}
+
+extend type Mutation {
+  addInventoryLog(
+    itemId: ID!
+    delta: Float!
+    quantity: Float!
+    occurredAt: String!
+    note: String
+  ): InventoryLog!
+}

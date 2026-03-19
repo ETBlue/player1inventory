@@ -66,14 +66,20 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
 
       const now = new Date()
       for (const ci of buyingItems) {
-        await ItemModel.findOneAndUpdate(
+          const updatedItem = await ItemModel.findOneAndUpdate(
           { _id: ci.itemId, userId },
           { $inc: { packedQuantity: ci.quantity }, updatedAt: now },
+          { new: true },
         )
+        const finalQuantity = updatedItem
+          ? updatedItem.packedQuantity + updatedItem.unpackedQuantity
+          : ci.quantity
+
         await InventoryLogModel.create({
           itemId: ci.itemId,
           delta: ci.quantity,
-          loggedAt: now,
+          quantity: finalQuantity,
+          occurredAt: now,
           userId,
           ...(note ? { note } : {}),
         })
