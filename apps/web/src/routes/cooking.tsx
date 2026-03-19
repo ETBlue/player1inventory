@@ -653,7 +653,7 @@ function CookingPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCancel}>
-              {t('common.discard')}
+              {t('common.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

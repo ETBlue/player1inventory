@@ -337,14 +337,14 @@ function Shopping() {
             {t('shopping.abandonDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.goBack')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
             <AlertDialogAction
               className={buttonVariants({ variant: 'destructive' })}
               onClick={() => {
                 if (cart) abandonCart.mutate(cart.id)
               }}
             >
-              {t('shopping.abandonDialog.abandon')}
+              {t('common.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -365,7 +365,7 @@ function Shopping() {
             {t('shopping.checkoutDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.goBack')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (cart) {
@@ -381,7 +381,7 @@ function Shopping() {
                 }
               }}
             >
-              {t('common.done')}
+              {t('common.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

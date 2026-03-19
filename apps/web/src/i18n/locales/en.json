@@ -11,7 +11,7 @@
     "unsavedTitle": "Unsaved changes",
     "unsavedDescription": "You have unsaved changes. Discard changes?",
     "done": "Done",
-    "back": "Back",
+    "back": "Nevermind",
     "confirm": "Confirm"
   },
   "shopping": {
@@ -27,8 +27,7 @@
     "inactiveItems_other": "{{count}} inactive items",
     "abandonDialog": {
       "title": "Abandon this shopping trip?",
-      "description": "All items will be removed from the cart.",
-      "abandon": "Abandon"
+      "description": "All items will be removed from the cart."
     },
     "checkoutDialog": {
       "title": "Complete shopping trip?",
@@ -41,8 +40,8 @@
   },
   "cooking": {
     "toolbar": {
-      "servingCount_one": "{{count}} serving cooked",
-      "servingCount_other": "{{count}} servings cooked"
+      "servingCount_one": "Cooking {{count}} serving",
+      "servingCount_other": "Cooking {{count}} servings"
     },
     "emptyState": "No recipes yet. Create your first recipe to get started.",
     "recipe": {
@@ -52,11 +51,10 @@
     },
     "log": {
       "consumedVia": "consumed via {{recipes}}",
-      "consumedViaRecipe": "consumed via recipe"
+      "consumedViaRecipe": "consumed"
     },
     "doneDialog": {
-      "title_one": "Consume from {{names}} recipe?",
-      "title_other": "Consume from {{names}} recipes?",
+      "title": "Consume from {{names}}?",
       "description": "This will reduce your inventory.",
       "warningHeader": "Warning — insufficient stock:",
       "requested": "requested",
