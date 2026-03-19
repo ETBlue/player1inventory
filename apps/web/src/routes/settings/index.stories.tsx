@@ -52,6 +52,8 @@ function SettingsStory() {
   )
 }
 
+// Language variants (EN/TW) are exercised via the Storybook toolbar (withI18n decorator in preview.tsx).
+// No per-story localStorage setup needed — use the Language toolbar button to switch languages.
 export const Default: Story = {
   render: () => <SettingsStory />,
 }
