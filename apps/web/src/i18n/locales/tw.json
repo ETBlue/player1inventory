@@ -9,7 +9,76 @@
     "discard": "丟掉",
     "goBack": "回上一頁",
     "unsavedTitle": "未存檔的變更",
-    "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？"
+    "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？",
+    "done": "完成",
+    "back": "返回",
+    "confirm": "確認"
+  },
+  "shopping": {
+    "toolbar": {
+      "cartCount_one": "購物車裡有 {{count}} 包",
+      "cartCount_other": "購物車裡有 {{count}} 包"
+    },
+    "vendorFilter": {
+      "allVendors": "所有商店",
+      "manageVendors": "管理商店..."
+    },
+    "inactiveItems_one": "{{count}} 個停用品項",
+    "inactiveItems_other": "{{count}} 個停用品項",
+    "abandonDialog": {
+      "title": "放棄這次購物？",
+      "description": "所有品項將從購物車中移除。",
+      "abandon": "放棄"
+    },
+    "checkoutDialog": {
+      "title": "完成購物？",
+      "description": "品項數量將根據購物車更新。"
+    },
+    "log": {
+      "purchasedAt": "購自 {{vendor}}",
+      "purchased": "已購買"
+    }
+  },
+  "cooking": {
+    "toolbar": {
+      "servingCount_one": "烹調了 {{count}} 份",
+      "servingCount_other": "烹調了 {{count}} 份"
+    },
+    "emptyState": "還沒有食譜，新增第一個食譜來開始吧。",
+    "recipe": {
+      "itemCount_one": "已選 {{count}} 項",
+      "itemCount_other": "已選 {{count}} 項",
+      "noItems": "這個食譜裡還沒有品項。"
+    },
+    "log": {
+      "consumedVia": "透過 {{recipes}} 消耗",
+      "consumedViaRecipe": "透過食譜消耗"
+    },
+    "doneDialog": {
+      "title_one": "從「{{names}}」食譜消耗？",
+      "title_other": "從「{{names}}」等食譜消耗？",
+      "description": "這將減少你的庫存。",
+      "warningHeader": "警告 — 庫存不足：",
+      "requested": "需要",
+      "available": "現有"
+    },
+    "cancelDialog": {
+      "title": "放棄所有選擇？",
+      "description": "所有食譜選擇與用量調整將重置。"
+    }
+  },
+  "cookingControlBar": {
+    "sort": {
+      "name": "名稱",
+      "recent": "最近烹調",
+      "count": "品項數量"
+    },
+    "sortAscending": "升冪排列",
+    "sortDescending": "降冪排列",
+    "collapseAll": "全部收合",
+    "expandAll": "全部展開",
+    "toggleSearch": "切換搜尋",
+    "searchPlaceholder": "搜尋食譜或品項..."
   },
   "settings": {
     "title": "設定",
