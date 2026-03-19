@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-router'
 import { Check, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { Toolbar } from '@/components/Toolbar'
@@ -57,6 +58,7 @@ export const Route = createFileRoute('/shopping')({
 })
 
 function Shopping() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
@@ -219,21 +221,21 @@ function Shopping() {
     <div>
       {/* Cart toolbar */}
       <Toolbar className="flex-wrap">
-        {cartTotal} pack{cartTotal > 1 ? 's' : ''} in cart
+        {t('shopping.toolbar.cartCount', { count: cartTotal })}
         <div className="flex-1" />
         {cartItems.length > 0 && (
           <Button
             variant="destructive-ghost"
             onClick={() => setShowAbandonDialog(true)}
           >
-            <X /> Cancel
+            <X /> {t('common.cancel')}
           </Button>
         )}
         <Button
           disabled={!cartItems.some((ci) => ci.quantity > 0)}
           onClick={() => setShowCheckoutDialog(true)}
         >
-          <Check /> Done
+          <Check /> {t('common.done')}
         </Button>
       </Toolbar>
 
@@ -262,17 +264,23 @@ function Shopping() {
               }}
             >
               <SelectTrigger className="bg-transparent border-none -mx-3 -my-2 mr-0 flex-1 text-sm">
-                <SelectValue placeholder="All vendors" />
+                <SelectValue
+                  placeholder={t('shopping.vendorFilter.allVendors')}
+                />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All vendors</SelectItem>
+                <SelectItem value="all">
+                  {t('shopping.vendorFilter.allVendors')}
+                </SelectItem>
                 {vendors.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
                     {v.name} ({vendorCounts.get(v.id) ?? 0})
                   </SelectItem>
                 ))}
                 <SelectSeparator />
-                <SelectItem value="__manage__">Manage vendors...</SelectItem>
+                <SelectItem value="__manage__">
+                  {t('shopping.vendorFilter.manageVendors')}
+                </SelectItem>
               </SelectContent>
             </Select>
           ) : undefined
@@ -308,8 +316,9 @@ function Shopping() {
           {activePendingItems.map((item) => renderItemCard(item))}
           {inactivePendingItems.length > 0 && (
             <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-              {inactivePendingItems.length} inactive item
-              {inactivePendingItems.length !== 1 ? 's' : ''}
+              {t('shopping.inactiveItems', {
+                count: inactivePendingItems.length,
+              })}
             </div>
           )}
           {inactivePendingItems.map((item) => renderItemCard(item))}
@@ -320,20 +329,22 @@ function Shopping() {
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Abandon this shopping trip?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('shopping.abandonDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            All items will be removed from the cart.
+            {t('shopping.abandonDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.goBack')}</AlertDialogCancel>
             <AlertDialogAction
               className={buttonVariants({ variant: 'destructive' })}
               onClick={() => {
                 if (cart) abandonCart.mutate(cart.id)
               }}
             >
-              Abandon
+              {t('shopping.abandonDialog.abandon')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -346,13 +357,15 @@ function Shopping() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Complete shopping trip?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('shopping.checkoutDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            Quantities will be updated based on your cart.
+            {t('shopping.checkoutDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Go back</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.goBack')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (cart) {
@@ -360,13 +373,15 @@ function Shopping() {
                     (v) => v.id === selectedVendorId,
                   )
                   const note = selectedVendor
-                    ? `purchased at ${selectedVendor.name}`
-                    : 'purchased'
+                    ? t('shopping.log.purchasedAt', {
+                        vendor: selectedVendor.name,
+                      })
+                    : t('shopping.log.purchased')
                   checkout.mutate({ cartId: cart.id, note })
                 }
               }}
             >
-              Done
+              {t('common.done')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { Toolbar } from '@/components/Toolbar'
@@ -61,6 +62,7 @@ export const Route = createFileRoute('/cooking')({
 })
 
 function CookingPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { sort, dir, q } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
@@ -332,8 +334,8 @@ function CookingPage() {
       const recipeNames = recipeNamesByItemId.get(itemId) ?? []
       const note =
         recipeNames.length > 0
-          ? `consumed via ${recipeNames.join(', ')}`
-          : 'consumed via recipe'
+          ? t('cooking.log.consumedVia', { recipes: recipeNames.join(', ') })
+          : t('cooking.log.consumedViaRecipe')
 
       await addInventoryLog.mutateAsync({
         itemId,
@@ -371,6 +373,10 @@ function CookingPage() {
   const recipesBeingConsumed = [...checkedItemIds.values()].filter(
     (set) => set.size > 0,
   ).length
+  const selectedRecipeNames = [...checkedItemIds.entries()]
+    .filter(([, set]) => set.size > 0)
+    .map(([recipeId]) => recipes.find((r) => r.id === recipeId)?.name ?? '')
+    .filter(Boolean)
   const totalServings = [...checkedItemIds.entries()]
     .filter(([, set]) => set.size > 0)
     .reduce((sum, [recipeId]) => sum + (sessionServings.get(recipeId) ?? 1), 0)
@@ -379,19 +385,18 @@ function CookingPage() {
     <div>
       <Toolbar className="justify-between">
         <span className="flex-1">
-          {totalServings} serving
-          {totalServings > 1 ? 's' : ''} cooked
+          {t('cooking.toolbar.servingCount', { count: totalServings })}
         </span>
         {anyChecked && (
           <Button
             variant="destructive-ghost"
             onClick={() => setShowCancelDialog(true)}
           >
-            <X /> Cancel
+            <X /> {t('common.cancel')}
           </Button>
         )}
         <Button disabled={!anyChecked} onClick={() => setShowDoneDialog(true)}>
-          <Check /> Done
+          <Check /> {t('common.done')}
         </Button>
       </Toolbar>
 
@@ -408,7 +413,7 @@ function CookingPage() {
 
       {sortedRecipes.length === 0 ? (
         <p className="text-foreground-muted text-sm px-4">
-          No recipes yet. Create your first recipe to get started.
+          {t('cooking.emptyState')}
         </p>
       ) : (
         <div className="space-y-px pb-4">
@@ -521,7 +526,9 @@ function CookingPage() {
                       {/* Row 2: subtitle */}
                       <div className="mx-6 text-sm text-foreground-muted">
                         {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
-                        {checkedCount > 0 ? `, ${checkedCount} selected` : ''}
+                        {checkedCount > 0
+                          ? `, ${t('cooking.recipe.itemCount', { count: checkedCount })}`
+                          : ''}
                         {recipeCheckState !== false
                           ? `, × ${sessionServings.get(recipe.id) ?? 1}`
                           : ''}
@@ -533,7 +540,7 @@ function CookingPage() {
                   <div className="space-y-px">
                     {recipe.items.length === 0 && (
                       <p className="text-sm text-foreground-muted px-4">
-                        No items in this recipe.
+                        {t('cooking.recipe.noItems')}
                       </p>
                     )}
                     {[...recipe.items]
@@ -603,27 +610,29 @@ function CookingPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Consume from {recipesBeingConsumed} recipe
-              {recipesBeingConsumed !== 1 ? 's' : ''}?
+              {t('cooking.doneDialog.title', {
+                count: recipesBeingConsumed,
+                names: selectedRecipeNames.join(', '),
+              })}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            This will reduce your inventory.
+            {t('cooking.doneDialog.description')}
             {insufficientItems.length > 0 && (
               <span className="block mt-2 text-destructive">
-                Warning — insufficient stock:
+                {t('cooking.doneDialog.warningHeader')}
                 {insufficientItems.map(({ item, requested, available }) => (
                   <span key={item.id} className="block">
-                    {item.name}: {requested} requested, {available} available
+                    {item.name}: {requested} {t('cooking.doneDialog.requested')}, {available} {t('cooking.doneDialog.available')}
                   </span>
                 ))}
               </span>
             )}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDone}>
-              Confirm
+              {t('common.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -633,15 +642,15 @@ function CookingPage() {
       <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard all selections?</AlertDialogTitle>
+            <AlertDialogTitle>{t('cooking.cancelDialog.title')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            All recipe selections and amount adjustments will be reset.
+            {t('cooking.cancelDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmCancel}>
-              Discard
+              {t('common.discard')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
