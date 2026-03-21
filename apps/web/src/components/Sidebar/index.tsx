@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Pantry', icon: Warehouse },
-  { to: '/shopping', label: 'Cart', icon: ShoppingCart },
-  { to: '/cooking', label: 'Use', icon: CookingPot },
+  { to: '/shopping', label: 'Shopping', icon: ShoppingCart },
+  { to: '/cooking', label: 'Cooking', icon: CookingPot },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 
@@ -27,9 +27,10 @@ export function Sidebar() {
       aria-label="Sidebar navigation"
       className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-background-surface border-r border-accessory-default z-10"
     >
-      <div className="px-4 py-4 border-b border-accessory-default">
-        <span className="font-semibold text-sm">Player 1 Inventory</span>
+      <div className="px-5 py-4">
+        <h1 className="">Player 1 Inventory</h1>
       </div>
+      <div className="mx-5 h-px bg-accessory-default" />
       <div className="flex flex-col gap-1 p-2">
         {navItems.map(({ to, label, icon: Icon }) => {
           const isActive =
