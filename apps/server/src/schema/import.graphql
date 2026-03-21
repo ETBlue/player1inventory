@@ -1,7 +1,3 @@
-type ImportResult {
-  itemCount: Int!
-}
-
 # Input types for bulk import mutations
 input ItemInput {
   id: ID!
@@ -72,8 +68,6 @@ input CartItemInput {
 }
 
 extend type Mutation {
-  importData(payload: String!): ImportResult!
-
   # Bulk create mutations — used for "skip conflicts" strategy
   bulkCreateItems(items: [ItemInput!]!): [Item!]!
   bulkCreateTags(tags: [TagInput!]!): [Tag!]!

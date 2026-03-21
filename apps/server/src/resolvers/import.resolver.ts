@@ -7,19 +7,6 @@ import { CartModel, CartItemModel } from '../models/Cart.model.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers } from '../generated/graphql.js'
 
-interface ImportPayload {
-  version: number
-  exportedAt: string
-  items: Array<Record<string, unknown>>
-  tags: unknown[]
-  tagTypes: unknown[]
-  vendors: unknown[]
-  recipes: unknown[]
-  inventoryLogs: unknown[]
-  shoppingCarts: unknown[]
-  cartItems: unknown[]
-}
-
 // Strip export-only fields and reassign userId when inserting imported records
 function stripForInsert(record: Record<string, unknown>, userId: string): Record<string, unknown> {
   const { id: _id, userId: _userId, createdAt: _c, updatedAt: _u, familyId: _f, ...rest } = record
@@ -33,26 +20,6 @@ function withId(record: Record<string, unknown>, userId: string): Record<string,
 
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
   Mutation: {
-    // -------------------------------------------------------------------------
-    // Legacy blob import (kept for backwards compatibility)
-    // -------------------------------------------------------------------------
-    importData: async (_, { payload }, ctx) => {
-      const userId = requireAuth(ctx)
-
-      const data = JSON.parse(payload) as ImportPayload
-
-      const items = data.items ?? []
-      if (items.length > 0) {
-        const docs = items.map(({ id: _id, userId: _userId, createdAt: _c, updatedAt: _u, ...rest }) => ({
-          ...rest,
-          userId,
-        }))
-        await ItemModel.insertMany(docs)
-      }
-
-      return { itemCount: items.length }
-    },
-
     // -------------------------------------------------------------------------
     // Bulk create — inserts records with original IDs, skips existing ones
     // -------------------------------------------------------------------------
