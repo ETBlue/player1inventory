@@ -1,0 +1,197 @@
+mutation BulkCreateItems($items: [ItemInput!]!) {
+  bulkCreateItems(items: $items) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    userId
+    familyId
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkCreateTags($tags: [TagInput!]!) {
+  bulkCreateTags(tags: $tags) {
+    id
+    name
+    typeId
+    userId
+    familyId
+  }
+}
+
+mutation BulkCreateTagTypes($tagTypes: [TagTypeInput!]!) {
+  bulkCreateTagTypes(tagTypes: $tagTypes) {
+    id
+    name
+    color
+    userId
+    familyId
+  }
+}
+
+mutation BulkCreateVendors($vendors: [VendorInput!]!) {
+  bulkCreateVendors(vendors: $vendors) {
+    id
+    name
+    userId
+    familyId
+  }
+}
+
+mutation BulkCreateRecipes($recipes: [RecipeInput!]!) {
+  bulkCreateRecipes(recipes: $recipes) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+    userId
+    familyId
+  }
+}
+
+mutation BulkCreateInventoryLogs($logs: [InventoryLogInput!]!) {
+  bulkCreateInventoryLogs(logs: $logs) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
+
+mutation BulkCreateShoppingCarts($carts: [ShoppingCartInput!]!) {
+  bulkCreateShoppingCarts(carts: $carts) {
+    id
+    status
+    createdAt
+    completedAt
+  }
+}
+
+mutation BulkCreateCartItems($cartItems: [CartItemInput!]!) {
+  bulkCreateCartItems(cartItems: $cartItems) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+mutation BulkUpsertItems($items: [ItemInput!]!) {
+  bulkUpsertItems(items: $items) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    userId
+    familyId
+    createdAt
+    updatedAt
+  }
+}
+
+mutation BulkUpsertTags($tags: [TagInput!]!) {
+  bulkUpsertTags(tags: $tags) {
+    id
+    name
+    typeId
+    userId
+    familyId
+  }
+}
+
+mutation BulkUpsertTagTypes($tagTypes: [TagTypeInput!]!) {
+  bulkUpsertTagTypes(tagTypes: $tagTypes) {
+    id
+    name
+    color
+    userId
+    familyId
+  }
+}
+
+mutation BulkUpsertVendors($vendors: [VendorInput!]!) {
+  bulkUpsertVendors(vendors: $vendors) {
+    id
+    name
+    userId
+    familyId
+  }
+}
+
+mutation BulkUpsertRecipes($recipes: [RecipeInput!]!) {
+  bulkUpsertRecipes(recipes: $recipes) {
+    id
+    name
+    items {
+      itemId
+      defaultAmount
+    }
+    lastCookedAt
+    userId
+    familyId
+  }
+}
+
+mutation BulkUpsertInventoryLogs($logs: [InventoryLogInput!]!) {
+  bulkUpsertInventoryLogs(logs: $logs) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
+
+mutation BulkUpsertShoppingCarts($carts: [ShoppingCartInput!]!) {
+  bulkUpsertShoppingCarts(carts: $carts) {
+    id
+    status
+    createdAt
+    completedAt
+  }
+}
+
+mutation BulkUpsertCartItems($cartItems: [CartItemInput!]!) {
+  bulkUpsertCartItems(cartItems: $cartItems) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+mutation ClearAllData {
+  clearAllData
+}
