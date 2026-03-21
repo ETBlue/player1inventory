@@ -1,3 +1,32 @@
+import type { ApolloClient } from '@apollo/client'
+import { db } from '@/db'
+import {
+  AllCartItemsDocument,
+  BulkCreateCartItemsDocument,
+  BulkCreateInventoryLogsDocument,
+  BulkCreateItemsDocument,
+  BulkCreateRecipesDocument,
+  BulkCreateShoppingCartsDocument,
+  BulkCreateTagsDocument,
+  BulkCreateTagTypesDocument,
+  BulkCreateVendorsDocument,
+  BulkUpsertCartItemsDocument,
+  BulkUpsertInventoryLogsDocument,
+  BulkUpsertItemsDocument,
+  BulkUpsertRecipesDocument,
+  BulkUpsertShoppingCartsDocument,
+  BulkUpsertTagsDocument,
+  BulkUpsertTagTypesDocument,
+  BulkUpsertVendorsDocument,
+  ClearAllDataDocument,
+  GetItemsDocument,
+  GetRecipesDocument,
+  GetTagsDocument,
+  GetTagTypesDocument,
+  GetVendorsDocument,
+  InventoryLogsDocument,
+  ShoppingCartsDocument,
+} from '@/generated/graphql'
 import type {
   CartItem,
   InventoryLog,
@@ -289,4 +318,306 @@ export function partitionPayload(
       ),
     },
   }
+}
+
+async function fetchLocalExistingData(): Promise<ExistingData> {
+  const [
+    items,
+    tags,
+    tagTypes,
+    vendors,
+    recipes,
+    inventoryLogs,
+    shoppingCarts,
+    cartItems,
+  ] = await Promise.all([
+    db.items.toArray(),
+    db.tags.toArray(),
+    db.tagTypes.toArray(),
+    db.vendors.toArray(),
+    db.recipes.toArray(),
+    db.inventoryLogs.toArray(),
+    db.shoppingCarts.toArray(),
+    db.cartItems.toArray(),
+  ])
+
+  return {
+    items,
+    tags,
+    tagTypes,
+    vendors,
+    recipes,
+    inventoryLogs,
+    shoppingCarts,
+    cartItems,
+  }
+}
+
+export async function importLocalData(
+  payload: ExportPayload,
+  strategy: ImportStrategy,
+): Promise<void> {
+  if (strategy === 'clear') {
+    // Delete all tables in dependency order (children before parents)
+    await db.cartItems.clear()
+    await db.shoppingCarts.clear()
+    await db.inventoryLogs.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.recipes.clear()
+    await db.vendors.clear()
+    await db.items.clear()
+
+    // Bulk add all entities in reverse order (parents before children)
+    await db.items.bulkAdd(payload.items as Item[])
+    await db.vendors.bulkAdd(payload.vendors as Vendor[])
+    await db.recipes.bulkAdd(payload.recipes as Recipe[])
+    await db.tagTypes.bulkAdd(payload.tagTypes as TagType[])
+    await db.tags.bulkAdd(payload.tags as Tag[])
+    await db.inventoryLogs.bulkAdd(payload.inventoryLogs as InventoryLog[])
+    await db.shoppingCarts.bulkAdd(payload.shoppingCarts as ShoppingCart[])
+    await db.cartItems.bulkAdd(payload.cartItems as CartItem[])
+    return
+  }
+
+  const existing = await fetchLocalExistingData()
+  const conflicts = detectConflicts(payload, existing)
+
+  if (strategy === 'skip') {
+    const { toCreate } = partitionPayload(payload, conflicts, 'skip')
+
+    await db.items.bulkAdd(toCreate.items as Item[], { allKeys: false })
+    await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
+    await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
+    await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], {
+      allKeys: false,
+    })
+    await db.tags.bulkAdd(toCreate.tags as Tag[], { allKeys: false })
+    await db.inventoryLogs.bulkAdd(toCreate.inventoryLogs as InventoryLog[], {
+      allKeys: false,
+    })
+    await db.shoppingCarts.bulkAdd(toCreate.shoppingCarts as ShoppingCart[], {
+      allKeys: false,
+    })
+    await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
+      allKeys: false,
+    })
+    return
+  }
+
+  // strategy === 'replace'
+  const { toCreate, toUpsert } = partitionPayload(payload, conflicts, 'replace')
+
+  await db.items.bulkAdd(toCreate.items as Item[], { allKeys: false })
+  await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
+  await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
+  await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], { allKeys: false })
+  await db.tags.bulkAdd(toCreate.tags as Tag[], { allKeys: false })
+  await db.inventoryLogs.bulkAdd(toCreate.inventoryLogs as InventoryLog[], {
+    allKeys: false,
+  })
+  await db.shoppingCarts.bulkAdd(toCreate.shoppingCarts as ShoppingCart[], {
+    allKeys: false,
+  })
+  await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
+    allKeys: false,
+  })
+
+  await db.items.bulkPut(toUpsert.items as Item[])
+  await db.vendors.bulkPut(toUpsert.vendors as Vendor[])
+  await db.recipes.bulkPut(toUpsert.recipes as Recipe[])
+  await db.tagTypes.bulkPut(toUpsert.tagTypes as TagType[])
+  await db.tags.bulkPut(toUpsert.tags as Tag[])
+  await db.inventoryLogs.bulkPut(toUpsert.inventoryLogs as InventoryLog[])
+  await db.shoppingCarts.bulkPut(toUpsert.shoppingCarts as ShoppingCart[])
+  await db.cartItems.bulkPut(toUpsert.cartItems as CartItem[])
+}
+
+async function fetchCloudExistingData(
+  client: ApolloClient,
+): Promise<ExistingData> {
+  const fetchPolicy = 'network-only' as const
+
+  const [
+    itemsResult,
+    tagsResult,
+    tagTypesResult,
+    vendorsResult,
+    recipesResult,
+    inventoryLogsResult,
+    shoppingCartsResult,
+    cartItemsResult,
+  ] = await Promise.all([
+    client.query<GetItemsQuery>({ query: GetItemsDocument, fetchPolicy }),
+    client.query<GetTagsQuery>({ query: GetTagsDocument, fetchPolicy }),
+    client.query<GetTagTypesQuery>({ query: GetTagTypesDocument, fetchPolicy }),
+    client.query<GetVendorsQuery>({ query: GetVendorsDocument, fetchPolicy }),
+    client.query<GetRecipesQuery>({ query: GetRecipesDocument, fetchPolicy }),
+    client.query<InventoryLogsQuery>({
+      query: InventoryLogsDocument,
+      fetchPolicy,
+    }),
+    client.query<ShoppingCartsQuery>({
+      query: ShoppingCartsDocument,
+      fetchPolicy,
+    }),
+    client.query<AllCartItemsQuery>({
+      query: AllCartItemsDocument,
+      fetchPolicy,
+    }),
+  ])
+
+  // Apollo Client v4 data field is typed as {} — cast via unknown for property access
+  type R = Record<string, unknown[] | undefined>
+  return {
+    items: ((itemsResult.data as unknown as R).items ?? []) as Item[],
+    tags: ((tagsResult.data as unknown as R).tags ?? []) as Tag[],
+    tagTypes: ((tagTypesResult.data as unknown as R).tagTypes ??
+      []) as TagType[],
+    vendors: ((vendorsResult.data as unknown as R).vendors ?? []) as Vendor[],
+    recipes: ((recipesResult.data as unknown as R).recipes ?? []) as Recipe[],
+    inventoryLogs: ((inventoryLogsResult.data as unknown as R).inventoryLogs ??
+      []) as InventoryLog[],
+    shoppingCarts: ((shoppingCartsResult.data as unknown as R).shoppingCarts ??
+      []) as ShoppingCart[],
+    cartItems: ((cartItemsResult.data as unknown as R).allCartItems ??
+      []) as CartItem[],
+  }
+}
+
+async function bulkCreate(
+  client: ApolloClient,
+  data: ExportPayload,
+): Promise<void> {
+  if (data.items.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateItemsDocument,
+      variables: { items: data.items },
+    })
+  }
+  if (data.vendors.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateVendorsDocument,
+      variables: { vendors: data.vendors },
+    })
+  }
+  if (data.recipes.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateRecipesDocument,
+      variables: { recipes: data.recipes },
+    })
+  }
+  if (data.tagTypes.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateTagTypesDocument,
+      variables: { tagTypes: data.tagTypes },
+    })
+  }
+  if (data.tags.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateTagsDocument,
+      variables: { tags: data.tags },
+    })
+  }
+  if (data.inventoryLogs.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateInventoryLogsDocument,
+      variables: { logs: data.inventoryLogs },
+    })
+  }
+  if (data.shoppingCarts.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateShoppingCartsDocument,
+      variables: { carts: data.shoppingCarts },
+    })
+  }
+  if (data.cartItems.length > 0) {
+    await client.mutate({
+      mutation: BulkCreateCartItemsDocument,
+      variables: { cartItems: data.cartItems },
+    })
+  }
+}
+
+async function bulkUpsert(
+  client: ApolloClient,
+  data: ExportPayload,
+): Promise<void> {
+  if (data.items.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertItemsDocument,
+      variables: { items: data.items },
+    })
+  }
+  if (data.vendors.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertVendorsDocument,
+      variables: { vendors: data.vendors },
+    })
+  }
+  if (data.recipes.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertRecipesDocument,
+      variables: { recipes: data.recipes },
+    })
+  }
+  if (data.tagTypes.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertTagTypesDocument,
+      variables: { tagTypes: data.tagTypes },
+    })
+  }
+  if (data.tags.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertTagsDocument,
+      variables: { tags: data.tags },
+    })
+  }
+  if (data.inventoryLogs.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertInventoryLogsDocument,
+      variables: { logs: data.inventoryLogs },
+    })
+  }
+  if (data.shoppingCarts.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertShoppingCartsDocument,
+      variables: { carts: data.shoppingCarts },
+    })
+  }
+  if (data.cartItems.length > 0) {
+    await client.mutate({
+      mutation: BulkUpsertCartItemsDocument,
+      variables: { cartItems: data.cartItems },
+    })
+  }
+}
+
+export async function importCloudData(
+  payload: ExportPayload,
+  strategy: ImportStrategy,
+  client: ApolloClient,
+): Promise<void> {
+  if (strategy === 'clear') {
+    await client.mutate({ mutation: ClearAllDataDocument })
+    await bulkCreate(client, payload)
+    await client.resetStore()
+    return
+  }
+
+  const existing = await fetchCloudExistingData(client)
+  const conflicts = detectConflicts(payload, existing)
+
+  if (strategy === 'skip') {
+    const { toCreate } = partitionPayload(payload, conflicts, 'skip')
+    await bulkCreate(client, toCreate)
+    await client.resetStore()
+    return
+  }
+
+  // strategy === 'replace'
+  const { toCreate, toUpsert } = partitionPayload(payload, conflicts, 'replace')
+  await bulkCreate(client, toCreate)
+  await bulkUpsert(client, toUpsert)
+  await client.resetStore()
 }
