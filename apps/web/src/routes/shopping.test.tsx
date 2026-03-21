@@ -653,6 +653,18 @@ describe('Shopping page tag filtering', () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
+    return router
+  }
+
+  const renderShoppingPageWithUrl = (url: string) => {
+    const history = createMemoryHistory({ initialEntries: [url] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
   }
 
   it('user can see the filters toggle button', async () => {
@@ -1161,5 +1173,118 @@ describe('Shopping page tag filtering', () => {
 
     // Then no expiration text is present
     expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
+  })
+
+  it('user can select a vendor and the vendor param is set in the URL', async () => {
+    // Given a vendor and items exist
+    const vendor = await createVendor('Costco')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // jsdom polyfills for Radix UI Select
+    window.HTMLElement.prototype.hasPointerCapture ??= () => false
+    window.HTMLElement.prototype.setPointerCapture ??= () => {}
+    window.HTMLElement.prototype.releasePointerCapture ??= () => {}
+    window.HTMLElement.prototype.scrollIntoView ??= () => {}
+
+    const router = renderShoppingPage()
+    const user = userEvent.setup()
+
+    // When user selects the vendor from the dropdown
+    const vendorTrigger = await screen.findByRole('combobox')
+    await user.click(vendorTrigger)
+    const costcoOption = await screen.findByRole('option', { name: /costco/i })
+    await user.click(costcoOption)
+
+    // Then the vendor param appears in the URL
+    await waitFor(() => {
+      const search = router.state.location.search as Record<string, unknown>
+      expect(search.vendor).toBe(vendor.id)
+    })
+  })
+
+  it('vendor selection is cleared from URL after checkout', async () => {
+    // Given a vendor, item, and cart item exist with vendor pre-selected in URL
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+    const router = renderShoppingPageWithUrl(`/shopping?vendor=${vendor.id}`)
+    const user = userEvent.setup()
+
+    // When user confirms checkout
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Complete shopping trip?')).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
+
+    // Then the vendor param is cleared
+    await waitFor(() => {
+      const search = router.state.location.search as Record<string, unknown>
+      expect(search.vendor).not.toBe(vendor.id)
+    })
+  })
+
+  it('vendor selection is cleared from URL after cart abandonment', async () => {
+    // Given a vendor, item, and cart item exist with vendor pre-selected in URL
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+    const router = renderShoppingPageWithUrl(`/shopping?vendor=${vendor.id}`)
+    const user = userEvent.setup()
+
+    // When user confirms cart abandonment
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /cancel/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByText('Abandon this shopping trip?'),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
+
+    // Then the vendor param is cleared
+    await waitFor(() => {
+      const search = router.state.location.search as Record<string, unknown>
+      expect(search.vendor).not.toBe(vendor.id)
+    })
   })
 })

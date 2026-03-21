@@ -31,7 +31,7 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 ### Shopping Page
 
-**Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. State is not persisted.
+**Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. Persisted in `?vendor` URL param; cleared on checkout or cart abandonment.
 
 **Tag/recipe filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Applied in the filter branch only. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
 
@@ -49,6 +49,9 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 **Done button:** Disabled when `!cartItems.some(ci => ci.quantity > 0)` — i.e. when no item is actually being purchased (all pinned or cart empty).
 
 **Checkout (`src/db/operations.ts`):** Separates `pinnedItems` (qty=0) from `buyingItems` (qty>0). Only processes `buyingItems` in the inventory loop. After marking the cart completed and deleting all cartItems, re-adds pinned items to the new active cart via `getOrCreateActiveCart()`.
+
+**URL search params** (validated by `validateSearch` on the route):
+- `?vendor` — selected vendor ID (default: `''` = All vendors)
 
 **Files:**
 - `src/routes/shopping.tsx` — main page with both vendor and tag filter controls
@@ -121,9 +124,10 @@ Row 2:            [N items, M selected, × S]
 - `?sort` — `name` | `recent` | `count` (default: `name`)
 - `?dir` — `asc` | `desc` (default: `asc`)
 - `?q` — search query string (default: `''`)
+- `?expanded` — comma-separated expanded recipe IDs (default: `''` = all collapsed); derived via `useMemo` into `Set<string>`
 
 **State** (in `CookingPage`):
-- `expandedRecipeIds: Set<string>` — which recipe cards are expanded; purely layout
+- `expandedRecipeIds: Set<string>` — derived from `?expanded` URL param (not `useState`); which recipe cards are expanded; purely layout
 - `sessionServings: Map<recipeId, number>` — integer ≥ 1, initialized to 1 on first interaction
 - `sessionAmounts: Map<recipeId, Map<itemId, number>>` — per-serving amounts, initialized from `defaultAmount` on first interaction
 - `checkedItemIds: Map<recipeId, Set<itemId>>` — initialized on first checkbox click (not on expand)

@@ -23,11 +23,11 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done |
+| [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done; expand/collapse state in URL done |
 | [items](features/items/) | ✅ Implemented | Item card, form, filters, create-on-search all done |
 | [pantry](features/pantry/) | ✅ Implemented | Toolbar, sort/filter pipeline, unified filters done |
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; settings-refactor pending |
-| [shopping](features/shopping/) | ✅ Implemented | Cloud backend + E2E done |
+| [shopping](features/shopping/) | ✅ Implemented | Cloud backend + E2E done; vendor selection in URL done |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
 | [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, dual-mode hooks, cloud backend + E2E done |
 | [recipes](features/recipes/) | ✅ Implemented | Cloud backend migration: model, schema, resolver, dual-mode hooks, E2E (local + cloud) done |
