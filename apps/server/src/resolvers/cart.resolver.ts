@@ -26,6 +26,18 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
       const userId = requireAuth(ctx)
       return CartItemModel.countDocuments({ itemId, userId })
     },
+
+    shoppingCarts: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const carts = await CartModel.find({ userId }).sort({ createdAt: 1 })
+      return carts.map(c => ({ ...c.toObject(), id: c._id.toString() }))
+    },
+
+    allCartItems: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const items = await CartItemModel.find({ userId })
+      return items.map(i => ({ ...i.toObject(), id: i._id.toString() }))
+    },
   },
 
   Mutation: {

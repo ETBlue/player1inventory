@@ -16,6 +16,8 @@ extend type Query {
   activeCart: Cart!
   cartItems(cartId: ID!): [CartItem!]!
   cartItemCountByItem(itemId: ID!): Int!
+  shoppingCarts: [Cart!]!
+  allCartItems: [CartItem!]!
 }
 
 extend type Mutation {

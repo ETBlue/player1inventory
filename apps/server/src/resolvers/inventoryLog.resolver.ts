@@ -15,6 +15,12 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       return InventoryLogModel.countDocuments({ itemId, userId })
     },
 
+    inventoryLogs: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const logs = await InventoryLogModel.find({ userId }).sort({ occurredAt: 1 })
+      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() }))
+    },
+
     lastPurchaseDates: async (_, { itemIds }, ctx) => {
       const userId = requireAuth(ctx)
       const results = await Promise.all(
