@@ -76,6 +76,9 @@ export function CookingControlBar({
     <>
       {/* Row 1: controls */}
       <div className="flex items-center gap-2 px-3 py-2">
+        <span className="hidden lg:inline text-sm text-foreground-muted">
+          {t('cookingControlBar.sortBy')}
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -112,6 +115,7 @@ export function CookingControlBar({
         <Button
           variant="neutral-ghost"
           size="icon"
+          className="lg:w-auto lg:px-3"
           aria-label={
             dir === 'asc'
               ? t('cookingControlBar.sortAscending')
@@ -124,11 +128,17 @@ export function CookingControlBar({
           ) : (
             <ArrowDown className="h-4 w-4" />
           )}
+          <span className="hidden lg:inline ml-1">
+            {dir === 'asc'
+              ? t('cookingControlBar.sortAsc')
+              : t('cookingControlBar.sortDesc')}
+          </span>
         </Button>
 
         <Button
           variant="neutral-ghost"
           size="icon"
+          className="lg:w-auto lg:px-3"
           aria-label={
             allExpanded
               ? t('cookingControlBar.collapseAll')
@@ -141,6 +151,11 @@ export function CookingControlBar({
           ) : (
             <ChevronsUpDown className="h-4 w-4" />
           )}
+          <span className="hidden lg:inline ml-1">
+            {allExpanded
+              ? t('cookingControlBar.collapse')
+              : t('cookingControlBar.expand')}
+          </span>
         </Button>
 
         <span className="flex-1" />
@@ -148,6 +163,7 @@ export function CookingControlBar({
         <Button
           variant={searchVisible ? 'neutral' : 'neutral-ghost'}
           size="icon"
+          className="lg:w-auto lg:px-3"
           aria-label={t('cookingControlBar.toggleSearch')}
           onClick={() => {
             if (searchVisible) setParam({ q: '' })
@@ -155,6 +171,9 @@ export function CookingControlBar({
           }}
         >
           <Search className="h-4 w-4" />
+          <span className="hidden lg:inline ml-1">
+            {t('cookingControlBar.search')}
+          </span>
         </Button>
       </div>
 

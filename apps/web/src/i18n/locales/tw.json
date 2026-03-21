@@ -8,6 +8,7 @@
     "saving": "存檔中...",
     "discard": "丟掉",
     "goBack": "回上一頁",
+    "edit": "編輯",
     "unsavedTitle": "未存檔的變更",
     "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？",
     "done": "完成",
@@ -73,9 +74,15 @@
     },
     "sortAscending": "小的先",
     "sortDescending": "大的先",
+    "sortAsc": "升冪",
+    "sortDesc": "降冪",
     "collapseAll": "全部收合",
     "expandAll": "全部展開",
+    "collapse": "收合",
+    "expand": "展開",
+    "sortBy": "排序依據",
     "toggleSearch": "切換搜尋",
+    "search": "搜尋",
     "searchPlaceholder": "搜尋食譜或材料..."
   },
   "settings": {

@@ -8,6 +8,7 @@
     "saving": "Saving...",
     "discard": "Discard",
     "goBack": "Go back",
+    "edit": "Edit",
     "unsavedTitle": "Unsaved changes",
     "unsavedDescription": "You have unsaved changes. Discard changes?",
     "done": "Done",
@@ -73,9 +74,15 @@
     },
     "sortAscending": "Sort ascending",
     "sortDescending": "Sort descending",
+    "sortAsc": "Asc",
+    "sortDesc": "Desc",
     "collapseAll": "Collapse all",
     "expandAll": "Expand all",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "sortBy": "Sort by",
     "toggleSearch": "Toggle search",
+    "search": "Search",
     "searchPlaceholder": "Search recipes or items..."
   },
   "settings": {
