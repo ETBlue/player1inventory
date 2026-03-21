@@ -23,7 +23,10 @@ export function Sidebar() {
   }
 
   return (
-    <nav className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-background-surface border-r border-accessory-default z-10">
+    <nav
+      aria-label="Sidebar navigation"
+      className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-background-surface border-r border-accessory-default z-10"
+    >
       <div className="px-4 py-4 border-b border-accessory-default">
         <span className="font-semibold text-sm">Player 1 Inventory</span>
       </div>

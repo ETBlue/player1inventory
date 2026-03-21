@@ -23,7 +23,10 @@ export function Navigation() {
   }
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 border-t border-accessory-default bg-background-surface">
+    <nav
+      aria-label="Bottom navigation"
+      className="lg:hidden fixed bottom-0 left-0 right-0 border-t border-accessory-default bg-background-surface"
+    >
       <div className="flex justify-around py-2">
         {navItems.map(({ to, icon: Icon }) => {
           const isActive =

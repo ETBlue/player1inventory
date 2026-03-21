@@ -4,29 +4,38 @@ import { describe, expect, it } from 'vitest'
 import * as stories from './Navigation.stories'
 
 // Stories use the db-init wrapper: "Loading..." shows synchronously, then the
-// router mounts and the <nav> bar appears. Smoke tests use findByRole (async)
-// to assert the nav element is present once the router finishes mounting.
+// router mounts and both the bottom <nav> and sidebar <nav> appear. Smoke tests
+// use findByRole (async) to assert the bottom navigation element is present
+// once the router finishes mounting.
 const { PantryActive, CartActive, CookingActive, SettingsActive } =
   composeStories(stories)
 
 describe('Navigation stories smoke tests', () => {
   it('PantryActive renders without error', async () => {
     render(<PantryActive />)
-    expect(await screen.findByRole('navigation')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('navigation', { name: 'Bottom navigation' }),
+    ).toBeInTheDocument()
   })
 
   it('CartActive renders without error', async () => {
     render(<CartActive />)
-    expect(await screen.findByRole('navigation')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('navigation', { name: 'Bottom navigation' }),
+    ).toBeInTheDocument()
   })
 
   it('CookingActive renders without error', async () => {
     render(<CookingActive />)
-    expect(await screen.findByRole('navigation')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('navigation', { name: 'Bottom navigation' }),
+    ).toBeInTheDocument()
   })
 
   it('SettingsActive renders without error', async () => {
     render(<SettingsActive />)
-    expect(await screen.findByRole('navigation')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('navigation', { name: 'Bottom navigation' }),
+    ).toBeInTheDocument()
   })
 })
