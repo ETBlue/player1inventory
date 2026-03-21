@@ -26,7 +26,8 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done; expand/collapse state in URL done |
 | [items](features/items/) | ✅ Implemented | Item card, form, filters, create-on-search all done |
 | [pantry](features/pantry/) | ✅ Implemented | Toolbar, sort/filter pipeline, unified filters done |
-| [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; settings-refactor pending |
+| [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
+| [data-import-export](features/settings/) | ✅ Implemented | Export (local + cloud), import (local + cloud), conflict dialog with skip/replace/clear strategies, dual-mode, E2E verified |
 | [shopping](features/shopping/) | ✅ Implemented | Cloud backend + E2E done; vendor selection in URL done |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
 | [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, dual-mode hooks, cloud backend + E2E done |
