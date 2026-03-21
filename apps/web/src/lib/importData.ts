@@ -328,6 +328,16 @@ export function partitionPayload(
   }
 }
 
+export async function fetchExistingData(options: {
+  mode: 'local' | 'cloud'
+  client?: ApolloClient
+}): Promise<ExistingData> {
+  if (options.mode === 'cloud' && options.client) {
+    return fetchCloudExistingData(options.client)
+  }
+  return fetchLocalExistingData()
+}
+
 async function fetchLocalExistingData(): Promise<ExistingData> {
   const [
     items,

@@ -244,6 +244,13 @@
       "button": "Download"
     },
     "import": {
+      "label": "Import data",
+      "description": "Restore data from a JSON backup file",
+      "button": "Import",
+      "importing": "Importing...",
+      "success": "Data imported successfully",
+      "error": "Failed to import data",
+      "invalidFile": "Invalid backup file",
       "conflictDialog": {
         "title": "Conflicts detected",
         "description": "Some items in the file already exist in your data. How would you like to handle them?",

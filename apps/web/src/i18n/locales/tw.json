@@ -240,6 +240,13 @@
       "button": "下載"
     },
     "import": {
+      "label": "匯入資料",
+      "description": "從 JSON 備份檔案還原資料",
+      "button": "匯入",
+      "importing": "匯入中...",
+      "success": "資料匯入成功",
+      "error": "資料匯入失敗",
+      "invalidFile": "無效的備份檔案",
       "conflictDialog": {
         "title": "偵測到衝突",
         "description": "檔案中有些項目已存在於您的資料中，要如何處理？",
