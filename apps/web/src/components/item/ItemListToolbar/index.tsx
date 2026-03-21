@@ -185,8 +185,12 @@ export function ItemListToolbar({
             variant="neutral-ghost"
             onClick={handleDirectionToggle}
             aria-label="Toggle sort direction"
+            className="lg:w-auto lg:px-3"
           >
             {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
+            <span className="hidden lg:inline ml-1">
+              {sortDirection === 'asc' ? 'Asc' : 'Desc'}
+            </span>
           </Button>
         </div>
 
@@ -196,8 +200,10 @@ export function ItemListToolbar({
             variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
             onClick={() => setIsTagsVisible(!isTagsVisible)}
             aria-label="Toggle tags"
+            className="lg:w-auto lg:px-3"
           >
             <Tags />
+            <span className="hidden lg:inline ml-1">Tags</span>
           </Button>
         )}
 
@@ -206,8 +212,10 @@ export function ItemListToolbar({
           variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
           onClick={() => setIsFiltersVisible(!isFiltersVisible)}
           aria-label="Toggle filters"
+          className="lg:w-auto lg:px-3"
         >
           <Filter />
+          <span className="hidden lg:inline ml-1">Filters</span>
         </Button>
 
         <Button
@@ -220,8 +228,10 @@ export function ItemListToolbar({
             setSearchVisible((v) => !v)
           }}
           aria-label="Toggle search"
+          className="lg:w-auto lg:px-3"
         >
           <Search />
+          <span className="hidden lg:inline ml-1">Search</span>
         </Button>
 
         {children && (
