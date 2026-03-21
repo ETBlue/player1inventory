@@ -4,7 +4,7 @@
 
 **Goal:** Fix all WCAG 2.1 A violations and high-severity AA gaps identified in the March 2026 audit. These are pure code changes — no visual testing required.
 
-**Scope:** 5 issues across 8 files.
+**Scope:** 5 issues. Updated after rebase onto main (2026-03-21): `Sidebar` component added by PR #135 is already accessible (icon + visible text labels); `Navigation` still needs link aria-labels.
 
 **WCAG References:**
 - 1.1.1 Non-text Content (A) — icon-only elements need text alternatives
@@ -15,28 +15,47 @@
 
 ---
 
-## Task 1: Navigation `aria-label`
+## Task 1: Navigation Link `aria-label`
 
-**Issue:** The bottom navigation bar has 4 icon-only `<Link>` elements with no accessible name. Screen reader users hear "link" with no indication of destination.
+**Issue:** The bottom navigation bar (`Navigation/index.tsx`) renders 4 icon-only `<Link>` elements. The `<nav>` element already has `aria-label="Bottom navigation"` (added in commit `2db89c9`), but the individual link elements have no accessible name — screen reader users hear "link" with no destination.
+
+The `Sidebar` component (added in PR #135) is already accessible because its links render icon + visible `<span>{label}</span>`. No changes needed to `Sidebar`.
+
+Additionally, the `navItems` labels in `Navigation` ("Cart", "Use") are inconsistent with the `Sidebar` ("Shopping", "Cooking") — fix both as part of this task.
 
 **Files:**
 - `apps/web/src/components/Navigation/index.tsx`
 
 **Step 1: Read the file**
 
-Read `src/components/Navigation/index.tsx` to identify the 4 nav links and their icon imports.
+Read `src/components/Navigation/index.tsx`. Note the `navItems` array already has a `label` field but the render loop destructures only `{ to, icon: Icon }` — the label is not used.
 
-**Step 2: Add `aria-label` to each nav link**
+**Step 2: Update `navItems` labels for consistency with Sidebar**
 
-Add descriptive `aria-label` to each `<Link>`:
-- Pantry / Warehouse icon → `aria-label="Pantry"`
-- Shopping / ShoppingCart icon → `aria-label="Shopping"`
-- Cooking / CookingPot icon → `aria-label="Cooking"`
-- Settings / Settings icon → `aria-label="Settings"`
+Change the `navItems` array labels to match the Sidebar (which uses full descriptive words):
+- `'Cart'` → `'Shopping'`
+- `'Use'` → `'Cooking'`
+
+**Step 3: Add `aria-label` to each nav link**
+
+In the render loop, destructure `label` from `navItems` and add it to each `<Link>`:
+
+```tsx
+{navItems.map(({ to, label, icon: Icon }) => (
+  <Link
+    key={to}
+    to={to}
+    aria-label={label}
+    className={...}
+  >
+    <Icon className="h-5 w-5" />
+  </Link>
+))}
+```
 
 These labels are hardcoded English for now — i18n can be added in a follow-up i18n PR (same pattern as other non-translated pages).
 
-**Step 3: Verify**
+**Step 4: Verify**
 
 Run lint and build:
 ```bash

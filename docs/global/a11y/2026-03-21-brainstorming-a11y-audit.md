@@ -37,7 +37,7 @@ A: Yes — both themes must pass WCAG AA contrast ratios independently.
 
 | # | Issue | Severity | WCAG |
 |---|-------|----------|------|
-| 1 | 4 nav links (icon-only) missing `aria-label` in `Navigation/index.tsx` | 🔴 Critical | 1.1.1 A |
+| 1 | 4 nav links (icon-only) missing `aria-label` in `Navigation/index.tsx` (note: `<nav>` label added in PR #135; Sidebar is now accessible with icon+text; individual link labels still missing) | 🔴 Critical | 1.1.1 A |
 | 2 | Clickable tag/vendor/recipe badges in `ItemCard` missing `role="button"` + `aria-pressed` | 🔴 Critical | 2.1.1, 4.1.3 A |
 | 3 | No skip-to-main-content link | 🟠 High | 2.4.1 A |
 | 4 | No `aria-live` regions for dynamic content (quantity changes, filters, form status) | 🟠 High | 4.1.3 A |
