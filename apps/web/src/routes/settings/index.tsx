@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DataModeCard } from '@/components/settings/DataModeCard'
 import { ExportCard } from '@/components/settings/ExportCard'
 import { FamilyGroupCard } from '@/components/settings/FamilyGroupCard'
+import { ImportCard } from '@/components/settings/ImportCard'
 import { LanguageCard } from '@/components/settings/LanguageCard'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
 import { ThemeCard } from '@/components/settings/ThemeCard'
@@ -31,6 +32,7 @@ function Settings() {
         <DataModeCard />
         {mode === 'cloud' && <FamilyGroupCard />}
         <ExportCard />
+        <ImportCard />
         <SettingsNavCard
           icon={Tags}
           label={t('settings.tags.label')}

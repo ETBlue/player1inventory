@@ -1,3 +1,4 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -8,6 +9,7 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { routeTree } from '@/routeTree.gen'
+import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
   title: 'Routes/Settings',
@@ -46,9 +48,11 @@ function SettingsStory() {
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 
