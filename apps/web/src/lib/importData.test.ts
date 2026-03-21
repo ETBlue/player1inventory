@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { db } from '@/db'
 import type { ExportPayload } from './exportData'
 import {
   type ConflictSummary,
   detectConflicts,
   type ExistingData,
   hasConflicts,
+  importLocalData,
   partitionPayload,
 } from './importData'
 
@@ -296,5 +298,129 @@ describe('partitionPayload', () => {
     // Then all items go to toCreate (including conflicting ones); toUpsert is empty
     expect(toCreate.items).toHaveLength(2)
     expect(toUpsert.items).toHaveLength(0)
+  })
+})
+
+async function clearAllTables() {
+  await db.cartItems.clear()
+  await db.shoppingCarts.clear()
+  await db.inventoryLogs.clear()
+  await db.tags.clear()
+  await db.tagTypes.clear()
+  await db.recipes.clear()
+  await db.vendors.clear()
+  await db.items.clear()
+}
+
+describe('importLocalData', () => {
+  // Clear before and after each test to ensure a clean state
+  // (beforeEach handles any seed data from db.on('populate'))
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  it('user can import new data with skip strategy (no conflicts)', async () => {
+    // Given an empty database and a payload with new items and vendors
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk'), makeItem('item-2', 'Eggs')],
+      vendors: [makeVendor('vendor-1', 'Costco')],
+      tagTypes: [makeTagType('type-1', 'Category')],
+      tags: [makeTag('tag-1', 'Dairy', 'type-1')],
+    })
+
+    // When importing with skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then all entities are inserted into the database
+    const items = await db.items.toArray()
+    expect(items).toHaveLength(2)
+    expect(items.map((i) => i.id)).toContain('item-1')
+    expect(items.map((i) => i.id)).toContain('item-2')
+
+    const vendors = await db.vendors.toArray()
+    expect(vendors).toHaveLength(1)
+    expect(vendors[0].id).toBe('vendor-1')
+
+    const tagTypes = await db.tagTypes.toArray()
+    expect(tagTypes).toHaveLength(1)
+
+    const tags = await db.tags.toArray()
+    expect(tags).toHaveLength(1)
+  })
+
+  it('user can import and skip conflicting entities', async () => {
+    // Given a database with an existing item
+    await db.items.add(makeItem('item-1', 'Milk'))
+
+    // And a payload containing the conflicting item and a new item
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk'), makeItem('item-2', 'Eggs')],
+    })
+
+    // When importing with skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then only the new item is added; the conflicting item is skipped
+    const items = await db.items.toArray()
+    expect(items).toHaveLength(2) // original item-1 + new item-2
+    const ids = items.map((i) => i.id)
+    expect(ids).toContain('item-1')
+    expect(ids).toContain('item-2')
+
+    // The existing item-1 data is unchanged (name is still 'Milk')
+    const existing = await db.items.get('item-1')
+    expect(existing?.name).toBe('Milk')
+  })
+
+  it('user can import and replace conflicting entities', async () => {
+    // Given a database with an existing item named 'Milk'
+    await db.items.add(makeItem('item-1', 'Milk'))
+
+    // And a payload with the same ID but a different name
+    const updatedItem = { ...makeItem('item-1', 'Whole Milk') }
+    const payload = emptyPayload({
+      items: [updatedItem, makeItem('item-2', 'Eggs')],
+    })
+
+    // When importing with replace strategy
+    await importLocalData(payload, 'replace')
+
+    // Then the conflicting item is replaced and the new item is added
+    const items = await db.items.toArray()
+    expect(items).toHaveLength(2)
+
+    const replaced = await db.items.get('item-1')
+    expect(replaced?.name).toBe('Whole Milk')
+
+    const added = await db.items.get('item-2')
+    expect(added?.name).toBe('Eggs')
+  })
+
+  it('user can clear all data and import fresh', async () => {
+    // Given a database with existing data
+    await db.items.add(makeItem('item-old', 'OldItem'))
+    await db.vendors.add(makeVendor('vendor-old', 'OldVendor'))
+
+    // And a payload with completely different data
+    const payload = emptyPayload({
+      items: [makeItem('item-new', 'NewItem')],
+      vendors: [makeVendor('vendor-new', 'NewVendor')],
+    })
+
+    // When importing with clear strategy
+    await importLocalData(payload, 'clear')
+
+    // Then old data is gone and only new data exists
+    const items = await db.items.toArray()
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('item-new')
+    expect(items[0].name).toBe('NewItem')
+
+    const vendors = await db.vendors.toArray()
+    expect(vendors).toHaveLength(1)
+    expect(vendors[0].id).toBe('vendor-new')
+
+    // Old data is removed
+    const oldItem = await db.items.get('item-old')
+    expect(oldItem).toBeUndefined()
   })
 })

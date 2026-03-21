@@ -2,6 +2,7 @@ import type { ApolloClient } from '@apollo/client'
 import { db } from '@/db'
 import {
   AllCartItemsDocument,
+  type AllCartItemsQuery,
   BulkCreateCartItemsDocument,
   BulkCreateInventoryLogsDocument,
   BulkCreateItemsDocument,
@@ -20,12 +21,19 @@ import {
   BulkUpsertVendorsDocument,
   ClearAllDataDocument,
   GetItemsDocument,
+  type GetItemsQuery,
   GetRecipesDocument,
+  type GetRecipesQuery,
   GetTagsDocument,
+  type GetTagsQuery,
   GetTagTypesDocument,
+  type GetTagTypesQuery,
   GetVendorsDocument,
+  type GetVendorsQuery,
   InventoryLogsDocument,
+  type InventoryLogsQuery,
   ShoppingCartsDocument,
+  type ShoppingCartsQuery,
 } from '@/generated/graphql'
 import type {
   CartItem,
