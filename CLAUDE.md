@@ -72,6 +72,8 @@ src/
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
+**`Sidebar`** (`src/components/Sidebar/index.tsx`) — fixed left navigation sidebar shown at `lg:` (1024px+). Same visibility rules as `Navigation` — hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). Shows "Player 1 Inventory" header and 4 nav links (Pantry, Shopping, Cooking, Settings) with icon + label side-by-side. Active: `text-primary bg-background-elevated`. `Layout` adds `lg:ml-56` offset to the content area when the sidebar is visible.
+
 **`CookingControlBar`** (`src/components/recipe/CookingControlBar/index.tsx`) — second-row toolbar for the cooking page. Props: `allExpanded`, `onExpandAll`, `onCollapseAll`. Reads/writes `?sort` (`name|recent|count`), `?dir` (`asc|desc`), `?q` directly via `Route.useSearch()` and `useNavigate()`. Row 1: sort Select, direction button, expand/collapse button, spacer, search toggle. Row 2 (conditional): search input with Create/Clear buttons. `searchVisible` is local state initialized from `!!q`.
 
 ### Settings Cards
