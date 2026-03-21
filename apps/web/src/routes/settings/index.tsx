@@ -30,7 +30,7 @@ function Settings() {
         <LanguageCard />
         <DataModeCard />
         {mode === 'cloud' && <FamilyGroupCard />}
-        {mode === 'local' && <ExportCard />}
+        <ExportCard />
         <SettingsNavCard
           icon={Tags}
           label={t('settings.tags.label')}
