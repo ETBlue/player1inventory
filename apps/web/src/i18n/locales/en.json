@@ -73,9 +73,14 @@
     },
     "sortAscending": "Sort ascending",
     "sortDescending": "Sort descending",
+    "sortAsc": "Asc",
+    "sortDesc": "Desc",
     "collapseAll": "Collapse all",
     "expandAll": "Expand all",
+    "collapse": "Collapse",
+    "expand": "Expand",
     "toggleSearch": "Toggle search",
+    "search": "Search",
     "searchPlaceholder": "Search recipes or items..."
   },
   "settings": {
