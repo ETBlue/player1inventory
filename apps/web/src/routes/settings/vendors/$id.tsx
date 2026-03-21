@@ -96,10 +96,12 @@ function VendorDetailLayoutInner() {
           <Button
             variant="neutral-ghost"
             size="icon"
+            className="lg:w-auto lg:px-3"
             onClick={handleBackClick}
             aria-label={t('common.goBack')}
           >
             <ArrowLeft />
+            <span className="hidden lg:inline ml-1">Back</span>
           </Button>
           <h1 className="text-md font-regular truncate flex-1">
             {vendor.name}

@@ -197,8 +197,14 @@ function DroppableTagTypeCard({
             <h3>{tagType.name}</h3>
           </CardTitle>
           <div className="flex-1" />
-          <Button variant="neutral-ghost" size="icon" onClick={onEdit}>
+          <Button
+            variant="neutral-ghost"
+            size="icon"
+            className="lg:w-auto lg:px-3"
+            onClick={onEdit}
+          >
             <Pencil />
+            <span className="hidden lg:inline ml-1">Edit</span>
           </Button>
           <DeleteButton
             trigger={<Trash2 />}
@@ -417,8 +423,14 @@ function TagSettings() {
       onDragCancel={handleDragCancel}
     >
       <Toolbar>
-        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
+        <Button
+          variant="neutral-ghost"
+          size="icon"
+          className="lg:w-auto lg:px-3"
+          onClick={goBack}
+        >
           <ArrowLeft className="h-5 w-5" />
+          <span className="hidden lg:inline ml-1">Back</span>
         </Button>
         <h1 className="">{t('settings.tags.label')}</h1>
       </Toolbar>

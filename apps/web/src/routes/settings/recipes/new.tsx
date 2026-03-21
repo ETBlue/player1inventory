@@ -37,8 +37,14 @@ function NewRecipePage() {
   return (
     <div>
       <Toolbar>
-        <Button variant="neutral-ghost" size="icon" onClick={goBack}>
+        <Button
+          variant="neutral-ghost"
+          size="icon"
+          className="lg:w-auto lg:px-3"
+          onClick={goBack}
+        >
           <ArrowLeft className="h-5 w-5" />
+          <span className="hidden lg:inline ml-1">Back</span>
         </Button>
         <h1>New Recipe</h1>
       </Toolbar>

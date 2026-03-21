@@ -213,8 +213,13 @@ function PantryView() {
         recipes={recipes}
       >
         <Link to="/items/new">
-          <Button size="icon" aria-label="Add item">
+          <Button
+            size="icon"
+            className="lg:w-auto lg:px-3"
+            aria-label="Add item"
+          >
             <Plus />
+            <span className="hidden lg:inline ml-1">Add</span>
           </Button>
         </Link>
       </ItemListToolbar>
