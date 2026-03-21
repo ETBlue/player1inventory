@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { RecipeNameForm } from '@/components/recipe/RecipeNameForm'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ export const Route = createFileRoute('/settings/recipes/new')({
 })
 
 function NewRecipePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings/recipes/')
   const createRecipe = useCreateRecipe()
@@ -44,9 +46,9 @@ function NewRecipePage() {
           onClick={goBack}
         >
           <ArrowLeft className="h-5 w-5" />
-          <span className="hidden lg:inline ml-1">Back</span>
+          <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
         </Button>
-        <h1>New Recipe</h1>
+        <h1>{t('settings.recipes.newButton')}</h1>
       </Toolbar>
       <div className="px-6 py-4">
         <RecipeNameForm
