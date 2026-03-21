@@ -1,3 +1,4 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -9,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { noopApolloClient } from '@/test/apolloStub'
 import { TagColor } from '@/types'
 
 const meta = {
@@ -68,9 +70,11 @@ function TagDetailStory() {
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 
