@@ -77,7 +77,7 @@ export function CookingControlBar({
       {/* Row 1: controls */}
       <div className="flex items-center gap-2 px-3 py-2">
         <span className="hidden lg:inline text-sm text-foreground-muted">
-          Sort by
+          {t('cookingControlBar.sortBy')}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

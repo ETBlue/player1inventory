@@ -79,6 +79,7 @@
     "expandAll": "Expand all",
     "collapse": "Collapse",
     "expand": "Expand",
+    "sortBy": "Sort by",
     "toggleSearch": "Toggle search",
     "search": "Search",
     "searchPlaceholder": "Search recipes or items..."
