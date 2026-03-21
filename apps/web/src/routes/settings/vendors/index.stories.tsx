@@ -8,13 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createTag, createTagType } from '@/db/operations'
+import { createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
-import { TagColor } from '@/types'
 
 const meta = {
-  title: 'Routes/Settings/Tags',
+  title: 'Routes/Settings/Vendors',
   parameters: {
     layout: 'fullscreen',
   },
@@ -23,7 +22,42 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function TagsListStory() {
+function DefaultStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/settings/vendors'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function WithVendorsStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -37,23 +71,9 @@ function TagsListStory() {
       await db.delete()
       await db.open()
 
-      // Create sample tag types and tags
-      const category = await createTagType({
-        name: 'Category',
-        color: TagColor.blue,
-      })
-      const location = await createTagType({
-        name: 'Location',
-        color: TagColor.green,
-      })
-      const diet = await createTagType({ name: 'Diet', color: TagColor.purple })
-
-      await createTag({ name: 'Organic', typeId: category.id })
-      await createTag({ name: 'Fresh', typeId: category.id })
-      await createTag({ name: 'Frozen', typeId: category.id })
-      await createTag({ name: 'Fridge', typeId: location.id })
-      await createTag({ name: 'Pantry', typeId: location.id })
-      await createTag({ name: 'Vegan', typeId: diet.id })
+      await createVendor('Costco')
+      await createVendor('Whole Foods')
+      await createVendor("Trader Joe's")
 
       setReady(true)
     }
@@ -64,7 +84,7 @@ function TagsListStory() {
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/settings/tags'] }),
+    history: createMemoryHistory({ initialEntries: ['/settings/vendors'] }),
     context: { queryClient },
   })
 
@@ -78,5 +98,9 @@ function TagsListStory() {
 }
 
 export const Default: Story = {
-  render: () => <TagsListStory />,
+  render: () => <DefaultStory />,
+}
+
+export const WithVendors: Story = {
+  render: () => <WithVendorsStory />,
 }

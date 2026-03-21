@@ -12,14 +12,20 @@ and currently lacks coverage. Layout wrappers that render only `<Outlet />` are 
 |-------|---------|------------|
 | `/cooking` | ✅ | ✅ |
 | `/settings` | ✅ | ✅ |
-| `/settings/tags` | ✅ | ✅ |
-| `/settings/tags/$id` (Info tab) | ✅ | ✅ |
+| `/settings/tags` | ✅ (fixed: added ApolloProvider) | ✅ |
+| `/settings/tags/$id` (Info tab) | ✅ (fixed: added ApolloProvider) | ✅ |
 
 **Pure Outlet wrappers — skip:**
 - `settings/tags.tsx`, `settings/vendors.tsx`, `settings/recipes.tsx` (each renders only `<Outlet />`)
 
 **Pattern for all route stories:**
+
+`ApolloProvider` is required for every route story. Dual-mode hooks (e.g. `useTags`, `useVendors`, `useRecipes`, `useItems`) call Apollo hooks unconditionally with `skip: !isCloud` — React's rules of hooks forbid conditional hook calls, so the provider must always be present even in local mode. Tests pass without it because `setup.ts` stubs all Apollo hooks via `vi.mock`.
+
 ```tsx
+import { ApolloProvider } from '@apollo/client/react'
+import { noopApolloClient } from '@/test/apolloStub'
+
 function PageStory({ setup }: { setup?: () => void | Promise<void> }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
   const [ready, setReady] = useState(false)
@@ -43,9 +49,11 @@ function PageStory({ setup }: { setup?: () => void | Promise<void> }) {
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
   )
 }
 ```
