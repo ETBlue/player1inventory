@@ -204,7 +204,7 @@ function DroppableTagTypeCard({
             onClick={onEdit}
           >
             <Pencil />
-            <span className="hidden lg:inline ml-1">Edit</span>
+            <span className="hidden lg:inline ml-1">{t('common.edit')}</span>
           </Button>
           <DeleteButton
             trigger={<Trash2 />}
@@ -430,7 +430,7 @@ function TagSettings() {
           onClick={goBack}
         >
           <ArrowLeft className="h-5 w-5" />
-          <span className="hidden lg:inline ml-1">Back</span>
+          <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
         </Button>
         <h1 className="">{t('settings.tags.label')}</h1>
       </Toolbar>

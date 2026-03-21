@@ -101,7 +101,7 @@ function VendorDetailLayoutInner() {
             aria-label={t('common.goBack')}
           >
             <ArrowLeft />
-            <span className="hidden lg:inline ml-1">Back</span>
+            <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
           </Button>
           <h1 className="text-md font-regular truncate flex-1">
             {vendor.name}

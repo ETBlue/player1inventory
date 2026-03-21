@@ -50,7 +50,7 @@ function VendorSettings() {
             onClick={goBack}
           >
             <ArrowLeft className="h-5 w-5" />
-            <span className="hidden lg:inline ml-1">Back</span>
+            <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
           </Button>
           <h1>{t('settings.vendors.label')}</h1>
         </div>
