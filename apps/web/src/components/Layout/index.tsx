@@ -1,6 +1,8 @@
 import { useLocation } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { Navigation } from '@/components/Navigation'
+import { Sidebar } from '@/components/Sidebar'
+import { cn } from '@/lib/utils'
 
 interface LayoutProps {
   children: ReactNode
@@ -16,9 +18,13 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div
-      className={`min-h-screen bg-background-base ${isFullscreenPage ? '' : 'pb-20'}`}
+      className={cn(
+        'min-h-screen bg-background-base',
+        !isFullscreenPage && 'pb-20 lg:pb-0 lg:ml-56',
+      )}
     >
-      <main className="container">{children}</main>
+      <Sidebar />
+      <main className="w-full">{children}</main>
       <Navigation />
     </div>
   )
