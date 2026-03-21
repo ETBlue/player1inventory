@@ -137,7 +137,7 @@ export function ItemListToolbar({
         {leading}
 
         <div className="flex items-center">
-          <span className="hidden lg:inline text-sm text-foreground-muted mr-1">
+          <span className="hidden lg:inline text-sm text-foreground-muted">
             Sort by
           </span>
           <DropdownMenu>
