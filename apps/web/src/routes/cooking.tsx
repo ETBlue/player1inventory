@@ -58,13 +58,14 @@ export const Route = createFileRoute('/cooking')({
         : ('name' as const),
     dir: search.dir === 'desc' ? ('desc' as const) : ('asc' as const),
     q: typeof search.q === 'string' ? search.q : '',
+    expanded: typeof search.expanded === 'string' ? search.expanded : '',
   }),
 })
 
 function CookingPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { sort, dir, q } = Route.useSearch()
+  const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
   const updateItem = useUpdateItem()
@@ -79,8 +80,9 @@ function CookingPage() {
   const [sessionAmounts, setSessionAmounts] = useState<
     Map<string, Map<string, number>>
   >(new Map())
-  const [expandedRecipeIds, setExpandedRecipeIds] = useState<Set<string>>(
-    new Set(),
+  const expandedRecipeIds = useMemo(
+    () => new Set(expanded ? expanded.split(',') : []),
+    [expanded],
   )
   const [sessionServings, setSessionServings] = useState<Map<string, number>>(
     new Map(),
@@ -178,22 +180,40 @@ function CookingPage() {
     const recipe = recipes.find((r) => r.id === recipeId)
     if (!recipe) return
 
-    const newExpanded = new Set(expandedRecipeIds)
-    if (newExpanded.has(recipeId)) {
-      newExpanded.delete(recipeId)
-      setExpandedRecipeIds(newExpanded)
+    const newSet = new Set(expandedRecipeIds)
+    if (newSet.has(recipeId)) {
+      newSet.delete(recipeId)
+      navigate({
+        to: '/cooking',
+        search: (prev) => ({
+          sort: prev.sort ?? 'name',
+          dir: prev.dir ?? 'asc',
+          q: prev.q ?? '',
+          expanded: [...newSet].join(','),
+        }),
+        replace: true,
+      })
       return
     }
 
     // Expanding — initialize amounts/servings if first time (checkedItemIds untouched)
-    newExpanded.add(recipeId)
+    newSet.add(recipeId)
     const { amounts, servings } = initializeAmountsAndServings(
       recipeId,
       recipe,
       sessionAmounts,
       sessionServings,
     )
-    setExpandedRecipeIds(newExpanded)
+    navigate({
+      to: '/cooking',
+      search: (prev) => ({
+        sort: prev.sort ?? 'name',
+        dir: prev.dir ?? 'asc',
+        q: prev.q ?? '',
+        expanded: [...newSet].join(','),
+      }),
+      replace: true,
+    })
     setSessionAmounts(amounts)
     setSessionServings(servings)
   }
@@ -405,9 +425,29 @@ function CookingPage() {
           recipes.length > 0 && expandedRecipeIds.size === recipes.length
         }
         onExpandAll={() =>
-          setExpandedRecipeIds(new Set(recipes.map((r) => r.id)))
+          navigate({
+            to: '/cooking',
+            search: (prev) => ({
+              sort: prev.sort ?? 'name',
+              dir: prev.dir ?? 'asc',
+              q: prev.q ?? '',
+              expanded: recipes.map((r) => r.id).join(','),
+            }),
+            replace: true,
+          })
         }
-        onCollapseAll={() => setExpandedRecipeIds(new Set())}
+        onCollapseAll={() =>
+          navigate({
+            to: '/cooking',
+            search: (prev) => ({
+              sort: prev.sort ?? 'name',
+              dir: prev.dir ?? 'asc',
+              q: prev.q ?? '',
+              expanded: '',
+            }),
+            replace: true,
+          })
+        }
       />
       <div className="h-px bg-accessory-default" />
 

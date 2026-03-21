@@ -62,6 +62,7 @@ export function CookingControlBar({
         sort: updates.sort ?? prev.sort ?? 'name',
         dir: updates.dir ?? prev.dir ?? 'asc',
         q: updates.q ?? prev.q ?? '',
+        expanded: prev.expanded ?? '',
       }),
     })
   }

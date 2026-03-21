@@ -44,6 +44,17 @@ describe('Use (Cooking) Page', () => {
     return router
   }
 
+  const renderPageWithUrl = (url: string) => {
+    const history = createMemoryHistory({ initialEntries: [url] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
   const makeItem = (name: string, consumeAmount = 1, packedQuantity = 5) =>
     createItem({
       name,
@@ -1639,6 +1650,59 @@ describe('Use (Cooking) Page', () => {
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
       expect(logs[0].note).toBe('consumed via Pasta Bolognese')
+    })
+  })
+
+  it('user can expand a recipe card and the expanded param is set in the URL', async () => {
+    // Given a recipe exists
+    await createRecipe({ name: 'Pasta Dinner', items: [] })
+    const router = renderPage()
+
+    // When user clicks the chevron to expand
+    await waitFor(() => screen.getByLabelText('Expand Pasta Dinner'))
+    await userEvent.click(screen.getByLabelText('Expand Pasta Dinner'))
+
+    // Then the URL contains the recipe id in the expanded param
+    await waitFor(() => {
+      const search = router.state.location.search as Record<string, unknown>
+      expect(search.expanded).toBeTruthy()
+    })
+  })
+
+  it('user can expand all recipes and all ids appear in URL', async () => {
+    // Given two recipes exist
+    await createRecipe({ name: 'Pasta Dinner', items: [] })
+    await createRecipe({ name: 'Omelette', items: [] })
+    const router = renderPage()
+
+    // When user clicks Expand All
+    await waitFor(() => screen.getByLabelText('Expand all'))
+    await userEvent.click(screen.getByLabelText('Expand all'))
+
+    // Then both recipe IDs appear in the expanded URL param
+    await waitFor(() => {
+      const search = router.state.location.search as Record<string, unknown>
+      expect(search.expanded).toBeTruthy()
+      // Both recipe names should now show collapse labels
+      expect(screen.getByLabelText('Collapse Pasta Dinner')).toBeInTheDocument()
+      expect(screen.getByLabelText('Collapse Omelette')).toBeInTheDocument()
+    })
+  })
+
+  it('user can collapse all recipes and the expanded param is cleared', async () => {
+    // Given two recipes exist and page loaded with both expanded
+    const r1 = await createRecipe({ name: 'Pasta Dinner', items: [] })
+    const r2 = await createRecipe({ name: 'Omelette', items: [] })
+    const router = renderPageWithUrl(`/cooking?expanded=${r1.id},${r2.id}`)
+
+    // When user clicks Collapse All
+    await waitFor(() => screen.getByLabelText('Collapse all'))
+    await userEvent.click(screen.getByLabelText('Collapse all'))
+
+    // Then the expanded param is empty/gone
+    await waitFor(() => {
+      const search = router.state.location.search as Record<string, unknown>
+      expect(search.expanded).toBeFalsy()
     })
   })
 })
