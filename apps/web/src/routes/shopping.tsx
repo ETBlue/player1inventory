@@ -55,6 +55,9 @@ import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping')({
   component: Shopping,
+  validateSearch: (search: Record<string, unknown>) => ({
+    vendor: typeof search.vendor === 'string' ? search.vendor : '',
+  }),
 })
 
 function Shopping() {
@@ -93,7 +96,7 @@ function Shopping() {
     }
   }
 
-  const [selectedVendorId, setSelectedVendorId] = useState<string>('')
+  const { vendor: selectedVendorId } = Route.useSearch()
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
 
@@ -260,7 +263,11 @@ function Shopping() {
                   navigate({ to: '/settings/vendors' })
                   return
                 }
-                setSelectedVendorId(v === 'all' ? '' : v)
+                navigate({
+                  to: '/shopping',
+                  search: (prev) => ({ ...prev, vendor: v === 'all' ? '' : v }),
+                  replace: true,
+                })
               }}
             >
               <SelectTrigger className="bg-transparent border-none -mx-3 -my-2 mr-0 flex-1 text-sm">
@@ -341,7 +348,15 @@ function Shopping() {
             <AlertDialogAction
               className={buttonVariants({ variant: 'destructive' })}
               onClick={() => {
-                if (cart) abandonCart.mutate(cart.id)
+                if (cart)
+                  abandonCart.mutate(cart.id, {
+                    onSuccess: () =>
+                      navigate({
+                        to: '/shopping',
+                        search: (prev) => ({ ...prev, vendor: '' }),
+                        replace: true,
+                      }),
+                  })
               }}
             >
               {t('common.confirm')}
@@ -377,7 +392,17 @@ function Shopping() {
                         vendor: selectedVendor.name,
                       })
                     : t('shopping.log.purchased')
-                  checkout.mutate({ cartId: cart.id, note })
+                  checkout.mutate(
+                    { cartId: cart.id, note },
+                    {
+                      onSuccess: () =>
+                        navigate({
+                          to: '/shopping',
+                          search: (prev) => ({ ...prev, vendor: '' }),
+                          replace: true,
+                        }),
+                    },
+                  )
                 }
               }}
             >
