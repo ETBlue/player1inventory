@@ -363,11 +363,20 @@ import { ApolloProvider } from '@apollo/client/react'
 
 When the user reports a bug (post-implementation or otherwise), treat it as **substantive** unless it is clearly a typo or cosmetic-only change. Required sequence — no shortcuts:
 
-1. Invoke `superpowers:systematic-debugging` to diagnose the root cause before proposing any fix
-2. Invoke `superpowers:test-driven-development` to write a **failing test** that reproduces the bug before writing the fix
-3. Implement the fix until the test passes
+1. **Create a branch** (`fix/<slug>`) — unless already inside a feature branch/worktree, in which case the bug fix belongs to that branch
+2. **Dispatch an `Explore` subagent** to investigate — it returns a concise summary: symptom, root cause, affected files
+3. **Write a bug doc stub** before starting the fix:
+   - Single feature area → `docs/features/<area>/YYYY-MM-DD-bug-<slug>.md`
+   - Multiple feature areas → `docs/global/bugs/YYYY-MM-DD-bug-<slug>.md`
+   - Fields: bug description, root cause, fix applied (*TBD*), test added (*TBD*), PR/commit (*TBD*)
+4. **Dispatch an implementation subagent** — given the root cause summary and bug doc stub as context; it writes a failing test and implements the fix (TDD)
+5. **Fill in the bug doc** — update fix applied, test added, and PR/commit reference
+6. **Commit in order:**
+   - Commit 1: fix code + tests
+   - Commit 2: completed bug doc
+7. **Create a PR** — only if this is a standalone fix branch; skip if already inside a feature worktree/branch
 
-This applies even when the fix seems obvious. The test serves as a regression guard.
+This applies even when the fix seems obvious. The test serves as a regression guard and the doc enables future tracing.
 
 ### Verification Gate
 
