@@ -6,9 +6,10 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
+import * as useRecipesModule from '@/hooks/useRecipes'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Recipes Tab', () => {
@@ -186,6 +187,56 @@ describe('Recipes Tab', () => {
       expect(updatedRecipe?.items.some((ri) => ri.itemId === item.id)).toBe(
         false,
       )
+    })
+  })
+
+  describe('cloud mode — mutate ignores onSuccess callbacks', () => {
+    beforeEach(() => {
+      // Simulate cloud mode: mutate fires the mutation but ignores the options
+      // object (onSuccess/onError), matching the Apollo-backed cloud implementation
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
+        mutate: vi.fn(),
+        isPending: false,
+      })
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('user can create a new recipe — dialog closes even when mutate ignores onSuccess', async () => {
+      // Given an item with no recipes
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+      renderRecipesTab(item.id)
+      const user = userEvent.setup()
+
+      // When user opens dialog and submits a recipe name
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: /new recipe/i }),
+        ).toBeInTheDocument()
+      })
+      await user.click(screen.getByRole('button', { name: /new recipe/i }))
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+      })
+      await user.type(screen.getByLabelText(/name/i), 'Cloud Recipe')
+      await user.click(screen.getByRole('button', { name: /add recipe/i }))
+
+      // Then the dialog closes regardless of whether onSuccess fires
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      })
     })
   })
 
