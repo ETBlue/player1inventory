@@ -190,22 +190,18 @@ describe('Recipes Tab', () => {
     })
   })
 
-  describe('cloud mode — mutate ignores onSuccess callbacks', () => {
-    beforeEach(() => {
-      // Simulate cloud mode: mutate fires the mutation but ignores the options
-      // object (onSuccess/onError), matching the Apollo-backed cloud implementation
-      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
-        mutate: vi.fn(),
-        isPending: false,
-      })
-    })
-
+  describe('cloud mode — mutate must call onSuccess for dialog to close', () => {
     afterEach(() => {
       vi.restoreAllMocks()
     })
 
-    it('user can create a new recipe — dialog closes even when mutate ignores onSuccess', async () => {
-      // Given an item with no recipes
+    it('dialog stays open when mutate ignores onSuccess (regression guard)', async () => {
+      // Given: mutate fires but never calls the onSuccess callback (broken cloud mode)
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
+        mutate: vi.fn(), // ignores options — no onSuccess call
+        isPending: false,
+      })
+
       const item = await createItem({
         name: 'Test Item',
         targetUnit: 'package',
@@ -220,23 +216,63 @@ describe('Recipes Tab', () => {
       renderRecipesTab(item.id)
       const user = userEvent.setup()
 
-      // When user opens dialog and submits a recipe name
-      await waitFor(() => {
+      // When user opens dialog and submits
+      await waitFor(() =>
         expect(
           screen.getByRole('button', { name: /new recipe/i }),
-        ).toBeInTheDocument()
-      })
+        ).toBeInTheDocument(),
+      )
       await user.click(screen.getByRole('button', { name: /new recipe/i }))
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument()
-      })
+      await waitFor(() =>
+        expect(screen.getByRole('dialog')).toBeInTheDocument(),
+      )
       await user.type(screen.getByLabelText(/name/i), 'Cloud Recipe')
       await user.click(screen.getByRole('button', { name: /add recipe/i }))
 
-      // Then the dialog closes regardless of whether onSuccess fires
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      // Then dialog stays open (onSuccess was never called)
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('dialog closes when mutate properly calls onSuccess (fixed cloud mode)', async () => {
+      // Given: mutate invokes the onSuccess callback (fixed cloud mode behaviour)
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
+        mutate: vi.fn((_input, options?: { onSuccess?: () => void }) => {
+          Promise.resolve().then(() => options?.onSuccess?.())
+        }),
+        isPending: false,
       })
+
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+      renderRecipesTab(item.id)
+      const user = userEvent.setup()
+
+      // When user opens dialog and submits
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /new recipe/i }),
+        ).toBeInTheDocument(),
+      )
+      await user.click(screen.getByRole('button', { name: /new recipe/i }))
+      await waitFor(() =>
+        expect(screen.getByRole('dialog')).toBeInTheDocument(),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Cloud Recipe')
+      await user.click(screen.getByRole('button', { name: /add recipe/i }))
+
+      // Then dialog closes once onSuccess fires
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      )
     })
   })
 

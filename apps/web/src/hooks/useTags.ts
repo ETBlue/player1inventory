@@ -75,10 +75,18 @@ export function useCreateTagType() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (input: { name: string; color?: TagColor }) =>
+      mutate: (
+        input: { name: string; color?: TagColor },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
         cloudCreate({
           variables: { name: input.name, color: input.color ?? 'teal' },
-        }),
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (input: { name: string; color?: TagColor }) =>
         cloudCreate({
           variables: { name: input.name, color: input.color ?? 'teal' },
@@ -114,8 +122,16 @@ export function useUpdateTagType() {
       return vars
     }
     return {
-      mutate: ({ id, updates }: { id: string; updates: Partial<TagType> }) =>
-        cloudUpdate({ variables: toVars(id, updates) }),
+      mutate: (
+        { id, updates }: { id: string; updates: Partial<TagType> },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdate({ variables: toVars(id, updates) }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({
         id,
         updates,
@@ -155,7 +171,16 @@ export function useDeleteTagType() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudDelete({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteTagType),
       isPending: false,
@@ -239,8 +264,18 @@ export function useCreateTag() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (input: Omit<Tag, 'id'>) =>
-        cloudCreate({ variables: { name: input.name, typeId: input.typeId } }),
+      mutate: (
+        input: Omit<Tag, 'id'>,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudCreate({
+          variables: { name: input.name, typeId: input.typeId },
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (input: Omit<Tag, 'id'>) =>
         cloudCreate({
           variables: { name: input.name, typeId: input.typeId },
@@ -276,8 +311,16 @@ export function useUpdateTag() {
       return vars
     }
     return {
-      mutate: ({ id, updates }: { id: string; updates: Partial<Tag> }) =>
-        cloudUpdate({ variables: toVars(id, updates) }),
+      mutate: (
+        { id, updates }: { id: string; updates: Partial<Tag> },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdate({ variables: toVars(id, updates) }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({ id, updates }: { id: string; updates: Partial<Tag> }) =>
         cloudUpdate({ variables: toVars(id, updates) }).then(
           (r) => r.data?.updateTag,
@@ -307,7 +350,16 @@ export function useDeleteTag() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudDelete({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteTag),
       isPending: false,

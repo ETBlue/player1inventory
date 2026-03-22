@@ -131,8 +131,16 @@ export function useCreateItem() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (input: { name: string }) =>
-        cloudCreate({ variables: { name: input.name } }),
+      mutate: (
+        input: { name: string },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudCreate({ variables: { name: input.name } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (input: { name: string }) =>
         cloudCreate({ variables: { name: input.name } }).then(
           (r) => r.data?.createItem,
@@ -163,8 +171,18 @@ export function useUpdateItem() {
 
   if (mode === 'cloud') {
     return {
-      mutate: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
-        cloudUpdate({ variables: { id, input: toUpdateItemInput(updates) } }),
+      mutate: (
+        { id, updates }: { id: string; updates: Partial<Item> },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdate({
+          variables: { id, input: toUpdateItemInput(updates) },
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
         cloudUpdate({
           variables: { id, input: toUpdateItemInput(updates) },
@@ -197,7 +215,16 @@ export function useDeleteItem() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudDelete({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteItem),
       isPending: false,

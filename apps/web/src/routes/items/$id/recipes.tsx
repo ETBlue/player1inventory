@@ -39,12 +39,15 @@ function RecipesTab() {
   const handleAddRecipe = () => {
     if (!newRecipeName.trim()) return
 
-    createRecipe.mutate({
-      name: newRecipeName.trim(),
-      items: [{ itemId: id, defaultAmount: 0 }],
-    })
-    setNewRecipeName('')
-    setShowDialog(false)
+    createRecipe.mutate(
+      { name: newRecipeName.trim(), items: [{ itemId: id, defaultAmount: 0 }] },
+      {
+        onSuccess: () => {
+          setNewRecipeName('')
+          setShowDialog(false)
+        },
+      },
+    )
   }
 
   if (!item) return null

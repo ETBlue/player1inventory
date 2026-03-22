@@ -108,8 +108,16 @@ export function useAddToCart() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (vars: { cartId: string; itemId: string; quantity: number }) =>
-        cloudAddToCart({ variables: vars }),
+      mutate: (
+        vars: { cartId: string; itemId: string; quantity: number },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudAddToCart({ variables: vars }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (vars: {
         cartId: string
         itemId: string
@@ -145,13 +153,22 @@ export function useUpdateCartItem() {
 
   if (mode === 'cloud') {
     return {
-      mutate: ({
-        cartItemId,
-        quantity,
-      }: {
-        cartItemId: string
-        quantity: number
-      }) => cloudUpdateCartItem({ variables: { id: cartItemId, quantity } }),
+      mutate: (
+        {
+          cartItemId,
+          quantity,
+        }: {
+          cartItemId: string
+          quantity: number
+        },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdateCartItem({ variables: { id: cartItemId, quantity } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({
         cartItemId,
         quantity,
@@ -186,7 +203,16 @@ export function useRemoveFromCart() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudRemoveFromCart({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudRemoveFromCart({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudRemoveFromCart({ variables: { id } }).then(
           (r) => r.data?.removeFromCart,
@@ -216,7 +242,10 @@ export function useCheckout() {
 
   if (mode === 'cloud') {
     return {
-      mutate: ({ cartId, note }: { cartId: string; note?: string }) =>
+      mutate: (
+        { cartId, note }: { cartId: string; note?: string },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
         cloudCheckout({
           variables: { cartId, ...(note ? { note } : {}) },
           refetchQueries: [
@@ -224,13 +253,19 @@ export function useCheckout() {
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
           ],
-        }).then(async () => {
-          await queryClient.invalidateQueries({ queryKey: ['cart'] })
-          await queryClient.invalidateQueries({ queryKey: ['items'] })
-          await queryClient.invalidateQueries({
-            queryKey: ['sort', 'purchaseDates'],
-          })
-        }),
+        }).then(
+          async () => {
+            await queryClient.invalidateQueries({ queryKey: ['cart'] })
+            await queryClient.invalidateQueries({ queryKey: ['items'] })
+            await queryClient.invalidateQueries({
+              queryKey: ['sort', 'purchaseDates'],
+            })
+            options?.onSuccess?.()
+          },
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: async ({
         cartId,
         note,
@@ -275,14 +310,22 @@ export function useAbandonCart() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (cartId: string) =>
+      mutate: (
+        cartId: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
         cloudAbandonCart({
           variables: { cartId },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
           ],
-        }),
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (cartId: string) =>
         cloudAbandonCart({
           variables: { cartId },

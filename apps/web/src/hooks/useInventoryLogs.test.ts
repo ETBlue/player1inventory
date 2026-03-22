@@ -39,11 +39,10 @@ afterEach(() => {
 })
 
 describe('useItemLogs (cloud mode)', () => {
-  it('user can see inventory logs — occurredAt and createdAt ISO strings are converted to Date objects', async () => {
+  it('user can see inventory logs — occurredAt ISO string is converted to a Date object', async () => {
     // Given cloud mode and Apollo returns log entries with ISO date strings
     localStorage.setItem('data-mode', 'cloud')
     const occurredAtStr = '2026-03-19T10:00:00.000Z'
-    const createdAtStr = '2026-03-19T10:00:01.000Z'
     mockItemLogsQuery.mockReturnValue({
       data: {
         itemLogs: [
@@ -53,7 +52,6 @@ describe('useItemLogs (cloud mode)', () => {
             delta: 3,
             quantity: 5,
             occurredAt: occurredAtStr,
-            createdAt: createdAtStr,
             note: 'checkout',
           },
         ],
@@ -67,7 +65,8 @@ describe('useItemLogs (cloud mode)', () => {
       wrapper: createWrapper(),
     })
 
-    // Then occurredAt and createdAt are Date instances, not strings
+    // Then occurredAt is a Date instance (GraphQL schema does not expose createdAt;
+    // the hook falls back to occurredAt for the createdAt field)
     await waitFor(() => {
       expect(result.current.data).toHaveLength(1)
     })
@@ -75,7 +74,7 @@ describe('useItemLogs (cloud mode)', () => {
     expect(log.occurredAt).toBeInstanceOf(Date)
     expect(log.occurredAt.toISOString()).toBe(occurredAtStr)
     expect(log.createdAt).toBeInstanceOf(Date)
-    expect(log.createdAt.toISOString()).toBe(createdAtStr)
+    expect(log.createdAt.toISOString()).toBe(occurredAtStr)
   })
 
   it('user sees loading state while Apollo query is in flight', () => {

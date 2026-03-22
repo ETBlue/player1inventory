@@ -107,8 +107,16 @@ export function useCreateRecipe() {
       return vars
     }
     return {
-      mutate: (input: { name: string; items?: RecipeItem[] }) =>
-        cloudCreate({ variables: toVars(input) }),
+      mutate: (
+        input: { name: string; items?: RecipeItem[] },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudCreate({ variables: toVars(input) }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (input: { name: string; items?: RecipeItem[] }) =>
         cloudCreate({ variables: toVars(input) }).then(
           (r) => r.data?.createRecipe,
@@ -156,13 +164,16 @@ export function useUpdateRecipe() {
       return vars
     }
     return {
-      mutate: ({
-        id,
-        updates,
-      }: {
-        id: string
-        updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
-      }) =>
+      mutate: (
+        {
+          id,
+          updates,
+        }: {
+          id: string
+          updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
+        },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
         cloudUpdate({
           variables: toVars(id, updates),
           refetchQueries: [
@@ -170,7 +181,12 @@ export function useUpdateRecipe() {
             { query: GetRecipeDocument, variables: { id } },
           ],
           awaitRefetchQueries: true,
-        }),
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({
         id,
         updates,
@@ -210,7 +226,16 @@ export function useDeleteRecipe() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudDelete({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteRecipe),
       isPending: false,
@@ -237,7 +262,16 @@ export function useUpdateRecipeLastCookedAt() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudUpdate({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdate({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudUpdate({ variables: { id } }).then(
           (r) => r.data?.updateRecipeLastCookedAt,

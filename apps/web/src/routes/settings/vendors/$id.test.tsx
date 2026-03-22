@@ -6,9 +6,10 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createVendor } from '@/db/operations'
+import * as useVendorsModule from '@/hooks/useVendors'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Vendor Detail - Info Tab', () => {
@@ -157,6 +158,75 @@ describe('Vendor Detail - Info Tab', () => {
       expect(
         screen.getByRole('button', { name: /new vendor/i }),
       ).toBeInTheDocument()
+    })
+  })
+
+  describe('cloud mode — mutate must call onSuccess for navigation to occur', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('user is not navigated back when mutate ignores onSuccess (regression guard)', async () => {
+      // Given: mutate fires but never calls the onSuccess callback (broken cloud mode)
+      vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
+        mutate: vi.fn(), // ignores options — no onSuccess call
+        isPending: false,
+      })
+
+      const vendor = await createVendor('Test Vendor')
+      sessionStorage.setItem(
+        'app-navigation-history',
+        JSON.stringify(['/settings/vendors']),
+      )
+
+      renderInfoTab(vendor.id)
+      const user = userEvent.setup()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/name/i)).toBeInTheDocument(),
+      )
+      await user.clear(screen.getByLabelText(/name/i))
+      await user.type(screen.getByLabelText(/name/i), 'New Name')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then navigation does NOT happen (goBack() inside onSuccess was never called)
+      expect(
+        screen.queryByRole('heading', { name: /vendors/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    })
+
+    it('user is navigated back after saving when mutate properly calls onSuccess (fixed cloud mode)', async () => {
+      // Given: mutate invokes the onSuccess callback (fixed cloud mode behaviour)
+      vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
+        mutate: vi.fn((_input, options?: { onSuccess?: () => void }) => {
+          Promise.resolve().then(() => options?.onSuccess?.())
+        }),
+        isPending: false,
+      })
+
+      const vendor = await createVendor('Test Vendor')
+      sessionStorage.setItem(
+        'app-navigation-history',
+        JSON.stringify(['/settings/vendors']),
+      )
+
+      renderInfoTab(vendor.id)
+      const user = userEvent.setup()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/name/i)).toBeInTheDocument(),
+      )
+      await user.clear(screen.getByLabelText(/name/i))
+      await user.type(screen.getByLabelText(/name/i), 'New Name')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then navigates back to the vendors list once onSuccess fires
+      await waitFor(() => {
+        expect(
+          screen.getByRole('heading', { name: /vendors/i }),
+        ).toBeInTheDocument()
+      })
     })
   })
 
