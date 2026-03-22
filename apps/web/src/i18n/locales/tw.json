@@ -249,11 +249,11 @@
       "invalidFile": "無效的備份檔案",
       "conflictDialog": {
         "title": "偵測到衝突",
-        "description": "檔案中有些項目已存在於您的資料中，要如何處理？",
+        "description": "您上傳的檔案裡，有些資料跟系統上的重疊了，要如何處理？",
         "cancel": "取消",
-        "skip": "跳過衝突",
-        "replace": "取代相符項目",
-        "clear": "清除並匯入",
+        "skip": "只匯入沒重疊的",
+        "replace": "遇到重疊時，用檔案的蓋掉系統的",
+        "clear": "清空系統的，全部只用檔案的",
         "idMatch": "ID",
         "nameMatch": "名稱",
         "bothMatch": "ID + 名稱",
@@ -261,11 +261,11 @@
           "items": "品項",
           "tags": "標籤",
           "tagTypes": "標籤類型",
-          "vendors": "廠商",
+          "vendors": "供應商",
           "recipes": "食譜",
           "inventoryLogs": "庫存記錄",
           "shoppingCarts": "購物車",
-          "cartItems": "購物車品項"
+          "cartItems": "購物車內的商品"
         }
       }
     }

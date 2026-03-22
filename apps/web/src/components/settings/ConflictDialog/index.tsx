@@ -71,10 +71,10 @@ export function ConflictDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t('settings.import.conflictDialog.title')}</DialogTitle>
-          <DialogDescription>
-            {t('settings.import.conflictDialog.description')}
-          </DialogDescription>
         </DialogHeader>
+        <DialogDescription>
+          {t('settings.import.conflictDialog.description')}
+        </DialogDescription>
 
         <div className="space-y-2 py-2 max-h-64 overflow-y-auto">
           {activeKeys.map((key) => {
