@@ -410,3 +410,63 @@ test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
   await page.waitForURL((url) => url.pathname.includes(recipeId))
   await expect(page.getByLabel('Name')).toHaveValue('Waffles')
 })
+
+test.describe('recipe item count after item assignment', () => {
+  test('recipe item count updates after item is assigned to a recipe', async ({ page, request, baseURL }) => {
+    const recipes = new RecipesPage(page)
+    const detail = new RecipeDetailPage(page)
+
+    let recipeId: string
+
+    // Given: a recipe "Pancakes" exists and an item "Eggs" exists WITHOUT being in the recipe
+    if (baseURL === CLOUD_WEB_URL) {
+      // Cloud: create recipe via UI, then create item via pantry UI (not in recipe)
+      const pantry = new PantryPage(page)
+      const item = new ItemPage(page)
+
+      await recipes.navigateTo()
+      await recipes.clickNewRecipe()
+      await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
+      await recipes.fillRecipeName('Pancakes')
+      await recipes.clickSave()
+      await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
+      recipeId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
+
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Eggs')
+      await item.save()
+    } else {
+      // Local: seed recipe (empty, no items) and standalone item via IndexedDB
+      const result = await seedRecipe(page, 'Pancakes') // no items
+      recipeId = result.recipeId
+      await seedItem(page, 'Eggs')
+    }
+
+    // First: navigate to recipes list to prime the TanStack Query cache with count=0
+    await recipes.navigateTo()
+    // Confirm count is 0 (dialog says "It has no items")
+    await recipes.clickDeleteRecipe('Pancakes')
+    await expect(page.getByRole('alertdialog')).toContainText('It has no items')
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // When: navigate to recipe detail Items tab and assign the item
+    await detail.navigateToItems(recipeId)
+    await expect(detail.getItemCheckbox('Eggs')).toBeVisible()
+    await detail.toggleItem('Eggs')
+    await expect(detail.getAssignedItemCheckbox('Eggs')).toBeVisible()
+
+    // Then: navigate back to recipes list — the cached count must have been invalidated
+    // and reflect the assignment (count=1), not the stale count=0
+    await recipes.navigateTo()
+
+    // Click delete to open dialog and verify the count reflects the assignment
+    // Dialog description: '"Pancakes" will be deleted. It contains 1 item. Your inventory will not be affected.'
+    // (src/i18n/locales/en.json: settings.recipes.deleteWithItems_one)
+    await recipes.clickDeleteRecipe('Pancakes')
+    await expect(page.getByRole('alertdialog')).toContainText('It contains 1 item')
+
+    // Cancel — do not delete
+    await page.getByRole('button', { name: 'Cancel' }).click()
+  })
+})

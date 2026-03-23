@@ -164,11 +164,22 @@ export function useUpdateItem() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['items', id] })
+      queryClient.invalidateQueries({ queryKey: ['items', 'countByTag'] })
+      queryClient.invalidateQueries({ queryKey: ['items', 'countByVendor'] })
     },
   })
 
   const [cloudUpdate] = useUpdateItemMutation({
     refetchQueries: [{ query: GetItemsDocument }],
+    update(cache) {
+      cache.modify({
+        fields: {
+          itemCountByTag: (_, { DELETE }) => DELETE,
+          itemCountByVendor: (_, { DELETE }) => DELETE,
+        },
+      })
+      cache.gc()
+    },
   })
 
   if (mode === 'cloud') {

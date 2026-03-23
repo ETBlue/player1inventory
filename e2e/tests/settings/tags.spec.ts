@@ -482,6 +482,92 @@ test.describe('new tag from item tags tab', () => {
   })
 })
 
+test.describe('tag item count after tag assignment', () => {
+  test('tag item count updates after tag is assigned to an item', async ({ page, baseURL }) => {
+    const tagsPage = new TagsPage(page)
+    const detail = new TagDetailPage(page)
+    const pantry = new PantryPage(page)
+    const item = new ItemPage(page)
+
+    let tagId: string
+
+    // Given: a tag type "Category" and tag "Fresh" exist; an item "Test Apple" exists WITHOUT the tag
+    if (baseURL === CLOUD_WEB_URL) {
+      // Cloud: UI-driven setup
+      await tagsPage.navigateTo()
+      await tagsPage.fillTagTypeName('Category')
+      await tagsPage.clickNewTagType()
+      await expect(tagsPage.getTagTypeCard('Category')).toBeVisible()
+      await tagsPage.clickNewTag('Category')
+      await tagsPage.fillTagName('Fresh')
+      await tagsPage.submitTagDialog()
+      await expect(tagsPage.getTagBadge('Fresh')).toBeVisible()
+
+      // Get tag ID from URL
+      await tagsPage.clickTagBadgeToNavigate('Fresh')
+      await page.waitForURL(/\/settings\/tags\/[^/]/)
+      tagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
+
+      // Create item (untagged)
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Apple')
+      await item.save()
+    } else {
+      // Local: seed tag and item directly into IndexedDB — item has NO tags
+      const { tagIds } = await seedTags(
+        page,
+        [{ name: 'Category', color: 'blue' }],
+        [{ name: 'Fresh', typeIndex: 0 }],
+      )
+      tagId = tagIds[0]
+      await seedItem(page, 'Test Apple') // no tagIds = untagged
+    }
+
+    // First: load the tags list page to prime the TanStack Query cache with count=0
+    await tagsPage.navigateTo()
+    // Confirm count is 0 — delete dialog says "no item is using it"
+    await tagsPage.clickDeleteTag('Fresh')
+    await expect(tagsPage.getDeleteDialog()).toContainText('no item is using it')
+    await tagsPage.cancelDeleteDialog()
+
+    // When: SPA-navigate to tag detail page (keeps TanStack Query cache alive)
+    // Click the "Fresh" badge to navigate to the tag detail page
+    await tagsPage.clickTagBadgeToNavigate('Fresh')
+    await page.waitForURL(/\/settings\/tags\/[^/]/)
+
+    // SPA-navigate to Items tab by clicking the tab link
+    // Tab link: to="/settings/tags/$id/items" (src/routes/settings/tags/$id.tsx:122-130)
+    await page.locator(`a[href$="/settings/tags/${tagId}/items"]`).click()
+    await page.waitForURL(`**/settings/tags/${tagId}/items`)
+    await expect(detail.getItemCheckbox('Test Apple')).toBeVisible()
+
+    // Assign the item
+    await detail.toggleItem('Test Apple')
+    await expect(detail.getAssignedItemCheckbox('Test Apple')).toBeVisible()
+
+    // Navigate back via the "Go back" button (SPA navigation — preserves TanStack Query cache)
+    // "Go back" from items tab: isSamePage()/navigation history logic means it skips the
+    // tag detail info page (same tag ID) and goes directly to the tags list.
+    // (src/hooks/useAppNavigation.ts — isSamePage filters /settings/tags/:id/* as same page)
+    // aria-label="Go back" (src/routes/settings/tags/$id.tsx:101, common.goBack = "Go back")
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.waitForURL(/\/settings\/tags$/)
+
+    // Then: the tags list page must show the updated count for "Fresh"
+    // The cached count query must have been invalidated by useUpdateItem's onSuccess
+    // (without the fix, count stays at 0 because queryClient.invalidateQueries is missing)
+    // Click delete to read the count from the dialog description
+    await tagsPage.clickDeleteTag('Fresh')
+    // Dialog description: "We are about to delete "Fresh", removing it from 1 item."
+    // (src/i18n/locales/en.json: settings.tags.tag.deleteWithItems_one)
+    await expect(tagsPage.getDeleteDialog()).toContainText('removing it from 1 item')
+
+    // Cancel — do not delete
+    await tagsPage.cancelDeleteDialog()
+  })
+})
+
 test.describe('tag item count after item deletion', () => {
   test('tag item count updates after item is deleted', async ({ page, baseURL }) => {
     const tagsPage = new TagsPage(page)
