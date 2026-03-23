@@ -34,7 +34,7 @@ export class ShoppingPage {
 
   async confirmCheckout() {
     // Checkout dialog title: "Complete shopping trip?"
-    // Confirm button text: "Done" scoped inside alertdialog
-    await this.page.getByRole('alertdialog').getByRole('button', { name: 'Done' }).click()
+    // Confirm button text: "Confirm" scoped inside alertdialog
+    await this.page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click()
   }
 }
