@@ -50,6 +50,32 @@ import type { ExportPayload } from './exportData'
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
 // ---------------------------------------------------------------------------
+// Batching helpers
+// ---------------------------------------------------------------------------
+
+const BATCH_SIZE = 50
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = []
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size))
+  }
+  return result
+}
+
+export interface ImportProgress {
+  completedBatches: number
+  totalBatches: number
+  currentEntity: string
+}
+
+export interface ImportSession {
+  payload: ExportPayload
+  strategy: ImportStrategy
+  completedBatchKeys: Set<string> // key format: `${entityType}:${batchIndex}`
+}
+
+// ---------------------------------------------------------------------------
 // GraphQL Input mappers — strip server-only fields (__typename, userId,
 // familyId) and any other fields not accepted by the corresponding Input type.
 // These are used before passing payload objects as GraphQL mutation variables.
@@ -614,195 +640,423 @@ async function fetchCloudExistingData(
   }
 }
 
-async function bulkCreate(
-  client: ApolloClient,
-  data: ExportPayload,
-): Promise<void> {
-  if (data.items.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateItemsDocument,
-      variables: {
-        items: data.items.map((i) => toItemInput(i as Record<string, unknown>)),
-      },
-    })
-  }
-  if (data.vendors.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateVendorsDocument,
-      variables: {
-        vendors: data.vendors.map((v) =>
-          toVendorInput(v as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.recipes.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateRecipesDocument,
-      variables: {
-        recipes: data.recipes.map((r) =>
-          toRecipeInput(r as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.tagTypes.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateTagTypesDocument,
-      variables: {
-        tagTypes: data.tagTypes.map((t) =>
-          toTagTypeInput(t as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.tags.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateTagsDocument,
-      variables: {
-        tags: data.tags.map((t) => toTagInput(t as Record<string, unknown>)),
-      },
-    })
-  }
-  if (data.inventoryLogs.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateInventoryLogsDocument,
-      variables: {
-        logs: data.inventoryLogs.map((l) =>
-          toInventoryLogInput(l as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.shoppingCarts.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateShoppingCartsDocument,
-      variables: {
-        carts: data.shoppingCarts.map((c) =>
-          toShoppingCartInput(c as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.cartItems.length > 0) {
-    await client.mutate({
-      mutation: BulkCreateCartItemsDocument,
-      variables: {
-        cartItems: data.cartItems.map((ci) =>
-          toCartItemInput(ci as Record<string, unknown>),
-        ),
-      },
-    })
-  }
+// ---------------------------------------------------------------------------
+// Batched bulk create — processes each entity array in chunks of BATCH_SIZE.
+// Skips batches already recorded in session.completedBatchKeys.
+// Calls onProgress after each successful batch.
+// Entity order: tagTypes → tags → vendors → items → recipes → inventoryLogs →
+//               shoppingCarts → cartItems
+// ---------------------------------------------------------------------------
+
+interface BatchedBulkArgs {
+  client: ApolloClient
+  data: ExportPayload
+  session: ImportSession
+  onProgress: (p: ImportProgress) => void
+  startCompleted: number
+  totalBatches: number
 }
 
-async function bulkUpsert(
-  client: ApolloClient,
-  data: ExportPayload,
-): Promise<void> {
-  if (data.items.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertItemsDocument,
-      variables: {
-        items: data.items.map((i) => toItemInput(i as Record<string, unknown>)),
-      },
-    })
+async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
+  const { client, data, session, onProgress, totalBatches } = args
+  let completedBatches = args.startCompleted
+
+  const entityGroups: Array<{
+    entityType: string
+    items: unknown[]
+    mutate: (batch: unknown[]) => Promise<void>
+  }> = [
+    {
+      entityType: 'tagTypes',
+      items: data.tagTypes,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateTagTypesDocument,
+            variables: {
+              tagTypes: batch.map((t) =>
+                toTagTypeInput(t as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'tags',
+      items: data.tags,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateTagsDocument,
+            variables: {
+              tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'vendors',
+      items: data.vendors,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateVendorsDocument,
+            variables: {
+              vendors: batch.map((v) =>
+                toVendorInput(v as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'items',
+      items: data.items,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateItemsDocument,
+            variables: {
+              items: batch.map((i) =>
+                toItemInput(i as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'recipes',
+      items: data.recipes,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateRecipesDocument,
+            variables: {
+              recipes: batch.map((r) =>
+                toRecipeInput(r as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'inventoryLogs',
+      items: data.inventoryLogs,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateInventoryLogsDocument,
+            variables: {
+              logs: batch.map((l) =>
+                toInventoryLogInput(l as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'shoppingCarts',
+      items: data.shoppingCarts,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateShoppingCartsDocument,
+            variables: {
+              carts: batch.map((c) =>
+                toShoppingCartInput(c as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'cartItems',
+      items: data.cartItems,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateCartItemsDocument,
+            variables: {
+              cartItems: batch.map((ci) =>
+                toCartItemInput(ci as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+  ]
+
+  for (const group of entityGroups) {
+    const batches = chunk(group.items, BATCH_SIZE)
+    for (const [i, batch] of batches.entries()) {
+      const key = `${group.entityType}:${i}`
+      if (session.completedBatchKeys.has(key)) {
+        completedBatches++
+        continue
+      }
+      await group.mutate(batch)
+      session.completedBatchKeys.add(key)
+      completedBatches++
+      onProgress({
+        completedBatches,
+        totalBatches,
+        currentEntity: group.entityType,
+      })
+    }
   }
-  if (data.vendors.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertVendorsDocument,
-      variables: {
-        vendors: data.vendors.map((v) =>
-          toVendorInput(v as Record<string, unknown>),
-        ),
-      },
-    })
+
+  return completedBatches
+}
+
+// ---------------------------------------------------------------------------
+// Batched bulk upsert — same structure as bulkCreate but uses Upsert mutations.
+// ---------------------------------------------------------------------------
+
+async function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
+  const { client, data, session, onProgress, totalBatches } = args
+  let completedBatches = args.startCompleted
+
+  const entityGroups: Array<{
+    entityType: string
+    items: unknown[]
+    mutate: (batch: unknown[]) => Promise<void>
+  }> = [
+    {
+      entityType: 'tagTypes',
+      items: data.tagTypes,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertTagTypesDocument,
+            variables: {
+              tagTypes: batch.map((t) =>
+                toTagTypeInput(t as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'tags',
+      items: data.tags,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertTagsDocument,
+            variables: {
+              tags: batch.map((t) => toTagInput(t as Record<string, unknown>)),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'vendors',
+      items: data.vendors,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertVendorsDocument,
+            variables: {
+              vendors: batch.map((v) =>
+                toVendorInput(v as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'items',
+      items: data.items,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertItemsDocument,
+            variables: {
+              items: batch.map((i) =>
+                toItemInput(i as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'recipes',
+      items: data.recipes,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertRecipesDocument,
+            variables: {
+              recipes: batch.map((r) =>
+                toRecipeInput(r as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'inventoryLogs',
+      items: data.inventoryLogs,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertInventoryLogsDocument,
+            variables: {
+              logs: batch.map((l) =>
+                toInventoryLogInput(l as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'shoppingCarts',
+      items: data.shoppingCarts,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertShoppingCartsDocument,
+            variables: {
+              carts: batch.map((c) =>
+                toShoppingCartInput(c as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'cartItems',
+      items: data.cartItems,
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertCartItemsDocument,
+            variables: {
+              cartItems: batch.map((ci) =>
+                toCartItemInput(ci as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+  ]
+
+  for (const group of entityGroups) {
+    const batches = chunk(group.items, BATCH_SIZE)
+    for (const [i, batch] of batches.entries()) {
+      const key = `${group.entityType}:${i}`
+      if (session.completedBatchKeys.has(key)) {
+        completedBatches++
+        continue
+      }
+      await group.mutate(batch)
+      session.completedBatchKeys.add(key)
+      completedBatches++
+      onProgress({
+        completedBatches,
+        totalBatches,
+        currentEntity: group.entityType,
+      })
+    }
   }
-  if (data.recipes.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertRecipesDocument,
-      variables: {
-        recipes: data.recipes.map((r) =>
-          toRecipeInput(r as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.tagTypes.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertTagTypesDocument,
-      variables: {
-        tagTypes: data.tagTypes.map((t) =>
-          toTagTypeInput(t as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.tags.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertTagsDocument,
-      variables: {
-        tags: data.tags.map((t) => toTagInput(t as Record<string, unknown>)),
-      },
-    })
-  }
-  if (data.inventoryLogs.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertInventoryLogsDocument,
-      variables: {
-        logs: data.inventoryLogs.map((l) =>
-          toInventoryLogInput(l as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.shoppingCarts.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertShoppingCartsDocument,
-      variables: {
-        carts: data.shoppingCarts.map((c) =>
-          toShoppingCartInput(c as Record<string, unknown>),
-        ),
-      },
-    })
-  }
-  if (data.cartItems.length > 0) {
-    await client.mutate({
-      mutation: BulkUpsertCartItemsDocument,
-      variables: {
-        cartItems: data.cartItems.map((ci) =>
-          toCartItemInput(ci as Record<string, unknown>),
-        ),
-      },
-    })
-  }
+
+  return completedBatches
+}
+
+function computeTotalBatches(data: ExportPayload): number {
+  return (
+    chunk(data.tagTypes, BATCH_SIZE).length +
+    chunk(data.tags, BATCH_SIZE).length +
+    chunk(data.vendors, BATCH_SIZE).length +
+    chunk(data.items, BATCH_SIZE).length +
+    chunk(data.recipes, BATCH_SIZE).length +
+    chunk(data.inventoryLogs, BATCH_SIZE).length +
+    chunk(data.shoppingCarts, BATCH_SIZE).length +
+    chunk(data.cartItems, BATCH_SIZE).length
+  )
 }
 
 export async function importCloudData(
   payload: ExportPayload,
   strategy: ImportStrategy,
   client: ApolloClient,
+  options?: {
+    onProgress?: (p: ImportProgress) => void
+    session?: ImportSession
+  },
 ): Promise<void> {
-  if (strategy === 'clear') {
-    await client.mutate({ mutation: ClearAllDataDocument })
-    await bulkCreate(client, payload)
-    await client.resetStore()
-    return
+  const onProgress = options?.onProgress ?? (() => undefined)
+  const session: ImportSession = options?.session ?? {
+    payload,
+    strategy,
+    completedBatchKeys: new Set(),
   }
 
-  const existing = await fetchCloudExistingData(client)
-  const conflicts = detectConflicts(payload, existing)
+  try {
+    if (strategy === 'clear') {
+      const totalBatches = computeTotalBatches(payload)
+      onProgress({ completedBatches: 0, totalBatches, currentEntity: '' })
+      await client.mutate({ mutation: ClearAllDataDocument })
+      await bulkCreate({
+        client,
+        data: payload,
+        session,
+        onProgress,
+        startCompleted: 0,
+        totalBatches,
+      })
+      await client.resetStore()
+      return
+    }
 
-  if (strategy === 'skip') {
-    const { toCreate } = partitionPayload(payload, conflicts, 'skip')
-    await bulkCreate(client, toCreate)
+    const existing = await fetchCloudExistingData(client)
+    const conflicts = detectConflicts(payload, existing)
+
+    if (strategy === 'skip') {
+      const { toCreate } = partitionPayload(payload, conflicts, 'skip')
+      const totalBatches = computeTotalBatches(toCreate)
+      onProgress({ completedBatches: 0, totalBatches, currentEntity: '' })
+      await bulkCreate({
+        client,
+        data: toCreate,
+        session,
+        onProgress,
+        startCompleted: 0,
+        totalBatches,
+      })
+      await client.resetStore()
+      return
+    }
+
+    // strategy === 'replace'
+    const { toCreate, toUpsert } = partitionPayload(
+      payload,
+      conflicts,
+      'replace',
+    )
+    const totalBatches =
+      computeTotalBatches(toCreate) + computeTotalBatches(toUpsert)
+    onProgress({ completedBatches: 0, totalBatches, currentEntity: '' })
+    const afterCreate = await bulkCreate({
+      client,
+      data: toCreate,
+      session,
+      onProgress,
+      startCompleted: 0,
+      totalBatches,
+    })
+    await bulkUpsert({
+      client,
+      data: toUpsert,
+      session,
+      onProgress,
+      startCompleted: afterCreate,
+      totalBatches,
+    })
     await client.resetStore()
-    return
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err))
+    ;(error as Error & { session: ImportSession }).session = session
+    throw error
   }
-
-  // strategy === 'replace'
-  const { toCreate, toUpsert } = partitionPayload(payload, conflicts, 'replace')
-  await bulkCreate(client, toCreate)
-  await bulkUpsert(client, toUpsert)
-  await client.resetStore()
 }

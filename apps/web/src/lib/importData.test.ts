@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import type { ExportPayload } from './exportData'
 import {
@@ -6,6 +6,8 @@ import {
   detectConflicts,
   type ExistingData,
   hasConflicts,
+  type ImportSession,
+  importCloudData,
   importLocalData,
   partitionPayload,
   toCartItemInput,
@@ -644,5 +646,127 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.cartId).toBe('cart-1')
     expect(result.itemId).toBe('item-1')
     expect(result.quantity).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// importCloudData — batched cloud import
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — batched cloud import', () => {
+  function makeMockClient(mutateFn = vi.fn().mockResolvedValue({})) {
+    return {
+      mutate: mutateFn,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+        },
+      }),
+    }
+  }
+
+  // Build a payload with enough items to span multiple batches (batch size = 50)
+  function makePayloadWithItems(count: number): ExportPayload {
+    return emptyPayload({
+      items: Array.from({ length: count }, (_, i) =>
+        makeItem(`item-${i}`, `Item ${i}`),
+      ),
+    })
+  }
+
+  it('onProgress is called for each batch', async () => {
+    // Given a payload with 60 items (2 batches) and a succeeding Apollo client
+    const payload = makePayloadWithItems(60)
+    const client = makeMockClient()
+    const progressCalls: Array<{
+      completedBatches: number
+      totalBatches: number
+    }> = []
+
+    // When importing with skip strategy
+    await importCloudData(payload, 'skip', client as never, {
+      onProgress: (p) => progressCalls.push(p),
+    })
+
+    // Then onProgress is called: once at start (0/2) + once per batch (1/2, 2/2)
+    // Total batches = 2 (items only — all other entity arrays are empty → 0 batches each)
+    expect(progressCalls[0]).toMatchObject({
+      completedBatches: 0,
+      totalBatches: 2,
+    })
+    // Each completed batch increments completedBatches
+    const completedValues = progressCalls
+      .slice(1)
+      .map((p) => p.completedBatches)
+    expect(completedValues).toEqual([1, 2])
+    expect(progressCalls[progressCalls.length - 1].completedBatches).toBe(
+      progressCalls[progressCalls.length - 1].totalBatches,
+    )
+  })
+
+  it('skips already-completed batches on retry', async () => {
+    // Given a payload with 60 items (2 batches of 50/10)
+    const payload = makePayloadWithItems(60)
+    const client = makeMockClient()
+
+    // And a session where batch 0 (items:0) is already complete
+    const session: ImportSession = {
+      payload,
+      strategy: 'skip',
+      completedBatchKeys: new Set(['items:0']),
+    }
+
+    // When retrying the import
+    await importCloudData(payload, 'skip', client as never, { session })
+
+    // Then Apollo mutate is only called once (for batch 1 = the second 10 items)
+    // Not for batch 0 which is already done
+    const mutateCalls = (client.mutate as ReturnType<typeof vi.fn>).mock.calls
+    expect(mutateCalls).toHaveLength(1)
+
+    // Verify the single call contains the second batch (10 items)
+    const variables = mutateCalls[0][0].variables as { items: unknown[] }
+    expect(variables.items).toHaveLength(10)
+  })
+
+  it('throws with session attached when a batch fails', async () => {
+    // Given a payload with 110 items (3 batches: 50, 50, 10)
+    const payload = makePayloadWithItems(110)
+
+    // And a client that fails on the second mutate call (batch index 1)
+    let callCount = 0
+    const mutateFn = vi.fn().mockImplementation(() => {
+      callCount++
+      if (callCount === 2) {
+        return Promise.reject(new Error('Network error'))
+      }
+      return Promise.resolve({})
+    })
+    const client = makeMockClient(mutateFn)
+
+    // When importing
+    let caughtError: (Error & { session?: ImportSession }) | null = null
+    try {
+      await importCloudData(payload, 'skip', client as never)
+    } catch (err) {
+      caughtError = err as Error & { session?: ImportSession }
+    }
+
+    // Then an error is thrown with a session attached
+    expect(caughtError).not.toBeNull()
+    expect(caughtError?.session).toBeDefined()
+
+    // And the session records batch 0 as completed but not batch 1
+    const completedKeys = caughtError?.session?.completedBatchKeys
+    expect(completedKeys?.has('items:0')).toBe(true)
+    expect(completedKeys?.has('items:1')).toBe(false)
   })
 })
