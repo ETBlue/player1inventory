@@ -1,0 +1,14 @@
+type PurgeResult {
+  items: Int!
+  tags: Int!
+  tagTypes: Int!
+  vendors: Int!
+  recipes: Int!
+  carts: Int!
+  cartItems: Int!
+  inventoryLogs: Int!
+}
+
+extend type Mutation {
+  purgeUserData: PurgeResult!
+}

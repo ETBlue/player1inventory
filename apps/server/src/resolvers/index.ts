@@ -4,6 +4,7 @@ import { familyGroupResolvers } from './familyGroup.resolver.js'
 import { importResolvers } from './import.resolver.js'
 import { inventoryLogResolvers } from './inventoryLog.resolver.js'
 import { itemResolvers } from './item.resolver.js'
+import { purgeResolvers } from './purge.resolver.js'
 import { recipeResolvers } from './recipe.resolver.js'
 import { tagResolvers } from './tag.resolver.js'
 import { vendorResolvers } from './vendor.resolver.js'
@@ -28,6 +29,7 @@ export const resolvers: Resolvers = {
     ...importResolvers.Mutation,
     ...cartResolvers.Mutation,
     ...inventoryLogResolvers.Mutation,
+    ...purgeResolvers.Mutation,
   },
   Item: itemResolvers.Item,
   TagType: tagResolvers.TagType,
