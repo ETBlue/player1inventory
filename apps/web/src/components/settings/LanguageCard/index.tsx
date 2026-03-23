@@ -36,7 +36,7 @@ export function LanguageCard() {
           value={preference}
           onValueChange={(val) => setPreference(val as LanguagePreference)}
         >
-          <SelectTrigger>
+          <SelectTrigger aria-label={t('settings.language.label')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

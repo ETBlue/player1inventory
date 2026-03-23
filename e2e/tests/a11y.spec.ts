@@ -44,6 +44,17 @@ test.afterEach(async ({ page, request, baseURL }) => {
 })
 
 // Pantry page (/)
+// axe rule options shared across all a11y tests.
+// color-contrast is tracked separately in axe-detail.spec.ts (design-token level fix);
+// exclude it here so structural violations are checked in isolation.
+const axeOptions = {
+  axeOptions: {
+    rules: {
+      'color-contrast': { enabled: false },
+    },
+  },
+}
+
 test('user can view pantry page without accessibility violations', async ({ page }) => {
   // Given the user navigates to the pantry (home) page
   await page.goto('/')
@@ -52,8 +63,8 @@ test('user can view pantry page without accessibility violations', async ({ page
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })
 
 // Shopping page (/shopping)
@@ -65,8 +76,8 @@ test('user can view shopping page without accessibility violations', async ({ pa
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })
 
 // Cooking page (/cooking)
@@ -78,8 +89,8 @@ test('user can view cooking page without accessibility violations', async ({ pag
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })
 
 // Settings main page (/settings)
@@ -91,8 +102,8 @@ test('user can view settings page without accessibility violations', async ({ pa
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })
 
 // Settings > Tags list (/settings/tags)
@@ -104,8 +115,8 @@ test('user can view settings tags list without accessibility violations', async 
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })
 
 // Settings > Vendors list (/settings/vendors)
@@ -117,8 +128,8 @@ test('user can view settings vendors list without accessibility violations', asy
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })
 
 // Settings > Recipes list (/settings/recipes)
@@ -130,6 +141,6 @@ test('user can view settings recipes list without accessibility violations', asy
   // When axe scans the page for accessibility violations
   await injectAxe(page)
 
-  // Then there should be no violations
-  await checkA11y(page)
+  // Then there should be no violations (color-contrast checked separately)
+  await checkA11y(page, undefined, axeOptions)
 })

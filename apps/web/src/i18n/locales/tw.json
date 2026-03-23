@@ -139,6 +139,7 @@
         "addPlaceholder": "例：乳製品、冷凍食品",
         "typeLabel": "標籤分類",
         "nameLabel": "名稱",
+        "deleteAriaLabel": "刪除{{name}}",
         "deleteTitle": "刪除標籤？",
         "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
         "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。"
