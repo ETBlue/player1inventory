@@ -49,6 +49,115 @@ import type { ExportPayload } from './exportData'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
+// ---------------------------------------------------------------------------
+// GraphQL Input mappers — strip server-only fields (__typename, userId,
+// familyId) and any other fields not accepted by the corresponding Input type.
+// These are used before passing payload objects as GraphQL mutation variables.
+// ---------------------------------------------------------------------------
+
+export function toItemInput(item: Record<string, unknown>) {
+  const createdAt =
+    item.createdAt instanceof Date
+      ? item.createdAt.toISOString()
+      : (item.createdAt as string)
+  const updatedAt =
+    item.updatedAt instanceof Date
+      ? item.updatedAt.toISOString()
+      : (item.updatedAt as string)
+  return {
+    id: item.id as string,
+    name: item.name as string,
+    tagIds: (item.tagIds ?? []) as string[],
+    vendorIds: item.vendorIds as string[] | undefined,
+    packageUnit: item.packageUnit as string | undefined,
+    measurementUnit: item.measurementUnit as string | undefined,
+    amountPerPackage: item.amountPerPackage as number | undefined,
+    targetUnit: item.targetUnit as string,
+    targetQuantity: item.targetQuantity as number,
+    refillThreshold: item.refillThreshold as number,
+    packedQuantity: item.packedQuantity as number,
+    unpackedQuantity: item.unpackedQuantity as number,
+    consumeAmount: item.consumeAmount as number,
+    dueDate: item.dueDate as string | undefined,
+    estimatedDueDays: item.estimatedDueDays as number | undefined,
+    expirationThreshold: item.expirationThreshold as number | undefined,
+    createdAt,
+    updatedAt,
+  }
+}
+
+export function toTagInput(tag: Record<string, unknown>) {
+  return {
+    id: tag.id as string,
+    name: tag.name as string,
+    typeId: tag.typeId as string,
+  }
+}
+
+export function toTagTypeInput(tagType: Record<string, unknown>) {
+  return {
+    id: tagType.id as string,
+    name: tagType.name as string,
+    color: tagType.color as string,
+  }
+}
+
+export function toVendorInput(vendor: Record<string, unknown>) {
+  return {
+    id: vendor.id as string,
+    name: vendor.name as string,
+  }
+}
+
+export function toRecipeInput(recipe: Record<string, unknown>) {
+  return {
+    id: recipe.id as string,
+    name: recipe.name as string,
+    items: (recipe.items ?? []) as Array<{
+      itemId: string
+      defaultAmount: number
+    }>,
+    lastCookedAt: recipe.lastCookedAt as string | undefined,
+  }
+}
+
+export function toInventoryLogInput(log: Record<string, unknown>) {
+  const occurredAt =
+    log.occurredAt instanceof Date
+      ? log.occurredAt.toISOString()
+      : (log.occurredAt as string)
+  return {
+    id: log.id as string,
+    itemId: log.itemId as string,
+    delta: log.delta as number,
+    quantity: log.quantity as number,
+    occurredAt,
+    note: log.note as string | undefined,
+  }
+}
+
+export function toShoppingCartInput(cart: Record<string, unknown>) {
+  const createdAt =
+    cart.createdAt instanceof Date
+      ? cart.createdAt.toISOString()
+      : (cart.createdAt as string)
+  return {
+    id: cart.id as string,
+    status: cart.status as string,
+    createdAt,
+    completedAt: cart.completedAt as string | undefined,
+  }
+}
+
+export function toCartItemInput(cartItem: Record<string, unknown>) {
+  return {
+    id: cartItem.id as string,
+    cartId: cartItem.cartId as string,
+    itemId: cartItem.itemId as string,
+    quantity: cartItem.quantity as number,
+  }
+}
+
 export interface ConflictEntry {
   id: string
   name: string
@@ -510,49 +619,77 @@ async function bulkCreate(
   if (data.items.length > 0) {
     await client.mutate({
       mutation: BulkCreateItemsDocument,
-      variables: { items: data.items },
+      variables: {
+        items: data.items.map((i) => toItemInput(i as Record<string, unknown>)),
+      },
     })
   }
   if (data.vendors.length > 0) {
     await client.mutate({
       mutation: BulkCreateVendorsDocument,
-      variables: { vendors: data.vendors },
+      variables: {
+        vendors: data.vendors.map((v) =>
+          toVendorInput(v as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.recipes.length > 0) {
     await client.mutate({
       mutation: BulkCreateRecipesDocument,
-      variables: { recipes: data.recipes },
+      variables: {
+        recipes: data.recipes.map((r) =>
+          toRecipeInput(r as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.tagTypes.length > 0) {
     await client.mutate({
       mutation: BulkCreateTagTypesDocument,
-      variables: { tagTypes: data.tagTypes },
+      variables: {
+        tagTypes: data.tagTypes.map((t) =>
+          toTagTypeInput(t as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.tags.length > 0) {
     await client.mutate({
       mutation: BulkCreateTagsDocument,
-      variables: { tags: data.tags },
+      variables: {
+        tags: data.tags.map((t) => toTagInput(t as Record<string, unknown>)),
+      },
     })
   }
   if (data.inventoryLogs.length > 0) {
     await client.mutate({
       mutation: BulkCreateInventoryLogsDocument,
-      variables: { logs: data.inventoryLogs },
+      variables: {
+        logs: data.inventoryLogs.map((l) =>
+          toInventoryLogInput(l as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.shoppingCarts.length > 0) {
     await client.mutate({
       mutation: BulkCreateShoppingCartsDocument,
-      variables: { carts: data.shoppingCarts },
+      variables: {
+        carts: data.shoppingCarts.map((c) =>
+          toShoppingCartInput(c as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.cartItems.length > 0) {
     await client.mutate({
       mutation: BulkCreateCartItemsDocument,
-      variables: { cartItems: data.cartItems },
+      variables: {
+        cartItems: data.cartItems.map((ci) =>
+          toCartItemInput(ci as Record<string, unknown>),
+        ),
+      },
     })
   }
 }
@@ -564,49 +701,77 @@ async function bulkUpsert(
   if (data.items.length > 0) {
     await client.mutate({
       mutation: BulkUpsertItemsDocument,
-      variables: { items: data.items },
+      variables: {
+        items: data.items.map((i) => toItemInput(i as Record<string, unknown>)),
+      },
     })
   }
   if (data.vendors.length > 0) {
     await client.mutate({
       mutation: BulkUpsertVendorsDocument,
-      variables: { vendors: data.vendors },
+      variables: {
+        vendors: data.vendors.map((v) =>
+          toVendorInput(v as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.recipes.length > 0) {
     await client.mutate({
       mutation: BulkUpsertRecipesDocument,
-      variables: { recipes: data.recipes },
+      variables: {
+        recipes: data.recipes.map((r) =>
+          toRecipeInput(r as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.tagTypes.length > 0) {
     await client.mutate({
       mutation: BulkUpsertTagTypesDocument,
-      variables: { tagTypes: data.tagTypes },
+      variables: {
+        tagTypes: data.tagTypes.map((t) =>
+          toTagTypeInput(t as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.tags.length > 0) {
     await client.mutate({
       mutation: BulkUpsertTagsDocument,
-      variables: { tags: data.tags },
+      variables: {
+        tags: data.tags.map((t) => toTagInput(t as Record<string, unknown>)),
+      },
     })
   }
   if (data.inventoryLogs.length > 0) {
     await client.mutate({
       mutation: BulkUpsertInventoryLogsDocument,
-      variables: { logs: data.inventoryLogs },
+      variables: {
+        logs: data.inventoryLogs.map((l) =>
+          toInventoryLogInput(l as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.shoppingCarts.length > 0) {
     await client.mutate({
       mutation: BulkUpsertShoppingCartsDocument,
-      variables: { carts: data.shoppingCarts },
+      variables: {
+        carts: data.shoppingCarts.map((c) =>
+          toShoppingCartInput(c as Record<string, unknown>),
+        ),
+      },
     })
   }
   if (data.cartItems.length > 0) {
     await client.mutate({
       mutation: BulkUpsertCartItemsDocument,
-      variables: { cartItems: data.cartItems },
+      variables: {
+        cartItems: data.cartItems.map((ci) =>
+          toCartItemInput(ci as Record<string, unknown>),
+        ),
+      },
     })
   }
 }

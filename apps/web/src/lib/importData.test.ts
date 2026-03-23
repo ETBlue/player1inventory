@@ -8,6 +8,14 @@ import {
   hasConflicts,
   importLocalData,
   partitionPayload,
+  toCartItemInput,
+  toInventoryLogInput,
+  toItemInput,
+  toRecipeInput,
+  toShoppingCartInput,
+  toTagInput,
+  toTagTypeInput,
+  toVendorInput,
 } from './importData'
 
 // --- Minimal fixture helpers ---
@@ -422,5 +430,187 @@ describe('importLocalData', () => {
     // Old data is removed
     const oldItem = await db.items.get('item-old')
     expect(oldItem).toBeUndefined()
+  })
+})
+
+describe('cloud import input mappers — strip server-only fields', () => {
+  it('toItemInput strips __typename, userId, familyId from a raw Apollo item', () => {
+    // Given a raw item object as returned by Apollo (with extra server-only fields)
+    const rawItem = {
+      __typename: 'Item',
+      id: 'item-1',
+      name: 'Apple',
+      tagIds: ['tag-1'],
+      vendorIds: ['vendor-1'],
+      packageUnit: null,
+      measurementUnit: null,
+      amountPerPackage: null,
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      dueDate: null,
+      estimatedDueDays: null,
+      expirationThreshold: null,
+      userId: 'user_abc',
+      familyId: null,
+      createdAt: '2026-03-22T22:44:46.927Z',
+      updatedAt: '2026-03-23T03:15:32.956Z',
+    }
+
+    // When mapped to ItemInput
+    const result = toItemInput(rawItem)
+
+    // Then server-only and Apollo fields are absent
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result).not.toHaveProperty('familyId')
+
+    // And the valid ItemInput fields are present
+    expect(result.id).toBe('item-1')
+    expect(result.name).toBe('Apple')
+    expect(result.createdAt).toBe('2026-03-22T22:44:46.927Z')
+  })
+
+  it('toItemInput converts Date createdAt/updatedAt to ISO strings', () => {
+    // Given an item with Date objects (as produced by local export)
+    const date = new Date('2026-01-15T10:00:00.000Z')
+    const rawItem = {
+      id: 'item-2',
+      name: 'Banana',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: date,
+      updatedAt: date,
+    }
+
+    // When mapped to ItemInput
+    const result = toItemInput(rawItem)
+
+    // Then dates are ISO strings
+    expect(result.createdAt).toBe('2026-01-15T10:00:00.000Z')
+    expect(result.updatedAt).toBe('2026-01-15T10:00:00.000Z')
+  })
+
+  it('toTagInput strips server-only fields', () => {
+    const rawTag = {
+      __typename: 'Tag',
+      id: 'tag-1',
+      name: 'Dairy',
+      typeId: 'type-1',
+      userId: 'u1',
+      familyId: 'f1',
+    }
+    const result = toTagInput(rawTag)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result).not.toHaveProperty('familyId')
+    expect(result.id).toBe('tag-1')
+    expect(result.name).toBe('Dairy')
+    expect(result.typeId).toBe('type-1')
+  })
+
+  it('toTagTypeInput strips server-only fields', () => {
+    const rawTagType = {
+      __typename: 'TagType',
+      id: 'type-1',
+      name: 'Category',
+      color: 'blue',
+      userId: 'u1',
+    }
+    const result = toTagTypeInput(rawTagType)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result.id).toBe('type-1')
+    expect(result.color).toBe('blue')
+  })
+
+  it('toVendorInput strips server-only fields', () => {
+    const rawVendor = {
+      __typename: 'Vendor',
+      id: 'vendor-1',
+      name: 'Costco',
+      userId: 'u1',
+      familyId: 'f1',
+    }
+    const result = toVendorInput(rawVendor)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result).not.toHaveProperty('familyId')
+    expect(result.id).toBe('vendor-1')
+    expect(result.name).toBe('Costco')
+  })
+
+  it('toRecipeInput strips server-only fields', () => {
+    const rawRecipe = {
+      __typename: 'Recipe',
+      id: 'recipe-1',
+      name: 'Smoothie',
+      items: [],
+      lastCookedAt: null,
+      userId: 'u1',
+    }
+    const result = toRecipeInput(rawRecipe)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result.id).toBe('recipe-1')
+    expect(result.name).toBe('Smoothie')
+  })
+
+  it('toInventoryLogInput strips server-only fields and converts Date occurredAt', () => {
+    const date = new Date('2026-02-10T08:00:00.000Z')
+    const rawLog = {
+      __typename: 'InventoryLog',
+      id: 'log-1',
+      itemId: 'item-1',
+      delta: 1,
+      quantity: 2,
+      occurredAt: date,
+      note: null,
+      userId: 'u1',
+    }
+    const result = toInventoryLogInput(rawLog)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result.occurredAt).toBe('2026-02-10T08:00:00.000Z')
+  })
+
+  it('toShoppingCartInput strips server-only fields and converts Date createdAt', () => {
+    const date = new Date('2026-03-01T00:00:00.000Z')
+    const rawCart = {
+      __typename: 'ShoppingCart',
+      id: 'cart-1',
+      status: 'completed',
+      createdAt: date,
+      completedAt: null,
+      userId: 'u1',
+    }
+    const result = toShoppingCartInput(rawCart)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result.createdAt).toBe('2026-03-01T00:00:00.000Z')
+  })
+
+  it('toCartItemInput strips server-only fields', () => {
+    const rawCartItem = {
+      __typename: 'CartItem',
+      id: 'ci-1',
+      cartId: 'cart-1',
+      itemId: 'item-1',
+      quantity: 3,
+      userId: 'u1',
+    }
+    const result = toCartItemInput(rawCartItem)
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+    expect(result.id).toBe('ci-1')
+    expect(result.quantity).toBe(3)
   })
 })
