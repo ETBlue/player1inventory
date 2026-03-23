@@ -109,4 +109,32 @@ describe('FamilyGroup resolvers', () => {
       expect(leaveResponse.body.singleResult.data?.leaveFamilyGroup).toBe(true)
     }
   })
+
+  it('myFamilyGroup returns epoch string for legacy records where createdAt or updatedAt is null', async () => {
+    // Given a legacy FamilyGroup document in MongoDB where createdAt and updatedAt are null
+    await FamilyGroupModel.collection.insertOne({
+      name: 'Legacy Family',
+      code: 'LEGACY',
+      ownerUserId: 'user_legacy',
+      memberUserIds: ['user_legacy'],
+      createdAt: null,
+      updatedAt: null,
+    })
+
+    // When querying myFamilyGroup
+    const response = await server.executeOperation(
+      { query: `query { myFamilyGroup { id name createdAt updatedAt } }` },
+      { contextValue: { userId: 'user_legacy' } },
+    )
+
+    // Then createdAt and updatedAt are the epoch string, not null (GraphQL non-nullable String! contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const group = response.body.singleResult.data?.myFamilyGroup as { id: string; name: string; createdAt: string; updatedAt: string }
+      expect(group).not.toBeNull()
+      expect(group.createdAt).toBe(new Date(0).toISOString())
+      expect(group.updatedAt).toBe(new Date(0).toISOString())
+    }
+  })
 })

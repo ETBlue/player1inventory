@@ -267,4 +267,38 @@ describe('Item resolvers', () => {
     const remainingLogs = await InventoryLogModel.find({ itemId })
     expect(remainingLogs).toHaveLength(0)
   })
+
+  it('items returns epoch string for legacy records where createdAt or updatedAt is null', async () => {
+    // Given a legacy document in MongoDB where createdAt and updatedAt are null
+    await ItemModel.collection.insertOne({
+      name: 'Legacy Item',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      userId: 'user_test123',
+      createdAt: null,
+      updatedAt: null,
+    })
+
+    // When querying items
+    const response = await server.executeOperation(
+      { query: `query { items { id name createdAt updatedAt } }` },
+      { contextValue: { userId: 'user_test123' } },
+    )
+
+    // Then createdAt and updatedAt are the epoch string, not null (GraphQL non-nullable String! contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const items = response.body.singleResult.data?.items as { id: string; name: string; createdAt: string; updatedAt: string }[]
+      const legacy = items.find(i => i.name === 'Legacy Item')
+      expect(legacy).toBeDefined()
+      expect(legacy?.createdAt).toBe(new Date(0).toISOString())
+      expect(legacy?.updatedAt).toBe(new Date(0).toISOString())
+    }
+  })
 })

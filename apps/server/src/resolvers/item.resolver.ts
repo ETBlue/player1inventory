@@ -72,8 +72,16 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
   },
   Item: {
     id: (item) => (item as unknown as { _id: { toString(): string } })._id.toString(),
-    createdAt: (item) => (item as unknown as { createdAt: Date }).createdAt.toISOString(),
-    updatedAt: (item) => (item as unknown as { updatedAt: Date }).updatedAt.toISOString(),
+    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
+    // to satisfy the non-nullable String! contract in the GraphQL schema.
+    createdAt: (item) => {
+      const d = (item as unknown as { createdAt: Date | null }).createdAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
+    updatedAt: (item) => {
+      const d = (item as unknown as { updatedAt: Date | null }).updatedAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
     dueDate: (item) => {
       const d = (item as unknown as { dueDate?: Date }).dueDate
       return d ? d.toISOString() : null

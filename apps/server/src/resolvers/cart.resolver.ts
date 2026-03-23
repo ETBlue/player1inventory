@@ -132,7 +132,12 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
 
   Cart: {
     id: (cart) => (cart as unknown as { _id: { toString(): string } })._id.toString(),
-    createdAt: (cart) => (cart as unknown as { createdAt: Date }).createdAt.toISOString(),
+    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
+    // to satisfy the non-nullable String! contract in the GraphQL schema.
+    createdAt: (cart) => {
+      const d = (cart as unknown as { createdAt: Date | null }).createdAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
     completedAt: (cart) => {
       const c = cart as unknown as { completedAt?: Date }
       return c.completedAt ? c.completedAt.toISOString() : null
