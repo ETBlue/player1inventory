@@ -251,7 +251,7 @@ function DroppableTagTypeCard({
   )
 }
 
-function TagSettings() {
+export function TagSettings() {
   const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
@@ -308,23 +308,35 @@ function TagSettings() {
 
   const handleAddTagType = () => {
     if (newTagTypeName.trim()) {
-      createTagType.mutate({
-        name: newTagTypeName.trim(),
-        color: newTagTypeColor,
-      })
-      setNewTagTypeName('')
-      setNewTagTypeColor(TagColor.blue)
+      createTagType.mutate(
+        {
+          name: newTagTypeName.trim(),
+          color: newTagTypeColor,
+        },
+        {
+          onSuccess: () => {
+            setNewTagTypeName('')
+            setNewTagTypeColor(TagColor.blue)
+          },
+        },
+      )
     }
   }
 
   const handleAddTag = () => {
     if (addTagDialog && newTagName.trim()) {
-      createTag.mutate({
-        name: newTagName.trim(),
-        typeId: addTagDialog,
-      })
-      setNewTagName('')
-      setAddTagDialog(null)
+      createTag.mutate(
+        {
+          name: newTagName.trim(),
+          typeId: addTagDialog,
+        },
+        {
+          onSuccess: () => {
+            setNewTagName('')
+            setAddTagDialog(null)
+          },
+        },
+      )
     }
   }
 
