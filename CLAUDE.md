@@ -402,7 +402,7 @@ Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, 
 - If any command fails → stop and fix all errors before proceeding to the next step
 - After `pnpm build`, run `grep 'TS6385' /tmp/p1i-build.log` to check for `@deprecated` warnings — any match is a failure even if the build exit code is 0
 - All four commands must pass and `grep` must return no matches before moving on
-- E2E failures on the final phase are also a hard stop — fix before finishing the branch
+- E2E failures on the final phase are a hard stop — fix before finishing the branch; the branch must not be pushed until all E2E tests pass
 
 **Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.
 
@@ -600,7 +600,7 @@ git status
 - Design docs and plans are part of the feature and should be in the PR
 - A clean working tree ensures nothing is left behind
 
-**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 5 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
+**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run `pnpm test:e2e --grep "<areas>"` — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
 
 **Advanced: Git Worktrees**
 
