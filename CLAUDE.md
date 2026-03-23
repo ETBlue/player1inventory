@@ -324,6 +324,10 @@ const { t } = useTranslation()
 
 ## AI Agent SOP
 
+### Coding Tasks
+
+For any **non-trivial** coding task (feature, bug fix, refactoring, test, etc.), always use a subagent — never implement directly in the main conversation. Trivial edits (rename a variable, fix a typo, add one line) may be done in the main session. See global `~/.claude/CLAUDE.md` for the full subagent policy (which subagent to use, parallelism rules).
+
 ### Documentation Updates
 
 Before creating a PR, update all relevant documentation:
