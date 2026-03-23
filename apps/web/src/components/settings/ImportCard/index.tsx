@@ -12,6 +12,8 @@ import {
   detectConflicts,
   fetchExistingData,
   hasConflicts,
+  type ImportProgress,
+  type ImportSession,
   type ImportStrategy,
   importCloudData,
   importLocalData,
@@ -37,16 +39,24 @@ function validateExportPayload(data: unknown): data is ExportPayload {
   return REQUIRED_FIELDS.every((field) => field in obj)
 }
 
+type ImportStatus =
+  | { phase: 'idle' }
+  | { phase: 'conflict'; conflicts: ConflictSummary; payload: ExportPayload }
+  | {
+      phase: 'importing'
+      progress: ImportProgress
+      session: ImportSession
+    }
+  | { phase: 'error'; errorEntity: string; session: ImportSession }
+  | { phase: 'done' }
+
 export function ImportCard() {
   const { t } = useTranslation()
   const { mode } = useDataMode()
   const client = useApolloClient()
-  const [isImporting, setIsImporting] = useState(false)
-  const [conflictSummary, setConflictSummary] =
-    useState<ConflictSummary | null>(null)
-  const [pendingPayload, setPendingPayload] = useState<ExportPayload | null>(
-    null,
-  )
+  const [importStatus, setImportStatus] = useState<ImportStatus>({
+    phase: 'idle',
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function handleButtonClick() {
@@ -60,7 +70,6 @@ export function ImportCard() {
     // Reset file input so the same file can be re-selected if needed
     event.target.value = ''
 
-    setIsImporting(true)
     try {
       const text = await file.text()
       let parsed: unknown
@@ -84,59 +93,106 @@ export function ImportCard() {
       const summary = detectConflicts(payload, existing)
 
       if (hasConflicts(summary)) {
-        setPendingPayload(payload)
-        setConflictSummary(summary)
-        // Keep isImporting false so user can interact with the dialog
-        setIsImporting(false)
+        setImportStatus({ phase: 'conflict', conflicts: summary, payload })
       } else {
         await runImport(payload, 'skip')
       }
     } catch {
       toast.error(t('settings.import.error'))
-    } finally {
-      setIsImporting(false)
     }
   }
 
   async function runImport(payload: ExportPayload, strategy: ImportStrategy) {
-    setIsImporting(true)
-    try {
-      if (mode === 'cloud') {
-        await importCloudData(payload, strategy, client)
-      } else {
+    if (mode === 'cloud') {
+      await handleCloudImport(strategy, payload)
+    } else {
+      try {
         await importLocalData(payload, strategy)
+        toast.success(t('settings.import.success'))
+        setImportStatus({ phase: 'idle' })
+      } catch {
+        toast.error(t('settings.import.error'))
+        setImportStatus({ phase: 'idle' })
       }
-      toast.success(t('settings.import.success'))
-    } catch {
-      toast.error(t('settings.import.error'))
-    } finally {
-      setIsImporting(false)
-      closeConflictDialog()
     }
   }
 
-  function closeConflictDialog() {
-    setConflictSummary(null)
-    setPendingPayload(null)
+  async function handleCloudImport(
+    strategy: ImportStrategy,
+    payloadArg?: ExportPayload,
+    existingSession?: ImportSession,
+  ) {
+    // Resolve payload: from arg (new import), from existing session (retry), or from current conflict state
+    const payload =
+      payloadArg ??
+      existingSession?.payload ??
+      (importStatus.phase === 'conflict' ? importStatus.payload : null)
+
+    if (!payload) return
+
+    const session: ImportSession = existingSession ?? {
+      payload,
+      strategy,
+      completedBatchKeys: new Set(),
+    }
+
+    setImportStatus({
+      phase: 'importing',
+      progress: { completedBatches: 0, totalBatches: 0, currentEntity: '' },
+      session,
+    })
+
+    try {
+      await importCloudData(payload, strategy, client, {
+        onProgress: (p) => {
+          setImportStatus((prev) =>
+            prev.phase === 'importing'
+              ? { ...prev, progress: p, session: prev.session }
+              : prev,
+          )
+        },
+        session,
+      })
+      setImportStatus({ phase: 'done' })
+      setTimeout(() => setImportStatus({ phase: 'idle' }), 2000)
+    } catch (err) {
+      const importSession = (err as Error & { session?: ImportSession }).session
+      setImportStatus({
+        phase: 'error',
+        errorEntity: (err as Error).message,
+        session: importSession ?? {
+          payload,
+          strategy,
+          completedBatchKeys: new Set(),
+        },
+      })
+    }
   }
 
   function handleSkip() {
-    if (pendingPayload) {
-      runImport(pendingPayload, 'skip')
+    if (importStatus.phase === 'conflict') {
+      runImport(importStatus.payload, 'skip')
     }
   }
 
   function handleReplace() {
-    if (pendingPayload) {
-      runImport(pendingPayload, 'replace')
+    if (importStatus.phase === 'conflict') {
+      runImport(importStatus.payload, 'replace')
     }
   }
 
   function handleClear() {
-    if (pendingPayload) {
-      runImport(pendingPayload, 'clear')
+    if (importStatus.phase === 'conflict') {
+      runImport(importStatus.payload, 'clear')
     }
   }
+
+  function closeConflictDialog() {
+    setImportStatus({ phase: 'idle' })
+  }
+
+  const isIdle = importStatus.phase === 'idle'
+  const isImporting = importStatus.phase === 'importing'
 
   return (
     <>
@@ -156,23 +212,88 @@ export function ImportCard() {
             <p className="text-sm text-foreground-muted">
               {t('settings.import.description')}
             </p>
+
+            {isImporting && (
+              <div className="mt-2 space-y-2">
+                <p className="text-sm text-foreground-muted">
+                  {t('settings.import.importing', {
+                    entity: importStatus.progress.currentEntity
+                      ? t(
+                          `settings.import.entities.${importStatus.progress.currentEntity}`,
+                        )
+                      : '…',
+                  })}
+                </p>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div
+                    className="bg-primary h-2 rounded-full transition-all"
+                    style={{
+                      width: `${
+                        importStatus.progress.totalBatches > 0
+                          ? (
+                              importStatus.progress.completedBatches /
+                                importStatus.progress.totalBatches
+                            ) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-foreground-muted">
+                  {t('settings.import.batchProgress', {
+                    completed: importStatus.progress.completedBatches,
+                    total: importStatus.progress.totalBatches,
+                  })}
+                </p>
+              </div>
+            )}
+
+            {importStatus.phase === 'error' && (
+              <div className="mt-2 space-y-2">
+                <p className="text-sm text-destructive">
+                  {t('settings.import.importError', {
+                    entity: importStatus.errorEntity,
+                  })}
+                </p>
+                <Button
+                  variant="neutral-outline"
+                  size="sm"
+                  onClick={() =>
+                    handleCloudImport(
+                      importStatus.session.strategy,
+                      undefined,
+                      importStatus.session,
+                    )
+                  }
+                >
+                  {t('settings.import.retry')}
+                </Button>
+              </div>
+            )}
+
+            {importStatus.phase === 'done' && (
+              <p className="mt-2 text-sm text-ok">
+                {t('settings.import.importDone')}
+              </p>
+            )}
           </div>
-          <Button
-            variant="neutral-outline"
-            onClick={handleButtonClick}
-            disabled={isImporting}
-          >
-            {isImporting
-              ? t('settings.import.importing')
-              : t('settings.import.button')}
-          </Button>
+
+          {(isIdle || isImporting) && (
+            <Button
+              variant="neutral-outline"
+              onClick={handleButtonClick}
+              disabled={isImporting}
+            >
+              {t('settings.import.button')}
+            </Button>
+          )}
         </CardContent>
       </Card>
 
-      {conflictSummary && (
+      {importStatus.phase === 'conflict' && (
         <ConflictDialog
           open={true}
-          conflicts={conflictSummary}
+          conflicts={importStatus.conflicts}
           onSkip={handleSkip}
           onReplace={handleReplace}
           onClear={handleClear}
