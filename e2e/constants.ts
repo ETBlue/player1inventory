@@ -3,7 +3,7 @@
 // and the test files automatically.
 
 // Ports
-export const LOCAL_WEB_PORT = 5173
+export const LOCAL_WEB_PORT = 5175
 export const CLOUD_WEB_PORT = 5174
 export const CLOUD_SERVER_PORT = 4001
 

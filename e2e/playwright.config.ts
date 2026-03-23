@@ -7,6 +7,7 @@ import {
   CLOUD_WEB_URL,
   E2E_MONGODB_URI,
   E2E_USER_ID,
+  LOCAL_WEB_PORT,
   LOCAL_WEB_URL,
 } from './constants'
 
@@ -47,10 +48,12 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Local-mode web app — reuse an already-running dev server if available.
-      command: 'pnpm --filter web dev',
+      // Local-mode web app — always start fresh on a dedicated port to avoid
+      // conflicts with a dev server running in another worktree.
+      command: `pnpm --filter web dev --port ${LOCAL_WEB_PORT}`,
       url: LOCAL_WEB_URL,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
+      timeout: 60000,
     },
     {
       // Cloud-mode web app — always start fresh with E2E env vars:
