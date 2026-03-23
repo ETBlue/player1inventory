@@ -20,6 +20,16 @@ import {
   InventoryLogsDocument,
   ShoppingCartsDocument,
 } from '@/generated/graphql'
+import {
+  toCartItemInput,
+  toInventoryLogInput,
+  toItemInput,
+  toRecipeInput,
+  toShoppingCartInput,
+  toTagInput,
+  toTagTypeInput,
+  toVendorInput,
+} from './importData'
 
 export interface ExportPayload {
   version: number
@@ -38,6 +48,37 @@ export function buildExportPayload(
   data: Omit<ExportPayload, 'version' | 'exportedAt'>,
 ): ExportPayload {
   return { version: 1, exportedAt: new Date().toISOString(), ...data }
+}
+
+/**
+ * Strip Apollo/server-only fields (__typename, userId, familyId) from a cloud
+ * export payload. Reuses the same mapper functions used on the import side so
+ * the allowed field sets stay in sync.
+ */
+export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
+  return {
+    ...payload,
+    items: payload.items.map((i) => toItemInput(i as Record<string, unknown>)),
+    tags: payload.tags.map((t) => toTagInput(t as Record<string, unknown>)),
+    tagTypes: payload.tagTypes.map((t) =>
+      toTagTypeInput(t as Record<string, unknown>),
+    ),
+    vendors: payload.vendors.map((v) =>
+      toVendorInput(v as Record<string, unknown>),
+    ),
+    recipes: payload.recipes.map((r) =>
+      toRecipeInput(r as Record<string, unknown>),
+    ),
+    inventoryLogs: payload.inventoryLogs.map((l) =>
+      toInventoryLogInput(l as Record<string, unknown>),
+    ),
+    shoppingCarts: payload.shoppingCarts.map((c) =>
+      toShoppingCartInput(c as Record<string, unknown>),
+    ),
+    cartItems: payload.cartItems.map((ci) =>
+      toCartItemInput(ci as Record<string, unknown>),
+    ),
+  }
 }
 
 export async function exportAllData(): Promise<void> {
@@ -72,7 +113,7 @@ export async function exportAllData(): Promise<void> {
     cartItems,
   })
 
-  triggerDownload(payload)
+  triggerDownload(sanitiseCloudPayload(payload))
 }
 
 function triggerDownload(payload: ExportPayload): void {
