@@ -19,6 +19,61 @@ describe('Tags Tab - Add Tag Functionality', () => {
     await db.inventoryLogs.clear()
   })
 
+  it('user can create a new tag and it is automatically assigned to the item', async () => {
+    // Given an item and a tag type with no tags
+    const tagType = await createTagType({ name: 'categories', color: 'blue' })
+    const item = await createItem({
+      name: 'Test Item',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${item.id}/tags`],
+    })
+    const router = createRouter({ routeTree, history })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // When user clicks "New Tag" button
+    await waitFor(() => {
+      expect(screen.getByText(/categories/i)).toBeInTheDocument()
+    })
+
+    const addButton = screen.getByRole('button', { name: /new tag/i })
+    await userEvent.click(addButton)
+
+    // And enters tag name in dialog
+    const input = screen.getByLabelText(/name/i)
+    await userEvent.type(input, 'dairy')
+
+    // And clicks Add button
+    const addDialogButton = screen.getByRole('button', { name: /^add tag$/i })
+    await userEvent.click(addDialogButton)
+
+    // Then the new tag is created in the database
+    await waitFor(async () => {
+      const tags = await db.tags.toArray()
+      const newTag = tags.find(
+        (t) => t.name === 'dairy' && t.typeId === tagType.id,
+      )
+      expect(newTag).toBeDefined()
+
+      // And the new tag is automatically assigned to the item
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.tagIds).toContain(newTag?.id)
+    })
+  })
+
   it('user can add a new tag from item tags page', async () => {
     // Given an item and a tag type with no tags
     const _tagType = await createTagType({ name: 'categories', color: 'blue' })
