@@ -333,6 +333,46 @@ test('user can adjust default amount for an assigned item', async ({ page, reque
   await expect(detail.getAmountDisplay('Flour')).toHaveText('1')
 })
 
+test.describe('recipe creation dialog from item recipes tab', () => {
+  test('recipe creation dialog closes after creating a new recipe from item recipes tab', async ({ page, baseURL }) => {
+    const pantry = new PantryPage(page)
+    const item = new ItemPage(page)
+
+    // Given: an item "Test Pasta" exists
+    if (baseURL === CLOUD_WEB_URL) {
+      // Cloud: create item via pantry UI
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Pasta')
+      await item.save()
+    } else {
+      // Local: create item via pantry UI (simpler than seeding for a standalone item)
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Pasta')
+      await item.save()
+    }
+
+    // When: navigate to the item's recipes tab
+    await item.navigateToTab('recipes')
+
+    // And: click "New Recipe" button — verify dialog opens
+    await item.clickNewRecipeButton()
+    await expect(item.getRecipeDialog()).toBeVisible()
+
+    // And: type "Pasta Salad" and submit
+    await item.fillRecipeName('Pasta Salad')
+    await item.submitRecipeDialog()
+
+    // Then: the dialog is no longer visible (closed)
+    await expect(item.getRecipeDialog()).not.toBeVisible()
+
+    // And: a badge labelled "Pasta Salad" is visible and selected (assigned to the item)
+    // Recipe badge: role="button" aria-pressed=true when assigned (src/routes/items/$id/recipes.tsx:68-69)
+    await expect(item.getRecipeBadge('Pasta Salad')).toBeVisible()
+  })
+})
+
 test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
   const detail = new RecipeDetailPage(page)
 

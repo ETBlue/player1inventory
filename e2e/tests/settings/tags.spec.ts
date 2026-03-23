@@ -373,6 +373,50 @@ test('user can create a tag type', async ({ page }) => {
   await expect(tags.getTagTypeCard('Protein')).toBeVisible()
 })
 
+test.describe('tag type creation via Enter key', () => {
+  test('tag type input clears after submitting by pressing Enter', async ({ page }) => {
+    const tags = new TagsPage(page)
+
+    // Given: the tags settings page is open
+    await tags.navigateTo()
+
+    // When: user fills in "Produce" in the name input and presses Enter (not the button)
+    await tags.fillTagTypeName('Produce')
+    // Press Enter to submit the form — tests that the form's onSubmit handler fires
+    // and does NOT cause a page reload (a reload would navigate away from the SPA)
+    // (src/routes/settings/tags/index.tsx:450-456 — <form onSubmit={...}>)
+    await page.getByLabel('Name').press('Enter')
+
+    // Then: the "Produce" heading appears — proving mutation completed and page did NOT reload
+    await expect(tags.getTagTypeCard('Produce')).toBeVisible()
+
+    // And: the input is cleared (form reset after success)
+    // (src/routes/settings/tags/index.tsx:317-319 — setNewTagTypeName('') in onSuccess)
+    await expect(page.getByLabel('Name')).toHaveValue('')
+  })
+})
+
+test.describe('tag type input clears after button submit', () => {
+  test('tag type input clears after successful creation via button click', async ({ page }) => {
+    const tags = new TagsPage(page)
+
+    // Given: the tags settings page is open
+    await tags.navigateTo()
+
+    // When: user fills "Category" in the input and clicks the submit button
+    await tags.fillTagTypeName('Category')
+    await tags.clickNewTagType()
+
+    // Then: "Category" heading appears
+    await expect(tags.getTagTypeCard('Category')).toBeVisible()
+
+    // And: the input field is now empty (not still showing "Category")
+    // Regression guard: if the form state is not reset on success, the input retains
+    // the old value. (src/routes/settings/tags/index.tsx:317-319 — setNewTagTypeName(''))
+    await expect(page.getByLabel('Name')).toHaveValue('')
+  })
+})
+
 test.describe('new tag from item tags tab', () => {
   test('user can create a new tag from item tags tab and it is automatically assigned to the item', async ({ page, baseURL }) => {
     const pantry = new PantryPage(page)

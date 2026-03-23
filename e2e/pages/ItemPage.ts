@@ -95,6 +95,40 @@ export class ItemPage {
     await this.page.getByRole('dialog').getByRole('button', { name: /add/i }).click()
   }
 
+  async assignVendor(name: string) {
+    // Click the vendor badge (role="button" aria-pressed=false) to assign it to the item
+    // Badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/vendors.tsx:65)
+    await this.page.getByRole('button', { name, exact: false, pressed: false }).click()
+  }
+
+  // ── Recipes tab ───────────────────────────────────────────────────────────────
+
+  async clickNewRecipeButton() {
+    // "New Recipe" button inline with recipe badges (src/routes/items/$id/recipes.tsx:80-88)
+    await this.page.getByRole('button', { name: /new recipe/i }).click()
+  }
+
+  async fillRecipeName(name: string) {
+    // AddNameDialog input: label "Name", placeholder "e.g., Pasta Sauce, Smoothie"
+    // (src/routes/items/$id/recipes.tsx:91-103, src/components/AddNameDialog/index.tsx)
+    await this.page.getByRole('dialog').getByLabel('Name').fill(name)
+  }
+
+  async submitRecipeDialog() {
+    // "Add Recipe" submit button in AddNameDialog (src/routes/items/$id/recipes.tsx:94)
+    await this.page.getByRole('dialog').getByRole('button', { name: /add recipe/i }).click()
+  }
+
+  getRecipeBadge(name: string) {
+    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/recipes.tsx:68-69)
+    return this.page.getByRole('button', { name, exact: false, pressed: true })
+  }
+
+  getRecipeDialog() {
+    // The AddNameDialog rendered as a dialog (src/components/AddNameDialog/index.tsx)
+    return this.page.getByRole('dialog')
+  }
+
   // ── Log tab ──────────────────────────────────────────────────────────────────
 
   async navigateToLogTab() {

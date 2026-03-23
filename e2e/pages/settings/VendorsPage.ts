@@ -43,4 +43,15 @@ export class VendorsPage {
     // Save button in VendorNameForm (src/components/vendor/VendorNameForm/index.tsx)
     await this.page.getByRole('button', { name: 'Save' }).click()
   }
+
+  async cancelDeleteDialog() {
+    // Cancel button in the AlertDialog (src/components/ui/alert-dialog.tsx)
+    await this.page.getByRole('button', { name: 'Cancel' }).click()
+  }
+
+  getDeleteDialog(): Locator {
+    // The AlertDialog element — use to scope content assertions inside the dialog
+    // (src/components/DeleteButton/index.tsx, src/components/ui/alert-dialog.tsx)
+    return this.page.getByRole('alertdialog')
+  }
 }
