@@ -6,6 +6,7 @@ import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import { ItemModel } from '../models/Item.model.js'
 import { RecipeModel } from '../models/Recipe.model.js'
+import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import type { Context } from '../context.js'
 
 let mongod: MongoMemoryServer
@@ -27,6 +28,7 @@ afterAll(async () => {
 afterEach(async () => {
   await ItemModel.deleteMany({})
   await RecipeModel.deleteMany({})
+  await InventoryLogModel.deleteMany({})
 })
 
 describe('Item resolvers', () => {
@@ -231,5 +233,38 @@ describe('Item resolvers', () => {
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors?.[0].extensions?.code).toBe('UNAUTHENTICATED')
     }
+  })
+
+  it('deleting an item cascade-deletes its inventory logs', async () => {
+    const context: Context = { userId: 'user_test123' }
+
+    // Given an item exists
+    const createResponse = await server.executeOperation(
+      { query: `mutation { createItem(name: "Bread") { id } }` },
+      { contextValue: context },
+    )
+    const itemId =
+      createResponse.body.kind === 'single'
+        ? (createResponse.body.singleResult.data?.createItem as { id: string }).id
+        : null
+
+    // And there are inventory logs for that item
+    await InventoryLogModel.create([
+      { itemId, delta: 1, quantity: 1, occurredAt: new Date(), userId: 'user_test123' },
+      { itemId, delta: -1, quantity: 0, occurredAt: new Date(), userId: 'user_test123' },
+    ])
+
+    // When deleting the item
+    await server.executeOperation(
+      {
+        query: `mutation DeleteItem($id: ID!) { deleteItem(id: $id) }`,
+        variables: { id: itemId },
+      },
+      { contextValue: context },
+    )
+
+    // Then the inventory logs for that item no longer exist
+    const remainingLogs = await InventoryLogModel.find({ itemId })
+    expect(remainingLogs).toHaveLength(0)
   })
 })

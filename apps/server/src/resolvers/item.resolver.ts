@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { ItemModel } from '../models/Item.model.js'
 import { RecipeModel } from '../models/Recipe.model.js'
+import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 
@@ -63,6 +64,8 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
         { userId, 'items.itemId': id },
         { $pull: { items: { itemId: id } } },
       )
+      // Cascade: delete all inventory logs for this item
+      await InventoryLogModel.deleteMany({ itemId: id, userId })
       const result = await ItemModel.deleteOne({ _id: id, userId })
       return result.deletedCount > 0
     },
