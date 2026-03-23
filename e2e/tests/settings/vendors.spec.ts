@@ -123,6 +123,92 @@ test('user can delete a vendor', async ({ page, baseURL }) => {
   await expect(vendorsPage.getVendorCard('Walmart')).not.toBeVisible()
 })
 
+test.describe('vendor item count after vendor assignment', () => {
+  test('vendor item count updates after vendor is assigned to an item', async ({ page, baseURL }) => {
+    const vendorsPage = new VendorsPage(page)
+    const pantry = new PantryPage(page)
+    const item = new ItemPage(page)
+
+    // Given: a vendor "Test Shop" exists and an item "Test Mango" exists WITHOUT the vendor
+    if (baseURL === CLOUD_WEB_URL) {
+      // Cloud: create vendor via UI, then create item without assigning vendor
+      await vendorsPage.navigateTo()
+      await vendorsPage.clickNewVendor()
+      await vendorsPage.fillVendorName('Test Shop')
+      await vendorsPage.clickSave()
+      await page.waitForURL(/\/settings\/vendors\/(?!new)[^/]/)
+
+      // Create item via pantry UI (vendor not assigned)
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Mango')
+      await item.save()
+    } else {
+      // Local: seed vendor and item (without vendor) directly into IndexedDB
+      await seedVendor(page, 'Test Shop')
+      // Item seeded without any vendorIds
+      await page.goto('/')
+      await page.evaluate(async ({ name, now }) => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const req = indexedDB.open('Player1Inventory')
+          req.onsuccess = () => resolve(req.result)
+          req.onerror = () => reject(req.error)
+        })
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction('items', 'readwrite')
+          const req = tx.objectStore('items').put({
+            id: crypto.randomUUID(),
+            name,
+            tagIds: [],
+            vendorIds: [],
+            targetUnit: 'package',
+            targetQuantity: 0,
+            refillThreshold: 0,
+            packedQuantity: 0,
+            unpackedQuantity: 0,
+            consumeAmount: 0,
+            createdAt: new Date(now),
+            updatedAt: new Date(now),
+          })
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+        })
+      }, { name: 'Test Mango', now: new Date().toISOString() })
+    }
+
+    // First: navigate to vendors list to prime the TanStack Query cache with count=0
+    await vendorsPage.navigateTo()
+    // Confirm count is 0 (dialog says "No items are assigned to…")
+    await vendorsPage.clickDeleteVendor('Test Shop')
+    await expect(vendorsPage.getDeleteDialog()).toContainText('No items are assigned to')
+    await vendorsPage.cancelDeleteDialog()
+
+    // When: navigate to the item's vendors tab and assign the vendor
+    await pantry.navigateTo()
+    await pantry.getItemCard('Test Mango').click()
+    await item.navigateToTab('vendors')
+
+    // Toggle the "Test Shop" badge to assign it (initially unselected)
+    await page.getByRole('button', { name: /test shop/i, pressed: false }).click()
+    await expect(
+      page.getByRole('button', { name: /test shop/i, pressed: true })
+    ).toBeVisible()
+
+    // Then: navigate to settings vendors page — the cached count must have been invalidated
+    // and reflect the assignment (count=1), not the stale count=0
+    await vendorsPage.navigateTo()
+
+    // Click delete to open dialog and verify the count reflects the assignment
+    // Dialog description: '"Test Shop" will be removed from 1 item.'
+    // (src/i18n/locales/en.json: settings.vendors.deleteWithItems_one)
+    await vendorsPage.clickDeleteVendor('Test Shop')
+    await expect(vendorsPage.getDeleteDialog()).toContainText('will be removed from 1 item')
+
+    // Cancel — do not delete
+    await vendorsPage.cancelDeleteDialog()
+  })
+})
+
 test.describe('vendor item count after item deletion', () => {
   test('vendor item count updates after item is deleted', async ({ page, baseURL }) => {
     const vendorsPage = new VendorsPage(page)
