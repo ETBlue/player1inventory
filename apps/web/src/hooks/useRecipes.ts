@@ -143,10 +143,20 @@ export function useUpdateRecipe() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
       queryClient.invalidateQueries({ queryKey: ['recipes', id] })
+      queryClient.invalidateQueries({ queryKey: ['recipes', 'itemCount'] })
     },
   })
 
-  const [cloudUpdate] = useUpdateRecipeMutation()
+  const [cloudUpdate] = useUpdateRecipeMutation({
+    update(cache) {
+      cache.modify({
+        fields: {
+          itemCountByRecipe: (_, { DELETE }) => DELETE,
+        },
+      })
+      cache.gc()
+    },
+  })
 
   if (mode === 'cloud') {
     const toVars = (
