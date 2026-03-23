@@ -113,7 +113,7 @@ export async function exportAllData(): Promise<void> {
     cartItems,
   })
 
-  triggerDownload(sanitiseCloudPayload(payload))
+  triggerDownload(payload)
 }
 
 function triggerDownload(payload: ExportPayload): void {
@@ -174,5 +174,5 @@ export async function exportCloudData(client: ApolloClient): Promise<void> {
     cartItems: allCartItemsResult.data?.allCartItems ?? [],
   })
 
-  triggerDownload(payload)
+  triggerDownload(sanitiseCloudPayload(payload))
 }
