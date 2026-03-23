@@ -22,7 +22,7 @@ await connectDB()
 
 const app = express()
 app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN }))
-app.use(express.json())
+app.use(express.json({ limit: '1mb' }))
 if (!E2E_TEST_MODE) app.use(clerkMiddleware())
 
 // E2E test-only cleanup endpoint — only mounted when E2E_TEST_MODE is set.
