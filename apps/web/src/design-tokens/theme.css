@@ -4,7 +4,7 @@
   --background-surface: hsl(45 20% 92.5%);
   --background-elevated: hsl(45 30% 97.5%);
 
-  --foreground-muted: hsl(45 20% 40%);
+  --foreground-muted: hsl(45 20% 34%);
   --foreground-default: hsl(45 50% 20%);
   --foreground-emphasized: hsl(45 50% 10%);
 
@@ -15,11 +15,11 @@
   --overlay: hsl(45 5% 50%);
   --outline: hsl(200 50% 50%);
 
-  --importance-primary: hsl(180 90% 30%);
+  --importance-primary: hsl(180 90% 20%);
   --importance-secondary: hsl(180 40% 45%);
   --importance-tertiary: hsl(180 10% 60%);
   --importance-destructive: hsl(330 40% 50%);
-  --importance-neutral: hsl(45 5% 40%);
+  --importance-neutral: hsl(45 5% 35%);
 
   --status-ok: hsl(75 60% 45%);
   --status-warning: hsl(45 75% 45%);
@@ -37,7 +37,7 @@
   --hue-yellow: hsl(48 96% 48%);
   --hue-green: hsl(142 71% 45%);
   --hue-teal: hsl(174 77% 39%);
-  --hue-blue: hsl(217 91% 60%);
+  --hue-blue: hsl(217 91% 52%);
   --hue-indigo: hsl(239 84% 67%);
   --hue-purple: hsl(271 91% 65%);
   --hue-pink: hsl(330 81% 60%);
