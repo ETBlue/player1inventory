@@ -113,10 +113,12 @@ export function toRecipeInput(recipe: Record<string, unknown>) {
   return {
     id: recipe.id as string,
     name: recipe.name as string,
-    items: (recipe.items ?? []) as Array<{
-      itemId: string
-      defaultAmount: number
-    }>,
+    items: ((recipe.items ?? []) as Array<Record<string, unknown>>).map(
+      (ri) => ({
+        itemId: ri.itemId as string,
+        defaultAmount: ri.defaultAmount as number,
+      }),
+    ),
     lastCookedAt: recipe.lastCookedAt as string | undefined,
   }
 }
