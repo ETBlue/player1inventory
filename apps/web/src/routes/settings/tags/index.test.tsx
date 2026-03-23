@@ -124,6 +124,33 @@ describe('TagSettings — tag type creation (cloud mode bug)', () => {
     )
   })
 
+  it('pressing Enter in the tag type name input triggers the mutation (not a page reload)', async () => {
+    // Given the tags page with a mutateSpy on createTagType
+    setupDefaultMocks()
+    const mutateSpy = vi.fn()
+    vi.spyOn(useTagsModule, 'useCreateTagType').mockReturnValue({
+      mutate: mutateSpy,
+      mutateAsync: vi.fn(),
+      isPending: false,
+    })
+
+    const user = userEvent.setup()
+    const { TagSettings } = await import('@/routes/settings/tags/index')
+    render(<TagSettings />)
+
+    // When user types a tag type name and presses Enter
+    const input = screen.getByLabelText(/name/i)
+    await user.type(input, 'Dairy')
+    await user.keyboard('{Enter}')
+
+    // Then mutate is called (form submitted via onSubmit, not page reload)
+    expect(mutateSpy).toHaveBeenCalledOnce()
+    expect(mutateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Dairy' }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
   it('form resets only after mutate calls onSuccess (fixed cloud mode behavior)', async () => {
     // Given cloud mode where mutate captures the onSuccess callback
     setupDefaultMocks()
