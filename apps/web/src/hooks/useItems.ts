@@ -13,6 +13,7 @@ import type { UpdateItemInput } from '@/generated/graphql'
 import {
   GetItemsDocument,
   GetRecipesDocument,
+  ItemCountByVendorDocument,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
@@ -199,34 +200,45 @@ export function useDeleteItem() {
   const { mode } = useDataMode()
 
   const localMutation = useMutation({
-    mutationFn: deleteItem,
+    mutationFn: ({ id }: { id: string; vendorIds?: string[] }) =>
+      deleteItem(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] }) // cascade invalidation
     },
   })
 
-  const [cloudDelete] = useDeleteItemMutation({
-    refetchQueries: [
-      { query: GetItemsDocument },
-      { query: GetRecipesDocument },
-    ],
-  })
+  const [cloudDelete] = useDeleteItemMutation()
 
   if (mode === 'cloud') {
+    const buildRefetchQueries = (vendorIds?: string[]) => [
+      { query: GetItemsDocument },
+      { query: GetRecipesDocument },
+      ...(vendorIds ?? []).map((vendorId) => ({
+        query: ItemCountByVendorDocument,
+        variables: { vendorId },
+      })),
+    ]
+
     return {
       mutate: (
-        id: string,
+        { id, vendorIds }: { id: string; vendorIds?: string[] },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudDelete({ variables: { id } }).then(
+        cloudDelete({
+          variables: { id },
+          refetchQueries: buildRefetchQueries(vendorIds),
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: (id: string) =>
-        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteItem),
+      mutateAsync: ({ id, vendorIds }: { id: string; vendorIds?: string[] }) =>
+        cloudDelete({
+          variables: { id },
+          refetchQueries: buildRefetchQueries(vendorIds),
+        }).then((r) => r.data?.deleteItem),
       isPending: false,
     }
   }
