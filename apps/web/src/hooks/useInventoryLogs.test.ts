@@ -6,12 +6,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useItemLogs } from './useInventoryLogs'
 
 const mockItemLogsQuery = vi.fn()
+let capturedItemLogsQueryOptions: Record<string, unknown> | undefined
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
-    useItemLogsQuery: () => mockItemLogsQuery(),
+    useItemLogsQuery: (options?: Record<string, unknown>) => {
+      capturedItemLogsQueryOptions = options
+      return mockItemLogsQuery()
+    },
     useAddInventoryLogMutation: () => [vi.fn(), {}],
   }
 })
@@ -36,6 +40,7 @@ function createWrapper() {
 afterEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  capturedItemLogsQueryOptions = undefined
 })
 
 describe('useItemLogs (cloud mode)', () => {
@@ -94,6 +99,28 @@ describe('useItemLogs (cloud mode)', () => {
     // Then isLoading is true and data is undefined
     expect(result.current.isLoading).toBe(true)
     expect(result.current.data).toBeUndefined()
+  })
+
+  it('useItemLogsQuery is called with fetchPolicy cache-and-network to avoid stale logs after checkout', () => {
+    // Given cloud mode — logs can go stale after checkout/cooking because
+    // Apollo refetchQueries only runs for mounted queries; cache-and-network
+    // ensures fresh data is always fetched on mount
+    localStorage.setItem('data-mode', 'cloud')
+    mockItemLogsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is rendered
+    renderHook(() => useItemLogs('item-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then Apollo is called with fetchPolicy: 'cache-and-network'
+    expect(capturedItemLogsQueryOptions).toMatchObject({
+      fetchPolicy: 'cache-and-network',
+    })
   })
 })
 

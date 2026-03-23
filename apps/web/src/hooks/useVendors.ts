@@ -190,6 +190,7 @@ export function useItemCountByVendor(vendorId: string) {
 
   const cloud = useItemCountByVendorQuery({
     variables: { vendorId },
+    fetchPolicy: 'cache-and-network',
     skip: !isCloud || !vendorId,
   })
 

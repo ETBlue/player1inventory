@@ -13,6 +13,7 @@ import {
 
 const mockUseGetVendorsQuery = vi.fn()
 const mockUseItemCountByVendorQuery = vi.fn()
+let capturedItemCountByVendorOptions: Record<string, unknown> | undefined
 const mockCloudCreateVendor = vi.fn()
 const mockCloudUpdateVendor = vi.fn()
 const mockCloudDeleteVendor = vi.fn()
@@ -22,7 +23,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   return {
     ...original,
     useGetVendorsQuery: () => mockUseGetVendorsQuery(),
-    useItemCountByVendorQuery: () => mockUseItemCountByVendorQuery(),
+    useItemCountByVendorQuery: (options?: Record<string, unknown>) => {
+      capturedItemCountByVendorOptions = options
+      return mockUseItemCountByVendorQuery()
+    },
     useCreateVendorMutation: () => [mockCloudCreateVendor, {}],
     useUpdateVendorMutation: () => [mockCloudUpdateVendor, {}],
     useDeleteVendorMutation: () => [mockCloudDeleteVendor, {}],
@@ -40,6 +44,7 @@ function createWrapper() {
 afterEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  capturedItemCountByVendorOptions = undefined
 })
 
 // ─── useVendors ───────────────────────────────────────────────────────────────
@@ -175,5 +180,27 @@ describe('useItemCountByVendor (cloud mode)', () => {
     // Then it returns the count from Apollo
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data).toBe(4)
+  })
+
+  it('useItemCountByVendorQuery is called with fetchPolicy cache-and-network to avoid stale counts after item update', () => {
+    // Given cloud mode — item counts can go stale after useUpdateItem because
+    // the previous cache.modify() DELETE approach has been replaced by
+    // cache-and-network to fetch fresh counts on mount
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseItemCountByVendorQuery.mockReturnValue({
+      data: { itemCountByVendor: 4 },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is rendered
+    renderHook(() => useItemCountByVendor('v-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then Apollo is called with fetchPolicy: 'cache-and-network'
+    expect(capturedItemCountByVendorOptions).toMatchObject({
+      fetchPolicy: 'cache-and-network',
+    })
   })
 })

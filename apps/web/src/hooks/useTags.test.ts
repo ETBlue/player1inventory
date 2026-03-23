@@ -22,6 +22,7 @@ const mockUseGetTagsQuery = vi.fn()
 const mockUseGetTagsByTypeQuery = vi.fn()
 const mockUseItemCountByTagQuery = vi.fn()
 const mockUseTagCountByTypeQuery = vi.fn()
+let capturedItemCountByTagOptions: Record<string, unknown> | undefined
 const mockCloudCreateTagType = vi.fn()
 const mockCloudUpdateTagType = vi.fn()
 const mockCloudDeleteTagType = vi.fn()
@@ -36,7 +37,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useGetTagTypesQuery: () => mockUseGetTagTypesQuery(),
     useGetTagsQuery: () => mockUseGetTagsQuery(),
     useGetTagsByTypeQuery: () => mockUseGetTagsByTypeQuery(),
-    useItemCountByTagQuery: () => mockUseItemCountByTagQuery(),
+    useItemCountByTagQuery: (options?: Record<string, unknown>) => {
+      capturedItemCountByTagOptions = options
+      return mockUseItemCountByTagQuery()
+    },
     useTagCountByTypeQuery: () => mockUseTagCountByTypeQuery(),
     useCreateTagTypeMutation: () => [mockCloudCreateTagType, {}],
     useUpdateTagTypeMutation: () => [mockCloudUpdateTagType, {}],
@@ -58,6 +62,7 @@ function createWrapper() {
 afterEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  capturedItemCountByTagOptions = undefined
 })
 
 // ─── useTagTypes ──────────────────────────────────────────────────────────────
@@ -359,6 +364,28 @@ describe('useItemCountByTag (cloud mode)', () => {
     // Then it returns the count from Apollo
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data).toBe(3)
+  })
+
+  it('useItemCountByTagQuery is called with fetchPolicy cache-and-network to avoid stale counts after item update', () => {
+    // Given cloud mode — item counts can go stale after useUpdateItem because
+    // the previous cache.modify() DELETE approach has been replaced by
+    // cache-and-network to fetch fresh counts on mount
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseItemCountByTagQuery.mockReturnValue({
+      data: { itemCountByTag: 3 },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is rendered
+    renderHook(() => useItemCountByTag('tag-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then Apollo is called with fetchPolicy: 'cache-and-network'
+    expect(capturedItemCountByTagOptions).toMatchObject({
+      fetchPolicy: 'cache-and-network',
+    })
   })
 })
 

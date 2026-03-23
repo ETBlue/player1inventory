@@ -19,6 +19,7 @@ export function useItemLogs(itemId: string) {
 
   const cloud = useItemLogsQuery({
     variables: { itemId },
+    fetchPolicy: 'cache-and-network',
     skip: !isCloud || !itemId,
   })
 
@@ -27,9 +28,13 @@ export function useItemLogs(itemId: string) {
     // so convert them to Date objects to match the InventoryLog type contract.
     const cloudLogs: InventoryLog[] | undefined = cloud.data?.itemLogs?.map(
       (log) => ({
-        ...log,
+        id: log.id,
+        itemId: log.itemId,
+        delta: log.delta,
+        quantity: log.quantity,
         occurredAt: new Date(log.occurredAt as unknown as string),
         createdAt: new Date(log.occurredAt as unknown as string), // GraphQL schema has no createdAt; fall back to occurredAt
+        ...(log.note != null ? { note: log.note } : {}),
       }),
     )
     return {
