@@ -29,7 +29,7 @@ export function useItemLogs(itemId: string) {
       (log) => ({
         ...log,
         occurredAt: new Date(log.occurredAt as unknown as string),
-        createdAt: new Date(log.createdAt as unknown as string),
+        createdAt: new Date(log.occurredAt as unknown as string), // GraphQL schema has no createdAt; fall back to occurredAt
       }),
     )
     return {

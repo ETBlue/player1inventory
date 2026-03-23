@@ -61,7 +61,16 @@ export function useCreateVendor() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (name: string) => cloudCreate({ variables: { name } }),
+      mutate: (
+        name: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudCreate({ variables: { name } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (name: string) =>
         cloudCreate({ variables: { name } }).then((r) => r.data?.createVendor),
       isPending: false,
@@ -99,13 +108,22 @@ export function useUpdateVendor() {
       return vars
     }
     return {
-      mutate: ({
-        id,
-        updates,
-      }: {
-        id: string
-        updates: Partial<Omit<Vendor, 'id'>>
-      }) => cloudUpdate({ variables: toVars(id, updates) }),
+      mutate: (
+        {
+          id,
+          updates,
+        }: {
+          id: string
+          updates: Partial<Omit<Vendor, 'id'>>
+        },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdate({ variables: toVars(id, updates) }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({
         id,
         updates,
@@ -141,7 +159,16 @@ export function useDeleteVendor() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (id: string) => cloudDelete({ variables: { id } }),
+      mutate: (
+        id: string,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudDelete({ variables: { id } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteVendor),
       isPending: false,

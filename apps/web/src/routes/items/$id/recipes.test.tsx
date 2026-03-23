@@ -6,9 +6,10 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
+import * as useRecipesModule from '@/hooks/useRecipes'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Recipes Tab', () => {
@@ -185,6 +186,92 @@ describe('Recipes Tab', () => {
       const updatedRecipe = await db.recipes.get(recipe.id)
       expect(updatedRecipe?.items.some((ri) => ri.itemId === item.id)).toBe(
         false,
+      )
+    })
+  })
+
+  describe('cloud mode — mutate must call onSuccess for dialog to close', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('dialog stays open when mutate ignores onSuccess (regression guard)', async () => {
+      // Given: mutate fires but never calls the onSuccess callback (broken cloud mode)
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
+        mutate: vi.fn(), // ignores options — no onSuccess call
+        isPending: false,
+      })
+
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+      renderRecipesTab(item.id)
+      const user = userEvent.setup()
+
+      // When user opens dialog and submits
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /new recipe/i }),
+        ).toBeInTheDocument(),
+      )
+      await user.click(screen.getByRole('button', { name: /new recipe/i }))
+      await waitFor(() =>
+        expect(screen.getByRole('dialog')).toBeInTheDocument(),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Cloud Recipe')
+      await user.click(screen.getByRole('button', { name: /add recipe/i }))
+
+      // Then dialog stays open (onSuccess was never called)
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('dialog closes when mutate properly calls onSuccess (fixed cloud mode)', async () => {
+      // Given: mutate invokes the onSuccess callback (fixed cloud mode behaviour)
+      vi.spyOn(useRecipesModule, 'useCreateRecipe').mockReturnValue({
+        mutate: vi.fn((_input, options?: { onSuccess?: () => void }) => {
+          Promise.resolve().then(() => options?.onSuccess?.())
+        }),
+        isPending: false,
+      })
+
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+      renderRecipesTab(item.id)
+      const user = userEvent.setup()
+
+      // When user opens dialog and submits
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /new recipe/i }),
+        ).toBeInTheDocument(),
+      )
+      await user.click(screen.getByRole('button', { name: /new recipe/i }))
+      await waitFor(() =>
+        expect(screen.getByRole('dialog')).toBeInTheDocument(),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Cloud Recipe')
+      await user.click(screen.getByRole('button', { name: /add recipe/i }))
+
+      // Then dialog closes once onSuccess fires
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
       )
     })
   })

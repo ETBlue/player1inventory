@@ -372,3 +372,187 @@ test('user can create a tag type', async ({ page }) => {
   // Then: a card with heading "Protein" appears
   await expect(tags.getTagTypeCard('Protein')).toBeVisible()
 })
+
+test.describe('tag type creation via Enter key', () => {
+  test('tag type input clears after submitting by pressing Enter', async ({ page }) => {
+    const tags = new TagsPage(page)
+
+    // Given: the tags settings page is open
+    await tags.navigateTo()
+
+    // When: user fills in "Produce" in the name input and presses Enter (not the button)
+    await tags.fillTagTypeName('Produce')
+    // Press Enter to submit the form — tests that the form's onSubmit handler fires
+    // and does NOT cause a page reload (a reload would navigate away from the SPA)
+    // (src/routes/settings/tags/index.tsx:450-456 — <form onSubmit={...}>)
+    await page.getByLabel('Name').press('Enter')
+
+    // Then: the "Produce" heading appears — proving mutation completed and page did NOT reload
+    await expect(tags.getTagTypeCard('Produce')).toBeVisible()
+
+    // And: the input is cleared (form reset after success)
+    // (src/routes/settings/tags/index.tsx:317-319 — setNewTagTypeName('') in onSuccess)
+    await expect(page.getByLabel('Name')).toHaveValue('')
+  })
+})
+
+test.describe('tag type input clears after button submit', () => {
+  test('tag type input clears after successful creation via button click', async ({ page }) => {
+    const tags = new TagsPage(page)
+
+    // Given: the tags settings page is open
+    await tags.navigateTo()
+
+    // When: user fills "Category" in the input and clicks the submit button
+    await tags.fillTagTypeName('Category')
+    await tags.clickNewTagType()
+
+    // Then: "Category" heading appears
+    await expect(tags.getTagTypeCard('Category')).toBeVisible()
+
+    // And: the input field is now empty (not still showing "Category")
+    // Regression guard: if the form state is not reset on success, the input retains
+    // the old value. (src/routes/settings/tags/index.tsx:317-319 — setNewTagTypeName(''))
+    await expect(page.getByLabel('Name')).toHaveValue('')
+  })
+})
+
+test.describe('new tag from item tags tab', () => {
+  test('user can create a new tag from item tags tab and it is automatically assigned to the item', async ({ page, baseURL }) => {
+    const pantry = new PantryPage(page)
+    const item = new ItemPage(page)
+    const tagsPage = new TagsPage(page)
+
+    // Given: an item "Test Apple" exists and a tag type "Fruit" with tag "Organic" exists
+    if (baseURL === CLOUD_WEB_URL) {
+      // Cloud: UI-driven setup
+      await tagsPage.navigateTo()
+      await tagsPage.fillTagTypeName('Fruit')
+      await tagsPage.clickNewTagType()
+      await expect(tagsPage.getTagTypeCard('Fruit')).toBeVisible()
+      await tagsPage.clickNewTag('Fruit')
+      await tagsPage.fillTagName('Organic')
+      await tagsPage.submitTagDialog()
+      await expect(tagsPage.getTagBadge('Organic')).toBeVisible()
+
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Apple')
+      await item.save()
+    } else {
+      // Local: seed tags directly, create item via UI
+      await seedTags(
+        page,
+        [{ name: 'Fruit', color: 'green' }],
+        [{ name: 'Organic', typeIndex: 0 }],
+      )
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Apple')
+      await item.save()
+    }
+
+    // Capture the item ID now (while on the item page) before navigating away
+    const itemId = item.getCurrentItemId()
+
+    // When: navigate to the item's tags tab
+    await page.goto(`/items/${itemId}/tags`)
+
+    // And: click "New Tag" under the "Fruit" section, type "Fresh", submit
+    await page.getByRole('button', { name: /new tag/i }).first().click()
+    // AddNameDialog input: label "Name" (src/components/AddNameDialog/index.tsx:41)
+    await page.getByRole('dialog').getByLabel('Name').fill('Fresh')
+    await page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
+
+    // Then: the "Fresh" badge is visible and in a selected/pressed state (aria-pressed=true)
+    // Tag badges on item tags tab: role="button" aria-pressed={isSelected}
+    // (src/routes/items/$id/tags.tsx:96-97)
+    await expect(
+      page.getByRole('button', { name: /fresh/i, pressed: true })
+    ).toBeVisible()
+
+    // And: persists after navigating away and back to the tags tab
+    await pantry.navigateTo()
+    await page.goto(`/items/${itemId}/tags`)
+
+    // The "Fresh" badge should still be selected (assigned to the item)
+    await expect(
+      page.getByRole('button', { name: /fresh/i, pressed: true })
+    ).toBeVisible()
+  })
+})
+
+test.describe('tag item count after item deletion', () => {
+  test('tag item count updates after item is deleted', async ({ page, baseURL }) => {
+    const tagsPage = new TagsPage(page)
+    const pantry = new PantryPage(page)
+    const item = new ItemPage(page)
+
+    // Given: a tag type "Category" and tag "Perishable" exist; an item "Test Banana" is tagged with "Perishable"
+    if (baseURL === CLOUD_WEB_URL) {
+      // Cloud: UI-driven setup
+      await tagsPage.navigateTo()
+      await tagsPage.fillTagTypeName('Category')
+      await tagsPage.clickNewTagType()
+      await expect(tagsPage.getTagTypeCard('Category')).toBeVisible()
+      await tagsPage.clickNewTag('Category')
+      await tagsPage.fillTagName('Perishable')
+      await tagsPage.submitTagDialog()
+      await expect(tagsPage.getTagBadge('Perishable')).toBeVisible()
+
+      // Create item and assign the tag via item tags tab
+      await pantry.navigateTo()
+      await pantry.clickAddItem()
+      await item.fillName('Test Banana')
+      await item.save()
+      await item.navigateToTab('tags')
+      // Toggle the "Perishable" badge to assign it (initially unselected)
+      await page.getByRole('button', { name: /perishable/i, pressed: false }).click()
+      await expect(
+        page.getByRole('button', { name: /perishable/i, pressed: true })
+      ).toBeVisible()
+    } else {
+      // Local: seed tag type + tag, then seed item with the tag already assigned
+      const { tagIds } = await seedTags(
+        page,
+        [{ name: 'Category', color: 'blue' }],
+        [{ name: 'Perishable', typeIndex: 0 }],
+      )
+      const perishableId = tagIds[0]
+      await seedItem(page, 'Test Banana', [perishableId])
+
+      // Navigate to pantry so TanStack Query cache is populated
+      await pantry.navigateTo()
+    }
+
+    // When: navigate to settings tags page and check the item count for "Perishable"
+    await tagsPage.navigateTo()
+
+    // The badge text includes the count: "Perishable (1)" (src/routes/settings/tags/index.tsx:123)
+    // Click the delete button to open the dialog and read the count from the description
+    await tagsPage.clickDeleteTag('Perishable')
+    // Dialog description says: "We are about to delete "Perishable", removing it from 1 item."
+    // (src/i18n/locales/en.json: settings.tags.tag.deleteWithItems_one)
+    await expect(tagsPage.getDeleteDialog()).toContainText('removing it from 1 item')
+
+    // Cancel so we don't delete the tag
+    await tagsPage.cancelDeleteDialog()
+
+    // Then: navigate to the item and delete it
+    await pantry.navigateTo()
+    await pantry.getItemCard('Test Banana').click()
+    await item.delete()
+
+    // And: navigate back to settings tags page and verify the count is now 0
+    await tagsPage.navigateTo()
+
+    // Click delete again to check the updated count in the dialog
+    await tagsPage.clickDeleteTag('Perishable')
+    // Dialog now says: "It's safe to delete "Perishable" since no item is using it."
+    // (src/i18n/locales/en.json: settings.tags.tag.deleteNoItems)
+    await expect(tagsPage.getDeleteDialog()).toContainText("no item is using it")
+
+    // Cancel — do not actually delete
+    await tagsPage.cancelDeleteDialog()
+  })
+})

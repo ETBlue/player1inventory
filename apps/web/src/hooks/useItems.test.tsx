@@ -233,22 +233,23 @@ describe('useDeleteItem (cloud mode)', () => {
       refetch: vi.fn(),
     })
 
-    // When the mutation is called
+    // When the mutation is called with id and no vendorIds
     const { result } = renderHook(() => useDeleteItem(), {
       wrapper: createWrapper(),
     })
-    const deleted = await result.current.mutateAsync('item-1')
+    const deleted = await result.current.mutateAsync({ id: 'item-1' })
 
-    // Then it delegates to cloudDelete
-    expect(mockCloudDelete).toHaveBeenCalledWith({
-      variables: { id: 'item-1' },
-    })
+    // Then it delegates to cloudDelete with the correct variables
+    expect(mockCloudDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ variables: { id: 'item-1' } }),
+    )
     expect(deleted).toBe(true)
   })
 
-  it('user can delete an item in cloud mode — recipes are refetched to fix stale item count', () => {
+  it('user can delete an item in cloud mode — GetItemsDocument and GetRecipesDocument are refetched per call', async () => {
     // Given cloud mode
     localStorage.setItem('data-mode', 'cloud')
+    mockCloudDelete.mockResolvedValue({ data: { deleteItem: true } })
     mockUseGetItemsQuery.mockReturnValue({
       data: undefined,
       loading: false,
@@ -256,12 +257,15 @@ describe('useDeleteItem (cloud mode)', () => {
       refetch: vi.fn(),
     })
 
-    // When the hook is rendered (mutation is configured)
-    renderHook(() => useDeleteItem(), { wrapper: createWrapper() })
+    // When deleteItem.mutate is called
+    const { result } = renderHook(() => useDeleteItem(), {
+      wrapper: createWrapper(),
+    })
+    await result.current.mutateAsync({ id: 'item-1' })
 
-    // Then useDeleteItemMutation is initialized with GetRecipesDocument in refetchQueries
+    // Then cloudDelete is called with GetItemsDocument and GetRecipesDocument in refetchQueries
     // (ensures cooking page item counts update after item deletion)
-    expect(mockUseDeleteItemMutationOptions).toHaveBeenCalledWith(
+    expect(mockCloudDelete).toHaveBeenCalledWith(
       expect.objectContaining({
         refetchQueries: expect.arrayContaining([
           expect.objectContaining({ query: GetRecipesDocument }),

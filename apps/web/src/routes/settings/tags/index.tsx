@@ -251,7 +251,7 @@ function DroppableTagTypeCard({
   )
 }
 
-function TagSettings() {
+export function TagSettings() {
   const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
@@ -308,23 +308,35 @@ function TagSettings() {
 
   const handleAddTagType = () => {
     if (newTagTypeName.trim()) {
-      createTagType.mutate({
-        name: newTagTypeName.trim(),
-        color: newTagTypeColor,
-      })
-      setNewTagTypeName('')
-      setNewTagTypeColor(TagColor.blue)
+      createTagType.mutate(
+        {
+          name: newTagTypeName.trim(),
+          color: newTagTypeColor,
+        },
+        {
+          onSuccess: () => {
+            setNewTagTypeName('')
+            setNewTagTypeColor(TagColor.blue)
+          },
+        },
+      )
     }
   }
 
   const handleAddTag = () => {
     if (addTagDialog && newTagName.trim()) {
-      createTag.mutate({
-        name: newTagName.trim(),
-        typeId: addTagDialog,
-      })
-      setNewTagName('')
-      setAddTagDialog(null)
+      createTag.mutate(
+        {
+          name: newTagName.trim(),
+          typeId: addTagDialog,
+        },
+        {
+          onSuccess: () => {
+            setNewTagName('')
+            setAddTagDialog(null)
+          },
+        },
+      )
     }
   }
 
@@ -435,7 +447,13 @@ function TagSettings() {
         <h1 className="">{t('settings.tags.label')}</h1>
       </Toolbar>
 
-      <form className="px-6 pt-3 pb-5 space-y-2">
+      <form
+        className="px-6 pt-3 pb-5 space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleAddTagType()
+        }}
+      >
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <div>
             <Label htmlFor="newTagTypeColor">
@@ -458,12 +476,11 @@ function TagSettings() {
               autoFocus
               onChange={(e) => setNewTagTypeName(e.target.value)}
               className="capitalize"
-              onKeyDown={(e) => e.key === 'Enter' && handleAddTagType()}
             />
           </div>
         </div>
         <div className="flex">
-          <Button onClick={handleAddTagType} className="flex-1">
+          <Button type="submit" className="flex-1">
             <Plus />
             {t('settings.tags.tagType.newButton')}
           </Button>

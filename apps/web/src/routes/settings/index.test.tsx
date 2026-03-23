@@ -17,6 +17,9 @@ vi.mock('@/components/settings/FamilyGroupCard', () => ({
 vi.mock('@/components/settings/ExportCard', () => ({
   ExportCard: () => <div data-testid="export-card" />,
 }))
+vi.mock('@/components/settings/ImportCard', () => ({
+  ImportCard: () => <div data-testid="import-card" />,
+}))
 vi.mock('@/components/settings/SettingsNavCard', () => ({
   SettingsNavCard: ({ label }: { label: string }) => (
     <div data-testid="settings-nav-card">{label}</div>

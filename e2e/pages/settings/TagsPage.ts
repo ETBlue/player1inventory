@@ -114,4 +114,15 @@ export class TagsPage {
   async clickUndo() {
     await this.getUndoToast().click()
   }
+
+  async cancelDeleteDialog() {
+    // Cancel button in the AlertDialog — rendered as "Cancel" text (src/components/ui/alert-dialog.tsx)
+    await this.page.getByRole('button', { name: 'Cancel' }).click()
+  }
+
+  getDeleteDialog(): import('@playwright/test').Locator {
+    // The AlertDialog element — use to scope content assertions inside the dialog
+    // (src/components/DeleteButton/index.tsx, src/components/ui/alert-dialog.tsx)
+    return this.page.getByRole('alertdialog')
+  }
 }

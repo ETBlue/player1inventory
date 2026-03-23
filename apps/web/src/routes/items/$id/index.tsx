@@ -207,7 +207,11 @@ function ItemDetailTab() {
   }
 
   const handleDelete = async () => {
-    await deleteItem.mutateAsync(item.id)
+    await deleteItem.mutateAsync({
+      id: item.id,
+      ...(item.vendorIds ? { vendorIds: item.vendorIds } : {}),
+      ...(item.tagIds ? { tagIds: item.tagIds } : {}),
+    })
     goBack()
   }
 

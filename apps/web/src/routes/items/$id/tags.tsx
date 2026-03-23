@@ -27,12 +27,19 @@ function TagsTab() {
   const [newTagName, setNewTagName] = useState('')
   const createTag = useCreateTag()
 
-  const handleAddTag = () => {
+  const handleAddTag = async () => {
     if (addTagDialog && newTagName.trim()) {
-      createTag.mutate({
+      const newTag = await createTag.mutateAsync({
         name: newTagName.trim(),
         typeId: addTagDialog,
       })
+      if (newTag?.id && item) {
+        // Immediately assign the new tag to the current item
+        updateItem.mutate({
+          id,
+          updates: { tagIds: [...item.tagIds, newTag.id] },
+        })
+      }
       setNewTagName('')
       setAddTagDialog(null)
     }

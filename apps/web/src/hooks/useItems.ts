@@ -13,6 +13,8 @@ import type { UpdateItemInput } from '@/generated/graphql'
 import {
   GetItemsDocument,
   GetRecipesDocument,
+  ItemCountByTagDocument,
+  ItemCountByVendorDocument,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
@@ -131,8 +133,16 @@ export function useCreateItem() {
 
   if (mode === 'cloud') {
     return {
-      mutate: (input: { name: string }) =>
-        cloudCreate({ variables: { name: input.name } }),
+      mutate: (
+        input: { name: string },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudCreate({ variables: { name: input.name } }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: (input: { name: string }) =>
         cloudCreate({ variables: { name: input.name } }).then(
           (r) => r.data?.createItem,
@@ -163,8 +173,18 @@ export function useUpdateItem() {
 
   if (mode === 'cloud') {
     return {
-      mutate: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
-        cloudUpdate({ variables: { id, input: toUpdateItemInput(updates) } }),
+      mutate: (
+        { id, updates }: { id: string; updates: Partial<Item> },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudUpdate({
+          variables: { id, input: toUpdateItemInput(updates) },
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
       mutateAsync: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
         cloudUpdate({
           variables: { id, input: toUpdateItemInput(updates) },
@@ -181,25 +201,61 @@ export function useDeleteItem() {
   const { mode } = useDataMode()
 
   const localMutation = useMutation({
-    mutationFn: deleteItem,
+    mutationFn: ({ id }: { id: string; vendorIds?: string[] }) =>
+      deleteItem(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] }) // cascade invalidation
     },
   })
 
-  const [cloudDelete] = useDeleteItemMutation({
-    refetchQueries: [
-      { query: GetItemsDocument },
-      { query: GetRecipesDocument },
-    ],
-  })
+  const [cloudDelete] = useDeleteItemMutation()
 
   if (mode === 'cloud') {
+    const buildRefetchQueries = (vendorIds?: string[], tagIds?: string[]) => [
+      { query: GetItemsDocument },
+      { query: GetRecipesDocument },
+      ...(vendorIds ?? []).map((vendorId) => ({
+        query: ItemCountByVendorDocument,
+        variables: { vendorId },
+      })),
+      ...(tagIds ?? []).map((tagId) => ({
+        query: ItemCountByTagDocument,
+        variables: { tagId },
+      })),
+    ]
+
     return {
-      mutate: (id: string) => cloudDelete({ variables: { id } }),
-      mutateAsync: (id: string) =>
-        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteItem),
+      mutate: (
+        {
+          id,
+          vendorIds,
+          tagIds,
+        }: { id: string; vendorIds?: string[]; tagIds?: string[] },
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudDelete({
+          variables: { id },
+          refetchQueries: buildRefetchQueries(vendorIds, tagIds),
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
+      mutateAsync: ({
+        id,
+        vendorIds,
+        tagIds,
+      }: {
+        id: string
+        vendorIds?: string[]
+        tagIds?: string[]
+      }) =>
+        cloudDelete({
+          variables: { id },
+          refetchQueries: buildRefetchQueries(vendorIds, tagIds),
+        }).then((r) => r.data?.deleteItem),
       isPending: false,
     }
   }

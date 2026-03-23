@@ -40,10 +40,7 @@ function RecipesTab() {
     if (!newRecipeName.trim()) return
 
     createRecipe.mutate(
-      {
-        name: newRecipeName.trim(),
-        items: [{ itemId: id, defaultAmount: 0 }],
-      },
+      { name: newRecipeName.trim(), items: [{ itemId: id, defaultAmount: 0 }] },
       {
         onSuccess: () => {
           setNewRecipeName('')
