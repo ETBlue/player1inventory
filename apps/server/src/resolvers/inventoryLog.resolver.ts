@@ -55,5 +55,9 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   InventoryLog: {
     id: (log) => (log as unknown as { _id: { toString(): string } })._id.toString(),
     occurredAt: (log) => (log as unknown as { occurredAt: Date }).occurredAt.toISOString(),
+    // Legacy MongoDB documents may have null for numeric fields — coalesce to 0
+    // to satisfy the non-nullable Float! contract in the GraphQL schema.
+    quantity: (log) => (log as unknown as { quantity: number | null }).quantity ?? 0,
+    delta: (log) => (log as unknown as { delta: number | null }).delta ?? 0,
   },
 }
