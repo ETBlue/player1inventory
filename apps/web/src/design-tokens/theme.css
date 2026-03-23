@@ -19,7 +19,7 @@
   --importance-secondary: hsl(180 40% 45%);
   --importance-tertiary: hsl(180 10% 60%);
   --importance-destructive: hsl(330 40% 50%);
-  --importance-neutral: hsl(45 5% 35%);
+  --importance-neutral: hsl(45 5% 30%);
 
   --status-ok: hsl(75 60% 45%);
   --status-warning: hsl(45 75% 45%);
