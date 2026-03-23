@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   GetItemsDocument,
   GetRecipesDocument,
+  ItemCountByTagDocument,
   ItemCountByVendorDocument,
 } from '@/generated/graphql'
 import { useDeleteItem } from './useItems'
@@ -96,6 +97,42 @@ describe('useDeleteItem (cloud mode)', () => {
           {
             query: ItemCountByVendorDocument,
             variables: { vendorId: 'vendor-b' },
+          },
+        ]),
+      }),
+    )
+  })
+
+  it('refetches ItemCountByTagDocument for each tagId when deleting in cloud mode', async () => {
+    // Given cloud mode and an item that belongs to two tags
+    localStorage.setItem('data-mode', 'cloud')
+    mockCloudDeleteItem.mockResolvedValue({ data: { deleteItem: true } })
+
+    // When deleteItem.mutate is called with tagIds
+    const { result } = renderHook(() => useDeleteItem(), {
+      wrapper: createWrapper(),
+    })
+
+    await result.current.mutate({
+      id: 'item-1',
+      tagIds: ['tag-a', 'tag-b'],
+    })
+
+    // Then cloudDelete is called with refetchQueries that include
+    // ItemCountByTagDocument for each tag
+    expect(mockCloudDeleteItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: { id: 'item-1' },
+        refetchQueries: expect.arrayContaining([
+          { query: GetItemsDocument },
+          { query: GetRecipesDocument },
+          {
+            query: ItemCountByTagDocument,
+            variables: { tagId: 'tag-a' },
+          },
+          {
+            query: ItemCountByTagDocument,
+            variables: { tagId: 'tag-b' },
           },
         ]),
       }),

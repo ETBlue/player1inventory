@@ -210,6 +210,7 @@ function ItemDetailTab() {
     await deleteItem.mutateAsync({
       id: item.id,
       ...(item.vendorIds ? { vendorIds: item.vendorIds } : {}),
+      ...(item.tagIds ? { tagIds: item.tagIds } : {}),
     })
     goBack()
   }
