@@ -575,7 +575,7 @@ async function fetchCloudExistingData(
     recipesResult,
     inventoryLogsResult,
     shoppingCartsResult,
-    cartItemsResult,
+    allCartItemsResult,
   ] = await Promise.all([
     client.query<GetItemsQuery>({ query: GetItemsDocument, fetchPolicy }),
     client.query<GetTagsQuery>({ query: GetTagsDocument, fetchPolicy }),
@@ -609,7 +609,7 @@ async function fetchCloudExistingData(
       []) as InventoryLog[],
     shoppingCarts: ((shoppingCartsResult.data as unknown as R).shoppingCarts ??
       []) as ShoppingCart[],
-    cartItems: ((cartItemsResult.data as unknown as R).allCartItems ??
+    cartItems: ((allCartItemsResult.data as unknown as R).allCartItems ??
       []) as CartItem[],
   }
 }

@@ -73,11 +73,7 @@ export const ManyConflicts: Story = {
         { id: 'log-2', name: 'log-2', matchReasons: ['id'] },
       ],
       shoppingCarts: [{ id: 'cart-1', name: 'cart-1', matchReasons: ['id'] }],
-      cartItems: [
-        { id: 'cartitem-1', name: 'cartitem-1', matchReasons: ['id'] },
-        { id: 'cartitem-2', name: 'cartitem-2', matchReasons: ['id'] },
-        { id: 'cartitem-3', name: 'cartitem-3', matchReasons: ['id'] },
-      ],
+      cartItems: [{ id: 'ci-1', name: 'ci-1', matchReasons: ['id'] }],
     },
   },
 }

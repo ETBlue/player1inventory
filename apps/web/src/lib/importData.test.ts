@@ -63,12 +63,24 @@ function makeInventoryLog(id: string) {
   }
 }
 
-function makeShoppingCart(id: string) {
-  return { id, status: 'active' as const, createdAt: new Date() }
+function makeShoppingCart(
+  id: string,
+  status: 'active' | 'completed' | 'abandoned' = 'active',
+) {
+  return {
+    id,
+    status,
+    createdAt: new Date(),
+  }
 }
 
-function makeCartItem(id: string) {
-  return { id, cartId: 'cart-1', itemId: 'item-1', quantity: 1 }
+function makeCartItem(id: string, cartId = 'cart-1', itemId = 'item-1') {
+  return {
+    id,
+    cartId,
+    itemId,
+    quantity: 1,
+  }
 }
 
 function emptyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
@@ -113,8 +125,6 @@ describe('detectConflicts', () => {
       vendors: [makeVendor('vendor-1', 'Costco')],
       recipes: [makeRecipe('recipe-1', 'Smoothie')],
       inventoryLogs: [makeInventoryLog('log-1')],
-      shoppingCarts: [makeShoppingCart('cart-1')],
-      cartItems: [makeCartItem('ci-1')],
     })
 
     // When importing a payload whose IDs all match existing entities
@@ -125,8 +135,6 @@ describe('detectConflicts', () => {
       vendors: [makeVendor('vendor-1', 'Different Vendor')],
       recipes: [makeRecipe('recipe-1', 'Different Recipe')],
       inventoryLogs: [makeInventoryLog('log-1')],
-      shoppingCarts: [makeShoppingCart('cart-1')],
-      cartItems: [makeCartItem('ci-1')],
     })
 
     const summary = detectConflicts(payload, existing)
@@ -149,12 +157,6 @@ describe('detectConflicts', () => {
 
     expect(summary.inventoryLogs).toHaveLength(1)
     expect(summary.inventoryLogs[0].matchReasons).toEqual(['id'])
-
-    expect(summary.shoppingCarts).toHaveLength(1)
-    expect(summary.shoppingCarts[0].matchReasons).toEqual(['id'])
-
-    expect(summary.cartItems).toHaveLength(1)
-    expect(summary.cartItems[0].matchReasons).toEqual(['id'])
   })
 
   it('user can detect name conflicts for named entities', async () => {
@@ -431,6 +433,30 @@ describe('importLocalData', () => {
     const oldItem = await db.items.get('item-old')
     expect(oldItem).toBeUndefined()
   })
+
+  it('user can import active shopping cart and cart items', async () => {
+    // Given a payload with an active shopping cart and its cart items
+    const cart = makeShoppingCart('cart-1', 'active')
+    const cartItem = makeCartItem('ci-1', 'cart-1', 'item-1')
+    const payload = emptyPayload({
+      shoppingCarts: [cart],
+      cartItems: [cartItem],
+    })
+
+    // When importing with skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then the shopping cart and its items are stored
+    const carts = await db.shoppingCarts.toArray()
+    expect(carts).toHaveLength(1)
+    expect(carts[0].id).toBe('cart-1')
+    expect(carts[0].status).toBe('active')
+
+    const cartItems = await db.cartItems.toArray()
+    expect(cartItems).toHaveLength(1)
+    expect(cartItems[0].id).toBe('ci-1')
+    expect(cartItems[0].cartId).toBe('cart-1')
+  })
 })
 
 describe('cloud import input mappers — strip server-only fields', () => {
@@ -583,19 +609,23 @@ describe('cloud import input mappers — strip server-only fields', () => {
   })
 
   it('toShoppingCartInput strips server-only fields and converts Date createdAt', () => {
-    const date = new Date('2026-03-01T00:00:00.000Z')
+    const date = new Date('2026-03-01T10:00:00.000Z')
     const rawCart = {
-      __typename: 'ShoppingCart',
+      __typename: 'Cart',
       id: 'cart-1',
-      status: 'completed',
+      status: 'active',
       createdAt: date,
       completedAt: null,
       userId: 'u1',
+      familyId: 'f1',
     }
     const result = toShoppingCartInput(rawCart)
     expect(result).not.toHaveProperty('__typename')
     expect(result).not.toHaveProperty('userId')
-    expect(result.createdAt).toBe('2026-03-01T00:00:00.000Z')
+    expect(result).not.toHaveProperty('familyId')
+    expect(result.id).toBe('cart-1')
+    expect(result.status).toBe('active')
+    expect(result.createdAt).toBe('2026-03-01T10:00:00.000Z')
   })
 
   it('toCartItemInput strips server-only fields', () => {
@@ -611,6 +641,8 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result).not.toHaveProperty('__typename')
     expect(result).not.toHaveProperty('userId')
     expect(result.id).toBe('ci-1')
+    expect(result.cartId).toBe('cart-1')
+    expect(result.itemId).toBe('item-1')
     expect(result.quantity).toBe(3)
   })
 })

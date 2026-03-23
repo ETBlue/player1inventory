@@ -33,6 +33,29 @@ describe('buildExportPayload', () => {
     expect(payload.items).toHaveLength(1)
     expect(payload.tags).toHaveLength(1)
   })
+
+  it('buildExportPayload includes shoppingCarts and cartItems fields', () => {
+    const payload = buildExportPayload({
+      items: [],
+      tags: [],
+      tagTypes: [],
+      vendors: [],
+      recipes: [],
+      inventoryLogs: [],
+      shoppingCarts: [
+        {
+          id: 'cart-1',
+          status: 'active',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      cartItems: [
+        { id: 'ci-1', cartId: 'cart-1', itemId: 'item-1', quantity: 2 },
+      ],
+    })
+    expect(payload.shoppingCarts).toHaveLength(1)
+    expect(payload.cartItems).toHaveLength(1)
+  })
 })
 
 describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export', () => {

@@ -98,9 +98,13 @@ export async function exportAllData(): Promise<void> {
     db.vendors.toArray(),
     db.recipes.toArray(),
     db.inventoryLogs.toArray(),
-    db.shoppingCarts.toArray(),
+    db.shoppingCarts.where('status').equals('active').toArray(),
     db.cartItems.toArray(),
   ])
+
+  // Only export cartItems belonging to the active carts
+  const activeCartIds = new Set(shoppingCarts.map((c) => c.id))
+  const activeCartItems = cartItems.filter((ci) => activeCartIds.has(ci.cartId))
 
   const payload = buildExportPayload({
     items,
@@ -110,7 +114,7 @@ export async function exportAllData(): Promise<void> {
     recipes,
     inventoryLogs,
     shoppingCarts,
-    cartItems,
+    cartItems: activeCartItems,
   })
 
   triggerDownload(payload)
@@ -163,6 +167,18 @@ export async function exportCloudData(client: ApolloClient): Promise<void> {
     }),
   ])
 
+  // Filter to active carts only — completed carts pile up and history is in inventoryLogs
+  const allShoppingCarts = (shoppingCartsResult.data?.shoppingCarts ??
+    []) as Array<{ id: string; status: string }>
+  const activeCarts = allShoppingCarts.filter((c) => c.status === 'active')
+  const activeCartIdSet = new Set(activeCarts.map((c) => c.id))
+  const allCartItems = (allCartItemsResult.data?.allCartItems ?? []) as Array<{
+    cartId: string
+  }>
+  const activeCartItems = allCartItems.filter((ci) =>
+    activeCartIdSet.has(ci.cartId),
+  )
+
   const payload = buildExportPayload({
     items: itemsResult.data?.items ?? [],
     tags: tagsResult.data?.tags ?? [],
@@ -170,8 +186,8 @@ export async function exportCloudData(client: ApolloClient): Promise<void> {
     vendors: vendorsResult.data?.vendors ?? [],
     recipes: recipesResult.data?.recipes ?? [],
     inventoryLogs: inventoryLogsResult.data?.inventoryLogs ?? [],
-    shoppingCarts: shoppingCartsResult.data?.shoppingCarts ?? [],
-    cartItems: allCartItemsResult.data?.allCartItems ?? [],
+    shoppingCarts: activeCarts,
+    cartItems: activeCartItems,
   })
 
   triggerDownload(sanitiseCloudPayload(payload))
