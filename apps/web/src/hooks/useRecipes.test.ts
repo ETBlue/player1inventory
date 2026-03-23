@@ -16,6 +16,7 @@ import {
 const mockUseGetRecipesQuery = vi.fn()
 const mockUseGetRecipeQuery = vi.fn()
 const mockUseItemCountByRecipeQuery = vi.fn()
+let capturedItemCountByRecipeOptions: Record<string, unknown> | undefined
 const mockCloudCreateRecipe = vi.fn()
 const mockCloudUpdateRecipe = vi.fn()
 const mockCloudDeleteRecipe = vi.fn()
@@ -27,7 +28,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     ...original,
     useGetRecipesQuery: () => mockUseGetRecipesQuery(),
     useGetRecipeQuery: () => mockUseGetRecipeQuery(),
-    useItemCountByRecipeQuery: () => mockUseItemCountByRecipeQuery(),
+    useItemCountByRecipeQuery: (options?: Record<string, unknown>) => {
+      capturedItemCountByRecipeOptions = options
+      return mockUseItemCountByRecipeQuery()
+    },
     useCreateRecipeMutation: () => [mockCloudCreateRecipe, {}],
     useUpdateRecipeMutation: () => [mockCloudUpdateRecipe, {}],
     useDeleteRecipeMutation: () => [mockCloudDeleteRecipe, {}],
@@ -49,6 +53,7 @@ function createWrapper() {
 afterEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  capturedItemCountByRecipeOptions = undefined
 })
 
 // ─── useRecipes ───────────────────────────────────────────────────────────────
@@ -282,5 +287,27 @@ describe('useItemCountByRecipe (cloud mode)', () => {
     // Then it returns the count from Apollo
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data).toBe(3)
+  })
+
+  it('useItemCountByRecipeQuery is called with fetchPolicy cache-and-network to avoid stale counts after recipe update', () => {
+    // Given cloud mode — item counts can go stale after useUpdateRecipe because
+    // the previous cache.modify() DELETE approach has been replaced by
+    // cache-and-network to fetch fresh counts on mount
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseItemCountByRecipeQuery.mockReturnValue({
+      data: { itemCountByRecipe: 3 },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is rendered
+    renderHook(() => useItemCountByRecipe('r-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then Apollo is called with fetchPolicy: 'cache-and-network'
+    expect(capturedItemCountByRecipeOptions).toMatchObject({
+      fetchPolicy: 'cache-and-network',
+    })
   })
 })

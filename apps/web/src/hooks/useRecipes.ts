@@ -147,16 +147,7 @@ export function useUpdateRecipe() {
     },
   })
 
-  const [cloudUpdate] = useUpdateRecipeMutation({
-    update(cache) {
-      cache.modify({
-        fields: {
-          itemCountByRecipe: (_, { DELETE }) => DELETE,
-        },
-      })
-      cache.gc()
-    },
-  })
+  const [cloudUpdate] = useUpdateRecipeMutation({})
 
   if (mode === 'cloud') {
     const toVars = (
@@ -305,6 +296,7 @@ export function useItemCountByRecipe(recipeId: string) {
 
   const cloud = useItemCountByRecipeQuery({
     variables: { recipeId },
+    fetchPolicy: 'cache-and-network',
     skip: !isCloud || !recipeId,
   })
 

@@ -381,6 +381,7 @@ export function useItemCountByTag(tagId: string) {
 
   const cloud = useItemCountByTagQuery({
     variables: { tagId },
+    fetchPolicy: 'cache-and-network',
     skip: !isCloud || !tagId,
   })
 

@@ -171,15 +171,6 @@ export function useUpdateItem() {
 
   const [cloudUpdate] = useUpdateItemMutation({
     refetchQueries: [{ query: GetItemsDocument }],
-    update(cache) {
-      cache.modify({
-        fields: {
-          itemCountByTag: (_, { DELETE }) => DELETE,
-          itemCountByVendor: (_, { DELETE }) => DELETE,
-        },
-      })
-      cache.gc()
-    },
   })
 
   if (mode === 'cloud') {
