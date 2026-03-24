@@ -1,4 +1,5 @@
 import { useApolloClient } from '@apollo/client/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -54,6 +55,7 @@ export function ImportCard() {
   const { t } = useTranslation()
   const { mode } = useDataMode()
   const client = useApolloClient()
+  const queryClient = useQueryClient()
   const [importStatus, setImportStatus] = useState<ImportStatus>({
     phase: 'idle',
   })
@@ -108,6 +110,7 @@ export function ImportCard() {
     } else {
       try {
         await importLocalData(payload, strategy)
+        await queryClient.invalidateQueries()
         toast.success(t('settings.import.success'))
         setImportStatus({ phase: 'idle' })
       } catch {
