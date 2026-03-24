@@ -1,23 +1,30 @@
 import { MockedProvider } from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ImportCard } from '.'
 
 // ImportCard uses:
 //   - useDataMode() — reads localStorage key 'data-mode'
 //   - useApolloClient() — used in cloud mode for imperative queries
+//   - useQueryClient() — used in local mode to invalidate caches after import
 //
 // Mocking strategy:
 //   - localStorage is set in each story's `beforeEach` to control mode
 //   - Apollo is mocked with MockedProvider (no specific queries needed for render)
+//   - QueryClientProvider wraps all stories to satisfy useQueryClient()
+
+const queryClient = new QueryClient()
 
 const meta: Meta<typeof ImportCard> = {
   title: 'Settings/ImportCard',
   component: ImportCard,
   decorators: [
     (Story) => (
-      <MockedProvider mocks={[]} addTypename={false}>
-        <Story />
-      </MockedProvider>
+      <QueryClientProvider client={queryClient}>
+        <MockedProvider mocks={[]} addTypename={false}>
+          <Story />
+        </MockedProvider>
+      </QueryClientProvider>
     ),
   ],
   parameters: {
