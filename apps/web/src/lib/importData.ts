@@ -678,21 +678,18 @@ async function fetchCloudExistingData(
     }),
   ])
 
-  // Apollo Client v4 data field is typed as {} — cast via unknown for property access
-  type R = Record<string, unknown[] | undefined>
   return {
-    items: ((itemsResult.data as unknown as R).items ?? []) as Item[],
-    tags: ((tagsResult.data as unknown as R).tags ?? []) as Tag[],
-    tagTypes: ((tagTypesResult.data as unknown as R).tagTypes ??
-      []) as TagType[],
-    vendors: ((vendorsResult.data as unknown as R).vendors ?? []) as Vendor[],
-    recipes: ((recipesResult.data as unknown as R).recipes ?? []) as Recipe[],
-    inventoryLogs: ((inventoryLogsResult.data as unknown as R).inventoryLogs ??
-      []) as InventoryLog[],
-    shoppingCarts: ((shoppingCartsResult.data as unknown as R).shoppingCarts ??
-      []) as ShoppingCart[],
-    cartItems: ((allCartItemsResult.data as unknown as R).allCartItems ??
-      []) as CartItem[],
+    items: (itemsResult.data?.items ?? []) as unknown as Item[],
+    tags: (tagsResult.data?.tags ?? []) as unknown as Tag[],
+    tagTypes: (tagTypesResult.data?.tagTypes ?? []) as unknown as TagType[],
+    vendors: (vendorsResult.data?.vendors ?? []) as unknown as Vendor[],
+    recipes: (recipesResult.data?.recipes ?? []) as unknown as Recipe[],
+    inventoryLogs: (inventoryLogsResult.data?.inventoryLogs ??
+      []) as unknown as InventoryLog[],
+    shoppingCarts: (shoppingCartsResult.data?.shoppingCarts ??
+      []) as unknown as ShoppingCart[],
+    cartItems: (allCartItemsResult.data?.allCartItems ??
+      []) as unknown as CartItem[],
   }
 }
 
