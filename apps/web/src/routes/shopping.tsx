@@ -6,6 +6,7 @@ import {
 import { Check, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { Toolbar } from '@/components/Toolbar'
@@ -331,6 +332,20 @@ function Shopping() {
           {inactivePendingItems.map((item) => renderItemCard(item))}
         </div>
       )}
+
+      {/* Empty state */}
+      {displayItems.length === 0 &&
+        (items.length === 0 ? (
+          <EmptyState
+            title={t('shopping.empty.title')}
+            description={t('shopping.empty.description')}
+          />
+        ) : (
+          <EmptyState
+            title={t('shopping.emptyFiltered.title')}
+            description={t('shopping.emptyFiltered.description')}
+          />
+        ))}
 
       {/* Abandon Cart Confirmation Dialog */}
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>

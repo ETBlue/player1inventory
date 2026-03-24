@@ -38,6 +38,14 @@
     "log": {
       "purchasedAt": "purchased at {{vendor}}",
       "purchased": "purchased"
+    },
+    "empty": {
+      "title": "No items yet.",
+      "description": "Add pantry items to see them here."
+    },
+    "emptyFiltered": {
+      "title": "No items match the current filters.",
+      "description": "Try adjusting or clearing your filters."
     }
   },
   "cooking": {

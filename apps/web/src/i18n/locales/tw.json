@@ -38,6 +38,14 @@
     "log": {
       "purchasedAt": "在 {{vendor}} 買的",
       "purchased": "購入"
+    },
+    "empty": {
+      "title": "尚無品項。",
+      "description": "新增食品庫品項以在此顯示。"
+    },
+    "emptyFiltered": {
+      "title": "無品項符合目前的篩選條件。",
+      "description": "請嘗試調整或清除篩選條件。"
     }
   },
   "cooking": {
