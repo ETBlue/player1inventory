@@ -59,7 +59,7 @@ function TagsTab() {
   if (!item) return null
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-2xl mx-auto">
       {tagTypes.length === 0 ? (
         <p className="text-sm text-foreground-muted">
           No tags yet. Create tags in Settings.
