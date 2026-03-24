@@ -529,7 +529,15 @@ export async function importLocalData(
     await db.recipes.bulkAdd(payload.recipes as Recipe[])
     await db.tagTypes.bulkAdd(payload.tagTypes as TagType[])
     await db.tags.bulkAdd(payload.tags as Tag[])
-    await db.inventoryLogs.bulkAdd(payload.inventoryLogs as InventoryLog[])
+    await db.inventoryLogs.bulkAdd(
+      (payload.inventoryLogs as InventoryLog[]).map((log) => ({
+        ...log,
+        occurredAt:
+          log.occurredAt instanceof Date
+            ? log.occurredAt
+            : new Date(log.occurredAt as unknown as string),
+      })),
+    )
     await db.shoppingCarts.bulkAdd(payload.shoppingCarts as ShoppingCart[])
     await db.cartItems.bulkAdd(payload.cartItems as CartItem[])
     return
@@ -548,9 +556,16 @@ export async function importLocalData(
       allKeys: false,
     })
     await db.tags.bulkAdd(toCreate.tags as Tag[], { allKeys: false })
-    await db.inventoryLogs.bulkAdd(toCreate.inventoryLogs as InventoryLog[], {
-      allKeys: false,
-    })
+    await db.inventoryLogs.bulkAdd(
+      (toCreate.inventoryLogs as InventoryLog[]).map((log) => ({
+        ...log,
+        occurredAt:
+          log.occurredAt instanceof Date
+            ? log.occurredAt
+            : new Date(log.occurredAt as unknown as string),
+      })),
+      { allKeys: false },
+    )
     await db.shoppingCarts.bulkAdd(toCreate.shoppingCarts as ShoppingCart[], {
       allKeys: false,
     })
@@ -568,9 +583,16 @@ export async function importLocalData(
   await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
   await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], { allKeys: false })
   await db.tags.bulkAdd(toCreate.tags as Tag[], { allKeys: false })
-  await db.inventoryLogs.bulkAdd(toCreate.inventoryLogs as InventoryLog[], {
-    allKeys: false,
-  })
+  await db.inventoryLogs.bulkAdd(
+    (toCreate.inventoryLogs as InventoryLog[]).map((log) => ({
+      ...log,
+      occurredAt:
+        log.occurredAt instanceof Date
+          ? log.occurredAt
+          : new Date(log.occurredAt as unknown as string),
+    })),
+    { allKeys: false },
+  )
   await db.shoppingCarts.bulkAdd(toCreate.shoppingCarts as ShoppingCart[], {
     allKeys: false,
   })
@@ -583,7 +605,15 @@ export async function importLocalData(
   await db.recipes.bulkPut(toUpsert.recipes as Recipe[])
   await db.tagTypes.bulkPut(toUpsert.tagTypes as TagType[])
   await db.tags.bulkPut(toUpsert.tags as Tag[])
-  await db.inventoryLogs.bulkPut(toUpsert.inventoryLogs as InventoryLog[])
+  await db.inventoryLogs.bulkPut(
+    (toUpsert.inventoryLogs as InventoryLog[]).map((log) => ({
+      ...log,
+      occurredAt:
+        log.occurredAt instanceof Date
+          ? log.occurredAt
+          : new Date(log.occurredAt as unknown as string),
+    })),
+  )
   await db.shoppingCarts.bulkPut(toUpsert.shoppingCarts as ShoppingCart[])
   await db.cartItems.bulkPut(toUpsert.cartItems as CartItem[])
 }
