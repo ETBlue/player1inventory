@@ -5,7 +5,7 @@ import { RecipeModel } from '../models/Recipe.model.js'
 import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import { CartModel, CartItemModel } from '../models/Cart.model.js'
 import { requireAuth } from '../context.js'
-import type { Item, Resolvers } from '../generated/graphql.js'
+import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Tag, TagType, Vendor } from '../generated/graphql.js'
 
 // Strip export-only fields and reassign userId when inserting imported records
 function stripForInsert(record: Record<string, unknown>, userId: string): Record<string, unknown> {
@@ -18,16 +18,27 @@ function withId(record: Record<string, unknown>, userId: string): Record<string,
   return { ...stripForInsert(record, userId), _id: record.id }
 }
 
+// Mongoose 8 + ordered:false throws BulkWriteError even when some docs succeeded.
+// Extract the successfully inserted docs so callers get partial results instead of an error.
+// Typed `never` so `.catch(insertedDocsOrRethrow)` preserves the Promise's resolved type.
+function insertedDocsOrRethrow(err: unknown): never {
+  const bulkErr = err as { insertedDocs?: unknown[] }
+  if (Array.isArray(bulkErr?.insertedDocs)) return bulkErr.insertedDocs as never
+  throw err
+}
+
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
   Mutation: {
     // -------------------------------------------------------------------------
-    // Bulk create — inserts records with original IDs, skips existing ones
+    // Bulk create — inserts records with original IDs, skips existing ones.
+    // Mongoose 8 throws BulkWriteError on duplicate keys even with ordered:false;
+    // we catch it and return only the successfully inserted docs (skip semantics).
     // -------------------------------------------------------------------------
     bulkCreateItems: async (_, { items }, ctx) => {
       const userId = requireAuth(ctx)
       if (items.length === 0) return []
       const docs = items.map((item) => withId(item as unknown as Record<string, unknown>, userId))
-      const inserted = await ItemModel.insertMany(docs, { ordered: false })
+      const inserted = await ItemModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
       return inserted as unknown as Item[]
     },
 
@@ -35,28 +46,32 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const userId = requireAuth(ctx)
       if (tags.length === 0) return []
       const docs = tags.map((tag) => withId(tag as unknown as Record<string, unknown>, userId))
-      return TagModel.insertMany(docs, { ordered: false })
+      const inserted = await TagModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted as unknown as Tag[]
     },
 
     bulkCreateTagTypes: async (_, { tagTypes }, ctx) => {
       const userId = requireAuth(ctx)
       if (tagTypes.length === 0) return []
       const docs = tagTypes.map((tt) => withId(tt as unknown as Record<string, unknown>, userId))
-      return TagTypeModel.insertMany(docs, { ordered: false })
+      const inserted = await TagTypeModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted as unknown as TagType[]
     },
 
     bulkCreateVendors: async (_, { vendors }, ctx) => {
       const userId = requireAuth(ctx)
       if (vendors.length === 0) return []
       const docs = vendors.map((v) => withId(v as unknown as Record<string, unknown>, userId))
-      return VendorModel.insertMany(docs, { ordered: false })
+      const inserted = await VendorModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted as unknown as Vendor[]
     },
 
     bulkCreateRecipes: async (_, { recipes }, ctx) => {
       const userId = requireAuth(ctx)
       if (recipes.length === 0) return []
       const docs = recipes.map((r) => withId(r as unknown as Record<string, unknown>, userId))
-      return RecipeModel.insertMany(docs, { ordered: false })
+      const inserted = await RecipeModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted as unknown as Recipe[]
     },
 
     bulkCreateInventoryLogs: async (_, { logs }, ctx) => {
@@ -66,8 +81,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id: _id, userId: _userId, familyId: _f, ...rest } = log as unknown as Record<string, unknown>
         return { ...rest, _id, userId, occurredAt: new Date(rest.occurredAt as string) }
       })
-      const inserted = await InventoryLogModel.insertMany(docs, { ordered: false })
-      return inserted.map((l) => ({ ...l.toObject(), id: l._id.toString() }))
+      const inserted = await InventoryLogModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted.map((l) => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
     },
 
     bulkCreateShoppingCarts: async (_, { carts }, ctx) => {
@@ -77,8 +92,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id: _id, userId: _userId, familyId: _f, ...rest } = cart as unknown as Record<string, unknown>
         return { ...rest, _id, userId }
       })
-      const inserted = await CartModel.insertMany(docs, { ordered: false })
-      return inserted.map((c) => ({ ...c.toObject(), id: c._id.toString() }))
+      const inserted = await CartModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted.map((c) => ({ ...c.toObject(), id: c._id.toString() })) as unknown as Cart[]
     },
 
     bulkCreateCartItems: async (_, { cartItems }, ctx) => {
@@ -88,8 +103,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id: _id, userId: _userId, ...rest } = ci as unknown as Record<string, unknown>
         return { ...rest, _id, userId }
       })
-      const inserted = await CartItemModel.insertMany(docs, { ordered: false })
-      return inserted.map((ci) => ({ ...ci.toObject(), id: ci._id.toString() }))
+      const inserted = await CartItemModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      return inserted.map((ci) => ({ ...ci.toObject(), id: ci._id.toString() })) as unknown as CartItem[]
     },
 
     // -------------------------------------------------------------------------
@@ -108,7 +123,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           },
         }
       })
-      await ItemModel.bulkWrite(ops)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await ItemModel.bulkWrite(ops as any)
       const ids = items.map((i) => i.id)
       const inserted = await ItemModel.find({ _id: { $in: ids } })
       return inserted as unknown as Item[]
@@ -124,8 +140,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           upsert: true,
         },
       }))
-      await TagModel.bulkWrite(ops)
-      return TagModel.find({ _id: { $in: tags.map((t) => t.id) } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await TagModel.bulkWrite(ops as any)
+      const inserted = await TagModel.find({ _id: { $in: tags.map((t) => t.id) } })
+      return inserted as unknown as Tag[]
     },
 
     bulkUpsertTagTypes: async (_, { tagTypes }, ctx) => {
@@ -138,8 +156,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           upsert: true,
         },
       }))
-      await TagTypeModel.bulkWrite(ops)
-      return TagTypeModel.find({ _id: { $in: tagTypes.map((t) => t.id) } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await TagTypeModel.bulkWrite(ops as any)
+      const inserted = await TagTypeModel.find({ _id: { $in: tagTypes.map((t) => t.id) } })
+      return inserted as unknown as TagType[]
     },
 
     bulkUpsertVendors: async (_, { vendors }, ctx) => {
@@ -152,8 +172,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           upsert: true,
         },
       }))
-      await VendorModel.bulkWrite(ops)
-      return VendorModel.find({ _id: { $in: vendors.map((v) => v.id) } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await VendorModel.bulkWrite(ops as any)
+      const inserted = await VendorModel.find({ _id: { $in: vendors.map((v) => v.id) } })
+      return inserted as unknown as Vendor[]
     },
 
     bulkUpsertRecipes: async (_, { recipes }, ctx) => {
@@ -166,8 +188,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           upsert: true,
         },
       }))
-      await RecipeModel.bulkWrite(ops)
-      return RecipeModel.find({ _id: { $in: recipes.map((r) => r.id) } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await RecipeModel.bulkWrite(ops as any)
+      const inserted = await RecipeModel.find({ _id: { $in: recipes.map((r) => r.id) } })
+      return inserted as unknown as Recipe[]
     },
 
     bulkUpsertInventoryLogs: async (_, { logs }, ctx) => {
@@ -178,9 +202,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const doc = { ...rest, _id, userId, occurredAt: new Date(rest.occurredAt as string) }
         return { replaceOne: { filter: { _id }, replacement: doc, upsert: true } }
       })
-      await InventoryLogModel.bulkWrite(ops)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await InventoryLogModel.bulkWrite(ops as any)
       const inserted = await InventoryLogModel.find({ _id: { $in: logs.map((l) => l.id) } })
-      return inserted.map((l) => ({ ...l.toObject(), id: l._id.toString() }))
+      return inserted.map((l) => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
     },
 
     bulkUpsertShoppingCarts: async (_, { carts }, ctx) => {
@@ -191,9 +216,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const doc = { ...rest, _id, userId }
         return { replaceOne: { filter: { _id }, replacement: doc, upsert: true } }
       })
-      await CartModel.bulkWrite(ops)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await CartModel.bulkWrite(ops as any)
       const inserted = await CartModel.find({ _id: { $in: carts.map((c) => c.id) } })
-      return inserted.map((c) => ({ ...c.toObject(), id: c._id.toString() }))
+      return inserted.map((c) => ({ ...c.toObject(), id: c._id.toString() })) as unknown as Cart[]
     },
 
     bulkUpsertCartItems: async (_, { cartItems }, ctx) => {
@@ -204,9 +230,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const doc = { ...rest, _id, userId }
         return { replaceOne: { filter: { _id }, replacement: doc, upsert: true } }
       })
-      await CartItemModel.bulkWrite(ops)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await CartItemModel.bulkWrite(ops as any)
       const inserted = await CartItemModel.find({ _id: { $in: cartItems.map((ci) => ci.id) } })
-      return inserted.map((ci) => ({ ...ci.toObject(), id: ci._id.toString() }))
+      return inserted.map((ci) => ({ ...ci.toObject(), id: ci._id.toString() })) as unknown as CartItem[]
     },
 
     // -------------------------------------------------------------------------
