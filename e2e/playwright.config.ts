@@ -22,6 +22,7 @@ export default defineConfig({
     {
       // Local mode: app reads from IndexedDB (Dexie). No backend needed.
       name: 'local',
+      testIgnore: ['**/settings/import-export-cloud.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
