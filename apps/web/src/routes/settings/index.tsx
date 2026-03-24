@@ -30,7 +30,9 @@ function Settings() {
         <ThemeCard />
         <LanguageCard />
         <DataModeCard />
-        {mode === 'cloud' && <FamilyGroupCard />}
+        {mode === 'cloud' && !import.meta.env.VITE_E2E_TEST_USER_ID && (
+          <FamilyGroupCard />
+        )}
         <ExportCard />
         <ImportCard />
         <SettingsNavCard
