@@ -1,4 +1,7 @@
+import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { test, expect } from '@playwright/test'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
@@ -6,9 +9,11 @@ import { SettingsPage } from '../../pages/SettingsPage'
 import { ShoppingPage } from '../../pages/ShoppingPage'
 import { RecipesPage } from '../../pages/settings/RecipesPage'
 import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
-import localFixture from '../../fixtures/local-backup.json'
 
+const LOCAL_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/local-backup.json')
 const CLOUD_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/cloud-backup.json')
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const localFixture = JSON.parse(fs.readFileSync(LOCAL_FIXTURE_PATH, 'utf-8')) as any
 
 test.afterEach(async ({ page }) => {
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
@@ -34,22 +39,26 @@ test.afterEach(async ({ page }) => {
 })
 
 // Helper: seed all fixture entities into IndexedDB via page.evaluate
-async function seedLocalFixture(page: import('@playwright/test').Page, fixture: typeof localFixture) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function seedLocalFixture(page: import('@playwright/test').Page, fixture: any) {
   await page.goto('/')
-  // Wait for Dexie to initialise the DB
-  await page.waitForFunction(() => {
-    return new Promise((resolve) => {
-      const req = indexedDB.open('Player1Inventory')
-      req.onsuccess = () => { req.result.close(); resolve(true) }
-      req.onerror = () => resolve(false)
-    })
-  })
   await page.evaluate(async (fixture) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('Player1Inventory')
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
+    const storeNames = ['tagTypes', 'tags', 'vendors', 'items', 'recipes', 'inventoryLogs', 'shoppingCarts', 'cartItems']
+    // Clear all stores first (removes default-populated data from Dexie's populate hook)
+    for (const storeName of storeNames) {
+      const tx = db.transaction([storeName], 'readwrite')
+      tx.objectStore(storeName).clear()
+      await new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    }
+    // Seed fixture records
     const entries: [string, unknown[]][] = [
       ['tagTypes', fixture.tagTypes],
       ['tags', fixture.tags],
