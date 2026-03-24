@@ -1,4 +1,7 @@
+import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { test, expect } from '@playwright/test'
 import { CLOUD_SERVER_URL, E2E_USER_ID } from '../../constants'
 import { makeGql } from '../../utils/cloud'
@@ -8,9 +11,11 @@ import { SettingsPage } from '../../pages/SettingsPage'
 import { ShoppingPage } from '../../pages/ShoppingPage'
 import { RecipesPage } from '../../pages/settings/RecipesPage'
 import { RecipeDetailPage } from '../../pages/settings/RecipeDetailPage'
-import cloudFixture from '../../fixtures/cloud-backup.json'
 
+const CLOUD_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/cloud-backup.json')
 const LOCAL_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/local-backup.json')
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const cloudFixture = JSON.parse(fs.readFileSync(CLOUD_FIXTURE_PATH, 'utf-8')) as any
 
 test.beforeEach(async ({ request }) => {
   await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
