@@ -18,8 +18,13 @@ import { useMyFamilyGroupQuery } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
 import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 
-function CloudModeCard({ onDisable }: { onDisable: () => void }) {
-  const { user } = useUser()
+function CloudModeCardContent({
+  email,
+  onDisable,
+}: {
+  email: string | undefined
+  onDisable: () => void
+}) {
   const { t } = useTranslation()
   return (
     <>
@@ -27,9 +32,7 @@ function CloudModeCard({ onDisable }: { onDisable: () => void }) {
       <div className="flex-1">
         <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
         <p className="text-sm text-foreground-muted">
-          {t('settings.dataMode.cloud.signedInAs', {
-            email: user?.primaryEmailAddress?.emailAddress,
-          })}
+          {t('settings.dataMode.cloud.signedInAs', { email })}
         </p>
       </div>
       <Button variant="neutral-outline" onClick={onDisable}>
@@ -37,6 +40,23 @@ function CloudModeCard({ onDisable }: { onDisable: () => void }) {
       </Button>
     </>
   )
+}
+
+function CloudModeCardWithUser({ onDisable }: { onDisable: () => void }) {
+  const { user } = useUser()
+  return (
+    <CloudModeCardContent
+      email={user?.primaryEmailAddress?.emailAddress}
+      onDisable={onDisable}
+    />
+  )
+}
+
+function CloudModeCard({ onDisable }: { onDisable: () => void }) {
+  if (import.meta.env.VITE_E2E_TEST_USER_ID) {
+    return <CloudModeCardContent email={undefined} onDisable={onDisable} />
+  }
+  return <CloudModeCardWithUser onDisable={onDisable} />
 }
 
 function CloudDisableFlow() {
