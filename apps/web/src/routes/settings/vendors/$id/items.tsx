@@ -211,7 +211,7 @@ function VendorItemsTab() {
   const filteredItems = [...assignedItems, ...unassignedItems]
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <ItemListToolbar
         sortBy={sortBy}
         sortDirection={sortDirection}

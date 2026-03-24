@@ -265,7 +265,7 @@ function RecipeItemsTab() {
   }
 
   return (
-    <div className="space-y-0 max-w-2xl">
+    <div className="space-y-0 max-w-2xl mx-auto">
       <ItemListToolbar
         sortBy={sortBy}
         sortDirection={sortDirection}
