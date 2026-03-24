@@ -1,5 +1,7 @@
 import { createFileRoute, useRouterState } from '@tanstack/react-router'
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
@@ -23,6 +25,7 @@ export const Route = createFileRoute('/settings/recipes/$id/items')({
 })
 
 function RecipeItemsTab() {
+  const { t } = useTranslation()
   const { id: recipeId } = Route.useParams()
   const { data: items = [], isLoading } = useItems()
   const { data: recipe } = useRecipe(recipeId)
@@ -284,7 +287,10 @@ function RecipeItemsTab() {
       <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
+        <EmptyState
+          title={t('settings.recipes.items.empty.title')}
+          description={t('settings.recipes.items.empty.description')}
+        />
       )}
 
       {[

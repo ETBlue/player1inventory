@@ -1,6 +1,7 @@
 import { createFileRoute, useRouterState } from '@tanstack/react-router'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
@@ -232,9 +233,10 @@ function TagItemsTab() {
       <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted py-4">
-          {t('settings.tags.items.empty.title')}
-        </p>
+        <EmptyState
+          title={t('settings.tags.items.empty.title')}
+          description={t('settings.tags.items.empty.description')}
+        />
       )}
 
       {[

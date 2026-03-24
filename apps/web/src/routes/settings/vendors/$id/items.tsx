@@ -1,5 +1,7 @@
 import { createFileRoute, useRouterState } from '@tanstack/react-router'
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
@@ -24,6 +26,7 @@ export const Route = createFileRoute('/settings/vendors/$id/items')({
 })
 
 function VendorItemsTab() {
+  const { t } = useTranslation()
   const { id: vendorId } = Route.useParams()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
@@ -230,7 +233,10 @@ function VendorItemsTab() {
       <div className="h-px bg-accessory-default" />
 
       {items.length === 0 && !search.trim() && (
-        <p className="text-sm text-foreground-muted py-4">No items yet.</p>
+        <EmptyState
+          title={t('settings.vendors.items.empty.title')}
+          description={t('settings.vendors.items.empty.description')}
+        />
       )}
 
       {[
