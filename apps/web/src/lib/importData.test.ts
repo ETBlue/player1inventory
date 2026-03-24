@@ -459,6 +459,40 @@ describe('importLocalData', () => {
     expect(cartItems[0].id).toBe('ci-1')
     expect(cartItems[0].cartId).toBe('cart-1')
   })
+
+  it('user can import item with dueDate as ISO string — stored as Date', async () => {
+    // Given a payload where dueDate is an ISO string (as produced by JSON.parse)
+    const item = {
+      ...makeItem('item-1', 'Milk'),
+      dueDate: '2026-06-01T00:00:00.000Z' as unknown as Date,
+    }
+    const payload = emptyPayload({ items: [item] })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then dueDate is stored as a Date object, not a string
+    const stored = await db.items.get('item-1')
+    expect(stored?.dueDate).toBeInstanceOf(Date)
+    expect(stored?.dueDate?.toISOString()).toBe('2026-06-01T00:00:00.000Z')
+  })
+
+  it('user can import inventory log with occurredAt as ISO string — stored as Date', async () => {
+    // Given a payload where occurredAt is an ISO string (as produced by JSON.parse)
+    const log = {
+      ...makeInventoryLog('log-1'),
+      occurredAt: '2026-03-01T12:00:00.000Z' as unknown as Date,
+    }
+    const payload = emptyPayload({ inventoryLogs: [log] })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then occurredAt is stored as a Date object, not a string
+    const stored = await db.inventoryLogs.get('log-1')
+    expect(stored?.occurredAt).toBeInstanceOf(Date)
+    expect(stored?.occurredAt?.toISOString()).toBe('2026-03-01T12:00:00.000Z')
+  })
 })
 
 describe('cloud import input mappers — strip server-only fields', () => {
