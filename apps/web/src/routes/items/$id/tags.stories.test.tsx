@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './tags.stories'
 
-const { Default, WithAssignedTags } = composeStories(stories)
+const { Default, WithAssignedTags, EmptyTagTypes } = composeStories(stories)
 
 describe('Item detail tags tab stories smoke tests', () => {
   it('Default renders the tag type name after setup', async () => {
@@ -15,5 +15,12 @@ describe('Item detail tags tab stories smoke tests', () => {
     render(<WithAssignedTags />)
     expect(await screen.findByText('Creamy')).toBeInTheDocument()
     expect(screen.getByText('Crunchy')).toBeInTheDocument()
+  })
+
+  it('EmptyTagTypes renders the New Tag Type button', async () => {
+    render(<EmptyTagTypes />)
+    expect(
+      await screen.findByRole('button', { name: /new tag type/i }),
+    ).toBeInTheDocument()
   })
 })

@@ -13,7 +13,8 @@
     "unsavedDescription": "You have unsaved changes. Discard changes?",
     "done": "Done",
     "back": "Nevermind",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "add": "Add"
   },
   "shopping": {
     "toolbar": {

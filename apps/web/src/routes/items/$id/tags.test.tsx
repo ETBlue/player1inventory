@@ -124,6 +124,55 @@ describe('Tags Tab - Add Tag Functionality', () => {
     expect(screen.queryByLabelText(/name/i)).not.toBeInTheDocument()
   })
 
+  it('user can create a new tag type from the empty tags tab', async () => {
+    // Given an item with no tag types in the database
+    const item = await createItem({
+      name: 'Yogurt',
+      tagIds: [],
+      targetQuantity: 4,
+      refillThreshold: 1,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${item.id}/tags`],
+    })
+    const router = createRouter({ routeTree, history })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // When user sees the empty state and clicks "New Tag Type"
+    const newTagTypeButton = await screen.findByRole('button', {
+      name: /new tag type/i,
+    })
+    await userEvent.click(newTagTypeButton)
+
+    // And enters a tag type name in the dialog
+    const input = screen.getByLabelText(/name/i)
+    await userEvent.type(input, 'Season')
+
+    // And clicks the Add button
+    const addButton = screen.getByRole('button', { name: /^add$/i })
+    await userEvent.click(addButton)
+
+    // Then the new tag type is created in the database
+    await waitFor(async () => {
+      const tagTypes = await db.tagTypes.toArray()
+      expect(tagTypes.some((tt) => tt.name === 'Season')).toBe(true)
+    })
+
+    // And the tags tab now shows the new tag type
+    await waitFor(() => {
+      expect(screen.getByText(/season/i)).toBeInTheDocument()
+    })
+  })
+
   it('tag badge has aria-pressed reflecting assigned state', async () => {
     // Given a tag type with a tag not yet assigned to the item
     const tagType = await createTagType({ name: 'Category', color: 'blue' })
