@@ -156,6 +156,7 @@ export function ImportCard() {
         },
         session,
       })
+      await client.resetStore()
       setImportStatus({ phase: 'done' })
       setTimeout(() => setImportStatus({ phase: 'idle' }), 2000)
     } catch (err) {
