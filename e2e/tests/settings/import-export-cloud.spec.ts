@@ -114,6 +114,10 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({ page
   // Given: all fixture entities seeded via GraphQL
   await seedCloudFixture(request)
 
+  // Visit pantry first to populate Apollo cache
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+
   // When: export via UI
   await settings.navigateTo()
   const download = await settings.triggerExport()
