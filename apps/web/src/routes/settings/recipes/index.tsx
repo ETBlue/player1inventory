@@ -50,7 +50,7 @@ function RecipeSettings() {
       <div className="space-y-px pb-4">
         {sortedRecipes.length === 0 ? (
           <p className="text-foreground-muted text-sm">
-            {t('settings.recipes.empty')}
+            {t('settings.recipes.empty.title')}
           </p>
         ) : (
           sortedRecipes.map((recipe) => (

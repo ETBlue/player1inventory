@@ -63,7 +63,7 @@ function VendorSettings() {
       <div className="space-y-px pb-4">
         {sortedVendors.length === 0 ? (
           <p className="text-foreground-muted text-sm">
-            {t('settings.vendors.empty')}
+            {t('settings.vendors.empty.title')}
           </p>
         ) : (
           sortedVendors.map((vendor) => (

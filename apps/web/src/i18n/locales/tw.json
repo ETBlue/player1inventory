@@ -45,6 +45,10 @@
       "servingCount_other": "在做 {{count}} 道菜"
     },
     "emptyState": "還沒有任何食譜喔，創造第一個食譜吧。",
+    "empty": {
+      "title": "尚無食譜。",
+      "description": "請至設定新增食譜。"
+    },
     "recipe": {
       "itemCount_one": "已選 {{count}} 項",
       "itemCount_other": "已選 {{count}} 項",
@@ -84,6 +88,18 @@
     "toggleSearch": "切換搜尋",
     "search": "搜尋",
     "searchPlaceholder": "搜尋食譜或材料..."
+  },
+  "items": {
+    "tags": {
+      "empty": {
+        "title": "尚無標籤類型。",
+        "description": "新增標籤類型以開始整理品項。"
+      },
+      "newTagType": {
+        "button": "新增標籤類型",
+        "dialogTitle": "新增標籤類型"
+      }
+    }
   },
   "settings": {
     "title": "設定",
@@ -128,7 +144,10 @@
         "notFound": "查無此標籤"
       },
       "items": {
-        "empty": "還沒建立任何品項。",
+        "empty": {
+          "title": "尚無品項。",
+          "description": "已套用此標籤的品項將顯示於此。"
+        },
         "emptyFiltered": "沒有符合篩選條件的品項。"
       }
     },
@@ -136,27 +155,45 @@
       "label": "供應商",
       "description": "管理供應商",
       "newButton": "新增供應商",
-      "empty": "還沒建立任何供應商。",
+      "empty": {
+        "title": "尚無廠商。",
+        "description": "點選 + 新增第一個廠商。"
+      },
       "itemCount_one": "· 1 個品項",
       "itemCount_other": "· {{count}} 個品項",
       "deleteAriaLabel": "刪除{{name}}",
       "deleteTitle": "刪除供應商？",
       "deleteWithItems_other": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
       "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
-      "notFound": "查無此供應商"
+      "notFound": "查無此供應商",
+      "items": {
+        "empty": {
+          "title": "尚無品項。",
+          "description": "已指定此廠商的品項將顯示於此。"
+        }
+      }
     },
     "recipes": {
       "label": "食譜",
       "description": "管理食譜",
       "newButton": "新增食譜",
-      "empty": "還沒建立任何食譜。",
+      "empty": {
+        "title": "尚無食譜。",
+        "description": "點選 + 新增第一個食譜。"
+      },
       "itemCount_one": "· 1 個品項",
       "itemCount_other": "· {{count}} 個品項",
       "deleteAriaLabel": "刪除{{name}}",
       "deleteTitle": "刪除食譜？",
       "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
       "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有關聯到任何品項，可以安心刪除。",
-      "notFound": "查無此食譜"
+      "notFound": "查無此食譜",
+      "items": {
+        "empty": {
+          "title": "尚無品項。",
+          "description": "已連結此食譜的品項將顯示於此。"
+        }
+      }
     },
     "language": {
       "label": "語言",

@@ -213,7 +213,7 @@ function TagItemsTab() {
   }
 
   return (
-    <div className="space-y-0 max-w-2xl">
+    <div className="space-y-0 max-w-2xl mx-auto">
       <ItemListToolbar
         sortBy={sortBy}
         sortDirection={sortDirection}
@@ -233,7 +233,7 @@ function TagItemsTab() {
 
       {items.length === 0 && !search.trim() && (
         <p className="text-sm text-foreground-muted py-4">
-          {t('settings.tags.items.empty')}
+          {t('settings.tags.items.empty.title')}
         </p>
       )}
 
