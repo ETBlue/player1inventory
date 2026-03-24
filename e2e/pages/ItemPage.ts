@@ -150,4 +150,14 @@ export class ItemPage {
     // Find a log entry containing specific text (note, quantity, etc.) (src/routes/items/$id/log.tsx)
     return this.page.getByText(text)
   }
+
+  getTagBadge(name: string): Locator {
+    // Assigned tag badge: role="button" aria-pressed=true (src/routes/items/$id/tags.tsx)
+    return this.page.getByRole('button', { name, exact: false, pressed: true })
+  }
+
+  getAssignedVendorBadge(name: string): Locator {
+    // Assigned vendor badge: role="button" aria-pressed=true (src/routes/items/$id/vendors.tsx)
+    return this.page.getByRole('button', { name, exact: false, pressed: true })
+  }
 }

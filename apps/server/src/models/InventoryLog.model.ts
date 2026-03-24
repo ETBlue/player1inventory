@@ -1,8 +1,12 @@
 import { getModelForClass, index, modelOptions, prop } from '@typegoose/typegoose'
+import mongoose from 'mongoose'
 
 @modelOptions({ schemaOptions: { timestamps: false, collection: 'inventoryLogs' } })
 @index({ itemId: 1, occurredAt: -1 })
 class InventoryLogClass {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   itemId!: string
 

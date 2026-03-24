@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "exportedAt": "2026-03-24T00:00:00.000Z",
+  "tagTypes": [
+    { "id": "aaaaaaaa-0000-0000-0000-000000000001", "name": "Fixture Category", "color": "blue" }
+  ],
+  "tags": [
+    { "id": "aaaaaaaa-0000-0000-0000-000000000002", "name": "Fixture Tag", "typeId": "aaaaaaaa-0000-0000-0000-000000000001" }
+  ],
+  "vendors": [
+    { "id": "aaaaaaaa-0000-0000-0000-000000000003", "name": "Fixture Vendor" }
+  ],
+  "items": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000004",
+      "name": "Fixture Item",
+      "tagIds": ["aaaaaaaa-0000-0000-0000-000000000002"],
+      "vendorIds": ["aaaaaaaa-0000-0000-0000-000000000003"],
+      "targetUnit": "package",
+      "targetQuantity": 1,
+      "refillThreshold": 0,
+      "packedQuantity": 0,
+      "unpackedQuantity": 0,
+      "consumeAmount": 1,
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000005",
+      "name": "Fixture Recipe",
+      "items": [{ "itemId": "aaaaaaaa-0000-0000-0000-000000000004", "defaultAmount": 1 }]
+    }
+  ],
+  "inventoryLogs": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000006",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "delta": 1,
+      "quantity": 1,
+      "occurredAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "shoppingCarts": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000007",
+      "status": "active",
+      "createdAt": "2026-03-24T00:00:00.000Z"
+    }
+  ],
+  "cartItems": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000008",
+      "cartId": "aaaaaaaa-0000-0000-0000-000000000007",
+      "itemId": "aaaaaaaa-0000-0000-0000-000000000004",
+      "quantity": 2
+    }
+  ]
+}

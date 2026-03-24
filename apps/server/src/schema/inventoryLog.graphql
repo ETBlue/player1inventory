@@ -16,6 +16,7 @@ extend type Query {
   itemLogs(itemId: ID!): [InventoryLog!]!
   inventoryLogCountByItem(itemId: ID!): Int!
   lastPurchaseDates(itemIds: [ID!]!): [LastPurchaseDateResult!]!
+  inventoryLogs: [InventoryLog!]!
 }
 
 extend type Mutation {

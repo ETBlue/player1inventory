@@ -1,10 +1,14 @@
 import { prop, getModelForClass, modelOptions, index } from '@typegoose/typegoose'
+import mongoose from 'mongoose'
 import type { Item } from '@p1i/types'
 
 @modelOptions({ schemaOptions: { timestamps: true, collection: 'items' } })
 @index({ familyId: 1, updatedAt: 1 })
 @index({ familyId: 1, name: 1 })
 class ItemClass implements Omit<Item, 'id'> {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   name!: string
 

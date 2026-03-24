@@ -73,9 +73,15 @@ export const familyGroupResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Famil
   FamilyGroup: {
     id: (group) =>
       (group as unknown as { _id: { toString(): string } })._id.toString(),
-    createdAt: (group) =>
-      (group as unknown as { createdAt: Date }).createdAt.toISOString(),
-    updatedAt: (group) =>
-      (group as unknown as { updatedAt: Date }).updatedAt.toISOString(),
+    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
+    // to satisfy the non-nullable String! contract in the GraphQL schema.
+    createdAt: (group) => {
+      const d = (group as unknown as { createdAt: Date | null }).createdAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
+    updatedAt: (group) => {
+      const d = (group as unknown as { updatedAt: Date | null }).updatedAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
   },
 }

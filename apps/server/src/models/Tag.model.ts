@@ -1,10 +1,14 @@
 import { getModelForClass, index, modelOptions, prop } from '@typegoose/typegoose'
+import mongoose from 'mongoose'
 import type { Tag, TagColor, TagType } from '@p1i/types'
 
 @modelOptions({ schemaOptions: { timestamps: false, collection: 'tagTypes' } })
 @index({ userId: 1, name: 1 })
 @index({ familyId: 1, name: 1 })
 class TagTypeClass implements Omit<TagType, 'id'> {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   name!: string
 
@@ -23,6 +27,9 @@ class TagTypeClass implements Omit<TagType, 'id'> {
 @index({ userId: 1, typeId: 1 })
 @index({ familyId: 1, typeId: 1 })
 class TagClass implements Omit<Tag, 'id'> {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   name!: string
 

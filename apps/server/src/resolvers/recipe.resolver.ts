@@ -1,23 +1,23 @@
 import { GraphQLError } from 'graphql'
 import { RecipeModel } from '../models/Recipe.model.js'
 import { requireAuth } from '../context.js'
-import type { Resolvers } from '../generated/graphql.js'
+import type { Recipe, Resolvers } from '../generated/graphql.js'
 
 export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> = {
   Query: {
     recipes: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      return RecipeModel.find({ userId })
+      return RecipeModel.find({ userId }) as unknown as Promise<Recipe[]>
     },
     recipe: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
-      return RecipeModel.findOne({ _id: id, userId })
+      return RecipeModel.findOne({ _id: id, userId }) as unknown as Promise<Recipe | null>
     },
   },
   Mutation: {
     createRecipe: async (_, { name, items }, ctx) => {
       const userId = requireAuth(ctx)
-      return RecipeModel.create({ name, items: items ?? [], userId })
+      return RecipeModel.create({ name, items: items ?? [], userId }) as unknown as Promise<Recipe>
     },
     updateRecipe: async (_, { id, name, items }, ctx) => {
       const userId = requireAuth(ctx)
@@ -30,7 +30,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
         { new: true },
       )
       if (!recipe) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
-      return recipe
+      return recipe as unknown as Recipe
     },
     updateRecipeLastCookedAt: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
@@ -40,7 +40,7 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
         { new: true },
       )
       if (!recipe) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
-      return recipe
+      return recipe as unknown as Recipe
     },
     deleteRecipe: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)

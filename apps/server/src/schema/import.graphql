@@ -1,7 +1,93 @@
-type ImportResult {
-  itemCount: Int!
+# Input types for bulk import mutations
+input ItemInput {
+  id: ID!
+  name: String!
+  tagIds: [String!]!
+  vendorIds: [String!]
+  packageUnit: String
+  measurementUnit: String
+  amountPerPackage: Float
+  targetUnit: String!
+  targetQuantity: Float!
+  refillThreshold: Float!
+  packedQuantity: Float!
+  unpackedQuantity: Float!
+  consumeAmount: Float!
+  dueDate: String
+  estimatedDueDays: Int
+  expirationThreshold: Int
+  createdAt: String!
+  updatedAt: String!
+}
+
+input TagInput {
+  id: ID!
+  name: String!
+  typeId: String!
+}
+
+input TagTypeInput {
+  id: ID!
+  name: String!
+  color: String!
+}
+
+input VendorInput {
+  id: ID!
+  name: String!
+}
+
+input RecipeInput {
+  id: ID!
+  name: String!
+  items: [RecipeItemInput!]!
+  lastCookedAt: String
+}
+
+input InventoryLogInput {
+  id: ID!
+  itemId: ID!
+  delta: Float!
+  quantity: Float!
+  occurredAt: String!
+  note: String
+}
+
+input ShoppingCartInput {
+  id: ID!
+  status: String!
+  createdAt: String!
+  completedAt: String
+}
+
+input CartItemInput {
+  id: ID!
+  cartId: ID!
+  itemId: ID!
+  quantity: Int!
 }
 
 extend type Mutation {
-  importData(payload: String!): ImportResult!
+  # Bulk create mutations — used for "skip conflicts" strategy
+  bulkCreateItems(items: [ItemInput!]!): [Item!]!
+  bulkCreateTags(tags: [TagInput!]!): [Tag!]!
+  bulkCreateTagTypes(tagTypes: [TagTypeInput!]!): [TagType!]!
+  bulkCreateVendors(vendors: [VendorInput!]!): [Vendor!]!
+  bulkCreateRecipes(recipes: [RecipeInput!]!): [Recipe!]!
+  bulkCreateInventoryLogs(logs: [InventoryLogInput!]!): [InventoryLog!]!
+  bulkCreateShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
+  bulkCreateCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
+
+  # Bulk upsert mutations — used for "replace conflicts" strategy (upserts by entity id)
+  bulkUpsertItems(items: [ItemInput!]!): [Item!]!
+  bulkUpsertTags(tags: [TagInput!]!): [Tag!]!
+  bulkUpsertTagTypes(tagTypes: [TagTypeInput!]!): [TagType!]!
+  bulkUpsertVendors(vendors: [VendorInput!]!): [Vendor!]!
+  bulkUpsertRecipes(recipes: [RecipeInput!]!): [Recipe!]!
+  bulkUpsertInventoryLogs(logs: [InventoryLogInput!]!): [InventoryLog!]!
+  bulkUpsertShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
+  bulkUpsertCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
+
+  # Clear all data — used for "clear & import" strategy
+  clearAllData: Boolean!
 }

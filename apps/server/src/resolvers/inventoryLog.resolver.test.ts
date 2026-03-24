@@ -217,6 +217,130 @@ describe('addInventoryLog', () => {
   })
 })
 
+// ─── Legacy null fields ───────────────────────────────────────────────────────
+
+describe('legacy null fields', () => {
+  it('itemLogs coalesces null quantity and delta to 0 for legacy records', async () => {
+    // Given a legacy document in MongoDB where quantity and delta are null
+    const itemId = new mongoose.Types.ObjectId().toString()
+    await InventoryLogModel.collection.insertOne({
+      itemId,
+      delta: null,
+      quantity: null,
+      occurredAt: new Date('2026-01-01'),
+      userId: 'user_test123',
+    })
+
+    // When querying itemLogs
+    const response = await server.executeOperation(
+      {
+        query: `query ItemLogs($itemId: ID!) { itemLogs(itemId: $itemId) { id delta quantity occurredAt } }`,
+        variables: { itemId },
+      },
+      { contextValue: ctx },
+    )
+
+    // Then quantity and delta are 0, not null (GraphQL non-nullable contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const logs = response.body.singleResult.data?.itemLogs as { id: string; delta: number; quantity: number }[]
+      expect(logs).toHaveLength(1)
+      expect(logs[0].delta).toBe(0)
+      expect(logs[0].quantity).toBe(0)
+    }
+  })
+
+  it('inventoryLogs coalesces null quantity and delta to 0 for legacy records', async () => {
+    // Given a legacy document in MongoDB where quantity and delta are null
+    const itemId = new mongoose.Types.ObjectId().toString()
+    await InventoryLogModel.collection.insertOne({
+      itemId,
+      delta: null,
+      quantity: null,
+      occurredAt: new Date('2026-01-01'),
+      userId: 'user_test123',
+    })
+
+    // When querying inventoryLogs
+    const response = await server.executeOperation(
+      {
+        query: `query InventoryLogs { inventoryLogs { id delta quantity occurredAt } }`,
+      },
+      { contextValue: ctx },
+    )
+
+    // Then quantity and delta are 0, not null (GraphQL non-nullable contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const logs = response.body.singleResult.data?.inventoryLogs as { id: string; delta: number; quantity: number }[]
+      expect(logs).toHaveLength(1)
+      expect(logs[0].delta).toBe(0)
+      expect(logs[0].quantity).toBe(0)
+    }
+  })
+
+  it('itemLogs returns epoch string for legacy records where occurredAt is null', async () => {
+    // Given a legacy document in MongoDB where occurredAt is null
+    const itemId = new mongoose.Types.ObjectId().toString()
+    await InventoryLogModel.collection.insertOne({
+      itemId,
+      delta: 1,
+      quantity: 1,
+      occurredAt: null,
+      userId: 'user_test123',
+    })
+
+    // When querying itemLogs
+    const response = await server.executeOperation(
+      {
+        query: `query ItemLogs($itemId: ID!) { itemLogs(itemId: $itemId) { id occurredAt } }`,
+        variables: { itemId },
+      },
+      { contextValue: ctx },
+    )
+
+    // Then occurredAt is the epoch string, not null (GraphQL non-nullable String! contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const logs = response.body.singleResult.data?.itemLogs as { id: string; occurredAt: string }[]
+      expect(logs).toHaveLength(1)
+      expect(logs[0].occurredAt).toBe(new Date(0).toISOString())
+    }
+  })
+
+  it('inventoryLogs returns epoch string for legacy records where occurredAt is null', async () => {
+    // Given a legacy document in MongoDB where occurredAt is null
+    const itemId = new mongoose.Types.ObjectId().toString()
+    await InventoryLogModel.collection.insertOne({
+      itemId,
+      delta: 1,
+      quantity: 1,
+      occurredAt: null,
+      userId: 'user_test123',
+    })
+
+    // When querying inventoryLogs
+    const response = await server.executeOperation(
+      {
+        query: `query InventoryLogs { inventoryLogs { id occurredAt } }`,
+      },
+      { contextValue: ctx },
+    )
+
+    // Then occurredAt is the epoch string, not null (GraphQL non-nullable String! contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const logs = response.body.singleResult.data?.inventoryLogs as { id: string; occurredAt: string }[]
+      expect(logs).toHaveLength(1)
+      expect(logs[0].occurredAt).toBe(new Date(0).toISOString())
+    }
+  })
+})
+
 // ─── Cross-user isolation ─────────────────────────────────────────────────────
 
 describe('cross-user isolation', () => {

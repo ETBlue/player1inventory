@@ -240,8 +240,52 @@
     },
     "export": {
       "label": "Download my data",
-      "description": "Export all local data as a JSON backup",
+      "description": "Export all data as a JSON backup",
       "button": "Download"
+    },
+    "import": {
+      "label": "Import data",
+      "description": "Restore data from a JSON backup file",
+      "button": "Import",
+      "importing": "Importing {{entity}}…",
+      "batchProgress": "{{completed}} / {{total}} batches",
+      "importError": "Import failed during {{entity}}.",
+      "retry": "Retry",
+      "importDone": "Import complete.",
+      "success": "Data imported successfully",
+      "error": "Failed to import data",
+      "invalidFile": "Invalid backup file",
+      "entities": {
+        "items": "Items",
+        "tags": "Tags",
+        "tagTypes": "Tag Types",
+        "vendors": "Vendors",
+        "recipes": "Recipes",
+        "inventoryLogs": "Inventory Logs",
+        "shoppingCarts": "Shopping Carts",
+        "cartItems": "Cart Items"
+      },
+      "conflictDialog": {
+        "title": "Conflicts detected",
+        "description": "Some items in the file already exist in your data. How would you like to handle them?",
+        "cancel": "Cancel",
+        "skip": "Skip conflicts",
+        "replace": "Replace matches",
+        "clear": "Clear & import",
+        "idMatch": "ID",
+        "nameMatch": "name",
+        "bothMatch": "ID + name",
+        "entityTypes": {
+          "items": "Items",
+          "tags": "Tags",
+          "tagTypes": "Tag Types",
+          "vendors": "Vendors",
+          "recipes": "Recipes",
+          "inventoryLogs": "Inventory Logs",
+          "shoppingCarts": "Shopping Carts",
+          "cartItems": "Cart Items"
+        }
+      }
     }
   }
 }

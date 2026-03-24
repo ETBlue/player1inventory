@@ -537,3 +537,33 @@ describe('cross-user isolation', () => {
     expect(cart?.status).toBe('active')
   })
 })
+
+// ─── Legacy null fields ───────────────────────────────────────────────────────
+
+describe('legacy null fields', () => {
+  it('shoppingCarts returns epoch string for legacy records where createdAt is null', async () => {
+    // Given a legacy Cart document in MongoDB where createdAt is null
+    await CartModel.collection.insertOne({
+      status: 'completed',
+      userId: 'user_test123',
+      createdAt: null,
+      updatedAt: null,
+    })
+
+    // When querying shoppingCarts
+    const response = await server.executeOperation(
+      { query: `query { shoppingCarts { id status createdAt } }` },
+      { contextValue: ctx },
+    )
+
+    // Then createdAt is the epoch string, not null (GraphQL non-nullable String! contract upheld)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const carts = response.body.singleResult.data?.shoppingCarts as { id: string; status: string; createdAt: string }[]
+      const legacyCart = carts.find(c => c.status === 'completed')
+      expect(legacyCart).toBeDefined()
+      expect(legacyCart?.createdAt).toBe(new Date(0).toISOString())
+    }
+  })
+})

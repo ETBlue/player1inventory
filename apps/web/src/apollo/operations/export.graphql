@@ -1,0 +1,28 @@
+query InventoryLogs {
+  inventoryLogs {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+  }
+}
+
+query ShoppingCarts {
+  shoppingCarts {
+    id
+    status
+    createdAt
+    completedAt
+  }
+}
+
+query AllCartItems {
+  allCartItems {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}

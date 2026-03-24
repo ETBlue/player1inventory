@@ -22,6 +22,7 @@ export default defineConfig({
     {
       // Local mode: app reads from IndexedDB (Dexie). No backend needed.
       name: 'local',
+      testIgnore: ['**/settings/import-export-cloud.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
@@ -43,7 +44,7 @@ export default defineConfig({
           ],
         },
       },
-      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts'],
+      testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts'],
     },
   ],
   webServer: [

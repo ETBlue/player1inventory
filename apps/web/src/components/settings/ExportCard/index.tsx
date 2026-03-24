@@ -1,11 +1,30 @@
+import { useApolloClient } from '@apollo/client/react'
 import { Download } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { exportAllData } from '@/lib/exportData'
+import { useDataMode } from '@/hooks/useDataMode'
+import { exportAllData, exportCloudData } from '@/lib/exportData'
 
 export function ExportCard() {
   const { t } = useTranslation()
+  const { mode } = useDataMode()
+  const client = useApolloClient()
+  const [isExporting, setIsExporting] = useState(false)
+
+  async function handleExport() {
+    setIsExporting(true)
+    try {
+      if (mode === 'cloud') {
+        await exportCloudData(client)
+      } else {
+        await exportAllData()
+      }
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   return (
     <Card>
@@ -17,7 +36,11 @@ export function ExportCard() {
             {t('settings.export.description')}
           </p>
         </div>
-        <Button variant="neutral-outline" onClick={exportAllData}>
+        <Button
+          variant="neutral-outline"
+          onClick={handleExport}
+          disabled={isExporting}
+        >
           {t('settings.export.button')}
         </Button>
       </CardContent>

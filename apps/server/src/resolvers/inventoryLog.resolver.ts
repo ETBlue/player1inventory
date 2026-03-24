@@ -1,18 +1,24 @@
 import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import { requireAuth } from '../context.js'
-import type { Resolvers } from '../generated/graphql.js'
+import type { InventoryLog, Resolvers } from '../generated/graphql.js'
 
 export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'InventoryLog'> = {
   Query: {
     itemLogs: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
       const logs = await InventoryLogModel.find({ itemId, userId }).sort({ occurredAt: 1 })
-      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() }))
+      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
     },
 
     inventoryLogCountByItem: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
       return InventoryLogModel.countDocuments({ itemId, userId })
+    },
+
+    inventoryLogs: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const logs = await InventoryLogModel.find({ userId }).sort({ occurredAt: 1 })
+      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
     },
 
     lastPurchaseDates: async (_, { itemIds }, ctx) => {
@@ -42,12 +48,21 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
         userId,
         ...(note ? { note } : {}),
       })
-      return { ...log.toObject(), id: log._id.toString() }
+      return { ...log.toObject(), id: log._id.toString() } as unknown as InventoryLog
     },
   },
 
   InventoryLog: {
     id: (log) => (log as unknown as { _id: { toString(): string } })._id.toString(),
-    occurredAt: (log) => (log as unknown as { occurredAt: Date }).occurredAt.toISOString(),
+    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
+    // to satisfy the non-nullable String! contract in the GraphQL schema.
+    occurredAt: (log) => {
+      const d = (log as unknown as { occurredAt: Date | null }).occurredAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
+    // Legacy MongoDB documents may have null for numeric fields — coalesce to 0
+    // to satisfy the non-nullable Float! contract in the GraphQL schema.
+    quantity: (log) => (log as unknown as { quantity: number | null }).quantity ?? 0,
+    delta: (log) => (log as unknown as { delta: number | null }).delta ?? 0,
   },
 }

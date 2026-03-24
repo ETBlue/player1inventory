@@ -2,21 +2,21 @@ import { GraphQLError } from 'graphql'
 import { ItemModel } from '../models/Item.model.js'
 import { TagModel, TagTypeModel } from '../models/Tag.model.js'
 import { requireAuth } from '../context.js'
-import type { Resolvers } from '../generated/graphql.js'
+import type { Resolvers, Tag, TagType } from '../generated/graphql.js'
 
 export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'Tag'> = {
   Query: {
     tagTypes: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      return TagTypeModel.find({ userId })
+      return TagTypeModel.find({ userId }) as unknown as Promise<TagType[]>
     },
     tags: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      return TagModel.find({ userId })
+      return TagModel.find({ userId }) as unknown as Promise<Tag[]>
     },
     tagsByType: async (_, { typeId }, ctx) => {
       const userId = requireAuth(ctx)
-      return TagModel.find({ userId, typeId })
+      return TagModel.find({ userId, typeId }) as unknown as Promise<Tag[]>
     },
     tagCountByType: async (_, { typeId }, ctx) => {
       const userId = requireAuth(ctx)
@@ -26,7 +26,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
   Mutation: {
     createTagType: async (_, { name, color }, ctx) => {
       const userId = requireAuth(ctx)
-      return TagTypeModel.create({ name, color, userId })
+      return TagTypeModel.create({ name, color, userId }) as unknown as Promise<TagType>
     },
     updateTagType: async (_, { id, name, color }, ctx) => {
       const userId = requireAuth(ctx)
@@ -39,7 +39,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
         { new: true },
       )
       if (!tagType) throw new GraphQLError('TagType not found', { extensions: { code: 'NOT_FOUND' } })
-      return tagType
+      return tagType as unknown as TagType
     },
     deleteTagType: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
@@ -55,7 +55,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
     },
     createTag: async (_, { name, typeId }, ctx) => {
       const userId = requireAuth(ctx)
-      return TagModel.create({ name, typeId, userId })
+      return TagModel.create({ name, typeId, userId }) as unknown as Promise<Tag>
     },
     updateTag: async (_, { id, name, typeId }, ctx) => {
       const userId = requireAuth(ctx)
@@ -68,7 +68,7 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
         { new: true },
       )
       if (!tag) throw new GraphQLError('Tag not found', { extensions: { code: 'NOT_FOUND' } })
-      return tag
+      return tag as unknown as Tag
     },
     deleteTag: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)

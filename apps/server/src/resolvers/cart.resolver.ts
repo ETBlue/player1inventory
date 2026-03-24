@@ -3,7 +3,7 @@ import { CartModel, CartItemModel } from '../models/Cart.model.js'
 import { ItemModel } from '../models/Item.model.js'
 import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import { requireAuth } from '../context.js'
-import type { Resolvers } from '../generated/graphql.js'
+import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'CartItem'> = {
   Query: {
@@ -13,18 +13,30 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
       if (!cart) {
         cart = await CartModel.create({ userId, status: 'active' })
       }
-      return { ...cart.toObject(), id: cart._id.toString() }
+      return { ...cart.toObject(), id: cart._id.toString() } as unknown as Cart
     },
 
     cartItems: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
       const items = await CartItemModel.find({ cartId, userId })
-      return items.map(i => ({ ...i.toObject(), id: i._id.toString() }))
+      return items.map(i => ({ ...i.toObject(), id: i._id.toString() })) as unknown as CartItem[]
     },
 
     cartItemCountByItem: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
       return CartItemModel.countDocuments({ itemId, userId })
+    },
+
+    shoppingCarts: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const carts = await CartModel.find({ userId }).sort({ createdAt: 1 })
+      return carts.map(c => ({ ...c.toObject(), id: c._id.toString() })) as unknown as Cart[]
+    },
+
+    allCartItems: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const items = await CartItemModel.find({ userId })
+      return items.map(i => ({ ...i.toObject(), id: i._id.toString() })) as unknown as CartItem[]
     },
   },
 
@@ -35,10 +47,10 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
       if (existing) {
         existing.quantity += quantity
         await existing.save()
-        return { ...existing.toObject(), id: existing._id.toString() }
+        return { ...existing.toObject(), id: existing._id.toString() } as unknown as CartItem
       }
       const item = await CartItemModel.create({ cartId, itemId, quantity, userId })
-      return { ...item.toObject(), id: item._id.toString() }
+      return { ...item.toObject(), id: item._id.toString() } as unknown as CartItem
     },
 
     updateCartItem: async (_, { id, quantity }, ctx) => {
@@ -49,7 +61,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
         { new: true },
       )
       if (!item) throw new GraphQLError('CartItem not found', { extensions: { code: 'NOT_FOUND' } })
-      return { ...item.toObject(), id: item._id.toString() }
+      return { ...item.toObject(), id: item._id.toString() } as unknown as CartItem
     },
 
     removeFromCart: async (_, { id }, ctx) => {
@@ -102,7 +114,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
 
       const updatedCart = await CartModel.findById(cartId)
       if (!updatedCart) throw new GraphQLError('Cart not found after checkout', { extensions: { code: 'NOT_FOUND' } })
-      return { ...updatedCart.toObject(), id: updatedCart._id.toString() }
+      return { ...updatedCart.toObject(), id: updatedCart._id.toString() } as unknown as Cart
     },
 
     abandonCart: async (_, { cartId }, ctx) => {
@@ -114,13 +126,18 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
         { new: true },
       )
       if (!cart) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
-      return { ...cart.toObject(), id: cart._id.toString() }
+      return { ...cart.toObject(), id: cart._id.toString() } as unknown as Cart
     },
   },
 
   Cart: {
     id: (cart) => (cart as unknown as { _id: { toString(): string } })._id.toString(),
-    createdAt: (cart) => (cart as unknown as { createdAt: Date }).createdAt.toISOString(),
+    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
+    // to satisfy the non-nullable String! contract in the GraphQL schema.
+    createdAt: (cart) => {
+      const d = (cart as unknown as { createdAt: Date | null }).createdAt
+      return d != null ? d.toISOString() : new Date(0).toISOString()
+    },
     completedAt: (cart) => {
       const c = cart as unknown as { completedAt?: Date }
       return c.completedAt ? c.completedAt.toISOString() : null
