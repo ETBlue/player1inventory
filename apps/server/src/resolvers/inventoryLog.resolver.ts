@@ -1,13 +1,13 @@
 import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import { requireAuth } from '../context.js'
-import type { Resolvers } from '../generated/graphql.js'
+import type { InventoryLog, Resolvers } from '../generated/graphql.js'
 
 export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'InventoryLog'> = {
   Query: {
     itemLogs: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
       const logs = await InventoryLogModel.find({ itemId, userId }).sort({ occurredAt: 1 })
-      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() }))
+      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
     },
 
     inventoryLogCountByItem: async (_, { itemId }, ctx) => {
@@ -18,7 +18,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
     inventoryLogs: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
       const logs = await InventoryLogModel.find({ userId }).sort({ occurredAt: 1 })
-      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() }))
+      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
     },
 
     lastPurchaseDates: async (_, { itemIds }, ctx) => {
@@ -48,7 +48,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
         userId,
         ...(note ? { note } : {}),
       })
-      return { ...log.toObject(), id: log._id.toString() }
+      return { ...log.toObject(), id: log._id.toString() } as unknown as InventoryLog
     },
   },
 
