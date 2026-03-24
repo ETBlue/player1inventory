@@ -130,7 +130,11 @@ test('user can export and re-import local data (local → local)', async ({ page
   // Given: all fixture entities seeded into IndexedDB
   await seedLocalFixture(page, localFixture as typeof localFixture)
 
-  // When: export via UI
+  // When: visit pantry first to populate TanStack Query cache
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+
+  // Then: export via UI
   await settings.navigateTo()
   const download = await settings.triggerExport()
   const downloadPath = await download.path()
