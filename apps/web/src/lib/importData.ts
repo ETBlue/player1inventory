@@ -49,6 +49,28 @@ import type { ExportPayload } from './exportData'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
+// Convert item date fields from ISO strings (as stored in JSON) to Date objects.
+function deserializeItem(item: Item): Item {
+  const result: Item = {
+    ...item,
+    createdAt:
+      item.createdAt instanceof Date
+        ? item.createdAt
+        : new Date(item.createdAt as unknown as string),
+    updatedAt:
+      item.updatedAt instanceof Date
+        ? item.updatedAt
+        : new Date(item.updatedAt as unknown as string),
+  }
+  if (item.dueDate !== undefined) {
+    result.dueDate =
+      item.dueDate instanceof Date
+        ? item.dueDate
+        : new Date(item.dueDate as unknown as string)
+  }
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Batching helpers
 // ---------------------------------------------------------------------------
@@ -524,7 +546,7 @@ export async function importLocalData(
     await db.items.clear()
 
     // Bulk add all entities in reverse order (parents before children)
-    await db.items.bulkAdd(payload.items as Item[])
+    await db.items.bulkAdd((payload.items as Item[]).map(deserializeItem))
     await db.vendors.bulkAdd(payload.vendors as Vendor[])
     await db.recipes.bulkAdd(payload.recipes as Recipe[])
     await db.tagTypes.bulkAdd(payload.tagTypes as TagType[])
@@ -549,7 +571,9 @@ export async function importLocalData(
   if (strategy === 'skip') {
     const { toCreate } = partitionPayload(payload, conflicts, 'skip')
 
-    await db.items.bulkAdd(toCreate.items as Item[], { allKeys: false })
+    await db.items.bulkAdd((toCreate.items as Item[]).map(deserializeItem), {
+      allKeys: false,
+    })
     await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
     await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
     await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], {
@@ -578,7 +602,9 @@ export async function importLocalData(
   // strategy === 'replace'
   const { toCreate, toUpsert } = partitionPayload(payload, conflicts, 'replace')
 
-  await db.items.bulkAdd(toCreate.items as Item[], { allKeys: false })
+  await db.items.bulkAdd((toCreate.items as Item[]).map(deserializeItem), {
+    allKeys: false,
+  })
   await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
   await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
   await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], { allKeys: false })
@@ -600,7 +626,7 @@ export async function importLocalData(
     allKeys: false,
   })
 
-  await db.items.bulkPut(toUpsert.items as Item[])
+  await db.items.bulkPut((toUpsert.items as Item[]).map(deserializeItem))
   await db.vendors.bulkPut(toUpsert.vendors as Vendor[])
   await db.recipes.bulkPut(toUpsert.recipes as Recipe[])
   await db.tagTypes.bulkPut(toUpsert.tagTypes as TagType[])
