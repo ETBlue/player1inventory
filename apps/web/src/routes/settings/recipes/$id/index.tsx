@@ -58,28 +58,30 @@ function RecipeInfoTab() {
   if (!recipe) return null
 
   return (
-    <div className="px-6 py-4">
-      <RecipeNameForm
-        name={name}
-        onNameChange={setName}
-        onSave={handleSave}
-        isDirty={isDirty}
-        isPending={updateRecipe.isPending}
-      />
-      <DeleteButton
-        trigger={t('common.delete')}
-        buttonClassName="w-full max-w-2xl mt-4"
-        dialogTitle={t('settings.recipes.deleteTitle')}
-        dialogDescription={
-          recipe.items.length > 0
-            ? t('settings.recipes.deleteWithItems', {
-                name: recipe.name,
-                count: recipe.items.length,
-              })
-            : t('settings.recipes.deleteNoItems', { name: recipe.name })
-        }
-        onDelete={handleDelete}
-      />
+    <div className="p-4">
+      <div className="max-w-2xl mx-auto">
+        <RecipeNameForm
+          name={name}
+          onNameChange={setName}
+          onSave={handleSave}
+          isDirty={isDirty}
+          isPending={updateRecipe.isPending}
+        />
+        <DeleteButton
+          trigger={t('common.delete')}
+          buttonClassName="w-full mt-4"
+          dialogTitle={t('settings.recipes.deleteTitle')}
+          dialogDescription={
+            recipe.items.length > 0
+              ? t('settings.recipes.deleteWithItems', {
+                  name: recipe.name,
+                  count: recipe.items.length,
+                })
+              : t('settings.recipes.deleteNoItems', { name: recipe.name })
+          }
+          onDelete={handleDelete}
+        />
+      </div>
     </div>
   )
 }

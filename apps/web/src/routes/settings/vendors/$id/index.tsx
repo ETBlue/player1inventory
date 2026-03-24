@@ -69,29 +69,31 @@ function VendorInfoTab() {
   if (!vendor) return null
 
   return (
-    <div className="px-6 py-4">
-      <VendorNameForm
-        name={name}
-        onNameChange={setName}
-        onSave={handleSave}
-        isDirty={isDirty}
-        isPending={updateVendor.isPending}
-      />
+    <div className="p-4">
+      <div className="max-w-2xl mx-auto">
+        <VendorNameForm
+          name={name}
+          onNameChange={setName}
+          onSave={handleSave}
+          isDirty={isDirty}
+          isPending={updateVendor.isPending}
+        />
 
-      <DeleteButton
-        trigger={t('common.delete')}
-        dialogTitle={t('settings.vendors.deleteTitle')}
-        buttonClassName="mt-4 w-full max-w-2xl"
-        dialogDescription={
-          affectedItemCount > 0
-            ? t('settings.vendors.deleteWithItems', {
-                name: vendor.name,
-                count: affectedItemCount,
-              })
-            : t('settings.vendors.deleteNoItems', { name: vendor.name })
-        }
-        onDelete={handleDelete}
-      />
+        <DeleteButton
+          trigger={t('common.delete')}
+          dialogTitle={t('settings.vendors.deleteTitle')}
+          buttonClassName="mt-4 w-full"
+          dialogDescription={
+            affectedItemCount > 0
+              ? t('settings.vendors.deleteWithItems', {
+                  name: vendor.name,
+                  count: affectedItemCount,
+                })
+              : t('settings.vendors.deleteNoItems', { name: vendor.name })
+          }
+          onDelete={handleDelete}
+        />
+      </div>
     </div>
   )
 }

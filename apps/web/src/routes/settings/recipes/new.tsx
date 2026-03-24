@@ -50,14 +50,16 @@ function NewRecipePage() {
         </Button>
         <h1>{t('settings.recipes.newButton')}</h1>
       </Toolbar>
-      <div className="px-6 py-4">
-        <RecipeNameForm
-          name={name}
-          onNameChange={setName}
-          onSave={handleSave}
-          isDirty={isDirty}
-          isPending={createRecipe.isPending}
-        />
+      <div className="p-4">
+        <div className="max-w-2xl mx-auto">
+          <RecipeNameForm
+            name={name}
+            onNameChange={setName}
+            onSave={handleSave}
+            isDirty={isDirty}
+            isPending={createRecipe.isPending}
+          />
+        </div>
       </div>
     </div>
   )
