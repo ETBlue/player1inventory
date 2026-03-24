@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/AddNameDialog'
+import { EmptyState } from '@/components/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +13,7 @@ import {
   useTagTypes,
   useUpdateItem,
 } from '@/hooks'
+import { useAddTagType } from '@/hooks/useAddTagType'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 
 export const Route = createFileRoute('/items/$id/tags')({
@@ -18,6 +21,7 @@ export const Route = createFileRoute('/items/$id/tags')({
 })
 
 function TagsTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
@@ -26,6 +30,9 @@ function TagsTab() {
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const createTag = useCreateTag()
+  const [newTagTypeOpen, setNewTagTypeOpen] = useState(false)
+  const [newTagTypeName, setNewTagTypeName] = useState('')
+  const addTagType = useAddTagType()
 
   const handleAddTag = async () => {
     if (addTagDialog && newTagName.trim()) {
@@ -61,9 +68,18 @@ function TagsTab() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {tagTypes.length === 0 ? (
-        <p className="text-sm text-foreground-muted">
-          No tags yet. Create tags in Settings.
-        </p>
+        <div className="flex flex-col items-center gap-4">
+          <EmptyState
+            title={t('items.tags.empty.title')}
+            description={t('items.tags.empty.description')}
+          />
+          <Button
+            variant="neutral-outline"
+            onClick={() => setNewTagTypeOpen(true)}
+          >
+            {t('items.tags.newTagType.button')}
+          </Button>
+        </div>
       ) : (
         <div className="space-y-3">
           {[...tagTypes]
@@ -130,6 +146,23 @@ function TagsTab() {
         onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}
+      />
+      <AddNameDialog
+        open={newTagTypeOpen}
+        title={t('items.tags.newTagType.dialogTitle')}
+        submitLabel={t('common.add')}
+        name={newTagTypeName}
+        onNameChange={setNewTagTypeName}
+        onAdd={async () => {
+          if (!newTagTypeName.trim()) return
+          await addTagType({ name: newTagTypeName.trim() })
+          setNewTagTypeName('')
+          setNewTagTypeOpen(false)
+        }}
+        onClose={() => {
+          setNewTagTypeName('')
+          setNewTagTypeOpen(false)
+        }}
       />
     </div>
   )
