@@ -128,10 +128,63 @@ function WithAssignedTagsStory() {
   )
 }
 
+function EmptyTagTypesStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Yogurt',
+        tagIds: [],
+        targetUnit: 'container',
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/tags`] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <DefaultStory />,
 }
 
 export const WithAssignedTags: Story = {
   render: () => <WithAssignedTagsStory />,
+}
+
+export const EmptyTagTypes: Story = {
+  render: () => <EmptyTagTypesStory />,
 }

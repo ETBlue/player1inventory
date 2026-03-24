@@ -57,7 +57,7 @@ function RecipesTab() {
   )
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-2xl mx-auto">
       <div className="flex flex-wrap gap-2">
         {sortedRecipes.map((recipe) => {
           const isAssigned = recipe.items.some((ri) => ri.itemId === id)

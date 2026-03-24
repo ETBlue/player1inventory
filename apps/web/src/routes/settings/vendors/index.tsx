@@ -6,6 +6,7 @@ import {
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { VendorCard } from '@/components/vendor/VendorCard'
@@ -62,9 +63,10 @@ function VendorSettings() {
 
       <div className="space-y-px pb-4">
         {sortedVendors.length === 0 ? (
-          <p className="text-foreground-muted text-sm">
-            {t('settings.vendors.empty')}
-          </p>
+          <EmptyState
+            title={t('settings.vendors.empty.title')}
+            description={t('settings.vendors.empty.description')}
+          />
         ) : (
           sortedVendors.map((vendor) => (
             <VendorCard

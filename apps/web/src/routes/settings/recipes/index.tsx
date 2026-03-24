@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { RecipeCard } from '@/components/recipe/RecipeCard'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
@@ -49,9 +50,10 @@ function RecipeSettings() {
 
       <div className="space-y-px pb-4">
         {sortedRecipes.length === 0 ? (
-          <p className="text-foreground-muted text-sm">
-            {t('settings.recipes.empty')}
-          </p>
+          <EmptyState
+            title={t('settings.recipes.empty.title')}
+            description={t('settings.recipes.empty.description')}
+          />
         ) : (
           sortedRecipes.map((recipe) => (
             <RecipeCard

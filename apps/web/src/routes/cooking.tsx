@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { Toolbar } from '@/components/Toolbar'
@@ -452,9 +453,10 @@ function CookingPage() {
       <div className="h-px bg-accessory-default" />
 
       {sortedRecipes.length === 0 ? (
-        <p className="text-foreground-muted text-sm px-4">
-          {t('cooking.emptyState')}
-        </p>
+        <EmptyState
+          title={t('cooking.empty.title')}
+          description={t('cooking.empty.description')}
+        />
       ) : (
         <div className="space-y-px pb-4">
           {displayRecipes.map((recipe) => {

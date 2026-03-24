@@ -68,6 +68,8 @@ src/
 
 **`AddNameDialog`** (`src/components/AddNameDialog/index.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`.
 
+**`EmptyState`** (`src/components/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
+
 **`ItemListToolbar`** (`src/components/item/ItemListToolbar/index.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with no exact match), `onCreateFromSearch` (same trigger — shows a Create button; pass `hasExactMatch` so the toolbar knows when to suppress it). Escape clears the search value but keeps the input row open.
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.

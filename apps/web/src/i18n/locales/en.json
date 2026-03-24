@@ -13,7 +13,8 @@
     "unsavedDescription": "You have unsaved changes. Discard changes?",
     "done": "Done",
     "back": "Nevermind",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "add": "Add"
   },
   "shopping": {
     "toolbar": {
@@ -37,6 +38,14 @@
     "log": {
       "purchasedAt": "purchased at {{vendor}}",
       "purchased": "purchased"
+    },
+    "empty": {
+      "title": "No items yet.",
+      "description": "Add pantry items to see them here."
+    },
+    "emptyFiltered": {
+      "title": "No items match the current filters.",
+      "description": "Try adjusting or clearing your filters."
     }
   },
   "cooking": {
@@ -45,6 +54,10 @@
       "servingCount_other": "Cooking {{count}} servings"
     },
     "emptyState": "No recipes yet. Create your first recipe to get started.",
+    "empty": {
+      "title": "No recipes yet.",
+      "description": "Add recipes in Settings to get started."
+    },
     "recipe": {
       "itemCount_one": "{{count}} item selected",
       "itemCount_other": "{{count}} items selected",
@@ -84,6 +97,18 @@
     "toggleSearch": "Toggle search",
     "search": "Search",
     "searchPlaceholder": "Search recipes or items..."
+  },
+  "items": {
+    "tags": {
+      "empty": {
+        "title": "No tag types yet.",
+        "description": "Create a tag type to start organizing your items."
+      },
+      "newTagType": {
+        "button": "New Tag Type",
+        "dialogTitle": "New Tag Type"
+      }
+    }
   },
   "settings": {
     "title": "Settings",
@@ -130,7 +155,10 @@
         "notFound": "Tag not found"
       },
       "items": {
-        "empty": "No items yet.",
+        "empty": {
+          "title": "No items yet.",
+          "description": "Items tagged here will appear in this list."
+        },
         "emptyFiltered": "No items match the current filters."
       }
     },
@@ -138,7 +166,10 @@
       "label": "Vendors",
       "description": "Manage vendors",
       "newButton": "New Vendor",
-      "empty": "No vendors yet. Add your first vendor.",
+      "empty": {
+        "title": "No vendors yet.",
+        "description": "Tap + to add your first vendor."
+      },
       "itemCount_one": "· 1 item",
       "itemCount_other": "· {{count}} items",
       "deleteAriaLabel": "Delete {{name}}",
@@ -146,13 +177,22 @@
       "deleteWithItems_one": "\"{{name}}\" will be removed from 1 item.",
       "deleteWithItems_other": "\"{{name}}\" will be removed from {{count}} items.",
       "deleteNoItems": "No items are assigned to \"{{name}}\".",
-      "notFound": "Vendor not found"
+      "notFound": "Vendor not found",
+      "items": {
+        "empty": {
+          "title": "No items yet.",
+          "description": "Items assigned to this vendor will appear here."
+        }
+      }
     },
     "recipes": {
       "label": "Recipes",
       "description": "Manage recipes",
       "newButton": "New Recipe",
-      "empty": "No recipes yet. Add your first recipe.",
+      "empty": {
+        "title": "No recipes yet.",
+        "description": "Tap + to add your first recipe."
+      },
       "itemCount_one": "· 1 item",
       "itemCount_other": "· {{count}} items",
       "deleteAriaLabel": "Delete {{name}}",
@@ -160,7 +200,13 @@
       "deleteWithItems_one": "\"{{name}}\" will be deleted. It contains 1 item. Your inventory will not be affected.",
       "deleteWithItems_other": "\"{{name}}\" will be deleted. It contains {{count}} items. Your inventory will not be affected.",
       "deleteNoItems": "\"{{name}}\" will be deleted. It has no items.",
-      "notFound": "Recipe not found"
+      "notFound": "Recipe not found",
+      "items": {
+        "empty": {
+          "title": "No items yet.",
+          "description": "Items linked to this recipe will appear here."
+        }
+      }
     },
     "language": {
       "label": "Language",

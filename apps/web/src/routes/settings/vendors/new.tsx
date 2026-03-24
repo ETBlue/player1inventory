@@ -43,14 +43,16 @@ function NewVendorPage() {
         </Button>
         <h1>{t('settings.vendors.newButton')}</h1>
       </Toolbar>
-      <div className="px-6 py-4">
-        <VendorNameForm
-          name={name}
-          onNameChange={setName}
-          onSave={handleSave}
-          isDirty={isDirty}
-          isPending={createVendor.isPending}
-        />
+      <div className="p-4">
+        <div className="max-w-2xl mx-auto">
+          <VendorNameForm
+            name={name}
+            onNameChange={setName}
+            onSave={handleSave}
+            isDirty={isDirty}
+            isPending={createVendor.isPending}
+          />
+        </div>
       </div>
     </div>
   )

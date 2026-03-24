@@ -77,72 +77,74 @@ function TagInfoTab() {
   if (!tag || !isInitialized || tagTypes.length === 0) return null
 
   return (
-    <form
-      className="space-y-4 max-w-2xl px-6 pb-6 pt-4"
-      onSubmit={(e) => {
-        e.preventDefault()
-        handleSave()
-      }}
-    >
-      <div className="space-y-2">
-        <Label htmlFor="tag-type">{t('settings.tags.tag.typeLabel')}</Label>
-        <Select value={typeId} onValueChange={setTypeId}>
-          <SelectTrigger id="tag-type" className="capitalize">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[...tagTypes]
-              .sort((a, b) =>
-                a.name.localeCompare(b.name, undefined, {
-                  sensitivity: 'base',
-                }),
-              )
-              .map((type) => (
-                <SelectItem
-                  key={type.id}
-                  value={type.id}
-                  className="capitalize"
-                >
-                  {type.name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="tag-name">{t('settings.tags.tag.nameLabel')}</Label>
-        <Input
-          id="tag-name"
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="capitalize"
-        />
-      </div>
-
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={!isDirty || updateTag.isPending}
+    <div className="p-4">
+      <form
+        className="space-y-4 max-w-2xl mx-auto"
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleSave()
+        }}
       >
-        {updateTag.isPending ? t('common.saving') : t('common.save')}
-      </Button>
+        <div className="space-y-2">
+          <Label htmlFor="tag-type">{t('settings.tags.tag.typeLabel')}</Label>
+          <Select value={typeId} onValueChange={setTypeId}>
+            <SelectTrigger id="tag-type" className="capitalize">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[...tagTypes]
+                .sort((a, b) =>
+                  a.name.localeCompare(b.name, undefined, {
+                    sensitivity: 'base',
+                  }),
+                )
+                .map((type) => (
+                  <SelectItem
+                    key={type.id}
+                    value={type.id}
+                    className="capitalize"
+                  >
+                    {type.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <DeleteButton
-        trigger={t('common.delete')}
-        dialogTitle={t('settings.tags.tag.deleteTitle')}
-        buttonClassName="w-full"
-        dialogDescription={
-          affectedItemCount > 0
-            ? t('settings.tags.tag.deleteWithItems', {
-                name: tag.name,
-                count: affectedItemCount,
-              })
-            : t('settings.tags.tag.deleteNoItems', { name: tag.name })
-        }
-        onDelete={handleDelete}
-      />
-    </form>
+        <div className="space-y-2">
+          <Label htmlFor="tag-name">{t('settings.tags.tag.nameLabel')}</Label>
+          <Input
+            id="tag-name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="capitalize"
+          />
+        </div>
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={!isDirty || updateTag.isPending}
+        >
+          {updateTag.isPending ? t('common.saving') : t('common.save')}
+        </Button>
+
+        <DeleteButton
+          trigger={t('common.delete')}
+          dialogTitle={t('settings.tags.tag.deleteTitle')}
+          buttonClassName="w-full"
+          dialogDescription={
+            affectedItemCount > 0
+              ? t('settings.tags.tag.deleteWithItems', {
+                  name: tag.name,
+                  count: affectedItemCount,
+                })
+              : t('settings.tags.tag.deleteNoItems', { name: tag.name })
+          }
+          onDelete={handleDelete}
+        />
+      </form>
+    </div>
   )
 }
