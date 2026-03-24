@@ -1,8 +1,12 @@
 import { getModelForClass, index, modelOptions, prop } from '@typegoose/typegoose'
+import mongoose from 'mongoose'
 
 @modelOptions({ schemaOptions: { timestamps: true, collection: 'carts' } })
 @index({ userId: 1, status: 1 })
 class CartClass {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   status!: 'active' | 'completed' | 'abandoned'
 
@@ -26,6 +30,9 @@ export type { CartClass }
 @index({ cartId: 1 })
 @index({ itemId: 1 })
 class CartItemClass {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   cartId!: string
 

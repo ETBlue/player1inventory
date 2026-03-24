@@ -202,6 +202,39 @@ describe('bulkCreateItems', () => {
     }
   })
 
+  it('user can import items with UUID IDs (exported from local mode)', async () => {
+    // Given a UUID-format ID (as exported from local/Dexie mode)
+    const context: Context = { userId: 'user_import_test' }
+    const uuidId = '02ce891b-d9c5-40cc-8f06-9cfb945cde49' // typical Dexie UUID
+
+    // When calling bulkCreateItems with a UUID ID
+    const response = await server.executeOperation(
+      {
+        query: BULK_CREATE_ITEMS,
+        variables: { items: [makeItemInput({ id: uuidId, name: 'UUID Item' })] },
+      },
+      { contextValue: context },
+    )
+
+    // Then the mutation returns the inserted item (UUID ID is preserved)
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      const items = response.body.singleResult.data?.bulkCreateItems as Array<{
+        id: string
+        name: string
+      }>
+      expect(items).toHaveLength(1)
+      expect(items[0].id).toBe(uuidId)
+      expect(items[0].name).toBe('UUID Item')
+    }
+
+    // And the item is persisted with the UUID as _id
+    const stored = await ItemModel.findById(uuidId)
+    expect(stored).not.toBeNull()
+    expect(stored?.name).toBe('UUID Item')
+  })
+
   it('rejects unauthenticated bulk-create requests', async () => {
     // Given an unauthenticated context
     const id = new mongoose.Types.ObjectId().toString()

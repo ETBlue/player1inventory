@@ -1,4 +1,5 @@
 import { getModelForClass, index, modelOptions, prop } from '@typegoose/typegoose'
+import mongoose from 'mongoose'
 import type { Recipe } from '@p1i/types'
 
 class RecipeItemClass {
@@ -13,6 +14,9 @@ class RecipeItemClass {
 @index({ userId: 1, name: 1 })
 @index({ familyId: 1, name: 1 })
 class RecipeClass implements Omit<Recipe, 'id' | 'createdAt' | 'updatedAt'> {
+  @prop({ type: String, default: () => new mongoose.Types.ObjectId().toString() })
+  _id!: string
+
   @prop({ required: true, type: String })
   name!: string
 
