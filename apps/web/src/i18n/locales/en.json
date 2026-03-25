@@ -57,7 +57,8 @@
     "emptyState": "No recipes yet. Create your first recipe to get started.",
     "empty": {
       "title": "No recipes yet.",
-      "description": "Add recipes in Settings to get started."
+      "description": "Add recipes in Settings to get started.",
+      "createButton": "Create recipe"
     },
     "recipe": {
       "itemCount_one": "{{count}} item selected",
@@ -99,6 +100,19 @@
     "search": "Search",
     "searchPlaceholder": "Search recipes or items..."
   },
+  "pantry": {
+    "empty": {
+      "title": "No items yet.",
+      "description": "Add your first pantry item to get started.",
+      "createButton": "Create item"
+    }
+  },
+  "navigation": {
+    "pantry": "Pantry",
+    "shopping": "Shopping",
+    "cooking": "Cooking",
+    "settings": "Settings"
+  },
   "items": {
     "tags": {
       "empty": {
@@ -108,6 +122,22 @@
       "newTagType": {
         "button": "New Tag Type",
         "dialogTitle": "New Tag Type"
+      },
+      "assignEmpty": {
+        "title": "No tags assigned.",
+        "description": "Tap a tag above to assign it to this item."
+      }
+    },
+    "vendors": {
+      "assignEmpty": {
+        "title": "No vendors assigned.",
+        "description": "Tap a vendor above to assign it to this item."
+      }
+    },
+    "recipes": {
+      "assignEmpty": {
+        "title": "No recipes assigned.",
+        "description": "Tap a recipe above to assign it to this item."
       }
     }
   },

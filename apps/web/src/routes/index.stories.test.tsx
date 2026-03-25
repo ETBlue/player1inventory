@@ -13,6 +13,13 @@ describe('Pantry index stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
+  it('Default shows the Create item CTA button in empty state', async () => {
+    render(<Default />)
+    expect(
+      await screen.findByRole('link', { name: /create item/i }),
+    ).toBeInTheDocument()
+  })
+
   it('WithItems renders seeded items', async () => {
     render(<WithItems />)
     expect(await screen.findByText(/milk/i)).toBeInTheDocument()

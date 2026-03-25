@@ -26,6 +26,13 @@ describe('Cooking stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
+  it('Default empty state shows create recipe button', async () => {
+    render(<Default />)
+    expect(
+      await screen.findByRole('link', { name: /create recipe/i }),
+    ).toBeInTheDocument()
+  })
+
   it('WithRecipes renders without error', async () => {
     render(<WithRecipes />)
     expect(

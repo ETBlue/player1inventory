@@ -57,7 +57,8 @@
     "emptyState": "還沒有任何食譜喔，創造第一個食譜吧。",
     "empty": {
       "title": "尚無食譜。",
-      "description": "請至設定新增食譜。"
+      "description": "請至設定新增食譜。",
+      "createButton": "新增食譜"
     },
     "recipe": {
       "itemCount_one": "已選 {{count}} 項",
@@ -99,6 +100,19 @@
     "search": "搜尋",
     "searchPlaceholder": "搜尋食譜或材料..."
   },
+  "pantry": {
+    "empty": {
+      "title": "尚無品項。",
+      "description": "新增第一個食品庫品項以開始使用。",
+      "createButton": "新增品項"
+    }
+  },
+  "navigation": {
+    "pantry": "食品庫",
+    "shopping": "購物",
+    "cooking": "料理",
+    "settings": "設定"
+  },
   "items": {
     "tags": {
       "empty": {
@@ -108,6 +122,22 @@
       "newTagType": {
         "button": "新增標籤類型",
         "dialogTitle": "新增標籤類型"
+      },
+      "assignEmpty": {
+        "title": "尚未套用標籤。",
+        "description": "點選上方標籤以套用到此品項。"
+      }
+    },
+    "vendors": {
+      "assignEmpty": {
+        "title": "尚未指定供應商。",
+        "description": "點選上方供應商以指定到此品項。"
+      }
+    },
+    "recipes": {
+      "assignEmpty": {
+        "title": "尚未加入食譜。",
+        "description": "點選上方食譜以將此品項加入其中。"
       }
     }
   },

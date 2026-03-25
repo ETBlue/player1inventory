@@ -18,6 +18,17 @@ describe('Navigation stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
+  it('PantryActive shows text labels for all nav items', async () => {
+    render(<PantryActive />)
+    const nav = await screen.findByRole('navigation', {
+      name: 'Bottom navigation',
+    })
+    expect(nav).toHaveTextContent('Pantry')
+    expect(nav).toHaveTextContent('Shopping')
+    expect(nav).toHaveTextContent('Cooking')
+    expect(nav).toHaveTextContent('Settings')
+  })
+
   it('CartActive renders without error', async () => {
     render(<CartActive />)
     expect(

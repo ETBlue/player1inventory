@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useRouterState } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
@@ -27,6 +28,7 @@ export const Route = createFileRoute('/')({
 })
 
 function PantryView() {
+  const { t } = useTranslation()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
@@ -228,11 +230,17 @@ function PantryView() {
       <div className="h-px bg-accessory-default" />
 
       {items.length === 0 ? (
-        <div className="text-center py-12 text-foreground-muted">
-          <p>No items yet.</p>
-          <p className="text-sm mt-1">
-            Add your first pantry item to get started.
-          </p>
+        <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
+          <div>
+            <p>{t('pantry.empty.title')}</p>
+            <p className="text-sm mt-1">{t('pantry.empty.description')}</p>
+          </div>
+          <Button asChild size="lg" className="px-8">
+            <Link to="/items/new">
+              <Plus />
+              {t('pantry.empty.createButton')}
+            </Link>
+          </Button>
         </div>
       ) : sortedItems.length === 0 ? (
         <div className="text-center py-12 text-foreground-muted">

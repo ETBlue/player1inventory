@@ -1,16 +1,18 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { CookingPot, Settings, ShoppingCart, Warehouse } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { to: '/', label: 'Pantry', icon: Warehouse },
-  { to: '/shopping', label: 'Shopping', icon: ShoppingCart },
-  { to: '/cooking', label: 'Cooking', icon: CookingPot },
-  { to: '/settings', label: 'Settings', icon: Settings },
-] as const
-
 export function Navigation() {
+  const { t } = useTranslation()
   const location = useLocation()
+
+  const navItems = [
+    { to: '/', label: t('navigation.pantry'), icon: Warehouse },
+    { to: '/shopping', label: t('navigation.shopping'), icon: ShoppingCart },
+    { to: '/cooking', label: t('navigation.cooking'), icon: CookingPot },
+    { to: '/settings', label: t('navigation.settings'), icon: Settings },
+  ] as const
 
   // Hide navigation on fullscreen pages (items, tags, vendors, recipes)
   const isFullscreenPage =
@@ -37,13 +39,13 @@ export function Navigation() {
             <Link
               key={to}
               to={to}
-              aria-label={label}
               className={cn(
-                'flex flex-col items-center gap-1 px-4 py-2 text-sm',
+                'flex flex-col items-center gap-1 px-4 py-2',
                 isActive ? 'text-primary' : 'text-foreground-muted',
               )}
             >
               <Icon className="h-5 w-5" />
+              <span className="text-xs">{label}</span>
             </Link>
           )
         })}

@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/AddNameDialog'
+import { EmptyState } from '@/components/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
@@ -12,6 +14,7 @@ export const Route = createFileRoute('/items/$id/vendors')({
 })
 
 function VendorsTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const { data: vendors = [] } = useVendors()
@@ -84,6 +87,13 @@ function VendorsTab() {
           New Vendor
         </Button>
       </div>
+
+      {(item.vendorIds ?? []).length === 0 && (
+        <EmptyState
+          title={t('items.vendors.assignEmpty.title')}
+          description={t('items.vendors.assignEmpty.description')}
+        />
+      )}
 
       <AddNameDialog
         open={showDialog}
