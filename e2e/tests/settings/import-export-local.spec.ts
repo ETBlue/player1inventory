@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -178,4 +179,55 @@ test('user can import a cloud backup into local mode (cloud → local)', async (
 
   // Then: verify all relations
   await verifyRelations(page)
+})
+
+test('user does not see epoch date (1970-01-01) after importing item with null dueDate', async ({ page }) => {
+  const settings = new SettingsPage(page)
+  const pantry = new PantryPage(page)
+
+  // Given: an export payload where dueDate, estimatedDueDays, expirationThreshold are null
+  // (this is what JSON serialization produces for undefined optional fields)
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    tagTypes: [],
+    tags: [],
+    vendors: [],
+    items: [
+      {
+        id: 'bbbbbbbb-0000-0000-0000-000000000001',
+        name: 'No Expiry Item',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        dueDate: null,
+        estimatedDueDays: null,
+        expirationThreshold: null,
+        createdAt: '2026-03-25T00:00:00.000Z',
+        updatedAt: '2026-03-25T00:00:00.000Z',
+      },
+    ],
+    recipes: [],
+    inventoryLogs: [],
+    shoppingCarts: [],
+    cartItems: [],
+  }
+  const tmpFile = path.join(os.tmpdir(), 'p1i-epoch-regression.json')
+  fs.writeFileSync(tmpFile, JSON.stringify(payload))
+
+  // When: import the payload
+  await settings.navigateTo()
+  await settings.triggerImport(tmpFile)
+  await settings.waitForImportDone('local')
+
+  // Then: item card is visible on pantry
+  await pantry.navigateTo()
+  await expect(pantry.getItemCard('No Expiry Item')).toBeVisible()
+
+  // Then: no "1970" text appears anywhere on the page (epoch date regression guard)
+  await expect(page.getByText('1970', { exact: false })).toHaveCount(0)
 })
