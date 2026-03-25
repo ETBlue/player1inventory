@@ -8,6 +8,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 
 | Area | Status | Notes |
 |------|--------|-------|
+| [a11y](global/a11y/) | 🔲 Pending | Plan 1 (critical/high fixes), Plan 2 (keyboard/motion), Plan 3 (visual verification) |
 | [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent |
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
 | [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done |

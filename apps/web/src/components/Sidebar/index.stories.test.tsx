@@ -15,7 +15,9 @@ describe('Sidebar stories smoke tests', () => {
     expect(
       await screen.findByRole('navigation', { name: 'Sidebar navigation' }),
     ).toBeInTheDocument()
-    expect(await screen.findByText('Player 1 Inventory')).toBeInTheDocument()
+    expect(
+      (await screen.findAllByText('Player 1 Inventory')).length,
+    ).toBeGreaterThan(0)
   })
 
   it('CartActive renders without error', async () => {

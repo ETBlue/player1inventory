@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Pantry', icon: Warehouse },
-  { to: '/shopping', label: 'Cart', icon: ShoppingCart },
-  { to: '/cooking', label: 'Use', icon: CookingPot },
+  { to: '/shopping', label: 'Shopping', icon: ShoppingCart },
+  { to: '/cooking', label: 'Cooking', icon: CookingPot },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const
 
@@ -28,7 +28,7 @@ export function Navigation() {
       className="lg:hidden fixed bottom-0 left-0 right-0 border-t border-accessory-default bg-background-surface"
     >
       <div className="flex justify-around py-2">
-        {navItems.map(({ to, icon: Icon }) => {
+        {navItems.map(({ to, label, icon: Icon }) => {
           const isActive =
             location.pathname === to ||
             (to !== '/' && location.pathname.startsWith(to))
@@ -37,6 +37,7 @@ export function Navigation() {
             <Link
               key={to}
               to={to}
+              aria-label={label}
               className={cn(
                 'flex flex-col items-center gap-1 px-4 py-2 text-sm',
                 isActive ? 'text-primary' : 'text-foreground-muted',

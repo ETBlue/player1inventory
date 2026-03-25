@@ -225,7 +225,9 @@ function Shopping() {
     <div>
       {/* Cart toolbar */}
       <Toolbar className="flex-wrap">
-        {t('shopping.toolbar.cartCount', { count: cartTotal })}
+        <span aria-live="polite" aria-atomic="true">
+          {t('shopping.toolbar.cartCount', { count: cartTotal })}
+        </span>
         <div className="flex-1" />
         {cartItems.length > 0 && (
           <Button

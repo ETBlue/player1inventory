@@ -415,7 +415,7 @@ it('user can create an item', async () => {
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core`. Covers all 7 main pages in both light and dark mode (14 tests total). Run with `pnpm test:e2e --grep "a11y"`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core`. Covers all 7 main pages in both light and dark mode (14 tests), plus 4 mobile-viewport tests at 390×844 in a `test.describe('mobile viewport a11y')` block (18 tests total). Run with `pnpm test:e2e --grep "a11y"`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
 

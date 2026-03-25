@@ -87,7 +87,7 @@ function VendorDetailLayoutInner() {
     <>
       <div className="min-h-screen">
         {/* Fixed Top Bar */}
-        <div
+        <header
           className={`px-3 flex items-center gap-2
           fixed top-0 left-0 right-0 z-50
           bg-background-surface
@@ -131,7 +131,7 @@ function VendorDetailLayoutInner() {
               <ListTodo className="h-4 w-4" />
             </Link>
           </div>
-        </div>
+        </header>
 
         {/* Main Content with padding to clear fixed bar */}
         <div className="mt-[50px]">

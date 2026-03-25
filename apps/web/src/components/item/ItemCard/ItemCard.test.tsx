@@ -664,6 +664,225 @@ describe('ItemCard - vendor and recipe display', () => {
   })
 })
 
+describe('ItemCard - keyboard interaction on badges', () => {
+  const mockItem: Item = {
+    id: 'item-1',
+    name: 'Milk',
+    tagIds: ['t1'],
+    vendorIds: ['v1'],
+    targetUnit: 'package',
+    packageUnit: 'gallon',
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const mockTags: Tag[] = [{ id: 't1', name: 'Dairy', typeId: 'type1' }]
+  const mockTagTypes: TagType[] = [
+    { id: 'type1', name: 'Category', color: TagColor.blue },
+  ]
+  const mockVendors: Vendor[] = [
+    { id: 'v1', name: 'Costco', createdAt: new Date() },
+  ]
+  const mockRecipes: Recipe[] = [
+    {
+      id: 'r1',
+      name: 'Pancakes',
+      items: [{ itemId: 'item-1', defaultAmount: 1 }],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ]
+
+  it('calls onTagClick with tagId when Enter is pressed on tag badge', async () => {
+    // Given a tag badge with onTagClick
+    const user = userEvent.setup()
+    const onTagClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        onTagClick={onTagClick}
+      />,
+    )
+
+    // When Enter is pressed on the tag badge
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    badge.focus()
+    await user.keyboard('{Enter}')
+
+    // Then onTagClick is called with the tag id
+    expect(onTagClick).toHaveBeenCalledWith('t1')
+  })
+
+  it('calls onTagClick with tagId when Space is pressed on tag badge', async () => {
+    // Given a tag badge with onTagClick
+    const user = userEvent.setup()
+    const onTagClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        onTagClick={onTagClick}
+      />,
+    )
+
+    // When Space is pressed on the tag badge
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    badge.focus()
+    await user.keyboard(' ')
+
+    // Then onTagClick is called with the tag id
+    expect(onTagClick).toHaveBeenCalledWith('t1')
+  })
+
+  it('calls onVendorClick with vendorId when Enter is pressed on vendor badge', async () => {
+    // Given a vendor badge with onVendorClick
+    const user = userEvent.setup()
+    const onVendorClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        vendors={mockVendors}
+        onVendorClick={onVendorClick}
+      />,
+    )
+
+    // When Enter is pressed on the vendor badge
+    const badge = screen.getByTestId('vendor-badge-Costco')
+    badge.focus()
+    await user.keyboard('{Enter}')
+
+    // Then onVendorClick is called with the vendor id
+    expect(onVendorClick).toHaveBeenCalledWith('v1')
+  })
+
+  it('calls onVendorClick with vendorId when Space is pressed on vendor badge', async () => {
+    // Given a vendor badge with onVendorClick
+    const user = userEvent.setup()
+    const onVendorClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        vendors={mockVendors}
+        onVendorClick={onVendorClick}
+      />,
+    )
+
+    // When Space is pressed on the vendor badge
+    const badge = screen.getByTestId('vendor-badge-Costco')
+    badge.focus()
+    await user.keyboard(' ')
+
+    // Then onVendorClick is called with the vendor id
+    expect(onVendorClick).toHaveBeenCalledWith('v1')
+  })
+
+  it('calls onRecipeClick with recipeId when Enter is pressed on recipe badge', async () => {
+    // Given a recipe badge with onRecipeClick
+    const user = userEvent.setup()
+    const onRecipeClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        recipes={mockRecipes}
+        onRecipeClick={onRecipeClick}
+      />,
+    )
+
+    // When Enter is pressed on the recipe badge
+    const badge = screen.getByTestId('recipe-badge-Pancakes')
+    badge.focus()
+    await user.keyboard('{Enter}')
+
+    // Then onRecipeClick is called with the recipe id
+    expect(onRecipeClick).toHaveBeenCalledWith('r1')
+  })
+
+  it('calls onRecipeClick with recipeId when Space is pressed on recipe badge', async () => {
+    // Given a recipe badge with onRecipeClick
+    const user = userEvent.setup()
+    const onRecipeClick = vi.fn()
+
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        recipes={mockRecipes}
+        onRecipeClick={onRecipeClick}
+      />,
+    )
+
+    // When Space is pressed on the recipe badge
+    const badge = screen.getByTestId('recipe-badge-Pancakes')
+    badge.focus()
+    await user.keyboard(' ')
+
+    // Then onRecipeClick is called with the recipe id
+    expect(onRecipeClick).toHaveBeenCalledWith('r1')
+  })
+
+  it('tag badge has aria-pressed={false} when tag is not in activeTagIds', async () => {
+    // Given activeTagIds that does not include the tag
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        onTagClick={vi.fn()}
+        activeTagIds={[]}
+      />,
+    )
+
+    // Then the badge has aria-pressed="false"
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    expect(badge).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('tag badge has aria-pressed={true} when tag is in activeTagIds', async () => {
+    // Given activeTagIds that includes the tag
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={mockTags}
+        tagTypes={mockTagTypes}
+        showTags={true}
+        onTagClick={vi.fn()}
+        activeTagIds={['t1']}
+      />,
+    )
+
+    // Then the badge has aria-pressed="true"
+    const badge = screen.getByTestId('tag-badge-Dairy')
+    expect(badge).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
 describe('ItemCard - Cooking mode', () => {
   const mockItem: Item = {
     id: 'item-1',

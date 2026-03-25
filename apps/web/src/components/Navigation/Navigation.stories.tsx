@@ -61,12 +61,12 @@ export const PantryActive: Story = {
   render: () => <NavigationStory path="/" />,
 }
 
-// Story 2: Cart tab active
+// Story 2: Shopping tab active
 export const CartActive: Story = {
   render: () => <NavigationStory path="/shopping" />,
 }
 
-// Story 3: Use (cooking) tab active
+// Story 3: Cooking tab active
 export const CookingActive: Story = {
   render: () => <NavigationStory path="/cooking" />,
 }

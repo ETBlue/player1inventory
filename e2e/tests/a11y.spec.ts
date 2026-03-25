@@ -233,3 +233,55 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page)
   })
 })
+
+test.describe('mobile viewport a11y', () => {
+  test.use({ viewport: { width: 390, height: 844 } }) // iPhone 14 Pro
+
+  test('user can view pantry page without accessibility violations on mobile', async ({ page }) => {
+    // Given the user navigates to the pantry (home) page on a mobile viewport
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page)
+  })
+
+  test('user can view shopping page without accessibility violations on mobile', async ({ page }) => {
+    // Given the user navigates to the shopping page on a mobile viewport
+    await page.goto('/shopping')
+    await page.waitForLoadState('networkidle')
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page)
+  })
+
+  test('user can view cooking page without accessibility violations on mobile', async ({ page }) => {
+    // Given the user navigates to the cooking page on a mobile viewport
+    await page.goto('/cooking')
+    await page.waitForLoadState('networkidle')
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page)
+  })
+
+  test('user can view settings page without accessibility violations on mobile', async ({ page }) => {
+    // Given the user navigates to the settings page on a mobile viewport
+    await page.goto('/settings')
+    await page.waitForLoadState('networkidle')
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page)
+  })
+})

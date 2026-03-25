@@ -174,6 +174,10 @@ export function ItemCard({
           >
             <Plus className="h-4 w-4" />
           </Button>
+          {/* Screen reader announcement for quantity changes */}
+          <span className="sr-only" aria-live="polite" aria-atomic="true">
+            {item.name}: {controlAmount}
+          </span>
         </div>
       )}
       <CardHeader
@@ -312,12 +316,26 @@ export function ItemCard({
                   ? bgColor
                   : (`${bgColor}-tint` as BadgeProps['variant'])
                 : bgColor
+              const isTagActive = activeTagIds?.includes(tag.id) ?? false
               return (
                 <Badge
                   key={tag.id}
                   data-testid={`tag-badge-${tag.name}`}
                   variant={tagVariant}
                   className={`text-xs ${onTagClick ? 'cursor-pointer' : ''}`}
+                  {...(onTagClick
+                    ? {
+                        role: 'button',
+                        tabIndex: 0,
+                        'aria-pressed': isTagActive,
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onTagClick(tag.id)
+                          }
+                        },
+                      }
+                    : {})}
                   onClick={(e) => {
                     if (onTagClick) {
                       e.preventDefault()
@@ -334,54 +352,80 @@ export function ItemCard({
         )}
         {vendors.length > 0 && showTags && (
           <div className="flex flex-wrap gap-1 mt-1">
-            {vendors.map((vendor) => (
-              <Badge
-                key={vendor.id}
-                data-testid={`vendor-badge-${vendor.name}`}
-                variant={
-                  activeVendorIds?.includes(vendor.id)
-                    ? 'neutral'
-                    : 'neutral-outline'
-                }
-                className={`gap-1 text-xs normal-case ${onVendorClick ? 'cursor-pointer' : ''}`}
-                onClick={(e) => {
-                  if (onVendorClick) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onVendorClick(vendor.id)
-                  }
-                }}
-              >
-                <Store className="h-3 w-3" />
-                {vendor.name}
-              </Badge>
-            ))}
+            {vendors.map((vendor) => {
+              const isVendorActive =
+                activeVendorIds?.includes(vendor.id) ?? false
+              return (
+                <Badge
+                  key={vendor.id}
+                  data-testid={`vendor-badge-${vendor.name}`}
+                  variant={isVendorActive ? 'neutral' : 'neutral-outline'}
+                  className={`gap-1 text-xs normal-case ${onVendorClick ? 'cursor-pointer' : ''}`}
+                  {...(onVendorClick
+                    ? {
+                        role: 'button',
+                        tabIndex: 0,
+                        'aria-pressed': isVendorActive,
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onVendorClick(vendor.id)
+                          }
+                        },
+                      }
+                    : {})}
+                  onClick={(e) => {
+                    if (onVendorClick) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onVendorClick(vendor.id)
+                    }
+                  }}
+                >
+                  <Store className="h-3 w-3" />
+                  {vendor.name}
+                </Badge>
+              )
+            })}
           </div>
         )}
         {recipes.length > 0 && showTags && (
           <div className="flex flex-wrap gap-1 mt-1">
-            {recipes.map((recipe) => (
-              <Badge
-                key={recipe.id}
-                data-testid={`recipe-badge-${recipe.name}`}
-                variant={
-                  activeRecipeIds?.includes(recipe.id)
-                    ? 'neutral'
-                    : 'neutral-outline'
-                }
-                className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
-                onClick={(e) => {
-                  if (onRecipeClick) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onRecipeClick(recipe.id)
-                  }
-                }}
-              >
-                <CookingPot className="h-3 w-3" />
-                {recipe.name}
-              </Badge>
-            ))}
+            {recipes.map((recipe) => {
+              const isRecipeActive =
+                activeRecipeIds?.includes(recipe.id) ?? false
+              return (
+                <Badge
+                  key={recipe.id}
+                  data-testid={`recipe-badge-${recipe.name}`}
+                  variant={isRecipeActive ? 'neutral' : 'neutral-outline'}
+                  className={`gap-1 text-xs ${onRecipeClick ? 'cursor-pointer' : ''}`}
+                  {...(onRecipeClick
+                    ? {
+                        role: 'button',
+                        tabIndex: 0,
+                        'aria-pressed': isRecipeActive,
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onRecipeClick(recipe.id)
+                          }
+                        },
+                      }
+                    : {})}
+                  onClick={(e) => {
+                    if (onRecipeClick) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onRecipeClick(recipe.id)
+                    }
+                  }}
+                >
+                  <CookingPot className="h-3 w-3" />
+                  {recipe.name}
+                </Badge>
+              )
+            })}
           </div>
         )}
       </CardContent>
