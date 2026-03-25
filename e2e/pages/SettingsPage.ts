@@ -15,7 +15,7 @@ export class SettingsPage {
     await this.page.getByRole('button', { name: /new tag type/i }).click()
     // Wait for the tag type card heading to appear.
     // Use .first() to avoid strict-mode violations when a same-named default tag type is already seeded.
-    await this.page.getByRole('heading', { name, level: 3 }).first().waitFor()
+    await this.page.getByRole('heading', { name, level: 2 }).first().waitFor()
   }
 
   async navigateTo() {
