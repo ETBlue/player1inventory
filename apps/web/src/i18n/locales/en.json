@@ -57,7 +57,8 @@
     "emptyState": "No recipes yet. Create your first recipe to get started.",
     "empty": {
       "title": "No recipes yet.",
-      "description": "Add recipes in Settings to get started."
+      "description": "Add recipes in Settings to get started.",
+      "createButton": "Create recipe"
     },
     "recipe": {
       "itemCount_one": "{{count}} item selected",

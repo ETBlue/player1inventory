@@ -57,7 +57,8 @@
     "emptyState": "還沒有任何食譜喔，創造第一個食譜吧。",
     "empty": {
       "title": "尚無食譜。",
-      "description": "請至設定新增食譜。"
+      "description": "請至設定新增食譜。",
+      "createButton": "新增食譜"
     },
     "recipe": {
       "itemCount_one": "已選 {{count}} 項",

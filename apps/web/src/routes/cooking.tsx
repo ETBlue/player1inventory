@@ -1,8 +1,7 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { Toolbar } from '@/components/Toolbar'
@@ -453,10 +452,18 @@ function CookingPage() {
       <div className="h-px bg-accessory-default" />
 
       {sortedRecipes.length === 0 ? (
-        <EmptyState
-          title={t('cooking.empty.title')}
-          description={t('cooking.empty.description')}
-        />
+        <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
+          <div>
+            <p>{t('cooking.empty.title')}</p>
+            <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
+          </div>
+          <Link to="/settings/recipes/new" search={{ name: '' }}>
+            <Button size="lg" className="px-8">
+              <Plus />
+              {t('cooking.empty.createButton')}
+            </Button>
+          </Link>
+        </div>
       ) : (
         <div className="space-y-px pb-4">
           {displayRecipes.map((recipe) => {
