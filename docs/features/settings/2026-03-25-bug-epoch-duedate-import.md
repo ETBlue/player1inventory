@@ -22,13 +22,6 @@ The same pattern affects `estimatedDueDays` and `expirationThreshold`, which may
 
 In `apps/web/src/lib/importData.ts`, `deserializeItem()` was updated to use explicit `!== null && !== undefined` double-checks for all three optional expiry fields (`dueDate`, `estimatedDueDays`, `expirationThreshold`). A `delete result.<field>` fallback ensures null values spread from `...item` are cleaned up before the item is stored.
 
-A one-time MongoDB migration script was added at `apps/server/scripts/fix-epoch-due-dates.ts`. It finds all cloud items where `dueDate < 2000-01-01` and `$unset`s all three expiry fields. Run with:
-
-```bash
-# from apps/server/
-MONGODB_URI=<your-uri> pnpm fix:epoch-dates
-```
-
 ## Test Added
 
 Three new tests in `apps/web/src/lib/importData.test.ts`:
@@ -40,7 +33,6 @@ Three new tests in `apps/web/src/lib/importData.test.ts`:
 
 Branch: `fix/import-epoch-duedate`
 
-- `fix(migration): add one-time script to clear epoch dueDate from cloud items`
 - `fix(import): handle null dueDate, estimatedDueDays, expirationThreshold on import`
 - `test(e2e): add regression test for epoch dueDate after import with null fields`
 - `docs(bug): add epoch dueDate import bug report and fix notes`
