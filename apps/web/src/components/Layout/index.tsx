@@ -23,13 +23,18 @@ export function Layout({ children }: LayoutProps) {
         !isFullscreenPage && 'pb-20 lg:pb-0 lg:ml-56',
       )}
     >
+      {/* Skip link must come before Sidebar so it is the first focusable element.
+          Wrapped in <header> (banner landmark) to satisfy the axe `region` rule — all
+          page content must be inside a landmark. */}
+      <header>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background-elevated focus:text-foreground focus:rounded-md focus:border-2 focus:border-primary"
+        >
+          Skip to main content
+        </a>
+      </header>
       <Sidebar />
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background-elevated focus:text-foreground focus:rounded-md focus:border-2 focus:border-primary"
-      >
-        Skip to main content
-      </a>
       <main id="main-content" className="w-full">
         {/* sr-only heading for mobile screen readers: the Sidebar's h1 is lg:flex (desktop only),
             so mobile viewports have no h1 in the DOM. This hidden heading fills that gap without
