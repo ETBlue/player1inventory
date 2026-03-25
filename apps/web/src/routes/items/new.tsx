@@ -55,10 +55,10 @@ function NewItemPage() {
   return (
     <div className="min-h-screen">
       {/* Fixed Top Bar */}
-      <div
+      <header
         className={`px-3 flex items-center gap-2
-          fixed top-0 left-0 right-0 z-50 
-          bg-background-surface 
+          fixed top-0 left-0 right-0 z-50
+          bg-background-surface
           border-b-2 border-accessory-default`}
       >
         <Link
@@ -68,7 +68,7 @@ function NewItemPage() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1 className="text-md font-regular truncate">New Item</h1>
-      </div>
+      </header>
 
       {/* Main Content */}
       <div className="pt-16 p-4">
