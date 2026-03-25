@@ -4,7 +4,7 @@
 
 **Goal:** Fix all WCAG 2.1 A violations and high-severity AA gaps identified in the March 2026 audit. These are pure code changes — no visual testing required.
 
-**Scope:** 5 issues. Updated after rebase onto main (2026-03-21): `Sidebar` component added by PR #135 is already accessible (icon + visible text labels); `Navigation` still needs link aria-labels.
+**Scope:** 5 issues. Updated after second rebase onto main (2026-03-25): PR #143 added `e2e/tests/a11y.spec.ts` (axe-playwright, 14 tests, all passing) and fixed several structural violations. See revision notes per task below.
 
 **WCAG References:**
 - 1.1.1 Non-text Content (A) — icon-only elements need text alternatives
@@ -17,11 +17,13 @@
 
 ## Task 1: Navigation Link `aria-label`
 
-**Issue:** The bottom navigation bar (`Navigation/index.tsx`) renders 4 icon-only `<Link>` elements. The `<nav>` element already has `aria-label="Bottom navigation"` (added in commit `2db89c9`), but the individual link elements have no accessible name — screen reader users hear "link" with no destination.
+**Issue:** The bottom navigation bar (`Navigation/index.tsx`) renders 4 icon-only `<Link>` elements with no accessible name. Screen reader users on mobile hear "link" with no indication of destination.
 
-The `Sidebar` component (added in PR #135) is already accessible because its links render icon + visible `<span>{label}</span>`. No changes needed to `Sidebar`.
+**Why axe doesn't catch this:** `Navigation` uses `lg:hidden` — it is hidden at ≥1024px viewport. The axe spec (added in PR #143) runs at Playwright's default 1280px viewport, so it always sees the `Sidebar` instead. The Sidebar has visible text labels and is accessible. The Navigation's icon-only links are a real issue for mobile users (< 1024px) but are invisible to the current automated tests.
 
-Additionally, the `navItems` labels in `Navigation` ("Cart", "Use") are inconsistent with the `Sidebar` ("Shopping", "Cooking") — fix both as part of this task.
+The `Sidebar` (PR #135) is already accessible — no changes needed there.
+
+Additionally, `navItems` labels are inconsistent with the Sidebar: "Cart"/"Use" vs Sidebar's "Shopping"/"Cooking" — fix both.
 
 **Files:**
 - `apps/web/src/components/Navigation/index.tsx`
@@ -32,7 +34,7 @@ Read `src/components/Navigation/index.tsx`. Note the `navItems` array already ha
 
 **Step 2: Update `navItems` labels for consistency with Sidebar**
 
-Change the `navItems` array labels to match the Sidebar (which uses full descriptive words):
+Change the `navItems` array labels to match the Sidebar:
 - `'Cart'` → `'Shopping'`
 - `'Use'` → `'Cooking'`
 
@@ -53,15 +55,33 @@ In the render loop, destructure `label` from `navItems` and add it to each `<Lin
 ))}
 ```
 
-These labels are hardcoded English for now — i18n can be added in a follow-up i18n PR (same pattern as other non-translated pages).
+Labels are hardcoded English for now — i18n in a follow-up PR (same pattern as other non-translated pages).
 
-**Step 4: Verify**
+**Step 4: Add mobile-viewport axe test**
 
-Run lint and build:
+The existing `e2e/tests/a11y.spec.ts` only tests at desktop viewport. Add a mobile-viewport describe block to catch Navigation regressions:
+
+```ts
+test.describe('mobile viewport a11y', () => {
+  test.use({ viewport: { width: 390, height: 844 } }) // iPhone 14 Pro
+
+  test('user can view pantry page without accessibility violations on mobile', async ({ page }) => {
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+    await checkA11y(page)
+  })
+  // Add shopping, cooking, settings at minimum
+})
+```
+
+**Step 5: Verify**
+
 ```bash
 (cd apps/web && pnpm lint)
 (cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
+pnpm test:e2e --grep "a11y"
 ```
 
 ---

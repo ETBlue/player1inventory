@@ -49,6 +49,25 @@ A: Yes — both themes must pass WCAG AA contrast ratios independently.
 
 ---
 
+## PR #143 (A11y Quality Gate) — Changes Absorbed After Second Rebase (2026-03-25)
+
+The following issues were fixed in main before our plans are implemented:
+- `e2e/tests/a11y.spec.ts` added: 14 tests (7 pages × light+dark), all axe rules including color-contrast, **passing**
+- Design tokens tightened: `--foreground-muted`, `--importance-primary`, `--importance-neutral` adjusted
+- LanguageCard `SelectTrigger` aria-label added (button-name)
+- DraggableTagBadge restructured: DeleteButton moved to sibling, resolving nested-interactive
+- DraggableTagBadge DeleteButton gets aria-label via i18n key
+- `DroppableTagTypeCard` h3→h2 for correct heading order
+- Color-contrast rule re-enabled in axe spec (currently passing)
+- Navigation is `lg:hidden` at ≥1024px — axe tests at 1280px viewport never see it; mobile issue remains
+
+**Impact on plans:**
+- Plan 1: Task 1 now includes adding a mobile-viewport axe describe block to catch Navigation regressions
+- Plan 2, Task 1: DraggableTagBadge structure documented correctly; nested-interactive already resolved
+- Plan 3: Completely revised — manual DevTools color contrast audit replaced by extending the automated axe spec to detail pages
+
+---
+
 ## Decision: Split into 3 Plans
 
 **Plan 1 — A11y: Critical & High Fixes**

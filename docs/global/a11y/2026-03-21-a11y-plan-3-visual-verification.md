@@ -2,197 +2,214 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to implement this plan task-by-task.
 
-**Goal:** Audit and fix color contrast and focus indicator issues across both light and dark themes. This plan requires running the app in a browser and using automated + manual tools to measure actual rendered contrast ratios.
+**Goal:** Extend automated axe coverage to detail pages (not yet in the spec), fix any new violations found, and verify focus indicators via keyboard testing.
 
-**Scope:** Color contrast (both themes), focus indicators, inactive-item opacity.
+**Updated scope (after rebase onto main 2026-03-25):**
+
+PR #143 added `e2e/tests/a11y.spec.ts` — 14 tests covering 7 main pages × light+dark mode with `checkA11y()` (all axe rules, including `color-contrast`). This spec is **already passing**, which means:
+- Color contrast for all 7 main pages passes in both light and dark mode ✓
+- Design tokens were already tightened (`--foreground-muted`, `--importance-primary`, `--importance-neutral`) ✓
+- Structural violations (button-name, nested-interactive, heading-order) were fixed ✓
+
+**What remains:**
+1. Detail pages and form pages are NOT covered by the axe spec — extend it
+2. Focus indicator visibility — axe's `focus-visible` rule is limited; manual keyboard testing still needed
+3. Inactive items `opacity-50` — color-as-sole-indicator; verify and add non-color indicator
 
 **WCAG References:**
 - 1.4.3 Contrast (Minimum) (AA) — normal text ≥ 4.5:1, large text ≥ 3:1
-- 1.4.11 Non-text Contrast (AA) — UI components (borders, icons) ≥ 3:1 against adjacent colors
-- 2.4.7 Focus Visible (AA) — keyboard focus indicator must be visible
+- 1.4.11 Non-text Contrast (AA) — UI components ≥ 3:1
 - 1.4.1 Use of Color (A) — color must not be the only means of conveying information
-
-**Tools required:**
-- Browser DevTools with axe DevTools extension (or WAVE)
-- `pnpm dev` running locally
-- Manual keyboard testing (Tab key navigation)
+- 2.4.7 Focus Visible (AA) — keyboard focus must be visible
 
 ---
 
-## Task 1: Color Contrast Audit — Light Theme
+## Task 1: Extend axe Spec to Detail Pages
 
-**Issue:** Color contrast ratios for muted text, status badges, tag badges, and other themed colors have not been measured. Some combinations may fail WCAG AA.
+**Issue:** The following pages are NOT covered by `e2e/tests/a11y.spec.ts`:
+- `/items/new` — new item form
+- `/items/$id` — item detail (requires a seeded item)
+- `/items/$id/tags`, `/items/$id/vendors`, `/items/$id/recipes` — item detail tabs
+- `/settings/tags/$id` — tag detail
+- `/settings/vendors/$id` — vendor detail
+- `/settings/recipes/$id` — recipe detail
+- `/settings/vendors/new`, `/settings/recipes/new` — new vendor/recipe forms
 
-**Step 1: Start dev server**
+These pages include fixed `<header>` bars, detail tab content, and settings forms — all with unique UI that may have violations.
+
+**Files:**
+- `e2e/tests/a11y.spec.ts`
+
+**Step 1: Read `e2e/tests/a11y.spec.ts`**
+
+Read the full file to understand the teardown pattern and existing test structure.
+
+**Step 2: Add seeded-data detail page tests**
+
+Use `page.evaluate()` to seed entities directly into IndexedDB (navigate to `/` first so Dexie initializes the schema). Then navigate to detail pages and run `checkA11y()`.
+
+Pattern for seeding and testing an item detail page:
+
+```ts
+test('user can view item detail page without accessibility violations', async ({ page }) => {
+  // Given a seeded item
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  const itemId = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const id = crypto.randomUUID()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('items', 'readwrite')
+      tx.objectStore('items').add({
+        id,
+        name: 'test item',
+        tagIds: [],
+        vendorIds: [],
+        recipeIds: [],
+        targetQuantity: 1,
+        refillThreshold: 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    return id
+  })
+
+  // When axe scans the item detail page
+  await page.goto(`/items/${itemId}`)
+  await page.waitForLoadState('networkidle')
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page)
+})
+```
+
+Add tests for:
+- `/items/new` (no seeding needed — just navigate)
+- `/items/${itemId}/tags`, `/items/${itemId}/vendors`, `/items/${itemId}/recipes` (same seeded item)
+- `/settings/tags/${tagId}` (seed a tag type + tag)
+- `/settings/vendors/${vendorId}` (seed a vendor)
+- `/settings/recipes/${recipeId}` (seed a recipe)
+- `/settings/vendors/new`, `/settings/recipes/new` (no seeding needed)
+
+Add dark-mode variants inside the existing `test.describe('dark mode a11y')` block.
+
+**Step 3: Run the extended spec and fix all failures**
 
 ```bash
-(cd apps/web && pnpm dev)
+pnpm test:e2e --grep "a11y"
 ```
 
-Open `http://localhost:5173` in Chrome/Firefox with axe DevTools or WAVE extension.
+For each failure, read the axe report (it includes the rule ID, node selector, and help URL). Fix the violation in the relevant file. Common violations to expect:
+- `color-contrast` → fix in `src/design-tokens/theme.css`
+- `button-name` → add `aria-label` to icon-only buttons on detail pages
+- `landmark-one-main` → ensure `<main>` is present (detail pages use fixed top bars, verify main content is wrapped)
+- `heading-order` → verify h1→h2 sequence on detail pages (fixed top bar has h1; tabs/sections should use h2)
 
-**Step 2: Set theme to Light**
-
-Go to Settings → Theme → Light. Confirm `<html>` does NOT have the `dark` class.
-
-**Step 3: Run axe on each major page**
-
-Run axe DevTools on each of these pages and capture all contrast failures:
-1. `/` (Pantry — with some items visible)
-2. `/shopping` (Shopping cart)
-3. `/cooking` (Cooking page)
-4. `/settings` (Settings main)
-5. `/settings/tags` (Tag list)
-6. `/settings/vendors` (Vendor list)
-7. `/settings/recipes` (Recipe list)
-8. Item detail page (`/items/<id>`)
-
-**Priority areas to check manually:**
-- `text-foreground-muted` — secondary/helper text throughout (e.g. expiry dates, counts)
-- `bg-status-error text-tint` — expiration warning badge in `ItemCard`
-- `bg-status-warning text-tint` — low-stock warning badge in `ItemCard`
-- `bg-status-ok text-tint` — in-stock badge
-- `bg-status-inactive text-tint` — inactive item badge
-- Tag color badges (all 14 colors × 2 variants = 28 combinations) in `TagBadge`
-- `opacity-50` inactive items — text rendered at 50% opacity
-
-**Step 4: Record all failures**
-
-For each failing combination, note:
-- Page/component where it occurs
-- Foreground color token (or hex value from DevTools)
-- Background color token (or hex value)
-- Measured ratio
-- Required ratio (4.5:1 for normal text, 3:1 for large text / UI)
-
-**Step 5: Fix contrast failures in `src/design-tokens/theme.css`**
-
-Adjust the HSL values for failing tokens in the `:root` block. Only change lightness — avoid hue shifts that would break visual design intent.
-
-Common fixes:
-- `--foreground-muted`: increase lightness contrast (darker in light mode)
-- Status color tint text: verify `colorUtils.dark` provides enough contrast on tint backgrounds
-- Tag color text on tint backgrounds: verify `colorUtils.dark` ratio against each tint
-
-**Step 6: Fix `opacity-50` inactive items**
-
-Read `apps/web/src/components/item/ItemCard/index.tsx`. Find where `opacity-50` is applied to inactive items.
-
-Replace opacity-only dimming with a dual indicator:
-- Keep reduced opacity (lower value like `opacity-60` may still pass with high base contrast)
-- Add a non-color indicator: an icon (e.g. `EyeOff` from lucide-react) or strikethrough text
-
-Pattern:
-```tsx
-<div className={cn('...', item.isActive === false && 'opacity-60')}>
-  {item.isActive === false && (
-    <span className="sr-only">Inactive</span>
-  )}
-  {/* existing card content */}
-</div>
-```
-
-The `sr-only` span ensures screen readers also announce the inactive state.
-
-**Step 7: Verify**
-
-```bash
-(cd apps/web && pnpm lint)
-(cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
-grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
-```
-
-Re-run axe on light theme — confirm zero contrast failures.
-
----
-
-## Task 2: Color Contrast Audit — Dark Theme
-
-**Issue:** Dark theme uses different HSL values (defined in `.dark` block in `theme.css`). Colors that pass in light mode may fail in dark mode, and vice versa.
-
-**Step 1: Set theme to Dark**
-
-Go to Settings → Theme → Dark. Confirm `<html>` has the `dark` class.
-
-**Step 2: Run axe on the same pages as Task 1**
-
-Repeat the axe audit across all 8 pages listed in Task 1 Step 3.
-
-**Priority areas unique to dark mode:**
-- Background layers are dark (3.9% → 10% → 15% lightness) — text must be light enough
-- Tag tint backgrounds in dark mode (tint colors may be too dark for dark text)
-- Status badge backgrounds in dark mode
-- `text-foreground-muted` in dark mode (may be too dim against dark backgrounds)
-
-**Step 3: Record and fix dark-mode failures**
-
-For each failure, adjust the corresponding HSL values in the `.dark` block in `src/design-tokens/theme.css`.
+Re-run after each fix until the spec is fully green.
 
 **Step 4: Verify**
 
 ```bash
 (cd apps/web && pnpm lint)
 (cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+(cd apps/web && pnpm build-storybook)
+(cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
+pnpm test:e2e --grep "a11y"
 ```
-
-Re-run axe on dark theme — confirm zero contrast failures.
 
 ---
 
-## Task 3: Focus Indicator Audit & Fixes
+## Task 2: Inactive Items — Non-Color Indicator
 
-**Issue:** shadcn/ui components use Radix UI primitives which typically include focus-visible ring styles. However, the actual rendered focus ring may be invisible against certain backgrounds or too thin to be clearly visible.
+**Issue:** Inactive items in `ItemCard` use `opacity-50` as the sole visual indicator of inactive state. This violates WCAG 1.4.1 (Use of Color) — a non-color means must also convey the state. Reduced opacity may also cause contrast failures when items are seeded in the extended axe spec.
 
-**WCAG 2.4.7 (AA):** Focus indicator must be visible. WCAG 2.4.11 (AA, 2.2) adds minimum size requirements (not tested here — 2.1 AA scope only).
+**Files:**
+- `apps/web/src/components/item/ItemCard/index.tsx`
 
-**Step 1: Keyboard audit**
+**Step 1: Read ItemCard and check axe results**
 
-With the app running (both light and dark themes), use Tab to navigate through every interactive element on each major page. For each element, check:
-- Is there a visible focus ring?
-- Is the focus ring clearly visible against the element's background?
-- Does it disappear against any background color in either theme?
+After Task 1's extended spec passes (or during its fix cycle), check if any `color-contrast` violations appear for inactive items. Whether or not axe flags it, add a non-color indicator per WCAG 1.4.1.
 
-Pages to test (Tab through entire page):
-1. `/` (Pantry)
-2. `/shopping`
-3. `/cooking`
-4. `/settings`
-5. `/settings/tags` (including draggable tags)
-6. Item detail page
+Read `src/components/item/ItemCard/index.tsx`. Find where `opacity-50` is applied to inactive items.
 
-**Step 2: Check global focus styles in CSS**
+**Step 2: Add a non-color indicator**
 
-Read `apps/web/src/index.css` and `apps/web/src/design-tokens/theme.css`. Look for:
-- `:focus-visible` rules
-- `outline` overrides (especially `outline: none` or `outline: 0` without replacement)
-- Tailwind `ring` utilities used in shadcn/ui components
+Keep reduced opacity but add a supplementary screen-reader and/or visual indicator:
 
-**Step 3: Fix missing or invisible focus rings**
+```tsx
+{!item.isActive && (
+  <span className="sr-only">Inactive</span>
+)}
+```
 
-If any element has `outline: none` without a visible replacement:
+If opacity reduction causes contrast failures, raise it to `opacity-60` or `opacity-70`.
 
-Option A — Add global focus-visible fallback in `src/index.css`:
+**Step 3: Verify**
+
+```bash
+(cd apps/web && pnpm lint)
+(cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
+pnpm test:e2e --grep "a11y"
+```
+
+---
+
+## Task 3: Focus Indicator Manual Audit
+
+**Issue:** axe's `focus-visible` checks are limited — they detect missing focus management but do not validate whether the rendered focus ring is visually sufficient. Manual Tab-key testing is required to confirm focus rings are visible in both themes.
+
+**WCAG 2.4.7 (AA):** Every interactive element must have a visible focus indicator when focused via keyboard.
+
+**Step 1: Tab through each page in Light mode**
+
+With `pnpm dev` running at `http://localhost:5173`, set theme to Light. Use Tab (and Shift+Tab) to navigate through:
+1. `/` (Pantry) — toolbar buttons, item cards, quantity steppers, tag/vendor/recipe badges
+2. `/shopping` — toolbar, cart items, checkout button
+3. `/cooking` — toolbar, recipe cards, checkboxes, expand buttons, serving adjusters
+4. `/settings` — nav cards, theme buttons, language select, export/import buttons
+5. `/settings/tags` — tag type headings, draggable tag badges, delete buttons
+6. Item detail page — back button, edit button, tab links, tab content
+
+For each element: is the focus ring visible and clearly distinguishable from its background?
+
+**Step 2: Repeat in Dark mode**
+
+Set theme to Dark. Repeat the same Tab traversal. Focus rings visible in light mode may disappear against dark backgrounds.
+
+**Step 3: Fix invisible focus rings**
+
+Option A — Global fallback in `src/index.css` (preferred):
 ```css
-/* Ensure visible focus rings everywhere */
 :focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 2px;
 }
 ```
 
-Option B — Fix per-component using Tailwind's `focus-visible:ring-2 focus-visible:ring-primary` utilities.
+Option B — Per-component via Tailwind: `focus-visible:ring-2 focus-visible:ring-primary`
 
-Prefer Option A as a global safety net; use Option B only for components that need custom styling.
+Use Option A as a broad safety net; Option B only when a component needs custom overrides.
 
-**Step 4: Verify in both themes**
-
-Tab through all pages in both light and dark themes. Every interactive element must show a visible focus ring.
+**Step 4: Verify**
 
 ```bash
 (cd apps/web && pnpm lint)
 (cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+(cd apps/web && pnpm build-storybook)
+(cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
+pnpm test:e2e --grep "a11y"
 ```
 
 ---
@@ -207,24 +224,15 @@ grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
 (cd apps/web && pnpm build-storybook)
 (cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
+pnpm test:e2e --grep "a11y"
 ```
 
-**Step 2: E2E**
+**Step 2: Commit (up to 3 commits)**
 
-```bash
-pnpm test:e2e --grep "pantry|shopping|cooking|items|tags|vendors|settings"
 ```
-
-**Step 3: Commit (up to 3 commits)**
-
-Split by concern:
-```
-fix(a11y): fix color contrast failures in light theme design tokens
-fix(a11y): fix color contrast failures in dark theme design tokens
-fix(a11y): improve focus indicators for keyboard navigation
+test(a11y): extend axe spec to cover detail pages in light and dark mode
+fix(a11y): fix violations found in extended detail page axe coverage
+fix(a11y): add non-color inactive indicator and fix focus ring visibility
 ```
 
-If inactive-item opacity fix is not merged via Plan 1, include it here:
-```
-fix(a11y): replace opacity-only inactive indicator with dual visual + text indicator
-```
+Split further if fixes span unrelated concerns (e.g. a contrast fix in theme.css vs a focus fix in index.css = 2 commits).
