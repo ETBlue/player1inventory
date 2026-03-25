@@ -1,5 +1,6 @@
 import { useLocation } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Navigation } from '@/components/Navigation'
 import { Sidebar } from '@/components/Sidebar'
 import { cn } from '@/lib/utils'
@@ -9,6 +10,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { t } = useTranslation()
   const location = useLocation()
   const isFullscreenPage =
     location.pathname.startsWith('/items/') ||
@@ -31,7 +33,7 @@ export function Layout({ children }: LayoutProps) {
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background-elevated focus:text-foreground focus:rounded-md focus:border-2 focus:border-primary"
         >
-          Skip to main content
+          {t('common.skipToMainContent')}
         </a>
       </header>
       <Sidebar />

@@ -14,7 +14,8 @@
     "done": "Done",
     "back": "Nevermind",
     "confirm": "Confirm",
-    "add": "Add"
+    "add": "Add",
+    "skipToMainContent": "Skip to main content"
   },
   "shopping": {
     "toolbar": {
