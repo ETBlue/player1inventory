@@ -102,7 +102,7 @@ Entity names are displayed in title case using Tailwind's `capitalize` class (`t
 
 ### Coding Tasks
 
-For any **non-trivial** coding task (feature, bug fix, refactoring, test, etc.), always use a subagent — never implement directly in the main conversation. Trivial edits (rename a variable, fix a typo, add one line) may be done in the main session. See global `~/.claude/CLAUDE.md` for the full subagent policy (which subagent to use, parallelism rules).
+For any **non-trivial** coding task (feature, bug fix, refactoring, test, etc.), always use a subagent — never implement directly in the main conversation. Trivial edits (rename a variable, fix a typo, add one line) may be done in the main session. See global `~/.claude/CLAUDE.md` for the full subagent policy.
 
 ### Documentation Updates
 
@@ -260,21 +260,7 @@ This ensures the design token system remains consistent across the entire codeba
 
 ### Brainstorming Logs
 
-**When to create:**
-- When brainstorming leads to implementation/design decisions
-- Not needed for exploratory discussions without decisions
-
-**Format:**
-- Location: same folder as the design doc for the topic
-  - Global concerns → `docs/global/<area>/` (e.g. `docs/global/ai-sop/`)
-  - Feature-specific → `docs/features/<area>/` (e.g. `docs/features/cooking/`)
-- Naming: `YYYY-MM-DD-brainstorming-<topic>.md`
-- Date: Session date (when brainstorming occurred)
-
-**Content:**
-- Questions asked and user answers
-- Final decision/recommendation
-- Rationale and trade-offs discussed
+Create a brainstorming log when brainstorming leads to implementation/design decisions. Location: same folder as the design doc (`docs/global/<area>/` or `docs/features/<area>/`). Naming: `YYYY-MM-DD-brainstorming-<topic>.md`. Content: questions asked, user answers, final decision, rationale.
 
 ### Workflow
 
@@ -391,16 +377,8 @@ For CLI users who want to work on multiple branches simultaneously without switc
 # Create worktree in .worktrees/ directory
 # Use dashes instead of slashes in the directory name (e.g. feature-xxx, not feature/xxx)
 git worktree add .worktrees/<feature-xxx> -b <branch-name>
-
-# Copy .env files from repo root into the worktree (run before cd — paths are relative to root)
-# Skip silently if a file doesn't exist
-cp apps/web/.env.local .worktrees/<feature-xxx>/apps/web/.env.local 2>/dev/null || true
-cp apps/server/.env .worktrees/<feature-xxx>/apps/server/.env 2>/dev/null || true
-
-cd .worktrees/<feature-xxx>
 ```
-
-Note: The `EnterWorktree` tool triggers the `WorktreeCreate` hook which copies `.env` files automatically. The manual `cp` step above is only needed when using raw `git worktree add`.
+(The EnterWorktree tool handles .env copying automatically via the WorktreeCreate hook)
 
 **Directory Convention:**
 Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`. Use dashes instead of slashes in directory names (e.g. `feature-xxx`, not `feature/xxx`) to avoid creating subfolders.
