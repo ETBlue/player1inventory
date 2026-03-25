@@ -14,6 +14,7 @@ import {
   Tags,
 } from 'lucide-react'
 import { useState } from 'react'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -87,7 +88,7 @@ function ItemLayoutInner() {
   }
 
   if (isLoading) {
-    return <div className="p-4">Loading...</div>
+    return <LoadingSpinner />
   }
 
   if (!item) {

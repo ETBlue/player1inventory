@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { Card, CardContent } from '@/components/ui/card'
 import { useItem, useItemLogs } from '@/hooks'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
@@ -13,7 +14,7 @@ function ItemHistory() {
   const { data: logs = [], isLoading } = useItemLogs(id)
 
   if (isLoading) {
-    return <div className="p-4">Loading...</div>
+    return <LoadingSpinner />
   }
 
   if (logs.length === 0) {
