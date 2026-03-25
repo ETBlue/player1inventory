@@ -64,58 +64,11 @@ src/
 
 ## Shared Components
 
-**`Toolbar`** (`src/components/Toolbar/index.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
-
-**`AddNameDialog`** (`src/components/AddNameDialog/index.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`.
-
-**`LoadingSpinner`** (`src/components/LoadingSpinner/index.tsx`) — centered animated spinner for page-level loading states. No props. Renders `Loader2` icon (`size-8 animate-spin text-foreground-muted`) inside a `flex min-h-[50vh] items-center justify-center` container. Used in pantry page, item detail, and item log tab.
-
-**`EmptyState`** (`src/components/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
-
-**`ItemListToolbar`** (`src/components/item/ItemListToolbar/index.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with no exact match), `onCreateFromSearch` (same trigger — shows a Create button; pass `hasExactMatch` so the toolbar knows when to suppress it). Escape clears the search value but keeps the input row open.
-
-Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
-
-**`Sidebar`** (`src/components/Sidebar/index.tsx`) — fixed left navigation sidebar shown at `lg:` (1024px+). Same visibility rules as `Navigation` — hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). Shows "Player 1 Inventory" header and 4 nav links (Pantry, Shopping, Cooking, Settings) with icon + label side-by-side. Active: `text-primary bg-background-elevated`. `Layout` adds `lg:ml-56` offset to the content area when the sidebar is visible.
-
-**`CookingControlBar`** (`src/components/recipe/CookingControlBar/index.tsx`) — second-row toolbar for the cooking page. Props: `allExpanded`, `onExpandAll`, `onCollapseAll`. Reads/writes `?sort` (`name|recent|count`), `?dir` (`asc|desc`), `?q` directly via `Route.useSearch()` and `useNavigate()`. Row 1: sort Select, direction button, expand/collapse button, spacer, search toggle. Row 2 (conditional): search input with Create/Clear buttons. `searchVisible` is local state initialized from `!!q`.
-
-### Settings Cards
-
-Self-contained card components for the settings page. Each lives in `src/components/settings/` and accepts no props — all state is read from hooks internally.
-
-**`DataModeCard`** (`src/components/settings/DataModeCard/index.tsx`) — data mode toggle card (local ↔ cloud). No props. Uses `useDataMode`. Renders different content for local vs cloud mode. Cloud mode includes a multi-step disable flow with confirmation dialogs.
-
-**`FamilyGroupCard`** (`src/components/settings/FamilyGroupCard/index.tsx`) — family group management card. No props. Cloud mode only (rendered conditionally by the settings page).
-
-**`ThemeCard`** (`src/components/settings/ThemeCard/index.tsx`) — theme selector card. No props. Uses `useTheme`. Renders Sun/Moon icon and three segmented buttons (Light / System / Dark).
-
-**`LanguageCard`** (`src/components/settings/LanguageCard/index.tsx`) — language selector card. No props. Uses `useLanguage`. Renders Globe icon and a Select dropdown (Auto / English / 繁體中文).
-
-**`ExportCard`** (`src/components/settings/ExportCard/index.tsx`) — data export card. No props. Shown in **both modes**. Calls `exportCloudData(client)` in cloud mode, `exportAllData()` in local mode. Both produce the same `ExportPayload` JSON format. Includes loading state while export is in progress.
-
-**`ImportCard`** (`src/components/settings/ImportCard/index.tsx`) — data import card. No props. Shown in **both modes**. Renders a file picker (`<input type="file" accept=".json">`). Flow: parse JSON → validate ExportPayload shape → detect conflicts → open `ConflictDialog` if conflicts exist → call `importLocalData()` or `importCloudData()` with chosen strategy. Exposes three import strategies: skip, replace, clear.
-
-**`ConflictDialog`** (`src/components/settings/ConflictDialog/index.tsx`) — import conflict resolution dialog. Props: `open`, `conflicts: ConflictSummary`, `onSkip`, `onReplace`, `onClear`, `onClose`. Groups conflicts by entity type, shows names and match reasons (ID/name/both). Three action buttons: Skip conflicts · Replace matches · Clear & import (destructive).
-
-**`SettingsNavCard`** (`src/components/settings/SettingsNavCard/index.tsx`) — navigation link card for settings list items. Props: `icon: LucideIcon`, `label: string`, `description: string`, `to: string`. Renders a TanStack Router Link wrapping a Card with icon, label, description, and ChevronRight.
+> See `apps/web/src/components/CLAUDE.md`
 
 ## Custom Hooks
 
-**Navigation:**
-- `useAppNavigation()` (`src/hooks/useAppNavigation.ts`) - Tracks navigation history in sessionStorage, provides `goBack()` function for smart back navigation to previous app page (fallback to home). Uses `router.history.push(previousUrl)` to preserve full URL (including search params) when going back.
-- `useNavigationTracker()` (`src/hooks/useNavigationTracker.ts`) - Global hook (used in `__root.tsx`) that records every page visit as a full URL (`pathname + searchStr`) in sessionStorage. When params change on the same page, updates the last entry in place rather than appending a new one.
-
-**Item List State:**
-- `useUrlSearchAndFilters()` (`src/hooks/useUrlSearchAndFilters.ts`) - Manages search query, tag filter state, vendor/recipe filter state, and UI visibility (filters panel, tags visible) via URL params (`?q=`, `?f_<typeId>=`, `?f_vendor=id1,id2`, `?f_recipe=id1,id2`, `?filters=1`, `?tags=1`). Uses `router.history.replace` to update params in place (same history entry). Note: `filterState` only contains tag type filters — `vendor` and `recipe` keys are reserved and excluded from `filterState`. Exposes `selectedVendorIds: string[]`, `selectedRecipeIds: string[]`, `toggleVendorId(id)`, `toggleRecipeId(id)`, `clearVendorIds()`, `clearRecipeIds()`.
-- `useSortFilter(storageKey)` (`src/hooks/useSortFilter.ts`) - Manages sort field and direction via localStorage key `${storageKey}-sort-prefs`. Used by all item list pages for per-page sort persistence. Accepts optional `defaultSortBy` option (defaults to `'name'`).
-- `useScrollRestoration(key)` (`src/hooks/useScrollRestoration.ts`) - Saves/restores `window.scrollY` for a given key (typically the full URL). Saves scroll on component unmount (SPA navigation away); restores after data loads. Usage: call with `currentUrl` from `useRouterState`, then call `restoreScroll()` in a `useEffect` conditioned on `!isLoading`.
-
-**Data Utilities:**
-- `useVendorItemCounts()` (`src/hooks/useVendorItemCounts.ts`) - Returns `Map<vendorId, number>` of item counts per vendor, memoized with useMemo for performance
-- `useItemSortData(items)` (`src/hooks/useItemSortData.ts`) - Returns `{ quantities, expiryDates, purchaseDates }` for sort operations on item lists. `quantities` is a `useMemo` (synchronous, no race condition). Local mode: `expiryDates` and `purchaseDates` are TanStack Query queries under the `['sort', ...]` key namespace. Cloud mode: uses `useLastPurchaseDatesQuery` (Apollo batch query) and derives expiry dates synchronously — no TanStack Query involved. Used by all five item list pages. Checkout explicitly invalidates `['sort', 'purchaseDates']` after purchase (local mode).
-- `useItemLogs(itemId)` (`src/hooks/useInventoryLogs.ts`) - Returns inventory log entries for an item. Dual-mode: local uses TanStack Query + Dexie; cloud uses `useItemLogsQuery` (Apollo).
-- `useAddInventoryLog()` (`src/hooks/useInventoryLogs.ts`) - Mutation hook to add an inventory log entry. Dual-mode: local calls `addInventoryLog`; cloud calls `useAddInventoryLogMutation` (Apollo).
+> See `apps/web/src/hooks/CLAUDE.md`
 
 ## Features
 
@@ -127,90 +80,9 @@ Self-contained card components for the settings page. Each lives in `src/compone
 > - `apps/web/src/routes/settings/vendors/CLAUDE.md` — vendor management
 > - `apps/web/src/routes/settings/recipes/CLAUDE.md` — recipe management
 
-## Design Tokens
+## Design Tokens & Theme System
 
-Token system for theme, colors, shadows, and borders:
-
-```
-src/design-tokens/
-  ├── theme.css      # Shadcn semantic colors (background, primary, etc.)
-  ├── shadows.css    # Shadow scale
-  ├── borders.css    # Border definitions
-  ├── index.css      # Imports all
-  └── index.ts       # TypeScript exports
-```
-
-**Theme system:**
-- `:root` defines HSL values for light mode semantic colors
-- `.dark` overrides for dark mode
-- `@theme inline` maps CSS variables to Tailwind utilities (bg-background, text-foreground, etc.)
-- Two-layer approach preserves theming flexibility
-
-**Background layers:**
-Three-level system for surface elevation hierarchy:
-- `--background-base` / `bg-background`: Base page background
-- `--background-surface` / `bg-background-surface` / `bg-card`: Cards, panels, list items
-- `--background-elevated` / `bg-background-elevated`: Toolbars, headers, elevated elements
-
-Light mode: 100% → 95% → 90% (progressively darker)
-Dark mode: 3.9% → 10% → 15% (progressively lighter)
-
-**Usage:**
-```tsx
-// Theme colors (from theme.css)
-<div className="bg-background text-foreground">
-<Button className="bg-primary text-primary-foreground">
-
-// Background layers
-<div className="bg-background"> {/* Page base */}
-  <Card> {/* Uses bg-card internally (alias for surface layer) */}
-    <CardHeader className="bg-background-elevated">
-      Toolbar
-    </CardHeader>
-  </Card>
-</div>
-
-// Tag colors (from theme.css)
-import { colors, colorUtils } from '@/design-tokens'
-
-<Badge style={{
-  backgroundColor: colors.red.tint,
-  color: colorUtils.dark
-}}>
-  Tag (light tint)
-</Badge>
-
-<Badge style={{
-  backgroundColor: colors.red.default,
-  color: colorUtils.tint
-}}>
-  Tag (bold)
-</Badge>
-```
-
-**Button color variants:**
-
-The Button component supports 20 color variants matching the Badge color palette:
-- Solid variants (14): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose
-- Tint variants (14): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint, brown-tint, lime-tint, cyan-tint, rose-tint
-
-Usage:
-```tsx
-<Button variant="teal-tint">Teal Button</Button>
-<Button variant="red">Red Button</Button>
-```
-
-These variants are used in tag type filter triggers (`TagTypeDropdown`) to display tag type colors when filters are selected.
-
-**Token categories:**
-- **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.) - defined in theme.css
-- **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark) - defined in theme.css
-- **Status colors**: ok, warning, error, inactive (with tint variants) - defined in theme.css
-- **Colors**: 14 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose) - defined in theme.css
-- **Color variants**: tint (light background) / default (bold, high contrast)
-- **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in theme.css
-- **Shadows**: sm, md, lg - defined in shadows.css
-- **Borders**: default (1px), thick (2px) - defined in borders.css
+> See `apps/web/src/design-tokens/CLAUDE.md`
 
 ## Name Display Convention
 
@@ -222,119 +94,15 @@ Entity names are displayed in title case using Tailwind's `capitalize` class (`t
 
 **Already covered by Badge base class:** tag badges and recipe badges. Vendor badges override with `normal-case`.
 
-## Theme System
-
-Three-state theme system (light/dark/system) with automatic OS preference detection and manual override.
-
-**Hook:**
-```tsx
-import { useTheme } from '@/hooks/useTheme'
-
-function MyComponent() {
-  const { preference, theme, setPreference } = useTheme()
-  // preference: 'light' | 'dark' | 'system' (user's choice)
-  // theme: 'light' | 'dark' (actual applied theme)
-  // setPreference: (pref) => void (updates localStorage and DOM)
-}
-```
-
-**How it works:**
-- Inline script in `index.html` applies theme before React loads (prevents flash)
-- Theme stored in localStorage as `theme-preference`
-- System preference detected via `matchMedia('(prefers-color-scheme: dark)')`
-- `dark` class applied to `<html>` element when dark theme active
-- Existing `:root` and `.dark` CSS variables in `src/index.css` handle colors
-
-**Component variants:**
-```tsx
-// Card component supports status-aware variants with left indicator bar
-<Card variant="default">   // elevated background, no status indicator
-<Card variant="ok">        // green tint background with green left bar
-<Card variant="warning">   // orange tint background with orange left bar
-<Card variant="error">     // red tint background with red left bar
-<Card variant="inactive">  // gray tint background with gray left bar
-```
-
-**Guidelines:**
-- Use semantic Tailwind colors (`bg-card`, `text-foreground`, etc.) that adapt to theme
-- Avoid hardcoded colors like `bg-white` or `bg-gray-900`
-- Test components in both light and dark modes
-- Use `dark:` prefix for dark-mode-specific styles when needed
-
 ## Internationalization (i18n)
 
-Supported languages: **EN** (English) and **TW** (Traditional Chinese / 繁體中文). JP is deferred.
-
-**Library:** `react-i18next` + `i18next` + `i18next-browser-languagedetector`
-
-**Files:**
-```
-src/
-  i18n/
-    index.ts              # i18next initialization (import as first import in main.tsx)
-    locales/
-      en.json             # English strings
-      tw.json             # Traditional Chinese strings
-      locales.test.ts     # Key parity test (CI guard — en.json ≡ tw.json keys)
-  lib/
-    language.ts           # LanguagePreference type, Language type, LANGUAGE_STORAGE_KEY,
-                          # LANGUAGE_LOCALE map, resolveLanguageFromStorage(), detectBrowserLanguage()
-    formatDate.ts         # formatDate(date, language) — Intl.DateTimeFormat
-    formatRelativeTime.ts # formatRelativeTime(date, language) — Intl.RelativeTimeFormat
-  hooks/
-    useLanguage.ts        # Language preference hook (mirrors useTheme pattern)
-```
-
-**Language detection order:**
-1. `localStorage` key `i18n-language` (user's explicit choice)
-2. `navigator.language` — `zh*` → `tw`; else → `en`
-
-**`useLanguage()` hook** (`src/hooks/useLanguage.ts`):
-```tsx
-const { preference, language, setPreference } = useLanguage()
-// preference: 'auto' | 'en' | 'tw' (user's stored choice)
-// language: 'en' | 'tw' (resolved)
-// setPreference: stores to localStorage ('auto' clears the key)
-```
-Called in `src/routes/__root.tsx` (side-effect only) to sync i18next on mount. Also called in `src/routes/settings/index.tsx` to power the Language selector.
-
-**Date/time formatting utilities:**
-```tsx
-import { formatDate } from '@/lib/formatDate'
-import { formatRelativeTime } from '@/lib/formatRelativeTime'
-
-formatDate(date, language)         // EN: "Mar 9, 2026"  TW: "2026年3月9日"
-formatRelativeTime(date, language) // EN: "yesterday"    TW: "昨天"
-```
-Both use native `Intl` APIs — no extra library dependency.
-
-**Translation usage in components:**
-```tsx
-import { useTranslation } from 'react-i18next'
-
-const { t } = useTranslation()
-<p>{t('settings.language.label')}</p>
-<p>{t('settings.language.autoDetected', { language: t('settings.language.languages.tw') })}</p>
-```
-
-**Adding new translation keys:**
-1. Add key to `src/i18n/locales/en.json`
-2. Add the same key with TW translation to `src/i18n/locales/tw.json`
-3. The parity test (`src/i18n/locales/locales.test.ts`) will fail if keys don't match — this is intentional
-
-**Locale-aware default tag types:** On first app launch (empty IndexedDB), `db.on('populate')` in `src/db/index.ts` calls `seedDefaultData(language)` from `src/db/operations.ts` to seed tag types appropriate for the user's language (EN or TW defaults).
-
-**Settings UI:** Language selector card in `/settings` with Globe icon and Select dropdown (Auto/English/繁體中文). Positioned between Theme and Tags cards.
-
-**Page-by-page string extraction:** Translated pages so far: settings main page (title, theme, tags/vendors/recipes nav cards, language selector); settings tags pages (tags list, tag detail layout, tag info tab, tag items tab); settings vendors pages (vendor list, vendor detail layout, vendor info tab, VendorCard, VendorNameForm); settings recipes pages (recipe list, recipe detail layout, recipe info tab, RecipeCard, RecipeNameForm); shopping page (toolbar, vendor filter, dialogs, log notes); cooking page (toolbar, recipe cards, dialogs, log notes) + CookingControlBar (sort labels, aria-labels, search placeholder). All other pages still use hardcoded English strings — they will be migrated page-by-page in follow-up PRs. Missing keys fall back to English automatically.
-
-**Common i18n keys:** `common.*` covers `cancel`, `delete`, `deleting`, `nameLabel`, `save`, `saving`, `discard`, `goBack`, `unsavedTitle`, `unsavedDescription`, `done`, `back`, `confirm` — reuse these instead of adding entity-specific duplicates.
+> See `apps/web/src/i18n/CLAUDE.md`
 
 ## AI Agent SOP
 
 ### Coding Tasks
 
-For any **non-trivial** coding task (feature, bug fix, refactoring, test, etc.), always use a subagent — never implement directly in the main conversation. Trivial edits (rename a variable, fix a typo, add one line) may be done in the main session. See global `~/.claude/CLAUDE.md` for the full subagent policy (which subagent to use, parallelism rules).
+For any **non-trivial** coding task (feature, bug fix, refactoring, test, etc.), always use a subagent — never implement directly in the main conversation. Trivial edits (rename a variable, fix a typo, add one line) may be done in the main session. See global `~/.claude/CLAUDE.md` for the full subagent policy.
 
 ### Documentation Updates
 
@@ -492,21 +260,7 @@ This ensures the design token system remains consistent across the entire codeba
 
 ### Brainstorming Logs
 
-**When to create:**
-- When brainstorming leads to implementation/design decisions
-- Not needed for exploratory discussions without decisions
-
-**Format:**
-- Location: same folder as the design doc for the topic
-  - Global concerns → `docs/global/<area>/` (e.g. `docs/global/ai-sop/`)
-  - Feature-specific → `docs/features/<area>/` (e.g. `docs/features/cooking/`)
-- Naming: `YYYY-MM-DD-brainstorming-<topic>.md`
-- Date: Session date (when brainstorming occurred)
-
-**Content:**
-- Questions asked and user answers
-- Final decision/recommendation
-- Rationale and trade-offs discussed
+Create a brainstorming log when brainstorming leads to implementation/design decisions. Location: same folder as the design doc (`docs/global/<area>/` or `docs/features/<area>/`). Naming: `YYYY-MM-DD-brainstorming-<topic>.md`. Content: questions asked, user answers, final decision, rationale.
 
 ### Workflow
 
@@ -623,16 +377,8 @@ For CLI users who want to work on multiple branches simultaneously without switc
 # Create worktree in .worktrees/ directory
 # Use dashes instead of slashes in the directory name (e.g. feature-xxx, not feature/xxx)
 git worktree add .worktrees/<feature-xxx> -b <branch-name>
-
-# Copy .env files from repo root into the worktree (run before cd — paths are relative to root)
-# Skip silently if a file doesn't exist
-cp apps/web/.env.local .worktrees/<feature-xxx>/apps/web/.env.local 2>/dev/null || true
-cp apps/server/.env .worktrees/<feature-xxx>/apps/server/.env 2>/dev/null || true
-
-cd .worktrees/<feature-xxx>
 ```
-
-Note: The `EnterWorktree` tool triggers the `WorktreeCreate` hook which copies `.env` files automatically. The manual `cp` step above is only needed when using raw `git worktree add`.
+(The EnterWorktree tool handles .env copying automatically via the WorktreeCreate hook)
 
 **Directory Convention:**
 Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`. Use dashes instead of slashes in directory names (e.g. `feature-xxx`, not `feature/xxx`) to avoid creating subfolders.
