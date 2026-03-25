@@ -13,6 +13,6 @@ describe('Settings recipe detail items tab stories smoke tests', () => {
 
   it('WithItems renders an item assigned to the recipe', async () => {
     render(<WithItems />)
-    expect(await screen.findByText(/chicken breast/i)).toBeInTheDocument()
+    expect(await screen.findByText('Chicken Breast')).toBeInTheDocument()
   })
 })

@@ -249,7 +249,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then the amount increases by consumeAmount (4 + 2 = 6)
     await waitFor(() => {
-      expect(screen.getByText(/6/)).toBeInTheDocument()
+      expect(screen.getByText('6')).toBeInTheDocument()
     })
   })
 
