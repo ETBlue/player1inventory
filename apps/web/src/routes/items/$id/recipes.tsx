@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/AddNameDialog'
+import { EmptyState } from '@/components/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useItem } from '@/hooks'
@@ -17,6 +19,7 @@ export const Route = createFileRoute('/items/$id/recipes')({
 })
 
 function RecipesTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const { data: recipes = [] } = useRecipes()
@@ -87,6 +90,15 @@ function RecipesTab() {
           New Recipe
         </Button>
       </div>
+
+      {!sortedRecipes.some((recipe) =>
+        recipe.items.some((ri) => ri.itemId === id),
+      ) && (
+        <EmptyState
+          title={t('items.recipes.assignEmpty.title')}
+          description={t('items.recipes.assignEmpty.description')}
+        />
+      )}
 
       <AddNameDialog
         open={showDialog}

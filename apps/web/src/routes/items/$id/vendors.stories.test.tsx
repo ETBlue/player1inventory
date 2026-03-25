@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './vendors.stories'
 
-const { Default, WithAssignedVendors } = composeStories(stories)
+const { Default, WithAssignedVendors, EmptyVendors } = composeStories(stories)
 
 describe('Item detail vendors tab stories smoke tests', () => {
   it('Default renders the New Vendor button after setup', async () => {
@@ -15,5 +15,10 @@ describe('Item detail vendors tab stories smoke tests', () => {
     render(<WithAssignedVendors />)
     expect(await screen.findByText('Costco')).toBeInTheDocument()
     expect(screen.getByText("Trader Joe's")).toBeInTheDocument()
+  })
+
+  it('EmptyVendors renders the no-vendors-assigned empty hint', async () => {
+    render(<EmptyVendors />)
+    expect(await screen.findByText('No vendors assigned.')).toBeInTheDocument()
   })
 })

@@ -135,6 +135,12 @@ function TagsTab() {
                 </div>
               )
             })}
+          {item.tagIds.length === 0 && (
+            <EmptyState
+              title={t('items.tags.assignEmpty.title')}
+              description={t('items.tags.assignEmpty.description')}
+            />
+          )}
         </div>
       )}
       <AddNameDialog
