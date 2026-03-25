@@ -14,7 +14,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: `border-transparent bg-primary text-tint shadow-sm hover:shadow-md`,
+        primary: `border-transparent bg-primary text-primary-foreground shadow-sm hover:shadow-md`,
         'primary-outline': `border-primary text-primary shadow-sm hover:shadow-md`,
         'primary-ghost': `border-transparent text-primary`,
         'primary-link': `border-transparent text-primary underline-offset-4 hover:underline`,
@@ -30,7 +30,7 @@ const buttonVariants = cva(
         'destructive-outline': `border-destructive text-destructive shadow-sm hover:shadow-md`,
         'destructive-ghost': `border-transparent text-destructive`,
         'destructive-link': `border-transparent text-destructive underline-offset-4 hover:underline`,
-        neutral: `border-transparent bg-neutral text-tint shadow-sm hover:shadow-md`,
+        neutral: `border-transparent bg-neutral text-neutral-foreground shadow-sm hover:shadow-md`,
         'neutral-outline': `border-neutral text-neutral shadow-sm hover:shadow-md`,
         'neutral-ghost': `border-transparent text-neutral`,
         'neutral-link': `border-transparent text-neutral underline-offset-4 hover:underline`,

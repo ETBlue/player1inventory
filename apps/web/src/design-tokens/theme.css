@@ -65,6 +65,10 @@
   /* Brightness utilities */
   --brightness-tint: hsl(45 5% 100%);
   --brightness-dark: hsl(45 5% 20%);
+
+  /* Button foreground tokens — text on solid importance-colored backgrounds */
+  --importance-primary-foreground: hsl(45 5% 100%);
+  --importance-neutral-foreground: hsl(45 5% 100%);
 }
 
 /* Dark mode overrides */
@@ -73,7 +77,7 @@
   --background-surface: hsl(45 5% 20%);
   --background-elevated: hsl(45 5% 30%);
 
-  --foreground-muted: hsl(45 5% 70%);
+  --foreground-muted: hsl(45 5% 78%);
   --foreground-default: hsl(45 10% 90%);
   --foreground-emphasized: hsl(45 50% 97.5%);
 
@@ -84,36 +88,40 @@
   --overlay: hsl(45 10% 90%);
   --outline: hsl(200 50% 50%);
 
-  --importance-primary: hsl(180 60% 50%);
-  --importance-secondary: hsl(180 30% 50%);
-  --importance-tertiary: hsl(180 10% 50%);
+  --importance-primary: hsl(180 70% 62%);
+  --importance-secondary: hsl(180 30% 60%);
+  --importance-tertiary: hsl(180 10% 60%);
   --importance-destructive: hsl(330 80% 60%);
-  --importance-neutral: hsl(45 20% 60%);
+  --importance-neutral: hsl(45 20% 80%);
+
+  /* Button foreground tokens — dark text on mid-lightness solid-colored button backgrounds */
+  --importance-primary-foreground: hsl(180 70% 10%);
+  --importance-neutral-foreground: hsl(45 20% 10%);
 
   --status-ok: hsl(75 60% 45%);
   --status-warning: hsl(45 75% 45%);
   --status-error: hsl(0 60% 60%);
   --status-inactive: hsl(45 2.5% 60%);
-  --status-ok-tint: hsl(75 20% 40%);
-  --status-warning-tint: hsl(45 20% 40%);
-  --status-error-tint: hsl(0 20% 40%);
-  --status-inactive-tint: hsl(45 0% 30%);
+  --status-ok-tint: hsl(75 20% 30%);
+  --status-warning-tint: hsl(45 20% 30%);
+  --status-error-tint: hsl(0 20% 30%);
+  --status-inactive-tint: hsl(45 0% 25%);
 
   /* Hue tints — dark mode (bold hue colors unchanged) */
-  --hue-red-tint: hsl(0 20% 40%);
-  --hue-orange-tint: hsl(25 20% 40%);
-  --hue-amber-tint: hsl(38 20% 40%);
-  --hue-yellow-tint: hsl(48 20% 40%);
-  --hue-green-tint: hsl(142 20% 40%);
-  --hue-teal-tint: hsl(174 20% 40%);
-  --hue-blue-tint: hsl(217 20% 40%);
-  --hue-indigo-tint: hsl(239 20% 40%);
-  --hue-purple-tint: hsl(271 20% 40%);
-  --hue-pink-tint: hsl(330 20% 40%);
-  --hue-brown-tint: hsl(30 20% 40%);
-  --hue-lime-tint: hsl(82 20% 40%);
-  --hue-cyan-tint: hsl(186 20% 40%);
-  --hue-rose-tint: hsl(350 20% 40%);
+  --hue-red-tint: hsl(0 20% 30%);
+  --hue-orange-tint: hsl(25 20% 30%);
+  --hue-amber-tint: hsl(38 20% 30%);
+  --hue-yellow-tint: hsl(48 20% 30%);
+  --hue-green-tint: hsl(142 20% 30%);
+  --hue-teal-tint: hsl(174 20% 30%);
+  --hue-blue-tint: hsl(217 20% 30%);
+  --hue-indigo-tint: hsl(239 20% 30%);
+  --hue-purple-tint: hsl(271 20% 30%);
+  --hue-pink-tint: hsl(330 20% 30%);
+  --hue-brown-tint: hsl(30 20% 30%);
+  --hue-lime-tint: hsl(82 20% 30%);
+  --hue-cyan-tint: hsl(186 20% 30%);
+  --hue-rose-tint: hsl(350 20% 30%);
 
   /* Flip brightness-dark so tint badge text is readable on dark backgrounds */
   --brightness-dark: hsl(45 5% 90%);
@@ -145,6 +153,7 @@
   /* by importance */
   --color-primary: var(--importance-primary);
   --color-importance-primary: var(--importance-primary);
+  --color-primary-foreground: var(--importance-primary-foreground);
   --color-secondary: var(--importance-secondary);
   --color-importance-secondary: var(--importance-secondary);
   --color-tertiary: var(--importance-tertiary);
@@ -153,6 +162,7 @@
   --color-importance-destructive: var(--importance-destructive);
   --color-neutral: var(--importance-neutral);
   --color-importance-neutral: var(--importance-neutral);
+  --color-neutral-foreground: var(--importance-neutral-foreground);
 
   /* shadcn compatibility - popover (dropdowns, tooltips) */
   --color-popover: var(--background-elevated);
