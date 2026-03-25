@@ -24,7 +24,13 @@ export function Layout({ children }: LayoutProps) {
       )}
     >
       <Sidebar />
-      <main className="w-full">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background-elevated focus:text-foreground focus:rounded-md focus:border-2 focus:border-primary"
+      >
+        Skip to main content
+      </a>
+      <main id="main-content" className="w-full">
         {/* sr-only heading for mobile screen readers: the Sidebar's h1 is lg:flex (desktop only),
             so mobile viewports have no h1 in the DOM. This hidden heading fills that gap without
             affecting the visual layout. Hidden at lg+ where the Sidebar h1 is already visible. */}
