@@ -3,6 +3,7 @@ import {
   DndContext,
   type DragEndEvent,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
   useDroppable,
@@ -11,6 +12,7 @@ import {
 } from '@dnd-kit/core'
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
@@ -131,7 +133,12 @@ function DraggableTagBadge({
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
     <div ref={setNodeRef} style={style} className="inline-flex items-center">
-      <div className="inline-flex" {...attributes} {...listeners}>
+      <div
+        className="inline-flex"
+        {...attributes}
+        aria-describedby="dnd-instructions"
+        {...listeners}
+      >
         <TagBadge
           tag={tag}
           tagType={tagType}
@@ -233,6 +240,10 @@ function DroppableTagTypeCard({
         </div>
       </CardHeader>
       <CardContent ref={setNodeRef}>
+        <p className="sr-only" id="dnd-instructions">
+          Press Space or Enter to pick up a tag, use arrow keys to move it, and
+          press Space or Enter again to drop it.
+        </p>
         <SortableContext
           items={sortedTypeTags.map((tag) => tag.id)}
           strategy={verticalListSortingStrategy}
@@ -303,6 +314,9 @@ export function TagSettings() {
         delay: 250,
         tolerance: 5,
       },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
 
