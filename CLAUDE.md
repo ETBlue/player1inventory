@@ -173,10 +173,10 @@ grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || ech
 **Final phase only** — after all steps are complete, also run related E2E tests:
 
 ```bash
-pnpm test:e2e --grep "<feature-areas>"
+pnpm test:e2e --grep "<feature-areas>|a11y"
 ```
 
-Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, `cooking`, `items`, `tags`, `vendors`, `settings`). Combine multiple areas with a pipe: `--grep "shopping|tags"`. Playwright's `webServer` config handles server startup automatically.
+Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, `cooking`, `items`, `tags`, `vendors`, `settings`). Combine multiple areas with a pipe: `--grep "shopping|tags"`. Always append `|a11y` to include the axe-playwright accessibility scan on every branch finish. Playwright's `webServer` config handles server startup automatically.
 
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
@@ -366,7 +366,7 @@ git status
 - Design docs and plans are part of the feature and should be in the PR
 - A clean working tree ensures nothing is left behind
 
-**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run `pnpm test:e2e --grep "<areas>"` — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
+**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run `pnpm test:e2e --grep "<areas>|a11y"` (always include `|a11y` to run the axe-playwright accessibility scan) — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
 
 **Advanced: Git Worktrees**
 
