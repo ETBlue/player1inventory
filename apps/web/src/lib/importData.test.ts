@@ -477,6 +477,54 @@ describe('importLocalData', () => {
     expect(stored?.dueDate?.toISOString()).toBe('2026-06-01T00:00:00.000Z')
   })
 
+  it('user can import item with dueDate: null — stored as undefined, not epoch', async () => {
+    // Given a payload where dueDate is null (as produced by JSON.parse of an exported item)
+    const item = {
+      ...makeItem('item-null-due', 'Butter'),
+      dueDate: null as unknown as Date,
+    }
+    const payload = emptyPayload({ items: [item] })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then dueDate is undefined, not the Unix epoch date
+    const stored = await db.items.get('item-null-due')
+    expect(stored?.dueDate).toBeUndefined()
+  })
+
+  it('user can import item with estimatedDueDays: null — stored as undefined', async () => {
+    // Given a payload where estimatedDueDays is null (as produced by JSON.parse)
+    const item = {
+      ...makeItem('item-null-days', 'Cheese'),
+      estimatedDueDays: null as unknown as number,
+    }
+    const payload = emptyPayload({ items: [item] })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then estimatedDueDays is undefined
+    const stored = await db.items.get('item-null-days')
+    expect(stored?.estimatedDueDays).toBeUndefined()
+  })
+
+  it('user can import item with expirationThreshold: null — stored as undefined', async () => {
+    // Given a payload where expirationThreshold is null (as produced by JSON.parse)
+    const item = {
+      ...makeItem('item-null-threshold', 'Yogurt'),
+      expirationThreshold: null as unknown as number,
+    }
+    const payload = emptyPayload({ items: [item] })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then expirationThreshold is undefined
+    const stored = await db.items.get('item-null-threshold')
+    expect(stored?.expirationThreshold).toBeUndefined()
+  })
+
   it('user can import inventory log with occurredAt as ISO string — stored as Date', async () => {
     // Given a payload where occurredAt is an ISO string (as produced by JSON.parse)
     const log = {

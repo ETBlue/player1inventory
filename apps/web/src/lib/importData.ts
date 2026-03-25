@@ -62,11 +62,26 @@ function deserializeItem(item: Item): Item {
         ? item.updatedAt
         : new Date(item.updatedAt as unknown as string),
   }
-  if (item.dueDate !== undefined) {
+  if (item.dueDate !== null && item.dueDate !== undefined) {
     result.dueDate =
       item.dueDate instanceof Date
         ? item.dueDate
-        : new Date(item.dueDate as unknown as string)
+        : new Date(item.dueDate as string)
+  } else {
+    delete result.dueDate
+  }
+  if (item.estimatedDueDays !== null && item.estimatedDueDays !== undefined) {
+    result.estimatedDueDays = item.estimatedDueDays
+  } else {
+    delete result.estimatedDueDays
+  }
+  if (
+    item.expirationThreshold !== null &&
+    item.expirationThreshold !== undefined
+  ) {
+    result.expirationThreshold = item.expirationThreshold
+  } else {
+    delete result.expirationThreshold
   }
   return result
 }
