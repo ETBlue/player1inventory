@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fix:epoch-dates": "tsx scripts/fix-epoch-due-dates.ts"
   },
   "dependencies": {
     "@p1i/types": "workspace:*",
