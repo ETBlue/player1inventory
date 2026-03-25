@@ -174,6 +174,10 @@ export function ItemCard({
           >
             <Plus className="h-4 w-4" />
           </Button>
+          {/* Screen reader announcement for quantity changes */}
+          <span className="sr-only" aria-live="polite" aria-atomic="true">
+            {item.name}: {controlAmount}
+          </span>
         </div>
       )}
       <CardHeader

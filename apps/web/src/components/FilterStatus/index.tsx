@@ -20,6 +20,8 @@ export function FilterStatus({
   return (
     <div
       className={cn('flex items-center h-6 py-1', disabled ? 'opacity-50' : '')}
+      aria-live="polite"
+      aria-atomic="true"
     >
       <div className="ml-3 text-xs text-foreground-muted">
         Showing {filteredCount} of {totalCount} items
