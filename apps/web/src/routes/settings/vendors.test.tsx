@@ -146,7 +146,7 @@ describe('Vendor Settings Page', () => {
     const user = userEvent.setup()
 
     // When user clicks the delete button
-    await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+    await user.click(screen.getByRole('button', { name: 'Delete "Costco"' }))
 
     // Then confirmation dialog appears
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()

@@ -50,7 +50,7 @@ describe('RecipeCard', () => {
 
     // When user clicks the delete button
     await user.click(
-      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
     )
 
     // Then confirmation dialog appears
@@ -71,7 +71,7 @@ describe('RecipeCard', () => {
 
     // When user cancels the delete dialog
     await user.click(
-      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
     )
     await user.click(screen.getByRole('button', { name: /cancel/i }))
 
