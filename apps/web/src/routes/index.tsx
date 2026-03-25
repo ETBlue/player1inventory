@@ -235,12 +235,12 @@ function PantryView() {
             <p>{t('pantry.empty.title')}</p>
             <p className="text-sm mt-1">{t('pantry.empty.description')}</p>
           </div>
-          <Link to="/items/new">
-            <Button size="lg" className="px-8">
+          <Button asChild size="lg" className="px-8">
+            <Link to="/items/new">
               <Plus />
               {t('pantry.empty.createButton')}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : sortedItems.length === 0 ? (
         <div className="text-center py-12 text-foreground-muted">

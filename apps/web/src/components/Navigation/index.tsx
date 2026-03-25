@@ -39,7 +39,6 @@ export function Navigation() {
             <Link
               key={to}
               to={to}
-              aria-label={label}
               className={cn(
                 'flex flex-col items-center gap-1 px-4 py-2',
                 isActive ? 'text-primary' : 'text-foreground-muted',

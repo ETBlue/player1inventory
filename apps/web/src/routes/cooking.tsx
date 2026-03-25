@@ -457,12 +457,12 @@ function CookingPage() {
             <p>{t('cooking.empty.title')}</p>
             <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
           </div>
-          <Link to="/settings/recipes/new" search={{ name: '' }}>
-            <Button size="lg" className="px-8">
+          <Button asChild size="lg" className="px-8">
+            <Link to="/settings/recipes/new" search={{ name: '' }}>
               <Plus />
               {t('cooking.empty.createButton')}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : (
         <div className="space-y-px pb-4">
