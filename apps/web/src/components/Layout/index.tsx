@@ -24,7 +24,15 @@ export function Layout({ children }: LayoutProps) {
       )}
     >
       <Sidebar />
-      <main className="w-full">{children}</main>
+      <main className="w-full">
+        {/* sr-only heading for mobile screen readers: the Sidebar's h1 is lg:flex (desktop only),
+            so mobile viewports have no h1 in the DOM. This hidden heading fills that gap without
+            affecting the visual layout. Hidden at lg+ where the Sidebar h1 is already visible. */}
+        {!isFullscreenPage && (
+          <h1 className="sr-only lg:hidden">Player 1 Inventory</h1>
+        )}
+        {children}
+      </main>
       <Navigation />
     </div>
   )
