@@ -663,6 +663,14 @@ it('user can create an item', async () => {
 
 **Unit tests** - Keep simple naming (existing style is fine)
 
+### A11y Testing
+
+**Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
+
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core`. Covers all 7 main pages in both light and dark mode (14 tests total). Run with `pnpm test:e2e --grep "a11y"`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+
+When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
+
 ### E2E Test Format
 
 E2E tests use Playwright. The `e2e/` directory lives at the **monorepo root** (not inside `apps/web/`) because e2e tests cover the full stack. Test files live in `e2e/tests/`, page objects in `e2e/pages/`, config at `e2e/playwright.config.ts`.

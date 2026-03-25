@@ -43,11 +43,11 @@ describe('Recipe List - Delete Dialog', () => {
     // When user clicks the delete button for the recipe
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+        screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
       ).toBeInTheDocument()
     })
     await user.click(
-      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
     )
 
     // Then the delete confirmation dialog appears
@@ -68,11 +68,11 @@ describe('Recipe List - Delete Dialog', () => {
     // When user opens the delete dialog and confirms
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+        screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
       ).toBeInTheDocument()
     })
     await user.click(
-      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
     )
     await waitFor(() => {
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
@@ -95,11 +95,11 @@ describe('Recipe List - Delete Dialog', () => {
     // When user opens the delete dialog but cancels
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+        screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
       ).toBeInTheDocument()
     })
     await user.click(
-      screen.getByRole('button', { name: 'Delete Pasta Dinner' }),
+      screen.getByRole('button', { name: 'Delete "Pasta Dinner"' }),
     )
     await waitFor(() => {
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()

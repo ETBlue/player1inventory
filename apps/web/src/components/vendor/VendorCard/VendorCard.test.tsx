@@ -47,7 +47,7 @@ describe('VendorCard', () => {
     const user = userEvent.setup()
 
     // When user clicks the delete button
-    await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+    await user.click(screen.getByRole('button', { name: 'Delete "Costco"' }))
 
     // Then confirmation dialog appears
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
@@ -66,7 +66,7 @@ describe('VendorCard', () => {
     const user = userEvent.setup()
 
     // When user clicks delete then cancels
-    await user.click(screen.getByRole('button', { name: 'Delete Costco' }))
+    await user.click(screen.getByRole('button', { name: 'Delete "Costco"' }))
     await user.click(screen.getByRole('button', { name: /cancel/i }))
 
     // Then onDelete is NOT called

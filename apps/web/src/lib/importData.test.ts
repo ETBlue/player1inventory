@@ -464,7 +464,7 @@ describe('importLocalData', () => {
     // Given a payload where dueDate is an ISO string (as produced by JSON.parse)
     const item = {
       ...makeItem('item-1', 'Milk'),
-      dueDate: '2026-06-01T00:00:00.000Z' as unknown as Date,
+      dueDate: new Date('2026-06-01T00:00:00.000Z'),
     }
     const payload = emptyPayload({ items: [item] })
 
@@ -481,7 +481,7 @@ describe('importLocalData', () => {
     // Given a payload where occurredAt is an ISO string (as produced by JSON.parse)
     const log = {
       ...makeInventoryLog('log-1'),
-      occurredAt: '2026-03-01T12:00:00.000Z' as unknown as Date,
+      occurredAt: new Date('2026-03-01T12:00:00.000Z'),
     }
     const payload = emptyPayload({ inventoryLogs: [log] })
 

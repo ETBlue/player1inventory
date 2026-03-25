@@ -24,18 +24,20 @@ export function useItemLogs(itemId: string) {
   })
 
   if (isCloud) {
-    // Map cloud response: occurredAt comes back as an ISO string from GraphQL,
-    // convert to Date to match the InventoryLog type contract.
-    // createdAt is not returned by the GraphQL operation; set to occurredAt as a fallback.
+    // Map cloud response: occurredAt comes back as ISO string from GraphQL;
+    // createdAt is not returned by itemLogs query so we fall back to occurredAt.
+    // note can be null from GraphQL but must be string|undefined per InventoryLog type.
     const cloudLogs: InventoryLog[] | undefined = cloud.data?.itemLogs?.map(
       (log) => ({
         id: log.id,
         itemId: log.itemId,
         delta: log.delta,
         quantity: log.quantity,
-        occurredAt: new Date(log.occurredAt as unknown as string),
-        createdAt: new Date(log.occurredAt as unknown as string), // GraphQL schema has no createdAt; fall back to occurredAt
-        ...(log.note != null ? { note: log.note } : {}),
+        occurredAt: new Date(log.occurredAt),
+        // createdAt is not returned by itemLogs query; fall back to occurredAt
+        createdAt: new Date(log.occurredAt),
+        // note is null|undefined from GraphQL — omit if falsy to satisfy exactOptionalPropertyTypes
+        ...(log.note ? { note: log.note } : {}),
       }),
     )
     return {

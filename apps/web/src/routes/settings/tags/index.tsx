@@ -121,14 +121,17 @@ function DraggableTagBadge({
 
   const navigate = useNavigate()
 
-  // Note: The drag listeners wrap the entire Link to enable dragging.
+  // Note: Drag listeners and attributes are scoped to the TagBadge wrapper only,
+  // so that the DeleteButton is a sibling (not nested inside an interactive element).
+  // This avoids the nested-interactive a11y violation while preserving drag behavior.
+  // The outer div is a plain layout container (setNodeRef + style) with no ARIA role.
   // The 8px activation distance (set in sensors) ensures that:
   // - Short pointer movements (< 8px) trigger click navigation
   // - Longer movements (≥ 8px) trigger drag-and-drop
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <div className="inline-flex items-center">
+    <div ref={setNodeRef} style={style} className="inline-flex items-center">
+      <div className="inline-flex" {...attributes} {...listeners}>
         <TagBadge
           tag={tag}
           tagType={tagType}
@@ -140,23 +143,26 @@ function DraggableTagBadge({
             })
           }}
         />
-        <DeleteButton
-          trigger={<X />}
-          buttonVariant="neutral-outline"
-          buttonSize="icon-xs"
-          buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px ${TAG_COLOR_BORDER[tagType.color ?? TagColor.blue]} ${TAG_COLOR_TEXT[tagType.color ?? TagColor.blue]}`}
-          dialogTitle={t('settings.tags.tag.deleteTitle')}
-          dialogDescription={
-            itemCount > 0
-              ? t('settings.tags.tag.deleteWithItems', {
-                  name: tag.name,
-                  count: itemCount,
-                })
-              : t('settings.tags.tag.deleteNoItems', { name: tag.name })
-          }
-          onDelete={onDelete}
-        />
       </div>
+      <DeleteButton
+        trigger={<X />}
+        buttonVariant="neutral-outline"
+        buttonSize="icon-xs"
+        buttonAriaLabel={t('settings.tags.tag.deleteAriaLabel', {
+          name: tag.name,
+        })}
+        buttonClassName={`h-5 rounded-full rounded-tl-none rounded-bl-none -ml-px ${TAG_COLOR_BORDER[tagType.color ?? TagColor.blue]} ${TAG_COLOR_TEXT[tagType.color ?? TagColor.blue]}`}
+        dialogTitle={t('settings.tags.tag.deleteTitle')}
+        dialogDescription={
+          itemCount > 0
+            ? t('settings.tags.tag.deleteWithItems', {
+                name: tag.name,
+                count: itemCount,
+              })
+            : t('settings.tags.tag.deleteNoItems', { name: tag.name })
+        }
+        onDelete={onDelete}
+      />
     </div>
   )
 }
@@ -194,7 +200,7 @@ function DroppableTagTypeCard({
         <div className="flex items-center gap-1">
           <CardTitle className="capitalize flex items-center gap-2">
             <Tags className="h-4 w-4 text-foreground-muted" />
-            <h3>{tagType.name}</h3>
+            <h2>{tagType.name}</h2>
           </CardTitle>
           <div className="flex-1" />
           <Button
