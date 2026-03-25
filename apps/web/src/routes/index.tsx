@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -192,7 +193,7 @@ function PantryView() {
   }
 
   if (isLoading) {
-    return <div className="p-4">Loading...</div>
+    return <LoadingSpinner />
   }
 
   return (
