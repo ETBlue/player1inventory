@@ -38,4 +38,9 @@ Three new tests in `apps/web/src/lib/importData.test.ts`:
 
 ## PR / Commit
 
-TBD
+Branch: `fix/import-epoch-duedate`
+
+- `fix(migration): add one-time script to clear epoch dueDate from cloud items`
+- `fix(import): handle null dueDate, estimatedDueDays, expirationThreshold on import`
+- `test(e2e): add regression test for epoch dueDate after import with null fields`
+- `docs(bug): add epoch dueDate import bug report and fix notes`
