@@ -23,9 +23,9 @@ export class VendorsPage {
   }
 
   async clickDeleteVendor(name: string) {
-    // aria-label="Delete {vendor.name}" on the trash button
+    // aria-label='Delete "{vendor.name}"' on the trash button
     // (src/components/vendor/VendorCard/index.tsx:37)
-    await this.page.getByRole('button', { name: `Delete ${name}` }).click()
+    await this.page.getByRole('button', { name: `Delete "${name}"` }).click()
   }
 
   async confirmDelete() {

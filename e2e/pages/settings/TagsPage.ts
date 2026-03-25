@@ -22,13 +22,13 @@ export class TagsPage {
   }
 
   getTagTypeCard(name: string): Locator {
-    // Card heading h3 inside DroppableTagTypeCard (src/routes/settings/tags/index.tsx:194)
-    return this.page.getByRole('heading', { name, level: 3 })
+    // Card heading h2 inside DroppableTagTypeCard (src/routes/settings/tags/index.tsx:194)
+    return this.page.getByRole('heading', { name, level: 2 })
   }
 
   async clickNewTag(tagTypeName: string) {
     // "New Tag" button inside a specific tag type card
-    const heading = this.page.getByRole('heading', { name: tagTypeName, level: 3 })
+    const heading = this.page.getByRole('heading', { name: tagTypeName, level: 2 })
     await heading.locator('xpath=ancestor::*[contains(@class,"relative")][1]')
       .getByRole('button', { name: /new tag/i })
       .click()
@@ -60,13 +60,10 @@ export class TagsPage {
   }
 
   async clickDeleteTag(name: string) {
-    // The dnd-kit drag wrapper has role="button" with the tag name text.
-    // Inside it, the X delete button (from DeleteButton) is a real <button> element.
-    // Navigate into the drag wrapper to find its descendant <button> (the X button).
-    // (src/routes/settings/tags/index.tsx:123-155, src/components/DeleteButton/index.tsx)
-    const dragWrapper = this.page.getByRole('button', { name: new RegExp(`^${name} \\(`) })
-    // The X button is a <button> element (not the drag wrapper itself which is a div)
-    await dragWrapper.locator('button').click()
+    // DeleteButton is a sibling of the drag wrapper (not nested inside it), per a11y refactor
+    // to avoid nested interactive elements (src/routes/settings/tags/index.tsx:147).
+    // Use aria-label: t('settings.tags.tag.deleteAriaLabel') = 'Delete "{{name}}"'
+    await this.page.getByRole('button', { name: `Delete "${name}"` }).click()
   }
 
   async clickDeleteTagType(name: string) {
@@ -85,7 +82,7 @@ export class TagsPage {
     // Listeners are on the drag wrapper div. Target is the tag type heading area.
     // (src/routes/settings/tags/index.tsx:123, @dnd-kit/core PointerSensor activation=8px)
     const source = this.page.getByRole('button', { name: new RegExp(`^${tagName} \\(`) })
-    const target = this.page.getByRole('heading', { name: targetTypeName, level: 3 })
+    const target = this.page.getByRole('heading', { name: targetTypeName, level: 2 })
 
     const sourceBox = await source.boundingBox()
     const targetBox = await target.boundingBox()

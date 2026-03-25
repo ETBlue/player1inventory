@@ -33,8 +33,8 @@ export class RecipesPage {
   }
 
   async clickDeleteRecipe(name: string) {
-    // buttonAriaLabel="Delete ${recipe.name}" on trash DeleteButton (src/components/recipe/RecipeCard/index.tsx:38)
-    await this.page.getByRole('button', { name: `Delete ${name}` }).click()
+    // buttonAriaLabel='Delete "${recipe.name}"' on trash DeleteButton (src/components/recipe/RecipeCard/index.tsx:38)
+    await this.page.getByRole('button', { name: `Delete "${name}"` }).click()
   }
 
   async confirmDelete() {
