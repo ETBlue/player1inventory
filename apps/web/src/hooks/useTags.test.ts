@@ -335,11 +335,11 @@ describe('useDeleteTag (cloud mode)', () => {
     const { result } = renderHook(() => useDeleteTag(), {
       wrapper: createWrapper(),
     })
-    const deleted = await result.current.mutateAsync('tag-1')
+    const deleted = await result.current.mutateAsync({ id: 'tag-1' })
 
-    // Then it delegates to cloudDelete
+    // Then it delegates to cloudDelete with deleteChildren defaulting to false
     expect(mockCloudDeleteTag).toHaveBeenCalledWith({
-      variables: { id: 'tag-1' },
+      variables: { id: 'tag-1', deleteChildren: false },
     })
     expect(deleted).toBe(true)
   })

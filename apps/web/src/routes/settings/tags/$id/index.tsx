@@ -71,7 +71,7 @@ function TagInfoTab() {
   }
 
   const handleDelete = async () => {
-    await deleteTag.mutateAsync(id)
+    await deleteTag.mutateAsync({ id })
     goBack()
   }
 

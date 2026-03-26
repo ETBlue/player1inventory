@@ -405,7 +405,7 @@ export function TagSettings() {
   }
 
   const handleDeleteTag = async (tagId: string) => {
-    deleteTag.mutate(tagId)
+    deleteTag.mutate({ id: tagId })
   }
 
   const handleDragStart = (event: DragEndEvent) => {
