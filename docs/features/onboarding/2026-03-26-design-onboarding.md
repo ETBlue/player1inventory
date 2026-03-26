@@ -87,20 +87,19 @@ Types:
 ```ts
 interface TemplateTag {
   key: string           // stable key for referencing (e.g. "food", "fresh")
-  name: string          // English name
-  nameZh: string        // Chinese name
+  i18nKey: string       // e.g. "template.tags.food" → looked up in en.json/tw.json
   typeKey: string       // "category" | "storage"
   parentKey?: string    // references another TemplateTag key
 }
 
 interface TemplateItem {
-  name: string
-  nameZh: string
+  key: string           // stable key
+  i18nKey: string       // e.g. "template.items.milk"
   tagKeys: string[]     // can include parent and/or child tag keys
 }
 
 interface TemplateVendor {
-  name: string
+  name: string          // vendor names are not translated (intentional casing)
 }
 ```
 
@@ -287,8 +286,8 @@ navigate('/')
 
 ---
 
-## Open Questions (for implementation)
+## Resolved Design Decisions
 
-- **i18n for template data**: Template item/tag/vendor names need English + Chinese. Store in `template.ts` directly (as `name`/`nameZh` fields) or route through `en.json`/`tw.json`?
-- **Tag colors**: Template tags get pre-assigned colors (developer-defined in `template.ts`) or inherit the tag type's color?
-- **Category filter UI**: Flat list showing all tags at all levels (Food, 生鮮, Personal Care…), or a two-level dropdown (pick parent first, then child)?
+- **i18n for template data**: All template item/tag/vendor names go through `en.json` / `tw.json` (keys like `template.tags.food`, `template.items.milk`). `template.ts` stores i18n keys, not raw strings.
+- **Tag colors**: Template tags inherit their tag type's single color. No per-tag color in `template.ts`.
+- **Category filter UI**: Flat list with **visual indent** to show hierarchy. Supports **multiple selection** within the dropdown. Selecting a parent does not auto-select children — each tag is an independent filter option that expands to include its descendants when matched against items.
