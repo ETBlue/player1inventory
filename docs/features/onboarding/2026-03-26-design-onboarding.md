@@ -99,11 +99,12 @@ interface TemplateItem {
 }
 
 interface TemplateVendor {
-  name: string          // vendor names are not translated (intentional casing)
+  key: string           // e.g. "costco", "px-mart"
+  i18nKey: string       // e.g. "template.vendors.costco"
 }
 ```
 
-**Vendor list (17):** Costco, PX Mart, Simple Mart, RT-Mart, Carrefour, I-Mei Food, Lopia, City Super, Mia C'bon, Jasons Market Place, Poya, Nitori, Ikea, Cosmed, Watsons, FamilyMart, 7-Eleven
+**Vendor list (17):** All bilingual via i18n keys. EN/TW: Costco/好市多, PX Mart/全聯福利中心, Simple Mart/簡單市集, RT-Mart/大潤發, Carrefour/家樂福, I-Mei Food/義美食品, Lopia/Lopia, City Super/City Super, Mia C'bon/主婦聯盟 Mia C'bon, Jasons Market Place/Jasons Market Place, Poya/寶雅, Nitori/宜得利, Ikea/IKEA, Cosmed/康是美, Watsons/屈臣氏, FamilyMart/全家便利商店, 7-Eleven/7-ELEVEN
 
 **Item count:** 30–50, developer-defined only.
 
@@ -139,6 +140,8 @@ Add "Reset & restart onboarding" to `src/routes/settings/index.tsx`. Destructive
 │  Welcome to Player 1        │
 │  Inventory                  │
 │                             │
+│  [EN]  [繁中]  [Auto]       │  ← language selector (above the 3 options)
+│                             │
 │  [Choose from template  >]  │
 │                             │
 │  [Import backup         >]  │
@@ -146,6 +149,8 @@ Add "Reset & restart onboarding" to `src/routes/settings/index.tsx`. Destructive
 │  [Start from scratch    >]  │
 └─────────────────────────────┘
 ```
+
+Language selector appears **above** the three action options. Changing language immediately switches the app locale so template names render correctly before proceeding.
 
 - "Import backup" → opens existing file picker → on success shows "Get started" button
 - "Start from scratch" → navigate to `/`
@@ -288,6 +293,7 @@ navigate('/')
 
 ## Resolved Design Decisions
 
-- **i18n for template data**: All template item/tag/vendor names go through `en.json` / `tw.json` (keys like `template.tags.food`, `template.items.milk`). `template.ts` stores i18n keys, not raw strings.
+- **i18n for template data**: All template item/tag/vendor names go through `en.json` / `tw.json`. `template.ts` stores i18n keys, not raw strings. Vendor names are also bilingual (e.g. Costco/好市多).
+- **Language selector on welcome screen**: Language selector (EN / 繁中 / Auto) appears above the 3 action options on the welcome page, using the existing `useLanguage` hook. Changing language immediately updates all template names before the user proceeds.
 - **Tag colors**: Template tags inherit their tag type's single color. No per-tag color in `template.ts`.
 - **Category filter UI**: Flat list with **visual indent** to show hierarchy. Supports **multiple selection** within the dropdown. Selecting a parent does not auto-select children — each tag is an independent filter option that expands to include its descendants when matched against items.
