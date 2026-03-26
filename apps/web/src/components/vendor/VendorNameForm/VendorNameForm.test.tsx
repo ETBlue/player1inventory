@@ -87,3 +87,52 @@ describe('VendorNameForm', () => {
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 })
+
+describe('VendorNameForm validation', () => {
+  it('shows required error immediately when name is empty', () => {
+    // Given a VendorNameForm with an empty name
+    render(
+      <VendorNameForm
+        name=""
+        onNameChange={vi.fn()}
+        onSave={vi.fn()}
+        isDirty={false}
+      />,
+    )
+
+    // Then the required error is shown
+    expect(screen.getByText('This field is required.')).toBeInTheDocument()
+  })
+
+  it('does not show error when name is filled', () => {
+    // Given a VendorNameForm with a non-empty name
+    render(
+      <VendorNameForm
+        name="Costco"
+        onNameChange={vi.fn()}
+        onSave={vi.fn()}
+        isDirty={false}
+      />,
+    )
+
+    // Then no error is shown
+    expect(
+      screen.queryByText('This field is required.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('disables Save button when name is empty', () => {
+    // Given a VendorNameForm with an empty name
+    render(
+      <VendorNameForm
+        name=""
+        onNameChange={vi.fn()}
+        onSave={vi.fn()}
+        isDirty={false}
+      />,
+    )
+
+    // Then Save is disabled
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
+})

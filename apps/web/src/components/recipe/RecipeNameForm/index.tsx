@@ -19,6 +19,8 @@ export function RecipeNameForm({
   isPending,
 }: RecipeNameFormProps) {
   const { t } = useTranslation()
+  const nameError = !name.trim() ? t('validation.required') : undefined
+
   return (
     <form
       className="space-y-4 max-w-2xl"
@@ -35,9 +37,14 @@ export function RecipeNameForm({
           autoFocus
           onChange={(e) => onNameChange(e.target.value)}
           className="capitalize"
+          {...(nameError && { error: nameError })}
         />
       </div>
-      <Button type="submit" disabled={!isDirty || isPending} className="w-full">
+      <Button
+        type="submit"
+        disabled={!!nameError || !isDirty || !!isPending}
+        className="w-full"
+      >
         {t('common.save')}
       </Button>
     </form>
