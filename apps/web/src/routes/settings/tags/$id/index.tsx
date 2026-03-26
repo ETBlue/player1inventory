@@ -32,6 +32,9 @@ function TagInfoTab() {
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const tag = tags.find((tag) => tag.id === id)
+  const parentTag = tag?.parentId
+    ? tags.find((t) => t.id === tag.parentId)
+    : undefined
   const updateTag = useUpdateTag()
   const { registerDirtyState } = useTagLayout()
   const { goBack } = useAppNavigation()
@@ -85,6 +88,15 @@ function TagInfoTab() {
           handleSave()
         }}
       >
+        {parentTag && (
+          <div className="space-y-1">
+            <Label>{t('settings.tags.tag.parentLabel')}</Label>
+            <p className="text-sm text-foreground-muted capitalize">
+              {parentTag.name}
+            </p>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="tag-type">{t('settings.tags.tag.typeLabel')}</Label>
           <Select value={typeId} onValueChange={setTypeId}>
