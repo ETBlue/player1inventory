@@ -104,7 +104,7 @@ interface TemplateVendor {
 }
 ```
 
-**Vendor list (17):** All bilingual via i18n keys. EN/TW: Costco/好市多, PX Mart/全聯福利中心, Simple Mart/簡單市集, RT-Mart/大潤發, Carrefour/家樂福, I-Mei Food/義美食品, Lopia/Lopia, City Super/City Super, Mia C'bon/主婦聯盟 Mia C'bon, Jasons Market Place/Jasons Market Place, Poya/寶雅, Nitori/宜得利, Ikea/IKEA, Cosmed/康是美, Watsons/屈臣氏, FamilyMart/全家便利商店, 7-Eleven/7-ELEVEN
+**Vendor list (17):** All bilingual via i18n keys. EN/TW: Costco/好市多, PX Mart/全聯福利中心, Simple Mart/美廉社, RT-Mart/大潤發, Carrefour/家樂福, I-Mei Food/義美食品, Lopia/Lopia, City Super/City Super, Mia C'bon/Mia C'bon, Jasons Market Place/Jasons Market Place, Poya/寶雅, Nitori/宜得利, Ikea/IKEA, Cosmed/康是美, Watsons/屈臣氏, FamilyMart/全家便利商店, 7-11/7-ELEVEN
 
 **Item count:** 30–50, developer-defined only.
 

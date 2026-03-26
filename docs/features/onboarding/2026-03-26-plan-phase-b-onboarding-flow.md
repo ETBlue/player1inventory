@@ -142,13 +142,13 @@ interface TemplateVendor {
 |-----|---------|---------|
 | costco | Costco | 好市多 |
 | px-mart | PX Mart | 全聯福利中心 |
-| simple-mart | Simple Mart | 簡單市集 |
+| simple-mart | Simple Mart | 美廉社 |
 | rt-mart | RT-Mart | 大潤發 |
 | carrefour | Carrefour | 家樂福 |
 | i-mei | I-Mei Food | 義美食品 |
 | lopia | Lopia | Lopia |
 | city-super | City Super | City Super |
-| mia-cbon | Mia C'bon | 主婦聯盟 Mia C'bon |
+| mia-cbon | Mia C'bon | Mia C'bon |
 | jasons | Jasons Market Place | Jasons Market Place |
 | poya | Poya | 寶雅 |
 | nitori | Nitori | 宜得利 |
@@ -156,7 +156,7 @@ interface TemplateVendor {
 | cosmed | Cosmed | 康是美 |
 | watsons | Watsons | 屈臣氏 |
 | family-mart | FamilyMart | 全家便利商店 |
-| seven-eleven | 7-Eleven | 7-ELEVEN |
+| 7-11 | 7-Eleven | 7-ELEVEN |
 
 Add `template.vendors.*` keys to `en.json` and `tw.json`. Update `TemplateVendor` interface to use `i18nKey` instead of `name`.
 
