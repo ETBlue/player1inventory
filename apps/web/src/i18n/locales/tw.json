@@ -1,4 +1,8 @@
 {
+  "validation": {
+    "required": "此欄位為必填。",
+    "positiveNumber": "必須大於 0。"
+  },
   "common": {
     "cancel": "取消",
     "delete": "刪除",

@@ -2,22 +2,30 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
-  ({ className, type, ...props }, ref) => {
+interface InputProps extends React.ComponentProps<'input'> {
+  error?: string
+}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, error, ...props }, ref) => {
     return (
-      <input
-        type={type}
-        className={cn(
-          `flex h-10 w-full px-2 py-0 
-          file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground 
-          placeholder:text-accessory-emphasized 
-          disabled:cursor-not-allowed disabled:opacity-50 md:text-sm
-          border border-accessory bg-background-surface `,
-          className,
-        )}
-        ref={ref}
-        {...props}
-      />
+      <div className="w-full">
+        <input
+          type={type}
+          className={cn(
+            `flex h-10 w-full px-2 py-0
+            file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground
+            placeholder:text-accessory-emphasized
+            disabled:cursor-not-allowed disabled:opacity-50 md:text-sm
+            border border-accessory bg-background-surface `,
+            error && 'border-destructive focus-visible:ring-destructive',
+            className,
+          )}
+          ref={ref}
+          {...props}
+        />
+        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+      </div>
     )
   },
 )
