@@ -15,6 +15,7 @@ query GetTags {
     typeId
     userId
     familyId
+    parentId
   }
 }
 
@@ -25,6 +26,7 @@ query GetTagsByType($typeId: String!) {
     typeId
     userId
     familyId
+    parentId
   }
 }
 
@@ -49,25 +51,27 @@ mutation DeleteTagType($id: ID!) {
   deleteTagType(id: $id)
 }
 
-mutation CreateTag($name: String!, $typeId: String!) {
-  createTag(name: $name, typeId: $typeId) {
+mutation CreateTag($name: String!, $typeId: String!, $parentId: String) {
+  createTag(name: $name, typeId: $typeId, parentId: $parentId) {
     id
     name
     typeId
     userId
+    parentId
   }
 }
 
-mutation UpdateTag($id: ID!, $name: String, $typeId: String) {
-  updateTag(id: $id, name: $name, typeId: $typeId) {
+mutation UpdateTag($id: ID!, $name: String, $typeId: String, $parentId: String) {
+  updateTag(id: $id, name: $name, typeId: $typeId, parentId: $parentId) {
     id
     name
     typeId
+    parentId
   }
 }
 
-mutation DeleteTag($id: ID!) {
-  deleteTag(id: $id)
+mutation DeleteTag($id: ID!, $deleteChildren: Boolean) {
+  deleteTag(id: $id, deleteChildren: $deleteChildren)
 }
 
 query TagCountByType($typeId: String!) {
