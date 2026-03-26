@@ -1,6 +1,6 @@
 ---
 name: Onboarding page design
-description: Design document for the onboarding/welcome feature — nested tag types, template data, 5-step flow
+description: Design document for the onboarding/welcome feature — nested tags, template data, 5-step flow
 type: design
 date: 2026-03-26
 status: pending
@@ -16,60 +16,87 @@ A full-screen onboarding flow shown automatically when all data is empty (items 
 
 ## Architecture Changes
 
-### 1. Nested Tag Types (schema change)
+### 1. Nested Tags (schema change)
 
-Add `parentId?: string` to `TagType`:
+Add `parentId?: string` to `Tag` (not `TagType` — tag types stay flat):
 
 ```ts
 // src/types/index.ts
-interface TagType {
+interface Tag {
   id: string
   name: string
-  color: TagColor
-  parentId?: string   // new — undefined = top-level group
+  typeId: string
+  parentId?: string   // new — undefined = top-level tag within its type
   createdAt: Date
   updatedAt: Date
 }
 ```
 
-**Dexie schema:** bump DB version, add `parentId` index to `tagTypes` table.
+**Dexie schema:** bump DB version, add `parentId` index to `tags` table.
 
 **Hierarchy model:**
-- Top-level groups (`parentId` undefined): `Food`, `Personal Care`, `Household`, `Pet Supplies`, `Baby`, `Storage Methods`
-- Leaf types (`parentId` set): `生鮮`, `熟食`, `零食`… (children of Food), etc.
-- Tags are assigned to **leaf** tag types only (same as today)
-- Top-level groups are display/filter containers — not directly assignable
+
+```
+TagType: "category"
+  Tag: "Food"              (parentId: undefined)
+    Tag: "生鮮"            (parentId: Food.id)
+    Tag: "熟食"
+    Tag: "零食"
+    Tag: "飲料"
+    Tag: "穀類主食"
+    Tag: "調味料"
+    Tag: "營養補充"
+  Tag: "Personal Care"     (parentId: undefined)
+    Tag: "身體清潔"
+    Tag: "衛生用品"
+    Tag: "身體保養"
+    Tag: "醫療保健"
+  Tag: "Household"
+    Tag: "家庭清潔"
+    Tag: "廚房耗材"
+  Tag: "Pet Supplies"      (leaf — no children)
+  Tag: "Baby"              (leaf — no children)
+
+TagType: "storage"
+  Tag: "room temperature"  (parentId: undefined, no children)
+  Tag: "refrigerated"
+  Tag: "frozen"
+```
+
+**Assignment:** Items can be tagged at **any level** — "Food" for broad classification, "生鮮" for specific. Both are valid on the same item.
+
+**Filter behavior:** Filtering by a parent tag (e.g. "Food") shows items tagged with Food **or any of its descendants** (生鮮, 熟食, etc.). Implemented via a `getTagAndDescendantIds(tagId, allTags)` helper.
 
 **Impact on existing UI:**
-- Settings/Tags: render tag types grouped under their parent; drag-and-drop reorder within group
-- ItemCard tag badges: unchanged (tags still belong to leaf types)
-- Item detail Tags tab: unchanged
-- Filter dropdowns: update to support hierarchical selection (parent = show all children's items)
+- Settings/Tags: render tags nested under their parent within each tag type section; drag-and-drop reorder within group
+- ItemCard tag badges: show tag name regardless of level — unchanged rendering
+- Item detail Tags tab: tag picker groups top-level tags with expandable children
+- Filter dropdowns: parent selection expands to include descendants
 
 ### 2. Template Data Module
 
-Static JSON/TS file at `src/data/template.ts`:
+Static file at `src/data/template.ts`:
 
 ```ts
-export const templateTagTypes: TemplateTagType[] = [...]  // nested structure
-export const templateItems: TemplateItem[] = [...]         // 30–50 items with tagTypeIds
-export const templateVendors: TemplateVendor[] = [...]     // 17 vendors
+export const templateTags: TemplateTag[] = [...]    // nested structure
+export const templateItems: TemplateItem[] = [...]   // 30–50 items with tagKeys
+export const templateVendors: TemplateVendor[] = [...] // 17 vendors
 ```
 
 Types:
 ```ts
-interface TemplateTagType {
-  key: string           // stable key for referencing in items
-  name: string
-  nameZh: string
-  color: TagColor
-  parentKey?: string
+interface TemplateTag {
+  key: string           // stable key for referencing (e.g. "food", "fresh")
+  name: string          // English name
+  nameZh: string        // Chinese name
+  typeKey: string       // "category" | "storage"
+  parentKey?: string    // references another TemplateTag key
 }
 
 interface TemplateItem {
   name: string
   nameZh: string
-  tagTypeKeys: string[]   // maps to TemplateTagType keys
+  tagKeys: string[]     // can include parent and/or child tag keys
 }
 
 interface TemplateVendor {
@@ -77,17 +104,21 @@ interface TemplateVendor {
 }
 ```
 
+**Vendor list (17):** Costco, PX Mart, Simple Mart, RT-Mart, Carrefour, I-Mei Food, Lopia, City Super, Mia C'bon, Jasons Market Place, Poya, Nitori, Ikea, Cosmed, Watsons, FamilyMart, 7-Eleven
+
+**Item count:** 30–50, developer-defined only.
+
 ### 3. Onboarding Route
 
 New file-based route: `src/routes/onboarding.tsx`
 
 URL: `/onboarding`
 
-Excluded from bottom nav / sidebar visibility rules (same as `/items/*` pattern).
+Excluded from bottom nav / sidebar (same pattern as `/items/*`).
 
 ### 4. Empty Data Detection
 
-New hook `useIsDataEmpty` (or inline in `__root.tsx`):
+New hook `useIsDataEmpty`:
 ```ts
 const isEmpty = items.length === 0 && tags.length === 0 && vendors.length === 0
 ```
@@ -96,7 +127,7 @@ In `__root.tsx`: if `isEmpty && pathname !== '/onboarding'` → redirect to `/on
 
 ### 5. Settings Entry Point
 
-Add a "Reset & restart onboarding" card or button to `src/routes/settings/index.tsx`. On confirm (destructive dialog) → clear all data → navigate to `/onboarding`.
+Add "Reset & restart onboarding" to `src/routes/settings/index.tsx`. Destructive confirmation dialog → clear all data → navigate to `/onboarding`.
 
 ---
 
@@ -141,21 +172,24 @@ Add a "Reset & restart onboarding" card or button to `src/routes/settings/index.
 
 ```
 ┌─────────────────────────────┐
-│ ← 12 items selected  [All] [✕]│
+│ ← 12 items selected [All][✕]│
 │ [Storage ▾] [Category ▾] [🔍]│
 │ (search input — optional)   │
-│ Showing 15 of 30 [clear]    │
+│ Showing 15 of 30  [clear]   │
 ├─────────────────────────────┤
-│ ☐ Milk          冷藏 · 生鮮 │
-│ ☐ Eggs          冷藏 · 生鮮 │
-│ ☑ Chicken       冷凍 · 生鮮 │
+│ ☐ Milk        冷藏 · 生鮮   │
+│ ☐ Eggs        冷藏 · 生鮮   │
+│ ☑ Chicken     冷凍 · 生鮮   │
 │ ...                         │
 └─────────────────────────────┘
 ```
 
-- "Select all visible" selects only items currently passing the filter
-- "Clear selection" clears all (not just visible)
-- Back → returns to Step 2/4 with updated count
+- Storage filter: flat list (room temperature / refrigerated / frozen)
+- Category filter: flat list of ALL category tags (Food, 生鮮, Personal Care, 身體清潔…) — selecting a parent auto-includes descendants
+- "Select all visible": selects only items passing current filter
+- "Clear selection": clears all regardless of filter
+- Tag badges on ItemCard show pre-assigned tags (any level)
+- Back → Step 2/4 with updated count
 
 ### Step 3B — Template Vendors Browser
 
@@ -163,7 +197,7 @@ Add a "Reset & restart onboarding" card or button to `src/routes/settings/index.
 ┌─────────────────────────────┐
 │ ← 4 vendors sel.  [All] [✕] │
 │ [search input............]  │
-│ Showing 8 of 17 [clear]     │
+│ Showing 8 of 17  [clear]    │
 ├─────────────────────────────┤
 │ ☐ Costco                    │
 │ ☑ PX Mart                   │
@@ -178,7 +212,6 @@ Add a "Reset & restart onboarding" card or button to `src/routes/settings/index.
 ┌─────────────────────────────┐
 │  Setting up your pantry…    │
 │  ████████░░░░░░░  60%       │
-│                             │
 │  (buttons hidden)           │
 └─────────────────────────────┘
 
@@ -200,7 +233,7 @@ Add a "Reset & restart onboarding" card or button to `src/routes/settings/index.
 | `TemplateItemsBrowser` | `src/components/onboarding/TemplateItemsBrowser/` | Step 3A |
 | `TemplateVendorsBrowser` | `src/components/onboarding/TemplateVendorsBrowser/` | Step 3B |
 | `OnboardingProgress` | `src/components/onboarding/OnboardingProgress/` | Step 5 |
-| `useOnboardingSetup` | `src/hooks/useOnboardingSetup.ts` | Bulk-create items + tags + vendors; reports progress |
+| `useOnboardingSetup` | `src/hooks/useOnboardingSetup.ts` | Bulk-creates tags + items + vendors; reports progress |
 
 **Reused components:**
 - `ItemCard` — new prop `variant="template"` hides quantity/expiration controls
@@ -219,27 +252,30 @@ OnboardingPage state: { selectedItemKeys: Set, selectedVendorKeys: Set }
   ↓  (on Confirm)
 useOnboardingSetup(selections)
   ↓
-createTagType() × N  →  createTag() × N  →  createItem() × N  →  createVendor() × N
+createTagType() × 2  →  createTag() × N (respecting parentId)  →  createItem() × M  →  createVendor() × Y
   ↓
 navigate('/')
 ```
+
+**Tag creation order:** top-level tags first, then children (so parentId references resolve correctly).
 
 ---
 
 ## Implementation Phases
 
-### Phase A — Nested tag types (prerequisite)
-1. Update `TagType` type + Dexie schema (add `parentId`, bump version)
-2. Update Settings/Tags UI to render grouped hierarchy
-3. Update filter dropdowns to support parent-selects-all-children
-4. Migration: existing flat tag types get `parentId = undefined` (no-op, backward compatible)
+### Phase A — Nested tags (prerequisite)
+1. Add `parentId?: string` to `Tag` type + Dexie schema (bump version)
+2. Add `getTagAndDescendantIds(tagId, allTags)` helper in `src/lib/`
+3. Update Settings/Tags UI to render tags nested under parents
+4. Update filter dropdowns to expand parent selection to descendants
+5. Backward compatible — existing tags get `parentId = undefined` (no migration needed)
 
 ### Phase B — Template data & onboarding route
-1. Write `src/data/template.ts` with 30–50 items, 17 vendors, nested tag types
+1. Write `src/data/template.ts` with 30–50 items, 17 vendors, nested tags
 2. Create `src/routes/onboarding.tsx` with step state machine
 3. Build `OnboardingWelcome` (Step 1)
 4. Build `TemplateOverview` (Steps 2 & 4)
-5. Build `TemplateItemsBrowser` (Step 3A)
+5. Build `TemplateItemsBrowser` (Step 3A) with storage + category filters
 6. Build `TemplateVendorsBrowser` (Step 3B)
 7. Build `OnboardingProgress` (Step 5)
 8. Wire `useOnboardingSetup` hook
@@ -253,6 +289,6 @@ navigate('/')
 
 ## Open Questions (for implementation)
 
-- **i18n**: Template item/vendor names need both English and Chinese keys. Will all onboarding UI strings go into `en.json` / `tw.json` as usual?
-- **Nested tag types in item detail**: When assigning tags on the item detail Tags tab, should the tag picker also show the nested hierarchy? (Likely yes, for consistency.)
-- **Template tag type colors**: Should template leaf tag types have pre-assigned colors, or default to a neutral color?
+- **i18n for template data**: Template item/tag/vendor names need English + Chinese. Store in `template.ts` directly (as `name`/`nameZh` fields) or route through `en.json`/`tw.json`?
+- **Tag colors**: Template tags get pre-assigned colors (developer-defined in `template.ts`) or inherit the tag type's color?
+- **Category filter UI**: Flat list showing all tags at all levels (Food, 生鮮, Personal Care…), or a two-level dropdown (pick parent first, then child)?

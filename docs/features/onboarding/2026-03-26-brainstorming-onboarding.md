@@ -72,17 +72,24 @@ Same as Step 2 UI (O confirmed: same component, updated counts)
 ### Import alternative (I)
 Uses the existing file picker / import flow; embedded in the welcome screen as one of the three options
 
-### Nested tag types (J)
-**Option A chosen**: nested structure propagates to the full app, including Settings → Tags UI.
+### Nested tags (J, revised)
+**Nested tags chosen over nested tag types.** Tag types stay flat; `Tag` gets `parentId?: string`.
 
-TagType gets an optional `parentId` field:
-- `Food` (top-level, no parent)
-  - `生鮮`, `熟食`, `零食`, `飲料`, `穀類主食`, `調味料`, `營養補充` (children of Food)
-- `Personal Care` → `身體清潔`, `衛生用品`, `身體保養`, `醫療保健`
-- `Household` → `家庭清潔`, `廚房耗材`
-- `Pet Supplies` (leaf, no children)
-- `Baby` (leaf, no children)
-- Storage methods (top-level group): `room temperature`, `refrigerated`, `frozen`
+Rationale: simpler schema change; users can assign tags at any level (P: any level confirmed).
+
+Structure:
+```
+TagType: "category"
+  Tag: Food → 生鮮, 熟食, 零食, 飲料, 穀類主食, 調味料, 營養補充
+  Tag: Personal Care → 身體清潔, 衛生用品, 身體保養, 醫療保健
+  Tag: Household → 家庭清潔, 廚房耗材
+  Tag: Pet Supplies (leaf)
+  Tag: Baby (leaf)
+TagType: "storage"
+  Tag: room temperature, refrigerated, frozen (all leaves)
+```
+
+Filter behavior: selecting a parent tag includes all descendants.
 
 ### Category filter behavior (K)
 Selecting a parent category (e.g. "Food") shows items tagged with **any** of its subtypes.
@@ -98,3 +105,6 @@ All three collections empty: items AND tags AND vendors.
 
 ### Step 2 / Step 4 (O)
 Same UI component. Step 4 is Step 2 re-rendered with updated selection counts after the user browses items/vendors.
+
+### Tag assignment level (P)
+Any level — items can be tagged with parent tags (Food), child tags (生鮮), or both.
