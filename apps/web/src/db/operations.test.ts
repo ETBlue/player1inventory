@@ -40,6 +40,7 @@ import {
   updateItem,
   updateRecipe,
   updateRecipeLastCookedAt,
+  updateTag,
   updateVendor,
 } from './operations'
 
@@ -371,6 +372,54 @@ describe('Tag operations', () => {
 
     const ingredientTags = await getTagsByType(type1.id)
     expect(ingredientTags).toHaveLength(2)
+  })
+
+  it('user can create a tag with a parentId', async () => {
+    // Given a tag type and a parent tag
+    const tagType = await createTagType({ name: 'Category' })
+    const parentTag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When creating a child tag with parentId
+    const childTag = await createTag({
+      name: 'Milk',
+      typeId: tagType.id,
+      parentId: parentTag.id,
+    })
+
+    // Then the child tag is persisted with parentId
+    const retrieved = await getAllTags()
+    const found = retrieved.find((t) => t.id === childTag.id)
+    expect(found).toBeDefined()
+    expect(found?.parentId).toBe(parentTag.id)
+  })
+
+  it('user can create a tag without a parentId', async () => {
+    // Given a tag type
+    const tagType = await createTagType({ name: 'Storage' })
+
+    // When creating a tag without parentId
+    const tag = await createTag({ name: 'Fridge', typeId: tagType.id })
+
+    // Then the tag is persisted with no parentId
+    const retrieved = await getAllTags()
+    const found = retrieved.find((t) => t.id === tag.id)
+    expect(found).toBeDefined()
+    expect(found?.parentId).toBeUndefined()
+  })
+
+  it("user can update a tag's parentId", async () => {
+    // Given a tag type, a parent tag, and a child tag without parentId
+    const tagType = await createTagType({ name: 'Category' })
+    const parentTag = await createTag({ name: 'Food', typeId: tagType.id })
+    const childTag = await createTag({ name: 'Dairy', typeId: tagType.id })
+
+    // When updating the child tag to set parentId
+    await updateTag(childTag.id, { parentId: parentTag.id })
+
+    // Then the tag is persisted with the new parentId
+    const retrieved = await getAllTags()
+    const found = retrieved.find((t) => t.id === childTag.id)
+    expect(found?.parentId).toBe(parentTag.id)
   })
 })
 

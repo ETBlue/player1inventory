@@ -78,6 +78,18 @@ db.version(5).stores({
   recipes: 'id, name, lastCookedAt',
 })
 
+// Version 6: Add parentId index to tags for nested tag hierarchy (onboarding phase A)
+db.version(6).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, typeId, parentId, createdAt',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
+  recipes: 'id, name, lastCookedAt',
+})
+
 db.on('populate', async () => {
   const language = resolveLanguageFromStorage()
   await seedDefaultData(language)
