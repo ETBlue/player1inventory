@@ -27,6 +27,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/db/operations', () => ({
   migrateTagColorsToTypes: vi.fn(),
   migrateTagColorTints: vi.fn(),
+  getAllTags: vi.fn().mockResolvedValue([]),
 }))
 
 const existingTagType = {
@@ -86,6 +87,12 @@ function setupDefaultMocks() {
 
   vi.spyOn(useTagsModule, 'useItemCountByTag').mockReturnValue({
     data: 0,
+    isLoading: false,
+    isError: false,
+  })
+
+  vi.spyOn(useTagsModule, 'useTagsWithDepth').mockReturnValue({
+    data: [],
     isLoading: false,
     isError: false,
   })

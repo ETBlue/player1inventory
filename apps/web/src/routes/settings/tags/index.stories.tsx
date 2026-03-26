@@ -77,6 +77,75 @@ function TagsListStory() {
   )
 }
 
+function WithNestedTagsStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      // Create a tag type with nested tags to demonstrate visual hierarchy
+      const category = await createTagType({
+        name: 'Category',
+        color: TagColor.blue,
+      })
+
+      // Top-level parent tags
+      const produce = await createTag({ name: 'Produce', typeId: category.id })
+      const dairy = await createTag({ name: 'Dairy', typeId: category.id })
+
+      // Child tags nested under Produce
+      await createTag({
+        name: 'Vegetables',
+        typeId: category.id,
+        parentId: produce.id,
+      })
+      await createTag({
+        name: 'Fruits',
+        typeId: category.id,
+        parentId: produce.id,
+      })
+
+      // Child tag nested under Dairy
+      await createTag({
+        name: 'Cheese',
+        typeId: category.id,
+        parentId: dairy.id,
+      })
+
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/settings/tags'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <TagsListStory />,
+}
+
+export const WithNestedTags: Story = {
+  render: () => <WithNestedTagsStory />,
 }

@@ -175,6 +175,7 @@
         "addPlaceholder": "e.g., Dairy, Frozen",
         "typeLabel": "Tag Type",
         "nameLabel": "Name",
+        "parentLabel": "Parent Tag",
         "deleteAriaLabel": "Delete \"{{name}}\"",
         "deleteTitle": "Delete Tag?",
         "deleteWithItems_one": "We are about to delete \"{{name}}\", removing it from 1 item.",

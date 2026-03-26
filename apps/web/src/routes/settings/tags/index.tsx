@@ -46,12 +46,15 @@ import {
   useDeleteTagType,
   useItemCountByTag,
   useTags,
+  useTagsWithDepth,
   useTagTypes,
   useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 import { type Tag, TagColor, type TagType } from '@/types/index'
+
+type TagWithDepth = Tag & { depth: number }
 
 export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
@@ -94,14 +97,21 @@ const TAG_COLOR_TEXT: Record<TagColor, string> = {
 function DraggableTagBadge({
   tag,
   tagType,
+  depth,
   onDelete,
 }: {
   tag: Tag
   tagType: TagType
+  depth: number
   onDelete: () => void
 }) {
   const { t } = useTranslation()
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
+
+  // TODO: Limit drag-and-drop to same-parent groups in a future iteration.
+  // For now, drag-and-drop is disabled for child tags (depth >= 1) to avoid
+  // ambiguous re-parenting behavior when dragging across type cards.
+  const isDragDisabled = depth >= 1
 
   const {
     attributes,
@@ -112,6 +122,7 @@ function DraggableTagBadge({
     isDragging,
   } = useSortable({
     id: tag.id,
+    disabled: isDragDisabled,
   })
 
   const style = {
@@ -123,6 +134,18 @@ function DraggableTagBadge({
 
   const navigate = useNavigate()
 
+  // Static lookup for indentation classes by depth level.
+  // Avoids dynamic Tailwind class name construction (e.g. `pl-${n}`)
+  // which won't survive production builds since Tailwind scans for literal class names.
+  // Supports up to 3 levels of nesting (depth 0–3).
+  const DEPTH_INDENT: Record<number, string> = {
+    0: '',
+    1: 'pl-4',
+    2: 'pl-8',
+    3: 'pl-12',
+  }
+  const indentClass = DEPTH_INDENT[Math.min(depth, 3)] ?? ''
+
   // Note: Drag listeners and attributes are scoped to the TagBadge wrapper only,
   // so that the DeleteButton is a sibling (not nested inside an interactive element).
   // This avoids the nested-interactive a11y violation while preserving drag behavior.
@@ -132,17 +155,21 @@ function DraggableTagBadge({
   // - Longer movements (≥ 8px) trigger drag-and-drop
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
-    <div ref={setNodeRef} style={style} className="inline-flex items-center">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`inline-flex items-center ${indentClass}`}
+    >
       <div
         className="inline-flex"
-        {...attributes}
-        aria-describedby="dnd-instructions"
-        {...listeners}
+        {...(isDragDisabled ? {} : attributes)}
+        aria-describedby={isDragDisabled ? undefined : 'dnd-instructions'}
+        {...(isDragDisabled ? {} : listeners)}
       >
         <TagBadge
           tag={tag}
           tagType={tagType}
-          className="rounded-tr-none rounded-br-none"
+          className={`rounded-tr-none rounded-br-none ${depth >= 1 ? 'opacity-80' : ''}`}
           onClick={() => {
             navigate({
               to: '/settings/tags/$id',
@@ -184,7 +211,7 @@ function DroppableTagTypeCard({
   onDeleteTag,
 }: {
   tagType: TagType
-  sortedTypeTags: Tag[]
+  sortedTypeTags: TagWithDepth[]
   tagCount: number
   onEdit: () => void
   onDelete: () => void
@@ -248,16 +275,22 @@ function DroppableTagTypeCard({
           items={sortedTypeTags.map((tag) => tag.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-col gap-1">
             {sortedTypeTags.map((tag) => (
               <DraggableTagBadge
                 key={tag.id}
                 tag={tag}
                 tagType={tagType}
+                depth={tag.depth}
                 onDelete={() => onDeleteTag(tag.id)}
               />
             ))}
-            <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
+            <Button
+              variant="neutral-ghost"
+              size="xs"
+              onClick={onAddTag}
+              className="self-start"
+            >
               <Plus className="h-3 w-3" />
               {t('settings.tags.tag.newButton')}
             </Button>
@@ -273,6 +306,7 @@ export function TagSettings() {
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [], isLoading } = useTags()
+  const { data: tagsWithDepth = [] } = useTagsWithDepth()
 
   // Scroll restoration: save on unmount, restore after data loads
   const currentUrl = useRouterState({
@@ -513,7 +547,16 @@ export function TagSettings() {
           )
           .map((tagType) => {
             const typeTags = tags.filter((tag) => tag.typeId === tagType.id)
-            const sortedTypeTags = sortTagsByName(typeTags)
+            // Use depth-annotated tags for rendering, preserving depth-first order
+            // (parent before children). Top-level tags are sorted by name; child tags
+            // follow their parent in depth-first traversal.
+            const typeTagsWithDepth = tagsWithDepth.filter(
+              (tag) => tag.typeId === tagType.id,
+            )
+            const sortedTypeTags =
+              typeTagsWithDepth.length > 0
+                ? typeTagsWithDepth
+                : sortTagsByName(typeTags).map((tag) => ({ ...tag, depth: 0 }))
             const tagTypeColor = tagType.color || TagColor.blue
 
             return (
