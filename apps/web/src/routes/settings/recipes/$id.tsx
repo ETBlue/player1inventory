@@ -113,6 +113,7 @@ function RecipeDetailLayoutInner() {
               to="/settings/recipes/$id"
               params={{ id }}
               activeOptions={{ exact: true }}
+              aria-label="Recipe info tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) => handleTabClick(e, `/settings/recipes/${id}`)}
@@ -122,6 +123,7 @@ function RecipeDetailLayoutInner() {
             <Link
               to="/settings/recipes/$id/items"
               params={{ id }}
+              aria-label="Recipe items tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) =>

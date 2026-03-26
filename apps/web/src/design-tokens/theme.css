@@ -7,18 +7,20 @@
   --foreground-muted: hsl(45 20% 34%);
   --foreground-default: hsl(45 50% 20%);
   --foreground-emphasized: hsl(45 50% 10%);
+  --foreground-colorless: hsl(0 0% 20%);
+  --foreground-colorless-inverse: hsl(0 0% 90%);
 
   --accessory-muted: hsl(45 20% 85%);
   --accessory-default: hsl(45 20% 75%);
   --accessory-emphasized: hsl(45 20% 60%);
 
   --overlay: hsl(45 5% 50%);
-  --outline: hsl(200 50% 50%);
+  --outline: hsl(180 50% 50%);
 
   --importance-primary: hsl(180 90% 20%);
   --importance-secondary: hsl(180 40% 45%);
   --importance-tertiary: hsl(180 10% 60%);
-  --importance-destructive: hsl(330 40% 50%);
+  --importance-destructive: hsl(330 60% 32%);
   --importance-neutral: hsl(45 5% 30%);
 
   --status-ok: hsl(75 60% 45%);
@@ -65,10 +67,6 @@
   /* Brightness utilities */
   --brightness-tint: hsl(45 5% 100%);
   --brightness-dark: hsl(45 5% 20%);
-
-  /* Button foreground tokens — text on solid importance-colored backgrounds */
-  --importance-primary-foreground: hsl(45 5% 100%);
-  --importance-neutral-foreground: hsl(45 5% 100%);
 }
 
 /* Dark mode overrides */
@@ -80,23 +78,21 @@
   --foreground-muted: hsl(45 5% 78%);
   --foreground-default: hsl(45 10% 90%);
   --foreground-emphasized: hsl(45 50% 97.5%);
+  --foreground-colorless: hsl(0 0% 90%);
+  --foreground-colorless-inverse: hsl(0 0% 20%);
 
   --accessory-muted: hsl(45 5% 40%);
   --accessory-default: hsl(45 10% 50%);
   --accessory-emphasized: hsl(45 20% 70%);
 
   --overlay: hsl(45 10% 90%);
-  --outline: hsl(200 50% 50%);
+  --outline: hsl(180 40% 60%);
 
   --importance-primary: hsl(180 70% 62%);
   --importance-secondary: hsl(180 30% 60%);
   --importance-tertiary: hsl(180 10% 60%);
-  --importance-destructive: hsl(330 80% 60%);
+  --importance-destructive: hsl(330 90% 75%);
   --importance-neutral: hsl(45 20% 80%);
-
-  /* Button foreground tokens — dark text on mid-lightness solid-colored button backgrounds */
-  --importance-primary-foreground: hsl(180 70% 10%);
-  --importance-neutral-foreground: hsl(45 20% 10%);
 
   --status-ok: hsl(75 60% 45%);
   --status-warning: hsl(45 75% 45%);
@@ -139,6 +135,8 @@
   --color-foreground: var(--foreground-default);
   --color-foreground-default: var(--foreground-default);
   --color-foreground-emphasized: var(--foreground-emphasized);
+  --color-foreground-colorless: var(--foreground-colorless);
+  --color-foreground-colorless-inverse: var(--foreground-colorless-inverse);
 
   /* for accessories */
   --color-accessory-muted: var(--accessory-muted);
@@ -153,7 +151,6 @@
   /* by importance */
   --color-primary: var(--importance-primary);
   --color-importance-primary: var(--importance-primary);
-  --color-primary-foreground: var(--importance-primary-foreground);
   --color-secondary: var(--importance-secondary);
   --color-importance-secondary: var(--importance-secondary);
   --color-tertiary: var(--importance-tertiary);
@@ -162,7 +159,6 @@
   --color-importance-destructive: var(--importance-destructive);
   --color-neutral: var(--importance-neutral);
   --color-importance-neutral: var(--importance-neutral);
-  --color-neutral-foreground: var(--importance-neutral-foreground);
 
   /* shadcn compatibility - popover (dropdowns, tooltips) */
   --color-popover: var(--background-elevated);
@@ -229,5 +225,5 @@ body {
 }
 
 :focus-visible {
-  outline: 2px dashed var(--color-outline);
+  outline: 2px solid var(--color-outline);
 }

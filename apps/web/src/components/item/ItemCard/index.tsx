@@ -193,6 +193,7 @@ export function ItemCard({
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
             <h3 className="truncate capitalize">
+              {isInactive(item) && <span className="sr-only">Inactive </span>}
               {highlightedName ?? item.name}
             </h3>
             <div className="flex-1" />

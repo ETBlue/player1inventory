@@ -1131,11 +1131,15 @@ describe('Shopping page tag filtering', () => {
 
     // And the active item appears before the inactive item in DOM order
     // (grouping puts inactive last regardless of alphabetical order — 'Aaaaa' would sort first by name)
+    // Use includes() to tolerate sr-only "Inactive " prefix injected by ItemCard for a11y
     const headings = screen.getAllByRole('heading', { level: 3 })
-    const names = headings.map((el) => el.textContent)
-    expect(names.indexOf('Active Milk')).toBeLessThan(
-      names.indexOf('Aaaaa Inactive Item'),
+    const activeMilkIdx = headings.findIndex((el) =>
+      el.textContent?.includes('Active Milk'),
     )
+    const inactiveItemIdx = headings.findIndex((el) =>
+      el.textContent?.includes('Aaaaa Inactive Item'),
+    )
+    expect(activeMilkIdx).toBeLessThan(inactiveItemIdx)
   })
 
   it('user does not see tag badges or expiration on shopping page', async () => {

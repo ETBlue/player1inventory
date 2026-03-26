@@ -125,6 +125,7 @@ function ItemLayoutInner() {
               to="/items/$id"
               params={{ id }}
               activeOptions={{ exact: true }}
+              aria-label="Item info tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -136,6 +137,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/tags"
               params={{ id }}
+              aria-label="Item tags tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -147,6 +149,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/vendors"
               params={{ id }}
+              aria-label="Item vendors tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -158,6 +161,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/recipes"
               params={{ id }}
+              aria-label="Item recipes tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -169,6 +173,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/log"
               params={{ id }}
+              aria-label="Item history tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
