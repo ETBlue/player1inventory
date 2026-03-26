@@ -27,6 +27,7 @@ import {
   useUpdateTagMutation,
   useUpdateTagTypeMutation,
 } from '@/generated/graphql'
+import { buildDepthFirstTagList } from '@/lib/tagUtils'
 import type { Tag, TagColor, TagType } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -215,6 +216,21 @@ export function useTags() {
     isLoading: local.isPending ?? false,
     isError: local.isError,
   }
+}
+
+/**
+ * Returns all tags (optionally filtered by typeId) in depth-first order,
+ * with each tag annotated with its depth in the hierarchy (0 = top-level).
+ *
+ * Order: each top-level tag is emitted first, then all of its descendants
+ * recursively, before moving to the next top-level tag.
+ */
+export function useTagsWithDepth(typeId?: string) {
+  const { data, isLoading, isError } = useTags()
+
+  const sorted = data ? buildDepthFirstTagList(data, typeId) : undefined
+
+  return { data: sorted, isLoading, isError }
 }
 
 export function useTagsByType(typeId: string) {
