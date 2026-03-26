@@ -110,6 +110,37 @@ describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export'
     expect(item.createdAt).toBe('2026-03-22T22:44:46.927Z')
   })
 
+  it('user can export tags with parentId — parentId is preserved after sanitise', () => {
+    // Given a cloud tag payload where one tag has a parentId
+    const rawTag = {
+      __typename: 'Tag',
+      id: 'tag-child',
+      name: 'Whole Milk',
+      typeId: 'type-1',
+      parentId: 'tag-parent',
+      userId: 'u1',
+    }
+
+    // When building and sanitising a cloud export payload
+    const raw = buildExportPayload({
+      items: [],
+      tags: [rawTag],
+      tagTypes: [],
+      vendors: [],
+      recipes: [],
+      inventoryLogs: [],
+      shoppingCarts: [],
+      cartItems: [],
+    })
+    const clean = sanitiseCloudPayload(raw)
+
+    // Then parentId survives the sanitise step and server-only fields are removed
+    const tag = clean.tags[0] as Record<string, unknown>
+    expect(tag.parentId).toBe('tag-parent')
+    expect(tag).not.toHaveProperty('__typename')
+    expect(tag).not.toHaveProperty('userId')
+  })
+
   it('strips __typename from tags, tagTypes, vendors, recipes', () => {
     const rawTag = {
       __typename: 'Tag',

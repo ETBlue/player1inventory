@@ -154,6 +154,7 @@ export function toTagInput(tag: Record<string, unknown>) {
     id: tag.id as string,
     name: tag.name as string,
     typeId: tag.typeId as string,
+    parentId: tag.parentId as string | undefined,
   }
 }
 
@@ -283,6 +284,49 @@ function detectNamedConflicts(
   return conflicts
 }
 
+// Tags have an additional conflict dimension: a changed parentId means the tag
+// is being moved to a different parent. This function extends the standard
+// id/name conflict check so that a tag whose parentId differs from the stored
+// record is also flagged, even when id and name would not otherwise conflict.
+function detectNamedTagConflicts(
+  incoming: Tag[],
+  existing: Tag[],
+): ConflictEntry[] {
+  const existingById = new Map(existing.map((e) => [e.id, e]))
+  const existingByName = new Map(existing.map((e) => [e.name.toLowerCase(), e]))
+
+  const conflicts: ConflictEntry[] = []
+
+  for (const entry of incoming) {
+    const matchReasons: ('id' | 'name')[] = []
+
+    const existingRecord = existingById.get(entry.id)
+    if (existingRecord) {
+      matchReasons.push('id')
+    }
+
+    if (existingByName.has(entry.name.toLowerCase())) {
+      matchReasons.push('name')
+    }
+
+    // A parentId change (tag reparented) is treated as a conflict even when
+    // the id and name checks would not surface it on their own.
+    if (
+      existingRecord &&
+      existingRecord.parentId !== entry.parentId &&
+      !matchReasons.includes('id')
+    ) {
+      matchReasons.push('id')
+    }
+
+    if (matchReasons.length > 0) {
+      conflicts.push({ id: entry.id, name: entry.name, matchReasons })
+    }
+  }
+
+  return conflicts
+}
+
 function detectIdOnlyConflicts(
   incoming: IdOnlyEntity[],
   existing: IdOnlyEntity[],
@@ -310,7 +354,7 @@ export function detectConflicts(
 ): ConflictSummary {
   return {
     items: detectNamedConflicts(payload.items as NamedEntity[], existing.items),
-    tags: detectNamedConflicts(payload.tags as NamedEntity[], existing.tags),
+    tags: detectNamedTagConflicts(payload.tags as Tag[], existing.tags),
     tagTypes: detectNamedConflicts(
       payload.tagTypes as NamedEntity[],
       existing.tagTypes,

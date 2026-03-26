@@ -205,6 +205,57 @@ describe('detectConflicts', () => {
     expect(summary.items[0].matchReasons).toContain('name')
   })
 
+  it('user can detect a conflict when a tag parentId changes', async () => {
+    // Given an existing tag without a parent
+    const existing = emptyExisting({
+      tags: [{ id: 'tag-1', name: 'Dairy', typeId: 'type-1' }],
+    })
+
+    // When importing a tag with the same id but a new parentId (reparented)
+    const payload = emptyPayload({
+      tags: [
+        { id: 'tag-1', name: 'Dairy', typeId: 'type-1', parentId: 'tag-root' },
+      ],
+    })
+
+    const summary = detectConflicts(payload, existing)
+
+    // Then the reparented tag is reported as a conflict
+    expect(summary.tags).toHaveLength(1)
+    expect(summary.tags[0].matchReasons).toContain('id')
+  })
+
+  it('user can detect no conflicts when tag parentId is unchanged', async () => {
+    // Given an existing tag with a parentId
+    const existing = emptyExisting({
+      tags: [
+        {
+          id: 'tag-1',
+          name: 'Dairy',
+          typeId: 'type-1',
+          parentId: 'tag-root',
+        },
+      ],
+    })
+
+    // When importing a tag with the same parentId
+    const payload = emptyPayload({
+      tags: [
+        {
+          id: 'tag-new',
+          name: 'Fresh',
+          typeId: 'type-1',
+          parentId: 'tag-root',
+        },
+      ],
+    })
+
+    const summary = detectConflicts(payload, existing)
+
+    // Then no conflict is detected (different id and name)
+    expect(summary.tags).toHaveLength(0)
+  })
+
   it('user can detect no conflicts when data is entirely new', async () => {
     // Given existing data
     const existing = emptyExisting({
@@ -525,6 +576,56 @@ describe('importLocalData', () => {
     expect(stored?.expirationThreshold).toBeUndefined()
   })
 
+  it('user can import tags with parentId — stored with correct parentId', async () => {
+    // Given a payload containing a parent tag and a child tag with parentId
+    const payload = emptyPayload({
+      tagTypes: [makeTagType('type-1', 'Category')],
+      tags: [
+        { id: 'tag-parent', name: 'Dairy', typeId: 'type-1' },
+        {
+          id: 'tag-child',
+          name: 'Whole Milk',
+          typeId: 'type-1',
+          parentId: 'tag-parent',
+        },
+      ],
+    })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then both tags are stored and the child has the correct parentId
+    const tags = await db.tags.toArray()
+    expect(tags).toHaveLength(2)
+
+    const child = await db.tags.get('tag-child')
+    expect(child?.parentId).toBe('tag-parent')
+
+    const parent = await db.tags.get('tag-parent')
+    expect(parent?.parentId).toBeUndefined()
+  })
+
+  it('user can import tags without parentId (backwards-compatible with old exports)', async () => {
+    // Given a payload from an old export that does not include parentId
+    const tagWithoutParentId = {
+      id: 'tag-old',
+      name: 'Organic',
+      typeId: 'type-1',
+    }
+    const payload = emptyPayload({
+      tagTypes: [makeTagType('type-1', 'Category')],
+      tags: [tagWithoutParentId],
+    })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then the tag is stored without error and parentId is undefined
+    const stored = await db.tags.get('tag-old')
+    expect(stored).toBeDefined()
+    expect(stored?.parentId).toBeUndefined()
+  })
+
   it('user can import inventory log with occurredAt as ISO string — stored as Date', async () => {
     // Given a payload where occurredAt is an ISO string (as produced by JSON.parse)
     const log = {
@@ -625,6 +726,41 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.id).toBe('tag-1')
     expect(result.name).toBe('Dairy')
     expect(result.typeId).toBe('type-1')
+  })
+
+  it('toTagInput preserves parentId when present', () => {
+    // Given a tag with a parentId (nested tag)
+    const rawTag = {
+      __typename: 'Tag',
+      id: 'tag-child',
+      name: 'Whole Milk',
+      typeId: 'type-1',
+      parentId: 'tag-parent',
+      userId: 'u1',
+    }
+
+    // When mapped to TagInput
+    const result = toTagInput(rawTag)
+
+    // Then parentId is included in the output
+    expect(result.parentId).toBe('tag-parent')
+    expect(result).not.toHaveProperty('__typename')
+    expect(result).not.toHaveProperty('userId')
+  })
+
+  it('toTagInput sets parentId to undefined when absent (backwards compatible)', () => {
+    // Given a tag without parentId (old export format)
+    const rawTag = {
+      id: 'tag-1',
+      name: 'Dairy',
+      typeId: 'type-1',
+    }
+
+    // When mapped to TagInput
+    const result = toTagInput(rawTag)
+
+    // Then parentId is undefined — no error
+    expect(result.parentId).toBeUndefined()
   })
 
   it('toTagTypeInput strips server-only fields', () => {
