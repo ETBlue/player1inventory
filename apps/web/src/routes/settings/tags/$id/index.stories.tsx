@@ -78,6 +78,74 @@ function TagDetailStory() {
   )
 }
 
+function WithParentSelectorStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [tagId, setTagId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      // Create a tag type with sibling tags — one is a child of another
+      const category = await createTagType({
+        name: 'Category',
+        color: TagColor.blue,
+      })
+
+      // Top-level sibling tags
+      const produce = await createTag({ name: 'Produce', typeId: category.id })
+      await createTag({ name: 'Dairy', typeId: category.id })
+
+      // Child under Produce — this is the tag whose edit form we show
+      const vegetables = await createTag({
+        name: 'Vegetables',
+        typeId: category.id,
+        parentId: produce.id,
+      })
+
+      // Another sibling child under Produce
+      await createTag({
+        name: 'Fruits',
+        typeId: category.id,
+        parentId: produce.id,
+      })
+
+      setTagId(vegetables.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/settings/tags/${tagId}`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <TagDetailStory />,
+}
+
+export const WithParentSelector: Story = {
+  render: () => <WithParentSelectorStory />,
 }

@@ -175,6 +175,7 @@
         "typeLabel": "標籤分類",
         "nameLabel": "名稱",
         "parentLabel": "上層標籤",
+        "parentNone": "無（最上層）",
         "deleteAriaLabel": "刪除「{{name}}」",
         "deleteTitle": "刪除標籤？",
         "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",

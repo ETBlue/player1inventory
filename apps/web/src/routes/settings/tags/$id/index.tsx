@@ -18,23 +18,28 @@ import {
   useDeleteTag,
   useItemCountByTag,
   useTags,
+  useTagsWithDepth,
   useTagTypes,
   useUpdateTag,
 } from '@/hooks/useTags'
+import { getTagAndDescendantIds } from '@/lib/tagUtils'
+import type { Tag } from '@/types'
 
 export const Route = createFileRoute('/settings/tags/$id/')({
   component: TagInfoTab,
 })
 
+// Sentinel value used in the Select to represent "no parent" (top-level).
+// Must not be empty string — Radix UI Select disallows empty string as SelectItem value.
+const NO_PARENT = '__none__'
+
 function TagInfoTab() {
   const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: tags = [] } = useTags()
+  const { data: tagsWithDepth = [] } = useTagsWithDepth()
   const { data: tagTypes = [] } = useTagTypes()
   const tag = tags.find((tag) => tag.id === id)
-  const parentTag = tag?.parentId
-    ? tags.find((t) => t.id === tag.parentId)
-    : undefined
   const updateTag = useUpdateTag()
   const { registerDirtyState } = useTagLayout()
   const { goBack } = useAppNavigation()
@@ -43,6 +48,8 @@ function TagInfoTab() {
 
   const [name, setName] = useState('')
   const [typeId, setTypeId] = useState('')
+  // parentId state: NO_PARENT sentinel = no parent (top-level)
+  const [parentId, setParentId] = useState(NO_PARENT)
   const [savedAt, setSavedAt] = useState(0)
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -52,12 +59,24 @@ function TagInfoTab() {
     if (tag) {
       setName(tag.name)
       setTypeId(tag.typeId)
+      setParentId((tag as Tag & { parentId?: string }).parentId ?? NO_PARENT)
       setIsInitialized(true)
     }
   }, [tag?.id, savedAt])
 
+  // Build parent options: all tags with same typeId, excluding self and descendants
+  const excludedIds = new Set(getTagAndDescendantIds(id, tags))
+  const parentOptions = tagsWithDepth.filter(
+    (t) => t.typeId === typeId && !excludedIds.has(t.id),
+  )
+
+  const savedParentId =
+    (tag as (Tag & { parentId?: string }) | undefined)?.parentId ?? NO_PARENT
+
   const isDirty =
-    tag && isInitialized ? name !== tag.name || typeId !== tag.typeId : false
+    tag && isInitialized
+      ? name !== tag.name || typeId !== tag.typeId || parentId !== savedParentId
+      : false
 
   useEffect(() => {
     registerDirtyState(isDirty)
@@ -65,7 +84,16 @@ function TagInfoTab() {
 
   const handleSave = async () => {
     if (!tag || !isDirty) return
-    await updateTag.mutateAsync({ id, updates: { name, typeId } })
+    // Build updates; parentId is an extra optional field beyond the base Tag type.
+    // Using a type assertion here because the DB layer and hooks support parentId
+    // even though the shared Tag type (from @p1i/types) does not declare it.
+    const updates = {
+      name,
+      typeId,
+      // Pass undefined to clear parentId (DB layer uses modify/delete for this)
+      parentId: parentId === NO_PARENT ? undefined : parentId,
+    } as Parameters<typeof updateTag.mutateAsync>[0]['updates']
+    await updateTag.mutateAsync({ id, updates })
     setSavedAt((n) => n + 1)
     goBack()
   }
@@ -88,18 +116,43 @@ function TagInfoTab() {
           handleSave()
         }}
       >
-        {parentTag && (
-          <div className="space-y-1">
-            <Label>{t('settings.tags.tag.parentLabel')}</Label>
-            <p className="text-sm text-foreground-muted capitalize">
-              {parentTag.name}
-            </p>
-          </div>
-        )}
+        <div className="space-y-2">
+          <Label htmlFor="tag-parent">
+            {t('settings.tags.tag.parentLabel')}
+          </Label>
+          <Select value={parentId} onValueChange={setParentId}>
+            <SelectTrigger id="tag-parent" className="capitalize">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_PARENT}>
+                {t('settings.tags.tag.parentNone')}
+              </SelectItem>
+              {parentOptions.map((option) => (
+                <SelectItem
+                  key={option.id}
+                  value={option.id}
+                  className="capitalize"
+                  style={{ paddingLeft: `${(option.depth + 1) * 1}rem` }}
+                >
+                  {option.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor="tag-type">{t('settings.tags.tag.typeLabel')}</Label>
-          <Select value={typeId} onValueChange={setTypeId}>
+          <Select
+            value={typeId}
+            onValueChange={(newTypeId) => {
+              setTypeId(newTypeId)
+              // Changing type invalidates the current parent (different type's tags),
+              // so reset to no parent
+              setParentId(NO_PARENT)
+            }}
+          >
             <SelectTrigger id="tag-type" className="capitalize">
               <SelectValue />
             </SelectTrigger>

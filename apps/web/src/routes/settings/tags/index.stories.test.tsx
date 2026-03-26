@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { Default, WithNestedTags } = composeStories(stories)
+const { Default, WithNestedTags, WithParentSelector } = composeStories(stories)
 
 describe('Settings tags index stories smoke tests', () => {
   it('Default renders without error', async () => {
@@ -22,6 +22,17 @@ describe('Settings tags index stories smoke tests', () => {
     // The "New Tag Type" button should be visible (confirms full page rendered)
     expect(
       await screen.findByRole('button', { name: /new tag type/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('WithParentSelector renders tag list with sibling tags', async () => {
+    render(<WithParentSelector />)
+    expect(
+      await screen.findByRole('heading', { name: /tags/i }),
+    ).toBeInTheDocument()
+    // "New Tag" button should be visible inside a tag type card
+    expect(
+      await screen.findByRole('button', { name: /new tag/i }),
     ).toBeInTheDocument()
   })
 })

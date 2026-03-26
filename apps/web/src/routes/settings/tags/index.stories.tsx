@@ -142,10 +142,65 @@ function WithNestedTagsStory() {
   )
 }
 
+function WithParentSelectorStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      // Create a tag type with existing tags that can serve as parents
+      const category = await createTagType({
+        name: 'Category',
+        color: TagColor.blue,
+      })
+
+      // Existing sibling tags — these appear in the parent dropdown when adding
+      const produce = await createTag({ name: 'Produce', typeId: category.id })
+      await createTag({ name: 'Dairy', typeId: category.id })
+      await createTag({
+        name: 'Vegetables',
+        typeId: category.id,
+        parentId: produce.id,
+      })
+
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/settings/tags'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <TagsListStory />,
 }
 
 export const WithNestedTags: Story = {
   render: () => <WithNestedTagsStory />,
+}
+
+export const WithParentSelector: Story = {
+  render: () => <WithParentSelectorStory />,
 }
