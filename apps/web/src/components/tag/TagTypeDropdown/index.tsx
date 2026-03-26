@@ -9,11 +9,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 import type { Tag, TagType } from '@/types'
+
+// Tags may carry an optional depth annotation (from useTagsWithDepth / buildDepthFirstTagList)
+type TagWithOptionalDepth = Tag & { depth?: number }
 
 interface TagTypeDropdownProps {
   tagType: TagType
-  tags: Tag[]
+  tags: TagWithOptionalDepth[]
   selectedTagIds: string[]
   tagCounts: number[]
   onToggleTag: (tagId: string) => void
@@ -29,6 +33,7 @@ export function TagTypeDropdown({
   onClear,
 }: TagTypeDropdownProps) {
   const hasSelection = selectedTagIds.length > 0
+  const selectedCount = selectedTagIds.length
 
   return (
     <DropdownMenu modal={false}>
@@ -40,18 +45,24 @@ export function TagTypeDropdown({
         >
           <Tags />
           {tagType.name}
+          {selectedCount > 0 && (
+            <span className="text-xs font-semibold">{selectedCount}</span>
+          )}
           <ChevronDown />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
         {tags.map((tag, index) => {
           const isChecked = selectedTagIds.includes(tag.id)
+          // Indent child tags based on depth (0 = top-level, no indent)
+          const depth = tag.depth ?? 0
           return (
             <DropdownMenuCheckboxItem
               key={tag.id}
               checked={isChecked}
               onCheckedChange={() => onToggleTag(tag.id)}
               onSelect={(e) => e.preventDefault()} // Keep menu open
+              className={cn(depth > 0 && `pl-${Math.min(depth * 4 + 8, 24)}`)}
             >
               <div className="flex items-center justify-between w-full">
                 <Badge

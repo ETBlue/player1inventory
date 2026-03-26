@@ -12,10 +12,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useTags, useTagTypes } from '@/hooks/useTags'
+import { useTags, useTagsWithDepth, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { calculateTagCount } from '@/lib/filterUtils'
-import { sortTagsByName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
 import type { Item, Recipe, Vendor } from '@/types'
 
@@ -38,6 +37,8 @@ export function ItemFilters({
 }: ItemFiltersProps) {
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
+  // Depth-first ordered tags for hierarchical display in dropdowns
+  const { data: tagsWithDepth = [] } = useTagsWithDepth()
   const {
     filterState,
     setFilterState,
@@ -207,20 +208,22 @@ export function ItemFilters({
 
       {tagTypesWithTags.map((tagType) => {
         const tagTypeId = tagType.id
-        const typeTags = tags.filter((tag) => tag.typeId === tagTypeId)
-        const sortedTypeTags = sortTagsByName(typeTags)
+        // Use depth-first ordered tags for hierarchical display
+        const orderedTypeTags = tagsWithDepth.filter(
+          (tag) => tag.typeId === tagTypeId,
+        )
         const selectedTagIds = filterState[tagTypeId] || []
 
-        // Calculate dynamic counts for each tag
-        const tagCounts = sortedTypeTags.map((tag) =>
-          calculateTagCount(tag.id, tagTypeId, items, filterState),
+        // Calculate dynamic counts for each tag, with descendant expansion
+        const tagCounts = orderedTypeTags.map((tag) =>
+          calculateTagCount(tag.id, tagTypeId, items, filterState, tags),
         )
 
         return (
           <TagTypeDropdown
             key={tagTypeId}
             tagType={tagType}
-            tags={sortedTypeTags}
+            tags={orderedTypeTags}
             selectedTagIds={selectedTagIds}
             tagCounts={tagCounts}
             onToggleTag={(tagId) => handleToggleTag(tagTypeId, tagId)}
