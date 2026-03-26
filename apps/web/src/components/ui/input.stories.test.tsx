@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { Input } from './input'
 import * as stories from './input.stories'
 
-const { Default, WithLabel, Disabled, WithValue } = composeStories(stories)
+const { Default, WithLabel, Disabled, WithValue, WithError } =
+  composeStories(stories)
 
 describe('Input stories smoke tests', () => {
   it('Default renders without error', () => {
@@ -25,6 +26,11 @@ describe('Input stories smoke tests', () => {
   it('WithValue renders without error', () => {
     render(<WithValue />)
     expect(screen.getByDisplayValue('Prefilled value')).toBeInTheDocument()
+  })
+
+  it('WithError renders validation message', () => {
+    render(<WithError />)
+    expect(screen.getByText('This field is required.')).toBeInTheDocument()
   })
 })
 
