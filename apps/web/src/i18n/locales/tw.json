@@ -179,7 +179,11 @@
         "deleteAriaLabel": "刪除「{{name}}」",
         "deleteTitle": "刪除標籤？",
         "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
-        "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。"
+        "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
+        "deleteParentTitle": "此標籤有子標籤",
+        "deleteParentDescription": "請選擇如何處理子標籤。",
+        "deleteParentCascade": "刪除所有子標籤",
+        "deleteParentOrphan": "保留子標籤（升為最上層）"
       },
       "toast": {
         "moveFailed": "移動標籤失敗了...",

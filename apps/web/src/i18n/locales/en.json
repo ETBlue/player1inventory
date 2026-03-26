@@ -181,7 +181,11 @@
         "deleteTitle": "Delete Tag?",
         "deleteWithItems_one": "We are about to delete \"{{name}}\", removing it from 1 item.",
         "deleteWithItems_other": "We are about to delete \"{{name}}\", removing it from {{count}} items.",
-        "deleteNoItems": "It's safe to delete \"{{name}}\" since no item is using it."
+        "deleteNoItems": "It's safe to delete \"{{name}}\" since no item is using it.",
+        "deleteParentTitle": "This tag has child tags",
+        "deleteParentDescription": "Choose what to do with the child tags.",
+        "deleteParentCascade": "Delete all child tags",
+        "deleteParentOrphan": "Keep child tags (make them top-level)"
       },
       "toast": {
         "moveFailed": "Failed to move tag",

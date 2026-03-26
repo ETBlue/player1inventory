@@ -2,6 +2,16 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -52,6 +62,8 @@ function TagInfoTab() {
   const [parentId, setParentId] = useState(NO_PARENT)
   const [savedAt, setSavedAt] = useState(0)
   const [isInitialized, setIsInitialized] = useState(false)
+  // Parent-delete dialog: open when deleting a tag that has children
+  const [parentDeleteOpen, setParentDeleteOpen] = useState(false)
 
   // Sync state when tag loads or after save
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally sync only on id change or after save
@@ -98,8 +110,33 @@ function TagInfoTab() {
     goBack()
   }
 
-  const handleDelete = async () => {
+  // Child tags of the current tag — determines whether to show the cascade/orphan dialog
+  const childTags = tags.filter(
+    (t) => (t as Tag & { parentId?: string }).parentId === id,
+  )
+  const hasChildren = childTags.length > 0
+
+  const handleDeletePress = () => {
+    if (hasChildren) {
+      setParentDeleteOpen(true)
+    }
+    // If no children, DeleteButton handles its own confirmation dialog → onDelete callback
+  }
+
+  const handleDeleteNoChildren = async () => {
     await deleteTag.mutateAsync({ id })
+    goBack()
+  }
+
+  const handleDeleteCascade = async () => {
+    await deleteTag.mutateAsync({ id, deleteChildren: true })
+    setParentDeleteOpen(false)
+    goBack()
+  }
+
+  const handleDeleteOrphan = async () => {
+    await deleteTag.mutateAsync({ id, deleteChildren: false })
+    setParentDeleteOpen(false)
     goBack()
   }
 
@@ -195,20 +232,69 @@ function TagInfoTab() {
           {updateTag.isPending ? t('common.saving') : t('common.save')}
         </Button>
 
-        <DeleteButton
-          trigger={t('common.delete')}
-          dialogTitle={t('settings.tags.tag.deleteTitle')}
-          buttonClassName="w-full"
-          dialogDescription={
-            affectedItemCount > 0
-              ? t('settings.tags.tag.deleteWithItems', {
-                  name: tag.name,
-                  count: affectedItemCount,
-                })
-              : t('settings.tags.tag.deleteNoItems', { name: tag.name })
-          }
-          onDelete={handleDelete}
-        />
+        {hasChildren ? (
+          <>
+            <Button
+              type="button"
+              variant="destructive-ghost"
+              className="w-full"
+              onClick={handleDeletePress}
+            >
+              {t('common.delete')}
+            </Button>
+
+            <AlertDialog
+              open={parentDeleteOpen}
+              onOpenChange={(open) => {
+                // Reset to closed on dismiss — always starts fresh
+                if (!open) setParentDeleteOpen(false)
+              }}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t('settings.tags.tag.deleteParentTitle')}
+                  </AlertDialogTitle>
+                </AlertDialogHeader>
+                <AlertDialogDescription>
+                  {t('settings.tags.tag.deleteParentDescription')}
+                </AlertDialogDescription>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <AlertDialogAction
+                      variant="neutral-outline"
+                      onClick={handleDeleteOrphan}
+                    >
+                      {t('settings.tags.tag.deleteParentOrphan')}
+                    </AlertDialogAction>
+                    <AlertDialogAction
+                      variant="destructive"
+                      onClick={handleDeleteCascade}
+                    >
+                      {t('settings.tags.tag.deleteParentCascade')}
+                    </AlertDialogAction>
+                  </div>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        ) : (
+          <DeleteButton
+            trigger={t('common.delete')}
+            dialogTitle={t('settings.tags.tag.deleteTitle')}
+            buttonClassName="w-full"
+            dialogDescription={
+              affectedItemCount > 0
+                ? t('settings.tags.tag.deleteWithItems', {
+                    name: tag.name,
+                    count: affectedItemCount,
+                  })
+                : t('settings.tags.tag.deleteNoItems', { name: tag.name })
+            }
+            onDelete={handleDeleteNoChildren}
+          />
+        )}
       </form>
     </div>
   )
