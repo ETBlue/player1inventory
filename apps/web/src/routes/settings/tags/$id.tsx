@@ -113,6 +113,7 @@ function TagDetailLayoutInner() {
               to="/settings/tags/$id"
               params={{ id }}
               activeOptions={{ exact: true }}
+              aria-label="Tag info tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) => handleTabClick(e, `/settings/tags/${id}`)}
@@ -122,6 +123,7 @@ function TagDetailLayoutInner() {
             <Link
               to="/settings/tags/$id/items"
               params={{ id }}
+              aria-label="Tag items tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) => handleTabClick(e, `/settings/tags/${id}/items`)}

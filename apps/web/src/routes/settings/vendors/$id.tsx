@@ -113,6 +113,7 @@ function VendorDetailLayoutInner() {
               to="/settings/vendors/$id"
               params={{ id }}
               activeOptions={{ exact: true }}
+              aria-label="Vendor info tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) => handleTabClick(e, `/settings/vendors/${id}`)}
@@ -122,6 +123,7 @@ function VendorDetailLayoutInner() {
             <Link
               to="/settings/vendors/$id/items"
               params={{ id }}
+              aria-label="Vendor items tab"
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) =>
