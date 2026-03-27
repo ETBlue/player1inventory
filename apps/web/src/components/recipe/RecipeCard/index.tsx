@@ -35,7 +35,6 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
           trigger={<Trash2 className="h-4 w-4" />}
           buttonVariant="destructive-ghost"
           buttonSize="icon"
-          buttonClassName="h-8 w-8"
           buttonAriaLabel={t('settings.recipes.deleteAriaLabel', {
             name: recipe.name,
           })}
