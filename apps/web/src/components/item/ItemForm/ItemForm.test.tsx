@@ -87,6 +87,80 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
   })
 })
 
+describe('ItemForm — validation errors on page load', () => {
+  it('shows name required error immediately when name is empty', () => {
+    // Given an ItemForm in create mode with no initial name
+    render(<ItemForm onSubmit={vi.fn()} />)
+
+    // Then the name required error is shown immediately
+    expect(screen.getByText('Name is required.')).toBeInTheDocument()
+  })
+
+  it('does not show name error when name is pre-filled', () => {
+    // Given an ItemForm with an initial name
+    render(<ItemForm onSubmit={vi.fn()} initialValues={{ name: 'Milk' }} />)
+
+    // Then no name error is shown
+    expect(screen.queryByText('Name is required.')).not.toBeInTheDocument()
+  })
+
+  it('shows measurement unit error when tracking is on but unit is empty', async () => {
+    // Given an ItemForm with measurement tracking enabled but no unit
+    const user = userEvent.setup()
+    render(<ItemForm onSubmit={vi.fn()} />)
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+
+    // Then the measurement unit error is shown
+    expect(
+      screen.getByText('Measurement unit is required.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows amount per package error when tracking is on but amount is empty', async () => {
+    // Given an ItemForm with measurement tracking enabled but no amount
+    const user = userEvent.setup()
+    render(<ItemForm onSubmit={vi.fn()} />)
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+
+    // Then the amount per package error is shown
+    expect(
+      screen.getByText('Amount per package is required.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows consume amount error when consume amount is 0', async () => {
+    // Given an ItemForm with consume amount set to 0
+    const user = userEvent.setup()
+    render(<ItemForm onSubmit={vi.fn()} />)
+    const consumeInput = screen.getByLabelText(/amount per consume/i)
+    await user.clear(consumeInput)
+    await user.type(consumeInput, '0')
+
+    // Then the consume amount error is shown
+    expect(screen.getByText('Must be greater than 0.')).toBeInTheDocument()
+  })
+
+  it('does not show the old single validation message below the submit button', async () => {
+    // Given an ItemForm with measurement tracking on but no units
+    const user = userEvent.setup()
+    render(<ItemForm onSubmit={vi.fn()} />)
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+
+    // Then the old combined validation message is NOT shown
+    expect(
+      screen.queryByText(
+        /measurement unit and amount per package are required/i,
+      ),
+    ).not.toBeInTheDocument()
+  })
+})
+
 describe('ItemForm — edit mode (with onDirtyChange)', () => {
   const editInitialValues = {
     packedQuantity: 2,

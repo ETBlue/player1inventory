@@ -197,25 +197,30 @@ export function ItemForm({
     setTargetUnit(checked ? 'measurement' : 'package')
   }
 
-  const isValidationFailed =
-    targetUnit === 'measurement' && (!measurementUnit || !amountPerPackage)
+  const nameError = !name.trim() ? 'Name is required.' : undefined
+  const measurementUnitError =
+    targetUnit === 'measurement' && !measurementUnit
+      ? 'Measurement unit is required.'
+      : undefined
+  const amountPerPackageError =
+    targetUnit === 'measurement' && !amountPerPackage
+      ? 'Amount per package is required.'
+      : undefined
+  const consumeAmountError =
+    consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
 
-  const validationMessage = isValidationFailed
-    ? !measurementUnit && !amountPerPackage
-      ? 'Measurement unit and amount per package are required'
-      : !measurementUnit
-        ? 'Measurement unit is required'
-        : 'Amount per package is required'
-    : null
-
+  const hasFieldError = !!(
+    nameError ||
+    measurementUnitError ||
+    amountPerPackageError ||
+    consumeAmountError
+  )
   const isSubmitDisabled =
-    isValidationFailed ||
-    consumeAmount <= 0 ||
-    (onDirtyChange !== undefined && !isDirty)
+    hasFieldError || (onDirtyChange !== undefined && !isDirty)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (isValidationFailed) return
+    if (isSubmitDisabled) return
     onSubmit(currentValuesRef.current)
   }
 
@@ -357,6 +362,7 @@ export function ItemForm({
               required
               autoFocus
               className="capitalize"
+              error={nameError}
             />
           </div>
 
@@ -440,6 +446,7 @@ export function ItemForm({
                 value={consumeAmount}
                 onChange={(e) => setConsumeAmount(Number(e.target.value))}
                 required
+                error={consumeAmountError}
               />
               <p className="text-xs text-foreground-muted">
                 Amount added/removed per +/- button click. Must be greater than
@@ -552,6 +559,11 @@ export function ItemForm({
                 value={measurementUnit}
                 onChange={(e) => setMeasurementUnit(e.target.value)}
                 disabled={targetUnit !== 'measurement'}
+                error={
+                  targetUnit === 'measurement'
+                    ? measurementUnitError
+                    : undefined
+                }
               />
               <p className="text-xs text-foreground-muted">
                 Precise unit like g / lb / ml
@@ -576,6 +588,11 @@ export function ItemForm({
                 value={amountPerPackage}
                 onChange={(e) => setAmountPerPackage(e.target.value)}
                 disabled={targetUnit !== 'measurement'}
+                error={
+                  targetUnit === 'measurement'
+                    ? amountPerPackageError
+                    : undefined
+                }
               />
               <p className="text-xs text-foreground-muted">
                 How many {measurementUnit || '?'} per pack
@@ -589,9 +606,6 @@ export function ItemForm({
         <Button type="submit" disabled={isSubmitDisabled} className="w-full">
           {submitLabel}
         </Button>
-        {validationMessage && (
-          <p className="text-sm text-destructive">{validationMessage}</p>
-        )}
       </div>
     </form>
   )

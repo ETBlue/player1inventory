@@ -1,4 +1,8 @@
 {
+  "validation": {
+    "required": "This field is required.",
+    "positiveNumber": "Must be greater than 0."
+  },
   "common": {
     "cancel": "Cancel",
     "delete": "Delete",

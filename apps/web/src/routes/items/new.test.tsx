@@ -165,15 +165,18 @@ describe('New item page', () => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
     })
 
-    // And validation message shows both fields required
+    // And field-level errors show both fields required
     expect(
-      screen.getByText(/measurement unit and amount per package are required/i),
+      screen.getByText(/measurement unit is required/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/amount per package is required/i),
     ).toBeInTheDocument()
 
     // When user fills in measurement unit only
     await user.type(screen.getByLabelText(/measurement unit/i), 'g')
 
-    // Then validation message changes to amount per package only
+    // Then measurement unit error disappears, amount per package error remains
     await waitFor(() => {
       expect(
         screen.getByText(/amount per package is required/i),

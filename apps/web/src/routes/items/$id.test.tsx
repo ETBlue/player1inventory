@@ -388,14 +388,15 @@ describe('Item detail page - manual quantity input', () => {
     })
     await user.click(trackSwitch)
 
-    // Then validation message shows both fields required
+    // Then field-level errors show both fields required
     await waitFor(() => {
       expect(
-        screen.getByText(
-          /measurement unit and amount per package are required/i,
-        ),
+        screen.getByText(/measurement unit is required/i),
       ).toBeInTheDocument()
     })
+    expect(
+      screen.getByText(/amount per package is required/i),
+    ).toBeInTheDocument()
 
     // When user fills in measurement unit
     const measurementUnitInput = screen.getByLabelText(/measurement unit/i)

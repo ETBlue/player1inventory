@@ -80,3 +80,16 @@ export const EditValidationError: Story = {
     sections: ['stock', 'info', 'advanced'],
   },
 }
+
+export const CreateModeEmptyError: Story = {
+  name: 'Create Mode (multiple errors visible)',
+  args: {
+    onDirtyChange: undefined,
+    initialValues: {
+      name: '',
+      targetUnit: 'measurement',
+      measurementUnit: '',
+      amountPerPackage: '',
+    },
+  },
+}

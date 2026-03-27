@@ -39,3 +39,10 @@ export const WithValue: Story = {
     readOnly: true,
   },
 }
+
+export const WithError: Story = {
+  args: {
+    value: '',
+    error: 'This field is required.',
+  },
+}

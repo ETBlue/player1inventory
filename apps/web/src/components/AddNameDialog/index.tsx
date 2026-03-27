@@ -32,6 +32,7 @@ export function AddNameDialog({
   onClose,
 }: AddNameDialogProps) {
   const { t } = useTranslation()
+  const nameError = !name.trim() ? t('validation.required') : undefined
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
@@ -49,7 +50,8 @@ export function AddNameDialog({
               onChange={(e) => onNameChange(e.target.value)}
               placeholder={placeholder}
               className="capitalize"
-              onKeyDown={(e) => e.key === 'Enter' && onAdd()}
+              onKeyDown={(e) => e.key === 'Enter' && !nameError && onAdd()}
+              error={nameError}
             />
           </div>
         </div>
@@ -57,7 +59,9 @@ export function AddNameDialog({
           <Button variant="neutral-outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={onAdd}>{submitLabel}</Button>
+          <Button onClick={onAdd} disabled={!!nameError}>
+            {submitLabel}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

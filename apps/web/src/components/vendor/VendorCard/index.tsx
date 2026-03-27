@@ -35,7 +35,6 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
           trigger={<Trash2 className="h-4 w-4" />}
           buttonVariant="destructive-ghost"
           buttonSize="icon"
-          buttonClassName="h-8 w-8"
           buttonAriaLabel={t('settings.vendors.deleteAriaLabel', {
             name: vendor.name,
           })}

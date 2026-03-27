@@ -64,7 +64,6 @@ export const TrashIcon: Story = {
   args: {
     trigger: <Trash2 className="h-4 w-4" />,
     buttonSize: 'icon',
-    buttonClassName: 'h-8 w-8',
     dialogTitle: 'Delete Item?',
     dialogDescription: 'This action cannot be undone.',
     onDelete: () => console.log('Deleted item'),
@@ -90,7 +89,6 @@ export const WithAriaLabel: Story = {
   args: {
     trigger: <Trash2 className="h-4 w-4" />,
     buttonSize: 'icon',
-    buttonClassName: 'h-8 w-8',
     buttonAriaLabel: 'Delete Costco',
     dialogTitle: 'Delete Vendor?',
     dialogDescription: 'No items are assigned to Costco.',
