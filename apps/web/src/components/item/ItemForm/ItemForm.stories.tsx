@@ -80,3 +80,10 @@ export const EditValidationError: Story = {
     sections: ['stock', 'info', 'advanced'],
   },
 }
+
+export const CreateModeEmptyError: Story = {
+  name: 'Create Mode (empty — shows name error)',
+  args: {
+    onDirtyChange: undefined,
+  },
+}

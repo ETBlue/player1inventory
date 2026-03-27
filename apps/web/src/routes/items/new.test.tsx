@@ -165,9 +165,12 @@ describe('New item page', () => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
     })
 
-    // And validation message shows both fields required
+    // And field-level errors show both fields required
     expect(
-      screen.getByText(/measurement unit and amount per package are required/i),
+      screen.getByText(/measurement unit is required/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/amount per package is required/i),
     ).toBeInTheDocument()
 
     // When user fills in measurement unit only
