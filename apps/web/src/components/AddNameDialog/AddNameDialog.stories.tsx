@@ -63,6 +63,21 @@ export const AddVendor: Story = {
   },
 }
 
+export const WithError: Story = {
+  render: () => (
+    <AddNameDialog
+      open={true}
+      title="Add Tag"
+      submitLabel="Add Tag"
+      name=""
+      placeholder="e.g., Dairy, Frozen"
+      onNameChange={() => {}}
+      onAdd={() => {}}
+      onClose={() => {}}
+    />
+  ),
+}
+
 export const AddRecipe: Story = {
   render: () => {
     const [open, setOpen] = useState(false)
