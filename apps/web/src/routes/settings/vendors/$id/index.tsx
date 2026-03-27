@@ -1,8 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/DeleteButton'
-import { VendorNameForm } from '@/components/vendor/VendorNameForm'
+import { VendorInfoForm } from '@/components/vendor/VendorInfoForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout } from '@/hooks/useVendorLayout'
 import {
@@ -27,36 +26,6 @@ function VendorInfoTab() {
   const deleteVendor = useDeleteVendor()
   const { data: affectedItemCount = 0 } = useItemCountByVendor(id)
 
-  const [name, setName] = useState('')
-  const [savedAt, setSavedAt] = useState(0)
-
-  // Sync name when vendor loads or after save
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally sync only on id change or after save
-  useEffect(() => {
-    if (vendor) {
-      setName(vendor.name)
-    }
-  }, [vendor?.id, savedAt])
-
-  const isDirty = vendor ? name !== vendor.name : false
-
-  useEffect(() => {
-    registerDirtyState(isDirty)
-  }, [isDirty, registerDirtyState])
-
-  const handleSave = () => {
-    if (!vendor || !isDirty) return
-    updateVendor.mutate(
-      { id, updates: { name } },
-      {
-        onSuccess: () => {
-          setSavedAt((n) => n + 1)
-          goBack()
-        },
-      },
-    )
-  }
-
   const handleDelete = async () => {
     if (!vendor) return
     deleteVendor.mutate(id, {
@@ -71,12 +40,15 @@ function VendorInfoTab() {
   return (
     <div className="p-4">
       <div className="max-w-2xl mx-auto">
-        <VendorNameForm
-          name={name}
-          onNameChange={setName}
-          onSave={handleSave}
-          isDirty={isDirty}
+        <VendorInfoForm
+          vendor={vendor}
+          onSave={(data) =>
+            updateVendor
+              .mutateAsync({ id: vendor.id, updates: data })
+              .then(() => goBack())
+          }
           isPending={updateVendor.isPending}
+          onDirtyChange={registerDirtyState}
         />
 
         <DeleteButton
