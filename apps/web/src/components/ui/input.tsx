@@ -17,7 +17,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground
             placeholder:text-accessory-emphasized
             disabled:cursor-not-allowed disabled:opacity-50 md:text-sm
-            border border-accessory bg-background-surface `,
+            border border-accessory bg-background-surface
+            rounded-sm`,
             error && 'border-destructive focus-visible:ring-destructive',
             className,
           )}
