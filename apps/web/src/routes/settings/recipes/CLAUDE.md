@@ -23,7 +23,7 @@ Recipe CRUD at `/settings/recipes`. Recipes group items with per-item default am
 
 **Components**:
 - `src/components/recipe/RecipeCard/index.tsx` — displays one recipe with item count; recipe name links to detail page
-- `src/components/recipe/RecipeNameForm/index.tsx` — presentational form (name input + save button) used by new recipe page and Info tab
+- `src/components/recipe/RecipeInfoForm/index.tsx` — presentational form (name input + save button) used by new recipe page and Info tab
 
 **Item assignment UI** (`$id/items.tsx`): Searchable checklist of all items showing current recipe assignments. Saves immediately on checkbox click (no staged state). Typing a name that matches no items reveals a `+ Create "<name>"` row. Each assigned item has a `defaultAmount` stepper (step = `item.consumeAmount`; 0 = optional ingredient).
 

@@ -7,6 +7,9 @@ import type { Recipe } from '@/types'
 
 interface RecipeInfoFormProps {
   recipe: Recipe
+  /** Optional override for the initial displayed value (e.g. prefill from ?name= URL param).
+   *  When provided, the form starts dirty if initialValue !== recipe.name. */
+  initialValue?: string
   onSave: (data: { name: string }) => void
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
@@ -14,13 +17,14 @@ interface RecipeInfoFormProps {
 
 export function RecipeInfoForm({
   recipe,
+  initialValue,
   onSave,
   isPending,
   onDirtyChange,
 }: RecipeInfoFormProps) {
   const { t } = useTranslation()
 
-  const [name, setName] = useState(recipe.name)
+  const [name, setName] = useState(initialValue ?? recipe.name)
 
   // Track the committed baseline so isDirty collapses to false immediately after save
   const [committedName, setCommittedName] = useState(recipe.name)

@@ -1,10 +1,9 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
-import { VendorNameForm } from '@/components/vendor/VendorNameForm'
+import { VendorInfoForm } from '@/components/vendor/VendorInfoForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useCreateVendor } from '@/hooks/useVendors'
 
@@ -17,13 +16,11 @@ function NewVendorPage() {
   const navigate = useNavigate()
   const { goBack } = useAppNavigation('/settings/vendors')
   const createVendor = useCreateVendor()
-  const [name, setName] = useState('')
 
-  const isDirty = name.trim() !== ''
+  const emptyVendor = { id: '', name: '', createdAt: new Date() }
 
-  const handleSave = async () => {
-    if (!isDirty) return
-    const vendor = await createVendor.mutateAsync(name.trim())
+  const handleSave = async ({ name }: { name: string }) => {
+    const vendor = await createVendor.mutateAsync(name)
     if (vendor?.id) {
       navigate({ to: '/settings/vendors/$id', params: { id: vendor.id } })
     }
@@ -45,11 +42,9 @@ function NewVendorPage() {
       </Toolbar>
       <div className="p-4">
         <div className="max-w-2xl mx-auto">
-          <VendorNameForm
-            name={name}
-            onNameChange={setName}
+          <VendorInfoForm
+            vendor={emptyVendor}
             onSave={handleSave}
-            isDirty={isDirty}
             isPending={createVendor.isPending}
           />
         </div>
