@@ -26,4 +26,4 @@ Back button and post-action navigation use smart history tracking (same pattern 
 - `src/routes/settings/tags/$id/items.tsx` - Items tab
 - `src/routes/settings/tags/index.tsx` - Tags list page with drag-and-drop
 - `src/hooks/useTagLayout.tsx` - Dirty state provider
-- `src/components/tag/TagNameForm/index.tsx` - Presentational form component
+- `src/components/tag/TagInfoForm/index.tsx` - Presentational form component (name, type, parent fields; owns local state, exposes onSave(data) and onDirtyChange)
