@@ -176,7 +176,7 @@ describe('New item page', () => {
     // When user fills in measurement unit only
     await user.type(screen.getByLabelText(/measurement unit/i), 'g')
 
-    // Then validation message changes to amount per package only
+    // Then measurement unit error disappears, amount per package error remains
     await waitFor(() => {
       expect(
         screen.getByText(/amount per package is required/i),

@@ -3,8 +3,13 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ItemForm.stories'
 
-const { CreateMode, EditMode, EditMeasurementMode, EditValidationError } =
-  composeStories(stories)
+const {
+  CreateMode,
+  EditMode,
+  EditMeasurementMode,
+  EditValidationError,
+  CreateModeEmptyError,
+} = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
   it('CreateMode renders without error', () => {
@@ -25,5 +30,10 @@ describe('ItemForm stories smoke tests', () => {
   it('EditValidationError renders without error', () => {
     render(<EditValidationError />)
     expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument()
+  })
+
+  it('CreateModeEmptyError shows name validation error', () => {
+    render(<CreateModeEmptyError />)
+    expect(screen.getByText('Name is required.')).toBeInTheDocument()
   })
 })

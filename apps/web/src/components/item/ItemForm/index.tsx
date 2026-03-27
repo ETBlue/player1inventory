@@ -209,14 +209,14 @@ export function ItemForm({
   const consumeAmountError =
     consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
 
+  const hasFieldError = !!(
+    nameError ||
+    measurementUnitError ||
+    amountPerPackageError ||
+    consumeAmountError
+  )
   const isSubmitDisabled =
-    !!(
-      nameError ||
-      measurementUnitError ||
-      amountPerPackageError ||
-      consumeAmountError
-    ) ||
-    (onDirtyChange !== undefined && !isDirty)
+    hasFieldError || (onDirtyChange !== undefined && !isDirty)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

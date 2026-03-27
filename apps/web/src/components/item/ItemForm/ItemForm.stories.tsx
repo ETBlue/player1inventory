@@ -82,8 +82,14 @@ export const EditValidationError: Story = {
 }
 
 export const CreateModeEmptyError: Story = {
-  name: 'Create Mode (empty — shows name error)',
+  name: 'Create Mode (multiple errors visible)',
   args: {
     onDirtyChange: undefined,
+    initialValues: {
+      name: '',
+      targetUnit: 'measurement',
+      measurementUnit: '',
+      amountPerPackage: '',
+    },
   },
 }
