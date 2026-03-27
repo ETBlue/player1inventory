@@ -291,12 +291,92 @@ describe('calculateTagCount', () => {
     expect(count).toBe(0) // No grain in fridge
   })
 
-  it('handles tag already selected in same type', () => {
+  it('returns independent count for tag when another tag in same type is already selected', () => {
+    // The count reflects how many items match THIS tag (given cross-type filters),
+    // independent of what else is selected within the same tag type.
     const count = calculateTagCount('tag-veg', 'type-category', items, {
       'type-category': ['tag-fruit'],
       'type-location': ['tag-fridge'],
     })
-    expect(count).toBe(2) // Both veg and fruit in fridge (OR within type)
+    expect(count).toBe(1) // Only Tomatoes (veg + fridge); tag-fruit selection is replaced, not appended
+  })
+})
+
+describe('calculateTagCount with nested tags', () => {
+  // Tag hierarchy:
+  //   Food (tag-food) — type-1
+  //     Vegetables (tag-veg) — type-1
+  //     Fruits (tag-fruit) — type-1
+  const allTags: Tag[] = [
+    { id: 'tag-food', typeId: 'type-1', name: 'Food' },
+    {
+      id: 'tag-veg',
+      typeId: 'type-1',
+      name: 'Vegetables',
+      parentId: 'tag-food',
+    },
+    {
+      id: 'tag-fruit',
+      typeId: 'type-1',
+      name: 'Fruits',
+      parentId: 'tag-food',
+    },
+  ]
+
+  // 5 items tagged Vegetables, 4 tagged Fruits (all items carry only their leaf tag)
+  const items: Item[] = [
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: `veg-${i}`,
+      name: `Vegetable ${i}`,
+      tagIds: ['tag-veg'],
+      targetQuantity: 1,
+      refillThreshold: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+    ...Array.from({ length: 4 }, (_, i) => ({
+      id: `fruit-${i}`,
+      name: `Fruit ${i}`,
+      tagIds: ['tag-fruit'],
+      targetQuantity: 1,
+      refillThreshold: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+  ]
+
+  it('returns correct count for subtag when parent tag is selected', () => {
+    // Given Food is already selected in currentFilters
+    const currentFilters = { 'type-1': ['tag-food'] }
+
+    // When calculating count for Vegetables
+    const count = calculateTagCount(
+      'tag-veg',
+      'type-1',
+      items,
+      currentFilters,
+      allTags,
+    )
+
+    // Then count should be 5, not 9 (the parent tag's expanded count)
+    expect(count).toBe(5)
+  })
+
+  it('returns correct count for sibling subtag when parent tag is selected', () => {
+    // Given Food is already selected in currentFilters
+    const currentFilters = { 'type-1': ['tag-food'] }
+
+    // When calculating count for Fruits
+    const count = calculateTagCount(
+      'tag-fruit',
+      'type-1',
+      items,
+      currentFilters,
+      allTags,
+    )
+
+    // Then count should be 4, not 9
+    expect(count).toBe(4)
   })
 })
 

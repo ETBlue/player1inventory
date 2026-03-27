@@ -55,10 +55,14 @@ export function calculateTagCount(
   currentFilters: FilterState,
   allTags?: Tag[],
 ): number {
-  // Simulate selecting this tag with other active filters
+  // Simulate selecting this tag with other active filters.
+  // Replace (not append) the tag type selection so each tag's count reflects
+  // only items matching that specific tag (or its descendants), independent of
+  // what else is selected within the same tag type. This prevents subtag count
+  // inflation when a parent tag is already selected.
   const simulatedFilters = {
     ...currentFilters,
-    [tagTypeId]: [...(currentFilters[tagTypeId] || []), tagId],
+    [tagTypeId]: [tagId],
   }
   return filterItems(items, simulatedFilters, allTags).length
 }
