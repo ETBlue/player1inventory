@@ -51,7 +51,7 @@ export function AddNameDialog({
               placeholder={placeholder}
               className="capitalize"
               onKeyDown={(e) => e.key === 'Enter' && !nameError && onAdd()}
-              {...(nameError && { error: nameError })}
+              error={nameError}
             />
           </div>
         </div>

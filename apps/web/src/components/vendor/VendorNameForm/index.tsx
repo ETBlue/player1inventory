@@ -36,7 +36,7 @@ export function VendorNameForm({
           value={name}
           autoFocus
           onChange={(e) => onNameChange(e.target.value)}
-          {...(nameError && { error: nameError })}
+          error={nameError}
         />
       </div>
       <Button

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './TagNameForm.stories'
 
-const { Empty, WithName, Pending } = composeStories(stories)
+const { Empty, WithName, Pending, WithError } = composeStories(stories)
 
 describe('TagNameForm stories smoke tests', () => {
   it('Empty renders without error', () => {
@@ -19,5 +19,10 @@ describe('TagNameForm stories smoke tests', () => {
   it('Pending renders without error', () => {
     render(<Pending />)
     expect(screen.getByDisplayValue('Dairy')).toBeInTheDocument()
+  })
+
+  it('WithError renders validation message', () => {
+    render(<WithError />)
+    expect(screen.getByText('This field is required.')).toBeInTheDocument()
   })
 })

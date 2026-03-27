@@ -48,3 +48,14 @@ export const Pending: Story = {
     />
   ),
 }
+
+export const WithError: Story = {
+  render: () => (
+    <TagNameForm
+      name=""
+      onNameChange={() => {}}
+      onSave={() => {}}
+      isDirty={false}
+    />
+  ),
+}

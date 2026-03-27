@@ -37,7 +37,7 @@ export function TagNameForm({
           autoFocus
           onChange={(e) => onNameChange(e.target.value)}
           className="capitalize"
-          {...(nameError && { error: nameError })}
+          error={nameError}
         />
       </div>
       <Button
