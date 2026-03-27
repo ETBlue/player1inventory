@@ -19,7 +19,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             disabled:cursor-not-allowed disabled:opacity-50 md:text-sm
             border border-accessory bg-background-surface
             rounded-sm`,
-            error && 'border-destructive focus-visible:outline-destructive',
+            error && 'border-destructive',
             className,
           )}
           ref={ref}
