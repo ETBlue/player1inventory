@@ -79,7 +79,7 @@ export const InForm: Story = {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., Vegetables"
-            className="flex h-10 w-full rounded-sm px-3 py-2 text-foreground-default bg-background-surface border border-accessory-default focus:outline-none focus:border-accessory-emphasized md:text-sm"
+            className="flex h-8 w-full rounded-sm px-3 py-2 text-foreground-default bg-background-surface border border-accessory-default focus:outline-none focus:border-accessory-emphasized md:text-sm"
           />
         </div>
 
