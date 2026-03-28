@@ -30,10 +30,10 @@ export const Default: Story = {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone.
-          </AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          This action cannot be undone.
+        </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction>Continue</AlertDialogAction>
@@ -52,10 +52,10 @@ export const Destructive: Story = {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this item?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This will permanently delete the item. This action cannot be undone.
-          </AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          This will permanently delete the item. This action cannot be undone.
+        </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction variant="destructive">Delete</AlertDialogAction>

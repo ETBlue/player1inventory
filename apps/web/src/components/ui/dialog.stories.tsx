@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogMain,
   DialogTitle,
   DialogTrigger,
 } from './dialog'
@@ -30,13 +31,13 @@ export const Default: Story = {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Dialog Title</DialogTitle>
+        </DialogHeader>
+        <DialogMain>
           <DialogDescription>
             This is a dialog description that explains what this dialog is for.
           </DialogDescription>
-        </DialogHeader>
-        <div className="py-4">
           <p>Dialog content goes here.</p>
-        </div>
+        </DialogMain>
         <DialogFooter>
           <Button variant="neutral-outline">Cancel</Button>
           <Button>Save</Button>
@@ -55,20 +56,22 @@ export const WithForm: Story = {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Profile</DialogTitle>
+        </DialogHeader>
+        <DialogMain>
           <DialogDescription>
             Make changes to your profile here.
           </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" placeholder="Your name" />
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" placeholder="Your name" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" placeholder="you@example.com" />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="you@example.com" />
-          </div>
-        </div>
+        </DialogMain>
         <DialogFooter>
           <Button variant="neutral-outline">Cancel</Button>
           <Button>Save changes</Button>
