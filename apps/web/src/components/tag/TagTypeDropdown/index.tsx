@@ -61,8 +61,25 @@ export function TagTypeDropdown({
               checked={isChecked}
               onCheckedChange={() => onToggleTag(tag.id)}
               onSelect={(e) => e.preventDefault()} // Keep menu open
-              style={depth > 0 ? { paddingLeft: depth * 16 } : undefined}
+              style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
             >
+              {Array.from({ length: depth }, (_, i) => i * 16 + 4).map(
+                (leftPx) => (
+                  <div
+                    key={`connector-at-${leftPx}px`}
+                    className="border-r border-accessory-default absolute"
+                    style={{
+                      right: 'auto',
+                      top: '-16px',
+                      bottom: '16px',
+                      left: `-${leftPx}px`,
+                    }}
+                  />
+                ),
+              )}
+              {depth > 0 && (
+                <div className="absolute w-2 h-px bg-accessory-default -left-1" />
+              )}
               <div className="flex items-center justify-between w-full">
                 <Badge
                   variant={isChecked ? tagType.color : `${tagType.color}-tint`}

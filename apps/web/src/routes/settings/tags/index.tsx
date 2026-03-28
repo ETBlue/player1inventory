@@ -150,7 +150,7 @@ function DraggableTagBadge({
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, paddingLeft: depth * 16 }}
+      style={{ ...style, marginLeft: depth * 16 }}
       className="flex items-center"
     >
       <div

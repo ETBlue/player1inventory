@@ -111,19 +111,22 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      `relative flex items-center
-      px-2 py-1.5 gap-2 text-sm
-      cursor-pointer hover:bg-background-base select-none
+      `relative flex items-center px-2 py-1.5 gap-2
+      text-sm
+      group hover:bg-background-base
+      cursor-pointer select-none 
       data-[disabled]:pointer-events-none data-[disabled]:opacity-50`,
       className,
     )}
     {...props}
   >
-    {checked ? (
-      <Check className="h-4 w-4 text-foreground-emphasized" />
-    ) : (
-      <Square className="h-3.5 w-3.5 mr-0.5 text-foreground-muted" />
-    )}
+    <span className="z-10 p-1 -m-1 bg-background-surface group-hover:bg-background-base">
+      {checked ? (
+        <Check className="h-4 w-4 text-foreground-emphasized" />
+      ) : (
+        <Square className="h-3.5 w-3.5 mr-0.5 text-foreground-muted" />
+      )}
+    </span>
     {children}
   </DropdownMenuPrimitive.CheckboxItem>
 ))
