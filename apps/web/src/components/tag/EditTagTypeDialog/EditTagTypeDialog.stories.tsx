@@ -17,27 +17,72 @@ export const Default: Story = {
     const [tagType, setTagType] = useState<{
       id: string
       name: string
-      color?: string
+      color: TagColor
+      createdAt: Date
+      updatedAt: Date
     } | null>(null)
-    const [name, setName] = useState('Category')
-    const [color, setColor] = useState(TagColor.blue)
     return (
       <>
         <Button
           onClick={() =>
-            setTagType({ id: '1', name: 'Category', color: TagColor.blue })
+            setTagType({
+              id: '1',
+              name: 'Category',
+              color: TagColor.blue,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
           }
         >
           Edit Tag Type
         </Button>
         <EditTagTypeDialog
           tagType={tagType}
-          name={name}
-          color={color}
-          onNameChange={setName}
-          onColorChange={setColor}
-          onSave={() => {
-            console.log('Save:', { name, color })
+          onSave={(data) => {
+            console.log('Save:', data)
+            setTagType(null)
+          }}
+          onClose={() => setTagType(null)}
+        />
+      </>
+    )
+  },
+}
+
+export const WithValidationError: Story = {
+  render: () => {
+    const [tagType, setTagType] = useState<{
+      id: string
+      name: string
+      color: TagColor
+      createdAt: Date
+      updatedAt: Date
+    } | null>({
+      id: '2',
+      name: '',
+      color: TagColor.green,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    return (
+      <>
+        <Button
+          onClick={() =>
+            setTagType({
+              id: '2',
+              name: '',
+              color: TagColor.green,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+          }
+        >
+          Open Dialog (empty name)
+        </Button>
+        <EditTagTypeDialog
+          tagType={tagType}
+          onSave={(data) => {
+            console.log('Save:', data)
             setTagType(null)
           }}
           onClose={() => setTagType(null)}
