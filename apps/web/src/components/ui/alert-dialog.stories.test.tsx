@@ -9,14 +9,14 @@ describe('AlertDialog stories smoke tests', () => {
   it('Default renders without error', () => {
     render(<Default />)
     expect(
-      screen.getByRole('button', { name: 'Open Alert' }),
+      screen.getByRole('heading', { name: 'Are you sure?' }),
     ).toBeInTheDocument()
   })
 
   it('Destructive renders without error', () => {
     render(<Destructive />)
     expect(
-      screen.getByRole('button', { name: 'Delete Item' }),
+      screen.getByRole('heading', { name: 'Delete this item?' }),
     ).toBeInTheDocument()
   })
 })

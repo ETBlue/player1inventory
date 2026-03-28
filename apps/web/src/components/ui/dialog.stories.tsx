@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogMain,
   DialogTitle,
-  DialogTrigger,
 } from './dialog'
 import { Input } from './input'
 import { Label } from './label'
@@ -24,10 +23,7 @@ type Story = StoryObj<typeof Dialog>
 
 export const Default: Story = {
   render: () => (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="neutral-outline">Open Dialog</Button>
-      </DialogTrigger>
+    <Dialog open>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Dialog Title</DialogTitle>
@@ -49,10 +45,7 @@ export const Default: Story = {
 
 export const WithForm: Story = {
   render: () => (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button>Edit Profile</Button>
-      </DialogTrigger>
+    <Dialog open>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Profile</DialogTitle>
