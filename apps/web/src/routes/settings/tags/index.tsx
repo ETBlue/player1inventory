@@ -151,8 +151,23 @@ function DraggableTagBadge({
     <div
       ref={setNodeRef}
       style={{ ...style, marginLeft: depth * 16 }}
-      className="flex items-center"
+      className="relative flex items-center"
     >
+      {Array.from({ length: depth }, (_, i) => i * 16 + 8).map((leftPx) => (
+        <div
+          key={`connector-at-${leftPx}px`}
+          className="border-r border-accessory-default absolute"
+          style={{
+            right: 'auto',
+            top: '-14px',
+            bottom: '10px',
+            left: `-${leftPx}px`,
+          }}
+        />
+      ))}
+      {depth > 0 && (
+        <div className="absolute w-2 h-px bg-accessory-default -left-2" />
+      )}
       <div
         className="inline-flex"
         {...(isDragDisabled ? {} : attributes)}
@@ -162,7 +177,7 @@ function DraggableTagBadge({
         <TagBadge
           tag={tag}
           tagType={tagType}
-          className={`rounded-tr-none rounded-br-none ${depth >= 1 ? 'opacity-80' : ''}`}
+          className={`z-10 rounded-tr-none rounded-br-none ${depth >= 1 ? 'opacity-80' : ''}`}
           onClick={() => {
             navigate({
               to: '/settings/tags/$id',
