@@ -177,7 +177,7 @@ function DraggableTagBadge({
         <TagBadge
           tag={tag}
           tagType={tagType}
-          className={`z-10 rounded-tr-none rounded-br-none ${depth >= 1 ? 'opacity-80' : ''}`}
+          className={`z-10 rounded-tr-none rounded-br-none`}
           onClick={() => {
             navigate({
               to: '/settings/tags/$id',

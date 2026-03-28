@@ -41,29 +41,44 @@ function TagTypeSection({
         <div className="h-px bg-accessory-emphasized" />
       </div>
 
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="space-y-1">
         {tagsWithDepth.map((tag) => {
           const isSelected = item.tagIds.includes(tag.id)
-          const indentClass =
-            tag.depth > 0
-              ? (`pl-${Math.min(tag.depth * 4, 12)}` as string)
-              : undefined
-
+          const depth = tag.depth ?? 0
           return (
-            <Badge
+            <div
               key={tag.id}
-              role="button"
-              aria-pressed={isSelected}
-              variant={isSelected ? tagType.color : 'neutral-outline'}
-              className={`cursor-pointer${indentClass ? ` ${indentClass}` : ''}`}
-              onClick={() => onToggle(tag.id)}
+              className="relative"
+              style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
             >
-              {tag.depth > 0 && (
-                <span className="text-xs opacity-50 mr-0.5">{'↳'}</span>
+              {Array.from({ length: depth }, (_, i) => i * 16 + 8).map(
+                (leftPx) => (
+                  <div
+                    key={`connector-at-${leftPx}px`}
+                    className="border-r border-accessory-emphasized absolute"
+                    style={{
+                      right: 'auto',
+                      top: '-14px',
+                      bottom: '10px',
+                      left: `-${leftPx}px`,
+                    }}
+                  />
+                ),
               )}
-              {tag.name}
-              {isSelected && <X className="ml-1 h-3 w-3" />}
-            </Badge>
+              {depth > 0 && (
+                <div className="absolute w-2 h-px bg-accessory-emphasized -left-2 top-3" />
+              )}
+              <Badge
+                role="button"
+                aria-pressed={isSelected}
+                variant={isSelected ? tagType.color : `${tagType.color}-tint`}
+                className={`cursor-pointer z-10 relative`}
+                onClick={() => onToggle(tag.id)}
+              >
+                {tag.name}
+                {isSelected && <X className="ml-1 h-3 w-3" />}
+              </Badge>
+            </div>
           )
         })}
         <Button
