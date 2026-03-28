@@ -642,3 +642,194 @@ test.describe('tag item count after item deletion', () => {
     await tagsPage.cancelDeleteDialog()
   })
 })
+
+// Seed tag types and tags (with optional parentId) directly into IndexedDB.
+// Extends the existing seedTags helper to support the nested tag hierarchy.
+async function seedTagsWithParents(
+  page: Page,
+  tagTypes: { name: string; color?: string }[],
+  tags: { name: string; typeIndex: number; parentIndex?: number }[] = [],
+): Promise<{ tagTypeIds: string[]; tagIds: string[] }> {
+  await page.goto('/')
+
+  const tagTypeIds = tagTypes.map(() => crypto.randomUUID())
+  const tagIds = tags.map(() => crypto.randomUUID())
+  const now = new Date().toISOString()
+
+  await page.evaluate(
+    async ({ tagTypeIds, tagIds, tagTypes, tags, now }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+
+      const put = (storeName: string, record: object) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(storeName, 'readwrite')
+          const req = tx.objectStore(storeName).put(record)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+        })
+
+      for (let i = 0; i < tagTypes.length; i++) {
+        await put('tagTypes', {
+          id: tagTypeIds[i],
+          name: tagTypes[i].name,
+          color: tagTypes[i].color ?? 'blue',
+          createdAt: new Date(now),
+          updatedAt: new Date(now),
+        })
+      }
+
+      for (let i = 0; i < tags.length; i++) {
+        const record: Record<string, unknown> = {
+          id: tagIds[i],
+          name: tags[i].name,
+          typeId: tagTypeIds[tags[i].typeIndex],
+          createdAt: new Date(now),
+          updatedAt: new Date(now),
+        }
+        // Only set parentId when a parentIndex is provided
+        if (tags[i].parentIndex !== undefined) {
+          record.parentId = tagIds[tags[i].parentIndex as number]
+        }
+        await put('tags', record)
+      }
+    },
+    { tagTypeIds, tagIds, tagTypes, tags, now },
+  )
+
+  return { tagTypeIds, tagIds }
+}
+
+test('user can create a tag with a parent tag', async ({ page, baseURL }) => {
+  const tagsPage = new TagsPage(page)
+
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: UI-driven setup — create tag type and parent tag via UI.
+    // New UI: "New Tag Type" button opens a dialog; fill Name + click Save inside dialog.
+    // (src/routes/settings/tags/index.tsx — Dialog with TagTypeInfoForm)
+    await tagsPage.navigateTo()
+    await tagsPage.clickNewTagType()
+    await page.getByRole('dialog').getByLabel('Name').fill('Protein')
+    await page.getByRole('dialog').getByRole('button', { name: /save/i }).click()
+    await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
+
+    await tagsPage.clickNewTag('Protein')
+    await tagsPage.fillTagName('Chicken')
+    await tagsPage.submitTagDialog()
+    await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+  } else {
+    // Local: seed tag type and parent tag directly into IndexedDB
+    await seedTagsWithParents(
+      page,
+      [{ name: 'Protein', color: 'green' }],
+      [{ name: 'Chicken', typeIndex: 0 }],
+    )
+    await tagsPage.navigateTo()
+    await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+  }
+
+  // When: user clicks "New Tag" inside the Protein card
+  await tagsPage.clickNewTag('Protein')
+
+  // And: fills the child tag name "Grilled Chicken"
+  await tagsPage.fillTagName('Grilled Chicken')
+
+  // And: selects "Chicken" as the parent
+  await tagsPage.selectTagParent('Chicken')
+
+  // And: submits the dialog
+  await tagsPage.submitTagDialog()
+
+  // Then: "Grilled Chicken" badge appears in the tags list
+  // Child tags (depth >= 1) are drag-disabled, so no role="button" from dnd-kit.
+  // Match by text content rendered inside the Badge div: "{name} (0)"
+  // (src/routes/settings/tags/index.tsx — DraggableTagBadge renders TagBadge inside a div)
+  await expect(
+    page.getByText(/^Grilled Chicken \(\d+\)$/)
+  ).toBeVisible()
+})
+
+test('user can delete a parent tag with cascade (deletes child tags too)', async ({ page, baseURL }) => {
+  const tagsPage = new TagsPage(page)
+
+  let parentTagId: string
+
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud: UI-driven setup — create tag type, parent tag "Chicken", child tag "Grilled Chicken"
+    await tagsPage.navigateTo()
+    await tagsPage.clickNewTagType()
+    await page.getByRole('dialog').getByLabel('Name').fill('Protein')
+    await page.getByRole('dialog').getByRole('button', { name: /save/i }).click()
+    await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
+
+    // Create parent tag "Chicken"
+    await tagsPage.clickNewTag('Protein')
+    await tagsPage.fillTagName('Chicken')
+    await tagsPage.submitTagDialog()
+    await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+
+    // Navigate to Chicken detail to get its ID from the URL
+    await tagsPage.clickTagBadgeToNavigate('Chicken')
+    await page.waitForURL(/\/settings\/tags\/[^/]/)
+    parentTagId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!
+    await page.goBack()
+
+    // Create child tag "Grilled Chicken" with parent "Chicken"
+    await tagsPage.clickNewTag('Protein')
+    await tagsPage.fillTagName('Grilled Chicken')
+    await tagsPage.selectTagParent('Chicken')
+    await tagsPage.submitTagDialog()
+    await expect(page.getByText(/^Grilled Chicken \(\d+\)$/)).toBeVisible()
+  } else {
+    // Local: seed tag type, parent tag "Chicken" (index 0), child tag "Grilled Chicken" (index 1)
+    const { tagIds } = await seedTagsWithParents(
+      page,
+      [{ name: 'Protein', color: 'green' }],
+      [
+        { name: 'Chicken', typeIndex: 0 },
+        { name: 'Grilled Chicken', typeIndex: 0, parentIndex: 0 },
+      ],
+    )
+    parentTagId = tagIds[0]
+  }
+
+  // Verify both tags appear on the tags list page
+  await tagsPage.navigateTo()
+  await expect(tagsPage.getTagBadge('Chicken')).toBeVisible()
+  await expect(page.getByText(/^Grilled Chicken \(\d+\)$/)).toBeVisible()
+
+  // When: user navigates to the "Chicken" tag detail page
+  // The cascade/orphan dialog appears on the tag detail page (not the list page)
+  // because the list page DeleteButton only supports no-children tags.
+  // (src/routes/settings/tags/$id/index.tsx:63-68)
+  await page.goto(`/settings/tags/${parentTagId}`)
+  // Wait for the tag detail layout to render — the tag name appears in the header h1
+  // (src/routes/settings/tags/$id.tsx:106)
+  await page.waitForSelector('h1')
+  await expect(page.locator('h1')).toContainText('Chicken', { ignoreCase: true })
+
+  // And: clicks the "Delete" button — which opens the cascade/orphan dialog
+  // (only visible when the tag has children; rendered as Button variant="destructive-ghost")
+  // (src/routes/settings/tags/$id/index.tsx:118-127)
+  await page.getByRole('button', { name: /^delete$/i }).click()
+
+  // Then: the "This tag has child tags" dialog appears
+  // (src/i18n/locales/en.json: settings.tags.tag.deleteParentTitle)
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await expect(page.getByRole('alertdialog')).toContainText('This tag has child tags')
+
+  // When: user clicks "Delete all child tags" (cascade option)
+  // (src/i18n/locales/en.json: settings.tags.tag.deleteParentCascade = "Delete all child tags")
+  // (src/routes/settings/tags/$id/index.tsx:154-160 — AlertDialogAction variant="destructive")
+  await page.getByRole('button', { name: 'Delete all child tags' }).click()
+
+  // Then: navigates back to tags list (goBack() is called after cascade delete)
+  await page.waitForURL(/\/settings\/tags$/)
+
+  // And: both "Chicken" and "Grilled Chicken" are gone
+  await expect(tagsPage.getTagBadge('Chicken')).not.toBeVisible()
+  await expect(page.getByText(/^Grilled Chicken \(\d+\)$/)).not.toBeVisible()
+})

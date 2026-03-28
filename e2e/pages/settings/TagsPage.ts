@@ -35,13 +35,24 @@ export class TagsPage {
   }
 
   async fillTagName(name: string) {
-    // AddNameDialog input placeholder "e.g., Dairy, Frozen" (src/routes/settings/tags/index.tsx:476)
-    await this.page.getByPlaceholder(/dairy/i).fill(name)
+    // TagInfoForm Name input: label htmlFor="tag-name", label text "Name"
+    // Scoped to the open dialog to avoid conflict with other "Name" inputs on the page.
+    // (src/components/tag/TagInfoForm/index.tsx:82-90)
+    await this.page.getByRole('dialog').getByLabel('Name').fill(name)
+  }
+
+  async selectTagParent(parentName: string) {
+    // TagInfoForm Parent Select: label htmlFor="tag-parent", label text "Parent Tag"
+    // Opens a Radix Select and chooses the given parent option.
+    // (src/components/tag/TagInfoForm/index.tsx:129-150)
+    await this.page.getByRole('dialog').getByLabel('Parent Tag').click()
+    await this.page.getByRole('option', { name: parentName }).click()
   }
 
   async submitTagDialog() {
-    // "Add Tag" submit button in AddNameDialog (src/routes/settings/tags/index.tsx:472)
-    await this.page.getByRole('button', { name: 'Add Tag' }).click()
+    // Save button inside the Add Tag dialog (TagInfoForm renders t('common.save') = "Save")
+    // (src/components/tag/TagInfoForm/index.tsx:152-158)
+    await this.page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
   }
 
   getTagBadge(name: string): Locator {
