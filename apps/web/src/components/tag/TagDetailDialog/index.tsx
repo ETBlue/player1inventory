@@ -1,6 +1,15 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -76,18 +85,31 @@ export function TagDetailDialog({
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
+      <AlertDialog
         open={showConfirm}
         onOpenChange={(open) => !open && setShowConfirm(false)}
-        title={`Delete "${tag.name}"?`}
-        description={`This will remove "${tag.name}" from ${itemCount} item${itemCount === 1 ? '' : 's'}.`}
-        confirmLabel="Delete"
-        onConfirm={() => {
-          setShowConfirm(false)
-          onDelete()
-        }}
-        destructive
-      />
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Delete "${tag.name}"?`}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {`This will remove "${tag.name}" from ${itemCount} item${itemCount === 1 ? '' : 's'}.`}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: 'destructive' })}
+              onClick={() => {
+                setShowConfirm(false)
+                onDelete()
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
