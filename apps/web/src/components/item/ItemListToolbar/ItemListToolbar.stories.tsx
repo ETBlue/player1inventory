@@ -1,3 +1,4 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -18,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { SortDirection, SortField } from '@/lib/sortUtils'
+import { noopApolloClient } from '@/test/apolloStub'
 import type { Item, Recipe, Vendor } from '@/types'
 import { ItemListToolbar } from '.'
 
@@ -44,11 +46,13 @@ const meta: Meta<typeof ItemListToolbar> = {
   component: ItemListToolbar,
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <RouterWrapper>
-          <Story />
-        </RouterWrapper>
-      </QueryClientProvider>
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterWrapper>
+            <Story />
+          </RouterWrapper>
+        </QueryClientProvider>
+      </ApolloProvider>
     ),
   ],
 }

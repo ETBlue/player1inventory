@@ -1,3 +1,4 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -7,6 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
+import { noopApolloClient } from '@/test/apolloStub'
 import type { Item, Recipe, Vendor } from '@/types'
 import { ItemFilters } from '.'
 
@@ -33,11 +35,13 @@ const meta: Meta<typeof ItemFilters> = {
   component: ItemFilters,
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <RouterWrapper>
-          <Story />
-        </RouterWrapper>
-      </QueryClientProvider>
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterWrapper>
+            <Story />
+          </RouterWrapper>
+        </QueryClientProvider>
+      </ApolloProvider>
     ),
   ],
 }
