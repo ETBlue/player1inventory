@@ -1,6 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { AddNameDialog } from '.'
 
 const meta: Meta<typeof AddNameDialog> = {
@@ -12,55 +10,33 @@ export default meta
 type Story = StoryObj<typeof AddNameDialog>
 
 export const AddTag: Story = {
-  render: () => {
-    const [open, setOpen] = useState(false)
-    const [name, setName] = useState('')
-    return (
-      <>
-        <Button onClick={() => setOpen(true)}>Add Tag</Button>
-        <AddNameDialog
-          open={open}
-          title="Add Tag"
-          submitLabel="Add Tag"
-          name={name}
-          placeholder="e.g., Dairy, Frozen"
-          onNameChange={setName}
-          onAdd={() => {
-            console.log('Add:', name)
-            setOpen(false)
-            setName('')
-          }}
-          onClose={() => setOpen(false)}
-        />
-      </>
-    )
-  },
+  render: () => (
+    <AddNameDialog
+      open={true}
+      title="Add Tag"
+      submitLabel="Add Tag"
+      name=""
+      placeholder="e.g., Dairy, Frozen"
+      onNameChange={() => {}}
+      onAdd={() => {}}
+      onClose={() => {}}
+    />
+  ),
 }
 
 export const AddVendor: Story = {
-  render: () => {
-    const [open, setOpen] = useState(false)
-    const [name, setName] = useState('')
-    return (
-      <>
-        <Button onClick={() => setOpen(true)}>New Vendor</Button>
-        <AddNameDialog
-          open={open}
-          title="New Vendor"
-          submitLabel="Add Vendor"
-          name={name}
-          placeholder="e.g., Costco, iHerb"
-          onNameChange={setName}
-          onAdd={() => {
-            console.log('Add:', name)
-            setOpen(false)
-            setName('')
-          }}
-          onClose={() => setOpen(false)}
-        />
-      </>
-    )
-  },
+  render: () => (
+    <AddNameDialog
+      open={true}
+      title="New Vendor"
+      submitLabel="Add Vendor"
+      name=""
+      placeholder="e.g., Costco, iHerb"
+      onNameChange={() => {}}
+      onAdd={() => {}}
+      onClose={() => {}}
+    />
+  ),
 }
 
 export const WithError: Story = {
@@ -79,27 +55,16 @@ export const WithError: Story = {
 }
 
 export const AddRecipe: Story = {
-  render: () => {
-    const [open, setOpen] = useState(false)
-    const [name, setName] = useState('')
-    return (
-      <>
-        <Button onClick={() => setOpen(true)}>New Recipe</Button>
-        <AddNameDialog
-          open={open}
-          title="New Recipe"
-          submitLabel="Add Recipe"
-          name={name}
-          placeholder="e.g., Pasta Sauce, Smoothie"
-          onNameChange={setName}
-          onAdd={() => {
-            console.log('Add:', name)
-            setOpen(false)
-            setName('')
-          }}
-          onClose={() => setOpen(false)}
-        />
-      </>
-    )
-  },
+  render: () => (
+    <AddNameDialog
+      open={true}
+      title="New Recipe"
+      submitLabel="Add Recipe"
+      name=""
+      placeholder="e.g., Pasta Sauce, Smoothie"
+      onNameChange={() => {}}
+      onAdd={() => {}}
+      onClose={() => {}}
+    />
+  ),
 }

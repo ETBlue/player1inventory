@@ -1,7 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { TagDetailDialog } from '.'
 
 const queryClient = new QueryClient()
@@ -22,37 +20,20 @@ export default meta
 type Story = StoryObj<typeof TagDetailDialog>
 
 export const Default: Story = {
-  render: () => {
-    const [tag, setTag] = useState<{
-      id: string
-      name: string
-      typeId: string
-    } | null>(null)
-    const [tagName, setTagName] = useState('Dairy')
-    return (
-      <>
-        <Button
-          onClick={() => setTag({ id: '1', name: 'Dairy', typeId: 'type-1' })}
-        >
-          View Tag Details
-        </Button>
-        {tag && (
-          <TagDetailDialog
-            tag={tag}
-            tagName={tagName}
-            onTagNameChange={setTagName}
-            onSave={() => {
-              console.log('Save:', tagName)
-              setTag(null)
-            }}
-            onDelete={() => {
-              console.log('Delete')
-              setTag(null)
-            }}
-            onClose={() => setTag(null)}
-          />
-        )}
-      </>
-    )
-  },
+  render: () => (
+    <TagDetailDialog
+      tag={{
+        id: '1',
+        name: 'Dairy',
+        typeId: 'type-1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }}
+      tagName="Dairy"
+      onTagNameChange={() => {}}
+      onSave={() => {}}
+      onDelete={() => {}}
+      onClose={() => {}}
+    />
+  ),
 }

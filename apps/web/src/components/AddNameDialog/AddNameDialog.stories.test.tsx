@@ -14,14 +14,14 @@ describe('AddNameDialog stories smoke tests', () => {
   it('AddVendor renders without error', () => {
     render(<AddVendor />)
     expect(
-      screen.getByRole('button', { name: 'New Vendor' }),
+      screen.getByRole('button', { name: 'Add Vendor' }),
     ).toBeInTheDocument()
   })
 
   it('AddRecipe renders without error', () => {
     render(<AddRecipe />)
     expect(
-      screen.getByRole('button', { name: 'New Recipe' }),
+      screen.getByRole('button', { name: 'Add Recipe' }),
     ).toBeInTheDocument()
   })
 
