@@ -1,5 +1,7 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { noopApolloClient } from '@/test/apolloStub'
 import { TagDetailDialog } from '.'
 
 const queryClient = new QueryClient()
@@ -9,9 +11,11 @@ const meta: Meta<typeof TagDetailDialog> = {
   component: TagDetailDialog,
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <Story />
-      </QueryClientProvider>
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <Story />
+        </QueryClientProvider>
+      </ApolloProvider>
     ),
   ],
 }
