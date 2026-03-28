@@ -37,7 +37,7 @@ describe('Item detail tags tab stories smoke tests', () => {
       name: /diet/i,
     })
     expect(dietHeadings.length).toBeGreaterThanOrEqual(1)
-    // Child tag is rendered with the indent arrow indicator (↳) for depth > 0
-    expect(await screen.findAllByText('↳')).not.toHaveLength(0)
+    // Child tag badge is rendered (depth > 0 uses tree connectors, no ↳ prefix)
+    expect(await screen.findByText('Vegan')).toBeInTheDocument()
   })
 })
