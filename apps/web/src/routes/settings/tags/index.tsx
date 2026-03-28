@@ -26,12 +26,12 @@ import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ColorSelect } from '@/components/ColorSelect'
 import { DeleteButton } from '@/components/DeleteButton'
 import { Toolbar } from '@/components/Toolbar'
 import { EditTagTypeDialog } from '@/components/tag/EditTagTypeDialog'
 import { TagBadge } from '@/components/tag/TagBadge'
 import { TagInfoForm } from '@/components/tag/TagInfoForm'
+import { TagTypeInfoForm } from '@/components/tag/TagTypeInfoForm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -40,8 +40,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -329,12 +327,9 @@ export function TagSettings() {
   const updateTag = useUpdateTag()
   const deleteTag = useDeleteTag()
 
-  const [newTagTypeName, setNewTagTypeName] = useState('')
-  const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
+  const [newTagTypeDialog, setNewTagTypeDialog] = useState(false)
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [editTagType, setEditTagType] = useState<TagType | null>(null)
-  const [editTagTypeName, setEditTagTypeName] = useState('')
-  const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
 
   // Drag and drop state
   const [activeTag, setActiveTag] = useState<{
@@ -364,33 +359,6 @@ export function TagSettings() {
     migrateTagColorsToTypes()
     migrateTagColorTints()
   }, [])
-
-  const handleAddTagType = () => {
-    if (newTagTypeName.trim()) {
-      createTagType.mutate(
-        {
-          name: newTagTypeName.trim(),
-          color: newTagTypeColor,
-        },
-        {
-          onSuccess: () => {
-            setNewTagTypeName('')
-            setNewTagTypeColor(TagColor.blue)
-          },
-        },
-      )
-    }
-  }
-
-  const handleEditTagType = () => {
-    if (editTagType && editTagTypeName.trim()) {
-      updateTagType.mutate({
-        id: editTagType.id,
-        updates: { name: editTagTypeName.trim(), color: editTagTypeColor },
-      })
-      setEditTagType(null)
-    }
-  }
 
   const handleDeleteTag = async (tagId: string) => {
     deleteTag.mutate({ id: tagId })
@@ -487,47 +455,11 @@ export function TagSettings() {
           <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
         </Button>
         <h1 className="">{t('settings.tags.label')}</h1>
+        <div className="flex-1" />
+        <Button onClick={() => setNewTagTypeDialog(true)} size="sm">
+          {t('settings.tags.newTagType')}
+        </Button>
       </Toolbar>
-
-      <form
-        className="px-6 pt-3 pb-5 space-y-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleAddTagType()
-        }}
-      >
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <div>
-            <Label htmlFor="newTagTypeColor">
-              {t('settings.tags.tagType.colorLabel')}
-            </Label>
-            <ColorSelect
-              id="newTagTypeColor"
-              value={newTagTypeColor}
-              onChange={setNewTagTypeColor}
-            />
-          </div>
-          <div>
-            <Label htmlFor="newTagTypeName">
-              {t('settings.tags.tagType.nameLabel')}
-            </Label>
-            <Input
-              id="newTagTypeName"
-              placeholder={t('settings.tags.tagType.namePlaceholder')}
-              value={newTagTypeName}
-              autoFocus
-              onChange={(e) => setNewTagTypeName(e.target.value)}
-              className="capitalize"
-            />
-          </div>
-        </div>
-        <div className="flex">
-          <Button type="submit" className="flex-1">
-            <Plus />
-            {t('settings.tags.tagType.newButton')}
-          </Button>
-        </div>
-      </form>
       <div className="space-y-px pb-4">
         {[...tagTypes]
           .sort((a, b) =>
@@ -545,8 +477,6 @@ export function TagSettings() {
               typeTagsWithDepth.length > 0
                 ? typeTagsWithDepth
                 : sortTagsByName(typeTags).map((tag) => ({ ...tag, depth: 0 }))
-            const tagTypeColor = tagType.color || TagColor.blue
-
             return (
               <DroppableTagTypeCard
                 key={tagType.id}
@@ -555,8 +485,6 @@ export function TagSettings() {
                 tagCount={typeTags.length}
                 onEdit={() => {
                   setEditTagType(tagType)
-                  setEditTagTypeName(tagType.name)
-                  setEditTagTypeColor(tagTypeColor)
                 }}
                 onDelete={() => deleteTagType.mutate(tagType.id)}
                 onAddTag={() => setAddTagDialog(tagType.id)}
@@ -565,6 +493,23 @@ export function TagSettings() {
             )
           })}
       </div>
+
+      {/* New Tag Type Dialog */}
+      <Dialog open={newTagTypeDialog} onOpenChange={setNewTagTypeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('settings.tags.newTagType')}</DialogTitle>
+          </DialogHeader>
+          <TagTypeInfoForm
+            onSave={(data) => {
+              createTagType.mutate(data, {
+                onSuccess: () => setNewTagTypeDialog(false),
+              })
+            }}
+            isPending={createTagType.isPending}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Add Tag Dialog — uses TagInfoForm with typeReadonly so type is pre-set */}
       <Dialog
@@ -603,12 +548,11 @@ export function TagSettings() {
       {/* Edit TagType Dialog */}
       <EditTagTypeDialog
         tagType={editTagType}
-        name={editTagTypeName}
-        color={editTagTypeColor}
-        onNameChange={setEditTagTypeName}
-        onColorChange={setEditTagTypeColor}
-        onSave={handleEditTagType}
+        onSave={(data) =>
+          updateTagType.mutate({ id: editTagType?.id ?? '', updates: data })
+        }
         onClose={() => setEditTagType(null)}
+        isPending={updateTagType.isPending}
       />
 
       {/* Drag Overlay - shows preview of tag being dragged */}

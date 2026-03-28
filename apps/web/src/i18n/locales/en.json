@@ -157,6 +157,7 @@
     "tags": {
       "label": "Tags",
       "description": "Manage tag types and tags",
+      "newTagType": "New Tag Type",
       "tagType": {
         "colorLabel": "Color",
         "nameLabel": "Name",

@@ -118,10 +118,12 @@ describe('TagSettings — tag type creation (cloud mode bug)', () => {
     const { TagSettings } = await import('@/routes/settings/tags/index')
     render(<TagSettings />)
 
-    // When user types a tag type name and submits
-    const input = screen.getByLabelText(/name/i)
-    await user.type(input, 'Produce')
+    // When user opens the New Tag Type dialog and types a name
     await user.click(screen.getByRole('button', { name: /new tag type/i }))
+    const dialog = screen.getByRole('dialog')
+    const input = within(dialog).getByLabelText(/name/i)
+    await user.type(input, 'Produce')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
     // Then mutate is called with an onSuccess callback (not fire-and-forget)
     expect(mutateSpy).toHaveBeenCalledOnce()
@@ -145,8 +147,10 @@ describe('TagSettings — tag type creation (cloud mode bug)', () => {
     const { TagSettings } = await import('@/routes/settings/tags/index')
     render(<TagSettings />)
 
-    // When user types a tag type name and presses Enter
-    const input = screen.getByLabelText(/name/i)
+    // When user opens dialog, types a tag type name and presses Enter
+    await user.click(screen.getByRole('button', { name: /new tag type/i }))
+    const dialog = screen.getByRole('dialog')
+    const input = within(dialog).getByLabelText(/name/i)
     await user.type(input, 'Dairy')
     await user.keyboard('{Enter}')
 
@@ -158,7 +162,7 @@ describe('TagSettings — tag type creation (cloud mode bug)', () => {
     )
   })
 
-  it('form resets only after mutate calls onSuccess (fixed cloud mode behavior)', async () => {
+  it('form resets only after mutate calls onSuccess (dialog closes on success)', async () => {
     // Given cloud mode where mutate captures the onSuccess callback
     setupDefaultMocks()
     let capturedOnSuccess: (() => void) | undefined
@@ -174,20 +178,22 @@ describe('TagSettings — tag type creation (cloud mode bug)', () => {
     const { TagSettings } = await import('@/routes/settings/tags/index')
     render(<TagSettings />)
 
-    // When user types a tag type name and submits
-    const input = screen.getByLabelText(/name/i)
-    await user.type(input, 'Produce')
+    // When user opens the dialog, types a tag type name, and submits
     await user.click(screen.getByRole('button', { name: /new tag type/i }))
+    const dialog = screen.getByRole('dialog')
+    const input = within(dialog).getByLabelText(/name/i)
+    await user.type(input, 'Produce')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    // Then the input is NOT cleared yet (mutation still in flight)
-    expect(input).toHaveValue('Produce')
+    // Then the dialog is still open (mutation still in flight)
+    expect(screen.queryByRole('dialog')).toBeInTheDocument()
 
     // When onSuccess fires
     capturedOnSuccess?.()
 
-    // Then the form resets
+    // Then the dialog closes
     await waitFor(() => {
-      expect(input).toHaveValue('')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
   })
 })

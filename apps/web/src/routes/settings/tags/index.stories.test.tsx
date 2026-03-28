@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { Default, WithNestedTags, WithParentSelector } = composeStories(stories)
+const { Default, WithNestedTags, WithParentSelector, WithNewTagTypeDialog } =
+  composeStories(stories)
 
 describe('Settings tags index stories smoke tests', () => {
   it('Default renders without error', async () => {
@@ -19,7 +20,7 @@ describe('Settings tags index stories smoke tests', () => {
     expect(
       await screen.findByRole('heading', { name: /tags/i }),
     ).toBeInTheDocument()
-    // The "New Tag Type" button should be visible (confirms full page rendered)
+    // The "New Tag Type" button should be visible in the toolbar
     expect(
       await screen.findByRole('button', { name: /new tag type/i }),
     ).toBeInTheDocument()
@@ -33,6 +34,18 @@ describe('Settings tags index stories smoke tests', () => {
     // "New Tag" button should be visible inside a tag type card
     expect(
       await screen.findByRole('button', { name: /new tag/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('WithNewTagTypeDialog renders tag list page with New Tag Type button', async () => {
+    render(<WithNewTagTypeDialog />)
+    // The page heading should be visible
+    expect(
+      await screen.findByRole('heading', { name: /tags/i }),
+    ).toBeInTheDocument()
+    // The "New Tag Type" button in the toolbar should be visible
+    expect(
+      await screen.findByRole('button', { name: /new tag type/i }),
     ).toBeInTheDocument()
   })
 })

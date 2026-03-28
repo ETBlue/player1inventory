@@ -157,6 +157,7 @@
     "tags": {
       "label": "標籤",
       "description": "管理標籤與其分類",
+      "newTagType": "新標籤類型",
       "tagType": {
         "colorLabel": "顏色",
         "nameLabel": "名稱",
