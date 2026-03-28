@@ -456,7 +456,8 @@ export function TagSettings() {
         </Button>
         <h1 className="">{t('settings.tags.label')}</h1>
         <div className="flex-1" />
-        <Button onClick={() => setNewTagTypeDialog(true)} size="sm">
+        <Button onClick={() => setNewTagTypeDialog(true)}>
+          <Plus className="h-4 w-4" />
           {t('settings.tags.newTagType')}
         </Button>
       </Toolbar>

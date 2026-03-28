@@ -49,13 +49,6 @@ export function TagTypeInfoForm({
   return (
     <form className="space-y-4 max-w-2xl" onSubmit={handleSubmit}>
       <div className="space-y-2">
-        <Label htmlFor="tag-type-color">
-          {t('settings.tags.tagType.colorLabel')}
-        </Label>
-        <ColorSelect id="tag-type-color" value={color} onChange={setColor} />
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="tag-type-name">
           {t('settings.tags.tagType.nameLabel')}
         </Label>
@@ -68,6 +61,13 @@ export function TagTypeInfoForm({
           className="capitalize"
           error={nameError}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tag-type-color">
+          {t('settings.tags.tagType.colorLabel')}
+        </Label>
+        <ColorSelect id="tag-type-color" value={color} onChange={setColor} />
       </div>
 
       <Button
