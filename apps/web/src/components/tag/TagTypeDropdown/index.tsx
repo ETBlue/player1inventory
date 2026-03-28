@@ -50,7 +50,7 @@ export function TagTypeDropdown({
           <ChevronDown />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start">
         {tags.map((tag, index) => {
           const isChecked = selectedTagIds.includes(tag.id)
           // Indent child tags based on depth (0 = top-level, no indent)

@@ -103,7 +103,7 @@ export function ItemFilters({
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuContent align="start">
             {vendors.map((vendor) => {
               const count = items.filter((item) =>
                 item.vendorIds?.includes(vendor.id),
@@ -162,7 +162,7 @@ export function ItemFilters({
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuContent align="start">
             {recipes.map((recipe) => {
               const count = items.filter((item) =>
                 recipe.items.some((ri) => ri.itemId === item.id),

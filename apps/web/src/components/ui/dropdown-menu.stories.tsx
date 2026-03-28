@@ -50,7 +50,7 @@ export const Default: Story = {
       <DropdownMenuTrigger asChild>
         <Button variant="secondary-outline">Open Menu</Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56">
+      <DropdownMenuContent>
         <DropdownMenuItem>
           <User />
           Profile
@@ -84,7 +84,7 @@ export const WithCheckboxItems: Story = {
         <DropdownMenuTrigger asChild>
           <Button variant="secondary-outline">View Options</Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56">
+        <DropdownMenuContent>
           <DropdownMenuLabel>Appearance</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuCheckboxItem
@@ -120,7 +120,7 @@ export const WithRadioItems: Story = {
         <DropdownMenuTrigger asChild>
           <Button variant="secondary-outline">Panel Position</Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56">
+        <DropdownMenuContent>
           <DropdownMenuLabel>Panel Position</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuRadioGroup value={position} onValueChange={setPosition}>
@@ -140,7 +140,7 @@ export const WithSubMenu: Story = {
       <DropdownMenuTrigger asChild>
         <Button variant="secondary-outline">Open Menu</Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56">
+      <DropdownMenuContent>
         <DropdownMenuItem>
           <User />
           Profile
@@ -189,7 +189,7 @@ export const WithSeparatorsAndLabels: Story = {
       <DropdownMenuTrigger asChild>
         <Button variant="secondary-outline">Open Menu</Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56">
+      <DropdownMenuContent>
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
