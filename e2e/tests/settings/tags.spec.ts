@@ -173,11 +173,13 @@ test('user can edit tag name and type on Info tab', async ({ page, baseURL }) =>
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: UI-driven setup — create two tag types and a tag
     await tagsPage.navigateTo()
+    await tagsPage.clickNewTagType()
     await tagsPage.fillTagTypeName('Protein')
-    await tagsPage.clickNewTagType()
+    await tagsPage.submitTagTypeDialog()
     await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
-    await tagsPage.fillTagTypeName('Dairy')
     await tagsPage.clickNewTagType()
+    await tagsPage.fillTagTypeName('Dairy')
+    await tagsPage.submitTagTypeDialog()
     await expect(tagsPage.getTagTypeCard('Dairy')).toBeVisible()
     await tagsPage.clickNewTag('Protein')
     await tagsPage.fillTagName('Chicken')
@@ -231,8 +233,9 @@ test('user can assign and unassign an item on Items tab', async ({ page, baseURL
     const item = new ItemPage(page)
 
     await tagsPage.navigateTo()
-    await tagsPage.fillTagTypeName('Protein')
     await tagsPage.clickNewTagType()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.submitTagTypeDialog()
     await tagsPage.clickNewTag('Protein')
     await tagsPage.fillTagName('Chicken')
     await tagsPage.submitTagDialog()
@@ -286,8 +289,9 @@ test('user can delete a tag type', async ({ page, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: create via UI
     await tagsPage.navigateTo()
-    await tagsPage.fillTagTypeName('Protein')
     await tagsPage.clickNewTagType()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.submitTagTypeDialog()
   } else {
     // Local: seed via IndexedDB and navigate
     await seedTags(page, [{ name: 'Protein', color: 'green' }])
@@ -312,8 +316,9 @@ test('user can delete a tag', async ({ page, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: create via UI
     await tagsPage.navigateTo()
-    await tagsPage.fillTagTypeName('Protein')
     await tagsPage.clickNewTagType()
+    await tagsPage.fillTagTypeName('Protein')
+    await tagsPage.submitTagTypeDialog()
     await tagsPage.clickNewTag('Protein')
     await tagsPage.fillTagName('Chicken')
     await tagsPage.submitTagDialog()
@@ -344,8 +349,9 @@ test('user can add a tag to a tag type', async ({ page }) => {
 
   // Given: tag type "Protein" exists (created via UI — works in both local and cloud mode)
   await tagsPage.navigateTo()
-  await tagsPage.fillTagTypeName('Protein')
   await tagsPage.clickNewTagType()
+  await tagsPage.fillTagTypeName('Protein')
+  await tagsPage.submitTagTypeDialog()
   await expect(tagsPage.getTagTypeCard('Protein')).toBeVisible()
 
   // When: user clicks "New Tag" inside the Protein card
@@ -365,55 +371,57 @@ test('user can create a tag type', async ({ page }) => {
   // Given: the tags settings page is empty
   await tags.navigateTo()
 
-  // When: user fills the name and clicks "New Tag Type"
-  await tags.fillTagTypeName('Protein')
+  // When: user clicks "New Tag Type", fills the name in the dialog, and saves
   await tags.clickNewTagType()
+  await tags.fillTagTypeName('Protein')
+  await tags.submitTagTypeDialog()
 
   // Then: a card with heading "Protein" appears
   await expect(tags.getTagTypeCard('Protein')).toBeVisible()
 })
 
 test.describe('tag type creation via Enter key', () => {
-  test('tag type input clears after submitting by pressing Enter', async ({ page }) => {
+  test('tag type dialog submits on Enter key press in Name input', async ({ page }) => {
     const tags = new TagsPage(page)
 
-    // Given: the tags settings page is open
+    // Given: the tags settings page is open and the New Tag Type dialog is open
     await tags.navigateTo()
+    await tags.clickNewTagType()
 
-    // When: user fills in "Produce" in the name input and presses Enter (not the button)
+    // When: user fills in "Produce" in the dialog Name input and presses Enter
     await tags.fillTagTypeName('Produce')
-    // Press Enter to submit the form — tests that the form's onSubmit handler fires
+    // Press Enter to submit the dialog form — tests that the form's onSubmit handler fires
     // and does NOT cause a page reload (a reload would navigate away from the SPA)
-    // (src/routes/settings/tags/index.tsx:450-456 — <form onSubmit={...}>)
-    await page.getByLabel('Name').press('Enter')
+    // (TagTypeInfoForm — <form onSubmit={...}>)
+    await page.getByRole('dialog').getByLabel('Name').press('Enter')
 
-    // Then: the "Produce" heading appears — proving mutation completed and page did NOT reload
+    // Then: the "Produce" heading appears — proving mutation completed and dialog closed
     await expect(tags.getTagTypeCard('Produce')).toBeVisible()
 
-    // And: the input is cleared (form reset after success)
-    // (src/routes/settings/tags/index.tsx:317-319 — setNewTagTypeName('') in onSuccess)
-    await expect(page.getByLabel('Name')).toHaveValue('')
+    // And: the dialog is closed (no longer visible)
+    await expect(page.getByRole('dialog')).not.toBeVisible()
   })
 })
 
-test.describe('tag type input clears after button submit', () => {
-  test('tag type input clears after successful creation via button click', async ({ page }) => {
+test.describe('tag type dialog closes after button submit', () => {
+  test('tag type dialog closes after successful creation via Save button', async ({ page }) => {
     const tags = new TagsPage(page)
 
-    // Given: the tags settings page is open
+    // Given: the tags settings page is open and the New Tag Type dialog is open
     await tags.navigateTo()
-
-    // When: user fills "Category" in the input and clicks the submit button
-    await tags.fillTagTypeName('Category')
     await tags.clickNewTagType()
 
-    // Then: "Category" heading appears
-    await expect(tags.getTagTypeCard('Category')).toBeVisible()
+    // When: user fills "Protein" in the dialog Name input and clicks Save
+    // (Using "Protein" — not in seed data — to avoid duplicate heading conflict)
+    await tags.fillTagTypeName('Protein')
+    await tags.submitTagTypeDialog()
 
-    // And: the input field is now empty (not still showing "Category")
-    // Regression guard: if the form state is not reset on success, the input retains
-    // the old value. (src/routes/settings/tags/index.tsx:317-319 — setNewTagTypeName(''))
-    await expect(page.getByLabel('Name')).toHaveValue('')
+    // Then: "Protein" heading appears
+    await expect(tags.getTagTypeCard('Protein')).toBeVisible()
+
+    // And: the dialog is closed (not still visible after save)
+    // Regression guard: dialog must close on successful creation.
+    await expect(page.getByRole('dialog')).not.toBeVisible()
   })
 })
 
@@ -427,8 +435,9 @@ test.describe('new tag from item tags tab', () => {
     if (baseURL === CLOUD_WEB_URL) {
       // Cloud: UI-driven setup
       await tagsPage.navigateTo()
-      await tagsPage.fillTagTypeName('Fruit')
       await tagsPage.clickNewTagType()
+      await tagsPage.fillTagTypeName('Fruit')
+      await tagsPage.submitTagTypeDialog()
       await expect(tagsPage.getTagTypeCard('Fruit')).toBeVisible()
       await tagsPage.clickNewTag('Fruit')
       await tagsPage.fillTagName('Organic')
@@ -495,8 +504,9 @@ test.describe('tag item count after tag assignment', () => {
     if (baseURL === CLOUD_WEB_URL) {
       // Cloud: UI-driven setup
       await tagsPage.navigateTo()
-      await tagsPage.fillTagTypeName('Category')
       await tagsPage.clickNewTagType()
+      await tagsPage.fillTagTypeName('Category')
+      await tagsPage.submitTagTypeDialog()
       await expect(tagsPage.getTagTypeCard('Category')).toBeVisible()
       await tagsPage.clickNewTag('Category')
       await tagsPage.fillTagName('Fresh')
@@ -578,8 +588,9 @@ test.describe('tag item count after item deletion', () => {
     if (baseURL === CLOUD_WEB_URL) {
       // Cloud: UI-driven setup
       await tagsPage.navigateTo()
-      await tagsPage.fillTagTypeName('Category')
       await tagsPage.clickNewTagType()
+      await tagsPage.fillTagTypeName('Category')
+      await tagsPage.submitTagTypeDialog()
       await expect(tagsPage.getTagTypeCard('Category')).toBeVisible()
       await tagsPage.clickNewTag('Category')
       await tagsPage.fillTagName('Perishable')
