@@ -31,24 +31,17 @@ import { DeleteButton } from '@/components/DeleteButton'
 import { Toolbar } from '@/components/Toolbar'
 import { EditTagTypeDialog } from '@/components/tag/EditTagTypeDialog'
 import { TagBadge } from '@/components/tag/TagBadge'
+import { TagInfoForm } from '@/components/tag/TagInfoForm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -72,10 +65,6 @@ type TagWithDepth = Tag & { depth: number }
 export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
 })
-
-// Sentinel value for "no parent" in the parent tag Select.
-// Must not be empty string — Radix UI Select disallows empty string as SelectItem value.
-const NO_PARENT = '__none__'
 
 const TAG_COLOR_BORDER: Record<TagColor, string> = {
   red: 'border-red',
@@ -343,9 +332,6 @@ export function TagSettings() {
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
-  const [newTagName, setNewTagName] = useState('')
-  // newTagParentId: NO_PARENT sentinel = no parent (top-level)
-  const [newTagParentId, setNewTagParentId] = useState(NO_PARENT)
   const [editTagType, setEditTagType] = useState<TagType | null>(null)
   const [editTagTypeName, setEditTagTypeName] = useState('')
   const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
@@ -393,25 +379,6 @@ export function TagSettings() {
           },
         },
       )
-    }
-  }
-
-  const handleAddTag = () => {
-    if (addTagDialog && newTagName.trim()) {
-      const input: Omit<Tag, 'id'> & { parentId?: string } = {
-        name: newTagName.trim(),
-        typeId: addTagDialog,
-      }
-      if (newTagParentId !== NO_PARENT) {
-        input.parentId = newTagParentId
-      }
-      createTag.mutate(input, {
-        onSuccess: () => {
-          setNewTagName('')
-          setNewTagParentId(NO_PARENT)
-          setAddTagDialog(null)
-        },
-      })
     }
   }
 
@@ -599,90 +566,39 @@ export function TagSettings() {
           })}
       </div>
 
-      {/* Add Tag Dialog — includes optional parent selector */}
-      {(() => {
-        // Parent options: tags with the same typeId as the new tag, shown with depth
-        const addParentOptions = addTagDialog
-          ? tagsWithDepth.filter((t) => t.typeId === addTagDialog)
-          : []
-        return (
-          <Dialog
-            open={!!addTagDialog}
-            onOpenChange={(open) => {
-              if (!open) {
-                setNewTagName('')
-                setNewTagParentId(NO_PARENT)
+      {/* Add Tag Dialog — uses TagInfoForm with typeReadonly so type is pre-set */}
+      <Dialog
+        open={!!addTagDialog}
+        onOpenChange={(open) => {
+          if (!open) setAddTagDialog(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('settings.tags.tag.addTitle')}</DialogTitle>
+          </DialogHeader>
+          {addTagDialog && (
+            <TagInfoForm
+              key={addTagDialog}
+              tag={{ id: '', name: '', typeId: addTagDialog }}
+              tagTypes={tagTypes}
+              parentOptions={tagsWithDepth.filter(
+                (t) => t.typeId === addTagDialog,
+              )}
+              typeReadonly={true}
+              onSave={(data) => {
+                createTag.mutate({
+                  name: data.name,
+                  typeId: data.typeId,
+                  ...(data.parentId ? { parentId: data.parentId } : {}),
+                })
                 setAddTagDialog(null)
-              }
-            }}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{t('settings.tags.tag.addTitle')}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="newTagName">{t('common.nameLabel')}</Label>
-                  <Input
-                    id="newTagName"
-                    value={newTagName}
-                    autoFocus
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    placeholder={t('settings.tags.tag.addPlaceholder')}
-                    className="capitalize"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newTagParent">
-                    {t('settings.tags.tag.parentLabel')}
-                  </Label>
-                  <Select
-                    value={newTagParentId}
-                    onValueChange={setNewTagParentId}
-                  >
-                    <SelectTrigger id="newTagParent" className="capitalize">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_PARENT}>
-                        {t('settings.tags.tag.parentNone')}
-                      </SelectItem>
-                      {addParentOptions.map((option) => (
-                        <SelectItem
-                          key={option.id}
-                          value={option.id}
-                          className="capitalize"
-                          style={{
-                            paddingLeft: `${(option.depth + 1) * 1}rem`,
-                          }}
-                        >
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="neutral-outline"
-                  onClick={() => {
-                    setNewTagName('')
-                    setNewTagParentId(NO_PARENT)
-                    setAddTagDialog(null)
-                  }}
-                >
-                  {t('common.cancel')}
-                </Button>
-                <Button onClick={handleAddTag}>
-                  {t('settings.tags.tag.addSubmit')}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )
-      })()}
+              }}
+              isPending={createTag.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit TagType Dialog */}
       <EditTagTypeDialog

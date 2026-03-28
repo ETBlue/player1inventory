@@ -3,8 +3,14 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { Default, WithParentOptions, WithValidationError, Dirty, Saving } =
-  composeStories(stories)
+const {
+  Default,
+  WithParentOptions,
+  WithValidationError,
+  Dirty,
+  Saving,
+  TypeReadonly,
+} = composeStories(stories)
 
 describe('TagInfoForm stories smoke tests', () => {
   it('Default renders name input', () => {
@@ -30,5 +36,10 @@ describe('TagInfoForm stories smoke tests', () => {
   it('Saving renders disabled submit button', () => {
     render(<Saving />)
     expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled()
+  })
+
+  it('TypeReadonly renders disabled type select', () => {
+    render(<TypeReadonly />)
+    expect(screen.getByRole('combobox', { name: /type/i })).toBeDisabled()
   })
 })

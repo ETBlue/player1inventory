@@ -105,6 +105,45 @@ describe('TagInfoForm', () => {
     expect(onDirtyChange).toHaveBeenCalledWith(true)
   })
 
+  it('type select is disabled when typeReadonly is true', () => {
+    render(
+      <TagInfoForm
+        tag={baseTag}
+        tagTypes={tagTypes}
+        parentOptions={[]}
+        onSave={vi.fn()}
+        typeReadonly={true}
+      />,
+    )
+    // The Select trigger button for tag type should be disabled
+    expect(screen.getByRole('combobox', { name: /type/i })).toBeDisabled()
+  })
+
+  it('type select is enabled when typeReadonly is false', () => {
+    render(
+      <TagInfoForm
+        tag={baseTag}
+        tagTypes={tagTypes}
+        parentOptions={[]}
+        onSave={vi.fn()}
+        typeReadonly={false}
+      />,
+    )
+    expect(screen.getByRole('combobox', { name: /type/i })).not.toBeDisabled()
+  })
+
+  it('type select is enabled when typeReadonly is omitted', () => {
+    render(
+      <TagInfoForm
+        tag={baseTag}
+        tagTypes={tagTypes}
+        parentOptions={[]}
+        onSave={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('combobox', { name: /type/i })).not.toBeDisabled()
+  })
+
   it('calls onDirtyChange(false) after save', async () => {
     const onDirtyChange = vi.fn()
     const user = userEvent.setup()

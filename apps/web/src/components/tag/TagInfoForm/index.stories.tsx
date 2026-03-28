@@ -76,3 +76,12 @@ export const Saving: Story = {
     isPending: true,
   },
 }
+
+export const TypeReadonly: Story = {
+  args: {
+    tag: baseTag,
+    tagTypes,
+    parentOptions: [],
+    typeReadonly: true,
+  },
+}

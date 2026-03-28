@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as useTagsModule from '@/hooks/useTags'
@@ -212,21 +212,10 @@ describe('TagSettings — tag creation dialog (cloud mode bug)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('user dialog stays open in cloud mode when mutate never calls onSuccess (regression guard for bug)', async () => {
-    // Given cloud mode where createTag.mutate fires but never calls options.onSuccess
-    // This simulates the broken behavior: dialog closes synchronously even though
-    // onSuccess was never called (mutation hasn't completed yet in cloud mode)
+  it('user can submit the Add Tag form and mutate is called with name and typeId', async () => {
+    // Given the tags page with one existing tag type
     setupDefaultMocks()
-    localStorage.setItem('data-mode', 'cloud')
-
-    const mutateSpy = vi.fn(
-      (
-        _input: unknown,
-        _options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
-      ) => {
-        // Intentionally does NOT call options?.onSuccess?.() — simulates the broken path
-      },
-    )
+    const mutateSpy = vi.fn()
     vi.spyOn(useTagsModule, 'useCreateTag').mockReturnValue({
       mutate: mutateSpy,
       mutateAsync: vi.fn(),
@@ -237,63 +226,36 @@ describe('TagSettings — tag creation dialog (cloud mode bug)', () => {
     const { TagSettings } = await import('@/routes/settings/tags/index')
     render(<TagSettings />)
 
-    // When user opens dialog, types a tag name, and submits
+    // When user opens dialog, types a tag name, and clicks Save
     await user.click(screen.getByRole('button', { name: /^New Tag$/i }))
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeInTheDocument()
 
-    await user.type(screen.getByRole('textbox'), 'Apples')
-    await user.click(screen.getByRole('button', { name: /add tag/i }))
+    await user.type(within(dialog).getByLabelText(/name/i), 'Apples')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    // Then mutate was called with an onSuccess callback (the fixed pattern)
+    // Then mutate was called with the correct input
     expect(mutateSpy).toHaveBeenCalledOnce()
     expect(mutateSpy).toHaveBeenCalledWith(
-      { name: 'Apples', typeId: existingTagType.id },
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
+      expect.objectContaining({ name: 'Apples', typeId: existingTagType.id }),
     )
-
-    // And the dialog is still open because onSuccess was never called
-    // (The bug: before the fix, this assertion FAILS — dialog closes synchronously)
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('user dialog closes after mutate calls onSuccess (correct cloud mode behavior)', async () => {
-    // Given cloud mode where mutate correctly calls options.onSuccess asynchronously
+  it('user dialog closes immediately after Save is clicked (onSave closes dialog synchronously)', async () => {
+    // Given the tags page — TagInfoForm's onSave calls setAddTagDialog(null) synchronously
     setupDefaultMocks()
-    localStorage.setItem('data-mode', 'cloud')
-
-    let capturedOnSuccess: (() => void) | undefined
-    const mutateSpy = vi.fn(
-      (
-        _input: unknown,
-        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
-      ) => {
-        // Capture the onSuccess callback to call it later (simulating async mutation)
-        capturedOnSuccess = options?.onSuccess
-      },
-    )
-    vi.spyOn(useTagsModule, 'useCreateTag').mockReturnValue({
-      mutate: mutateSpy,
-      mutateAsync: vi.fn(),
-      isPending: false,
-    })
 
     const user = userEvent.setup()
     const { TagSettings } = await import('@/routes/settings/tags/index')
     render(<TagSettings />)
 
-    // When user opens dialog, types a tag name, and submits
+    // When user opens dialog, types a tag name, and clicks Save
     await user.click(screen.getByRole('button', { name: /^New Tag$/i }))
-    await user.type(screen.getByRole('textbox'), 'Apples')
-    await user.click(screen.getByRole('button', { name: /add tag/i }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/name/i), 'Apples')
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    // Then mutate was called with onSuccess callback
-    expect(mutateSpy).toHaveBeenCalledOnce()
-    expect(capturedOnSuccess).toBeDefined()
-
-    // When onSuccess fires (simulating async mutation completing successfully)
-    capturedOnSuccess?.()
-
-    // Then the dialog closes
+    // Then the dialog closes immediately
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })

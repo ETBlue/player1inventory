@@ -23,6 +23,8 @@ interface TagInfoFormProps {
   onSave: (data: { name: string; typeId: string; parentId?: string }) => void
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
+  /** When true, the type Select is disabled — used in dialogs where the type is pre-set. */
+  typeReadonly?: boolean
 }
 
 export function TagInfoForm({
@@ -32,6 +34,7 @@ export function TagInfoForm({
   onSave,
   isPending,
   onDirtyChange,
+  typeReadonly,
 }: TagInfoFormProps) {
   const { t } = useTranslation()
 
@@ -97,6 +100,7 @@ export function TagInfoForm({
             // so reset to no parent
             setParentId(NO_PARENT)
           }}
+          disabled={typeReadonly ?? false}
         >
           <SelectTrigger id="tag-type" className="capitalize">
             <SelectValue />
