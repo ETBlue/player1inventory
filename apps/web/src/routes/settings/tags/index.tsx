@@ -139,18 +139,6 @@ function DraggableTagBadge({
 
   const navigate = useNavigate()
 
-  // Static lookup for indentation classes by depth level.
-  // Avoids dynamic Tailwind class name construction (e.g. `pl-${n}`)
-  // which won't survive production builds since Tailwind scans for literal class names.
-  // Supports up to 3 levels of nesting (depth 0–3).
-  const DEPTH_INDENT: Record<number, string> = {
-    0: '',
-    1: 'pl-4',
-    2: 'pl-8',
-    3: 'pl-12',
-  }
-  const indentClass = DEPTH_INDENT[Math.min(depth, 3)] ?? ''
-
   // Note: Drag listeners and attributes are scoped to the TagBadge wrapper only,
   // so that the DeleteButton is a sibling (not nested inside an interactive element).
   // This avoids the nested-interactive a11y violation while preserving drag behavior.
@@ -162,8 +150,8 @@ function DraggableTagBadge({
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={`inline-flex items-center ${indentClass}`}
+      style={{ ...style, paddingLeft: depth * 16 }}
+      className="flex items-center"
     >
       <div
         className="inline-flex"
@@ -271,7 +259,7 @@ function DroppableTagTypeCard({
           />
         </div>
       </CardHeader>
-      <CardContent ref={setNodeRef}>
+      <CardContent ref={setNodeRef} className="pl-6">
         <p className="sr-only" id="dnd-instructions">
           Press Space or Enter to pick up a tag, use arrow keys to move it, and
           press Space or Enter again to drop it.
@@ -280,7 +268,7 @@ function DroppableTagTypeCard({
           items={sortedTypeTags.map((tag) => tag.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="flex flex-col gap-1">
+          <div className="space-y-1">
             {sortedTypeTags.map((tag) => (
               <DraggableTagBadge
                 key={tag.id}

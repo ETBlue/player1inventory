@@ -9,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
 import type { Tag, TagType } from '@/types'
 
 // Tags may carry an optional depth annotation (from useTagsWithDepth / buildDepthFirstTagList)
@@ -62,7 +61,7 @@ export function TagTypeDropdown({
               checked={isChecked}
               onCheckedChange={() => onToggleTag(tag.id)}
               onSelect={(e) => e.preventDefault()} // Keep menu open
-              className={cn(depth > 0 && `pl-${Math.min(depth * 4 + 8, 24)}`)}
+              style={depth > 0 ? { paddingLeft: depth * 16 } : undefined}
             >
               <div className="flex items-center justify-between w-full">
                 <Badge
