@@ -38,6 +38,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
@@ -501,14 +502,16 @@ export function TagSettings() {
           <DialogHeader>
             <DialogTitle>{t('settings.tags.newTagType')}</DialogTitle>
           </DialogHeader>
-          <TagTypeInfoForm
-            onSave={(data) => {
-              createTagType.mutate(data, {
-                onSuccess: () => setNewTagTypeDialog(false),
-              })
-            }}
-            isPending={createTagType.isPending}
-          />
+          <DialogMain>
+            <TagTypeInfoForm
+              onSave={(data) => {
+                createTagType.mutate(data, {
+                  onSuccess: () => setNewTagTypeDialog(false),
+                })
+              }}
+              isPending={createTagType.isPending}
+            />
+          </DialogMain>
         </DialogContent>
       </Dialog>
 
@@ -523,26 +526,28 @@ export function TagSettings() {
           <DialogHeader>
             <DialogTitle>{t('settings.tags.tag.addTitle')}</DialogTitle>
           </DialogHeader>
-          {addTagDialog && (
-            <TagInfoForm
-              key={addTagDialog}
-              tag={{ id: '', name: '', typeId: addTagDialog }}
-              tagTypes={tagTypes}
-              parentOptions={tagsWithDepth.filter(
-                (t) => t.typeId === addTagDialog,
-              )}
-              typeReadonly={true}
-              onSave={(data) => {
-                createTag.mutate({
-                  name: data.name,
-                  typeId: data.typeId,
-                  ...(data.parentId ? { parentId: data.parentId } : {}),
-                })
-                setAddTagDialog(null)
-              }}
-              isPending={createTag.isPending}
-            />
-          )}
+          <DialogMain>
+            {addTagDialog && (
+              <TagInfoForm
+                key={addTagDialog}
+                tag={{ id: '', name: '', typeId: addTagDialog }}
+                tagTypes={tagTypes}
+                parentOptions={tagsWithDepth.filter(
+                  (t) => t.typeId === addTagDialog,
+                )}
+                typeReadonly={true}
+                onSave={(data) => {
+                  createTag.mutate({
+                    name: data.name,
+                    typeId: data.typeId,
+                    ...(data.parentId ? { parentId: data.parentId } : {}),
+                  })
+                  setAddTagDialog(null)
+                }}
+                isPending={createTag.isPending}
+              />
+            )}
+          </DialogMain>
         </DialogContent>
       </Dialog>
 

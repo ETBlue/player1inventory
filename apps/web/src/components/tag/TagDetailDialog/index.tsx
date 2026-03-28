@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -40,25 +41,27 @@ export function TagDetailDialog({
           <DialogHeader>
             <DialogTitle>Tag Details</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="editTagName">Name</Label>
-              <Input
-                id="editTagName"
-                value={tagName}
-                autoFocus
-                onChange={(e) => onTagNameChange(e.target.value)}
-                placeholder="e.g., Dairy"
-                onKeyDown={(e) => e.key === 'Enter' && onSave()}
-              />
+          <DialogMain>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="editTagName">Name</Label>
+                <Input
+                  id="editTagName"
+                  value={tagName}
+                  autoFocus
+                  onChange={(e) => onTagNameChange(e.target.value)}
+                  placeholder="e.g., Dairy"
+                  onKeyDown={(e) => e.key === 'Enter' && onSave()}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Item count</Label>
+                <p className="text-sm text-foreground-muted">
+                  {itemCount} items using this tag
+                </p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Item count</Label>
-              <p className="text-sm text-foreground-muted">
-                {itemCount} items using this tag
-              </p>
-            </div>
-          </div>
+          </DialogMain>
           <DialogFooter>
             <Button variant="destructive" onClick={() => setShowConfirm(true)}>
               Delete

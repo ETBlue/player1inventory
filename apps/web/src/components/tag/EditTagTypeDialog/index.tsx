@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { TagColor, TagType } from '@/types'
@@ -31,13 +32,15 @@ export function EditTagTypeDialog({
         <DialogHeader>
           <DialogTitle>{t('settings.tags.tagType.editTitle')}</DialogTitle>
         </DialogHeader>
-        {tagType && (
-          <TagTypeInfoForm
-            tagType={tagType}
-            onSave={onSave}
-            {...(isPending !== undefined && { isPending })}
-          />
-        )}
+        <DialogMain>
+          {tagType && (
+            <TagTypeInfoForm
+              tagType={tagType}
+              onSave={onSave}
+              {...(isPending !== undefined && { isPending })}
+            />
+          )}
+        </DialogMain>
         <DialogFooter>
           <Button variant="neutral-outline" onClick={onClose}>
             {t('common.cancel')}
