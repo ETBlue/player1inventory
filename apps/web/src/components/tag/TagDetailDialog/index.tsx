@@ -1,11 +1,21 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -40,25 +50,27 @@ export function TagDetailDialog({
           <DialogHeader>
             <DialogTitle>Tag Details</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="editTagName">Name</Label>
-              <Input
-                id="editTagName"
-                value={tagName}
-                autoFocus
-                onChange={(e) => onTagNameChange(e.target.value)}
-                placeholder="e.g., Dairy"
-                onKeyDown={(e) => e.key === 'Enter' && onSave()}
-              />
+          <DialogMain>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="editTagName">Name</Label>
+                <Input
+                  id="editTagName"
+                  value={tagName}
+                  autoFocus
+                  onChange={(e) => onTagNameChange(e.target.value)}
+                  placeholder="e.g., Dairy"
+                  onKeyDown={(e) => e.key === 'Enter' && onSave()}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Item count</Label>
+                <p className="text-sm text-foreground-muted">
+                  {itemCount} items using this tag
+                </p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Item count</Label>
-              <p className="text-sm text-foreground-muted">
-                {itemCount} items using this tag
-              </p>
-            </div>
-          </div>
+          </DialogMain>
           <DialogFooter>
             <Button variant="destructive" onClick={() => setShowConfirm(true)}>
               Delete
@@ -73,18 +85,31 @@ export function TagDetailDialog({
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
+      <AlertDialog
         open={showConfirm}
         onOpenChange={(open) => !open && setShowConfirm(false)}
-        title={`Delete "${tag.name}"?`}
-        description={`This will remove "${tag.name}" from ${itemCount} item${itemCount === 1 ? '' : 's'}.`}
-        confirmLabel="Delete"
-        onConfirm={() => {
-          setShowConfirm(false)
-          onDelete()
-        }}
-        destructive
-      />
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Delete "${tag.name}"?`}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {`This will remove "${tag.name}" from ${itemCount} item${itemCount === 1 ? '' : 's'}.`}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: 'destructive' })}
+              onClick={() => {
+                setShowConfirm(false)
+                onDelete()
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

@@ -11,6 +11,7 @@ import { db } from '@/db'
 import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { TagColor } from '@/types'
 
 const meta = {
   title: 'Routes/Items/Detail/Tags',
@@ -177,6 +178,78 @@ function EmptyTagTypesStory() {
   )
 }
 
+function WithNestedTagsStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const tagType = await createTagType({
+        name: 'Diet',
+        color: TagColor.green,
+      })
+      // Top-level tags
+      const vegan = await createTag({ name: 'Vegan', typeId: tagType.id })
+      const vegetarian = await createTag({
+        name: 'Vegetarian',
+        typeId: tagType.id,
+      })
+      // Child tags nested under Vegan
+      const rawVegan = await createTag({
+        name: 'Raw Vegan',
+        typeId: tagType.id,
+        parentId: vegan.id,
+      })
+      // Child tag nested under Vegetarian
+      await createTag({
+        name: 'Lacto-Ovo',
+        typeId: tagType.id,
+        parentId: vegetarian.id,
+      })
+
+      const item = await createItem({
+        name: 'Almond Milk',
+        tagIds: [vegan.id, rawVegan.id],
+        targetUnit: 'carton',
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/tags`] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <DefaultStory />,
 }
@@ -187,4 +260,8 @@ export const WithAssignedTags: Story = {
 
 export const EmptyTagTypes: Story = {
   render: () => <EmptyTagTypesStory />,
+}
+
+export const WithNestedTags: Story = {
+  render: () => <WithNestedTagsStory />,
 }

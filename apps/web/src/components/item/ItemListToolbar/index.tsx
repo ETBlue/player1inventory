@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { useTags } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import {
   filterItems,
@@ -75,6 +76,7 @@ export function ItemListToolbar({
   hideVendorFilter,
   hideRecipeFilter,
 }: ItemListToolbarProps) {
+  const { data: tags = [] } = useTags()
   const {
     search,
     filterState,
@@ -101,7 +103,8 @@ export function ItemListToolbar({
     selectedVendorIds.length > 0 ||
     selectedRecipeIds.length > 0
 
-  const tagFiltered = filterItems(items, filterState)
+  // Pass tags to enable descendant expansion (selecting a parent tag matches its children too)
+  const tagFiltered = filterItems(items, filterState, tags)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
   const filteredCount = filterItemsByRecipes(
     vendorFiltered,

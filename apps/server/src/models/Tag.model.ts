@@ -42,6 +42,9 @@ class TagClass implements Omit<Tag, 'id'> {
 
   @prop({ type: String })
   familyId?: string
+
+  @prop({ type: String })
+  parentId?: string
 }
 
 export const TagTypeModel = getModelForClass(TagTypeClass)

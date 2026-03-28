@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Tag, TagType } from '@/types'
+import type { TagType } from '@/types'
 import { TagColor } from '@/types'
 import { TagTypeDropdown } from '.'
 
@@ -12,7 +12,7 @@ describe('TagTypeDropdown', () => {
     color: TagColor.blue,
   }
 
-  const tags: Tag[] = [
+  const tags = [
     {
       id: 'tag-1',
       typeId: 'type-1',
@@ -242,7 +242,7 @@ describe('TagTypeDropdown', () => {
 
     // Parent component (ItemFilters) sorts tags before passing them.
     // This test verifies TagTypeDropdown preserves that order without re-shuffling.
-    const tags: Tag[] = [
+    const orderedTags = [
       { id: '2', name: 'Apple', typeId: 'type-1' },
       { id: '3', name: 'Mango', typeId: 'type-1' },
       { id: '1', name: 'Zebra', typeId: 'type-1' },
@@ -252,7 +252,7 @@ describe('TagTypeDropdown', () => {
     render(
       <TagTypeDropdown
         tagType={mockTagType}
-        tags={tags}
+        tags={orderedTags}
         selectedTagIds={[]}
         tagCounts={[1, 2, 3]}
         onToggleTag={vi.fn()}
@@ -269,5 +269,75 @@ describe('TagTypeDropdown', () => {
     expect(menuItems[0]).toHaveTextContent('Apple')
     expect(menuItems[1]).toHaveTextContent('Mango')
     expect(menuItems[2]).toHaveTextContent('Zebra')
+  })
+
+  it('shows selection count badge on trigger when items are selected', () => {
+    // Given two tags selected out of three
+    render(
+      <TagTypeDropdown
+        tagType={tagType}
+        tags={[
+          { id: 'tag-1', name: 'Vegetables', typeId: 'type-1' },
+          { id: 'tag-2', name: 'Fruits', typeId: 'type-1' },
+          { id: 'tag-3', name: 'Grains', typeId: 'type-1' },
+        ]}
+        selectedTagIds={['tag-1', 'tag-2']}
+        tagCounts={[5, 3, 2]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    // Then the trigger should show a count of 2
+    const button = screen.getByRole('button', { name: /category/i })
+    expect(button).toHaveTextContent('2')
+  })
+
+  it('does not show count badge when no tags are selected', () => {
+    // Given no selected tags
+    render(
+      <TagTypeDropdown
+        tagType={tagType}
+        tags={tags}
+        selectedTagIds={[]}
+        tagCounts={[5, 3]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    // Then the trigger should not show a count badge
+    const button = screen.getByRole('button', { name: /category/i })
+    // The button text should just be the tag type name, no number
+    expect(button.textContent).not.toMatch(/\d/)
+  })
+
+  it('renders child tags with depth-based indentation', async () => {
+    // Given a nested tag list with depth annotations
+    const nestedTags = [
+      { id: 'tag-parent', name: 'Food', typeId: 'type-1', depth: 0 },
+      { id: 'tag-child', name: 'Produce', typeId: 'type-1', depth: 1 },
+      { id: 'tag-leaf', name: 'Vegetables', typeId: 'type-1', depth: 2 },
+    ]
+
+    const user = userEvent.setup()
+    render(
+      <TagTypeDropdown
+        tagType={tagType}
+        tags={nestedTags}
+        selectedTagIds={[]}
+        tagCounts={[10, 5, 3]}
+        onToggleTag={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    )
+
+    // When dropdown is opened
+    await user.click(screen.getByRole('button', { name: /category/i }))
+
+    // Then all tags are rendered (depth-based indent is CSS only, not text-testable)
+    expect(screen.getByText(/food/i)).toBeInTheDocument()
+    expect(screen.getByText(/produce/i)).toBeInTheDocument()
+    expect(screen.getByText(/vegetables/i)).toBeInTheDocument()
   })
 })

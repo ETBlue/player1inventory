@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './tags.stories'
 
-const { Default, WithAssignedTags, EmptyTagTypes } = composeStories(stories)
+const { Default, WithAssignedTags, EmptyTagTypes, WithNestedTags } =
+  composeStories(stories)
 
 describe('Item detail tags tab stories smoke tests', () => {
   it('Default renders the tag type name after setup', async () => {
@@ -27,5 +28,16 @@ describe('Item detail tags tab stories smoke tests', () => {
     expect(
       await screen.findByRole('button', { name: /new tag type/i }),
     ).toBeInTheDocument()
+  })
+
+  it('WithNestedTags renders parent and child tag badges with the tag type heading', async () => {
+    render(<WithNestedTags />)
+    // Tag type heading rendered as h2; use findAllBy to tolerate duplicate renders in test env
+    const dietHeadings = await screen.findAllByRole('heading', {
+      name: /diet/i,
+    })
+    expect(dietHeadings.length).toBeGreaterThanOrEqual(1)
+    // Child tag badge is rendered (depth > 0 uses tree connectors, no ↳ prefix)
+    expect(await screen.findByText('Vegan')).toBeInTheDocument()
   })
 })

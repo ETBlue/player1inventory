@@ -12,13 +12,22 @@ export class TagsPage {
   }
 
   async fillTagTypeName(name: string) {
-    // Name input: label htmlFor="newTagTypeName" (src/routes/settings/tags/index.tsx:421)
-    await this.page.getByLabel('Name').fill(name)
+    // Name input inside the New/Edit Tag Type dialog (TagTypeInfoForm, label "Name")
+    // The dialog must be open before calling this method.
+    // (src/routes/settings/tags/index.tsx — TagTypeInfoForm inside Dialog)
+    await this.page.getByRole('dialog').getByLabel('Name').fill(name)
   }
 
   async clickNewTagType() {
-    // Button label "New Tag Type" (src/routes/settings/tags/index.tsx:435)
+    // Button label "New Tag Type" — opens the tag type creation dialog
+    // (src/routes/settings/tags/index.tsx)
     await this.page.getByRole('button', { name: /new tag type/i }).click()
+  }
+
+  async submitTagTypeDialog() {
+    // Save button inside the New/Edit Tag Type dialog (TagTypeInfoForm renders t('common.save') = "Save")
+    // (src/routes/settings/tags/index.tsx — TagTypeInfoForm inside Dialog)
+    await this.page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
   }
 
   getTagTypeCard(name: string): Locator {
@@ -35,13 +44,24 @@ export class TagsPage {
   }
 
   async fillTagName(name: string) {
-    // AddNameDialog input placeholder "e.g., Dairy, Frozen" (src/routes/settings/tags/index.tsx:476)
-    await this.page.getByPlaceholder(/dairy/i).fill(name)
+    // TagInfoForm Name input: label htmlFor="tag-name", label text "Name"
+    // Scoped to the open dialog to avoid conflict with other "Name" inputs on the page.
+    // (src/components/tag/TagInfoForm/index.tsx:82-90)
+    await this.page.getByRole('dialog').getByLabel('Name').fill(name)
+  }
+
+  async selectTagParent(parentName: string) {
+    // TagInfoForm Parent Select: label htmlFor="tag-parent", label text "Parent Tag"
+    // Opens a Radix Select and chooses the given parent option.
+    // (src/components/tag/TagInfoForm/index.tsx:129-150)
+    await this.page.getByRole('dialog').getByLabel('Parent Tag').click()
+    await this.page.getByRole('option', { name: parentName }).click()
   }
 
   async submitTagDialog() {
-    // "Add Tag" submit button in AddNameDialog (src/routes/settings/tags/index.tsx:472)
-    await this.page.getByRole('button', { name: 'Add Tag' }).click()
+    // Save button inside the Add Tag dialog (TagInfoForm renders t('common.save') = "Save")
+    // (src/components/tag/TagInfoForm/index.tsx:152-158)
+    await this.page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
   }
 
   getTagBadge(name: string): Locator {

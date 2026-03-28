@@ -53,15 +53,17 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
       const result = await TagTypeModel.deleteOne({ _id: id, userId })
       return result.deletedCount > 0
     },
-    createTag: async (_, { name, typeId }, ctx) => {
+    createTag: async (_, { name, typeId, parentId }, ctx) => {
       const userId = requireAuth(ctx)
-      return TagModel.create({ name, typeId, userId }) as unknown as Promise<Tag>
+      return TagModel.create({ name, typeId, userId, ...(parentId !== undefined && { parentId }) }) as unknown as Promise<Tag>
     },
-    updateTag: async (_, { id, name, typeId }, ctx) => {
+    updateTag: async (_, { id, name, typeId, parentId }, ctx) => {
       const userId = requireAuth(ctx)
       const updates: Record<string, unknown> = {}
       if (name !== undefined) updates.name = name
       if (typeId !== undefined) updates.typeId = typeId
+      if (parentId !== undefined) updates.parentId = parentId
+      if (parentId === null) updates.parentId = undefined
       const tag = await TagModel.findOneAndUpdate(
         { _id: id, userId },
         { $set: updates },
@@ -70,8 +72,26 @@ export const tagResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'TagType' | 'T
       if (!tag) throw new GraphQLError('Tag not found', { extensions: { code: 'NOT_FOUND' } })
       return tag as unknown as Tag
     },
-    deleteTag: async (_, { id }, ctx) => {
+    deleteTag: async (_, { id, deleteChildren }, ctx) => {
       const userId = requireAuth(ctx)
+      // Helper: recursively delete a tag and all its descendants
+      const deleteTagAndChildren = async (tagId: string): Promise<void> => {
+        const children = await TagModel.find({ userId, parentId: tagId }, { _id: 1 })
+        for (const child of children) {
+          await deleteTagAndChildren((child as unknown as { _id: { toString(): string } })._id.toString())
+        }
+        await ItemModel.updateMany({ userId, tagIds: tagId }, { $pull: { tagIds: tagId } })
+        await TagModel.deleteOne({ _id: tagId, userId })
+      }
+
+      if (deleteChildren) {
+        // Recursively delete all child tags and their descendants
+        await deleteTagAndChildren(id)
+        return true
+      }
+
+      // Orphan children: unset parentId on direct children so they become top-level
+      await TagModel.updateMany({ userId, parentId: id }, { $unset: { parentId: '' } })
       // Cascade: remove tagId from all items before deleting
       await ItemModel.updateMany({ userId, tagIds: id }, { $pull: { tagIds: id } })
       const result = await TagModel.deleteOne({ _id: id, userId })

@@ -11,7 +11,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [a11y](global/a11y/) | ✅ Implemented | Plan 1 (critical/high fixes), Plan 2 (keyboard/motion), Plan 3 (visual verification) — all done |
 | [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent |
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
-| [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done |
+| [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done; **deferred:** post-login IndexedDB → MongoDB migration (see `global/backend/2026-03-27-post-login-migration.md`) |
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags + shopping + cooking done; item list pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts, RWD mobile+desktop all done |
@@ -36,7 +36,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [item-list-state-restore](features/item-list-state-restore/) | ✅ Done | Back-navigation state preservation done (local + cloud E2E) |
 | [inventory-logs](features/inventory-logs/) | ✅ Implemented | Cloud operations done: schema fix, GraphQL queries/mutations, dual-mode hooks, E2E tests |
 | [storybook-coverage](features/storybook-coverage/) | ✅ Implemented | Component stories done; route-level stories + smoke tests done for all 17 routes |
-| [onboarding](features/onboarding/) | 🔲 Pending | Welcome + template picker (items/vendors); nested tag types; empty-data auto-trigger; Settings entry point |
+| [onboarding](features/onboarding/) | 🔄 In Progress | Phase A done: nested tags (parentId, parent selector, tree UI, cascade delete, cloud backend, import/export); InfoForm refactor (Tag/Recipe/Vendor); dialog improvements (DialogMain, inline close). Phases B (onboarding flow) + C (settings reset) pending |
 
 ---
 

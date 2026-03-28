@@ -166,10 +166,10 @@ describe('Vendor Detail - Info Tab', () => {
       vi.restoreAllMocks()
     })
 
-    it('user is not navigated back when mutate ignores onSuccess (regression guard)', async () => {
-      // Given: mutate fires but never calls the onSuccess callback (broken cloud mode)
+    it('user is not navigated back when mutateAsync never resolves (broken cloud mode regression guard)', async () => {
+      // Given: mutateAsync fires but never resolves (broken cloud mode)
       vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
-        mutate: vi.fn(), // ignores options — no onSuccess call
+        mutateAsync: vi.fn(() => new Promise(() => {})), // never resolves
         isPending: false,
       })
 
@@ -196,12 +196,10 @@ describe('Vendor Detail - Info Tab', () => {
       expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
     })
 
-    it('user is navigated back after saving when mutate properly calls onSuccess (fixed cloud mode)', async () => {
-      // Given: mutate invokes the onSuccess callback (fixed cloud mode behaviour)
+    it('user is navigated back after saving when mutateAsync resolves (fixed cloud mode)', async () => {
+      // Given: mutateAsync resolves (fixed cloud mode behaviour)
       vi.spyOn(useVendorsModule, 'useUpdateVendor').mockReturnValue({
-        mutate: vi.fn((_input, options?: { onSuccess?: () => void }) => {
-          Promise.resolve().then(() => options?.onSuccess?.())
-        }),
+        mutateAsync: vi.fn(() => Promise.resolve()),
         isPending: false,
       })
 

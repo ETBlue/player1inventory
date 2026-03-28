@@ -12,6 +12,7 @@ import {
   useTagCountByType,
   useTags,
   useTagsByType,
+  useTagsWithDepth,
   useTagTypes,
   useUpdateTag,
   useUpdateTagType,
@@ -334,11 +335,11 @@ describe('useDeleteTag (cloud mode)', () => {
     const { result } = renderHook(() => useDeleteTag(), {
       wrapper: createWrapper(),
     })
-    const deleted = await result.current.mutateAsync('tag-1')
+    const deleted = await result.current.mutateAsync({ id: 'tag-1' })
 
-    // Then it delegates to cloudDelete
+    // Then it delegates to cloudDelete with deleteChildren defaulting to false
     expect(mockCloudDeleteTag).toHaveBeenCalledWith({
-      variables: { id: 'tag-1' },
+      variables: { id: 'tag-1', deleteChildren: false },
     })
     expect(deleted).toBe(true)
   })
@@ -386,6 +387,77 @@ describe('useItemCountByTag (cloud mode)', () => {
     expect(capturedItemCountByTagOptions).toMatchObject({
       fetchPolicy: 'cache-and-network',
     })
+  })
+})
+
+// ─── useTagsWithDepth ─────────────────────────────────────────────────────────
+
+describe('useTagsWithDepth (cloud mode)', () => {
+  it('user can fetch tags in depth-first hierarchical order via Apollo in cloud mode', async () => {
+    // Given cloud mode and Apollo returns hierarchical tags
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseGetTagsQuery.mockReturnValue({
+      data: {
+        tags: [
+          { id: 'parent', name: 'Produce', typeId: 'tt-1', userId: 'u1' },
+          {
+            id: 'child',
+            name: 'Fruit',
+            typeId: 'tt-1',
+            parentId: 'parent',
+            userId: 'u1',
+          },
+          { id: 'sibling', name: 'Dairy', typeId: 'tt-1', userId: 'u1' },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called
+    const { result } = renderHook(() => useTagsWithDepth(), {
+      wrapper: createWrapper(),
+    })
+
+    // Then tags are returned in depth-first order with depth annotations
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const data = result.current.data ?? []
+    // parent should appear before child
+    const parentIdx = data.findIndex((t) => t.id === 'parent')
+    const childIdx = data.findIndex((t) => t.id === 'child')
+    expect(parentIdx).toBeLessThan(childIdx)
+    // parent has depth 0, child has depth 1
+    expect(data[parentIdx]?.depth).toBe(0)
+    expect(data[childIdx]?.depth).toBe(1)
+    // sibling has depth 0
+    const siblingIdx = data.findIndex((t) => t.id === 'sibling')
+    expect(data[siblingIdx]?.depth).toBe(0)
+  })
+
+  it('user can filter tags by typeId in depth-first order', async () => {
+    // Given cloud mode and Apollo returns tags of two different types
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseGetTagsQuery.mockReturnValue({
+      data: {
+        tags: [
+          { id: 'a', name: 'Fruit', typeId: 'tt-1', userId: 'u1' },
+          { id: 'b', name: 'Pantry', typeId: 'tt-2', userId: 'u1' },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called with a typeId filter
+    const { result } = renderHook(() => useTagsWithDepth('tt-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then only tags of the specified type are returned
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    expect(result.current.data).toHaveLength(1)
+    expect(result.current.data?.[0].id).toBe('a')
+    expect(result.current.data?.[0].depth).toBe(0)
   })
 })
 

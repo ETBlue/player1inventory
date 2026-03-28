@@ -41,17 +41,12 @@ const DialogContent = React.forwardRef<
       className={cn(
         `fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] z-50 
         w-full max-w-lg 
-        grid gap-2 p-6 
         bg-background-surface shadow-lg`,
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 opacity-70 transition-opacity hover:opacity-100">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
 ))
@@ -59,23 +54,38 @@ DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({
   className,
+  children,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col space-y-1.5 text-center sm:text-left border-b border-accessory-default pb-2',
+      'flex items-center border-b border-accessory-default px-4 py-3',
       className,
     )}
     {...props}
-  />
+  >
+    {children}
+    <div className="flex-1" />
+    <DialogPrimitive.Close className="opacity-70 transition-opacity hover:opacity-100 cursor-pointer rounded-sm p-2 -m-2 ">
+      <X className="h-4 w-4" />
+      <span className="sr-only">Close</span>
+    </DialogPrimitive.Close>
+  </div>
 )
 DialogHeader.displayName = 'DialogHeader'
+
+const DialogMain = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn('mx-4 my-3', className)} {...props} />
+)
 
 const DialogFooter = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex justify-between gap-2', className)} {...props} />
+  <div className={cn('flex justify-between gap-2 m-4', className)} {...props} />
 )
 DialogFooter.displayName = 'DialogFooter'
 
@@ -111,6 +121,7 @@ export {
   DialogTrigger,
   DialogContent,
   DialogHeader,
+  DialogMain,
   DialogFooter,
   DialogTitle,
   DialogDescription,

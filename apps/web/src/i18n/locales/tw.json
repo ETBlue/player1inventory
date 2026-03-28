@@ -157,13 +157,14 @@
     "tags": {
       "label": "標籤",
       "description": "管理標籤與其分類",
+      "newTagType": "新增標籤類型",
       "tagType": {
         "colorLabel": "顏色",
         "nameLabel": "名稱",
         "namePlaceholder": "例：食材類別、保存方式",
-        "newButton": "新增標籤分類",
-        "editTitle": "編輯標籤分類",
-        "deleteTitle": "刪除標籤分類？",
+        "newButton": "新增標籤類型",
+        "editTitle": "編輯標籤類型",
+        "deleteTitle": "刪除標籤類型？",
         "deleteWithTags_other": "即將刪除「{{name}}」與底下的 {{count}} 個標籤，並移除標籤與品項的關聯。",
         "deleteNoTags": "「{{name}}」底下沒有任何標籤，可以安心刪除。"
       },
@@ -172,12 +173,18 @@
         "addTitle": "新增標籤",
         "addSubmit": "新增",
         "addPlaceholder": "例：乳製品、冷凍食品",
-        "typeLabel": "標籤分類",
+        "typeLabel": "標籤類型",
         "nameLabel": "名稱",
+        "parentLabel": "上層標籤",
+        "parentNone": "無（最上層）",
         "deleteAriaLabel": "刪除「{{name}}」",
         "deleteTitle": "刪除標籤？",
         "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
-        "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。"
+        "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
+        "deleteParentTitle": "此標籤有子標籤",
+        "deleteParentDescription": "請選擇如何處理子標籤。",
+        "deleteParentCascade": "刪除所有子標籤",
+        "deleteParentOrphan": "保留子標籤（升為最上層）"
       },
       "toast": {
         "moveFailed": "移動標籤失敗了...",

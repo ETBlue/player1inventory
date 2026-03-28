@@ -8,9 +8,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from './alert-dialog'
-import { Button } from './button'
 
 const meta: Meta<typeof AlertDialog> = {
   title: 'UI/AlertDialog',
@@ -23,17 +21,14 @@ type Story = StoryObj<typeof AlertDialog>
 
 export const Default: Story = {
   render: () => (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="neutral-outline">Open Alert</Button>
-      </AlertDialogTrigger>
+    <AlertDialog open>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone.
-          </AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          This action cannot be undone.
+        </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction>Continue</AlertDialogAction>
@@ -45,17 +40,14 @@ export const Default: Story = {
 
 export const Destructive: Story = {
   render: () => (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="destructive">Delete Item</Button>
-      </AlertDialogTrigger>
+    <AlertDialog open>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this item?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This will permanently delete the item. This action cannot be undone.
-          </AlertDialogDescription>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          This will permanently delete the item. This action cannot be undone.
+        </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction variant="destructive">Delete</AlertDialogAction>

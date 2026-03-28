@@ -9,14 +9,14 @@ describe('Dialog stories smoke tests', () => {
   it('Default renders without error', () => {
     render(<Default />)
     expect(
-      screen.getByRole('button', { name: 'Open Dialog' }),
+      screen.getByRole('heading', { name: 'Dialog Title' }),
     ).toBeInTheDocument()
   })
 
   it('WithForm renders without error', () => {
     render(<WithForm />)
     expect(
-      screen.getByRole('button', { name: 'Edit Profile' }),
+      screen.getByRole('heading', { name: 'Edit Profile' }),
     ).toBeInTheDocument()
   })
 })

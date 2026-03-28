@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { db } from '@/db'
 import {
   createTag,
   createTagType,
@@ -27,6 +28,7 @@ import {
   useUpdateTagMutation,
   useUpdateTagTypeMutation,
 } from '@/generated/graphql'
+import { buildDepthFirstTagList, getTagAndDescendantIds } from '@/lib/tagUtils'
 import type { Tag, TagColor, TagType } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -217,6 +219,21 @@ export function useTags() {
   }
 }
 
+/**
+ * Returns all tags (optionally filtered by typeId) in depth-first order,
+ * with each tag annotated with its depth in the hierarchy (0 = top-level).
+ *
+ * Order: each top-level tag is emitted first, then all of its descendants
+ * recursively, before moving to the next top-level tag.
+ */
+export function useTagsWithDepth(typeId?: string) {
+  const { data, isLoading, isError } = useTags()
+
+  const sorted = data ? buildDepthFirstTagList(data, typeId) : undefined
+
+  return { data: sorted, isLoading, isError }
+}
+
 export function useTagsByType(typeId: string) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -263,23 +280,26 @@ export function useCreateTag() {
   })
 
   if (mode === 'cloud') {
+    const toVars = (input: Omit<Tag, 'id'>) => ({
+      name: input.name,
+      typeId: input.typeId,
+      ...(input.parentId !== undefined && { parentId: input.parentId }),
+    })
     return {
       mutate: (
         input: Omit<Tag, 'id'>,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudCreate({
-          variables: { name: input.name, typeId: input.typeId },
-        }).then(
+        cloudCreate({ variables: toVars(input) }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
       mutateAsync: (input: Omit<Tag, 'id'>) =>
-        cloudCreate({
-          variables: { name: input.name, typeId: input.typeId },
-        }).then((r) => r.data?.createTag),
+        cloudCreate({ variables: toVars(input) }).then(
+          (r) => r.data?.createTag,
+        ),
       isPending: false,
     }
   }
@@ -305,9 +325,15 @@ export function useUpdateTag() {
 
   if (mode === 'cloud') {
     const toVars = (id: string, updates: Partial<Tag>) => {
-      const vars: { id: string; name?: string; typeId?: string } = { id }
+      const vars: {
+        id: string
+        name?: string
+        typeId?: string
+        parentId?: string
+      } = { id }
       if (updates.name !== undefined) vars.name = updates.name
       if (updates.typeId !== undefined) vars.typeId = updates.typeId
+      if (updates.parentId !== undefined) vars.parentId = updates.parentId
       return vars
     }
     return {
@@ -337,7 +363,36 @@ export function useDeleteTag() {
   const { mode } = useDataMode()
 
   const localMutation = useMutation({
-    mutationFn: deleteTag,
+    mutationFn: async ({
+      id,
+      deleteChildren = false,
+    }: {
+      id: string
+      deleteChildren?: boolean
+    }) => {
+      if (deleteChildren) {
+        // Recursively delete all descendants, then the tag itself
+        const allTags = await getAllTags()
+        const idsToDelete = getTagAndDescendantIds(id, allTags)
+        for (const tagId of idsToDelete) {
+          await deleteTag(tagId)
+        }
+      } else {
+        // Reparent direct children to top-level (clear parentId), then delete
+        const allTags = await getAllTags()
+        const directChildren = allTags.filter((t) => t.parentId === id)
+        for (const child of directChildren) {
+          // Use Dexie modify to delete the parentId field entirely (exactOptionalPropertyTypes)
+          await db.tags
+            .where('id')
+            .equals(child.id)
+            .modify((t) => {
+              delete t.parentId
+            })
+        }
+        await deleteTag(id)
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] })
       queryClient.invalidateQueries({ queryKey: ['items'] })
@@ -351,17 +406,28 @@ export function useDeleteTag() {
   if (mode === 'cloud') {
     return {
       mutate: (
-        id: string,
+        {
+          id,
+          deleteChildren = false,
+        }: { id: string; deleteChildren?: boolean },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudDelete({ variables: { id } }).then(
+        cloudDelete({ variables: { id, deleteChildren } }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: (id: string) =>
-        cloudDelete({ variables: { id } }).then((r) => r.data?.deleteTag),
+      mutateAsync: ({
+        id,
+        deleteChildren = false,
+      }: {
+        id: string
+        deleteChildren?: boolean
+      }) =>
+        cloudDelete({ variables: { id, deleteChildren } }).then(
+          (r) => r.data?.deleteTag,
+        ),
       isPending: false,
     }
   }

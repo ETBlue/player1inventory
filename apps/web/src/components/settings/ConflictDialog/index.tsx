@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { ConflictEntry, ConflictSummary } from '@/lib/importData'
@@ -72,27 +73,30 @@ export function ConflictDialog({
         <DialogHeader>
           <DialogTitle>{t('settings.import.conflictDialog.title')}</DialogTitle>
         </DialogHeader>
-        <DialogDescription>
-          {t('settings.import.conflictDialog.description')}
-        </DialogDescription>
+        <DialogMain>
+          <DialogDescription>
+            {t('settings.import.conflictDialog.description')}
+          </DialogDescription>
 
-        <div className="space-y-2 py-2 max-h-64 overflow-y-auto">
-          {activeKeys.map((key) => {
-            const entries = conflicts[key]
-            const label = t(`settings.import.conflictDialog.entityTypes.${key}`)
-            return (
-              <div key={key} className="text-sm">
-                <span className="font-medium">
-                  {label} ({entries.length}):
-                </span>{' '}
-                <span className="text-foreground-muted">
-                  {formatConflictEntries(entries, t)}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-
+          <div className="space-y-2 py-2 max-h-64 overflow-y-auto">
+            {activeKeys.map((key) => {
+              const entries = conflicts[key]
+              const label = t(
+                `settings.import.conflictDialog.entityTypes.${key}`,
+              )
+              return (
+                <div key={key} className="text-sm">
+                  <span className="font-medium">
+                    {label} ({entries.length}):
+                  </span>{' '}
+                  <span className="text-foreground-muted">
+                    {formatConflictEntries(entries, t)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </DialogMain>
         <DialogFooter className="flex-wrap gap-2">
           <Button variant="neutral-outline" onClick={onClose}>
             {t('settings.import.conflictDialog.cancel')}

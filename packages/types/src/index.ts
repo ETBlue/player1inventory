@@ -35,6 +35,7 @@ export interface Tag {
   id: string
   name: string
   typeId: string
+  parentId?: string
 }
 
 export enum TagColor {

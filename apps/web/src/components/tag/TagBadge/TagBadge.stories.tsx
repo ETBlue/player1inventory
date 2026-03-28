@@ -1,5 +1,7 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { noopApolloClient } from '@/test/apolloStub'
 import { TagColor } from '@/types'
 import { TagBadge } from '.'
 
@@ -10,9 +12,11 @@ const meta: Meta<typeof TagBadge> = {
   component: TagBadge,
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <Story />
-      </QueryClientProvider>
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <Story />
+        </QueryClientProvider>
+      </ApolloProvider>
     ),
   ],
 }

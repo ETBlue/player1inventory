@@ -113,7 +113,8 @@ function RecipeItemsTab() {
   )
 
   // Branch B: all filters
-  const tagFiltered = filterItems(items, filterState)
+  // Pass tags to enable descendant expansion (selecting a parent tag matches its children too)
+  const tagFiltered = filterItems(items, filterState, tags)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
   const recipeFiltered = filterItemsByRecipes(
     vendorFiltered,

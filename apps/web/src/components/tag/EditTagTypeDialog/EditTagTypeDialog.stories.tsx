@@ -1,6 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { TagColor } from '@/types'
 import { EditTagTypeDialog } from '.'
 
@@ -13,36 +11,33 @@ export default meta
 type Story = StoryObj<typeof EditTagTypeDialog>
 
 export const Default: Story = {
-  render: () => {
-    const [tagType, setTagType] = useState<{
-      id: string
-      name: string
-      color?: string
-    } | null>(null)
-    const [name, setName] = useState('Category')
-    const [color, setColor] = useState(TagColor.blue)
-    return (
-      <>
-        <Button
-          onClick={() =>
-            setTagType({ id: '1', name: 'Category', color: TagColor.blue })
-          }
-        >
-          Edit Tag Type
-        </Button>
-        <EditTagTypeDialog
-          tagType={tagType}
-          name={name}
-          color={color}
-          onNameChange={setName}
-          onColorChange={setColor}
-          onSave={() => {
-            console.log('Save:', { name, color })
-            setTagType(null)
-          }}
-          onClose={() => setTagType(null)}
-        />
-      </>
-    )
-  },
+  render: () => (
+    <EditTagTypeDialog
+      tagType={{
+        id: '1',
+        name: 'Category',
+        color: TagColor.blue,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }}
+      onSave={(data) => console.log('Save:', data)}
+      onClose={() => {}}
+    />
+  ),
+}
+
+export const WithValidationError: Story = {
+  render: () => (
+    <EditTagTypeDialog
+      tagType={{
+        id: '2',
+        name: '',
+        color: TagColor.green,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }}
+      onSave={(data) => console.log('Save:', data)}
+      onClose={() => {}}
+    />
+  ),
 }

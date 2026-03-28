@@ -26,16 +26,21 @@ import { ArrowLeft, Pencil, Plus, Tags, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AddNameDialog } from '@/components/AddNameDialog'
-import { ColorSelect } from '@/components/ColorSelect'
 import { DeleteButton } from '@/components/DeleteButton'
 import { Toolbar } from '@/components/Toolbar'
 import { EditTagTypeDialog } from '@/components/tag/EditTagTypeDialog'
 import { TagBadge } from '@/components/tag/TagBadge'
+import { TagInfoForm } from '@/components/tag/TagInfoForm'
+import { TagTypeInfoForm } from '@/components/tag/TagTypeInfoForm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogMain,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { migrateTagColorsToTypes, migrateTagColorTints } from '@/db/operations'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -46,12 +51,15 @@ import {
   useDeleteTagType,
   useItemCountByTag,
   useTags,
+  useTagsWithDepth,
   useTagTypes,
   useUpdateTag,
   useUpdateTagType,
 } from '@/hooks/useTags'
 import { sortTagsByName } from '@/lib/tagSortUtils'
 import { type Tag, TagColor, type TagType } from '@/types/index'
+
+type TagWithDepth = Tag & { depth: number }
 
 export const Route = createFileRoute('/settings/tags/')({
   component: TagSettings,
@@ -94,14 +102,21 @@ const TAG_COLOR_TEXT: Record<TagColor, string> = {
 function DraggableTagBadge({
   tag,
   tagType,
+  depth,
   onDelete,
 }: {
   tag: Tag
   tagType: TagType
+  depth: number
   onDelete: () => void
 }) {
   const { t } = useTranslation()
   const { data: itemCount = 0 } = useItemCountByTag(tag.id)
+
+  // TODO: Limit drag-and-drop to same-parent groups in a future iteration.
+  // For now, drag-and-drop is disabled for child tags (depth >= 1) to avoid
+  // ambiguous re-parenting behavior when dragging across type cards.
+  const isDragDisabled = depth >= 1
 
   const {
     attributes,
@@ -112,6 +127,7 @@ function DraggableTagBadge({
     isDragging,
   } = useSortable({
     id: tag.id,
+    disabled: isDragDisabled,
   })
 
   const style = {
@@ -132,17 +148,36 @@ function DraggableTagBadge({
   // - Longer movements (≥ 8px) trigger drag-and-drop
   // This allows both click-to-navigate and drag-to-move behaviors to coexist.
   return (
-    <div ref={setNodeRef} style={style} className="inline-flex items-center">
+    <div
+      ref={setNodeRef}
+      style={{ ...style, marginLeft: depth * 16 }}
+      className="relative flex items-center"
+    >
+      {Array.from({ length: depth }, (_, i) => i * 16 + 8).map((leftPx) => (
+        <div
+          key={`connector-at-${leftPx}px`}
+          className="border-r border-accessory-default absolute"
+          style={{
+            right: 'auto',
+            top: '-14px',
+            bottom: '10px',
+            left: `-${leftPx}px`,
+          }}
+        />
+      ))}
+      {depth > 0 && (
+        <div className="absolute w-2 h-px bg-accessory-default -left-2" />
+      )}
       <div
         className="inline-flex"
-        {...attributes}
-        aria-describedby="dnd-instructions"
-        {...listeners}
+        {...(isDragDisabled ? {} : attributes)}
+        aria-describedby={isDragDisabled ? undefined : 'dnd-instructions'}
+        {...(isDragDisabled ? {} : listeners)}
       >
         <TagBadge
           tag={tag}
           tagType={tagType}
-          className="rounded-tr-none rounded-br-none"
+          className={`z-10 rounded-tr-none rounded-br-none`}
           onClick={() => {
             navigate({
               to: '/settings/tags/$id',
@@ -184,7 +219,7 @@ function DroppableTagTypeCard({
   onDeleteTag,
 }: {
   tagType: TagType
-  sortedTypeTags: Tag[]
+  sortedTypeTags: TagWithDepth[]
   tagCount: number
   onEdit: () => void
   onDelete: () => void
@@ -239,7 +274,7 @@ function DroppableTagTypeCard({
           />
         </div>
       </CardHeader>
-      <CardContent ref={setNodeRef}>
+      <CardContent ref={setNodeRef} className="pl-6">
         <p className="sr-only" id="dnd-instructions">
           Press Space or Enter to pick up a tag, use arrow keys to move it, and
           press Space or Enter again to drop it.
@@ -248,16 +283,22 @@ function DroppableTagTypeCard({
           items={sortedTypeTags.map((tag) => tag.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="flex flex-wrap gap-1">
+          <div className="space-y-1">
             {sortedTypeTags.map((tag) => (
               <DraggableTagBadge
                 key={tag.id}
                 tag={tag}
                 tagType={tagType}
+                depth={tag.depth}
                 onDelete={() => onDeleteTag(tag.id)}
               />
             ))}
-            <Button variant="neutral-ghost" size="xs" onClick={onAddTag}>
+            <Button
+              variant="neutral-ghost"
+              size="xs"
+              onClick={onAddTag}
+              className="self-start"
+            >
               <Plus className="h-3 w-3" />
               {t('settings.tags.tag.newButton')}
             </Button>
@@ -273,6 +314,7 @@ export function TagSettings() {
   const { goBack } = useAppNavigation('/settings')
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [], isLoading } = useTags()
+  const { data: tagsWithDepth = [] } = useTagsWithDepth()
 
   // Scroll restoration: save on unmount, restore after data loads
   const currentUrl = useRouterState({
@@ -289,13 +331,9 @@ export function TagSettings() {
   const updateTag = useUpdateTag()
   const deleteTag = useDeleteTag()
 
-  const [newTagTypeName, setNewTagTypeName] = useState('')
-  const [newTagTypeColor, setNewTagTypeColor] = useState(TagColor.blue)
+  const [newTagTypeDialog, setNewTagTypeDialog] = useState(false)
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
-  const [newTagName, setNewTagName] = useState('')
   const [editTagType, setEditTagType] = useState<TagType | null>(null)
-  const [editTagTypeName, setEditTagTypeName] = useState('')
-  const [editTagTypeColor, setEditTagTypeColor] = useState(TagColor.blue)
 
   // Drag and drop state
   const [activeTag, setActiveTag] = useState<{
@@ -326,52 +364,8 @@ export function TagSettings() {
     migrateTagColorTints()
   }, [])
 
-  const handleAddTagType = () => {
-    if (newTagTypeName.trim()) {
-      createTagType.mutate(
-        {
-          name: newTagTypeName.trim(),
-          color: newTagTypeColor,
-        },
-        {
-          onSuccess: () => {
-            setNewTagTypeName('')
-            setNewTagTypeColor(TagColor.blue)
-          },
-        },
-      )
-    }
-  }
-
-  const handleAddTag = () => {
-    if (addTagDialog && newTagName.trim()) {
-      createTag.mutate(
-        {
-          name: newTagName.trim(),
-          typeId: addTagDialog,
-        },
-        {
-          onSuccess: () => {
-            setNewTagName('')
-            setAddTagDialog(null)
-          },
-        },
-      )
-    }
-  }
-
-  const handleEditTagType = () => {
-    if (editTagType && editTagTypeName.trim()) {
-      updateTagType.mutate({
-        id: editTagType.id,
-        updates: { name: editTagTypeName.trim(), color: editTagTypeColor },
-      })
-      setEditTagType(null)
-    }
-  }
-
   const handleDeleteTag = async (tagId: string) => {
-    deleteTag.mutate(tagId)
+    deleteTag.mutate({ id: tagId })
   }
 
   const handleDragStart = (event: DragEndEvent) => {
@@ -465,47 +459,12 @@ export function TagSettings() {
           <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
         </Button>
         <h1 className="">{t('settings.tags.label')}</h1>
+        <div className="flex-1" />
+        <Button onClick={() => setNewTagTypeDialog(true)}>
+          <Plus className="h-4 w-4" />
+          {t('settings.tags.newTagType')}
+        </Button>
       </Toolbar>
-
-      <form
-        className="px-6 pt-3 pb-5 space-y-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleAddTagType()
-        }}
-      >
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <div>
-            <Label htmlFor="newTagTypeColor">
-              {t('settings.tags.tagType.colorLabel')}
-            </Label>
-            <ColorSelect
-              id="newTagTypeColor"
-              value={newTagTypeColor}
-              onChange={setNewTagTypeColor}
-            />
-          </div>
-          <div>
-            <Label htmlFor="newTagTypeName">
-              {t('settings.tags.tagType.nameLabel')}
-            </Label>
-            <Input
-              id="newTagTypeName"
-              placeholder={t('settings.tags.tagType.namePlaceholder')}
-              value={newTagTypeName}
-              autoFocus
-              onChange={(e) => setNewTagTypeName(e.target.value)}
-              className="capitalize"
-            />
-          </div>
-        </div>
-        <div className="flex">
-          <Button type="submit" className="flex-1">
-            <Plus />
-            {t('settings.tags.tagType.newButton')}
-          </Button>
-        </div>
-      </form>
       <div className="space-y-px pb-4">
         {[...tagTypes]
           .sort((a, b) =>
@@ -513,9 +472,16 @@ export function TagSettings() {
           )
           .map((tagType) => {
             const typeTags = tags.filter((tag) => tag.typeId === tagType.id)
-            const sortedTypeTags = sortTagsByName(typeTags)
-            const tagTypeColor = tagType.color || TagColor.blue
-
+            // Use depth-annotated tags for rendering, preserving depth-first order
+            // (parent before children). Top-level tags are sorted by name; child tags
+            // follow their parent in depth-first traversal.
+            const typeTagsWithDepth = tagsWithDepth.filter(
+              (tag) => tag.typeId === tagType.id,
+            )
+            const sortedTypeTags =
+              typeTagsWithDepth.length > 0
+                ? typeTagsWithDepth
+                : sortTagsByName(typeTags).map((tag) => ({ ...tag, depth: 0 }))
             return (
               <DroppableTagTypeCard
                 key={tagType.id}
@@ -524,8 +490,6 @@ export function TagSettings() {
                 tagCount={typeTags.length}
                 onEdit={() => {
                   setEditTagType(tagType)
-                  setEditTagTypeName(tagType.name)
-                  setEditTagTypeColor(tagTypeColor)
                 }}
                 onDelete={() => deleteTagType.mutate(tagType.id)}
                 onAddTag={() => setAddTagDialog(tagType.id)}
@@ -535,27 +499,69 @@ export function TagSettings() {
           })}
       </div>
 
-      {/* Add Tag Dialog */}
-      <AddNameDialog
+      {/* New Tag Type Dialog */}
+      <Dialog open={newTagTypeDialog} onOpenChange={setNewTagTypeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('settings.tags.newTagType')}</DialogTitle>
+          </DialogHeader>
+          <DialogMain>
+            <TagTypeInfoForm
+              onSave={(data) => {
+                createTagType.mutate(data, {
+                  onSuccess: () => setNewTagTypeDialog(false),
+                })
+              }}
+              isPending={createTagType.isPending}
+            />
+          </DialogMain>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Tag Dialog — uses TagInfoForm with typeReadonly so type is pre-set */}
+      <Dialog
         open={!!addTagDialog}
-        title={t('settings.tags.tag.addTitle')}
-        submitLabel={t('settings.tags.tag.addSubmit')}
-        name={newTagName}
-        placeholder={t('settings.tags.tag.addPlaceholder')}
-        onNameChange={setNewTagName}
-        onAdd={handleAddTag}
-        onClose={() => setAddTagDialog(null)}
-      />
+        onOpenChange={(open) => {
+          if (!open) setAddTagDialog(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('settings.tags.tag.addTitle')}</DialogTitle>
+          </DialogHeader>
+          <DialogMain>
+            {addTagDialog && (
+              <TagInfoForm
+                key={addTagDialog}
+                tag={{ id: '', name: '', typeId: addTagDialog }}
+                tagTypes={tagTypes}
+                parentOptions={tagsWithDepth.filter(
+                  (t) => t.typeId === addTagDialog,
+                )}
+                typeReadonly={true}
+                onSave={(data) => {
+                  createTag.mutate({
+                    name: data.name,
+                    typeId: data.typeId,
+                    ...(data.parentId ? { parentId: data.parentId } : {}),
+                  })
+                  setAddTagDialog(null)
+                }}
+                isPending={createTag.isPending}
+              />
+            )}
+          </DialogMain>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit TagType Dialog */}
       <EditTagTypeDialog
         tagType={editTagType}
-        name={editTagTypeName}
-        color={editTagTypeColor}
-        onNameChange={setEditTagTypeName}
-        onColorChange={setEditTagTypeColor}
-        onSave={handleEditTagType}
+        onSave={(data) =>
+          updateTagType.mutate({ id: editTagType?.id ?? '', updates: data })
+        }
         onClose={() => setEditTagType(null)}
+        isPending={updateTagType.isPending}
       />
 
       {/* Drag Overlay - shows preview of tag being dragged */}

@@ -9,16 +9,91 @@ import { Button } from '@/components/ui/button'
 import {
   useCreateTag,
   useItem,
-  useTags,
+  useTagsWithDepth,
   useTagTypes,
   useUpdateItem,
 } from '@/hooks'
 import { useAddTagType } from '@/hooks/useAddTagType'
-import { sortTagsByName } from '@/lib/tagSortUtils'
+import type { TagColor } from '@/types'
 
 export const Route = createFileRoute('/items/$id/tags')({
   component: TagsTab,
 })
+
+function TagTypeSection({
+  tagType,
+  item,
+  onToggle,
+  onAddTag,
+}: {
+  tagType: { id: string; name: string; color: TagColor }
+  item: { tagIds: string[] }
+  onToggle: (tagId: string) => void
+  onAddTag: (typeId: string) => void
+}) {
+  const { data: tagsWithDepth = [] } = useTagsWithDepth(tagType.id)
+
+  return (
+    <div>
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center my-2">
+        <div className="h-px bg-accessory-emphasized" />
+        <h2 className="text-sm font-medium uppercase">{tagType.name}</h2>
+        <div className="h-px bg-accessory-emphasized" />
+      </div>
+
+      <div className="space-y-1">
+        {tagsWithDepth.map((tag) => {
+          const isSelected = item.tagIds.includes(tag.id)
+          const depth = tag.depth ?? 0
+          return (
+            <div
+              key={tag.id}
+              className="relative"
+              style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
+            >
+              {Array.from({ length: depth }, (_, i) => i * 16 + 8).map(
+                (leftPx) => (
+                  <div
+                    key={`connector-at-${leftPx}px`}
+                    className="border-r border-accessory-emphasized absolute"
+                    style={{
+                      right: 'auto',
+                      top: '-14px',
+                      bottom: '10px',
+                      left: `-${leftPx}px`,
+                    }}
+                  />
+                ),
+              )}
+              {depth > 0 && (
+                <div className="absolute w-2 h-px bg-accessory-emphasized -left-2 top-3" />
+              )}
+              <Badge
+                role="button"
+                aria-pressed={isSelected}
+                variant={isSelected ? tagType.color : `${tagType.color}-tint`}
+                className={`cursor-pointer z-10 relative`}
+                onClick={() => onToggle(tag.id)}
+              >
+                {tag.name}
+                {isSelected && <X className="ml-1 h-3 w-3" />}
+              </Badge>
+            </div>
+          )
+        })}
+        <Button
+          variant="neutral-ghost"
+          size="sm"
+          className="px-0 py-0 gap-1 text-xs -my-1"
+          onClick={() => onAddTag(tagType.id)}
+        >
+          <Plus />
+          New Tag
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 function TagsTab() {
   const { t } = useTranslation()
@@ -26,7 +101,6 @@ function TagsTab() {
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
   const { data: tagTypes = [] } = useTagTypes()
-  const { data: allTags = [] } = useTags()
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const createTag = useCreateTag()
@@ -88,53 +162,15 @@ function TagsTab() {
                 sensitivity: 'base',
               }),
             )
-            .map((tagType) => {
-              const typeTags = allTags.filter((t) => t.typeId === tagType.id)
-              const sortedTypeTags = sortTagsByName(typeTags)
-
-              return (
-                <div key={tagType.id}>
-                  <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center my-2">
-                    <div className="h-px bg-accessory-emphasized" />
-                    <h2 className="text-sm font-medium uppercase">
-                      {tagType.name}
-                    </h2>
-                    <div className="h-px bg-accessory-emphasized" />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 items-center">
-                    {sortedTypeTags.map((tag) => {
-                      const isSelected = item.tagIds.includes(tag.id)
-
-                      return (
-                        <Badge
-                          key={tag.id}
-                          role="button"
-                          aria-pressed={isSelected}
-                          variant={
-                            isSelected ? tagType.color : 'neutral-outline'
-                          }
-                          className="cursor-pointer"
-                          onClick={() => toggleTag(tag.id)}
-                        >
-                          {tag.name}
-                          {isSelected && <X className="ml-1 h-3 w-3" />}
-                        </Badge>
-                      )
-                    })}
-                    <Button
-                      variant="neutral-ghost"
-                      size="sm"
-                      className="px-0 py-0 gap-1 text-xs -my-1"
-                      onClick={() => setAddTagDialog(tagType.id)}
-                    >
-                      <Plus />
-                      New Tag
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
+            .map((tagType) => (
+              <TagTypeSection
+                key={tagType.id}
+                tagType={tagType}
+                item={item}
+                onToggle={toggleTag}
+                onAddTag={setAddTagDialog}
+              />
+            ))}
           {item.tagIds.length === 0 && (
             <EmptyState
               title={t('items.tags.assignEmpty.title')}

@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -40,7 +41,7 @@ export function AddNameDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <DialogMain>
           <div className="space-y-2">
             <Label htmlFor="entityName">{t('common.nameLabel')}</Label>
             <Input
@@ -54,7 +55,7 @@ export function AddNameDialog({
               error={nameError}
             />
           </div>
-        </div>
+        </DialogMain>
         <DialogFooter>
           <Button variant="neutral-outline" onClick={onClose}>
             {t('common.cancel')}

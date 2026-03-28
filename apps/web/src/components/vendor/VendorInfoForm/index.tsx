@@ -1,32 +1,40 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import type { Vendor } from '@/types'
 
-interface VendorNameFormProps {
-  name: string
-  onNameChange: (name: string) => void
-  onSave: () => void
-  isDirty: boolean
+interface VendorInfoFormProps {
+  vendor: Vendor
+  onSave: (data: { name: string }) => void
   isPending?: boolean
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
-export function VendorNameForm({
-  name,
-  onNameChange,
+export function VendorInfoForm({
+  vendor,
   onSave,
-  isDirty,
   isPending,
-}: VendorNameFormProps) {
+  onDirtyChange,
+}: VendorInfoFormProps) {
   const { t } = useTranslation()
+  const [name, setName] = useState(vendor.name)
+
+  const isDirty = name !== vendor.name
   const nameError = !name.trim() ? t('validation.required') : undefined
+
+  // Notify parent when dirty state changes
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
 
   return (
     <form
       className="space-y-4 max-w-2xl"
       onSubmit={(e) => {
         e.preventDefault()
-        onSave()
+        onSave({ name: name.trim() })
       }}
     >
       <div className="space-y-2">
@@ -35,7 +43,7 @@ export function VendorNameForm({
           id="vendor-name"
           value={name}
           autoFocus
-          onChange={(e) => onNameChange(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           error={nameError}
         />
       </div>

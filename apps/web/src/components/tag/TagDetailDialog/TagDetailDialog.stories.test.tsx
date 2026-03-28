@@ -9,7 +9,7 @@ describe('TagDetailDialog stories smoke tests', () => {
   it('Default renders without error', () => {
     render(<Default />)
     expect(
-      screen.getByRole('button', { name: 'View Tag Details' }),
+      screen.getByRole('heading', { name: 'Tag Details' }),
     ).toBeInTheDocument()
   })
 })

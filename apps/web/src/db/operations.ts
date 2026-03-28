@@ -185,9 +185,24 @@ export async function getTagsByType(typeId: string): Promise<Tag[]> {
 
 export async function updateTag(
   id: string,
-  updates: Partial<Omit<Tag, 'id'>>,
+  updates: Partial<Omit<Tag, 'id'>> & { parentId?: string | undefined },
 ): Promise<void> {
-  await db.tags.update(id, updates)
+  // If parentId is explicitly passed as undefined, delete the field from the record
+  // (Dexie update with undefined does not remove the key; use modify to delete it)
+  if ('parentId' in updates && updates.parentId === undefined) {
+    const { parentId: _removed, ...rest } = updates
+    if (Object.keys(rest).length > 0) {
+      await db.tags.update(id, rest)
+    }
+    await db.tags
+      .where('id')
+      .equals(id)
+      .modify((t: Tag & { parentId?: string }) => {
+        delete t.parentId
+      })
+  } else {
+    await db.tags.update(id, updates)
+  }
 }
 
 export async function deleteTag(id: string): Promise<void> {

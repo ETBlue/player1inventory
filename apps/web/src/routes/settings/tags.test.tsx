@@ -1,3 +1,4 @@
+import { ApolloProvider } from '@apollo/client/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -10,6 +11,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import { createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { noopApolloClient } from '@/test/apolloStub'
 import { TagColor } from '@/types/index'
 
 describe('Tag settings page - context-aware back navigation', () => {
@@ -31,9 +33,11 @@ describe('Tag settings page - context-aware back navigation', () => {
     const router = createRouter({ routeTree, history })
 
     render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ApolloProvider>,
     )
 
     return router
@@ -140,9 +144,11 @@ describe('Tags List Page - Database Operations', () => {
     const router = createRouter({ routeTree, history })
 
     render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ApolloProvider>,
     )
 
     // Wait for page to load

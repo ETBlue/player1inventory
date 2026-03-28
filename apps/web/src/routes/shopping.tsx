@@ -143,7 +143,8 @@ function Shopping() {
   )
 
   // Branch B: vendor-scoped, then tag + recipe filters
-  const tagFiltered = filterItems(vendorScopedItems, filterState)
+  // Pass tags to enable descendant expansion (selecting a parent tag matches its children too)
+  const tagFiltered = filterItems(vendorScopedItems, filterState, tags)
   const filteredItems = filterItemsByRecipes(
     tagFiltered,
     selectedRecipeIds,

@@ -12,7 +12,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Components**:
 - `src/components/vendor/VendorCard/index.tsx` — displays one vendor with a delete button; vendor name links to the detail page. Accepts `itemCount` and `onDelete` (the actual delete operation); wraps `DeleteButton` internally with an `itemCount`-based dialog description
-- `src/components/vendor/VendorNameForm/index.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
+- `src/components/vendor/VendorInfoForm/index.tsx` — presentational form component (name input + save button) used by both the new vendor page and the Info tab
 
 **Item counts**: Vendor list displays item count for each vendor (e.g. "Costco · 12 items") using `useVendorItemCounts()` hook.
 

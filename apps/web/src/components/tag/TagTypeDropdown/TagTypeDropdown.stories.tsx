@@ -82,3 +82,23 @@ export const EmptyState: Story = {
     onClear: () => console.log('Clear selections'),
   },
 }
+
+export const NestedHierarchy: Story = {
+  name: 'Nested Hierarchy (depth-first order)',
+  args: {
+    tagType: { id: 'type-4', name: 'Category', color: TagColor.teal },
+    // Tags in depth-first order with depth annotations (as produced by useTagsWithDepth)
+    tags: [
+      { id: 'tag-food', name: 'Food', typeId: 'type-4', depth: 0 },
+      { id: 'tag-produce', name: 'Produce', typeId: 'type-4', depth: 1 },
+      { id: 'tag-veg', name: 'Vegetables', typeId: 'type-4', depth: 2 },
+      { id: 'tag-fruit', name: 'Fruits', typeId: 'type-4', depth: 2 },
+      { id: 'tag-dairy', name: 'Dairy', typeId: 'type-4', depth: 1 },
+      { id: 'tag-other', name: 'Other', typeId: 'type-4', depth: 0 },
+    ],
+    selectedTagIds: ['tag-produce'],
+    tagCounts: [15, 8, 5, 3, 4, 2],
+    onToggleTag: (tagId) => console.log('Toggle tag:', tagId),
+    onClear: () => console.log('Clear selections'),
+  },
+}

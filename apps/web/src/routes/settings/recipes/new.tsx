@@ -1,8 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RecipeNameForm } from '@/components/recipe/RecipeNameForm'
+import { RecipeInfoForm } from '@/components/recipe/RecipeInfoForm'
 import { Toolbar } from '@/components/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
@@ -21,13 +20,17 @@ function NewRecipePage() {
   const { goBack } = useAppNavigation('/settings/recipes/')
   const createRecipe = useCreateRecipe()
   const { name: prefillName = '' } = Route.useSearch()
-  const [name, setName] = useState(prefillName)
 
-  const isDirty = name.trim() !== ''
+  const emptyRecipe = {
+    id: '',
+    name: '',
+    items: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
 
-  const handleSave = async () => {
-    if (!isDirty) return
-    const recipe = await createRecipe.mutateAsync({ name: name.trim() })
+  const handleSave = async ({ name }: { name: string }) => {
+    const recipe = await createRecipe.mutateAsync({ name })
     if (recipe?.id) {
       navigate({
         to: '/settings/recipes/$id',
@@ -52,11 +55,10 @@ function NewRecipePage() {
       </Toolbar>
       <div className="p-4">
         <div className="max-w-2xl mx-auto">
-          <RecipeNameForm
-            name={name}
-            onNameChange={setName}
+          <RecipeInfoForm
+            recipe={emptyRecipe}
+            initialValue={prefillName}
             onSave={handleSave}
-            isDirty={isDirty}
             isPending={createRecipe.isPending}
           />
         </div>
