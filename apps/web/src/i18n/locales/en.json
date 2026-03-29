@@ -19,7 +19,14 @@
     "back": "Nevermind",
     "confirm": "Confirm",
     "add": "Add",
-    "skipToMainContent": "Skip to main content"
+    "skipToMainContent": "Skip to main content",
+    "clear": "Clear",
+    "manage": "Manage",
+    "asc": "Asc",
+    "desc": "Desc",
+    "search": "Search",
+    "tags": "Tags",
+    "filters": "Filters"
   },
   "shopping": {
     "toolbar": {
@@ -144,6 +151,25 @@
         "description": "Tap a recipe above to assign it to this item."
       }
     }
+  },
+  "itemFilters": {
+    "editTags": "Edit Tags"
+  },
+  "itemListToolbar": {
+    "sortBy": "Sort by",
+    "sortByCriteria": "Sort by criteria",
+    "sortExpiringSoon": "Expiring soon",
+    "sortName": "Name",
+    "sortStock": "Stock",
+    "sortLastPurchased": "Last purchased",
+    "toggleSortDirection": "Toggle sort direction",
+    "toggleTags": "Toggle tags",
+    "toggleFilters": "Toggle filters",
+    "toggleSearch": "Toggle search",
+    "searchPlaceholder": "Search items...",
+    "clearSearch": "Clear search",
+    "create": "Create",
+    "createItem": "Create item"
   },
   "settings": {
     "title": "Settings",
