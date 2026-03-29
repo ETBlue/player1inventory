@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
+import { OnboardingWelcome } from '@/components/onboarding/OnboardingWelcome'
 
 // Step state machine for the onboarding flow
 type OnboardingStep =
@@ -31,12 +32,9 @@ function OnboardingPage() {
   return (
     <div className="min-h-screen">
       {currentStep.type === 'welcome' && (
-        <WelcomePlaceholder
-          onNavigate={handleNavigate}
-          selectedItemKeys={selectedItemKeys}
-          selectedVendorKeys={selectedVendorKeys}
-          setSelectedItemKeys={setSelectedItemKeys}
-          setSelectedVendorKeys={setSelectedVendorKeys}
+        <OnboardingWelcome
+          onChooseTemplate={() => handleNavigate({ type: 'template-overview' })}
+          onStartFromScratch={() => handleNavigate({ type: 'progress' })}
         />
       )}
       {currentStep.type === 'template-overview' && (
@@ -87,14 +85,6 @@ interface StepProps {
   selectedVendorKeys: Set<string>
   setSelectedItemKeys: React.Dispatch<React.SetStateAction<Set<string>>>
   setSelectedVendorKeys: React.Dispatch<React.SetStateAction<Set<string>>>
-}
-
-function WelcomePlaceholder(_props: StepProps) {
-  return (
-    <div>
-      <h1>Welcome</h1>
-    </div>
-  )
 }
 
 function TemplateOverviewPlaceholder(_props: StepProps) {
