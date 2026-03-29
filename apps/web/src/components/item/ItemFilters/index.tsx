@@ -100,6 +100,11 @@ export function ItemFilters({
             >
               <Store />
               Vendors
+              {selectedVendorIds.length > 0 && (
+                <span className="text-xs font-semibold">
+                  {selectedVendorIds.length}
+                </span>
+              )}
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
@@ -159,6 +164,11 @@ export function ItemFilters({
             >
               <CookingPot />
               Recipes
+              {selectedRecipeIds.length > 0 && (
+                <span className="text-xs font-semibold">
+                  {selectedRecipeIds.length}
+                </span>
+              )}
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
