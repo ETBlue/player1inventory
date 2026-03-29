@@ -816,7 +816,15 @@ test('user can delete a parent tag with cascade (deletes child tags too)', async
   // The cascade/orphan dialog appears on the tag detail page (not the list page)
   // because the list page DeleteButton only supports no-children tags.
   // (src/routes/settings/tags/$id/index.tsx:63-68)
-  await page.goto(`/settings/tags/${parentTagId}`)
+  //
+  // Cloud: use SPA navigation (click the badge) instead of page.goto() to preserve
+  // the Apollo InMemoryCache. page.goto() reloads the app and clears the cache, which
+  // forces a fresh GetTags fetch that may race against React re-rendering childTags.
+  // Clicking the badge is a soft navigation — the Apollo cache (already updated by the
+  // createTag mutation's refetchQueries) is in memory and hasChildren===true immediately.
+  // (src/routes/settings/tags/$id/index.tsx:58-61, src/hooks/useTags.ts:205)
+  await tagsPage.clickTagBadgeToNavigate('Chicken')
+  await page.waitForURL(/\/settings\/tags\/[^/]/)
   // Wait for the tag detail layout to render — the tag name appears in the header h1
   // (src/routes/settings/tags/$id.tsx:106)
   await page.waitForSelector('h1')
