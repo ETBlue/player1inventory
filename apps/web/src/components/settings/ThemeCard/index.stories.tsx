@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { ThemeCard } from '.'
 
 const meta: Meta<typeof ThemeCard> = {
-  title: 'Settings/ThemeCard',
+  title: 'Components/Settings/ThemeCard',
   component: ThemeCard,
   parameters: {
     layout: 'padded',

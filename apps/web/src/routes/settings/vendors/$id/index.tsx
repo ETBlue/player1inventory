@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { DeleteButton } from '@/components/DeleteButton'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import { VendorInfoForm } from '@/components/vendor/VendorInfoForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout } from '@/hooks/useVendorLayout'

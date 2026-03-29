@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { DeleteButton } from '@/components/DeleteButton'
 import { RecipeInfoForm } from '@/components/recipe/RecipeInfoForm'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useRecipeLayout } from '@/hooks/useRecipeLayout'
 import {

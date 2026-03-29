@@ -40,7 +40,7 @@ function WithRouter({ children }: { children: ReactNode }) {
 }
 
 const meta: Meta<typeof VendorCard> = {
-  title: 'Components/VendorCard',
+  title: 'Components/Vendor/VendorCard',
   component: VendorCard,
   decorators: [
     (Story) => (

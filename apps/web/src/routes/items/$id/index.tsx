@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
-import { DeleteButton } from '@/components/DeleteButton'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import {
   AlertDialog,
   AlertDialogAction,

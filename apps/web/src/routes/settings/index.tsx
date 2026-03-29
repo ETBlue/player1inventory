@@ -8,7 +8,7 @@ import { ImportCard } from '@/components/settings/ImportCard'
 import { LanguageCard } from '@/components/settings/LanguageCard'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
 import { ThemeCard } from '@/components/settings/ThemeCard'
-import { Toolbar } from '@/components/Toolbar'
+import { Toolbar } from '@/components/shared/Toolbar'
 import { useDataMode } from '@/hooks/useDataMode'
 
 export const Route = createFileRoute('/settings/')({

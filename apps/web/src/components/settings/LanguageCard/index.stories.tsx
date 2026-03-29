@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { LanguageCard } from '.'
 
 const meta: Meta<typeof LanguageCard> = {
-  title: 'Settings/LanguageCard',
+  title: 'Components/Settings/LanguageCard',
   component: LanguageCard,
   parameters: {
     layout: 'padded',

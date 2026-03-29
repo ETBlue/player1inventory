@@ -8,9 +8,8 @@ import {
 } from './select'
 
 const meta: Meta<typeof Select> = {
-  title: 'UI/Select',
+  title: 'UI Library/Select',
   component: Select,
-  tags: ['autodocs'],
 }
 
 export default meta

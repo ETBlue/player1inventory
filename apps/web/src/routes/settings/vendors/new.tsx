@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Toolbar } from '@/components/Toolbar'
+import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { VendorInfoForm } from '@/components/vendor/VendorInfoForm'
 import { useAppNavigation } from '@/hooks/useAppNavigation'

@@ -9,7 +9,7 @@ import {
 } from './ItemCard.stories.fixtures'
 
 const meta: Meta<typeof ItemCard> = {
-  title: 'Components/ItemCard/Assignment',
+  title: 'Components/Item/ItemCard/Assignment',
   component: ItemCard,
   decorators: [sharedDecorator],
 }

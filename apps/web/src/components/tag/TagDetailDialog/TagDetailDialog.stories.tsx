@@ -7,7 +7,7 @@ import { TagDetailDialog } from '.'
 const queryClient = new QueryClient()
 
 const meta: Meta<typeof TagDetailDialog> = {
-  title: 'Components/TagDetailDialog',
+  title: 'Components/Tag/TagDetailDialog',
   component: TagDetailDialog,
   decorators: [
     (Story) => (

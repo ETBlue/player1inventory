@@ -26,7 +26,7 @@ const parentOptions: Array<Tag & { depth: number }> = [
 ]
 
 const meta: Meta<typeof TagInfoForm> = {
-  title: 'Components/TagInfoForm',
+  title: 'Components/Tag/TagInfoForm',
   component: TagInfoForm,
   args: {
     onSave: () => {},

@@ -3,7 +3,7 @@ import type { Vendor } from '@/types'
 import { VendorInfoForm } from '.'
 
 const meta: Meta<typeof VendorInfoForm> = {
-  title: 'Components/VendorInfoForm',
+  title: 'Components/Vendor/VendorInfoForm',
   component: VendorInfoForm,
 }
 export default meta

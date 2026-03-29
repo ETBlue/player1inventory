@@ -4,9 +4,8 @@ import { TagColor } from '@/types'
 import { ColorSelect } from '.'
 
 const meta: Meta<typeof ColorSelect> = {
-  title: 'Components/ColorSelect',
+  title: 'Components/Tag/ColorSelect',
   component: ColorSelect,
-  tags: ['autodocs'],
 }
 
 export default meta

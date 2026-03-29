@@ -3,9 +3,8 @@ import { Input } from './input'
 import { Label } from './label'
 
 const meta: Meta<typeof Input> = {
-  title: 'UI/Input',
+  title: 'UI Library/Input',
   component: Input,
-  tags: ['autodocs'],
 }
 
 export default meta

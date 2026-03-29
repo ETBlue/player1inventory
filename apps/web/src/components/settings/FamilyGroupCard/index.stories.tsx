@@ -159,7 +159,7 @@ const joinGroupMocks = [
 ]
 
 const meta: Meta<typeof FamilyGroupCard> = {
-  title: 'Settings/FamilyGroupCard',
+  title: 'Components/Settings/FamilyGroupCard',
   component: FamilyGroupCard,
   parameters: {
     layout: 'padded',

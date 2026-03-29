@@ -3,7 +3,7 @@ import type { ItemFormValues } from '.'
 import { ItemForm } from '.'
 
 const meta: Meta<typeof ItemForm> = {
-  title: 'Components/ItemForm',
+  title: 'Components/Item/ItemForm',
   component: ItemForm,
   args: {
     onSubmit: () => {},

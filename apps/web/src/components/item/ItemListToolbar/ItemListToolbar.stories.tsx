@@ -42,7 +42,7 @@ function RouterWrapper({ children }: { children: React.ReactNode }) {
 }
 
 const meta: Meta<typeof ItemListToolbar> = {
-  title: 'Components/ItemListToolbar',
+  title: 'Components/Item/ItemListToolbar',
   component: ItemListToolbar,
   decorators: [
     (Story) => (

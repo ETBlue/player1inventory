@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Store, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { DeleteButton } from '@/components/DeleteButton'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Vendor } from '@/types'
 

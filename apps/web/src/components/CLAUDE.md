@@ -1,18 +1,44 @@
-# Shared Components
+# Components
 
-**`Toolbar`** (`src/components/Toolbar/index.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
+## Folder Structure
 
-**`AddNameDialog`** (`src/components/AddNameDialog/index.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`. Submit button is disabled and a validation error is shown when `name` is empty; Enter key is also blocked in that state.
+```
+src/components/
+  global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar
+  item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar
+  tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagDetailDialog, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
+  vendor/         — vendor-specific: VendorCard, VendorInfoForm
+  recipe/         — recipe-specific: CookingControlBar, RecipeCard, RecipeInfoForm
+  settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
+  ui/             — shadcn/ui primitives (flat files, not folders)
+```
 
-**`LoadingSpinner`** (`src/components/LoadingSpinner/index.tsx`) — centered animated spinner for page-level loading states. No props. Renders `Loader2` icon (`size-8 animate-spin text-foreground-muted`) inside a `flex min-h-[50vh] items-center justify-center` container. Used in pantry page, item detail, and item log tab.
+## Global Components
 
-**`EmptyState`** (`src/components/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
+One-time structural components that appear once in the app shell.
+
+**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — fixed left navigation sidebar shown at `lg:` (1024px+). Same visibility rules as `Navigation` — hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). Shows "Player 1 Inventory" header and 4 nav links (Pantry, Shopping, Cooking, Settings) with icon + label side-by-side. Active: `text-primary bg-background-elevated`. `Layout` adds `lg:ml-56` offset to the content area when the sidebar is visible.
+
+## Shared Components
+
+Reusable across multiple features and pages.
+
+**`Toolbar`** (`src/components/shared/Toolbar/index.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
+
+**`AddNameDialog`** (`src/components/shared/AddNameDialog/index.tsx`) — generic name-input dialog used by Tags, Vendors, and Recipes tabs for inline entity creation. Props: `open`, `title`, `submitLabel`, `name`, `placeholder?`, `onNameChange`, `onAdd`, `onClose`. Cancel button uses `neutral-outline`. Name input is `autoFocus`. Submit button is disabled and a validation error is shown when `name` is empty; Enter key is also blocked in that state.
+
+**`LoadingSpinner`** (`src/components/shared/LoadingSpinner/index.tsx`) — centered animated spinner for page-level loading states. No props. Renders `Loader2` icon (`size-8 animate-spin text-foreground-muted`) inside a `flex min-h-[50vh] items-center justify-center` container. Used in pantry page, item detail, and item log tab.
+
+**`EmptyState`** (`src/components/shared/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
+
+## Item Components
 
 **`ItemListToolbar`** (`src/components/item/ItemListToolbar/index.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with no exact match), `onCreateFromSearch` (same trigger — shows a Create button; pass `hasExactMatch` so the toolbar knows when to suppress it). Escape clears the search value but keeps the input row open.
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
-**`Sidebar`** (`src/components/Sidebar/index.tsx`) — fixed left navigation sidebar shown at `lg:` (1024px+). Same visibility rules as `Navigation` — hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). Shows "Player 1 Inventory" header and 4 nav links (Pantry, Shopping, Cooking, Settings) with icon + label side-by-side. Active: `text-primary bg-background-elevated`. `Layout` adds `lg:ml-56` offset to the content area when the sidebar is visible.
+## Recipe Components
 
 **`CookingControlBar`** (`src/components/recipe/CookingControlBar/index.tsx`) — second-row toolbar for the cooking page. Props: `allExpanded`, `onExpandAll`, `onCollapseAll`. Reads/writes `?sort` (`name|recent|count`), `?dir` (`asc|desc`), `?q` directly via `Route.useSearch()` and `useNavigate()`. Row 1: sort Select, direction button, expand/collapse button, spacer, search toggle. Row 2 (conditional): search input with Create/Clear buttons. `searchVisible` is local state initialized from `!!q`.
 

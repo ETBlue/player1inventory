@@ -13,7 +13,7 @@ import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Routes/Items/Detail/Recipes',
+  title: 'Pages/Item/Detail/Recipe',
   parameters: {
     layout: 'fullscreen',
   },

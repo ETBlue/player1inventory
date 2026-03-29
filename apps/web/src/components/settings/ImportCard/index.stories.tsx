@@ -16,7 +16,7 @@ import { ImportCard } from '.'
 const queryClient = new QueryClient()
 
 const meta: Meta<typeof ImportCard> = {
-  title: 'Settings/ImportCard',
+  title: 'Components/Settings/ImportCard',
   component: ImportCard,
   decorators: [
     (Story) => (

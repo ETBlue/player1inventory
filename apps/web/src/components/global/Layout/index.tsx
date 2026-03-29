@@ -1,8 +1,8 @@
 import { useLocation } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigation } from '@/components/Navigation'
-import { Sidebar } from '@/components/Sidebar'
+import { Navigation } from '@/components/global/Navigation'
+import { Sidebar } from '@/components/global/Sidebar'
 import { cn } from '@/lib/utils'
 
 interface LayoutProps {

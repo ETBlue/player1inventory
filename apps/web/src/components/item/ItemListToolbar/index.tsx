@@ -3,9 +3,9 @@
 import { ArrowDown, ArrowUp, Filter, Plus, Search, Tags, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { FilterStatus } from '@/components/FilterStatus'
 import { ItemFilters } from '@/components/item/ItemFilters'
-import { Toolbar } from '@/components/Toolbar'
+import { FilterStatus } from '@/components/shared/FilterStatus'
+import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

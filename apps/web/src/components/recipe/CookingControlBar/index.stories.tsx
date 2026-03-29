@@ -10,7 +10,7 @@ import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Recipe/CookingControlBar',
+  title: 'Components/Recipe/CookingControlBar',
   parameters: {
     layout: 'fullscreen',
   },

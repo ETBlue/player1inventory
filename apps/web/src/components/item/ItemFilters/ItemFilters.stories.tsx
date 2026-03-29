@@ -31,7 +31,7 @@ function RouterWrapper({ children }: { children: React.ReactNode }) {
 }
 
 const meta: Meta<typeof ItemFilters> = {
-  title: 'Components/ItemFilters',
+  title: 'Components/Item/ItemFilters',
   component: ItemFilters,
   decorators: [
     (Story) => (

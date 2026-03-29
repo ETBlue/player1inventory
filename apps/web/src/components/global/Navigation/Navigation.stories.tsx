@@ -12,7 +12,7 @@ import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Components/Sidebar',
+  title: 'Components/Global/Navigation',
   parameters: {
     layout: 'fullscreen',
   },
@@ -21,7 +21,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function SidebarStory({ path }: { path: string }) {
+function NavigationStory({ path }: { path: string }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -57,21 +57,26 @@ function SidebarStory({ path }: { path: string }) {
 }
 
 // Story 1: Pantry tab active (home)
-export const Default: Story = {
-  render: () => <SidebarStory path="/" />,
+export const PantryActive: Story = {
+  render: () => <NavigationStory path="/" />,
 }
 
-// Story 2: Cart tab active
+// Story 2: Shopping tab active
 export const CartActive: Story = {
-  render: () => <SidebarStory path="/shopping" />,
+  render: () => <NavigationStory path="/shopping" />,
 }
 
-// Story 3: Use (cooking) tab active
+// Story 3: Cooking tab active
 export const CookingActive: Story = {
-  render: () => <SidebarStory path="/cooking" />,
+  render: () => <NavigationStory path="/cooking" />,
 }
 
 // Story 4: Settings tab active
 export const SettingsActive: Story = {
-  render: () => <SidebarStory path="/settings" />,
+  render: () => <NavigationStory path="/settings" />,
+}
+
+// Story 5: Hidden on fullscreen pages (items, tags, vendors, recipes)
+export const HiddenOnFullscreen: Story = {
+  render: () => <NavigationStory path="/settings/vendors" />,
 }

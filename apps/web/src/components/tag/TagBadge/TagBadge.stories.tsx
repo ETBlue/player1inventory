@@ -8,7 +8,7 @@ import { TagBadge } from '.'
 const queryClient = new QueryClient()
 
 const meta: Meta<typeof TagBadge> = {
-  title: 'Components/TagBadge',
+  title: 'Components/Tag/TagBadge',
   component: TagBadge,
   decorators: [
     (Story) => (

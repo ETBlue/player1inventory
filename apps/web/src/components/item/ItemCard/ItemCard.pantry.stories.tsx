@@ -10,7 +10,7 @@ import {
 } from './ItemCard.stories.fixtures'
 
 const meta: Meta<typeof ItemCard> = {
-  title: 'Components/ItemCard/Pantry',
+  title: 'Components/Item/ItemCard/Pantry',
   component: ItemCard,
   decorators: [sharedDecorator],
 }

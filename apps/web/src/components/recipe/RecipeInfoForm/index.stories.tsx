@@ -11,7 +11,7 @@ const baseRecipe: Recipe = {
 }
 
 const meta: Meta<typeof RecipeInfoForm> = {
-  title: 'Components/RecipeInfoForm',
+  title: 'Components/Recipe/RecipeInfoForm',
   component: RecipeInfoForm,
   args: {
     onSave: () => {},
