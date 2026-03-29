@@ -62,7 +62,7 @@ export function OnboardingWelcome({
         <button
           type="button"
           onClick={onChooseTemplate}
-          className="w-full flex items-center justify-between px-5 py-4 rounded-xl bg-primary text-primary-foreground font-medium text-left hover:bg-primary/90 transition-colors"
+          className="w-full flex items-center justify-between px-5 py-4 rounded-xl bg-primary text-foreground-colorless-inverse font-medium text-left hover:bg-primary/90 transition-colors"
         >
           <span>{t('onboarding.welcome.chooseTemplate')}</span>
           <ChevronRight className="h-5 w-5 shrink-0" />
