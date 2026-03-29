@@ -7,7 +7,7 @@ import { TagColor } from '@/types'
 // Mock ColorSelect to avoid Radix UI pointer-capture errors in jsdom.
 // The underlying Select uses hasPointerCapture which jsdom doesn't support.
 // We replace it with a simple <select> so color change interactions work in tests.
-vi.mock('@/components/ColorSelect', () => ({
+vi.mock('@/components/tag/ColorSelect', () => ({
   ColorSelect: ({
     value,
     onChange,

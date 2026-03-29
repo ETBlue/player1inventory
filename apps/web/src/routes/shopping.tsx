@@ -6,10 +6,10 @@ import {
 import { Check, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { EmptyState } from '@/components/EmptyState'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
-import { Toolbar } from '@/components/Toolbar'
+import { EmptyState } from '@/components/shared/EmptyState'
+import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
   AlertDialogAction,

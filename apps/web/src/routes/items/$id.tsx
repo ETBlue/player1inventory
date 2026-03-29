@@ -14,7 +14,7 @@ import {
   Tags,
 } from 'lucide-react'
 import { useState } from 'react'
-import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import {
   AlertDialog,
   AlertDialogAction,

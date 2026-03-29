@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DeleteButton } from '@/components/DeleteButton'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import { TagInfoForm } from '@/components/tag/TagInfoForm'
 import {
   AlertDialog,

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Card, CardContent } from '@/components/ui/card'
 import { useItem, useItemLogs } from '@/hooks'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
