@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, Filter, Plus, Search, Tags, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemFilters } from '@/components/item/ItemFilters'
 import { FilterStatus } from '@/components/shared/FilterStatus'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -23,13 +24,6 @@ import {
 } from '@/lib/filterUtils'
 import type { SortDirection, SortField } from '@/lib/sortUtils'
 import type { Item, Recipe, Vendor } from '@/types'
-
-const sortLabels: Record<SortField, string> = {
-  expiring: 'Expiring',
-  name: 'Name',
-  stock: 'Stock',
-  purchased: 'Purchased',
-}
 
 interface ItemListToolbarProps {
   // Sort (from useSortFilter)
@@ -76,6 +70,15 @@ export function ItemListToolbar({
   hideVendorFilter,
   hideRecipeFilter,
 }: ItemListToolbarProps) {
+  const { t } = useTranslation()
+
+  const sortLabels: Record<SortField, string> = {
+    expiring: t('itemListToolbar.sortExpiringSoon'),
+    name: t('itemListToolbar.sortName'),
+    stock: t('itemListToolbar.sortStock'),
+    purchased: t('itemListToolbar.sortLastPurchased'),
+  }
+
   const { data: tags = [] } = useTags()
   const {
     search,
@@ -141,14 +144,14 @@ export function ItemListToolbar({
 
         <div className="flex items-center">
           <span className="hidden lg:inline text-sm text-foreground-muted">
-            Sort by
+            {t('itemListToolbar.sortBy')}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 size="default"
                 variant="neutral-ghost"
-                aria-label="Sort by criteria"
+                aria-label={t('itemListToolbar.sortByCriteria')}
                 className="px-2 font-normal"
               >
                 {sortLabels[sortBy]}
@@ -161,19 +164,19 @@ export function ItemListToolbar({
                 }
                 onClick={() => handleCriteriaChange('expiring')}
               >
-                Expiring soon
+                {t('itemListToolbar.sortExpiringSoon')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={sortBy === 'name' ? 'bg-background-elevated' : ''}
                 onClick={() => handleCriteriaChange('name')}
               >
-                Name
+                {t('itemListToolbar.sortName')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={sortBy === 'stock' ? 'bg-background-elevated' : ''}
                 onClick={() => handleCriteriaChange('stock')}
               >
-                Stock
+                {t('itemListToolbar.sortStock')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className={
@@ -181,7 +184,7 @@ export function ItemListToolbar({
                 }
                 onClick={() => handleCriteriaChange('purchased')}
               >
-                Last purchased
+                {t('itemListToolbar.sortLastPurchased')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -190,12 +193,12 @@ export function ItemListToolbar({
             size="icon"
             variant="neutral-ghost"
             onClick={handleDirectionToggle}
-            aria-label="Toggle sort direction"
+            aria-label={t('itemListToolbar.toggleSortDirection')}
             className="lg:w-auto lg:px-3"
           >
             {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
             <span className="hidden lg:inline ml-1">
-              {sortDirection === 'asc' ? 'Asc' : 'Desc'}
+              {sortDirection === 'asc' ? t('common.asc') : t('common.desc')}
             </span>
           </Button>
         </div>
@@ -205,11 +208,11 @@ export function ItemListToolbar({
             size="icon"
             variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
             onClick={() => setIsTagsVisible(!isTagsVisible)}
-            aria-label="Toggle tags"
+            aria-label={t('itemListToolbar.toggleTags')}
             className="lg:w-auto lg:px-3"
           >
             <Tags />
-            <span className="hidden lg:inline ml-1">Tags</span>
+            <span className="hidden lg:inline ml-1">{t('common.tags')}</span>
           </Button>
         )}
 
@@ -217,11 +220,11 @@ export function ItemListToolbar({
           size="icon"
           variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
           onClick={() => setIsFiltersVisible(!isFiltersVisible)}
-          aria-label="Toggle filters"
+          aria-label={t('itemListToolbar.toggleFilters')}
           className="lg:w-auto lg:px-3"
         >
           <Filter />
-          <span className="hidden lg:inline ml-1">Filters</span>
+          <span className="hidden lg:inline ml-1">{t('common.filters')}</span>
         </Button>
 
         <Button
@@ -233,11 +236,11 @@ export function ItemListToolbar({
             }
             setSearchVisible((v) => !v)
           }}
-          aria-label="Toggle search"
+          aria-label={t('itemListToolbar.toggleSearch')}
           className="lg:w-auto lg:px-3"
         >
           <Search />
-          <span className="hidden lg:inline ml-1">Search</span>
+          <span className="hidden lg:inline ml-1">{t('common.search')}</span>
         </Button>
 
         {children && (
@@ -278,7 +281,7 @@ export function ItemListToolbar({
       {searchVisible && (
         <div className="flex items-center gap-2 border-t border-accessory-default px-3">
           <Input
-            placeholder="Search items..."
+            placeholder={t('itemListToolbar.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -292,7 +295,7 @@ export function ItemListToolbar({
                 variant="neutral-ghost"
                 className="h-6 w-6 shrink-0"
                 onClick={() => setSearch('')}
-                aria-label="Clear search"
+                aria-label={t('itemListToolbar.clearSearch')}
               >
                 <X />
               </Button>
@@ -301,10 +304,10 @@ export function ItemListToolbar({
                   variant="primary"
                   size="sm"
                   onClick={() => onCreateFromSearch(search.trim())}
-                  aria-label="Create item"
+                  aria-label={t('itemListToolbar.createItem')}
                 >
                   <Plus />
-                  Create
+                  {t('itemListToolbar.create')}
                 </Button>
               )}
             </>

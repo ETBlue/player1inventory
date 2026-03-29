@@ -19,7 +19,14 @@
     "back": "先不用",
     "confirm": "確定",
     "add": "新增",
-    "skipToMainContent": "跳至主要內容"
+    "skipToMainContent": "跳至主要內容",
+    "clear": "清除",
+    "manage": "管理",
+    "asc": "升冪",
+    "desc": "降冪",
+    "search": "搜尋",
+    "tags": "標籤",
+    "filters": "篩選條件"
   },
   "shopping": {
     "toolbar": {
@@ -144,6 +151,29 @@
         "description": "點選上方食譜以將此品項加入其中。"
       }
     }
+  },
+  "itemFilters": {
+    "editTags": "編輯標籤"
+  },
+  "filterStatus": {
+    "showing": "顯示 {{filtered}} / {{total}} 項",
+    "clearFilter": "清除篩選條件"
+  },
+  "itemListToolbar": {
+    "sortBy": "排序依",
+    "sortByCriteria": "選擇排序依據",
+    "sortExpiringSoon": "快到期了",
+    "sortName": "名稱",
+    "sortStock": "庫存量",
+    "sortLastPurchased": "最近買的",
+    "toggleSortDirection": "切換排序方向",
+    "toggleTags": "顯示/隱藏標籤",
+    "toggleFilters": "顯示/隱藏篩選條件",
+    "toggleSearch": "顯示/隱藏搜尋框",
+    "searchPlaceholder": "搜尋品項...",
+    "clearSearch": "清除搜尋",
+    "create": "新增",
+    "createItem": "新增品項"
   },
   "settings": {
     "title": "設定",
