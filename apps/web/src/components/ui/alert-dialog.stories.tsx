@@ -13,7 +13,6 @@ import {
 const meta: Meta<typeof AlertDialog> = {
   title: 'UI Library/AlertDialog',
   component: AlertDialog,
-  tags: ['autodocs'],
 }
 
 export default meta

@@ -4,7 +4,6 @@ import { ItemProgressBar } from '.'
 const meta: Meta<typeof ItemProgressBar> = {
   title: 'Components/Item/ItemProgressBar',
   component: ItemProgressBar,
-  tags: ['autodocs'],
   argTypes: {
     current: {
       control: { type: 'number', min: 0, max: 100 },

@@ -12,7 +12,6 @@ import {
 const meta: Meta<typeof Card> = {
   title: 'UI Library/Card',
   component: Card,
-  tags: ['autodocs'],
 }
 
 export default meta

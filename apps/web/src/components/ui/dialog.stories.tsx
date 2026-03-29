@@ -15,7 +15,6 @@ import { Label } from './label'
 const meta: Meta<typeof Dialog> = {
   title: 'UI Library/Dialog',
   component: Dialog,
-  tags: ['autodocs'],
 }
 
 export default meta

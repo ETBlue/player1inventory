@@ -5,7 +5,6 @@ import { Badge } from './badge'
 const meta: Meta<typeof Badge> = {
   title: 'UI Library/Badge',
   component: Badge,
-  tags: ['autodocs'],
 }
 
 export default meta

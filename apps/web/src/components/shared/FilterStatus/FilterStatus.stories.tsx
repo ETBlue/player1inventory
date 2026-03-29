@@ -7,7 +7,6 @@ const meta = {
   parameters: {
     layout: 'centered',
   },
-  tags: ['autodocs'],
   args: {
     onClearAll: () => console.log('Clear all filters'),
   },
