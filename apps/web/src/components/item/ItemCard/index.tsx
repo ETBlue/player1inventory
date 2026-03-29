@@ -24,6 +24,7 @@ interface ItemCardProps {
   tagTypes: TagType[]
   onTagClick?: (tagId: string) => void
   showTags?: boolean
+  variant?: 'default' | 'template'
   mode?:
     | 'pantry'
     | 'shopping'
@@ -56,6 +57,7 @@ export function ItemCard({
   tagTypes,
   onTagClick,
   showTags = true,
+  variant = 'default',
   mode = 'pantry',
   isChecked,
   onCheckboxToggle,
@@ -75,6 +77,12 @@ export function ItemCard({
   isPackageDisplay = false,
   highlightedName,
 }: ItemCardProps) {
+  // Variant overrides — template mode hides quantity controls and expiration,
+  // and always shows tags regardless of caller props.
+  const isTemplate = variant === 'template'
+  const effectiveShowExpiration = isTemplate ? false : showExpiration
+  const effectiveShowTags = isTemplate ? true : showTags
+
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
   const estimatedDueDate =
@@ -116,11 +124,8 @@ export function ItemCard({
       ? item.measurementUnit
       : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
-  const isAmountControllable = [
-    'shopping',
-    'recipe-assignment',
-    'cooking',
-  ].includes(mode)
+  const isAmountControllable =
+    !isTemplate && ['shopping', 'recipe-assignment', 'cooking'].includes(mode)
 
   if (import.meta.env.DEV && isAmountControllable && !onAmountChange) {
     console.warn('ItemCard: controlAmount requires onAmountChange to function.')
@@ -256,7 +261,7 @@ export function ItemCard({
       </CardHeader>
       <CardContent className={isInactive(item) ? 'opacity-50' : ''}>
         <div className="flex items-center gap-2 -mb-1">
-          {showExpiration &&
+          {effectiveShowExpiration &&
             currentQuantity > 0 &&
             estimatedDueDate &&
             (() => {
@@ -288,7 +293,7 @@ export function ItemCard({
               )
             })()}
           {(tags.length > 0 || vendors.length > 0 || recipes.length > 0) &&
-            !showTags &&
+            !effectiveShowTags &&
             showTagSummary && (
               <span className="text-xs text-foreground-muted">
                 {[
@@ -307,7 +312,7 @@ export function ItemCard({
               </span>
             )}
         </div>
-        {tags.length > 0 && showTags && (
+        {tags.length > 0 && effectiveShowTags && (
           <div className="flex flex-wrap gap-1 mt-2">
             {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
               const tagType = tagTypes.find((t) => t.id === tag.typeId)
@@ -351,7 +356,7 @@ export function ItemCard({
             })}
           </div>
         )}
-        {vendors.length > 0 && showTags && (
+        {vendors.length > 0 && effectiveShowTags && (
           <div className="flex flex-wrap gap-1 mt-1">
             {vendors.map((vendor) => {
               const isVendorActive =
@@ -390,7 +395,7 @@ export function ItemCard({
             })}
           </div>
         )}
-        {recipes.length > 0 && showTags && (
+        {recipes.length > 0 && effectiveShowTags && (
           <div className="flex flex-wrap gap-1 mt-1">
             {recipes.map((recipe) => {
               const isRecipeActive =
