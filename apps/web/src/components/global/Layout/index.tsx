@@ -13,6 +13,7 @@ export function Layout({ children }: LayoutProps) {
   const { t } = useTranslation()
   const location = useLocation()
   const isFullscreenPage =
+    location.pathname === '/onboarding' ||
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
     location.pathname.startsWith('/settings/vendors') ||

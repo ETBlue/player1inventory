@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as ShoppingRouteImport } from './routes/shopping'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as CookingRouteImport } from './routes/cooking'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
@@ -47,6 +48,11 @@ const SignInRoute = SignInRouteImport.update({
 const ShoppingRoute = ShoppingRouteImport.update({
   id: '/shopping',
   path: '/shopping',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CookingRoute = CookingRouteImport.update({
@@ -188,6 +194,7 @@ const SettingsRecipesIdItemsRoute = SettingsRecipesIdItemsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
+  '/onboarding': typeof OnboardingRoute
   '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
@@ -219,6 +226,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
+  '/onboarding': typeof OnboardingRoute
   '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
   '/items/new': typeof ItemsNewRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
+  '/onboarding': typeof OnboardingRoute
   '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/cooking'
+    | '/onboarding'
     | '/shopping'
     | '/sign-in'
     | '/items/$id'
@@ -308,6 +318,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/cooking'
+    | '/onboarding'
     | '/shopping'
     | '/sign-in'
     | '/items/new'
@@ -332,6 +343,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/cooking'
+    | '/onboarding'
     | '/shopping'
     | '/sign-in'
     | '/items/$id'
@@ -364,6 +376,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CookingRoute: typeof CookingRoute
+  OnboardingRoute: typeof OnboardingRoute
   ShoppingRoute: typeof ShoppingRoute
   SignInRoute: typeof SignInRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
@@ -388,6 +401,13 @@ declare module '@tanstack/react-router' {
       path: '/shopping'
       fullPath: '/shopping'
       preLoaderRoute: typeof ShoppingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cooking': {
@@ -690,6 +710,7 @@ const SettingsVendorsRouteWithChildren = SettingsVendorsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CookingRoute: CookingRoute,
+  OnboardingRoute: OnboardingRoute,
   ShoppingRoute: ShoppingRoute,
   SignInRoute: SignInRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,

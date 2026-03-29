@@ -14,8 +14,9 @@ export function Navigation() {
     { to: '/settings', label: t('navigation.settings'), icon: Settings },
   ] as const
 
-  // Hide navigation on fullscreen pages (items, tags, vendors, recipes)
+  // Hide navigation on fullscreen pages (onboarding, items, tags, vendors, recipes)
   const isFullscreenPage =
+    location.pathname === '/onboarding' ||
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
     location.pathname.startsWith('/settings/vendors') ||

@@ -12,8 +12,9 @@ const navItems = [
 export function Sidebar() {
   const location = useLocation()
 
-  // Hide sidebar on fullscreen pages (items, tags, vendors, recipes)
+  // Hide sidebar on fullscreen pages (onboarding, items, tags, vendors, recipes)
   const isFullscreenPage =
+    location.pathname === '/onboarding' ||
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
     location.pathname.startsWith('/settings/vendors') ||
