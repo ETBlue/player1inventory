@@ -4,7 +4,11 @@ import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
 
-test.beforeEach(async ({ request, baseURL }) => {
+test.beforeEach(async ({ page, request, baseURL }) => {
+  // Prevent empty-data redirect to /onboarding so tests can navigate freely.
+  await page.addInitScript(() => {
+    localStorage.setItem('e2e-skip-onboarding', 'true')
+  })
   if (baseURL === CLOUD_WEB_URL) {
     await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
       headers: { 'x-e2e-user-id': E2E_USER_ID },

@@ -2,6 +2,14 @@ import { test } from '@playwright/test'
 import { checkA11y, injectAxe } from 'axe-playwright'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 
+// Prevent the empty-data redirect to /onboarding so tests can navigate to any
+// page without being intercepted. Onboarding tests set this key themselves.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('e2e-skip-onboarding', 'true')
+  })
+})
+
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
@@ -126,6 +134,23 @@ test('user can view settings recipes list without accessibility violations', asy
   // Given the user navigates to the recipes settings page
   await page.goto('/settings/recipes')
   await page.waitForLoadState('networkidle')
+
+  // When axe scans the page for accessibility violations
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page)
+})
+
+// Onboarding page (/onboarding)
+test('user can view onboarding page without accessibility violations', async ({ page }) => {
+  // Given the user navigates directly to the onboarding page
+  // Use a seeded item to prevent the empty-data redirect intercepting /onboarding
+  // and sending us back to pantry. The skip flag prevents the redirect but we also
+  // need data so the onboarding page doesn't auto-redirect itself.
+  await page.goto('/onboarding')
+  // Wait for the onboarding welcome heading to confirm the page rendered
+  await page.getByRole('heading', { name: 'Welcome to Player 1 Inventory' }).waitFor({ timeout: 10000 })
 
   // When axe scans the page for accessibility violations
   await injectAxe(page)
@@ -461,6 +486,19 @@ test.describe('dark mode a11y', () => {
   test('user can view settings recipes list without accessibility violations in dark mode', async ({ page }) => {
     // Given the user navigates to the recipes settings page with dark mode enabled
     await page.goto('/settings/recipes')
+    await page.waitForLoadState('networkidle')
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page)
+  })
+
+  // Onboarding page (/onboarding) in dark mode
+  test('user can view onboarding page without accessibility violations in dark mode', async ({ page }) => {
+    // Given the user navigates directly to the onboarding page with dark mode enabled
+    await page.goto('/onboarding')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
