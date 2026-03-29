@@ -1,9 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { OnboardingProgress } from '@/components/onboarding/OnboardingProgress'
 import { OnboardingWelcome } from '@/components/onboarding/OnboardingWelcome'
 import { TemplateItemsBrowser } from '@/components/onboarding/TemplateItemsBrowser'
 import { TemplateOverview } from '@/components/onboarding/TemplateOverview'
+import { TemplateVendorsBrowser } from '@/components/onboarding/TemplateVendorsBrowser'
 import { templateItems, templateVendors } from '@/data/template'
+import { useOnboardingSetup } from '@/hooks'
 
 // Step state machine for the onboarding flow
 type OnboardingStep =
@@ -18,6 +21,7 @@ export const Route = createFileRoute('/onboarding')({
 })
 
 function OnboardingPage() {
+  const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState<OnboardingStep>({
     type: 'welcome',
   })
@@ -27,10 +31,23 @@ function OnboardingPage() {
   const [selectedVendorKeys, setSelectedVendorKeys] = useState<Set<string>>(
     new Set(),
   )
+  const [progressPct, setProgressPct] = useState(0)
+  const setupMutation = useOnboardingSetup()
 
   const handleNavigate = (step: OnboardingStep) => {
     setCurrentStep(step)
   }
+
+  // Trigger setup mutation when entering the progress step
+  useEffect(() => {
+    if (currentStep.type === 'progress' && setupMutation.status === 'idle') {
+      setupMutation.mutate({
+        itemKeys: [...selectedItemKeys],
+        vendorKeys: [...selectedVendorKeys],
+        onProgress: setProgressPct,
+      })
+    }
+  }, [currentStep.type, setupMutation, selectedItemKeys, selectedVendorKeys])
 
   return (
     <div className="min-h-screen">
@@ -60,49 +77,19 @@ function OnboardingPage() {
         />
       )}
       {currentStep.type === 'vendors-browser' && (
-        <VendorsBrowserPlaceholder
-          onNavigate={handleNavigate}
-          selectedItemKeys={selectedItemKeys}
-          selectedVendorKeys={selectedVendorKeys}
-          setSelectedItemKeys={setSelectedItemKeys}
-          setSelectedVendorKeys={setSelectedVendorKeys}
+        <TemplateVendorsBrowser
+          selectedKeys={selectedVendorKeys}
+          onSelectionChange={setSelectedVendorKeys}
+          onBack={() => handleNavigate({ type: 'template-overview' })}
         />
       )}
       {currentStep.type === 'progress' && (
-        <ProgressPlaceholder
-          onNavigate={handleNavigate}
-          selectedItemKeys={selectedItemKeys}
-          selectedVendorKeys={selectedVendorKeys}
-          setSelectedItemKeys={setSelectedItemKeys}
-          setSelectedVendorKeys={setSelectedVendorKeys}
+        <OnboardingProgress
+          progress={progressPct}
+          isComplete={setupMutation.isSuccess}
+          onGetStarted={() => navigate({ to: '/' })}
         />
       )}
-    </div>
-  )
-}
-
-// Shared props for all step placeholders — mirrors the interface that real
-// step components (Steps 5–9) will implement.
-interface StepProps {
-  onNavigate: (step: OnboardingStep) => void
-  selectedItemKeys: Set<string>
-  selectedVendorKeys: Set<string>
-  setSelectedItemKeys: React.Dispatch<React.SetStateAction<Set<string>>>
-  setSelectedVendorKeys: React.Dispatch<React.SetStateAction<Set<string>>>
-}
-
-function VendorsBrowserPlaceholder(_props: StepProps) {
-  return (
-    <div>
-      <h1>Vendors Browser</h1>
-    </div>
-  )
-}
-
-function ProgressPlaceholder(_props: StepProps) {
-  return (
-    <div>
-      <h1>Progress</h1>
     </div>
   )
 }
