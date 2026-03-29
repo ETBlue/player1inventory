@@ -75,14 +75,18 @@ Components/
     EditTagTypeDialog
     TagBadge
     TagDetailDialog
+    TagInfoForm
     TagNameForm
     TagTypeDropdown
+    TagTypeInfoForm
   Vendor/
     VendorCard
+    VendorInfoForm
     VendorNameForm
   Recipe/
     CookingControlBar
     RecipeCard
+    RecipeInfoForm
     RecipeNameForm
   Settings/
     ConflictDialog
@@ -139,14 +143,18 @@ src/components/
     EditTagTypeDialog/
     TagBadge/
     TagDetailDialog/
+    TagInfoForm/     ← already exists
     TagNameForm/
     TagTypeDropdown/
+    TagTypeInfoForm/ ← already exists
   vendor/            ← already exists
     VendorCard/
+    VendorInfoForm/  ← already exists
     VendorNameForm/
   recipe/            ← already exists
     CookingControlBar/
     RecipeCard/
+    RecipeInfoForm/  ← already exists
     RecipeNameForm/
   settings/          ← already exists
     ConflictDialog/
@@ -234,11 +242,15 @@ Update `title` in every `.stories.tsx` file:
 | `components/tag/TagDetailDialog/TagDetailDialog.stories.tsx` | `Components/TagDetailDialog` | `Components/Tag/TagDetailDialog` |
 | `components/tag/TagNameForm/TagNameForm.stories.tsx` | `Components/TagNameForm` | `Components/Tag/TagNameForm` |
 | `components/tag/TagTypeDropdown/TagTypeDropdown.stories.tsx` | `Components/TagTypeDropdown` | `Components/Tag/TagTypeDropdown` |
+| `components/tag/TagInfoForm/index.stories.tsx` | `Components/TagInfoForm` | `Components/Tag/TagInfoForm` |
+| `components/tag/TagTypeInfoForm/index.stories.tsx` | `Components/TagTypeInfoForm` | `Components/Tag/TagTypeInfoForm` |
 | `components/vendor/VendorCard/VendorCard.stories.tsx` | `Components/VendorCard` | `Components/Vendor/VendorCard` |
 | `components/vendor/VendorNameForm/VendorNameForm.stories.tsx` | `Components/VendorNameForm` | `Components/Vendor/VendorNameForm` |
+| `components/vendor/VendorInfoForm/index.stories.tsx` | `Components/VendorInfoForm` | `Components/Vendor/VendorInfoForm` |
 | `components/recipe/CookingControlBar/index.stories.tsx` | `Recipe/CookingControlBar` | `Components/Recipe/CookingControlBar` |
 | `components/recipe/RecipeCard/RecipeCard.stories.tsx` | `Components/RecipeCard` | `Components/Recipe/RecipeCard` |
 | `components/recipe/RecipeNameForm/RecipeNameForm.stories.tsx` | `Components/RecipeNameForm` | `Components/Recipe/RecipeNameForm` |
+| `components/recipe/RecipeInfoForm/index.stories.tsx` | `Components/RecipeInfoForm` | `Components/Recipe/RecipeInfoForm` |
 | `components/settings/ConflictDialog/index.stories.tsx` | `Settings/ConflictDialog` | `Components/Settings/ConflictDialog` |
 | `components/settings/DataModeCard/index.stories.tsx` | `Settings/DataModeCard` | `Components/Settings/DataModeCard` |
 | `components/settings/ExportCard/index.stories.tsx` | `Settings/ExportCard` | `Components/Settings/ExportCard` |
