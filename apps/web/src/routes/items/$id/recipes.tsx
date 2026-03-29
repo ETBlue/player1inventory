@@ -87,7 +87,7 @@ function RecipesTab() {
           onClick={() => setShowDialog(true)}
         >
           <Plus />
-          New Recipe
+          {t('items.recipes.newRecipe.button')}
         </Button>
       </div>
 
@@ -102,10 +102,10 @@ function RecipesTab() {
 
       <AddNameDialog
         open={showDialog}
-        title="New Recipe"
-        submitLabel="Add Recipe"
+        title={t('items.recipes.newRecipe.dialogTitle')}
+        submitLabel={t('items.recipes.newRecipe.submitLabel')}
         name={newRecipeName}
-        placeholder="e.g., Pasta Sauce, Smoothie"
+        placeholder={t('items.recipes.newRecipe.placeholder')}
         onNameChange={setNewRecipeName}
         onAdd={handleAddRecipe}
         onClose={() => {

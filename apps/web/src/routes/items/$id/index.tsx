@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { DeleteButton } from '@/components/shared/DeleteButton'
@@ -119,6 +120,7 @@ function calcNewDefault(oldDefault: number, newConsumeAmount: number): number {
 }
 
 function ItemDetailTab() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
@@ -228,13 +230,10 @@ function ItemDetailTab() {
       <DeleteButton
         trigger="Delete"
         buttonClassName="w-full max-w-2xl mt-4"
-        dialogTitle="Delete Item?"
-        dialogDescription={
-          <>
-            Are you sure you want to delete <strong>{item.name}</strong>? This
-            will permanently remove this item and its history.
-          </>
-        }
+        dialogTitle={t('items.detail.deleteDialog.title')}
+        dialogDescription={t('items.detail.deleteDialog.description', {
+          name: item.name,
+        })}
         onDelete={handleDelete}
       />
 
@@ -246,20 +245,29 @@ function ItemDetailTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Update recipe amounts?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t('items.detail.recipeAdjustDialog.title')}
+            </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            Amount per consume changed from {item.consumeAmount} to{' '}
-            {pendingFormValues?.consumeAmount}. The following recipes will be
-            adjusted:
+            {t('items.detail.recipeAdjustDialog.description', {
+              from: item.consumeAmount,
+              to: pendingFormValues?.consumeAmount,
+            })}
           </AlertDialogDescription>
           {pendingAdjustments && (
             <table className="w-full text-sm mt-2">
               <thead>
                 <tr className="text-left text-muted-foreground">
-                  <th className="pb-1">Recipe</th>
-                  <th className="pb-1">Current</th>
-                  <th className="pb-1">New</th>
+                  <th className="pb-1">
+                    {t('items.detail.recipeAdjustDialog.recipeHeader')}
+                  </th>
+                  <th className="pb-1">
+                    {t('items.detail.recipeAdjustDialog.currentHeader')}
+                  </th>
+                  <th className="pb-1">
+                    {t('items.detail.recipeAdjustDialog.newHeader')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -275,10 +283,10 @@ function ItemDetailTab() {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancelAdjustments}>
-              Cancel
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmAdjustments}>
-              Update &amp; Save
+              {t('items.detail.recipeAdjustDialog.updateButton')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
