@@ -1,4 +1,5 @@
 import { ChevronDown, Tags, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,6 +32,7 @@ export function TagTypeDropdown({
   onToggleTag,
   onClear,
 }: TagTypeDropdownProps) {
+  const { t } = useTranslation()
   const hasSelection = selectedTagIds.length > 0
   const selectedCount = selectedTagIds.length
 
@@ -98,7 +100,7 @@ export function TagTypeDropdown({
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onClear}>
               <X className="h-4 w-4" />
-              <span className=" text-xs">Clear</span>
+              <span className=" text-xs">{t('common.clear')}</span>
             </DropdownMenuItem>
           </>
         )}
