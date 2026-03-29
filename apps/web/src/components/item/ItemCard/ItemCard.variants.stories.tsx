@@ -13,7 +13,7 @@ import {
 } from './ItemCard.stories.fixtures'
 
 const meta: Meta<typeof ItemCard> = {
-  title: 'Components/ItemCard/Variants',
+  title: 'Components/Item/ItemCard/Variants',
   component: ItemCard,
   decorators: [sharedDecorator],
 }

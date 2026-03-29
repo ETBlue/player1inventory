@@ -3,7 +3,7 @@ import type { ConflictSummary } from '@/lib/importData'
 import { ConflictDialog } from '.'
 
 const meta: Meta<typeof ConflictDialog> = {
-  title: 'Settings/ConflictDialog',
+  title: 'Components/Settings/ConflictDialog',
   component: ConflictDialog,
   parameters: {
     layout: 'padded',

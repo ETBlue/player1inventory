@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { type ColorName, colors } from '@/design-tokens'
 
 const meta: Meta = {
-  title: 'Design Tokens/Colors',
+  title: 'Colors',
   parameters: {
     layout: 'fullscreen',
   },

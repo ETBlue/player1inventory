@@ -14,7 +14,7 @@ import { noopApolloClient } from '@/test/apolloStub'
 import { TagColor } from '@/types'
 
 const meta = {
-  title: 'Routes/Items/Detail/Tags',
+  title: 'Pages/Item/Detail/Tag',
   parameters: {
     layout: 'fullscreen',
   },

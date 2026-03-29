@@ -3,7 +3,7 @@ import { TagColor } from '@/types'
 import { Badge } from './badge'
 
 const meta: Meta<typeof Badge> = {
-  title: 'UI/Badge',
+  title: 'UI Library/Badge',
   component: Badge,
   tags: ['autodocs'],
 }

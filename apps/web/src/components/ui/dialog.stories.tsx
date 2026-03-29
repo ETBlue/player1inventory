@@ -13,7 +13,7 @@ import { Input } from './input'
 import { Label } from './label'
 
 const meta: Meta<typeof Dialog> = {
-  title: 'UI/Dialog',
+  title: 'UI Library/Dialog',
   component: Dialog,
   tags: ['autodocs'],
 }

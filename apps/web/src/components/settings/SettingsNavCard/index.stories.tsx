@@ -40,7 +40,7 @@ function WithRouter({ children }: { children: ReactNode }) {
 }
 
 const meta: Meta<typeof SettingsNavCard> = {
-  title: 'Settings/SettingsNavCard',
+  title: 'Components/Settings/SettingsNavCard',
   component: SettingsNavCard,
   parameters: {
     layout: 'padded',

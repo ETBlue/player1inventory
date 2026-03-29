@@ -3,7 +3,7 @@ import { PlusIcon } from 'lucide-react'
 import { Button } from './button'
 
 const meta: Meta<typeof Button> = {
-  title: 'UI/Button',
+  title: 'UI Library/Button',
   component: Button,
   tags: ['autodocs'],
 }

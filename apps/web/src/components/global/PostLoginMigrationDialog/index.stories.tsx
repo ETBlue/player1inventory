@@ -15,7 +15,7 @@ import { PostLoginMigrationDialog } from '.'
 //   The hook finds local items → sets state to 'prompting' → dialog opens.
 
 const meta: Meta<typeof PostLoginMigrationDialog> = {
-  title: 'Components/PostLoginMigrationDialog',
+  title: 'Components/Global/PostLoginMigrationDialog',
   component: PostLoginMigrationDialog,
   parameters: {
     layout: 'centered',

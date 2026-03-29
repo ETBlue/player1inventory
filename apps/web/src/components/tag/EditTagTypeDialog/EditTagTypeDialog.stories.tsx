@@ -3,7 +3,7 @@ import { TagColor } from '@/types'
 import { EditTagTypeDialog } from '.'
 
 const meta: Meta<typeof EditTagTypeDialog> = {
-  title: 'Components/EditTagTypeDialog',
+  title: 'Components/Tag/EditTagTypeDialog',
   component: EditTagTypeDialog,
 }
 

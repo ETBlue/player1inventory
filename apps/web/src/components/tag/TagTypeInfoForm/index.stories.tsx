@@ -10,7 +10,7 @@ const baseTagType: TagType = {
 }
 
 const meta: Meta<typeof TagTypeInfoForm> = {
-  title: 'Components/TagTypeInfoForm',
+  title: 'Components/Tag/TagTypeInfoForm',
   component: TagTypeInfoForm,
   args: {
     onSave: () => {},

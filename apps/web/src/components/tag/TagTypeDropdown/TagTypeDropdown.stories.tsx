@@ -6,7 +6,7 @@ import { TagTypeDropdown } from '.'
 const queryClient = new QueryClient()
 
 const meta: Meta<typeof TagTypeDropdown> = {
-  title: 'Components/TagTypeDropdown',
+  title: 'Components/Tag/TagTypeDropdown',
   component: TagTypeDropdown,
   decorators: [
     (Story) => (

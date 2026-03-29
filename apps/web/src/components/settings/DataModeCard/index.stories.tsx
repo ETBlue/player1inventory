@@ -50,7 +50,7 @@ const apolloMocksWithGroup = [
 ]
 
 const meta: Meta<typeof DataModeCard> = {
-  title: 'Settings/DataModeCard',
+  title: 'Components/Settings/DataModeCard',
   component: DataModeCard,
   decorators: [
     (Story) => (

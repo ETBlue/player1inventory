@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Toolbar } from '.'
 
 const meta = {
-  title: 'Components/Toolbar',
+  title: 'Components/Shared/Toolbar',
   component: Toolbar,
   parameters: {
     layout: 'fullscreen',

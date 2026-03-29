@@ -11,7 +11,7 @@ import { ExportCard } from '.'
 //   - Apollo is mocked with MockedProvider (no specific queries needed for render)
 
 const meta: Meta<typeof ExportCard> = {
-  title: 'Settings/ExportCard',
+  title: 'Components/Settings/ExportCard',
   component: ExportCard,
   decorators: [
     (Story) => (

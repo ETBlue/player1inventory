@@ -12,7 +12,7 @@ import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Components/Sidebar',
+  title: 'Components/Global/Sidebar',
   parameters: {
     layout: 'fullscreen',
   },

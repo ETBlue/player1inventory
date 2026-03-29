@@ -3,7 +3,7 @@ import { Trash2, X } from 'lucide-react'
 import { DeleteButton } from '.'
 
 const meta = {
-  title: 'Components/DeleteButton',
+  title: 'Components/Shared/DeleteButton',
   component: DeleteButton,
   parameters: {
     layout: 'centered',

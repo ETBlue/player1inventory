@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { AddNameDialog } from '.'
 
 const meta: Meta<typeof AddNameDialog> = {
-  title: 'Components/AddNameDialog',
+  title: 'Components/Shared/AddNameDialog',
   component: AddNameDialog,
 }
 

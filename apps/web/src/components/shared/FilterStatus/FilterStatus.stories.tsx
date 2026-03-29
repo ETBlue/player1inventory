@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { FilterStatus } from '.'
 
 const meta = {
-  title: 'Components/FilterStatus',
+  title: 'Components/Shared/FilterStatus',
   component: FilterStatus,
   parameters: {
     layout: 'centered',
