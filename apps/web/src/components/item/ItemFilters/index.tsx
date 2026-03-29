@@ -2,6 +2,7 @@
 
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, CookingPot, Pencil, Store, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { TagTypeDropdown } from '@/components/tag/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,6 +36,7 @@ export function ItemFilters({
   hideVendorFilter,
   hideRecipeFilter,
 }: ItemFiltersProps) {
+  const { t } = useTranslation()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
   // Depth-first ordered tags for hierarchical display in dropdowns
@@ -99,7 +101,7 @@ export function ItemFilters({
               className="gap-1"
             >
               <Store />
-              Vendors
+              {t('settings.vendors.label')}
               {selectedVendorIds.length > 0 && (
                 <span className="text-xs font-semibold">
                   {selectedVendorIds.length}
@@ -134,7 +136,7 @@ export function ItemFilters({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={clearVendorIds}>
                   <X className="h-4 w-4" />
-                  <span className="text-xs">Clear</span>
+                  <span className="text-xs">{t('common.clear')}</span>
                 </DropdownMenuItem>
               </>
             )}
@@ -145,7 +147,7 @@ export function ItemFilters({
                 className="flex items-center gap-1.5"
               >
                 <Pencil className="h-4 w-4" />
-                <span className="text-xs">Manage</span>
+                <span className="text-xs">{t('common.manage')}</span>
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -163,7 +165,7 @@ export function ItemFilters({
               className="gap-1"
             >
               <CookingPot />
-              Recipes
+              {t('settings.recipes.label')}
               {selectedRecipeIds.length > 0 && (
                 <span className="text-xs font-semibold">
                   {selectedRecipeIds.length}
@@ -198,7 +200,7 @@ export function ItemFilters({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={clearRecipeIds}>
                   <X className="h-4 w-4" />
-                  <span className="text-xs">Clear</span>
+                  <span className="text-xs">{t('common.clear')}</span>
                 </DropdownMenuItem>
               </>
             )}
@@ -209,7 +211,7 @@ export function ItemFilters({
                 className="flex items-center gap-1.5"
               >
                 <Pencil className="h-4 w-4" />
-                <span className="text-xs">Manage</span>
+                <span className="text-xs">{t('common.manage')}</span>
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -245,7 +247,7 @@ export function ItemFilters({
       <Link to="/settings/tags">
         <Button size="xs" variant="neutral-ghost">
           <Pencil />
-          Edit Tags
+          {t('itemFilters.editTags')}
         </Button>
       </Link>
     </div>
