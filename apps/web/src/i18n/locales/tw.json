@@ -445,5 +445,116 @@
         }
       }
     }
+  },
+  "template": {
+    "tagTypes": {
+      "category": "類別",
+      "preservation": "保存方式"
+    },
+    "tags": {
+      "room-temperature": "常溫",
+      "refrigerated": "冷藏",
+      "frozen": "冷凍",
+      "food-and-dining": "食品餐飲",
+      "health-and-beauty": "健康美容",
+      "household": "家用品",
+      "produce": "生鮮食品",
+      "meat": "肉類",
+      "vegetables": "蔬菜",
+      "fruits": "水果",
+      "mushrooms": "菇類",
+      "grains": "穀物主食",
+      "seasonings": "調味料",
+      "drinks": "飲品",
+      "snacks": "零食",
+      "sweets": "甜點",
+      "prepared": "熟食半成品",
+      "cooked": "熟食",
+      "cleansing": "清潔沐浴",
+      "personal-care": "個人護理",
+      "oral-health": "口腔護理",
+      "cleaning-and-sanitizing": "清潔消毒",
+      "kitchen-supplies": "廚房用品"
+    },
+    "items": {
+      "rice": "米",
+      "eggs": "雞蛋",
+      "milk": "牛奶",
+      "chicken-breast": "雞胸肉",
+      "pork-belly": "豬五花",
+      "tofu": "豆腐",
+      "spinach": "菠菜",
+      "tomato": "番茄",
+      "potato": "馬鈴薯",
+      "carrot": "紅蘿蔔",
+      "apple": "蘋果",
+      "instant-noodles": "泡麵",
+      "soy-sauce": "醬油",
+      "cooking-oil": "食用油",
+      "salt": "鹽",
+      "bottled-water": "瓶裝水",
+      "toothpaste": "牙膏",
+      "shampoo": "洗髮精",
+      "dish-soap": "洗碗精",
+      "toilet-paper": "衛生紙"
+    },
+    "vendors": {
+      "costco": "好市多",
+      "px-mart": "全聯福利中心",
+      "simple-mart": "美廉社",
+      "rt-mart": "大潤發",
+      "carrefour": "家樂福",
+      "i-mei": "義美食品",
+      "lopia": "Lopia",
+      "city-super": "City Super",
+      "mia-cbon": "Mia C'bon",
+      "jasons": "Jasons Market Place",
+      "poya": "寶雅",
+      "nitori": "宜得利",
+      "ikea": "IKEA",
+      "cosmed": "康是美",
+      "watsons": "屈臣氏",
+      "family-mart": "全家便利商店",
+      "7-eleven": "7-ELEVEN",
+      "momo": "Momo 商城",
+      "pchome": "PChome 線上購物"
+    }
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "歡迎使用 Player 1 Inventory",
+      "subtitle": "來設定你的儲藏室吧",
+      "chooseTemplate": "從範本選擇",
+      "startFromScratch": "從空白開始"
+    },
+    "templateOverview": {
+      "title": "設定你的儲藏室",
+      "items": "個範本品項",
+      "vendors": "個範本廠商",
+      "selected": "已選擇",
+      "back": "返回",
+      "confirm": "確認"
+    },
+    "itemsBrowser": {
+      "title": "範本品項",
+      "selectAll": "全選可見項目",
+      "clearSelection": "清除選擇",
+      "showing": "顯示 {{count}} / {{total}} 個品項",
+      "clearFilter": "清除篩選"
+    },
+    "vendorsBrowser": {
+      "title": "範本廠商",
+      "selectAll": "全選可見項目",
+      "clearSelection": "清除選擇",
+      "showing": "顯示 {{count}} / {{total}} 個廠商",
+      "clearFilter": "清除篩選",
+      "selected": "已選擇 {{count}} 個廠商"
+    },
+    "progress": {
+      "title": "正在設定儲藏室\u2026",
+      "doneTitle": "完成了！",
+      "doneSubtitle": "你的儲藏室已準備就緒。",
+      "getStarted": "開始使用"
+    }
   }
 }

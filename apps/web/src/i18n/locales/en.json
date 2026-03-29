@@ -449,5 +449,116 @@
         }
       }
     }
+  },
+  "template": {
+    "tagTypes": {
+      "category": "Category",
+      "preservation": "Preservation"
+    },
+    "tags": {
+      "room-temperature": "Room Temperature",
+      "refrigerated": "Refrigerated",
+      "frozen": "Frozen",
+      "food-and-dining": "Food & Dining",
+      "health-and-beauty": "Health & Beauty",
+      "household": "Household",
+      "produce": "Produce",
+      "meat": "Meat",
+      "vegetables": "Vegetables",
+      "fruits": "Fruits",
+      "mushrooms": "Mushrooms",
+      "grains": "Grains",
+      "seasonings": "Seasonings",
+      "drinks": "Drinks",
+      "snacks": "Snacks",
+      "sweets": "Sweets",
+      "prepared": "Prepared Food",
+      "cooked": "Cooked Food",
+      "cleansing": "Cleansing",
+      "personal-care": "Personal Care",
+      "oral-health": "Oral Health",
+      "cleaning-and-sanitizing": "Cleaning & Sanitizing",
+      "kitchen-supplies": "Kitchen Supplies"
+    },
+    "items": {
+      "rice": "Rice",
+      "eggs": "Eggs",
+      "milk": "Milk",
+      "chicken-breast": "Chicken Breast",
+      "pork-belly": "Pork Belly",
+      "tofu": "Tofu",
+      "spinach": "Spinach",
+      "tomato": "Tomato",
+      "potato": "Potato",
+      "carrot": "Carrot",
+      "apple": "Apple",
+      "instant-noodles": "Instant Noodles",
+      "soy-sauce": "Soy Sauce",
+      "cooking-oil": "Cooking Oil",
+      "salt": "Salt",
+      "bottled-water": "Bottled Water",
+      "toothpaste": "Toothpaste",
+      "shampoo": "Shampoo",
+      "dish-soap": "Dish Soap",
+      "toilet-paper": "Toilet Paper"
+    },
+    "vendors": {
+      "costco": "Costco",
+      "px-mart": "PX Mart",
+      "simple-mart": "Simple Mart",
+      "rt-mart": "RT-Mart",
+      "carrefour": "Carrefour",
+      "i-mei": "I-Mei Food",
+      "lopia": "Lopia",
+      "city-super": "City Super",
+      "mia-cbon": "Mia C'bon",
+      "jasons": "Jasons Market Place",
+      "poya": "Poya",
+      "nitori": "Nitori",
+      "ikea": "IKEA",
+      "cosmed": "Cosmed",
+      "watsons": "Watsons",
+      "family-mart": "FamilyMart",
+      "7-eleven": "7-Eleven",
+      "momo": "Momo",
+      "pchome": "PChome"
+    }
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Welcome to Player 1 Inventory",
+      "subtitle": "Let's set up your pantry",
+      "chooseTemplate": "Choose from template",
+      "startFromScratch": "Start from scratch"
+    },
+    "templateOverview": {
+      "title": "Set up your pantry",
+      "items": "template items",
+      "vendors": "template vendors",
+      "selected": "selected",
+      "back": "Back",
+      "confirm": "Confirm"
+    },
+    "itemsBrowser": {
+      "title": "Template Items",
+      "selectAll": "Select all visible",
+      "clearSelection": "Clear selection",
+      "showing": "Showing {{count}} of {{total}} items",
+      "clearFilter": "Clear filter"
+    },
+    "vendorsBrowser": {
+      "title": "Template Vendors",
+      "selectAll": "Select all visible",
+      "clearSelection": "Clear selection",
+      "showing": "Showing {{count}} of {{total}} vendors",
+      "clearFilter": "Clear filter",
+      "selected": "{{count}} vendors selected"
+    },
+    "progress": {
+      "title": "Setting up your pantry\u2026",
+      "doneTitle": "All done!",
+      "doneSubtitle": "Your pantry is ready.",
+      "getStarted": "Get started"
+    }
   }
 }
