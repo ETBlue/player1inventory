@@ -59,7 +59,7 @@ const { t } = useTranslation()
 2. Add the same key with TW translation to `src/i18n/locales/tw.json`
 3. The parity test (`src/i18n/locales/locales.test.ts`) will fail if keys don't match — this is intentional
 
-**Locale-aware default tag types:** On first app launch (empty IndexedDB), `db.on('populate')` in `src/db/index.ts` calls `seedDefaultData(language)` from `src/db/operations.ts` to seed tag types appropriate for the user's language (EN or TW defaults).
+**Locale-aware onboarding:** On first app launch (empty IndexedDB), `__root.tsx` detects all three data stores are empty and redirects to `/onboarding`. The onboarding flow (Phase B) lets the user choose a language before selecting template items/vendors, then calls `useOnboardingSetup` to bulk-create the data in the chosen language. `seedDefaultData` in `src/db/operations.ts` still exists for testing and manual seeding but is no longer called automatically from `db.on('populate')`.
 
 **Settings UI:** Language selector card in `/settings` with Globe icon and Select dropdown (Auto/English/繁體中文). Positioned between Theme and Tags cards.
 
