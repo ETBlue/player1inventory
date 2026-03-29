@@ -137,19 +137,62 @@
       "assignEmpty": {
         "title": "No tags assigned.",
         "description": "Tap a tag above to assign it to this item."
+      },
+      "newTag": {
+        "button": "New Tag",
+        "dialogTitle": "Add Tag",
+        "submitLabel": "Add Tag",
+        "placeholder": "e.g., Dairy, Frozen"
       }
     },
     "vendors": {
       "assignEmpty": {
         "title": "No vendors assigned.",
         "description": "Tap a vendor above to assign it to this item."
+      },
+      "newVendor": {
+        "button": "New Vendor",
+        "dialogTitle": "New Vendor",
+        "submitLabel": "Add Vendor",
+        "placeholder": "e.g., Costco, iHerb"
       }
     },
     "recipes": {
       "assignEmpty": {
         "title": "No recipes assigned.",
         "description": "Tap a recipe above to assign it to this item."
+      },
+      "newRecipe": {
+        "button": "New Recipe",
+        "dialogTitle": "New Recipe",
+        "submitLabel": "Add Recipe",
+        "placeholder": "e.g., Pasta Sauce, Smoothie"
       }
+    },
+    "detail": {
+      "notFound": "Item not found",
+      "tabs": {
+        "info": "Item info tab",
+        "tags": "Item tags tab",
+        "vendors": "Item vendors tab",
+        "recipes": "Item recipes tab",
+        "history": "Item history tab"
+      },
+      "deleteDialog": {
+        "title": "Delete Item?",
+        "description": "Are you sure you want to delete {{name}}? This will permanently remove this item and its history."
+      },
+      "recipeAdjustDialog": {
+        "title": "Update recipe amounts?",
+        "description": "Amount per consume changed from {{from}} to {{to}}. The following recipes will be adjusted:",
+        "recipeHeader": "Recipe",
+        "currentHeader": "Current",
+        "newHeader": "New",
+        "updateButton": "Update & Save"
+      }
+    },
+    "history": {
+      "empty": "No history yet."
     }
   },
   "itemFilters": {

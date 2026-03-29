@@ -137,19 +137,62 @@
       "assignEmpty": {
         "title": "尚未套用標籤。",
         "description": "點選上方標籤以套用到此品項。"
+      },
+      "newTag": {
+        "button": "新增標籤",
+        "dialogTitle": "新增標籤",
+        "submitLabel": "新增標籤",
+        "placeholder": "例如：乳製品、冷凍"
       }
     },
     "vendors": {
       "assignEmpty": {
         "title": "尚未指定供應商。",
         "description": "點選上方供應商以指定到此品項。"
+      },
+      "newVendor": {
+        "button": "新增供應商",
+        "dialogTitle": "新增供應商",
+        "submitLabel": "新增供應商",
+        "placeholder": "例如：好市多、iHerb"
       }
     },
     "recipes": {
       "assignEmpty": {
         "title": "尚未加入食譜。",
         "description": "點選上方食譜以將此品項加入其中。"
+      },
+      "newRecipe": {
+        "button": "新增食譜",
+        "dialogTitle": "新增食譜",
+        "submitLabel": "新增食譜",
+        "placeholder": "例如：義大利麵醬、果昔"
       }
+    },
+    "detail": {
+      "notFound": "找不到品項",
+      "tabs": {
+        "info": "品項資訊分頁",
+        "tags": "標籤分頁",
+        "vendors": "供應商分頁",
+        "recipes": "食譜分頁",
+        "history": "歷史紀錄分頁"
+      },
+      "deleteDialog": {
+        "title": "刪除品項？",
+        "description": "確定要刪除 {{name}} 嗎？此操作將永久移除此品項及其歷史紀錄。"
+      },
+      "recipeAdjustDialog": {
+        "title": "更新食譜用量？",
+        "description": "每次消耗量已從 {{from}} 更改為 {{to}}。以下食譜將自動調整：",
+        "recipeHeader": "食譜",
+        "currentHeader": "目前",
+        "newHeader": "新值",
+        "updateButton": "更新並儲存"
+      }
+    },
+    "history": {
+      "empty": "尚無歷史紀錄。"
     }
   },
   "itemFilters": {
