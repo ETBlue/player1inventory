@@ -323,11 +323,11 @@
     "language": {
       "label": "語言",
       "description": "選擇您偏好的語言",
-      "auto": "自動（瀏覽器）",
+      "auto": "自動偵測",
       "autoDetected": "自動偵測：{{language}}",
       "languages": {
         "en": "English",
-        "tw": "繁體中文"
+        "tw": "正體中文"
       }
     },
     "dataMode": {
@@ -522,42 +522,43 @@
   },
   "onboarding": {
     "welcome": {
-      "title": "歡迎使用 Player 1 Inventory",
-      "subtitle": "來設定你的儲藏室吧",
-      "chooseTemplate": "從範本選擇",
-      "startFromScratch": "從空白開始"
+      "title": "Player 1 Inventory",
+      "subtitle": "在現實世界也要追求極致的庫存管理 💪",
+      "buildYourPantry": "打造你的儲藏室",
+      "chooseTemplate": "從模版匯入常見品項",
+      "startFromScratch": "手動建立物資清單"
     },
     "templateOverview": {
-      "title": "設定你的儲藏室",
-      "items": "個範本品項",
-      "vendors": "個範本廠商",
+      "title": "設定你的物資清單",
+      "items": "個範例品項",
+      "vendors": "個範例廠商",
       "selected": "已選擇",
       "back": "返回",
       "confirm": "確認"
     },
     "itemsBrowser": {
-      "title": "範本品項",
+      "title": "範例品項",
       "selected_one": "已選擇 {{count}} 個品項",
       "selected_other": "已選擇 {{count}} 個品項",
-      "selectAll": "全選可見項目",
-      "clearSelection": "清除選擇",
+      "selectAll": "選擇全部可見項目",
+      "clearSelection": "清除選擇項目",
       "showing": "顯示 {{count}} / {{total}} 個品項",
-      "clearFilter": "清除篩選",
+      "clearFilter": "清除篩選條件",
       "preservationFilter": "保存方式",
       "categoryFilter": "分類"
     },
     "vendorsBrowser": {
-      "title": "範本廠商",
-      "selectAll": "全選可見項目",
-      "clearSelection": "清除選擇",
+      "title": "範例廠商",
+      "selectAll": "選擇全部可見項目",
+      "clearSelection": "清除選擇項目",
       "showing": "顯示 {{count}} / {{total}} 個廠商",
-      "clearFilter": "清除篩選",
+      "clearFilter": "清除篩選條件",
       "selected": "已選擇 {{count}} 個廠商"
     },
     "progress": {
-      "title": "正在設定儲藏室\u2026",
+      "title": "正在設定物資清單\u2026",
       "doneTitle": "完成了！",
-      "doneSubtitle": "你的儲藏室已準備就緒。",
+      "doneSubtitle": "你的物資清單已準備就緒。",
       "getStarted": "開始使用"
     }
   }

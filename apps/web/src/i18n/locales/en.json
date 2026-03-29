@@ -331,7 +331,7 @@
       "autoDetected": "Auto-detected: {{language}}",
       "languages": {
         "en": "English",
-        "tw": "Traditional Chinese"
+        "tw": "Taiwanese Mandarin"
       }
     },
     "dataMode": {
@@ -526,8 +526,9 @@
   },
   "onboarding": {
     "welcome": {
-      "title": "Welcome to Player 1 Inventory",
-      "subtitle": "Let's set up your pantry",
+      "title": "Player 1 Inventory",
+      "subtitle": "Ultimate real life assets management 💪",
+      "buildYourPantry": "Build your pantry",
       "chooseTemplate": "Choose from template",
       "startFromScratch": "Start from scratch"
     },

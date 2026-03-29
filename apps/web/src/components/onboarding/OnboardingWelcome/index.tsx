@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/hooks/useLanguage'
@@ -17,64 +17,73 @@ export function OnboardingWelcome({
   const { preference, setPreference } = useLanguage()
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-8">
-      {/* App logo / name */}
-      <div className="text-center">
-        <p className="text-4xl font-bold text-primary">P1I</p>
-      </div>
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
+      {/* App logo (TBD) */}
 
       {/* Heading and subtext */}
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold">{t('onboarding.welcome.title')}</h1>
+      <div className="text-center">
+        <h1 className="font-rosario text-2xl text-foreground-emphasized">
+          {t('onboarding.welcome.title')}
+        </h1>
         <p className="text-foreground-muted">
           {t('onboarding.welcome.subtitle')}
         </p>
       </div>
 
       {/* Language selector */}
-      <fieldset className="flex border-0 p-0 m-0">
+      <fieldset className="w-full max-w-sm grid grid-cols-3 border-0 p-0 m-0">
         <legend className="sr-only">{t('settings.language.label')}</legend>
         <Button
           variant={preference === 'en' ? 'neutral' : 'neutral-outline'}
           onClick={() => setPreference('en' as LanguagePreference)}
-          className="rounded-tr-none rounded-br-none"
+          className="rounded-tr-none rounded-br-none whitespace-normal h-auto leading-tight py-2"
         >
           {t('settings.language.languages.en')}
         </Button>
         <Button
           variant={preference === 'auto' ? 'neutral' : 'neutral-outline'}
           onClick={() => setPreference('auto' as LanguagePreference)}
-          className="rounded-none -ml-px -mr-px"
+          className="rounded-none -ml-px -mr-px whitespace-normal h-auto leading-tight py-2"
         >
           {t('settings.language.auto')}
         </Button>
         <Button
           variant={preference === 'tw' ? 'neutral' : 'neutral-outline'}
           onClick={() => setPreference('tw' as LanguagePreference)}
-          className="rounded-tl-none rounded-bl-none"
+          className="rounded-tl-none rounded-bl-none whitespace-normal h-auto leading-tight py-2"
         >
           {t('settings.language.languages.tw')}
         </Button>
       </fieldset>
 
       {/* Action buttons */}
-      <div className="w-full max-w-sm space-y-3">
-        <button
+      <div className="w-full max-w-sm">
+        <div className="flex justify-center items-center text-foreground-muted gap-2 mb-2">
+          <Warehouse className="text-center w-4 h-4" />
+          {t('onboarding.welcome.buildYourPantry')}
+        </div>
+        <Button
           type="button"
+          size="lg"
+          variant="primary-outline"
           onClick={onChooseTemplate}
-          className="w-full flex items-center justify-between px-5 py-4 rounded-xl bg-primary text-foreground-colorless-inverse font-medium text-left hover:bg-primary/90 transition-colors"
+          className="w-full justify-between h-auto py-4
+          rounded-bl-none rounded-br-none"
         >
           <span>{t('onboarding.welcome.chooseTemplate')}</span>
           <ChevronRight className="h-5 w-5 shrink-0" />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          size="lg"
+          variant="primary-outline"
           onClick={onStartFromScratch}
-          className="w-full flex items-center justify-between px-5 py-4 rounded-xl border border-border bg-background text-foreground font-medium text-left hover:bg-background-elevated transition-colors"
+          className="w-full justify-between h-auto py-4
+          rounded-tl-none rounded-tr-none -mt-px"
         >
           <span>{t('onboarding.welcome.startFromScratch')}</span>
           <ChevronRight className="h-5 w-5 shrink-0 text-foreground-muted" />
-        </button>
+        </Button>
       </div>
     </div>
   )
