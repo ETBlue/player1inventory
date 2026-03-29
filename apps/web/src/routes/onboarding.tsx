@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { OnboardingWelcome } from '@/components/onboarding/OnboardingWelcome'
+import { TemplateItemsBrowser } from '@/components/onboarding/TemplateItemsBrowser'
 import { TemplateOverview } from '@/components/onboarding/TemplateOverview'
 import { templateItems, templateVendors } from '@/data/template'
 
@@ -52,12 +53,10 @@ function OnboardingPage() {
         />
       )}
       {currentStep.type === 'items-browser' && (
-        <ItemsBrowserPlaceholder
-          onNavigate={handleNavigate}
-          selectedItemKeys={selectedItemKeys}
-          selectedVendorKeys={selectedVendorKeys}
-          setSelectedItemKeys={setSelectedItemKeys}
-          setSelectedVendorKeys={setSelectedVendorKeys}
+        <TemplateItemsBrowser
+          selectedKeys={selectedItemKeys}
+          onSelectionChange={setSelectedItemKeys}
+          onBack={() => handleNavigate({ type: 'template-overview' })}
         />
       )}
       {currentStep.type === 'vendors-browser' && (
@@ -90,14 +89,6 @@ interface StepProps {
   selectedVendorKeys: Set<string>
   setSelectedItemKeys: React.Dispatch<React.SetStateAction<Set<string>>>
   setSelectedVendorKeys: React.Dispatch<React.SetStateAction<Set<string>>>
-}
-
-function ItemsBrowserPlaceholder(_props: StepProps) {
-  return (
-    <div>
-      <h1>Items Browser</h1>
-    </div>
-  )
 }
 
 function VendorsBrowserPlaceholder(_props: StepProps) {

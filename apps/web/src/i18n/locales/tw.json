@@ -537,10 +537,14 @@
     },
     "itemsBrowser": {
       "title": "範本品項",
+      "selected_one": "已選擇 {{count}} 個品項",
+      "selected_other": "已選擇 {{count}} 個品項",
       "selectAll": "全選可見項目",
       "clearSelection": "清除選擇",
       "showing": "顯示 {{count}} / {{total}} 個品項",
-      "clearFilter": "清除篩選"
+      "clearFilter": "清除篩選",
+      "preservationFilter": "保存方式",
+      "categoryFilter": "分類"
     },
     "vendorsBrowser": {
       "title": "範本廠商",

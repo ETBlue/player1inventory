@@ -541,10 +541,14 @@
     },
     "itemsBrowser": {
       "title": "Template Items",
+      "selected_one": "{{count}} item selected",
+      "selected_other": "{{count}} items selected",
       "selectAll": "Select all visible",
       "clearSelection": "Clear selection",
       "showing": "Showing {{count}} of {{total}} items",
-      "clearFilter": "Clear filter"
+      "clearFilter": "Clear filter",
+      "preservationFilter": "Preservation",
+      "categoryFilter": "Category"
     },
     "vendorsBrowser": {
       "title": "Template Vendors",
