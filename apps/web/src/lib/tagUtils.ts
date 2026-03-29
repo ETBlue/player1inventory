@@ -39,6 +39,7 @@ function collectDepthFirst(
 /**
  * Returns tags in depth-first order (parent before its children, recursively),
  * with each tag annotated with its depth (0 = top-level).
+ * Tags are sorted alphabetically (case-insensitive) at each level.
  *
  * If `typeId` is provided, only tags with that typeId are included.
  * Top-level tags are those with no parentId (or whose parent is outside the
