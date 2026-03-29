@@ -1,4 +1,5 @@
 import type { Tag } from '@/types'
+import { sortTagsByName } from './tagSortUtils'
 
 /**
  * Returns the given tagId plus the IDs of ALL its descendants recursively.
@@ -29,7 +30,7 @@ function collectDepthFirst(
   result: Array<Tag & { depth: number }>,
 ): void {
   result.push({ ...tag, depth })
-  const children = allTags.filter((t) => t.parentId === tag.id)
+  const children = sortTagsByName(allTags.filter((t) => t.parentId === tag.id))
   for (const child of children) {
     collectDepthFirst(child, allTags, depth + 1, result)
   }
@@ -38,6 +39,7 @@ function collectDepthFirst(
 /**
  * Returns tags in depth-first order (parent before its children, recursively),
  * with each tag annotated with its depth (0 = top-level).
+ * Tags are sorted alphabetically (case-insensitive) at each level.
  *
  * If `typeId` is provided, only tags with that typeId are included.
  * Top-level tags are those with no parentId (or whose parent is outside the
@@ -53,8 +55,8 @@ export function buildDepthFirstTagList(
 
   // Top-level: no parentId, or parentId not present in the filtered set
   const filteredIds = new Set(filteredTags.map((t) => t.id))
-  const topLevel = filteredTags.filter(
-    (t) => !t.parentId || !filteredIds.has(t.parentId),
+  const topLevel = sortTagsByName(
+    filteredTags.filter((t) => !t.parentId || !filteredIds.has(t.parentId)),
   )
 
   const result: Array<Tag & { depth: number }> = []
