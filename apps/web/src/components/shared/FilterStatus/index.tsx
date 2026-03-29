@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -17,6 +18,7 @@ export function FilterStatus({
   onClearAll,
   disabled,
 }: FilterStatusProps) {
+  const { t } = useTranslation()
   return (
     <div
       className={cn('flex items-center h-6 py-1', disabled ? 'opacity-50' : '')}
@@ -24,7 +26,10 @@ export function FilterStatus({
       aria-atomic="true"
     >
       <div className="ml-3 text-xs text-foreground-muted">
-        Showing {filteredCount} of {totalCount} items
+        {t('filterStatus.showing', {
+          filtered: filteredCount,
+          total: totalCount,
+        })}
       </div>
       <div className="flex-1" />
       {hasActiveFilters && (
@@ -35,7 +40,7 @@ export function FilterStatus({
           disabled={disabled}
         >
           <X />
-          Clear filter
+          {t('filterStatus.clearFilter')}
         </Button>
       )}
     </div>
