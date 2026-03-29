@@ -155,6 +155,10 @@
   "itemFilters": {
     "editTags": "Edit Tags"
   },
+  "filterStatus": {
+    "showing": "Showing {{filtered}} of {{total}} items",
+    "clearFilter": "Clear filter"
+  },
   "itemListToolbar": {
     "sortBy": "Sort by",
     "sortByCriteria": "Sort by criteria",

@@ -155,6 +155,10 @@
   "itemFilters": {
     "editTags": "編輯標籤"
   },
+  "filterStatus": {
+    "showing": "顯示 {{filtered}} / {{total}} 項",
+    "clearFilter": "清除篩選條件"
+  },
   "itemListToolbar": {
     "sortBy": "排序依",
     "sortByCriteria": "選擇排序依據",
