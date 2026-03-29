@@ -54,7 +54,10 @@ function OnboardingPage() {
       {currentStep.type === 'welcome' && (
         <OnboardingWelcome
           onChooseTemplate={() => handleNavigate({ type: 'template-overview' })}
-          onStartFromScratch={() => handleNavigate({ type: 'progress' })}
+          onStartFromScratch={() => {
+            localStorage.setItem('onboarding-dismissed', 'true')
+            navigate({ to: '/' })
+          }}
         />
       )}
       {currentStep.type === 'template-overview' && (
@@ -87,7 +90,10 @@ function OnboardingPage() {
         <OnboardingProgress
           progress={progressPct}
           isComplete={setupMutation.isSuccess}
-          onGetStarted={() => navigate({ to: '/' })}
+          onGetStarted={() => {
+            localStorage.removeItem('onboarding-dismissed')
+            navigate({ to: '/' })
+          }}
         />
       )}
     </div>

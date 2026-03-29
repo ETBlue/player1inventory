@@ -61,11 +61,10 @@ function RootComponent() {
     (vendorsResult.data?.length ?? 0) === 0
 
   useEffect(() => {
-    // E2E tests that are NOT testing onboarding set this flag via addInitScript
-    // so that navigating with an empty DB doesn't redirect to /onboarding.
-    // Read inside the effect (not at module level) so it picks up the current
-    // value after addInitScript runs before each SPA navigation.
+    // Skip redirect if the user explicitly chose "Start from scratch",
+    // or if E2E tests set the skip flag via addInitScript.
     const skipOnboardingRedirect =
+      localStorage.getItem('onboarding-dismissed') === 'true' ||
       localStorage.getItem('e2e-skip-onboarding') === 'true'
     if (
       allLoaded &&
