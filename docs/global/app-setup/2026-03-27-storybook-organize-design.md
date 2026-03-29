@@ -76,18 +76,15 @@ Components/
     TagBadge
     TagDetailDialog
     TagInfoForm
-    TagNameForm
     TagTypeDropdown
     TagTypeInfoForm
   Vendor/
     VendorCard
     VendorInfoForm
-    VendorNameForm
   Recipe/
     CookingControlBar
     RecipeCard
     RecipeInfoForm
-    RecipeNameForm
   Settings/
     ConflictDialog
     DataModeCard
@@ -104,7 +101,6 @@ UI Library/
   Button
   Card
   Checkbox
-  ConfirmDialog
   Dialog
   DropdownMenu
   Input
@@ -144,18 +140,15 @@ src/components/
     TagBadge/
     TagDetailDialog/
     TagInfoForm/     ← already exists
-    TagNameForm/
     TagTypeDropdown/
     TagTypeInfoForm/ ← already exists
   vendor/            ← already exists
     VendorCard/
     VendorInfoForm/  ← already exists
-    VendorNameForm/
   recipe/            ← already exists
     CookingControlBar/
     RecipeCard/
     RecipeInfoForm/  ← already exists
-    RecipeNameForm/
   settings/          ← already exists
     ConflictDialog/
     DataModeCard/
@@ -245,11 +238,9 @@ Update `title` in every `.stories.tsx` file:
 | `components/tag/TagInfoForm/index.stories.tsx` | `Components/TagInfoForm` | `Components/Tag/TagInfoForm` |
 | `components/tag/TagTypeInfoForm/index.stories.tsx` | `Components/TagTypeInfoForm` | `Components/Tag/TagTypeInfoForm` |
 | `components/vendor/VendorCard/VendorCard.stories.tsx` | `Components/VendorCard` | `Components/Vendor/VendorCard` |
-| `components/vendor/VendorNameForm/VendorNameForm.stories.tsx` | `Components/VendorNameForm` | `Components/Vendor/VendorNameForm` |
 | `components/vendor/VendorInfoForm/index.stories.tsx` | `Components/VendorInfoForm` | `Components/Vendor/VendorInfoForm` |
 | `components/recipe/CookingControlBar/index.stories.tsx` | `Recipe/CookingControlBar` | `Components/Recipe/CookingControlBar` |
 | `components/recipe/RecipeCard/RecipeCard.stories.tsx` | `Components/RecipeCard` | `Components/Recipe/RecipeCard` |
-| `components/recipe/RecipeNameForm/RecipeNameForm.stories.tsx` | `Components/RecipeNameForm` | `Components/Recipe/RecipeNameForm` |
 | `components/recipe/RecipeInfoForm/index.stories.tsx` | `Components/RecipeInfoForm` | `Components/Recipe/RecipeInfoForm` |
 | `components/settings/ConflictDialog/index.stories.tsx` | `Settings/ConflictDialog` | `Components/Settings/ConflictDialog` |
 | `components/settings/DataModeCard/index.stories.tsx` | `Settings/DataModeCard` | `Components/Settings/DataModeCard` |
@@ -264,7 +255,6 @@ Update `title` in every `.stories.tsx` file:
 | `components/ui/button.stories.tsx` | `UI/Button` | `UI Library/Button` |
 | `components/ui/card.stories.tsx` | `UI/Card` | `UI Library/Card` |
 | `components/ui/checkbox.stories.tsx` | `UI/Checkbox` | `UI Library/Checkbox` |
-| `components/ui/confirm-dialog.stories.tsx` | `UI/ConfirmDialog` | `UI Library/ConfirmDialog` |
 | `components/ui/dialog.stories.tsx` | `UI/Dialog` | `UI Library/Dialog` |
 | `components/ui/dropdown-menu.stories.tsx` | `UI/DropdownMenu` | `UI Library/DropdownMenu` |
 | `components/ui/input.stories.tsx` | `UI/Input` | `UI Library/Input` |
