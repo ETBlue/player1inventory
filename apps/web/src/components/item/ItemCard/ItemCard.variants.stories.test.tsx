@@ -10,7 +10,6 @@ const {
   VendorsAndRecipesExpanded,
   ActiveTagFilter,
   ActiveVendorFilter,
-  TemplateVariant,
 } = composeStories(stories)
 
 describe('ItemCard variants stories smoke tests', () => {
@@ -51,13 +50,6 @@ describe('ItemCard variants stories smoke tests', () => {
 
   it('ActiveVendorFilter renders without error', async () => {
     render(<ActiveVendorFilter />)
-    await waitFor(() =>
-      expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
-    )
-  })
-
-  it('TemplateVariant renders item name', async () => {
-    render(<TemplateVariant />)
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )

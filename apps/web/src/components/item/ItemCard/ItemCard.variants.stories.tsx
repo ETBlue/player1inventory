@@ -90,13 +90,3 @@ export const ActiveVendorFilter: Story = {
     activeVendorIds: ['v1'],
   },
 }
-
-export const TemplateVariant: Story = {
-  name: 'Template variant (tags shown, no quantity or expiration)',
-  args: {
-    item: { ...mockItem, tagIds: ['tag-1', 'tag-2', 'tag-3', 'tag-4'] },
-    tags: mockMultipleTags,
-    tagTypes: mockMultipleTagTypes,
-    variant: 'template',
-  },
-}
