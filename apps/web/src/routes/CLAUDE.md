@@ -151,22 +151,20 @@ Full-screen onboarding flow at `/onboarding` shown automatically to new users (e
 
 **Fullscreen page:** `/onboarding` is added to the `isFullscreenPage` check in `Layout`, `Navigation`, and `Sidebar` — bottom nav and sidebar are hidden on this route.
 
-**5-step state machine** (local `useState` — no URL params):
+**4-step state machine** (local `useState` — no URL params):
 ```ts
 type OnboardingStep =
   | { type: 'welcome' }
   | { type: 'template-overview' }
   | { type: 'items-browser' }
   | { type: 'vendors-browser' }
-  | { type: 'progress' }
 ```
 
 **Step components** (`src/components/onboarding/`):
-- `OnboardingWelcome` — language selector + "Choose from template" / "Start from scratch" buttons
-- `TemplateOverview` — shows item/vendor counts, links to browsers, Confirm button
-- `TemplateItemsBrowser` — preservation + category filter toggles, search, select-all, `ItemCard variant="template"` list
-- `TemplateVendorsBrowser` — search, select-all, `VendorCard variant="template"` list
-- `OnboardingProgress` — progress bar while `useOnboardingSetup` runs; "Get started" button when complete
+- `OnboardingWelcome` — language selector + "Choose from a template" / "Start from scratch" buttons
+- `TemplateOverview` — shows item/vendor counts, links to browsers, Confirm button (inline loading + error state)
+- `TemplateItemsBrowser` — tag filters, togglable search, select-all, `TemplateItemRow` list
+- `TemplateVendorsBrowser` — always-visible search, select-all, `TemplateVendorRow` list
 
 **Template data** (`src/data/template.ts`): 2 tag types, 23 tags, 20 TW pantry items, 19 vendors — all using i18n keys (`template.*`). Deferred: "Import backup" option on welcome screen (documented in `template.ts` comment).
 
