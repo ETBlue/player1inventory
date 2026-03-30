@@ -1,4 +1,10 @@
-import { Blocks, ChevronRight, Drill, NotepadTextDashed } from 'lucide-react'
+import {
+  Blocks,
+  ChevronRight,
+  Drill,
+  Github,
+  NotepadTextDashed,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/hooks/useLanguage'
@@ -17,7 +23,7 @@ export function OnboardingWelcome({
   const { preference, setPreference } = useLanguage()
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
+    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 gap-6">
       {/* App logo (TBD) */}
 
       {/* Heading and subtext */}
@@ -95,6 +101,16 @@ export function OnboardingWelcome({
           <ChevronRight className="shrink-0" />
         </Button>
       </div>
+
+      <a
+        href="https://github.com/ETBlue/player1inventory"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="GitHub"
+        className="text-foreground-muted hover:text-foreground transition-colors mt-6"
+      >
+        <Github className="h-5 w-5" />
+      </a>
     </div>
   )
 }
