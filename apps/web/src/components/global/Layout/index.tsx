@@ -43,7 +43,7 @@ export function Layout({ children }: LayoutProps) {
             so mobile viewports have no h1 in the DOM. This hidden heading fills that gap without
             affecting the visual layout. Hidden at lg+ where the Sidebar h1 is already visible. */}
         {!isFullscreenPage && (
-          <h1 className="sr-only lg:hidden">Player 1 Inventory</h1>
+          <h1 className="sr-only lg:hidden">{t('appName')}</h1>
         )}
         {children}
       </main>

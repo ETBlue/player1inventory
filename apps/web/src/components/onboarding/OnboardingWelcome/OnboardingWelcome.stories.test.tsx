@@ -10,7 +10,7 @@ describe('OnboardingWelcome stories smoke tests', () => {
     it('renders the welcome heading', () => {
       render(<Default />)
       expect(
-        screen.getByRole('heading', { name: 'Welcome to Player 1 Inventory' }),
+        screen.getByRole('heading', { name: 'Player 1 Inventory' }),
       ).toBeInTheDocument()
     })
   })

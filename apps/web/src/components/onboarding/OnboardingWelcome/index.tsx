@@ -23,7 +23,7 @@ export function OnboardingWelcome({
       {/* Heading and subtext */}
       <div className="text-center">
         <h1 className="font-rosario text-2xl text-foreground-emphasized">
-          {t('onboarding.welcome.title')}
+          {t('appName')}
         </h1>
         <p className="text-foreground-muted">
           {t('onboarding.welcome.subtitle')}

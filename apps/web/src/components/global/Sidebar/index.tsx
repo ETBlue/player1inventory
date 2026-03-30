@@ -30,7 +30,7 @@ export function Sidebar() {
       aria-label="Sidebar navigation"
       className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-background-surface border-r border-accessory-default z-10"
     >
-      <h1 className="px-5 py-4 font-rosario">Player 1 Inventory</h1>
+      <h1 className="px-5 py-4 font-rosario">{t('appName')}</h1>
       <div className="flex flex-col gap-1 px-2">
         {navRoutes.map(({ to, key, icon: Icon }) => {
           const label = t(`navigation.${key}`)
