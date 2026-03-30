@@ -300,7 +300,7 @@ export function TemplateItemsBrowser({
       <div className="h-px bg-accessory-default" />
 
       {/* Item list */}
-      <div className="flex-1 mb-2 space-y-px">
+      <div className="flex-1 space-y-px mb-4">
         {visibleItems.map((templateItem) => {
           const resolvedName = t(templateItem.i18nKey)
           const tags = templateItem.tagKeys

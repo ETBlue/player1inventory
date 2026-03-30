@@ -158,7 +158,7 @@ export function TemplateVendorsBrowser({
       <div className="h-px bg-accessory-default" />
 
       {/* Vendor list */}
-      <div className="flex-1 mb-2 space-y-px">
+      <div className="flex-1 mb-4 space-y-px">
         {visibleVendors.map((templateVendor) => {
           const resolvedName = t(templateVendor.i18nKey)
           const isChecked = selectedKeys.has(templateVendor.key)
