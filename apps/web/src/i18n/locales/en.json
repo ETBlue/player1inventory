@@ -142,7 +142,7 @@
         "button": "New Tag",
         "dialogTitle": "Add Tag",
         "submitLabel": "Add Tag",
-        "placeholder": "e.g., Dairy, Frozen"
+        "placeholder": "e.g., Produce, Frozen"
       }
     },
     "vendors": {
@@ -166,7 +166,7 @@
         "button": "New Recipe",
         "dialogTitle": "New Recipe",
         "submitLabel": "Add Recipe",
-        "placeholder": "e.g., Pasta Sauce, Smoothie"
+        "placeholder": "e.g., Pasta, Milk Tea"
       }
     },
     "detail": {
