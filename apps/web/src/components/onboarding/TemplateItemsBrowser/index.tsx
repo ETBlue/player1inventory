@@ -1,4 +1,4 @@
-import { ArrowLeft, Filter, Search, Tags, X } from 'lucide-react'
+import { ArrowLeft, Check, Filter, Search, Tags, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
@@ -180,25 +180,41 @@ export function TemplateItemsBrowser({
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen">
       {/* Row 1: Toolbar */}
       <Toolbar className="sticky top-0 z-10">
         <Button
           type="button"
           variant="neutral-ghost"
-          size="sm"
+          size="icon"
+          className="lg:w-auto lg:mr-3"
           onClick={onBack}
         >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          {t('onboarding.templateOverview.back')}
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden lg:inline">
+            {t('onboarding.templateOverview.back')}
+          </span>
         </Button>
 
-        <span className="text-sm text-foreground-muted">
+        <span className="text-foreground-muted">
           {t('onboarding.itemsBrowser.selected', {
             count: selectedKeys.size,
           })}
         </span>
 
+        <span className="flex-1" />
+
+        <Button
+          type="button"
+          variant="neutral-outline"
+          onClick={handleClearSelection}
+        >
+          <X />
+          {t('onboarding.itemsBrowser.clearSelection')}
+        </Button>
+      </Toolbar>
+
+      <Toolbar className="bg-transparent border-none">
         <Button
           size="icon"
           variant={tagsVisible ? 'neutral' : 'neutral-ghost'}
@@ -207,7 +223,7 @@ export function TemplateItemsBrowser({
           className="lg:w-auto lg:px-3"
         >
           <Tags />
-          <span className="hidden lg:inline ml-1">{t('common.tags')}</span>
+          <span className="hidden lg:inline">{t('common.tags')}</span>
         </Button>
 
         <Button
@@ -218,7 +234,7 @@ export function TemplateItemsBrowser({
           className="lg:w-auto lg:px-3"
         >
           <Filter />
-          <span className="hidden lg:inline ml-1">{t('common.filters')}</span>
+          <span className="hidden lg:inline">{t('common.filters')}</span>
         </Button>
 
         <Button
@@ -232,7 +248,7 @@ export function TemplateItemsBrowser({
           className="lg:w-auto lg:px-3"
         >
           <Search />
-          <span className="hidden lg:inline ml-1">{t('common.search')}</span>
+          <span className="hidden lg:inline">{t('common.search')}</span>
         </Button>
 
         <span className="flex-1" />
@@ -240,19 +256,10 @@ export function TemplateItemsBrowser({
         <Button
           type="button"
           variant="neutral-outline"
-          size="sm"
           onClick={handleSelectAllVisible}
         >
+          <Check />
           {t('onboarding.itemsBrowser.selectAll')}
-        </Button>
-
-        <Button
-          type="button"
-          variant="neutral-ghost"
-          size="sm"
-          onClick={handleClearSelection}
-        >
-          {t('onboarding.itemsBrowser.clearSelection')}
         </Button>
       </Toolbar>
 
@@ -274,55 +281,63 @@ export function TemplateItemsBrowser({
         </>
       )}
 
-      {/* Row 3: Search (conditional) */}
-      {searchVisible && (
-        <div className="flex items-center gap-2 border-t border-accessory-default px-3">
-          <Input
-            placeholder={t('onboarding.itemsBrowser.title')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setSearch('')
-            }}
-            className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-            autoFocus
-          />
-          {search && (
-            <Button
-              size="icon"
-              variant="neutral-ghost"
-              className="h-6 w-6 shrink-0"
-              onClick={() => setSearch('')}
-              aria-label={t('itemListToolbar.clearSearch')}
-            >
-              <X />
-            </Button>
-          )}
-        </div>
-      )}
-
       {/* Row 4: Filter status (conditional) */}
       {isFiltered && (
-        <div className="flex items-center justify-between gap-2 border-t border-accessory-default px-3 py-1">
-          <span className="text-xs text-foreground-muted">
-            {t('onboarding.itemsBrowser.showing', {
-              count: visibleItems.length,
-              total: templateItems.length,
-            })}
-          </span>
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground transition-colors"
-          >
-            <X className="h-3 w-3" />
-            {t('onboarding.itemsBrowser.clearFilter')}
-          </button>
-        </div>
+        <>
+          <div className="h-px bg-accessory-default" />
+          <div className="flex items-center justify-between gap-2 px-3 py-1">
+            <span className="text-xs text-foreground-muted">
+              {t('onboarding.itemsBrowser.showing', {
+                count: visibleItems.length,
+                total: templateItems.length,
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground transition-colors"
+            >
+              <X className="h-3 w-3" />
+              {t('onboarding.itemsBrowser.clearFilter')}
+            </button>
+          </div>
+        </>
       )}
 
+      {/* Row 3: Search (conditional) */}
+      {searchVisible && (
+        <>
+          <div className="h-px bg-accessory-default" />
+          <div className="flex items-center gap-2 px-3">
+            <Input
+              placeholder={t('onboarding.itemsBrowser.title')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearch('')
+              }}
+              className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
+              autoFocus
+            />
+            {search && (
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setSearch('')}
+                aria-label={t('itemListToolbar.clearSearch')}
+              >
+                <X />
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+
+      <div className="h-px bg-accessory-default" />
+
       {/* Item list */}
-      <div className="flex-1 px-4 py-3 space-y-2">
+      <div className="flex-1 mb-2 space-y-px">
         {visibleItems.map((templateItem) => {
           const resolvedName = t(templateItem.i18nKey)
           const item = templateItemToItem(templateItem, resolvedName)
