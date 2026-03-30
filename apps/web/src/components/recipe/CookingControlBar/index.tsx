@@ -128,7 +128,7 @@ export function CookingControlBar({
           ) : (
             <ArrowDown className="h-4 w-4" />
           )}
-          <span className="hidden lg:inline ml-1">
+          <span className="hidden lg:inline">
             {dir === 'asc'
               ? t('cookingControlBar.sortAsc')
               : t('cookingControlBar.sortDesc')}
@@ -151,7 +151,7 @@ export function CookingControlBar({
           ) : (
             <ChevronsUpDown className="h-4 w-4" />
           )}
-          <span className="hidden lg:inline ml-1">
+          <span className="hidden lg:inline">
             {allExpanded
               ? t('cookingControlBar.collapse')
               : t('cookingControlBar.expand')}
@@ -171,7 +171,7 @@ export function CookingControlBar({
           }}
         >
           <Search className="h-4 w-4" />
-          <span className="hidden lg:inline ml-1">
+          <span className="hidden lg:inline">
             {t('cookingControlBar.search')}
           </span>
         </Button>

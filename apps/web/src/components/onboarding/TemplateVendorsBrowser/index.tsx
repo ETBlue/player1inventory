@@ -94,12 +94,15 @@ export function TemplateVendorsBrowser({
           <Button
             type="button"
             variant="neutral-ghost"
-            size="sm"
+            size="icon"
+            className="lg:w-auto lg:mr-3"
             onClick={onBack}
             aria-label={t('onboarding.templateOverview.back')}
           >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            {t('onboarding.templateOverview.back')}
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden lg:inline">
+              {t('onboarding.templateOverview.back')}
+            </span>
           </Button>
 
           <span className="text-sm text-foreground-muted flex-1">

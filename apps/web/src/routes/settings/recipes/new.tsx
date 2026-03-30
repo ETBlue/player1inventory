@@ -45,11 +45,11 @@ function NewRecipePage() {
         <Button
           variant="neutral-ghost"
           size="icon"
-          className="lg:w-auto lg:px-3"
+          className="lg:w-auto lg:mr-3"
           onClick={goBack}
         >
-          <ArrowLeft className="h-5 w-5" />
-          <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden lg:inline">{t('common.goBack')}</span>
         </Button>
         <h1>{t('settings.recipes.newButton')}</h1>
       </Toolbar>
