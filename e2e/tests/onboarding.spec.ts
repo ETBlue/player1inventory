@@ -64,9 +64,9 @@ test('user sees onboarding when app data is empty', async ({ page }) => {
   // Use waitForURL with timeout to handle the async redirect from useEffect
   await page.waitForURL('**/onboarding', { timeout: 10000 })
 
-  // And the welcome heading is visible
+  // And the app name heading is visible
   await expect(
-    page.getByRole('heading', { name: 'Welcome to Player 1 Inventory' }),
+    page.getByRole('heading', { name: 'Player 1 Inventory' }),
   ).toBeVisible()
 })
 
@@ -80,11 +80,8 @@ test('user can start from scratch and land on pantry page', async ({ page }) => 
   // When the user clicks "Start from scratch"
   await onboarding.clickStartFromScratch()
 
-  // Then the user is navigated to the pantry page (root)
-  // The setup mutation runs with empty keys and completes immediately;
-  // the progress screen shows "All done!" before navigating
-  await onboarding.waitForProgressComplete()
-  await onboarding.clickGetStarted()
+  // Then the user is navigated directly to the pantry page
+  // (no progress step — onboarding-dismissed flag is set and navigate({ to: '/' }) is called)
   await expect(page).toHaveURL('/')
 })
 

@@ -13,20 +13,20 @@ export class OnboardingPage {
   }
 
   async waitForWelcomeScreen() {
-    // OnboardingWelcome heading: t('onboarding.welcome.title') = "Welcome to Player 1 Inventory"
-    // (src/components/onboarding/OnboardingWelcome/index.tsx:28)
-    await this.page.getByRole('heading', { name: 'Welcome to Player 1 Inventory' }).waitFor()
+    // OnboardingWelcome heading: t('appName') = "Player 1 Inventory"
+    // (src/components/onboarding/OnboardingWelcome/index.tsx)
+    await this.page.getByRole('heading', { name: 'Player 1 Inventory' }).waitFor()
   }
 
   async clickStartFromScratch() {
     // t('onboarding.welcome.startFromScratch') = "Start from scratch"
-    // (src/components/onboarding/OnboardingWelcome/index.tsx:75)
+    // (src/components/onboarding/OnboardingWelcome/index.tsx)
     await this.page.getByRole('button', { name: 'Start from scratch' }).click()
   }
 
   async clickChooseTemplate() {
     // t('onboarding.welcome.chooseTemplate') = "Choose from template"
-    // (src/components/onboarding/OnboardingWelcome/index.tsx:67)
+    // (src/components/onboarding/OnboardingWelcome/index.tsx)
     await this.page.getByRole('button', { name: 'Choose from template' }).click()
   }
 
@@ -61,8 +61,8 @@ export class OnboardingPage {
 
   async clickBackFromBrowser() {
     // Back button in TemplateItemsBrowser/TemplateVendorsBrowser uses
-    // aria-label={t('common.back')} = "Nevermind"
-    // (src/components/onboarding/TemplateItemsBrowser/index.tsx:223)
-    await this.page.getByRole('button', { name: 'Nevermind' }).click()
+    // t('onboarding.templateOverview.back') = "Back"
+    // (src/components/onboarding/TemplateItemsBrowser/index.tsx)
+    await this.page.getByRole('button', { name: 'Back' }).click()
   }
 }

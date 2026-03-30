@@ -149,8 +149,9 @@ test('user can view onboarding page without accessibility violations', async ({ 
   // and sending us back to pantry. The skip flag prevents the redirect but we also
   // need data so the onboarding page doesn't auto-redirect itself.
   await page.goto('/onboarding')
-  // Wait for the onboarding welcome heading to confirm the page rendered
-  await page.getByRole('heading', { name: 'Welcome to Player 1 Inventory' }).waitFor({ timeout: 10000 })
+  // Wait for the URL and a unique onboarding element to confirm the page rendered
+  await page.waitForURL('**/onboarding', { timeout: 10000 })
+  await page.getByRole('button', { name: 'Choose from template' }).waitFor({ timeout: 10000 })
 
   // When axe scans the page for accessibility violations
   await injectAxe(page)
