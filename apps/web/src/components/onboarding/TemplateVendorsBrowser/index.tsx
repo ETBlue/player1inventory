@@ -1,30 +1,11 @@
-import { ArrowLeft, Search, X } from 'lucide-react'
+import { ArrowLeft, Check, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { VendorCard } from '@/components/vendor/VendorCard'
-import { type TemplateVendor, templateVendors } from '@/data/template'
-import type { Vendor } from '@/types'
-
-// ---------------------------------------------------------------------------
-// Helpers — convert template data to the shapes VendorCard expects
-// ---------------------------------------------------------------------------
-
-/**
- * Build a mock Vendor object from a TemplateVendor.
- * The resolved `name` is passed in (already translated by the caller).
- */
-function buildMockVendor(
-  templateVendor: TemplateVendor,
-  resolvedName: string,
-): Vendor {
-  return {
-    id: templateVendor.key,
-    name: resolvedName,
-    createdAt: new Date(),
-  }
-}
+import { templateVendors } from '@/data/template'
+import { TemplateVendorRow } from './TemplateVendorRow'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -47,8 +28,8 @@ export function TemplateVendorsBrowser({
 }: TemplateVendorsBrowserProps) {
   const { t } = useTranslation()
 
-  // Filter state
   const [search, setSearch] = useState('')
+  const [searchVisible, setSearchVisible] = useState(false)
 
   // ---------------------------------------------------------------------------
   // Filtering
@@ -86,72 +67,79 @@ export function TemplateVendorsBrowser({
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* ---- Header ---- */}
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3 space-y-3">
-        {/* Row 1: Back · N selected · Select all · Clear */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            type="button"
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={onBack}
-            aria-label={t('onboarding.templateOverview.back')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden lg:inline">
-              {t('onboarding.templateOverview.back')}
+    <div className="min-h-screen">
+      {/* Row 1: Toolbar */}
+      <Toolbar className="sticky top-0 z-10">
+        <Button
+          type="button"
+          variant="neutral-ghost"
+          size="icon"
+          className="lg:w-auto lg:mr-3"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden lg:inline">
+            {t('onboarding.templateOverview.back')}
+          </span>
+        </Button>
+
+        <span className="text-foreground-muted">
+          {t('onboarding.vendorsBrowser.selected', {
+            count: selectedKeys.size,
+          })}
+        </span>
+
+        <span className="flex-1" />
+
+        <Button
+          type="button"
+          variant="neutral-outline"
+          onClick={handleClearSelection}
+        >
+          <X />
+          {t('onboarding.vendorsBrowser.clearSelection')}
+        </Button>
+      </Toolbar>
+
+      {/* Row 2: Search / Select All */}
+      <Toolbar className="bg-transparent border-none">
+        <Button
+          size="icon"
+          variant={searchVisible ? 'neutral' : 'neutral-ghost'}
+          onClick={() => {
+            if (searchVisible) setSearch('')
+            setSearchVisible((v) => !v)
+          }}
+          aria-label={t('common.search')}
+          className="lg:w-auto lg:px-3"
+        >
+          <Search />
+          <span className="hidden lg:inline">{t('common.search')}</span>
+        </Button>
+
+        <span className="flex-1" />
+
+        <Button
+          type="button"
+          variant="neutral-outline"
+          onClick={handleSelectAllVisible}
+        >
+          <Check />
+          {t('onboarding.vendorsBrowser.selectAll')}
+        </Button>
+      </Toolbar>
+
+      {/* Filter status (conditional) */}
+      {isFiltered && (
+        <>
+          <div className="h-px bg-accessory-default" />
+          <div className="flex items-center justify-between gap-2 px-3 py-1">
+            <span className="text-xs text-foreground-muted">
+              {t('onboarding.vendorsBrowser.showing', {
+                count: visibleVendors.length,
+                total: templateVendors.length,
+              })}
             </span>
-          </Button>
-
-          <span className="text-sm text-foreground-muted flex-1">
-            {t('onboarding.vendorsBrowser.selected', {
-              count: selectedKeys.size,
-            })}
-          </span>
-
-          <Button
-            type="button"
-            variant="neutral-outline"
-            size="sm"
-            onClick={handleSelectAllVisible}
-          >
-            {t('onboarding.vendorsBrowser.selectAll')}
-          </Button>
-
-          <Button
-            type="button"
-            variant="neutral-ghost"
-            size="sm"
-            onClick={handleClearSelection}
-          >
-            {t('onboarding.vendorsBrowser.clearSelection')}
-          </Button>
-        </div>
-
-        {/* Row 2: Search input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground-muted pointer-events-none" />
-          <Input
-            type="search"
-            placeholder={t('onboarding.vendorsBrowser.title')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-            aria-label={t('onboarding.vendorsBrowser.title')}
-          />
-        </div>
-
-        {/* Row 3: Showing X of Y + clear filter button */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-foreground-muted">
-            {t('onboarding.vendorsBrowser.showing', {
-              count: visibleVendors.length,
-              total: templateVendors.length,
-            })}
-          </span>
-          {isFiltered && (
             <button
               type="button"
               onClick={handleClearFilter}
@@ -160,34 +148,61 @@ export function TemplateVendorsBrowser({
               <X className="h-3 w-3" />
               {t('onboarding.vendorsBrowser.clearFilter')}
             </button>
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
-      {/* ---- Vendor list ---- */}
-      <div className="flex-1 px-4 py-3 space-y-2">
+      {/* Search input (conditional) */}
+      {searchVisible && (
+        <>
+          <div className="h-px bg-accessory-default" />
+          <div className="flex items-center gap-2 px-3">
+            <Input
+              placeholder={t('onboarding.vendorsBrowser.title')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearch('')
+              }}
+              className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
+              autoFocus
+            />
+            {search && (
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setSearch('')}
+                aria-label={t('itemListToolbar.clearSearch')}
+              >
+                <X />
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+
+      <div className="h-px bg-accessory-default" />
+
+      {/* Vendor list */}
+      <div className="flex-1 mb-2 space-y-px">
         {visibleVendors.map((templateVendor) => {
           const resolvedName = t(templateVendor.i18nKey)
-          const vendor = buildMockVendor(templateVendor, resolvedName)
-          const isSelected = selectedKeys.has(templateVendor.key)
+          const isChecked = selectedKeys.has(templateVendor.key)
 
           return (
-            <VendorCard
+            <TemplateVendorRow
               key={templateVendor.key}
-              vendor={vendor}
-              variant="template"
-              selected={isSelected}
+              name={resolvedName}
+              isChecked={isChecked}
               onToggle={() => {
                 const next = new Set(selectedKeys)
-                if (isSelected) {
+                if (isChecked) {
                   next.delete(templateVendor.key)
                 } else {
                   next.add(templateVendor.key)
                 }
                 onSelectionChange(next)
-              }}
-              onDelete={() => {
-                // No-op: delete is hidden in template variant
               }}
             />
           )

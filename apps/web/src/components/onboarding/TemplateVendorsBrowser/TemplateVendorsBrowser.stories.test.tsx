@@ -11,6 +11,11 @@ describe('TemplateVendorsBrowser stories smoke tests', () => {
       render(<AllVendors />)
       expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     })
+
+    it('renders the Search toggle button', () => {
+      render(<AllVendors />)
+      expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    })
   })
 
   describe('WithSelections', () => {
