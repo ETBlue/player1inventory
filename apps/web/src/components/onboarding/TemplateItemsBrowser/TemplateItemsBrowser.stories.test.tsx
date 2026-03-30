@@ -11,6 +11,15 @@ describe('TemplateItemsBrowser stories smoke tests', () => {
       render(<AllItems />)
       expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     })
+
+    it('renders Tags, Filters, and Search toggle buttons', () => {
+      render(<AllItems />)
+      expect(screen.getByRole('button', { name: 'Tags' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Filters' }),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    })
   })
 
   describe('WithSelections', () => {
