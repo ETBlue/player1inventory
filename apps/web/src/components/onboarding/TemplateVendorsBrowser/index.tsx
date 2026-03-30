@@ -96,10 +96,10 @@ export function TemplateVendorsBrowser({
             variant="neutral-ghost"
             size="sm"
             onClick={onBack}
-            aria-label={t('common.back')}
+            aria-label={t('onboarding.templateOverview.back')}
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
-            {t('common.back')}
+            {t('onboarding.templateOverview.back')}
           </Button>
 
           <span className="text-sm text-foreground-muted flex-1">

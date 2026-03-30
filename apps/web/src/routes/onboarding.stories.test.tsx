@@ -6,17 +6,17 @@ import * as stories from './onboarding.stories'
 const { Welcome, TemplateOverview } = composeStories(stories)
 
 describe('Onboarding stories smoke tests', () => {
-  it('Welcome renders the welcome heading', async () => {
+  it('Welcome renders the app name heading', async () => {
     render(<Welcome />)
     expect(
-      await screen.findByRole('heading', { name: /welcome/i }),
+      await screen.findByRole('heading', { name: /player 1 inventory/i }),
     ).toBeInTheDocument()
   })
 
   it('TemplateOverview renders without error', async () => {
     render(<TemplateOverview />)
     expect(
-      await screen.findByRole('heading', { name: /welcome/i }),
+      await screen.findByRole('heading', { name: /player 1 inventory/i }),
     ).toBeInTheDocument()
   })
 })
