@@ -140,7 +140,7 @@ export function TagInfoForm({
                 key={option.id}
                 value={option.id}
                 className="capitalize"
-                style={{ paddingLeft: `${(option.depth + 1) * 1}rem` }}
+                style={{ marginLeft: `${option.depth}rem` }}
               >
                 {option.name}
               </SelectItem>

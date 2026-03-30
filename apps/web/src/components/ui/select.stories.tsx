@@ -77,8 +77,9 @@ export const LongList: Story = {
         <SelectItem value="au">Australia</SelectItem>
         <SelectItem value="de">Germany</SelectItem>
         <SelectItem value="fr">France</SelectItem>
+        <SelectItem value="kr">Korea</SelectItem>
         <SelectItem value="jp">Japan</SelectItem>
-        <SelectItem value="cn">China</SelectItem>
+        <SelectItem value="tw">Taiwan</SelectItem>
         <SelectItem value="in">India</SelectItem>
         <SelectItem value="br">Brazil</SelectItem>
         <SelectItem value="mx">Mexico</SelectItem>
@@ -86,6 +87,73 @@ export const LongList: Story = {
         <SelectItem value="it">Italy</SelectItem>
         <SelectItem value="nl">Netherlands</SelectItem>
         <SelectItem value="se">Sweden</SelectItem>
+      </SelectContent>
+    </Select>
+  ),
+}
+
+export const NestedOptions: Story = {
+  render: () => (
+    <Select>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="Select a category" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="fruits" className="capitalize">
+          Fruits
+        </SelectItem>
+        <SelectItem
+          value="citrus"
+          className="capitalize"
+          style={{ marginLeft: '1rem' }}
+        >
+          Citrus
+        </SelectItem>
+        <SelectItem
+          value="lemon"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Lemon
+        </SelectItem>
+        <SelectItem
+          value="orange"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Orange
+        </SelectItem>
+        <SelectItem
+          value="tropical"
+          className="capitalize"
+          style={{ marginLeft: '1rem' }}
+        >
+          Tropical
+        </SelectItem>
+        <SelectItem
+          value="mango"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Mango
+        </SelectItem>
+        <SelectItem value="vegetables" className="capitalize">
+          Vegetables
+        </SelectItem>
+        <SelectItem
+          value="leafy"
+          className="capitalize"
+          style={{ marginLeft: '1rem' }}
+        >
+          Leafy
+        </SelectItem>
+        <SelectItem
+          value="spinach"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Spinach
+        </SelectItem>
       </SelectContent>
     </Select>
   ),

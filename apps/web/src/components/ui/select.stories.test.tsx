@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './select.stories'
 
-const { Default, WithDefaultValue, Disabled, LongList } =
+const { Default, WithDefaultValue, Disabled, LongList, NestedOptions } =
   composeStories(stories)
 
 describe('Select stories smoke tests', () => {
@@ -25,5 +25,10 @@ describe('Select stories smoke tests', () => {
   it('LongList renders without error', () => {
     render(<LongList />)
     expect(screen.getByText('Select a country')).toBeInTheDocument()
+  })
+
+  it('NestedOptions renders without error', () => {
+    render(<NestedOptions />)
+    expect(screen.getByText('Select a category')).toBeInTheDocument()
   })
 })
