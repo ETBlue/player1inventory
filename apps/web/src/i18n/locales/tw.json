@@ -524,11 +524,11 @@
     "welcome": {
       "subtitle": "在現實世界也要追求極致的庫存管理 💪",
       "buildYourPantry": "打造你的儲藏室",
-      "chooseTemplate": "從模版匯入常見品項",
+      "chooseTemplate": "從模版匯入常見品項...",
       "startFromScratch": "手動建立物資清單"
     },
     "templateOverview": {
-      "title": "設定你的物資清單",
+      "title": "從模版匯入常見品項",
       "items": "個範例品項",
       "vendors": "個範例供應商",
       "selected": "已選擇",

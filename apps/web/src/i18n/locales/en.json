@@ -528,13 +528,13 @@
     "welcome": {
       "subtitle": "Ultimate real life assets management 💪",
       "buildYourPantry": "Build your pantry",
-      "chooseTemplate": "Choose from template",
+      "chooseTemplate": "Choose from template...",
       "startFromScratch": "Start from scratch"
     },
     "templateOverview": {
-      "title": "Set up your pantry",
-      "items": "template items",
-      "vendors": "template vendors",
+      "title": "Choose from template",
+      "items": "sample items",
+      "vendors": "sample vendors",
       "selected": "selected",
       "back": "Back",
       "confirm": "Confirm"

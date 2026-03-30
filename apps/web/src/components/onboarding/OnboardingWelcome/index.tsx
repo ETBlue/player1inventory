@@ -1,4 +1,4 @@
-import { ChevronRight, Warehouse } from 'lucide-react'
+import { Blocks, ChevronRight, Drill, NotepadTextDashed } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/hooks/useLanguage'
@@ -58,31 +58,41 @@ export function OnboardingWelcome({
 
       {/* Action buttons */}
       <div className="w-full max-w-sm">
-        <div className="flex justify-center items-center text-foreground gap-2 mb-2">
-          <Warehouse className="text-center w-4 h-4" />
+        <div className="flex justify-center items-center text-foreground gap-2 my-4">
+          <Blocks className="h-4 w-4" />
           {t('onboarding.welcome.buildYourPantry')}
         </div>
         <Button
           type="button"
           size="lg"
-          variant="primary-outline"
+          variant="neutral-outline"
           onClick={onChooseTemplate}
-          className="w-full justify-between h-auto py-4 opacity-100
-          rounded-bl-none rounded-br-none"
+          className="w-full justify-between h-auto py-4
+          rounded-bl-none rounded-br-none
+          bg-background-elevated"
         >
-          <span>{t('onboarding.welcome.chooseTemplate')}</span>
-          <ChevronRight className="h-5 w-5 shrink-0" />
+          <NotepadTextDashed className="shrink-0" />
+          <span className="truncate">
+            {t('onboarding.welcome.chooseTemplate')}
+          </span>
+          <span className="flex-1" />
+          <ChevronRight className="shrink-0" />
         </Button>
         <Button
           type="button"
           size="lg"
-          variant="primary-outline"
+          variant="neutral-outline"
           onClick={onStartFromScratch}
-          className="w-full justify-between h-auto py-4 opacity-100
-          rounded-tl-none rounded-tr-none -mt-px"
+          className="w-full justify-between h-auto py-4
+          rounded-tl-none rounded-tr-none -mt-px
+          bg-background-elevated"
         >
-          <span>{t('onboarding.welcome.startFromScratch')}</span>
-          <ChevronRight className="h-5 w-5 shrink-0" />
+          <Drill className="shrink-0" />
+          <span className="truncate">
+            {t('onboarding.welcome.startFromScratch')}
+          </span>
+          <span className="flex-1" />
+          <ChevronRight className="shrink-0" />
         </Button>
       </div>
     </div>

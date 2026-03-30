@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, NotepadTextDashed } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
@@ -28,61 +28,73 @@ export function TemplateOverview({
   const isConfirmDisabled = selectedItemCount === 0 && selectedVendorCount === 0
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-8">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
       {/* Heading */}
       <div className="text-center">
-        <h1 className="text-2xl font-bold">
+        <h2 className="text-xl flex gap-2 items-center">
+          <NotepadTextDashed />
           {t('onboarding.templateOverview.title')}
-        </h1>
+        </h2>
       </div>
 
       {/* Selection rows */}
-      <div className="w-full max-w-sm space-y-3">
+      <div className="w-full max-w-sm">
         {/* Items row */}
-        <button
+        <Button
           type="button"
+          variant="neutral-outline"
+          size="lg"
           onClick={onEditItems}
-          className="w-full flex items-center justify-between px-5 py-4 rounded-xl border border-border bg-background text-foreground font-medium text-left hover:bg-background-elevated transition-colors"
+          className="w-full justify-between py-4 h-auto
+          rounded-bl-none rounded-br-none
+          bg-background-elevated"
         >
           <span>
             <span className="font-bold">{totalItemCount}</span>{' '}
             {t('onboarding.templateOverview.items')}
           </span>
+          <span className="flex-1" />
           <span className="flex items-center gap-2 text-foreground-muted">
             <span>
               {selectedItemCount} {t('onboarding.templateOverview.selected')}
             </span>
             <ChevronRight className="h-4 w-4 shrink-0" />
           </span>
-        </button>
+        </Button>
 
         {/* Vendors row */}
-        <button
+        <Button
           type="button"
+          variant="neutral-outline"
+          size="lg"
           onClick={onEditVendors}
-          className="w-full flex items-center justify-between px-5 py-4 rounded-xl border border-border bg-background text-foreground font-medium text-left hover:bg-background-elevated transition-colors"
+          className="w-full justify-between py-4 h-auto
+          rounded-tl-none rounded-tr-none -mt-px
+          bg-background-elevated"
         >
           <span>
             <span className="font-bold">{totalVendorCount}</span>{' '}
             {t('onboarding.templateOverview.vendors')}
           </span>
+          <span className="flex-1" />
           <span className="flex items-center gap-2 text-foreground-muted">
             <span>
               {selectedVendorCount} {t('onboarding.templateOverview.selected')}
             </span>
             <ChevronRight className="h-4 w-4 shrink-0" />
           </span>
-        </button>
+        </Button>
       </div>
 
       {/* Action buttons */}
-      <div className="w-full max-w-sm flex gap-3">
+      <div className="w-full max-w-sm flex gap-6">
         <Button
           type="button"
           variant="neutral-outline"
           className="flex-1"
           onClick={onBack}
         >
+          <ArrowLeft />
           {t('onboarding.templateOverview.back')}
         </Button>
         <Button
@@ -92,6 +104,7 @@ export function TemplateOverview({
           onClick={onConfirm}
           disabled={isConfirmDisabled}
         >
+          <Check />
           {t('onboarding.templateOverview.confirm')}
         </Button>
       </div>

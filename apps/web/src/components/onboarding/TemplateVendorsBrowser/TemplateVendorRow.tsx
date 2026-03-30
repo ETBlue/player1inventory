@@ -1,3 +1,4 @@
+import { Store } from 'lucide-react'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 
@@ -20,7 +21,10 @@ export function TemplateVendorRow({
         aria-label={isChecked ? `Remove ${name}` : `Add ${name}`}
         className="absolute -ml-10 mt-[2px]"
       />
-      <CardHeader className="truncate">{name}</CardHeader>
+      <CardHeader className="flex items-center gap-2">
+        <Store className="h-4 w-4" />
+        {name}
+      </CardHeader>
     </Card>
   )
 }
