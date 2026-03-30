@@ -52,12 +52,12 @@
       "purchased": "購入"
     },
     "empty": {
-      "title": "尚無品項。",
-      "description": "新增食品庫品項以在此顯示。"
+      "title": "尚未建立物資清單",
+      "description": "可以透過搜尋功能新增可採購的品項喔"
     },
     "emptyFiltered": {
-      "title": "無品項符合目前的篩選條件。",
-      "description": "請嘗試調整或清除篩選條件。"
+      "title": "物資清單中沒有符合目前篩選條件的品項",
+      "description": ""
     }
   },
   "cooking": {
@@ -65,10 +65,9 @@
       "servingCount_one": "在做 {{count}} 道菜",
       "servingCount_other": "在做 {{count}} 道菜"
     },
-    "emptyState": "還沒有任何食譜喔，創造第一個食譜吧。",
     "empty": {
-      "title": "尚無食譜。",
-      "description": "請至設定新增食譜。",
+      "title": "尚未建立食譜",
+      "description": "趕快來創造第一份食譜吧",
       "createButton": "新增食譜"
     },
     "recipe": {
@@ -113,30 +112,30 @@
   },
   "pantry": {
     "empty": {
-      "title": "尚無品項。",
-      "description": "新增第一個食品庫品項以開始使用。",
+      "title": "尚未建立物資清單",
+      "description": "趕快來打造你的儲藏室吧",
       "createButton": "新增品項"
     }
   },
   "navigation": {
-    "pantry": "食品庫",
-    "shopping": "購物",
-    "cooking": "料理",
+    "pantry": "庫存",
+    "shopping": "補貨",
+    "cooking": "消耗",
     "settings": "設定"
   },
   "items": {
     "tags": {
       "empty": {
-        "title": "尚無標籤類型。",
-        "description": "新增標籤類型以開始整理品項。"
+        "title": "尚未建立標籤系統",
+        "description": "趕快來創造第一組標籤吧"
       },
       "newTagType": {
         "button": "新增標籤類型",
         "dialogTitle": "新增標籤類型"
       },
       "assignEmpty": {
-        "title": "尚未套用標籤。",
-        "description": "點選上方標籤以套用到此品項。"
+        "title": "尚未套用任何標籤",
+        "description": "點選上方的標籤即可套用或取消套用"
       },
       "newTag": {
         "button": "新增標籤",
@@ -147,8 +146,8 @@
     },
     "vendors": {
       "assignEmpty": {
-        "title": "尚未指定供應商。",
-        "description": "點選上方供應商以指定到此品項。"
+        "title": "尚未指定任何供應商",
+        "description": "點選上方供應商即可指定或取消指定"
       },
       "newVendor": {
         "button": "新增供應商",
@@ -159,8 +158,8 @@
     },
     "recipes": {
       "assignEmpty": {
-        "title": "尚未加入食譜。",
-        "description": "點選上方食譜以將此品項加入其中。"
+        "title": "尚未加入任何食譜",
+        "description": "點選上方食譜即可加入或取消加入"
       },
       "newRecipe": {
         "button": "新增食譜",
@@ -270,10 +269,10 @@
       },
       "items": {
         "empty": {
-          "title": "尚無品項。",
-          "description": "已套用此標籤的品項將顯示於此。"
+          "title": "尚未建立物資清單",
+          "description": "可以透過搜尋功能新增可套用此標籤的品項喔"
         },
-        "emptyFiltered": "沒有符合篩選條件的品項。"
+        "emptyFiltered": "沒有符合篩選條件的品項"
       }
     },
     "vendors": {
@@ -281,8 +280,8 @@
       "description": "管理供應商",
       "newButton": "新增供應商",
       "empty": {
-        "title": "尚無廠商。",
-        "description": "點選 + 新增第一個廠商。"
+        "title": "尚未建立供應商",
+        "description": "趕快來創造第一個供應商吧"
       },
       "itemCount_one": "· 1 個品項",
       "itemCount_other": "· {{count}} 個品項",
@@ -293,8 +292,8 @@
       "notFound": "查無此供應商",
       "items": {
         "empty": {
-          "title": "尚無品項。",
-          "description": "已指定此廠商的品項將顯示於此。"
+          "title": "尚未建立物資清單",
+          "description": "可以透過搜尋功能新增可套用此供應商的品項喔"
         }
       }
     },
@@ -303,8 +302,8 @@
       "description": "管理食譜",
       "newButton": "新增食譜",
       "empty": {
-        "title": "尚無食譜。",
-        "description": "點選 + 新增第一個食譜。"
+        "title": "尚未建立食譜",
+        "description": "趕快來創造第一份食譜吧"
       },
       "itemCount_one": "· 1 個品項",
       "itemCount_other": "· {{count}} 個品項",
@@ -315,8 +314,8 @@
       "notFound": "查無此食譜",
       "items": {
         "empty": {
-          "title": "尚無品項。",
-          "description": "已連結此食譜的品項將顯示於此。"
+          "title": "尚未建立物資清單",
+          "description": "可以透過搜尋功能新增可套用此食譜的品項喔"
         }
       }
     },
@@ -531,7 +530,7 @@
     "templateOverview": {
       "title": "設定你的物資清單",
       "items": "個範例品項",
-      "vendors": "個範例廠商",
+      "vendors": "個範例供應商",
       "selected": "已選擇",
       "back": "返回",
       "confirm": "確認"
@@ -548,12 +547,12 @@
       "categoryFilter": "分類"
     },
     "vendorsBrowser": {
-      "title": "範例廠商",
+      "title": "範例供應商",
       "selectAll": "選擇全部可見項目",
       "clearSelection": "清除選擇項目",
-      "showing": "顯示 {{count}} / {{total}} 個廠商",
+      "showing": "顯示 {{count}} / {{total}} 個供應商",
       "clearFilter": "清除篩選條件",
-      "selected": "已選擇 {{count}} 個廠商"
+      "selected": "已選擇 {{count}} 個供應商"
     },
     "progress": {
       "title": "正在設定物資清單\u2026",
