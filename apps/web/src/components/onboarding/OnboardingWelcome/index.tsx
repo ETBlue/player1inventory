@@ -58,7 +58,7 @@ export function OnboardingWelcome({
 
       {/* Action buttons */}
       <div className="w-full max-w-sm">
-        <div className="flex justify-center items-center text-foreground-muted gap-2 mb-2">
+        <div className="flex justify-center items-center text-foreground gap-2 mb-2">
           <Warehouse className="text-center w-4 h-4" />
           {t('onboarding.welcome.buildYourPantry')}
         </div>
@@ -67,7 +67,7 @@ export function OnboardingWelcome({
           size="lg"
           variant="primary-outline"
           onClick={onChooseTemplate}
-          className="w-full justify-between h-auto py-4
+          className="w-full justify-between h-auto py-4 opacity-100
           rounded-bl-none rounded-br-none"
         >
           <span>{t('onboarding.welcome.chooseTemplate')}</span>
@@ -78,11 +78,11 @@ export function OnboardingWelcome({
           size="lg"
           variant="primary-outline"
           onClick={onStartFromScratch}
-          className="w-full justify-between h-auto py-4
+          className="w-full justify-between h-auto py-4 opacity-100
           rounded-tl-none rounded-tr-none -mt-px"
         >
           <span>{t('onboarding.welcome.startFromScratch')}</span>
-          <ChevronRight className="h-5 w-5 shrink-0 text-foreground-muted" />
+          <ChevronRight className="h-5 w-5 shrink-0" />
         </Button>
       </div>
     </div>
