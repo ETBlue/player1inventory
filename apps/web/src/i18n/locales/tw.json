@@ -533,7 +533,8 @@
       "vendors": "個範例供應商",
       "selected": "已選擇",
       "back": "返回",
-      "confirm": "確認"
+      "confirm": "確認",
+      "importError": "匯入失敗，請再試一次。"
     },
     "itemsBrowser": {
       "title": "範例品項",

@@ -33,3 +33,19 @@ export const SomeSelected: Story = {
     selectedVendorCount: 4,
   },
 }
+
+export const Loading: Story = {
+  args: {
+    selectedItemCount: 12,
+    selectedVendorCount: 4,
+    isLoading: true,
+  },
+}
+
+export const WithError: Story = {
+  args: {
+    selectedItemCount: 12,
+    selectedVendorCount: 4,
+    error: new Error('Import failed'),
+  },
+}

@@ -537,7 +537,8 @@
       "vendors": "sample vendors",
       "selected": "selected",
       "back": "Back",
-      "confirm": "Confirm"
+      "confirm": "Confirm",
+      "importError": "Something went wrong. Please try again."
     },
     "itemsBrowser": {
       "title": "Template Items",

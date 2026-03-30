@@ -1,4 +1,10 @@
-import { ArrowLeft, Check, ChevronRight, NotepadTextDashed } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Loader2,
+  NotepadTextDashed,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
@@ -11,6 +17,8 @@ interface TemplateOverviewProps {
   onEditVendors: () => void
   onBack: () => void
   onConfirm: () => void
+  isLoading?: boolean
+  error?: Error | null
 }
 
 export function TemplateOverview({
@@ -22,6 +30,8 @@ export function TemplateOverview({
   onEditVendors,
   onBack,
   onConfirm,
+  isLoading = false,
+  error = null,
 }: TemplateOverviewProps) {
   const { t } = useTranslation()
 
@@ -102,12 +112,17 @@ export function TemplateOverview({
           variant="primary"
           className="flex-1"
           onClick={onConfirm}
-          disabled={isConfirmDisabled}
+          disabled={isConfirmDisabled || isLoading}
         >
-          <Check />
+          {isLoading ? <Loader2 className="animate-spin" /> : <Check />}
           {t('onboarding.templateOverview.confirm')}
         </Button>
       </div>
+      {error && (
+        <p className="text-sm text-destructive text-center">
+          {t('onboarding.templateOverview.importError')}
+        </p>
+      )}
     </div>
   )
 }
