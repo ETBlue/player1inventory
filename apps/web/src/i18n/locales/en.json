@@ -526,13 +526,13 @@
   },
   "onboarding": {
     "welcome": {
-      "subtitle": "Ultimate real life assets management 💪",
+      "subtitle": "Ultimate real-life asset management 💪",
       "buildYourPantry": "Build your pantry",
-      "chooseTemplate": "Choose from template...",
+      "chooseTemplate": "Choose from a template...",
       "startFromScratch": "Start from scratch"
     },
     "templateOverview": {
-      "title": "Choose from template",
+      "title": "Choose from a template",
       "items": "sample items",
       "vendors": "sample vendors",
       "selected": "selected",
@@ -541,7 +541,7 @@
       "importError": "Something went wrong. Please try again."
     },
     "itemsBrowser": {
-      "title": "Template Items",
+      "title": "Sample Items",
       "selected_one": "{{count}} item selected",
       "selected_other": "{{count}} items selected",
       "selectAll": "Select all visible",
@@ -552,18 +552,13 @@
       "categoryFilter": "Category"
     },
     "vendorsBrowser": {
-      "title": "Template Vendors",
+      "title": "Sample Vendors",
       "selectAll": "Select all visible",
       "clearSelection": "Clear selection",
       "showing": "Showing {{count}} of {{total}} vendors",
       "clearFilter": "Clear filter",
-      "selected": "{{count}} vendors selected"
-    },
-    "progress": {
-      "title": "Setting up your pantry\u2026",
-      "doneTitle": "All done!",
-      "doneSubtitle": "Your pantry is ready.",
-      "getStarted": "Get started"
+      "selected_one": "{{count}} vendor selected",
+      "selected_other": "{{count}} vendors selected"
     }
   }
 }

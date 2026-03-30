@@ -553,13 +553,8 @@
       "clearSelection": "清除選擇項目",
       "showing": "顯示 {{count}} / {{total}} 個供應商",
       "clearFilter": "清除篩選條件",
-      "selected": "已選擇 {{count}} 個供應商"
-    },
-    "progress": {
-      "title": "正在設定物資清單\u2026",
-      "doneTitle": "完成了！",
-      "doneSubtitle": "你的物資清單已準備就緒。",
-      "getStarted": "開始使用"
+      "selected_one": "已選擇 {{count}} 個供應商",
+      "selected_other": "已選擇 {{count}} 個供應商"
     }
   }
 }
