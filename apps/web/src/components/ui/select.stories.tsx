@@ -90,3 +90,70 @@ export const LongList: Story = {
     </Select>
   ),
 }
+
+export const NestedOptions: Story = {
+  render: () => (
+    <Select>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="Select a category" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="fruits" className="capitalize">
+          Fruits
+        </SelectItem>
+        <SelectItem
+          value="citrus"
+          className="capitalize"
+          style={{ marginLeft: '1rem' }}
+        >
+          Citrus
+        </SelectItem>
+        <SelectItem
+          value="lemon"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Lemon
+        </SelectItem>
+        <SelectItem
+          value="orange"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Orange
+        </SelectItem>
+        <SelectItem
+          value="tropical"
+          className="capitalize"
+          style={{ marginLeft: '1rem' }}
+        >
+          Tropical
+        </SelectItem>
+        <SelectItem
+          value="mango"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Mango
+        </SelectItem>
+        <SelectItem value="vegetables" className="capitalize">
+          Vegetables
+        </SelectItem>
+        <SelectItem
+          value="leafy"
+          className="capitalize"
+          style={{ marginLeft: '1rem' }}
+        >
+          Leafy
+        </SelectItem>
+        <SelectItem
+          value="spinach"
+          className="capitalize"
+          style={{ marginLeft: '2rem' }}
+        >
+          Spinach
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  ),
+}
