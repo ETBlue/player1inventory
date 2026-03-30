@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Search, X } from 'lucide-react'
+import { ArrowLeft, Check, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -29,7 +29,6 @@ export function TemplateVendorsBrowser({
   const { t } = useTranslation()
 
   const [search, setSearch] = useState('')
-  const [searchVisible, setSearchVisible] = useState(false)
 
   // ---------------------------------------------------------------------------
   // Filtering
@@ -101,24 +100,28 @@ export function TemplateVendorsBrowser({
         </Button>
       </Toolbar>
 
-      {/* Row 2: Search / Select All */}
+      {/* Row 2: Search input + Select All */}
       <Toolbar className="bg-transparent border-none">
-        <Button
-          size="icon"
-          variant={searchVisible ? 'neutral' : 'neutral-ghost'}
-          onClick={() => {
-            if (searchVisible) setSearch('')
-            setSearchVisible((v) => !v)
+        <Input
+          placeholder={t('onboarding.vendorsBrowser.title')}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setSearch('')
           }}
-          aria-label={t('common.search')}
-          className="lg:w-auto lg:px-3"
-        >
-          <Search />
-          <span className="hidden lg:inline">{t('common.search')}</span>
-        </Button>
-
-        <span className="flex-1" />
-
+          className="flex-1 border-none shadow-none bg-transparent h-auto py-2 text-sm"
+        />
+        {search && (
+          <Button
+            size="icon"
+            variant="neutral-ghost"
+            className="h-6 w-6 shrink-0"
+            onClick={() => setSearch('')}
+            aria-label={t('itemListToolbar.clearSearch')}
+          >
+            <X />
+          </Button>
+        )}
         <Button
           type="button"
           variant="neutral-outline"
@@ -148,36 +151,6 @@ export function TemplateVendorsBrowser({
               <X className="h-3 w-3" />
               {t('onboarding.vendorsBrowser.clearFilter')}
             </button>
-          </div>
-        </>
-      )}
-
-      {/* Search input (conditional) */}
-      {searchVisible && (
-        <>
-          <div className="h-px bg-accessory-default" />
-          <div className="flex items-center gap-2 px-3">
-            <Input
-              placeholder={t('onboarding.vendorsBrowser.title')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setSearch('')
-              }}
-              className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-              autoFocus
-            />
-            {search && (
-              <Button
-                size="icon"
-                variant="neutral-ghost"
-                className="h-6 w-6 shrink-0"
-                onClick={() => setSearch('')}
-                aria-label={t('itemListToolbar.clearSearch')}
-              >
-                <X />
-              </Button>
-            )}
           </div>
         </>
       )}

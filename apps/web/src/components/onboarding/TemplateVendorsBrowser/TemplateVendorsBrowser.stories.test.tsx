@@ -12,9 +12,9 @@ describe('TemplateVendorsBrowser stories smoke tests', () => {
       expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     })
 
-    it('renders the Search toggle button', () => {
+    it('renders the search input', () => {
       render(<AllVendors />)
-      expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
     })
   })
 
