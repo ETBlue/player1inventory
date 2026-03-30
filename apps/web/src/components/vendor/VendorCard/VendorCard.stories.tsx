@@ -82,25 +82,3 @@ export const WithNoItems: Story = {
     onDelete: () => console.log('Delete Costco'),
   },
 }
-
-export const TemplateVariant: Story = {
-  name: 'Template variant (unselected)',
-  args: {
-    vendor,
-    onDelete: () => {},
-    variant: 'template',
-    selected: false,
-    onToggle: () => console.log('Toggle Costco'),
-  },
-}
-
-export const TemplateVariantSelected: Story = {
-  name: 'Template variant (selected)',
-  args: {
-    vendor,
-    onDelete: () => {},
-    variant: 'template',
-    selected: true,
-    onToggle: () => console.log('Toggle Costco'),
-  },
-}

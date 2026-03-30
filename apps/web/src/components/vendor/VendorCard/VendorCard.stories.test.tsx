@@ -3,13 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './VendorCard.stories'
 
-const {
-  Default,
-  WithItemCount,
-  WithNoItems,
-  TemplateVariant,
-  TemplateVariantSelected,
-} = composeStories(stories)
+const { Default, WithItemCount, WithNoItems } = composeStories(stories)
 
 describe('VendorCard stories smoke tests', () => {
   it('Default renders without error', () => {
@@ -26,15 +20,5 @@ describe('VendorCard stories smoke tests', () => {
   it('WithNoItems renders without error', () => {
     render(<WithNoItems />)
     expect(screen.getByText(/0 items/)).toBeInTheDocument()
-  })
-
-  it('TemplateVariant renders vendor name', () => {
-    render(<TemplateVariant />)
-    expect(screen.getByText('Costco')).toBeInTheDocument()
-  })
-
-  it('TemplateVariantSelected renders vendor name', () => {
-    render(<TemplateVariantSelected />)
-    expect(screen.getByText('Costco')).toBeInTheDocument()
   })
 })
