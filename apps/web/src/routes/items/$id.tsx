@@ -14,6 +14,7 @@ import {
   Tags,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import {
   AlertDialog,
@@ -35,6 +36,7 @@ export const Route = createFileRoute('/items/$id')({
 })
 
 function ItemLayoutInner() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const navigate = useNavigate()
   const router = useRouter()
@@ -92,7 +94,7 @@ function ItemLayoutInner() {
   }
 
   if (!item) {
-    return <div className="p-4">Item not found</div>
+    return <div className="p-4">{t('items.detail.notFound')}</div>
   }
 
   return (
@@ -110,10 +112,10 @@ function ItemLayoutInner() {
             size="icon"
             className="lg:w-auto lg:px-3"
             onClick={handleBackClick}
-            aria-label="Go back"
+            aria-label={t('common.goBack')}
           >
             <ArrowLeft />
-            <span className="hidden lg:inline ml-1">Back</span>
+            <span className="hidden lg:inline ml-1">{t('common.goBack')}</span>
           </Button>
           <h1 className="text-md font-regular truncate flex-1 capitalize">
             {item.name}
@@ -125,7 +127,7 @@ function ItemLayoutInner() {
               to="/items/$id"
               params={{ id }}
               activeOptions={{ exact: true }}
-              aria-label="Item info tab"
+              aria-label={t('items.detail.tabs.info')}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -137,7 +139,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/tags"
               params={{ id }}
-              aria-label="Item tags tab"
+              aria-label={t('items.detail.tabs.tags')}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -149,7 +151,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/vendors"
               params={{ id }}
-              aria-label="Item vendors tab"
+              aria-label={t('items.detail.tabs.vendors')}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -161,7 +163,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/recipes"
               params={{ id }}
-              aria-label="Item recipes tab"
+              aria-label={t('items.detail.tabs.recipes')}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -173,7 +175,7 @@ function ItemLayoutInner() {
             <Link
               to="/items/$id/log"
               params={{ id }}
-              aria-label="Item history tab"
+              aria-label={t('items.detail.tabs.history')}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
@@ -195,17 +197,17 @@ function ItemLayoutInner() {
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            You have unsaved changes. Discard changes?
+            {t('common.unsavedDescription')}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelDiscard}>
-              Cancel
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDiscard}>
-              Discard
+              {t('common.discard')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

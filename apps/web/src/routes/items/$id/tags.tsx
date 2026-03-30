@@ -31,6 +31,7 @@ function TagTypeSection({
   onToggle: (tagId: string) => void
   onAddTag: (typeId: string) => void
 }) {
+  const { t } = useTranslation()
   const { data: tagsWithDepth = [] } = useTagsWithDepth(tagType.id)
 
   return (
@@ -88,7 +89,7 @@ function TagTypeSection({
           onClick={() => onAddTag(tagType.id)}
         >
           <Plus />
-          New Tag
+          {t('items.tags.newTag.button')}
         </Button>
       </div>
     </div>
@@ -181,10 +182,10 @@ function TagsTab() {
       )}
       <AddNameDialog
         open={!!addTagDialog}
-        title="Add Tag"
-        submitLabel="Add Tag"
+        title={t('items.tags.newTag.dialogTitle')}
+        submitLabel={t('items.tags.newTag.submitLabel')}
         name={newTagName}
-        placeholder="e.g., Dairy, Frozen"
+        placeholder={t('items.tags.newTag.placeholder')}
         onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}

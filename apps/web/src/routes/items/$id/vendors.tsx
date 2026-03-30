@@ -84,7 +84,7 @@ function VendorsTab() {
           onClick={() => setShowDialog(true)}
         >
           <Plus />
-          New Vendor
+          {t('items.vendors.newVendor.button')}
         </Button>
       </div>
 
@@ -97,10 +97,10 @@ function VendorsTab() {
 
       <AddNameDialog
         open={showDialog}
-        title="New Vendor"
-        submitLabel="Add Vendor"
+        title={t('items.vendors.newVendor.dialogTitle')}
+        submitLabel={t('items.vendors.newVendor.submitLabel')}
         name={newVendorName}
-        placeholder="e.g., Costco, iHerb"
+        placeholder={t('items.vendors.newVendor.placeholder')}
         onNameChange={setNewVendorName}
         onAdd={handleAddVendor}
         onClose={() => {

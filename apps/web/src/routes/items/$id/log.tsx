@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Card, CardContent } from '@/components/ui/card'
 import { useItem, useItemLogs } from '@/hooks'
@@ -9,6 +10,7 @@ export const Route = createFileRoute('/items/$id/log')({
 })
 
 function ItemHistory() {
+  const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const { data: logs = [], isLoading } = useItemLogs(id)
@@ -20,7 +22,7 @@ function ItemHistory() {
   if (logs.length === 0) {
     return (
       <div className="text-center py-12 text-foreground-muted">
-        <p>No history yet.</p>
+        <p>{t('items.history.empty')}</p>
       </div>
     )
   }
