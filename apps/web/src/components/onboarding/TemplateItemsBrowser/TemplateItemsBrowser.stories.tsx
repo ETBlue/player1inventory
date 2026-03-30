@@ -1,50 +1,21 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import {
-  createMemoryHistory,
-  createRouter,
-  getRouterContext,
-} from '@tanstack/react-router'
-import { useState } from 'react'
-import { routeTree } from '@/routeTree.gen'
 import { TemplateItemsBrowser } from '.'
 
-// TemplateItemsBrowser renders ItemCard which uses <Link> and useLastPurchaseDate.
-// We provide RouterContext directly (avoids async route loading) and QueryClientProvider.
-const RouterCtx = getRouterContext()
-
-function WithProviders({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(
-    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-  )
-  const [router] = useState(() =>
-    createRouter({
-      routeTree,
-      history: createMemoryHistory({ initialEntries: ['/'] }),
-      context: { queryClient },
-    }),
-  )
-  return (
-    <QueryClientProvider client={queryClient}>
-      <RouterCtx.Provider
-        value={router as Parameters<typeof RouterCtx.Provider>[0]['value']}
-      >
-        {children}
-      </RouterCtx.Provider>
-    </QueryClientProvider>
-  )
-}
-
-const withProviders: Decorator = (Story) => (
-  <WithProviders>
+// TemplateItemRow uses TagBadge which calls useItemCountByTag — needs QueryClient.
+// Router context is no longer needed (TemplateItemRow has no <Link>).
+const withQueryClient: Decorator = (Story) => (
+  <QueryClientProvider
+    client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+  >
     <Story />
-  </WithProviders>
+  </QueryClientProvider>
 )
 
 const meta: Meta<typeof TemplateItemsBrowser> = {
   title: 'Components/Onboarding/TemplateItemsBrowser',
   component: TemplateItemsBrowser,
-  decorators: [withProviders],
+  decorators: [withQueryClient],
   parameters: {
     layout: 'fullscreen',
   },

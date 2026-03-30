@@ -1,23 +1,22 @@
-import { ArrowLeft, Check, Filter, Search, Tags, X } from 'lucide-react'
+import { ArrowLeft, Check, Filter, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ItemCard } from '@/components/item/ItemCard'
 import { ItemFilters } from '@/components/item/ItemFilters'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  type TemplateItem,
   type TemplateTag,
   templateItems,
   templateTags,
   templateTagTypes,
 } from '@/data/template'
 import { buildDepthFirstTagList } from '@/lib/tagUtils'
-import type { Item, Tag, TagColor, TagType } from '@/types'
+import type { Tag, TagColor, TagType } from '@/types'
+import { TemplateItemRow } from './TemplateItemRow'
 
 // ---------------------------------------------------------------------------
-// Helpers — convert template data to the shapes ItemCard expects
+// Helpers — build mock tag/tagType data for ItemFilters and TemplateItemRow
 // ---------------------------------------------------------------------------
 
 function buildMockTag(templateTag: TemplateTag, resolvedName: string): Tag {
@@ -33,26 +32,6 @@ function buildMockTag(templateTag: TemplateTag, resolvedName: string): Tag {
 
 function buildMockTagType(key: string, name: string, color: TagColor): TagType {
   return { id: key, name, color }
-}
-
-function templateItemToItem(
-  templateItem: TemplateItem,
-  resolvedName: string,
-): Item {
-  const now = new Date()
-  return {
-    id: templateItem.key,
-    name: resolvedName,
-    tagIds: templateItem.tagKeys,
-    targetUnit: 'package',
-    targetQuantity: 0,
-    refillThreshold: 0,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: now,
-    updatedAt: now,
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +60,6 @@ export function TemplateItemsBrowser({
   const [search, setSearch] = useState('')
 
   // Toggle visibility — all start closed
-  const [tagsVisible, setTagsVisible] = useState(false)
   const [filtersVisible, setFiltersVisible] = useState(false)
   const [searchVisible, setSearchVisible] = useState(false)
 
@@ -112,11 +90,6 @@ export function TemplateItemsBrowser({
   const mockTagsWithDepth = useMemo(
     () => buildDepthFirstTagList(mockTags),
     [mockTags],
-  )
-
-  const allMockItems: Item[] = useMemo(
-    () => templateItems.map((ti) => templateItemToItem(ti, t(ti.i18nKey))),
-    [t],
   )
 
   // ---------------------------------------------------------------------------
@@ -214,18 +187,8 @@ export function TemplateItemsBrowser({
         </Button>
       </Toolbar>
 
+      {/* Row 2: Filters / Search / Select All */}
       <Toolbar className="bg-transparent border-none">
-        <Button
-          size="icon"
-          variant={tagsVisible ? 'neutral' : 'neutral-ghost'}
-          onClick={() => setTagsVisible((v) => !v)}
-          aria-label={t('common.tags')}
-          className="lg:w-auto lg:px-3"
-        >
-          <Tags />
-          <span className="hidden lg:inline">{t('common.tags')}</span>
-        </Button>
-
         <Button
           size="icon"
           variant={filtersVisible ? 'neutral' : 'neutral-ghost'}
@@ -263,12 +226,12 @@ export function TemplateItemsBrowser({
         </Button>
       </Toolbar>
 
-      {/* Row 2: Filters (conditional) */}
+      {/* Filters panel (conditional) */}
       {filtersVisible && (
         <>
           <div className="h-px bg-accessory-default" />
           <ItemFilters
-            items={allMockItems}
+            items={[]}
             tagTypes={mockTagTypes}
             tags={mockTags}
             tagsWithDepth={mockTagsWithDepth}
@@ -281,7 +244,7 @@ export function TemplateItemsBrowser({
         </>
       )}
 
-      {/* Row 4: Filter status (conditional) */}
+      {/* Filter status (conditional) */}
       {isFiltered && (
         <>
           <div className="h-px bg-accessory-default" />
@@ -304,7 +267,7 @@ export function TemplateItemsBrowser({
         </>
       )}
 
-      {/* Row 3: Search (conditional) */}
+      {/* Search input (conditional) */}
       {searchVisible && (
         <>
           <div className="h-px bg-accessory-default" />
@@ -340,24 +303,19 @@ export function TemplateItemsBrowser({
       <div className="flex-1 mb-2 space-y-px">
         {visibleItems.map((templateItem) => {
           const resolvedName = t(templateItem.i18nKey)
-          const item = templateItemToItem(templateItem, resolvedName)
-
           const tags = templateItem.tagKeys
             .map((key) => mockTagMap.get(key))
             .filter((tag): tag is Tag => tag !== undefined)
-
           const isChecked = selectedKeys.has(templateItem.key)
 
           return (
-            <ItemCard
+            <TemplateItemRow
               key={templateItem.key}
-              item={item}
+              name={resolvedName}
               tags={tags}
               tagTypes={mockTagTypes}
-              variant="template"
               isChecked={isChecked}
-              showTags={tagsVisible}
-              onCheckboxToggle={() => {
+              onToggle={() => {
                 const next = new Set(selectedKeys)
                 if (isChecked) {
                   next.delete(templateItem.key)
