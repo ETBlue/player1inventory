@@ -2,6 +2,7 @@ import { ArrowLeft, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
+import { ItemFilters } from '@/components/item/ItemFilters'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -11,6 +12,7 @@ import {
   templateTags,
   templateTagTypes,
 } from '@/data/template'
+import { buildDepthFirstTagList } from '@/lib/tagUtils'
 import type { Item, Tag, TagColor, TagType } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -85,9 +87,8 @@ export function TemplateItemsBrowser({
 }: TemplateItemsBrowserProps) {
   const { t } = useTranslation()
 
-  // Filter state
-  const [preservationFilter, setPreservationFilter] = useState<string[]>([])
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([])
+  // Unified filter state: tagTypeId → selected tag ids
+  const [filterState, setFilterState] = useState<Record<string, string[]>>({})
   const [search, setSearch] = useState('')
 
   // ---------------------------------------------------------------------------
@@ -110,19 +111,22 @@ export function TemplateItemsBrowser({
     [t],
   )
 
-  // Preservation tags (flat list — no parentKey)
-  const preservationTags = useMemo(
-    () => templateTags.filter((tag) => tag.typeKey === 'preservation'),
-    [],
+  // Flat list of all mock tags (for ItemFilters)
+  const mockTags: Tag[] = useMemo(
+    () => templateTags.map((tag) => buildMockTag(tag, t(tag.i18nKey))),
+    [t],
   )
 
-  // Category tags — top-level only (no parentKey) for filter buttons
-  const topLevelCategoryTags = useMemo(
-    () =>
-      templateTags.filter(
-        (tag) => tag.typeKey === 'category' && tag.parentKey === undefined,
-      ),
-    [],
+  // Depth-first ordered tags (for ItemFilters hierarchical display)
+  const mockTagsWithDepth = useMemo(
+    () => buildDepthFirstTagList(mockTags),
+    [mockTags],
+  )
+
+  // Items list (all template items as Item shape, for ItemFilters count computation)
+  const allMockItems: Item[] = useMemo(
+    () => templateItems.map((ti) => templateItemToItem(ti, t(ti.i18nKey))),
+    [t],
   )
 
   // ---------------------------------------------------------------------------
@@ -138,26 +142,20 @@ export function TemplateItemsBrowser({
         if (!name.includes(q)) return false
       }
 
-      // Preservation filter — pass if no filter active OR item has a matching tag
-      if (preservationFilter.length > 0) {
-        const hasMatch = item.tagKeys.some((k) =>
-          preservationFilter.includes(k),
-        )
-        if (!hasMatch) return false
-      }
+      // Tag filters — for each active tag type filter, item must match at least one selected tag
+      // (including sub-tags of selected tags via parentKey chain)
+      for (const [tagTypeId, selectedTagIds] of Object.entries(filterState)) {
+        if (selectedTagIds.length === 0) continue
 
-      // Category filter — pass if no filter active OR item has a matching tag
-      // (including sub-category tags of selected top-level categories)
-      if (categoryFilter.length > 0) {
         const hasMatch = item.tagKeys.some((k) => {
           // Direct match
-          if (categoryFilter.includes(k)) return true
-          // Check if this tag's ancestor (parentKey chain) is in the filter
+          if (selectedTagIds.includes(k)) return true
+          // Check if this tag's ancestor (parentKey chain) is in the selected ids
           const tag = templateTags.find((tt) => tt.key === k)
-          if (!tag) return false
+          if (!tag || tag.typeKey !== tagTypeId) return false
           let parent = tag.parentKey
           while (parent !== undefined) {
-            if (categoryFilter.includes(parent)) return true
+            if (selectedTagIds.includes(parent)) return true
             const parentTag = templateTags.find((tt) => tt.key === parent)
             parent = parentTag?.parentKey
           }
@@ -168,23 +166,11 @@ export function TemplateItemsBrowser({
 
       return true
     })
-  }, [search, preservationFilter, categoryFilter, t])
+  }, [search, filterState, t])
 
   // ---------------------------------------------------------------------------
   // Selection handlers
   // ---------------------------------------------------------------------------
-  const handleTogglePreservation = (key: string) => {
-    setPreservationFilter((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    )
-  }
-
-  const handleToggleCategory = (key: string) => {
-    setCategoryFilter((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    )
-  }
-
   const handleSelectAllVisible = () => {
     const next = new Set(selectedKeys)
     for (const item of visibleItems) {
@@ -198,13 +184,12 @@ export function TemplateItemsBrowser({
   }
 
   const handleClearFilters = () => {
-    setPreservationFilter([])
-    setCategoryFilter([])
+    setFilterState({})
     setSearch('')
   }
 
   const isFiltered =
-    preservationFilter.length > 0 || categoryFilter.length > 0 || search.trim()
+    Object.values(filterState).some((ids) => ids.length > 0) || search.trim()
 
   // ---------------------------------------------------------------------------
   // Render
@@ -251,57 +236,20 @@ export function TemplateItemsBrowser({
           </Button>
         </div>
 
-        {/* Row 2: Preservation filter toggle buttons */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-xs text-foreground-muted shrink-0">
-            {t('onboarding.itemsBrowser.preservationFilter')}:
-          </span>
-          {preservationTags.map((tag) => {
-            const isActive = preservationFilter.includes(tag.key)
-            return (
-              <button
-                key={tag.key}
-                type="button"
-                onClick={() => handleTogglePreservation(tag.key)}
-                aria-pressed={isActive}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                  isActive
-                    ? 'bg-cyan text-tint border-cyan'
-                    : 'bg-background border-border text-foreground hover:bg-background-elevated'
-                }`}
-              >
-                {t(tag.i18nKey)}
-              </button>
-            )
-          })}
-        </div>
+        {/* Row 2: Tag filters via ItemFilters (controlled, no DB hooks, no vendor/recipe/edit-tags) */}
+        <ItemFilters
+          items={allMockItems}
+          tagTypes={mockTagTypes}
+          tags={mockTags}
+          tagsWithDepth={mockTagsWithDepth}
+          filterState={filterState}
+          onFilterStateChange={setFilterState}
+          hideVendorFilter
+          hideRecipeFilter
+          hideEditTagsLink
+        />
 
-        {/* Row 3: Category filter toggle buttons */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-xs text-foreground-muted shrink-0">
-            {t('onboarding.itemsBrowser.categoryFilter')}:
-          </span>
-          {topLevelCategoryTags.map((tag) => {
-            const isActive = categoryFilter.includes(tag.key)
-            return (
-              <button
-                key={tag.key}
-                type="button"
-                onClick={() => handleToggleCategory(tag.key)}
-                aria-pressed={isActive}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                  isActive
-                    ? 'bg-lime text-tint border-lime'
-                    : 'bg-background border-border text-foreground hover:bg-background-elevated'
-                }`}
-              >
-                {t(tag.i18nKey)}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Row 4: Search input */}
+        {/* Row 3: Search input */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground-muted pointer-events-none" />
           <Input
@@ -314,7 +262,7 @@ export function TemplateItemsBrowser({
           />
         </div>
 
-        {/* Row 5: Showing X of Y + clear filter button */}
+        {/* Row 4: Showing X of Y + clear filter button */}
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-foreground-muted">
             {t('onboarding.itemsBrowser.showing', {
