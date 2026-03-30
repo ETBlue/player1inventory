@@ -23,9 +23,9 @@ describe('TemplateItemsBrowser stories smoke tests', () => {
   })
 
   describe('WithSelections', () => {
-    it('renders the back button', () => {
+    it('shows the selected item count', () => {
       render(<WithSelections />)
-      expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+      expect(screen.getByText(/5 items selected/i)).toBeInTheDocument()
     })
   })
 })

@@ -182,13 +182,12 @@ export function TemplateItemsBrowser({
   return (
     <div className="min-h-screen flex flex-col">
       {/* Row 1: Toolbar */}
-      <Toolbar>
+      <Toolbar className="sticky top-0 z-10">
         <Button
           type="button"
           variant="neutral-ghost"
           size="sm"
           onClick={onBack}
-          aria-label={t('onboarding.templateOverview.back')}
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
           {t('onboarding.templateOverview.back')}
