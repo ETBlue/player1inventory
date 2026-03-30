@@ -18,6 +18,12 @@ export class OnboardingPage {
     await this.page.getByRole('heading', { name: 'Player 1 Inventory' }).waitFor()
   }
 
+  async waitForPantryPage() {
+    // After import completes, onboarding auto-navigates to '/'
+    // (src/routes/onboarding.tsx)
+    await this.page.waitForURL('/', { timeout: 15000 })
+  }
+
   async clickStartFromScratch() {
     // t('onboarding.welcome.startFromScratch') = "Start from scratch"
     // (src/components/onboarding/OnboardingWelcome/index.tsx)
@@ -32,20 +38,8 @@ export class OnboardingPage {
 
   async clickConfirm() {
     // t('onboarding.templateOverview.confirm') = "Confirm"
-    // (src/components/onboarding/TemplateOverview/index.tsx:95)
+    // (src/components/onboarding/TemplateOverview/index.tsx)
     await this.page.getByRole('button', { name: 'Confirm' }).click()
-  }
-
-  async clickGetStarted() {
-    // OnboardingProgress get-started button: t('onboarding.progress.getStarted') = "Get started"
-    // (src/components/onboarding/OnboardingProgress/index.tsx:33)
-    await this.page.getByRole('button', { name: 'Get started' }).click()
-  }
-
-  async waitForProgressComplete() {
-    // OnboardingProgress done heading: t('onboarding.progress.doneTitle') = "All done!"
-    // (src/components/onboarding/OnboardingProgress/index.tsx:24)
-    await this.page.getByRole('heading', { name: 'All done!' }).waitFor({ timeout: 15000 })
   }
 
   async selectFirstTemplateItems(count = 3) {

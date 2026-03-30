@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { OnboardingProgress } from '@/components/onboarding/OnboardingProgress'
 import { OnboardingWelcome } from '@/components/onboarding/OnboardingWelcome'
 import { TemplateItemsBrowser } from '@/components/onboarding/TemplateItemsBrowser'
 import { TemplateOverview } from '@/components/onboarding/TemplateOverview'
@@ -14,7 +13,6 @@ type OnboardingStep =
   | { type: 'template-overview' }
   | { type: 'items-browser' }
   | { type: 'vendors-browser' }
-  | { type: 'progress' }
 
 export const Route = createFileRoute('/onboarding')({
   component: OnboardingPage,
@@ -31,23 +29,22 @@ function OnboardingPage() {
   const [selectedVendorKeys, setSelectedVendorKeys] = useState<Set<string>>(
     new Set(),
   )
-  const [progressPct, setProgressPct] = useState(0)
   const setupMutation = useOnboardingSetup()
 
   const handleNavigate = (step: OnboardingStep) => {
     setCurrentStep(step)
   }
 
-  // Trigger setup mutation when entering the progress step
+  // Auto-navigate to pantry when import completes.
+  // Set onboarding-dismissed so the root redirect guard doesn't bounce us
+  // back to /onboarding before the invalidated queries finish refetching.
+  // Once the refetch resolves, isEmpty will be false and the guard stays idle.
   useEffect(() => {
-    if (currentStep.type === 'progress' && setupMutation.status === 'idle') {
-      setupMutation.mutate({
-        itemKeys: [...selectedItemKeys],
-        vendorKeys: [...selectedVendorKeys],
-        onProgress: setProgressPct,
-      })
+    if (setupMutation.isSuccess) {
+      localStorage.setItem('onboarding-dismissed', 'true')
+      navigate({ to: '/' })
     }
-  }, [currentStep.type, setupMutation, selectedItemKeys, selectedVendorKeys])
+  }, [setupMutation.isSuccess, navigate])
 
   return (
     <div className="min-h-screen">
@@ -69,7 +66,14 @@ function OnboardingPage() {
           onEditItems={() => handleNavigate({ type: 'items-browser' })}
           onEditVendors={() => handleNavigate({ type: 'vendors-browser' })}
           onBack={() => handleNavigate({ type: 'welcome' })}
-          onConfirm={() => handleNavigate({ type: 'progress' })}
+          onConfirm={() => {
+            setupMutation.mutate({
+              itemKeys: [...selectedItemKeys],
+              vendorKeys: [...selectedVendorKeys],
+            })
+          }}
+          isLoading={setupMutation.isPending}
+          error={setupMutation.isError ? (setupMutation.error as Error) : null}
         />
       )}
       {currentStep.type === 'items-browser' && (
@@ -84,16 +88,6 @@ function OnboardingPage() {
           selectedKeys={selectedVendorKeys}
           onSelectionChange={setSelectedVendorKeys}
           onBack={() => handleNavigate({ type: 'template-overview' })}
-        />
-      )}
-      {currentStep.type === 'progress' && (
-        <OnboardingProgress
-          progress={progressPct}
-          isComplete={setupMutation.isSuccess}
-          onGetStarted={() => {
-            localStorage.removeItem('onboarding-dismissed')
-            navigate({ to: '/' })
-          }}
         />
       )}
     </div>

@@ -96,15 +96,17 @@ test('user can select template items and complete onboarding', async ({ page }) 
   await onboarding.clickChooseTemplate()
 
   // Then the template overview is shown
-  await expect(page.getByRole('heading', { name: 'Set up your pantry' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Choose from template' }),
+  ).toBeVisible()
 
   // When the user opens the items browser
-  await page.getByRole('button', { name: /template items/i }).click()
+  await page.getByRole('button', { name: /sample items/i }).click()
   await page.waitForLoadState('networkidle')
 
   // And selects a few items
-  // ItemCard checkboxes in template mode use aria-label "Add <item name>"
-  // (src/components/item/ItemCard/index.tsx:147)
+  // TemplateItemRow checkboxes use aria-label "Add <item name>"
+  // (src/components/onboarding/TemplateItemsBrowser/TemplateItemRow.tsx)
   const addButtons = page.getByRole('checkbox', { name: /^Add /i })
   const first = addButtons.first()
   await first.check()
@@ -115,15 +117,8 @@ test('user can select template items and complete onboarding', async ({ page }) 
   // And confirms
   await onboarding.clickConfirm()
 
-  // Then the progress screen appears and completes
-  await onboarding.waitForProgressComplete()
-
-  // And the "Get started" button is shown
-  await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible()
-
-  // When the user clicks "Get started"
-  await onboarding.clickGetStarted()
-
-  // Then the user is redirected to the pantry
+  // Then the user is automatically redirected to the pantry
+  // (no "Get started" step — onboarding auto-navigates on import success)
+  await onboarding.waitForPantryPage()
   await expect(page).toHaveURL('/')
 })
