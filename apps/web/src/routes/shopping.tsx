@@ -323,7 +323,7 @@ function Shopping() {
 
       {/* Pending items section */}
       {pendingItems.length > 0 && (
-        <div className="space-y-px">
+        <div className="space-y-px mb-4">
           {activePendingItems.map((item) => renderItemCard(item))}
           {inactivePendingItems.length > 0 && (
             <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">

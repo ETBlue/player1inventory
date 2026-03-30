@@ -465,7 +465,7 @@ function CookingPage() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-px pb-4">
+        <div className="space-y-px mb-4">
           {displayRecipes.map((recipe) => {
             const searchMatchedItemIds = getSearchMatchedItemIds(recipe)
             const isExpanded = searchMatchedItemIds
