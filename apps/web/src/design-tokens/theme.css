@@ -1,27 +1,27 @@
 /* Base theme variables (light mode) */
 :root {
-  --background-base: hsl(45 10% 85%);
-  --background-surface: hsl(45 20% 92.5%);
-  --background-elevated: hsl(45 30% 97.5%);
+  --background-base: hsl(40 20% 85%);
+  --background-surface: hsl(40 40% 92.5%);
+  --background-elevated: hsl(40 80% 97.5%);
 
-  --foreground-muted: hsl(45 20% 34%);
-  --foreground-default: hsl(45 50% 20%);
-  --foreground-emphasized: hsl(45 50% 10%);
+  --foreground-muted: hsl(40 20% 34%);
+  --foreground-default: hsl(40 50% 20%);
+  --foreground-emphasized: hsl(40 50% 10%);
   --foreground-colorless: hsl(0 0% 20%);
   --foreground-colorless-inverse: hsl(0 0% 90%);
 
-  --accessory-muted: hsl(45 20% 85%);
-  --accessory-default: hsl(45 20% 75%);
-  --accessory-emphasized: hsl(45 20% 60%);
+  --accessory-muted: hsl(40 20% 85%);
+  --accessory-default: hsl(40 20% 75%);
+  --accessory-emphasized: hsl(40 20% 60%);
 
-  --overlay: hsl(45 5% 50%);
+  --overlay: hsl(40 5% 50%);
   --outline: hsl(180 50% 50%);
 
   --importance-primary: hsl(180 90% 20%);
   --importance-secondary: hsl(180 40% 45%);
   --importance-tertiary: hsl(180 10% 60%);
   --importance-destructive: hsl(330 60% 32%);
-  --importance-neutral: hsl(45 5% 30%);
+  --importance-neutral: hsl(40 5% 30%);
 
   --status-ok: hsl(75 60% 45%);
   --status-warning: hsl(45 75% 45%);
@@ -63,36 +63,32 @@
   --hue-lime-tint: hsl(82 95% 92%);
   --hue-cyan-tint: hsl(186 95% 92%);
   --hue-rose-tint: hsl(350 95% 92%);
-
-  /* Brightness utilities */
-  --brightness-tint: hsl(45 5% 100%);
-  --brightness-dark: hsl(45 5% 20%);
 }
 
 /* Dark mode overrides */
 .dark {
-  --background-base: hsl(45 5% 10%);
-  --background-surface: hsl(45 5% 20%);
-  --background-elevated: hsl(45 5% 30%);
+  --background-base: hsl(40 5% 30%);
+  --background-surface: hsl(40 5% 20%);
+  --background-elevated: hsl(40 5% 10%);
 
-  --foreground-muted: hsl(45 5% 78%);
-  --foreground-default: hsl(45 10% 90%);
-  --foreground-emphasized: hsl(45 50% 97.5%);
+  --foreground-muted: hsl(40 5% 78%);
+  --foreground-default: hsl(40 10% 90%);
+  --foreground-emphasized: hsl(40 50% 97.5%);
   --foreground-colorless: hsl(0 0% 90%);
   --foreground-colorless-inverse: hsl(0 0% 20%);
 
-  --accessory-muted: hsl(45 5% 40%);
-  --accessory-default: hsl(45 10% 50%);
-  --accessory-emphasized: hsl(45 20% 70%);
+  --accessory-muted: hsl(40 5% 40%);
+  --accessory-default: hsl(40 10% 50%);
+  --accessory-emphasized: hsl(40 20% 70%);
 
-  --overlay: hsl(45 10% 90%);
+  --overlay: hsl(40 10% 90%);
   --outline: hsl(180 40% 60%);
 
   --importance-primary: hsl(180 70% 62%);
   --importance-secondary: hsl(180 30% 60%);
   --importance-tertiary: hsl(180 10% 60%);
   --importance-destructive: hsl(330 90% 75%);
-  --importance-neutral: hsl(45 20% 80%);
+  --importance-neutral: hsl(40 20% 80%);
 
   --status-ok: hsl(75 60% 45%);
   --status-warning: hsl(45 75% 45%);
@@ -118,9 +114,6 @@
   --hue-lime-tint: hsl(82 20% 30%);
   --hue-cyan-tint: hsl(186 20% 30%);
   --hue-rose-tint: hsl(350 20% 30%);
-
-  /* Flip brightness-dark so tint badge text is readable on dark backgrounds */
-  --brightness-dark: hsl(45 5% 90%);
 }
 
 /* Map to Tailwind utilities */
