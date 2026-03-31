@@ -14,7 +14,7 @@ describe('Item detail tags tab stories smoke tests', () => {
 
   it('Default renders the no-tags-assigned empty hint when no tags are selected', async () => {
     render(<Default />)
-    expect(await screen.findByText('No tags assigned.')).toBeInTheDocument()
+    expect(await screen.findByText('No tags assigned')).toBeInTheDocument()
   })
 
   it('WithAssignedTags renders assigned tag badges after setup', async () => {

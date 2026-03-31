@@ -119,9 +119,9 @@ describe('Vendor Settings Page', () => {
     renderPage([])
 
     // Then empty state message is shown
-    expect(screen.getByText('No vendors yet.')).toBeInTheDocument()
+    expect(screen.getByText('No vendors yet')).toBeInTheDocument()
     expect(
-      screen.getByText('Tap + to add your first vendor.'),
+      screen.getByText('Create your first vendor to get started!'),
     ).toBeInTheDocument()
   })
 

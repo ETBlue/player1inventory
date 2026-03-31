@@ -1,7 +1,15 @@
 import '@testing-library/jest-dom/vitest'
 import 'fake-indexeddb/auto'
-import { vi } from 'vitest'
+import { beforeEach, vi } from 'vitest'
 import '../i18n'
+
+// Prevent the empty-DB redirect to /onboarding from firing in unit and story
+// tests. E2E tests set this flag via addInitScript; here we set it globally so
+// route-level stories and integration tests that start with an empty DB keep
+// rendering their intended route instead of being redirected.
+beforeEach(() => {
+  localStorage.setItem('e2e-skip-onboarding', 'true')
+})
 
 // Mock @clerk/react so tests don't require ClerkProvider.
 // Per-file vi.mock('@clerk/react', ...) overrides this for tests that need

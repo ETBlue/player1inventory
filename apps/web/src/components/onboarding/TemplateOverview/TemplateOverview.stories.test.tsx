@@ -11,7 +11,7 @@ describe('TemplateOverview stories smoke tests', () => {
     it('renders the heading', () => {
       render(<NothingSelected />)
       expect(
-        screen.getByRole('heading', { name: 'Choose from template' }),
+        screen.getByRole('heading', { name: 'Choose from a template' }),
       ).toBeInTheDocument()
     })
   })
@@ -20,7 +20,7 @@ describe('TemplateOverview stories smoke tests', () => {
     it('renders the heading', () => {
       render(<SomeSelected />)
       expect(
-        screen.getByRole('heading', { name: 'Choose from template' }),
+        screen.getByRole('heading', { name: 'Choose from a template' }),
       ).toBeInTheDocument()
     })
   })

@@ -19,6 +19,6 @@ describe('Item detail vendors tab stories smoke tests', () => {
 
   it('EmptyVendors renders the no-vendors-assigned empty hint', async () => {
     render(<EmptyVendors />)
-    expect(await screen.findByText('No vendors assigned.')).toBeInTheDocument()
+    expect(await screen.findByText('No vendors assigned')).toBeInTheDocument()
   })
 })
