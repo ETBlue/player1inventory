@@ -197,7 +197,7 @@ export function ItemListToolbar({
             className="lg:w-auto lg:px-3"
           >
             {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
-            <span className="hidden lg:inline ml-1">
+            <span className="hidden lg:inline">
               {sortDirection === 'asc' ? t('common.asc') : t('common.desc')}
             </span>
           </Button>
@@ -212,7 +212,7 @@ export function ItemListToolbar({
             className="lg:w-auto lg:px-3"
           >
             <Tags />
-            <span className="hidden lg:inline ml-1">{t('common.tags')}</span>
+            <span className="hidden lg:inline">{t('common.tags')}</span>
           </Button>
         )}
 
@@ -224,7 +224,7 @@ export function ItemListToolbar({
           className="lg:w-auto lg:px-3"
         >
           <Filter />
-          <span className="hidden lg:inline ml-1">{t('common.filters')}</span>
+          <span className="hidden lg:inline">{t('common.filters')}</span>
         </Button>
 
         <Button
@@ -240,7 +240,7 @@ export function ItemListToolbar({
           className="lg:w-auto lg:px-3"
         >
           <Search />
-          <span className="hidden lg:inline ml-1">{t('common.search')}</span>
+          <span className="hidden lg:inline">{t('common.search')}</span>
         </Button>
 
         {children && (

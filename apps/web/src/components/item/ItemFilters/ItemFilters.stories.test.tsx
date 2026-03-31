@@ -12,6 +12,7 @@ const {
   WithVendorsAndRecipes,
   HideVendorFilter,
   HideRecipeFilter,
+  ControlledWithPropData,
 } = composeStories(stories)
 
 describe('ItemFilters stories smoke tests', () => {
@@ -59,5 +60,11 @@ describe('ItemFilters stories smoke tests', () => {
   it('HideRecipeFilter renders without error', async () => {
     render(<HideRecipeFilter />)
     expect(await screen.findByText('Vendors')).toBeInTheDocument()
+  })
+
+  it('ControlledWithPropData renders tag type dropdowns without DB hooks', async () => {
+    render(<ControlledWithPropData />)
+    // Both tag type dropdowns should be visible (Preservation and Category)
+    expect(await screen.findByText('Category')).toBeInTheDocument()
   })
 })

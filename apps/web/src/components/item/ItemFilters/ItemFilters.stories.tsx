@@ -9,7 +9,8 @@ import {
 } from '@tanstack/react-router'
 import { useState } from 'react'
 import { noopApolloClient } from '@/test/apolloStub'
-import type { Item, Recipe, Vendor } from '@/types'
+import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
+import { TagColor } from '@/types'
 import { ItemFilters } from '.'
 
 const queryClient = new QueryClient()
@@ -173,4 +174,109 @@ export const HideRecipeFilter: Story = {
       hideRecipeFilter
     />
   ),
+}
+
+// ---------------------------------------------------------------------------
+// Controlled (props-driven) variant — no router or DB hooks required
+// ---------------------------------------------------------------------------
+
+const controlledTagTypes: TagType[] = [
+  { id: 'preservation', name: 'Preservation', color: TagColor.cyan },
+  { id: 'category', name: 'Category', color: TagColor.lime },
+]
+
+const controlledTags: Tag[] = [
+  { id: 'room-temperature', name: 'Room Temperature', typeId: 'preservation' },
+  { id: 'refrigerated', name: 'Refrigerated', typeId: 'preservation' },
+  { id: 'frozen', name: 'Frozen', typeId: 'preservation' },
+  { id: 'food-and-dining', name: 'Food & Dining', typeId: 'category' },
+  {
+    id: 'produce',
+    name: 'Produce',
+    typeId: 'category',
+    parentId: 'food-and-dining',
+  },
+  { id: 'household', name: 'Household', typeId: 'category' },
+]
+
+const controlledTagsWithDepth = [
+  {
+    id: 'room-temperature',
+    name: 'Room Temperature',
+    typeId: 'preservation',
+    depth: 0,
+  },
+  {
+    id: 'refrigerated',
+    name: 'Refrigerated',
+    typeId: 'preservation',
+    depth: 0,
+  },
+  { id: 'frozen', name: 'Frozen', typeId: 'preservation', depth: 0 },
+  {
+    id: 'food-and-dining',
+    name: 'Food & Dining',
+    typeId: 'category',
+    depth: 0,
+  },
+  {
+    id: 'produce',
+    name: 'Produce',
+    typeId: 'category',
+    parentId: 'food-and-dining',
+    depth: 1,
+  },
+  { id: 'household', name: 'Household', typeId: 'category', depth: 0 },
+]
+
+const controlledItems: Item[] = [
+  {
+    id: 'rice',
+    name: 'Rice',
+    tagIds: ['room-temperature', 'food-and-dining'],
+    targetUnit: 'package',
+    targetQuantity: 0,
+    refillThreshold: 0,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'eggs',
+    name: 'Eggs',
+    tagIds: ['refrigerated', 'produce'],
+    targetUnit: 'package',
+    targetQuantity: 0,
+    refillThreshold: 0,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+]
+
+/**
+ * Props-driven variant: no DB hooks or router required.
+ * Demonstrates usage in onboarding where tag data comes from template data.
+ */
+export const ControlledWithPropData: Story = {
+  render: () => {
+    const [filterState, setFilterState] = useState<Record<string, string[]>>({})
+    return (
+      <ItemFilters
+        items={controlledItems}
+        tagTypes={controlledTagTypes}
+        tags={controlledTags}
+        tagsWithDepth={controlledTagsWithDepth}
+        filterState={filterState}
+        onFilterStateChange={setFilterState}
+        hideVendorFilter
+        hideRecipeFilter
+        hideEditTagsLink
+      />
+    )
+  },
 }

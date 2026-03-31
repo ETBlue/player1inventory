@@ -223,7 +223,7 @@ function PantryView() {
             aria-label="Add item"
           >
             <Plus />
-            <span className="hidden lg:inline ml-1">Add</span>
+            <span className="hidden lg:inline">Add</span>
           </Button>
         </Link>
       </ItemListToolbar>
@@ -251,7 +251,7 @@ function PantryView() {
           </p>
         </div>
       ) : (
-        <div className="bg-background-base flex flex-col gap-px">
+        <div className="bg-background-base flex flex-col gap-px mb-4">
           {activeItems.map((item) => (
             <ItemCard
               key={item.id}

@@ -142,3 +142,35 @@ Row 2:            [N items, M selected, × S]
 - `src/routes/cooking.test.tsx` — integration tests
 - `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
+
+### Onboarding Page
+
+Full-screen onboarding flow at `/onboarding` shown automatically to new users (empty DB).
+
+**Empty-data redirect (in `__root.tsx`):** After all three data queries resolve (`useItems`, `useTags`, `useVendors`), if all are empty and the current path is not `/onboarding`, `__root.tsx` navigates to `/onboarding`. Guard: only fires after all queries have loaded (`data !== undefined`). E2E tests that pre-populate data set `localStorage.setItem('e2e-skip-onboarding', 'true')` via `addInitScript` to bypass this redirect.
+
+**Fullscreen page:** `/onboarding` is added to the `isFullscreenPage` check in `Layout`, `Navigation`, and `Sidebar` — bottom nav and sidebar are hidden on this route.
+
+**4-step state machine** (local `useState` — no URL params):
+```ts
+type OnboardingStep =
+  | { type: 'welcome' }
+  | { type: 'template-overview' }
+  | { type: 'items-browser' }
+  | { type: 'vendors-browser' }
+```
+
+**Step components** (`src/components/onboarding/`):
+- `OnboardingWelcome` — language selector + "Choose from a template" / "Start from scratch" buttons
+- `TemplateOverview` — shows item/vendor counts, links to browsers, Confirm button (inline loading + error state)
+- `TemplateItemsBrowser` — tag filters, togglable search, select-all, `TemplateItemRow` list
+- `TemplateVendorsBrowser` — always-visible search, select-all, `TemplateVendorRow` list
+
+**Template data** (`src/data/template.ts`): 2 tag types, 23 tags, 20 TW pantry items, 19 vendors — all using i18n keys (`template.*`). Deferred: "Import backup" option on welcome screen (documented in `template.ts` comment).
+
+**Files:**
+- `src/routes/onboarding.tsx` — route + state machine
+- `src/routes/onboarding.stories.tsx` — Storybook stories
+- `src/data/template.ts` — template data module
+- `src/hooks/useOnboardingSetup.ts` — bulk-create hook (local Dexie only)
+- `e2e/tests/onboarding.spec.ts` — E2E tests

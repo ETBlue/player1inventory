@@ -14,8 +14,9 @@ export function Navigation() {
     { to: '/settings', label: t('navigation.settings'), icon: Settings },
   ] as const
 
-  // Hide navigation on fullscreen pages (items, tags, vendors, recipes)
+  // Hide navigation on fullscreen pages (onboarding, items, tags, vendors, recipes)
   const isFullscreenPage =
+    location.pathname === '/onboarding' ||
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
     location.pathname.startsWith('/settings/vendors') ||
@@ -27,9 +28,9 @@ export function Navigation() {
   return (
     <nav
       aria-label="Bottom navigation"
-      className="lg:hidden fixed bottom-0 left-0 right-0 border-t border-accessory-default bg-background-surface"
+      className="lg:hidden fixed bottom-0 left-0 right-0 bg-background-surface"
     >
-      <div className="flex justify-around py-2">
+      <div className="grid grid-cols-4">
         {navItems.map(({ to, label, icon: Icon }) => {
           const isActive =
             location.pathname === to ||
@@ -40,8 +41,11 @@ export function Navigation() {
               key={to}
               to={to}
               className={cn(
-                'flex flex-col items-center gap-1 px-4 py-2',
-                isActive ? 'text-primary' : 'text-foreground-muted',
+                `flex flex-col items-center gap-1 
+                px-4 py-2 -mt-px`,
+                isActive
+                  ? 'bg-background-base text-foreground-emphasized'
+                  : 'text-foreground-muted',
               )}
             >
               <Icon className="h-5 w-5" />

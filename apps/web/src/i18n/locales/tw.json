@@ -1,4 +1,5 @@
 {
+  "appName": "Player 1 Inventory",
   "validation": {
     "required": "此欄位為必填。",
     "positiveNumber": "必須大於 0。"
@@ -52,12 +53,12 @@
       "purchased": "購入"
     },
     "empty": {
-      "title": "尚無品項。",
-      "description": "新增食品庫品項以在此顯示。"
+      "title": "尚未建立物資清單",
+      "description": "可以透過搜尋功能新增可採購的品項喔"
     },
     "emptyFiltered": {
-      "title": "無品項符合目前的篩選條件。",
-      "description": "請嘗試調整或清除篩選條件。"
+      "title": "物資清單中沒有符合目前篩選條件的品項",
+      "description": ""
     }
   },
   "cooking": {
@@ -65,10 +66,9 @@
       "servingCount_one": "在做 {{count}} 道菜",
       "servingCount_other": "在做 {{count}} 道菜"
     },
-    "emptyState": "還沒有任何食譜喔，創造第一個食譜吧。",
     "empty": {
-      "title": "尚無食譜。",
-      "description": "請至設定新增食譜。",
+      "title": "尚未建立食譜",
+      "description": "趕快來創造第一份食譜吧",
       "createButton": "新增食譜"
     },
     "recipe": {
@@ -113,30 +113,30 @@
   },
   "pantry": {
     "empty": {
-      "title": "尚無品項。",
-      "description": "新增第一個食品庫品項以開始使用。",
+      "title": "尚未建立物資清單",
+      "description": "趕快來打造你的儲藏室吧",
       "createButton": "新增品項"
     }
   },
   "navigation": {
-    "pantry": "食品庫",
-    "shopping": "購物",
-    "cooking": "料理",
+    "pantry": "庫存",
+    "shopping": "補貨",
+    "cooking": "消耗",
     "settings": "設定"
   },
   "items": {
     "tags": {
       "empty": {
-        "title": "尚無標籤類型。",
-        "description": "新增標籤類型以開始整理品項。"
+        "title": "尚未建立標籤系統",
+        "description": "趕快來創造第一組標籤吧"
       },
       "newTagType": {
         "button": "新增標籤類型",
         "dialogTitle": "新增標籤類型"
       },
       "assignEmpty": {
-        "title": "尚未套用標籤。",
-        "description": "點選上方標籤以套用到此品項。"
+        "title": "尚未套用任何標籤",
+        "description": "點選上方的標籤即可套用或取消套用"
       },
       "newTag": {
         "button": "新增標籤",
@@ -147,8 +147,8 @@
     },
     "vendors": {
       "assignEmpty": {
-        "title": "尚未指定供應商。",
-        "description": "點選上方供應商以指定到此品項。"
+        "title": "尚未指定任何供應商",
+        "description": "點選上方供應商即可指定或取消指定"
       },
       "newVendor": {
         "button": "新增供應商",
@@ -159,8 +159,8 @@
     },
     "recipes": {
       "assignEmpty": {
-        "title": "尚未加入食譜。",
-        "description": "點選上方食譜以將此品項加入其中。"
+        "title": "尚未加入任何食譜",
+        "description": "點選上方食譜即可加入或取消加入"
       },
       "newRecipe": {
         "button": "新增食譜",
@@ -205,9 +205,9 @@
   "itemListToolbar": {
     "sortBy": "排序依",
     "sortByCriteria": "選擇排序依據",
-    "sortExpiringSoon": "快到期了",
+    "sortExpiringSoon": "快到期的",
     "sortName": "名稱",
-    "sortStock": "庫存量",
+    "sortStock": "快用完的",
     "sortLastPurchased": "最近買的",
     "toggleSortDirection": "切換排序方向",
     "toggleTags": "顯示/隱藏標籤",
@@ -270,10 +270,10 @@
       },
       "items": {
         "empty": {
-          "title": "尚無品項。",
-          "description": "已套用此標籤的品項將顯示於此。"
+          "title": "尚未建立物資清單",
+          "description": "可以透過搜尋功能新增可套用此標籤的品項喔"
         },
-        "emptyFiltered": "沒有符合篩選條件的品項。"
+        "emptyFiltered": "沒有符合篩選條件的品項"
       }
     },
     "vendors": {
@@ -281,8 +281,8 @@
       "description": "管理供應商",
       "newButton": "新增供應商",
       "empty": {
-        "title": "尚無廠商。",
-        "description": "點選 + 新增第一個廠商。"
+        "title": "尚未建立供應商",
+        "description": "趕快來創造第一個供應商吧"
       },
       "itemCount_one": "· 1 個品項",
       "itemCount_other": "· {{count}} 個品項",
@@ -293,8 +293,8 @@
       "notFound": "查無此供應商",
       "items": {
         "empty": {
-          "title": "尚無品項。",
-          "description": "已指定此廠商的品項將顯示於此。"
+          "title": "尚未建立物資清單",
+          "description": "可以透過搜尋功能新增可套用此供應商的品項喔"
         }
       }
     },
@@ -303,8 +303,8 @@
       "description": "管理食譜",
       "newButton": "新增食譜",
       "empty": {
-        "title": "尚無食譜。",
-        "description": "點選 + 新增第一個食譜。"
+        "title": "尚未建立食譜",
+        "description": "趕快來創造第一份食譜吧"
       },
       "itemCount_one": "· 1 個品項",
       "itemCount_other": "· {{count}} 個品項",
@@ -315,19 +315,19 @@
       "notFound": "查無此食譜",
       "items": {
         "empty": {
-          "title": "尚無品項。",
-          "description": "已連結此食譜的品項將顯示於此。"
+          "title": "尚未建立物資清單",
+          "description": "可以透過搜尋功能新增可套用此食譜的品項喔"
         }
       }
     },
     "language": {
       "label": "語言",
       "description": "選擇您偏好的語言",
-      "auto": "自動（瀏覽器）",
+      "auto": "自動偵測",
       "autoDetected": "自動偵測：{{language}}",
       "languages": {
         "en": "English",
-        "tw": "繁體中文"
+        "tw": "正體中文"
       }
     },
     "dataMode": {
@@ -444,6 +444,117 @@
           "cartItems": "購物車內的商品"
         }
       }
+    }
+  },
+  "template": {
+    "tagTypes": {
+      "category": "類別",
+      "preservation": "保存方式"
+    },
+    "tags": {
+      "room-temperature": "常溫",
+      "refrigerated": "冷藏",
+      "frozen": "冷凍",
+      "food-and-dining": "飲食",
+      "health-and-beauty": "個人衛生與保健",
+      "household": "家庭日用",
+      "produce": "生鮮",
+      "meat": "肉類",
+      "vegetables": "蔬菜",
+      "fruits": "水果",
+      "mushrooms": "菇類",
+      "grains": "穀物主食",
+      "seasonings": "調味料",
+      "drinks": "飲料",
+      "snacks": "零食",
+      "sweets": "甜點",
+      "prepared": "調理包與罐頭",
+      "cooked": "熟食",
+      "cleansing": "個人清潔",
+      "personal-care": "個人保養",
+      "oral-health": "口腔保健",
+      "cleaning-and-sanitizing": "環境清潔",
+      "kitchen-supplies": "廚房用品"
+    },
+    "items": {
+      "rice": "米",
+      "eggs": "雞蛋",
+      "milk": "牛奶",
+      "chicken-breast": "雞胸肉",
+      "pork-belly": "豬五花",
+      "tofu": "豆腐",
+      "spinach": "菠菜",
+      "tomato": "番茄",
+      "potato": "馬鈴薯",
+      "carrot": "紅蘿蔔",
+      "apple": "蘋果",
+      "instant-noodles": "泡麵",
+      "soy-sauce": "醬油",
+      "cooking-oil": "油",
+      "salt": "鹽",
+      "bottled-water": "瓶裝水",
+      "toothpaste": "牙膏",
+      "shampoo": "洗髮精",
+      "dish-soap": "洗碗精",
+      "toilet-paper": "衛生紙"
+    },
+    "vendors": {
+      "costco": "好市多",
+      "px-mart": "全聯福利中心",
+      "simple-mart": "美廉社",
+      "rt-mart": "大潤發",
+      "carrefour": "家樂福",
+      "i-mei": "義美食品",
+      "lopia": "Lopia",
+      "city-super": "City Super",
+      "mia-cbon": "Mia C'bon",
+      "jasons": "Jasons Market Place",
+      "poya": "寶雅",
+      "nitori": "宜得利",
+      "ikea": "IKEA",
+      "cosmed": "康是美",
+      "watsons": "屈臣氏",
+      "family-mart": "全家便利商店",
+      "7-eleven": "7-ELEVEN",
+      "momo": "Momo 商城",
+      "pchome": "PChome 線上購物"
+    }
+  },
+  "onboarding": {
+    "welcome": {
+      "subtitle": "～在現實世界也要追求極致的庫存管理～",
+      "buildYourPantry": "打造你的儲藏室",
+      "chooseTemplate": "從模版匯入常見品項...",
+      "startFromScratch": "手動建立物資清單"
+    },
+    "templateOverview": {
+      "title": "從模版匯入常見品項",
+      "items": "個範例品項",
+      "vendors": "個範例供應商",
+      "selected": "已選擇",
+      "back": "返回",
+      "confirm": "確認",
+      "importError": "匯入失敗，請再試一次。"
+    },
+    "itemsBrowser": {
+      "title": "範例品項",
+      "selected_one": "已選擇 {{count}} 個品項",
+      "selected_other": "已選擇 {{count}} 個品項",
+      "selectAll": "選擇全部可見項目",
+      "clearSelection": "清除選擇項目",
+      "showing": "顯示 {{count}} / {{total}} 個品項",
+      "clearFilter": "清除篩選條件",
+      "preservationFilter": "保存方式",
+      "categoryFilter": "分類"
+    },
+    "vendorsBrowser": {
+      "title": "範例供應商",
+      "selectAll": "選擇全部可見項目",
+      "clearSelection": "清除選擇項目",
+      "showing": "顯示 {{count}} / {{total}} 個供應商",
+      "clearFilter": "清除篩選條件",
+      "selected_one": "已選擇 {{count}} 個供應商",
+      "selected_other": "已選擇 {{count}} 個供應商"
     }
   }
 }

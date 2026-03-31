@@ -98,6 +98,13 @@ async function seedItem(page: Page, name: string, tagIds: string[] = []): Promis
   return itemId
 }
 
+// Prevent empty-data redirect to /onboarding so tests can navigate freely.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('e2e-skip-onboarding', 'true')
+  })
+})
+
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.

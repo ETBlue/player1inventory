@@ -1,4 +1,5 @@
 {
+  "appName": "Player 1 Inventory",
   "validation": {
     "required": "This field is required.",
     "positiveNumber": "Must be greater than 0."
@@ -52,12 +53,12 @@
       "purchased": "purchased"
     },
     "empty": {
-      "title": "No items yet.",
-      "description": "Add pantry items to see them here."
+      "title": "No items yet",
+      "description": "Use search to add items to your shopping list"
     },
     "emptyFiltered": {
-      "title": "No items match the current filters.",
-      "description": "Try adjusting or clearing your filters."
+      "title": "No items match the current filters",
+      "description": ""
     }
   },
   "cooking": {
@@ -65,10 +66,9 @@
       "servingCount_one": "Cooking {{count}} serving",
       "servingCount_other": "Cooking {{count}} servings"
     },
-    "emptyState": "No recipes yet. Create your first recipe to get started.",
     "empty": {
-      "title": "No recipes yet.",
-      "description": "Add recipes in Settings to get started.",
+      "title": "No recipes yet",
+      "description": "Create your first recipe to get started!",
       "createButton": "Create recipe"
     },
     "recipe": {
@@ -113,8 +113,8 @@
   },
   "pantry": {
     "empty": {
-      "title": "No items yet.",
-      "description": "Add your first pantry item to get started.",
+      "title": "Your pantry is empty",
+      "description": "Come build your pantry!",
       "createButton": "Create item"
     }
   },
@@ -127,16 +127,16 @@
   "items": {
     "tags": {
       "empty": {
-        "title": "No tag types yet.",
-        "description": "Create a tag type to start organizing your items."
+        "title": "No tag types yet",
+        "description": "Create your first set of tags to get started!"
       },
       "newTagType": {
         "button": "New Tag Type",
         "dialogTitle": "New Tag Type"
       },
       "assignEmpty": {
-        "title": "No tags assigned.",
-        "description": "Tap a tag above to assign it to this item."
+        "title": "No tags assigned",
+        "description": "Tap a tag above to apply or remove it"
       },
       "newTag": {
         "button": "New Tag",
@@ -147,8 +147,8 @@
     },
     "vendors": {
       "assignEmpty": {
-        "title": "No vendors assigned.",
-        "description": "Tap a vendor above to assign it to this item."
+        "title": "No vendors assigned",
+        "description": "Tap a vendor above to assign or unassign it"
       },
       "newVendor": {
         "button": "New Vendor",
@@ -159,8 +159,8 @@
     },
     "recipes": {
       "assignEmpty": {
-        "title": "No recipes assigned.",
-        "description": "Tap a recipe above to assign it to this item."
+        "title": "No recipes assigned",
+        "description": "Tap a recipe above to add or remove it"
       },
       "newRecipe": {
         "button": "New Recipe",
@@ -272,10 +272,10 @@
       },
       "items": {
         "empty": {
-          "title": "No items yet.",
-          "description": "Items tagged here will appear in this list."
+          "title": "No items yet",
+          "description": "Use search to add items with this tag"
         },
-        "emptyFiltered": "No items match the current filters."
+        "emptyFiltered": "No items match the current filters"
       }
     },
     "vendors": {
@@ -283,8 +283,8 @@
       "description": "Manage vendors",
       "newButton": "New Vendor",
       "empty": {
-        "title": "No vendors yet.",
-        "description": "Tap + to add your first vendor."
+        "title": "No vendors yet",
+        "description": "Create your first vendor to get started!"
       },
       "itemCount_one": "· 1 item",
       "itemCount_other": "· {{count}} items",
@@ -296,8 +296,8 @@
       "notFound": "Vendor not found",
       "items": {
         "empty": {
-          "title": "No items yet.",
-          "description": "Items assigned to this vendor will appear here."
+          "title": "No items yet",
+          "description": "Use search to add items from this vendor"
         }
       }
     },
@@ -306,8 +306,8 @@
       "description": "Manage recipes",
       "newButton": "New Recipe",
       "empty": {
-        "title": "No recipes yet.",
-        "description": "Tap + to add your first recipe."
+        "title": "No recipes yet",
+        "description": "Create your first recipe to get started!"
       },
       "itemCount_one": "· 1 item",
       "itemCount_other": "· {{count}} items",
@@ -319,8 +319,8 @@
       "notFound": "Recipe not found",
       "items": {
         "empty": {
-          "title": "No items yet.",
-          "description": "Items linked to this recipe will appear here."
+          "title": "No items yet",
+          "description": "Use search to add items linked to this recipe"
         }
       }
     },
@@ -331,7 +331,7 @@
       "autoDetected": "Auto-detected: {{language}}",
       "languages": {
         "en": "English",
-        "tw": "Traditional Chinese"
+        "tw": "Taiwanese Mandarin"
       }
     },
     "dataMode": {
@@ -448,6 +448,117 @@
           "cartItems": "Cart Items"
         }
       }
+    }
+  },
+  "template": {
+    "tagTypes": {
+      "category": "Category",
+      "preservation": "Preservation"
+    },
+    "tags": {
+      "room-temperature": "Room Temperature",
+      "refrigerated": "Refrigerated",
+      "frozen": "Frozen",
+      "food-and-dining": "Food & Dining",
+      "health-and-beauty": "Health & Beauty",
+      "household": "Household",
+      "produce": "Produce",
+      "meat": "Meat",
+      "vegetables": "Vegetables",
+      "fruits": "Fruits",
+      "mushrooms": "Mushrooms",
+      "grains": "Grains",
+      "seasonings": "Seasonings",
+      "drinks": "Drinks",
+      "snacks": "Snacks",
+      "sweets": "Sweets",
+      "prepared": "Prepared Food",
+      "cooked": "Cooked Food",
+      "cleansing": "Cleansing",
+      "personal-care": "Personal Care",
+      "oral-health": "Oral Health",
+      "cleaning-and-sanitizing": "Cleaning & Sanitizing",
+      "kitchen-supplies": "Kitchen Supplies"
+    },
+    "items": {
+      "rice": "Rice",
+      "eggs": "Eggs",
+      "milk": "Milk",
+      "chicken-breast": "Chicken Breast",
+      "pork-belly": "Pork Belly",
+      "tofu": "Tofu",
+      "spinach": "Spinach",
+      "tomato": "Tomato",
+      "potato": "Potato",
+      "carrot": "Carrot",
+      "apple": "Apple",
+      "instant-noodles": "Instant Noodles",
+      "soy-sauce": "Soy Sauce",
+      "cooking-oil": "Cooking Oil",
+      "salt": "Salt",
+      "bottled-water": "Bottled Water",
+      "toothpaste": "Toothpaste",
+      "shampoo": "Shampoo",
+      "dish-soap": "Dish Soap",
+      "toilet-paper": "Toilet Paper"
+    },
+    "vendors": {
+      "costco": "Costco",
+      "px-mart": "PX Mart",
+      "simple-mart": "Simple Mart",
+      "rt-mart": "RT-Mart",
+      "carrefour": "Carrefour",
+      "i-mei": "I-Mei Food",
+      "lopia": "Lopia",
+      "city-super": "City Super",
+      "mia-cbon": "Mia C'bon",
+      "jasons": "Jasons Market Place",
+      "poya": "Poya",
+      "nitori": "Nitori",
+      "ikea": "IKEA",
+      "cosmed": "Cosmed",
+      "watsons": "Watsons",
+      "family-mart": "FamilyMart",
+      "7-eleven": "7-Eleven",
+      "momo": "Momo",
+      "pchome": "PChome"
+    }
+  },
+  "onboarding": {
+    "welcome": {
+      "subtitle": "～Ultimate real-life asset management～",
+      "buildYourPantry": "Build your pantry",
+      "chooseTemplate": "Choose from a template...",
+      "startFromScratch": "Start from scratch"
+    },
+    "templateOverview": {
+      "title": "Choose from a template",
+      "items": "sample items",
+      "vendors": "sample vendors",
+      "selected": "selected",
+      "back": "Back",
+      "confirm": "Confirm",
+      "importError": "Something went wrong. Please try again."
+    },
+    "itemsBrowser": {
+      "title": "Sample Items",
+      "selected_one": "{{count}} item selected",
+      "selected_other": "{{count}} items selected",
+      "selectAll": "Select all visible",
+      "clearSelection": "Clear selection",
+      "showing": "Showing {{count}} of {{total}} items",
+      "clearFilter": "Clear filter",
+      "preservationFilter": "Preservation",
+      "categoryFilter": "Category"
+    },
+    "vendorsBrowser": {
+      "title": "Sample Vendors",
+      "selectAll": "Select all visible",
+      "clearSelection": "Clear selection",
+      "showing": "Showing {{count}} of {{total}} vendors",
+      "clearFilter": "Clear filter",
+      "selected_one": "{{count}} vendor selected",
+      "selected_other": "{{count}} vendors selected"
     }
   }
 }

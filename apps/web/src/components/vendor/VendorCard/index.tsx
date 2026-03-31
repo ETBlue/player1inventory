@@ -13,6 +13,7 @@ interface VendorCardProps {
 
 export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
   const { t } = useTranslation()
+
   return (
     <Card className="py-1">
       <CardContent className="flex items-center justify-between">

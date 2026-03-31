@@ -36,7 +36,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [item-list-state-restore](features/item-list-state-restore/) | ✅ Done | Back-navigation state preservation done (local + cloud E2E) |
 | [inventory-logs](features/inventory-logs/) | ✅ Implemented | Cloud operations done: schema fix, GraphQL queries/mutations, dual-mode hooks, E2E tests |
 | [storybook-coverage](features/storybook-coverage/) | ✅ Implemented | Component stories done; route-level stories + smoke tests done for all 17 routes |
-| [onboarding](features/onboarding/) | 🔄 In Progress | Phase A done: nested tags (parentId, parent selector, tree UI, cascade delete, cloud backend, import/export); InfoForm refactor (Tag/Recipe/Vendor); dialog improvements (DialogMain, inline close). Phases B (onboarding flow) + C (settings reset) pending |
+| [onboarding](features/onboarding/) | 🔄 In Progress | Phase A done: nested tags, InfoForm refactor, dialog improvements. Phase B done: full onboarding flow (template data, 4-step state machine, TemplateItemRow/TemplateVendorRow, inline import progress, auto-navigate to pantry, useOnboardingSetup hook, empty-data redirect, E2E). Phase C (settings reset) pending |
 
 ---
 
