@@ -12,6 +12,7 @@ interface ProgressBarProps {
   packed?: number
   unpacked?: number
   measurementUnit?: string
+  amountPerPackage?: number
 }
 
 function SegmentedProgressBar({
@@ -216,6 +217,7 @@ export function ItemProgressBar({
   targetUnit,
   packed = 0,
   unpacked = 0,
+  amountPerPackage,
 }: ProgressBarProps) {
   // Use continuous bar when tracking in measurement units
   // Guard: target=0 means inactive item
@@ -246,8 +248,16 @@ export function ItemProgressBar({
     )
   }
 
+  // When amountPerPackage is set, convert all values to package units for segmented rendering.
+  // Fall back to continuous for measurement-unit items with no package info.
+  // Note: package-unit items without amountPerPackage always go segmented using raw target
+  // as the package count (e.g. "5 bottles" with no known volume = 5 segments).
+  const hasPackageInfo = amountPerPackage !== undefined && amountPerPackage > 0
+  const scale = hasPackageInfo ? amountPerPackage : 1
+  const packageTarget = hasPackageInfo ? target / amountPerPackage! : target
   const useContinuous =
-    targetUnit === 'measurement' || target > SEGMENTED_MODE_MAX_TARGET
+    (targetUnit === 'measurement' && !hasPackageInfo) ||
+    packageTarget > SEGMENTED_MODE_MAX_TARGET
 
   return (
     <div className="flex-1">
@@ -261,11 +271,11 @@ export function ItemProgressBar({
         />
       ) : (
         <SegmentedProgressBar
-          current={current}
-          target={target}
+          current={current / scale}
+          target={packageTarget}
           {...(status ? { status } : {})}
-          packed={packed}
-          unpacked={unpacked}
+          packed={packed / scale}
+          unpacked={unpacked / scale}
         />
       )}
     </div>

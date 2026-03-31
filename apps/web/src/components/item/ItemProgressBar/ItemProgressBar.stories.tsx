@@ -219,3 +219,50 @@ export const InactiveWithStock: Story = {
     targetUnit: 'package',
   },
 }
+
+export const MeasurementWithPackages: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">
+          500g target, 100g/pack → 5 segments (3 packs + 50g loose)
+        </p>
+        <ItemProgressBar
+          current={350}
+          target={500}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={100}
+          packed={300}
+          unpacked={50}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          500g target, 100g/pack → 5 segments (3 full packs)
+        </p>
+        <ItemProgressBar
+          current={300}
+          target={500}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={100}
+          packed={300}
+          unpacked={0}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          3200g target, 100g/pack → 32 packages → continuous
+        </p>
+        <ItemProgressBar
+          current={1600}
+          target={3200}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={100}
+        />
+      </div>
+    </div>
+  ),
+}
