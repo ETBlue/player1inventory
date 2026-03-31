@@ -13,6 +13,7 @@ const {
   MultiplePartials,
   Inactive,
   InactiveWithStock,
+  MeasurementWithPackages,
 } = composeStories(stories)
 
 describe('ItemProgressBar stories smoke tests', () => {
@@ -65,5 +66,12 @@ describe('ItemProgressBar stories smoke tests', () => {
   it('InactiveWithStock renders without error', () => {
     const { container } = render(<InactiveWithStock />)
     expect(container.firstChild).toHaveClass('flex-1')
+  })
+
+  it('MeasurementWithPackages renders without error', () => {
+    render(<MeasurementWithPackages />)
+    expect(
+      screen.getAllByText(/500g target, 100g\/pack → 5 segments/),
+    ).toHaveLength(2)
   })
 })
