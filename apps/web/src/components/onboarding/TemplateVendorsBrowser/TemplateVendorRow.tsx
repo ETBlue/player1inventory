@@ -14,17 +14,19 @@ export function TemplateVendorRow({
   onToggle,
 }: TemplateVendorRowProps) {
   return (
-    <Card className="ml-10 px-3 py-2">
-      <Checkbox
-        checked={isChecked}
-        onCheckedChange={onToggle}
-        aria-label={isChecked ? `Remove ${name}` : `Add ${name}`}
-        className="absolute -ml-10 mt-[2px]"
-      />
-      <CardHeader className="flex items-center gap-2">
-        <Store className="h-4 w-4" />
-        {name}
-      </CardHeader>
-    </Card>
+    <div className={isChecked ? 'bg-background-surface' : ''}>
+      <Card className="ml-10 px-3 py-2">
+        <Checkbox
+          checked={isChecked}
+          onCheckedChange={onToggle}
+          aria-label={isChecked ? `Remove ${name}` : `Add ${name}`}
+          className="absolute -ml-10 mt-[2px]"
+        />
+        <CardHeader className="flex items-center gap-2">
+          <Store className="h-4 w-4" />
+          {name}
+        </CardHeader>
+      </Card>
+    </div>
   )
 }
