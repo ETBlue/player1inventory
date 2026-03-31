@@ -254,7 +254,7 @@ export function ItemProgressBar({
   // as the package count (e.g. "5 bottles" with no known volume = 5 segments).
   const hasPackageInfo = amountPerPackage !== undefined && amountPerPackage > 0
   const scale = hasPackageInfo ? amountPerPackage : 1
-  const packageTarget = hasPackageInfo ? target / amountPerPackage! : target
+  const packageTarget = hasPackageInfo ? target / scale : target
   const useContinuous =
     (targetUnit === 'measurement' && !hasPackageInfo) ||
     packageTarget > SEGMENTED_MODE_MAX_TARGET
