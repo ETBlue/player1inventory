@@ -205,9 +205,9 @@
   "itemListToolbar": {
     "sortBy": "排序依",
     "sortByCriteria": "選擇排序依據",
-    "sortExpiringSoon": "快到期了",
+    "sortExpiringSoon": "快到期的",
     "sortName": "名稱",
-    "sortStock": "庫存量",
+    "sortStock": "快用完的",
     "sortLastPurchased": "最近買的",
     "toggleSortDirection": "切換排序方向",
     "toggleTags": "顯示/隱藏標籤",
@@ -522,7 +522,7 @@
   },
   "onboarding": {
     "welcome": {
-      "subtitle": "在現實世界也要追求極致的庫存管理 💪",
+      "subtitle": "～在現實世界也要追求極致的庫存管理～",
       "buildYourPantry": "打造你的儲藏室",
       "chooseTemplate": "從模版匯入常見品項...",
       "startFromScratch": "手動建立物資清單"
