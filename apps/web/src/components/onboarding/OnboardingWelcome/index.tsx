@@ -1,10 +1,4 @@
-import {
-  Blocks,
-  ChevronRight,
-  Drill,
-  Github,
-  NotepadTextDashed,
-} from 'lucide-react'
+import { Blocks, ChevronRight, Github } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/hooks/useLanguage'
@@ -77,7 +71,6 @@ export function OnboardingWelcome({
           rounded-bl-none rounded-br-none
           bg-background-elevated"
         >
-          <NotepadTextDashed className="shrink-0" />
           <span className="truncate">
             {t('onboarding.welcome.chooseTemplate')}
           </span>
@@ -93,7 +86,6 @@ export function OnboardingWelcome({
           rounded-tl-none rounded-tr-none -mt-px
           bg-background-elevated"
         >
-          <Drill className="shrink-0" />
           <span className="truncate">
             {t('onboarding.welcome.startFromScratch')}
           </span>

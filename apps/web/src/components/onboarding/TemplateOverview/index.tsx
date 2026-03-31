@@ -1,10 +1,4 @@
-import {
-  ArrowLeft,
-  Check,
-  ChevronRight,
-  Loader2,
-  NotepadTextDashed,
-} from 'lucide-react'
+import { ArrowLeft, Blocks, Check, ChevronRight, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
@@ -42,7 +36,7 @@ export function TemplateOverview({
       {/* Heading */}
       <div className="text-center">
         <h2 className="text-xl flex gap-2 items-center">
-          <NotepadTextDashed />
+          <Blocks />
           {t('onboarding.templateOverview.title')}
         </h2>
       </div>
