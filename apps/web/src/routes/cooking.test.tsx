@@ -645,6 +645,7 @@ describe('Use (Cooking) Page', () => {
     const item = await createItem({
       name: 'Milk',
       tagIds: [tag.id],
+      expirationMode: 'date',
       dueDate: futureDate,
       targetQuantity: 2,
       refillThreshold: 1,

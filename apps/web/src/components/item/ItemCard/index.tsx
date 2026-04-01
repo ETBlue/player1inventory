@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useLastPurchaseDate } from '@/hooks'
+import { computeExpiryDate } from '@/lib/expiration'
 import {
   getCurrentQuantity,
   getStockStatus,
@@ -74,12 +75,7 @@ export function ItemCard({
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
 
-  const estimatedDueDate =
-    item.estimatedDueDays && lastPurchase
-      ? new Date(
-          lastPurchase.getTime() + item.estimatedDueDays * 24 * 60 * 60 * 1000,
-        )
-      : item.dueDate
+  const estimatedDueDate = computeExpiryDate(item, lastPurchase ?? undefined)
 
   const currentQuantity = getCurrentQuantity(item)
   const status = getStockStatus(currentQuantity, item.refillThreshold)
@@ -255,12 +251,12 @@ export function ItemCard({
                   )}
                 >
                   {isWarning && <TriangleAlert className="w-4 h-4" />}
-                  {item.estimatedDueDays
+                  {item.expirationMode === 'days from purchase'
                     ? // Relative mode: show "Expires in X days"
                       daysUntilExpiration >= 0
                       ? `Expires in ${daysUntilExpiration} days`
                       : `Expired ${Math.abs(daysUntilExpiration)} days ago`
-                    : // Explicit mode: show "Expires on YYYY-MM-DD"
+                    : // Explicit date mode: show "Expires on YYYY-MM-DD"
                       `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
                 </span>
               )
