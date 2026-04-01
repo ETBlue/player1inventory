@@ -9,7 +9,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useLastPurchaseDate } from '@/hooks'
 import {
   getCurrentQuantity,
-  getPackedTotal,
   getStockStatus,
   isInactive,
 } from '@/lib/quantityUtils'
@@ -46,7 +45,6 @@ interface ItemCardProps {
   activeTagIds?: string[]
   showExpiration?: boolean
   showTagSummary?: boolean
-  isPackageDisplay?: boolean
   highlightedName?: React.ReactNode
 }
 
@@ -72,7 +70,6 @@ export function ItemCard({
   activeTagIds,
   showExpiration = true,
   showTagSummary = true,
-  isPackageDisplay = false,
   highlightedName,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
@@ -93,26 +90,8 @@ export function ItemCard({
       ? item.packedQuantity * item.amountPerPackage
       : item.packedQuantity
 
-  // Package-display values (used when isPackageDisplay=true)
-  const targetInPackages =
-    isPackageDisplay &&
-    item.targetUnit === 'measurement' &&
-    item.amountPerPackage
-      ? Math.ceil(item.targetQuantity / item.amountPerPackage)
-      : item.targetQuantity
-
-  const packageProgressCurrent = isPackageDisplay
-    ? getPackedTotal(item)
-    : currentQuantity
-
-  const packageProgressTarget = isPackageDisplay
-    ? targetInPackages
-    : item.targetQuantity
-
   const unitLabel =
-    !isPackageDisplay &&
-    item.targetUnit === 'measurement' &&
-    item.measurementUnit
+    item.targetUnit === 'measurement' && item.measurementUnit
       ? item.measurementUnit
       : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
 
@@ -198,21 +177,17 @@ export function ItemCard({
             </h3>
             <div className="flex-1" />
             <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
-              {isPackageDisplay
-                ? item.unpackedQuantity > 0
-                  ? `${item.packedQuantity} (+${item.unpackedQuantity}${item.measurementUnit ?? ''})/${targetInPackages}`
-                  : `${item.packedQuantity}/${targetInPackages}`
-                : item.unpackedQuantity > 0
-                  ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
-                  : `${currentQuantity}/${item.targetQuantity}`}
+              {item.unpackedQuantity > 0
+                ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
+                : `${currentQuantity}/${item.targetQuantity}`}
             </span>
             <span className="px-1 text-xs text-foreground-muted border-1 border-foreground-muted opacity-75">
               {unitLabel}
             </span>
           </CardTitle>
           <ItemProgressBar
-            current={packageProgressCurrent}
-            target={packageProgressTarget}
+            current={currentQuantity}
+            target={item.targetQuantity}
             status={progressStatus}
             targetUnit={item.targetUnit}
             packed={displayPacked}

@@ -209,7 +209,6 @@ function Shopping() {
           showTags={false}
           showExpiration={false}
           showTagSummary={false}
-          isPackageDisplay={true}
           isChecked={!!ci}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
