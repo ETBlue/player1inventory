@@ -220,6 +220,9 @@ export function ItemCard({
             {...(item.measurementUnit
               ? { measurementUnit: item.measurementUnit }
               : {})}
+            {...(item.amountPerPackage
+              ? { amountPerPackage: item.amountPerPackage }
+              : {})}
           />
         </Link>
 

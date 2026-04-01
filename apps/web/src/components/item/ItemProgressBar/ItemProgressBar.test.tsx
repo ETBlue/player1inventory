@@ -249,4 +249,98 @@ describe('ItemProgressBar with partial segments', () => {
     const wrapper = container.querySelector('.flex-1 > div')
     expect(wrapper).toHaveClass('[&>div]:bg-status-inactive')
   })
+
+  it('uses segmented mode for measurement item with amountPerPackage when package count ≤ 30', () => {
+    // target=500g, amountPerPackage=100g/pack → 5 packages → segmented
+    const { container } = render(
+      <ItemProgressBar
+        current={300}
+        target={500}
+        status="ok"
+        targetUnit="measurement"
+        amountPerPackage={100}
+      />,
+    )
+    expect(
+      container.querySelector('[role="progressbar"]'),
+    ).not.toBeInTheDocument()
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(5)
+  })
+
+  it('uses continuous mode for measurement item with amountPerPackage when package count > 30', () => {
+    // target=3200g, amountPerPackage=100g/pack → 32 packages > 30 → continuous
+    const { container } = render(
+      <ItemProgressBar
+        current={1600}
+        target={3200}
+        status="ok"
+        targetUnit="measurement"
+        amountPerPackage={100}
+      />,
+    )
+    expect(container.querySelector('[role="progressbar"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-segment]')).not.toBeInTheDocument()
+  })
+
+  it('uses continuous mode for measurement item without amountPerPackage (regression guard)', () => {
+    // targetUnit=measurement, no amountPerPackage, small target → still continuous
+    const { container } = render(
+      <ItemProgressBar
+        current={3}
+        target={5}
+        status="ok"
+        targetUnit="measurement"
+      />,
+    )
+    expect(container.querySelector('[role="progressbar"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-segment]')).not.toBeInTheDocument()
+  })
+
+  it('converts packed and unpacked to package units in segmented mode for measurement items', () => {
+    // target=500g, amountPerPackage=100g → 5 segments
+    // ItemCard passes packed = packedQuantity * amountPerPackage = 3 * 100 = 300
+    // ItemCard passes unpacked = unpackedQuantity = 50 (grams)
+    // After /scale: packed=3 packs, unpacked=0.5 packs
+    const { container } = render(
+      <ItemProgressBar
+        current={350}
+        target={500}
+        status="ok"
+        targetUnit="measurement"
+        amountPerPackage={100}
+        packed={300}
+        unpacked={50}
+      />,
+    )
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(5)
+    // Segments 0–2: 100% packed
+    expect(segments[0]).toHaveAttribute('data-packed', '100')
+    expect(segments[1]).toHaveAttribute('data-packed', '100')
+    expect(segments[2]).toHaveAttribute('data-packed', '100')
+    // Segment 3: 50% unpacked (0.5 of a pack)
+    expect(segments[3]).toHaveAttribute('data-unpacked', '50')
+  })
+
+  it('shows segmented bar for package-unit item with amountPerPackage (regression guard)', () => {
+    // targetUnit=package means target is already in packages — should NOT divide by amountPerPackage
+    // Olive Oil example: 3 bottles target, 500ml/bottle, 1 bottle in stock
+    const { container } = render(
+      <ItemProgressBar
+        current={1}
+        target={3}
+        status="ok"
+        targetUnit="package"
+        amountPerPackage={500}
+        packed={1}
+        unpacked={0}
+      />,
+    )
+    // Should show 3 segments (not 0 from dividing 3/500)
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(3)
+    // First segment should be 100% filled
+    expect(segments[0]).toHaveAttribute('data-fill', '100')
+  })
 })
