@@ -1,6 +1,6 @@
 import { prop, getModelForClass, modelOptions, index } from '@typegoose/typegoose'
 import mongoose from 'mongoose'
-import type { Item } from '@p1i/types'
+import type { ExpirationMode, Item } from '@p1i/types'
 
 @modelOptions({ schemaOptions: { timestamps: true, collection: 'items' } })
 @index({ familyId: 1, updatedAt: 1 })
@@ -53,6 +53,9 @@ class ItemClass implements Omit<Item, 'id'> {
 
   @prop({ type: Number })
   expirationThreshold?: number
+
+  @prop({ type: String, enum: ['disabled', 'date', 'days from purchase'], default: 'disabled' })
+  expirationMode?: ExpirationMode
 
   // Multi-user fields
   @prop({ required: true, type: String })

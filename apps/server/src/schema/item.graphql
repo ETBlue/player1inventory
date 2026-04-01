@@ -15,6 +15,7 @@ type Item {
   dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
+  expirationMode: String
   userId: String!
   familyId: String
   createdAt: String!
@@ -51,4 +52,5 @@ input UpdateItemInput {
   dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
+  expirationMode: String
 }
