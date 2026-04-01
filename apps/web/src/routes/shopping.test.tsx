@@ -610,19 +610,19 @@ describe('Shopping page', () => {
     })
   })
 
-  it('user can see dual-unit item quantity in package units', async () => {
+  it('user can see dual-unit item quantity in measurement units', async () => {
     // Given a dual-unit item tracking in measurement (3 packs, 250g unpacked, 4-pack target)
     await makeDualUnitItem('Flour', 3, 250)
 
     // When the shopping page renders
     renderShoppingPage()
 
-    // Then the quantity display shows packages, not grams
-    // Target: 2000g / 500g per pack = 4 packs
-    // And the unit label shows the package unit (bag), not measurement unit (g)
+    // Then the quantity display shows measurement units (same as all other pages)
+    // displayPacked = 3 packs * 500g/pack = 1500g; target = 2000g
+    // And the unit label shows the measurement unit (g), not the package unit (bag)
     await waitFor(() => {
-      expect(screen.getByText(/3 \(\+250g\)\/4/)).toBeInTheDocument()
-      expect(screen.getByText('bag')).toBeInTheDocument()
+      expect(screen.getByText(/1500 \(\+250\)\/2000/)).toBeInTheDocument()
+      expect(screen.getByText('g')).toBeInTheDocument()
     })
   })
 })
