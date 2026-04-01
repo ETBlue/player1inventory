@@ -97,7 +97,7 @@ test('user can select template items and complete onboarding', async ({ page }) 
 
   // Then the template overview is shown
   await expect(
-    page.getByRole('heading', { name: 'Choose from template' }),
+    page.getByRole('heading', { name: 'Build your pantry' }),
   ).toBeVisible()
 
   // When the user opens the items browser
