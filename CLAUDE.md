@@ -378,7 +378,7 @@ For CLI users who want to work on multiple branches simultaneously without switc
 # Use dashes instead of slashes in the directory name (e.g. feature-xxx, not feature/xxx)
 git worktree add .worktrees/<feature-xxx> -b <branch-name>
 ```
-(The EnterWorktree tool handles .env copying automatically via the WorktreeCreate hook)
+(The EnterWorktree tool runs `pnpm install` and `pnpm codegen` automatically via the WorktreeCreate hook, in addition to copying `.env` files)
 
 **Directory Convention:**
 Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`. Use dashes instead of slashes in directory names (e.g. `feature-xxx`, not `feature/xxx`) to avoid creating subfolders.
