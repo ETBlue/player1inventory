@@ -37,11 +37,18 @@ function deserializeCloudItem(item: Record<string, unknown>): Item {
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
 // Strips non-updatable fields and converts dueDate from Date to ISO string.
+// Optional clearable fields are sent as explicit null when absent so that
+// MongoDB $set clears them; absent = deleted via buildUpdates() = user cleared.
 function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
   const { id: _id, createdAt: _c, updatedAt: _u, dueDate, ...rest } = updates
   return {
     ...rest,
-    ...(dueDate instanceof Date ? { dueDate: dueDate.toISOString() } : {}),
+    packageUnit: rest.packageUnit ?? null,
+    measurementUnit: rest.measurementUnit ?? null,
+    amountPerPackage: rest.amountPerPackage ?? null,
+    estimatedDueDays: rest.estimatedDueDays ?? null,
+    expirationThreshold: rest.expirationThreshold ?? null,
+    dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
   }
 }
 
@@ -188,6 +195,9 @@ export function useUpdateItem() {
   })
 
   if (mode === 'cloud') {
+    // Cloud mode: updates must be a complete item payload (as produced by buildUpdates),
+    // not a true partial. Absent optional fields are sent as null to MongoDB $set,
+    // which clears them. A partial update with absent fields would silently clear them.
     return {
       mutate: (
         { id, updates }: { id: string; updates: Partial<Item> },

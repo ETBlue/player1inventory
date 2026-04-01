@@ -217,6 +217,46 @@ describe('useUpdateItem (cloud mode)', () => {
     // Then it delegates to cloudUpdate
     expect(mockCloudUpdate).toHaveBeenCalled()
   })
+
+  it('sends null for cleared optional fields (packageUnit, measurementUnit, amountPerPackage, estimatedDueDays, expirationThreshold, dueDate)', async () => {
+    // Given cloud mode and an update that omits all optional clearable fields
+    localStorage.setItem('data-mode', 'cloud')
+    mockCloudUpdate.mockResolvedValue({
+      data: { updateItem: { id: 'item-1', name: 'Milk' } },
+    })
+    mockUseGetItemsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: vi.fn(),
+    })
+
+    // When the mutation is called with only required fields (no optional fields)
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: createWrapper(),
+    })
+    await result.current.mutateAsync({
+      id: 'item-1',
+      updates: { name: 'Milk' },
+    })
+
+    // Then the GraphQL input includes explicit null for each optional clearable field
+    // (so MongoDB $set clears them instead of leaving stale values)
+    expect(mockCloudUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: expect.objectContaining({
+          input: expect.objectContaining({
+            packageUnit: null,
+            measurementUnit: null,
+            amountPerPackage: null,
+            estimatedDueDays: null,
+            expirationThreshold: null,
+            dueDate: null,
+          }),
+        }),
+      }),
+    )
+  })
 })
 
 // ─── useDeleteItem ────────────────────────────────────────────────────────────
