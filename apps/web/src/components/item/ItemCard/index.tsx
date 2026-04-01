@@ -241,9 +241,9 @@ export function ItemCard({
               const daysUntilExpiration = Math.ceil(
                 (estimatedDueDate.getTime() - Date.now()) / 86400000,
               )
-              const threshold =
-                item.expirationThreshold ?? Number.POSITIVE_INFINITY
-              const isWarning = daysUntilExpiration <= threshold
+              const isWarning =
+                item.expirationThreshold != null &&
+                daysUntilExpiration <= item.expirationThreshold
 
               return (
                 <span
