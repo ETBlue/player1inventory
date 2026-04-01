@@ -22,19 +22,10 @@ import {
   useLastPurchaseDatesQuery,
   useUpdateItemMutation,
 } from '@/generated/graphql'
+import { deserializeItem } from '@/lib/deserialization'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 import { useDataMode } from './useDataMode'
-
-// GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
-function deserializeCloudItem(item: Record<string, unknown>): Item {
-  return {
-    ...item,
-    dueDate: item.dueDate ? new Date(item.dueDate as string) : undefined,
-    createdAt: new Date(item.createdAt as string),
-    updatedAt: new Date(item.updatedAt as string),
-  } as Item
-}
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
 // Strips non-updatable fields and converts dueDate from Date to ISO string.
@@ -49,6 +40,7 @@ function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
     amountPerPackage: rest.amountPerPackage ?? null,
     estimatedDueDays: rest.estimatedDueDays ?? null,
     expirationThreshold: rest.expirationThreshold ?? null,
+    expirationMode: rest.expirationMode ?? null,
     dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
   }
 }
@@ -68,7 +60,7 @@ export function useItems() {
   if (isCloud) {
     return {
       data: cloud.data?.items.map((i) =>
-        deserializeCloudItem(i as Record<string, unknown>),
+        deserializeItem(i as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
       isError: !!cloud.error,
@@ -99,7 +91,7 @@ export function useItem(id: string) {
   if (isCloud) {
     return {
       data: cloud.data?.item
-        ? deserializeCloudItem(cloud.data.item as Record<string, unknown>)
+        ? deserializeItem(cloud.data.item as Record<string, unknown>)
         : undefined,
       isLoading: cloud.loading,
       isError: !!cloud.error,
