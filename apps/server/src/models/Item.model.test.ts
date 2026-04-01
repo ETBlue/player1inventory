@@ -39,6 +39,43 @@ describe('ItemModel', () => {
     expect(item.createdAt).toBeInstanceOf(Date)
   })
 
+  it('defaults expirationMode to disabled', async () => {
+    // Given an item created without expirationMode
+    const item = await ItemModel.create({
+      name: 'Milk',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      userId: 'user_test123',
+    })
+
+    // Then expirationMode defaults to 'disabled'
+    expect(item.expirationMode).toBe('disabled')
+  })
+
+  it('stores expirationMode when provided', async () => {
+    // Given an item with expirationMode set
+    const item = await ItemModel.create({
+      name: 'Milk',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      userId: 'user_test123',
+      expirationMode: 'days from purchase',
+    })
+
+    // Then expirationMode is stored correctly
+    expect(item.expirationMode).toBe('days from purchase')
+  })
+
   it('rejects an item without a required name', async () => {
     // Given item data missing the required name field
     await expect(
