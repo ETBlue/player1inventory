@@ -151,7 +151,7 @@ test('user can view onboarding page without accessibility violations', async ({ 
   await page.goto('/onboarding')
   // Wait for the URL and a unique onboarding element to confirm the page rendered
   await page.waitForURL('**/onboarding', { timeout: 10000 })
-  await page.getByRole('button', { name: 'Choose from template' }).waitFor({ timeout: 10000 })
+  await page.getByRole('button', { name: 'Choose from a template...' }).waitFor({ timeout: 10000 })
 
   // When axe scans the page for accessibility violations
   await injectAxe(page)

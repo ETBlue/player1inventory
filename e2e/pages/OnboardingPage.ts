@@ -33,7 +33,7 @@ export class OnboardingPage {
   async clickChooseTemplate() {
     // t('onboarding.welcome.chooseTemplate') = "Choose from template"
     // (src/components/onboarding/OnboardingWelcome/index.tsx)
-    await this.page.getByRole('button', { name: 'Choose from template' }).click()
+    await this.page.getByRole('button', { name: 'Choose from a template...' }).click()
   }
 
   async clickConfirm() {
