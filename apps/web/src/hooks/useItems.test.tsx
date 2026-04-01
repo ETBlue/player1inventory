@@ -8,6 +8,7 @@ import {
   useDeleteItem,
   useItem,
   useItems,
+  useLastPurchaseDate,
   useUpdateItem,
 } from './useItems'
 
@@ -17,6 +18,7 @@ const mockCloudCreate = vi.fn()
 const mockCloudUpdate = vi.fn()
 const mockCloudDelete = vi.fn()
 const mockUseDeleteItemMutationOptions = vi.fn()
+const mockUseLastPurchaseDatesQuery = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -30,6 +32,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       mockUseDeleteItemMutationOptions(options)
       return [mockCloudDelete, {}]
     },
+    useLastPurchaseDatesQuery: (opts: unknown) =>
+      mockUseLastPurchaseDatesQuery(opts),
   }
 })
 
@@ -312,5 +316,62 @@ describe('useDeleteItem (cloud mode)', () => {
         ]),
       }),
     )
+  })
+})
+
+// ─── useLastPurchaseDate ──────────────────────────────────────────────────────
+
+describe('useLastPurchaseDate (cloud mode)', () => {
+  it('user can get last purchase date via Apollo in cloud mode', async () => {
+    // Given cloud mode and Apollo returns a last purchase date for the item
+    localStorage.setItem('data-mode', 'cloud')
+    const purchaseDate = new Date('2026-03-31T00:00:00.000Z')
+    mockUseLastPurchaseDatesQuery.mockReturnValue({
+      data: {
+        lastPurchaseDates: [
+          { itemId: 'item-1', date: purchaseDate.toISOString() },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called with an item id
+    const { result } = renderHook(() => useLastPurchaseDate('item-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then it returns the date from Apollo as a Date object
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    expect(result.current.data).toBeInstanceOf(Date)
+    expect(result.current.data?.toISOString()).toBe(purchaseDate.toISOString())
+
+    // And it called the Apollo query with the correct itemIds
+    expect(mockUseLastPurchaseDatesQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: { itemIds: ['item-1'] },
+      }),
+    )
+  })
+
+  it('returns undefined when Apollo returns null date in cloud mode', async () => {
+    // Given cloud mode and Apollo returns null for the item's last purchase date
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseLastPurchaseDatesQuery.mockReturnValue({
+      data: {
+        lastPurchaseDates: [{ itemId: 'item-1', date: null }],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called
+    const { result } = renderHook(() => useLastPurchaseDate('item-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then data is undefined (no purchase on record)
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.data).toBeUndefined()
   })
 })

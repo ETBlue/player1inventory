@@ -79,8 +79,9 @@ describe('ItemCard - Expiration Warning Logic', () => {
     const daysUntilExpiration = Math.ceil(
       (estimatedDueDate.getTime() - Date.now()) / 86400000,
     )
-    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
-    const shouldShowWarning = daysUntilExpiration <= threshold
+    const shouldShowWarning =
+      item.expirationThreshold != null &&
+      daysUntilExpiration <= item.expirationThreshold
 
     expect(shouldShowWarning).toBe(true)
   })
@@ -94,14 +95,31 @@ describe('ItemCard - Expiration Warning Logic', () => {
     const daysUntilExpiration = Math.ceil(
       (estimatedDueDate.getTime() - Date.now()) / 86400000,
     )
-    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
-    const shouldShowWarning = daysUntilExpiration <= threshold
+    const shouldShowWarning =
+      item.expirationThreshold != null &&
+      daysUntilExpiration <= item.expirationThreshold
 
     expect(shouldShowWarning).toBe(false)
   })
 
-  it('always shows warning when no threshold set', () => {
-    const estimatedDueDate = new Date(Date.now() + 10 * 86400000) // 10 days from now
+  it('never shows warning when threshold is null (not configured)', () => {
+    const estimatedDueDate = new Date(Date.now() + 2 * 86400000) // 2 days from now
+    const item: Partial<Item> = {
+      expirationThreshold: null,
+    }
+
+    const daysUntilExpiration = Math.ceil(
+      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+    )
+    const shouldShowWarning =
+      item.expirationThreshold != null &&
+      daysUntilExpiration <= item.expirationThreshold
+
+    expect(shouldShowWarning).toBe(false)
+  })
+
+  it('never shows warning when threshold is undefined (not configured)', () => {
+    const estimatedDueDate = new Date(Date.now() + 2 * 86400000) // 2 days from now
     const item: Partial<Item> = {
       expirationThreshold: undefined,
     }
@@ -109,10 +127,11 @@ describe('ItemCard - Expiration Warning Logic', () => {
     const daysUntilExpiration = Math.ceil(
       (estimatedDueDate.getTime() - Date.now()) / 86400000,
     )
-    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
-    const shouldShowWarning = daysUntilExpiration <= threshold
+    const shouldShowWarning =
+      item.expirationThreshold != null &&
+      daysUntilExpiration <= item.expirationThreshold
 
-    expect(shouldShowWarning).toBe(true)
+    expect(shouldShowWarning).toBe(false)
   })
 
   it('shows warning when already expired', () => {
@@ -124,8 +143,9 @@ describe('ItemCard - Expiration Warning Logic', () => {
     const daysUntilExpiration = Math.ceil(
       (estimatedDueDate.getTime() - Date.now()) / 86400000,
     )
-    const threshold = item.expirationThreshold ?? Number.POSITIVE_INFINITY
-    const shouldShowWarning = daysUntilExpiration <= threshold
+    const shouldShowWarning =
+      item.expirationThreshold != null &&
+      daysUntilExpiration <= item.expirationThreshold
 
     expect(shouldShowWarning).toBe(true)
   })
@@ -245,6 +265,77 @@ describe('ItemCard - Tag Sorting', () => {
     expect(messageEl).toHaveClass('text-tint')
 
     // Should show warning icon (TriangleAlert component)
+    const icon = messageEl.querySelector('svg')
+    expect(icon).toBeInTheDocument()
+  })
+
+  it('shows plain muted badge (no error style) when expirationThreshold is null', async () => {
+    // Given an item expiring soon but with no threshold configured (null)
+    const soonDate = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000) // 6 days
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Test Item',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+      expirationThreshold: null, // no threshold configured
+      estimatedDueDays: 6, // triggers "Expires in X days" display format
+      dueDate: soonDate, // fallback used when no last purchase date in test env
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+    )
+
+    // Then badge shows plain muted text, not error styling
+    const messageEl = screen.getByText(/Expires in 6 days/i)
+    expect(messageEl).toHaveClass('text-foreground-muted')
+    expect(messageEl).not.toHaveClass('bg-status-error')
+    expect(messageEl).not.toHaveClass('text-tint')
+
+    // And no TriangleAlert icon
+    const icon = messageEl.querySelector('svg')
+    expect(icon).not.toBeInTheDocument()
+  })
+
+  it('shows error style badge when threshold is set and item is within it', async () => {
+    // Given an item expiring in 2 days with threshold 3
+    const soonDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) // 2 days
+    const item: Partial<Item> = {
+      id: '1',
+      name: 'Test Item',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+      expirationThreshold: 3, // warn within 3 days
+      estimatedDueDays: 2, // triggers "Expires in X days" display format
+      dueDate: soonDate, // fallback used when no last purchase date in test env
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      tagIds: [],
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+    )
+
+    // Then badge shows error styling (regression guard)
+    const messageEl = screen.getByText(/Expires in 2 days/i)
+    expect(messageEl).toHaveClass('bg-status-error')
+    expect(messageEl).toHaveClass('text-tint')
+
+    // And TriangleAlert icon is present
     const icon = messageEl.querySelector('svg')
     expect(icon).toBeInTheDocument()
   })
