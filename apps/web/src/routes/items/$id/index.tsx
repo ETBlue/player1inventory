@@ -40,7 +40,15 @@ function itemToFormValues(item: Item): ItemFormValues {
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
     consumeAmount: item.consumeAmount ?? 1,
-    expirationMode: item.estimatedDueDays != null ? 'days' : 'date',
+    // Read explicit expirationMode; fall back to inference for items created
+    // before this field was added (pre-migration existing data).
+    expirationMode:
+      item.expirationMode ??
+      (item.estimatedDueDays != null
+        ? 'days from purchase'
+        : item.dueDate
+          ? 'date'
+          : 'disabled'),
     expirationThreshold: item.expirationThreshold ?? '',
   }
 }
@@ -49,9 +57,13 @@ function itemToFormValues(item: Item): ItemFormValues {
 // Passing `undefined` tells Dexie to delete those properties from the stored record.
 // We need a separate type here because `exactOptionalPropertyTypes: true` prevents assigning
 // `undefined` to fields typed as `?: T` on `Partial<Item>`.
-type ItemUpdatePayload = Omit<Partial<Item>, 'dueDate' | 'estimatedDueDays'> & {
+type ItemUpdatePayload = Omit<
+  Partial<Item>,
+  'dueDate' | 'estimatedDueDays' | 'expirationMode'
+> & {
   dueDate?: Date | undefined
   estimatedDueDays?: number | undefined
+  expirationMode?: Item['expirationMode']
 }
 
 function buildUpdates(values: ItemFormValues): ItemUpdatePayload {
@@ -63,21 +75,19 @@ function buildUpdates(values: ItemFormValues): ItemUpdatePayload {
     targetQuantity: values.targetQuantity,
     refillThreshold: values.refillThreshold,
     consumeAmount: values.consumeAmount,
+    expirationMode: values.expirationMode,
   }
 
   if (values.expirationMode === 'date') {
-    // Explicitly set estimatedDueDays to undefined so Dexie removes the field from the record.
-    // Without this, switching from "days" to "date" mode leaves estimatedDueDays in the DB,
-    // causing itemToFormValues to re-infer the mode as 'days' on reload.
     updates.estimatedDueDays = undefined
     updates.dueDate = values.dueDate ? new Date(values.dueDate) : undefined
-  } else if (values.expirationMode === 'days') {
-    // Explicitly set dueDate to undefined so Dexie removes the field from the record.
+  } else if (values.expirationMode === 'days from purchase') {
     updates.dueDate = undefined
     updates.estimatedDueDays = values.estimatedDueDays
       ? Number(values.estimatedDueDays)
       : undefined
   } else {
+    // 'disabled'
     updates.dueDate = undefined
     updates.estimatedDueDays = undefined
   }
