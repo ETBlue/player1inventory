@@ -322,4 +322,25 @@ describe('ItemProgressBar with partial segments', () => {
     // Segment 3: 50% unpacked (0.5 of a pack)
     expect(segments[3]).toHaveAttribute('data-unpacked', '50')
   })
+
+  it('shows segmented bar for package-unit item with amountPerPackage (regression guard)', () => {
+    // targetUnit=package means target is already in packages — should NOT divide by amountPerPackage
+    // Olive Oil example: 3 bottles target, 500ml/bottle, 1 bottle in stock
+    const { container } = render(
+      <ItemProgressBar
+        current={1}
+        target={3}
+        status="ok"
+        targetUnit="package"
+        amountPerPackage={500}
+        packed={1}
+        unpacked={0}
+      />,
+    )
+    // Should show 3 segments (not 0 from dividing 3/500)
+    const segments = container.querySelectorAll('[data-segment]')
+    expect(segments).toHaveLength(3)
+    // First segment should be 100% filled
+    expect(segments[0]).toHaveAttribute('data-fill', '100')
+  })
 })

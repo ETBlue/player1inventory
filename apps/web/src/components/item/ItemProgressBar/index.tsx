@@ -248,13 +248,14 @@ export function ItemProgressBar({
     )
   }
 
-  // When amountPerPackage is set, convert all values to package units for segmented rendering.
-  // Fall back to continuous for measurement-unit items with no package info.
-  // Note: package-unit items without amountPerPackage always go segmented using raw target
-  // as the package count (e.g. "5 bottles" with no known volume = 5 segments).
   const hasPackageInfo = amountPerPackage !== undefined && amountPerPackage > 0
-  const scale = hasPackageInfo ? amountPerPackage : 1
-  const packageTarget = hasPackageInfo ? target / scale : target
+  // Only convert measurement totals to package counts when tracking in measurement units.
+  // For package-unit items, target is already in packages — no conversion needed.
+  // Note: package-unit items without amountPerPackage go segmented using raw target
+  // as the package count (e.g. "5 bottles" with no known volume = 5 segments).
+  const needsConversion = hasPackageInfo && targetUnit === 'measurement'
+  const scale = needsConversion ? amountPerPackage : 1
+  const packageTarget = needsConversion ? target / scale : target
   const useContinuous =
     (targetUnit === 'measurement' && !hasPackageInfo) ||
     packageTarget > SEGMENTED_MODE_MAX_TARGET
