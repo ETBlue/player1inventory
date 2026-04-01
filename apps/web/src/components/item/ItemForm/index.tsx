@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { roundToStep } from '@/lib/quantityUtils'
+import type { ExpirationMode } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 export type ItemFormValues = {
@@ -26,7 +27,7 @@ export type ItemFormValues = {
   targetQuantity: number
   refillThreshold: number
   consumeAmount: number
-  expirationMode: 'date' | 'days'
+  expirationMode: ExpirationMode
   expirationThreshold: string | number
   // Advanced fields
   targetUnit: 'package' | 'measurement'
@@ -44,7 +45,7 @@ const DEFAULT_VALUES: ItemFormValues = {
   targetQuantity: 0,
   refillThreshold: 0,
   consumeAmount: 1,
-  expirationMode: 'date',
+  expirationMode: 'disabled',
   expirationThreshold: '',
   targetUnit: 'package',
   measurementUnit: '',
@@ -84,7 +85,7 @@ export function ItemForm({
   const [targetQuantity, setTargetQuantity] = useState(merged.targetQuantity)
   const [refillThreshold, setRefillThreshold] = useState(merged.refillThreshold)
   const [consumeAmount, setConsumeAmount] = useState(merged.consumeAmount)
-  const [expirationMode, setExpirationMode] = useState<'date' | 'days'>(
+  const [expirationMode, setExpirationMode] = useState<ExpirationMode>(
     merged.expirationMode,
   )
   const [expirationThreshold, setExpirationThreshold] = useState(
@@ -461,7 +462,7 @@ export function ItemForm({
             </Label>
             <Select
               value={expirationMode}
-              onValueChange={(value: 'date' | 'days') =>
+              onValueChange={(value: ExpirationMode) =>
                 setExpirationMode(value)
               }
             >
@@ -469,13 +470,18 @@ export function ItemForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="disabled">
+                  <div className="flex items-center gap-2">
+                    <span>No expiration</span>
+                  </div>
+                </SelectItem>
                 <SelectItem value="date">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
                     <span>Specific Date</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="days">
+                <SelectItem value="days from purchase">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
                     <span>Days from Purchase</span>
@@ -485,7 +491,7 @@ export function ItemForm({
             </Select>
           </div>
 
-          {expirationMode === 'days' && (
+          {expirationMode === 'days from purchase' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="expirationDueDays">

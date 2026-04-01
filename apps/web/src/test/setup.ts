@@ -245,6 +245,12 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
+// Mock pointer and scroll APIs for Radix UI components in jsdom
+window.HTMLElement.prototype.hasPointerCapture = vi.fn()
+window.HTMLElement.prototype.setPointerCapture = vi.fn()
+window.HTMLElement.prototype.releasePointerCapture = vi.fn()
+window.HTMLElement.prototype.scrollIntoView = vi.fn()
+
 // Mock matchMedia for theme detection
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
