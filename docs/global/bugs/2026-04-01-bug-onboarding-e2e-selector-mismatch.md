@@ -20,12 +20,12 @@ Three E2E files still reference the old strings.
 
 ## Fix applied
 
-*TBD*
+Updated three E2E files with renamed strings (`'Choose from a template...'`, `'Build your pantry'`)
 
 ## Test added
 
-No new tests — updating existing selectors in the three affected files is the fix.
+Existing onboarding E2E spec (3 tests, all pass)
 
 ## PR/commit
 
-*TBD*
+commit `bc1e38b`, PR fix/e2e-dark-mode-contrast

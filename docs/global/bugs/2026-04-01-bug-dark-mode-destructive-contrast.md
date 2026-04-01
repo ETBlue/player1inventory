@@ -21,12 +21,12 @@ The dark mode `--importance-destructive` was sized for contrast against the old,
 
 ## Fix applied
 
-*TBD*
+Raised `--importance-destructive` in `.dark` from `hsl(330 90% 75%)` to `hsl(330 90% 90%)` in `theme.css`
 
 ## Test added
 
-*TBD* (existing E2E axe scan is the regression guard — no new test file needed)
+Existing dark mode axe E2E scan (18 tests, all pass)
 
 ## PR/commit
 
-*TBD*
+commit `03bfe94`, PR fix/e2e-dark-mode-contrast
