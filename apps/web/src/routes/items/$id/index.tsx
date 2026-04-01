@@ -119,6 +119,21 @@ function calcNewDefault(oldDefault: number, newConsumeAmount: number): number {
   return nearest === 0 ? newConsumeAmount : nearest
 }
 
+function calcRecipeDefaultAfterUnitSwitch(
+  oldDefault: number,
+  amountPerPackage: number,
+  newTargetUnit: 'measurement' | 'package',
+  newConsumeAmount: number,
+): number {
+  if (oldDefault === 0) return 0
+  const ratio =
+    newTargetUnit === 'measurement'
+      ? oldDefault * amountPerPackage
+      : oldDefault / amountPerPackage
+  const nearest = Math.round(ratio / newConsumeAmount) * newConsumeAmount
+  return nearest === 0 ? newConsumeAmount : nearest
+}
+
 function ItemDetailTab() {
   const { t } = useTranslation()
   const { id } = Route.useParams()
@@ -156,11 +171,40 @@ function ItemDetailTab() {
   const handleSubmit = async (values: ItemFormValues) => {
     const oldConsumeAmount = item.consumeAmount ?? 1
     const newConsumeAmount = values.consumeAmount
+    const targetUnitChanged = item.targetUnit !== values.targetUnit
 
-    if (oldConsumeAmount !== newConsumeAmount && allRecipes) {
-      const affected: Adjustment[] = allRecipes
-        .filter((r) => r.items.some((ri) => ri.itemId === id))
-        .flatMap((r) => {
+    const buildAdjustments = (): Adjustment[] => {
+      if (!allRecipes) return []
+      const affectedRecipes = allRecipes.filter((r) =>
+        r.items.some((ri) => ri.itemId === id),
+      )
+      if (targetUnitChanged) {
+        const amountPerPackage = Number(values.amountPerPackage)
+        if (!amountPerPackage || amountPerPackage <= 0) return []
+        return affectedRecipes.flatMap((r) => {
+          const ri = r.items.find((ri) => ri.itemId === id)
+          if (!ri) return []
+          const newDefault = calcRecipeDefaultAfterUnitSwitch(
+            ri.defaultAmount,
+            amountPerPackage,
+            values.targetUnit,
+            newConsumeAmount,
+          )
+          if (newDefault === ri.defaultAmount) return []
+          return [
+            {
+              recipeId: r.id,
+              recipeName: r.name,
+              oldAmount: ri.defaultAmount,
+              newAmount: newDefault,
+            },
+          ]
+        })
+      }
+      // When targetUnit also changed, the unit-switch branch above already snaps
+      // to newConsumeAmount, so a separate consume-amount adjustment is not needed.
+      if (oldConsumeAmount !== newConsumeAmount) {
+        return affectedRecipes.flatMap((r) => {
           const ri = r.items.find((ri) => ri.itemId === id)
           if (!ri) return []
           const newDefault = calcNewDefault(ri.defaultAmount, newConsumeAmount)
@@ -174,12 +218,15 @@ function ItemDetailTab() {
             },
           ]
         })
-
-      if (affected.length > 0) {
-        setPendingFormValues(values)
-        setPendingAdjustments(affected)
-        return
       }
+      return []
+    }
+
+    const affected = buildAdjustments()
+    if (affected.length > 0) {
+      setPendingFormValues(values)
+      setPendingAdjustments(affected)
+      return
     }
 
     await doSave(values)
