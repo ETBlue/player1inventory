@@ -19,6 +19,7 @@ import {
   useDeleteItemMutation,
   useGetItemQuery,
   useGetItemsQuery,
+  useLastPurchaseDatesQuery,
   useUpdateItemMutation,
 } from '@/generated/graphql'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
@@ -129,11 +130,34 @@ export function useItemWithQuantity(id: string) {
 }
 
 export function useLastPurchaseDate(itemId: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  // Cloud: use Apollo batch query (local logs are stale in cloud mode)
+  const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
+    variables: { itemIds: [itemId] },
+    skip: !isCloud || !itemId,
+  })
+  const cloudDate = cloudData?.lastPurchaseDates.find(
+    (r) => r.itemId === itemId,
+  )?.date
+
+  // Local: TanStack Query + Dexie (unchanged from before)
+  const localQuery = useQuery({
     queryKey: ['items', itemId, 'lastPurchase'],
     queryFn: () => getLastPurchaseDate(itemId),
-    enabled: !!itemId,
+    enabled: !isCloud && !!itemId,
   })
+
+  if (isCloud) {
+    return {
+      data: cloudDate ? new Date(cloudDate) : undefined,
+      isLoading: cloudLoading,
+      isError: false,
+    }
+  }
+
+  return localQuery
 }
 
 export function useCreateItem() {
