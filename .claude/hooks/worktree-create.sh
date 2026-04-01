@@ -24,4 +24,11 @@ for SRC_RELATIVE in "apps/web/.env.local" "apps/server/.env"; do
   fi
 done
 
+echo "Running pnpm install in worktree..." >&2
+pnpm --dir "$WORKTREE_DIR" install >&2
+echo "pnpm install complete" >&2
+
+echo "Running pnpm codegen in worktree..." >&2
+pnpm --dir "$WORKTREE_DIR" codegen >&2 || echo "Warning: codegen failed — run manually before building" >&2
+
 echo "$WORKTREE_DIR"
