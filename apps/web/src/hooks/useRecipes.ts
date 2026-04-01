@@ -22,6 +22,18 @@ import {
 import type { Recipe, RecipeItem } from '@/types'
 import { useDataMode } from './useDataMode'
 
+// GraphQL returns createdAt/updatedAt/lastCookedAt as ISO strings; convert to Date.
+function deserializeCloudRecipe(recipe: Record<string, unknown>): Recipe {
+  return {
+    ...recipe,
+    createdAt: new Date(recipe.createdAt as string),
+    updatedAt: new Date(recipe.updatedAt as string),
+    lastCookedAt: recipe.lastCookedAt
+      ? new Date(recipe.lastCookedAt as string)
+      : undefined,
+  } as Recipe
+}
+
 export function useRecipes() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -36,7 +48,9 @@ export function useRecipes() {
 
   if (isCloud) {
     return {
-      data: cloud.data?.recipes as Recipe[] | undefined,
+      data: cloud.data?.recipes.map((r) =>
+        deserializeCloudRecipe(r as Record<string, unknown>),
+      ),
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }
@@ -66,7 +80,9 @@ export function useRecipe(id: string) {
 
   if (isCloud) {
     return {
-      data: cloud.data?.recipe as Recipe | null | undefined,
+      data: cloud.data?.recipe
+        ? deserializeCloudRecipe(cloud.data.recipe as Record<string, unknown>)
+        : (cloud.data?.recipe as null | undefined),
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }

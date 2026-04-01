@@ -70,6 +70,40 @@ describe('useVendors (cloud mode)', () => {
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data?.[0]?.name).toBe('Costco')
   })
+
+  it('deserializes ISO date strings to Date objects in cloud mode', async () => {
+    // Given cloud mode and Apollo returns vendors with ISO date strings
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseGetVendorsQuery.mockReturnValue({
+      data: {
+        vendors: [
+          {
+            id: 'v-1',
+            name: 'Costco',
+            userId: 'u1',
+            createdAt: '2026-01-15T10:00:00.000Z',
+          },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called
+    const { result } = renderHook(() => useVendors(), {
+      wrapper: createWrapper(),
+    })
+
+    // Then createdAt is a Date instance, not a string
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const vendor = result.current.data?.[0] as
+      | { createdAt: unknown }
+      | undefined
+    expect(vendor?.createdAt).toBeInstanceOf(Date)
+    expect((vendor?.createdAt as Date).getTime()).toBe(
+      new Date('2026-01-15T10:00:00.000Z').getTime(),
+    )
+  })
 })
 
 // ─── useCreateVendor ──────────────────────────────────────────────────────────

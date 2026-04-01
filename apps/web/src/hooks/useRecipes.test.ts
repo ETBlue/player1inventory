@@ -79,6 +79,49 @@ describe('useRecipes (cloud mode)', () => {
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data?.[0]?.name).toBe('Pancakes')
   })
+
+  it('deserializes ISO date strings to Date objects in cloud mode', async () => {
+    // Given cloud mode and Apollo returns recipes with ISO date strings
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseGetRecipesQuery.mockReturnValue({
+      data: {
+        recipes: [
+          {
+            id: 'r-1',
+            name: 'Pancakes',
+            items: [],
+            userId: 'u1',
+            createdAt: '2026-01-15T10:00:00.000Z',
+            updatedAt: '2026-01-16T10:00:00.000Z',
+            lastCookedAt: '2026-01-17T10:00:00.000Z',
+          },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called
+    const { result } = renderHook(() => useRecipes(), {
+      wrapper: createWrapper(),
+    })
+
+    // Then date fields are Date instances, not strings
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const recipe = result.current.data?.[0] as
+      | {
+          createdAt: unknown
+          updatedAt: unknown
+          lastCookedAt: unknown
+        }
+      | undefined
+    expect(recipe?.createdAt).toBeInstanceOf(Date)
+    expect((recipe?.createdAt as Date).getTime()).toBe(
+      new Date('2026-01-15T10:00:00.000Z').getTime(),
+    )
+    expect(recipe?.updatedAt).toBeInstanceOf(Date)
+    expect(recipe?.lastCookedAt).toBeInstanceOf(Date)
+  })
 })
 
 // ─── useRecipe ────────────────────────────────────────────────────────────────
@@ -105,6 +148,42 @@ describe('useRecipe (cloud mode)', () => {
     expect(
       (result.current.data as { name: string } | null | undefined)?.name,
     ).toBe('Pancakes')
+  })
+
+  it('deserializes ISO date strings to Date objects for a single recipe in cloud mode', async () => {
+    // Given cloud mode and Apollo returns a recipe with ISO date strings
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseGetRecipeQuery.mockReturnValue({
+      data: {
+        recipe: {
+          id: 'r-1',
+          name: 'Pancakes',
+          items: [],
+          userId: 'u1',
+          createdAt: '2026-01-15T10:00:00.000Z',
+          updatedAt: '2026-01-16T10:00:00.000Z',
+        },
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called
+    const { result } = renderHook(() => useRecipe('r-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Then date fields are Date instances, not strings
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const recipe = result.current.data as
+      | { createdAt: unknown; updatedAt: unknown }
+      | null
+      | undefined
+    expect(recipe?.createdAt).toBeInstanceOf(Date)
+    expect((recipe?.createdAt as Date).getTime()).toBe(
+      new Date('2026-01-15T10:00:00.000Z').getTime(),
+    )
+    expect(recipe?.updatedAt).toBeInstanceOf(Date)
   })
 })
 

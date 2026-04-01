@@ -17,6 +17,14 @@ import {
 import type { Vendor } from '@/types'
 import { useDataMode } from './useDataMode'
 
+// GraphQL returns createdAt as ISO string; convert to Date.
+function deserializeCloudVendor(vendor: Record<string, unknown>): Vendor {
+  return {
+    ...vendor,
+    createdAt: new Date(vendor.createdAt as string),
+  } as Vendor
+}
+
 export function useVendors() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -31,7 +39,9 @@ export function useVendors() {
 
   if (isCloud) {
     return {
-      data: cloud.data?.vendors as Vendor[] | undefined,
+      data: cloud.data?.vendors.map((v) =>
+        deserializeCloudVendor(v as Record<string, unknown>),
+      ),
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }
