@@ -23,6 +23,17 @@ import {
 import type { CartItem, ShoppingCart } from '@/types'
 import { useDataMode } from './useDataMode'
 
+// GraphQL returns createdAt/completedAt as ISO strings; convert to Date.
+function deserializeCloudCart(cart: Record<string, unknown>): ShoppingCart {
+  return {
+    ...cart,
+    createdAt: new Date(cart.createdAt as string),
+    completedAt: cart.completedAt
+      ? new Date(cart.completedAt as string)
+      : undefined,
+  } as ShoppingCart
+}
+
 export function useActiveCart() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -37,7 +48,9 @@ export function useActiveCart() {
 
   if (isCloud) {
     return {
-      data: cloud.data?.activeCart as ShoppingCart | undefined,
+      data: cloud.data?.activeCart
+        ? deserializeCloudCart(cloud.data.activeCart as Record<string, unknown>)
+        : undefined,
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }

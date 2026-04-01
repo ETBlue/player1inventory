@@ -1,23 +1,20 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useCheckout } from './useShoppingCart'
+import { useActiveCart, useCheckout } from './useShoppingCart'
 
 const mockCloudCheckout = vi.fn().mockResolvedValue({
   data: { checkout: { id: 'cart-1', status: 'completed' } },
 })
+const mockUseActiveCartQuery = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
-    useActiveCartQuery: () => ({
-      data: undefined,
-      loading: false,
-      error: undefined,
-    }),
+    useActiveCartQuery: () => mockUseActiveCartQuery(),
     useCartItemsQuery: () => ({
       data: undefined,
       loading: false,
@@ -54,6 +51,44 @@ function createWrapper() {
 afterEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+})
+
+// ─── useActiveCart ────────────────────────────────────────────────────────────
+
+describe('useActiveCart (cloud mode)', () => {
+  it('deserializes ISO date strings to Date objects in cloud mode', async () => {
+    // Given cloud mode and Apollo returns a cart with ISO date strings
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseActiveCartQuery.mockReturnValue({
+      data: {
+        activeCart: {
+          id: 'cart-1',
+          status: 'active',
+          userId: 'u1',
+          createdAt: '2026-01-15T10:00:00.000Z',
+          completedAt: '2026-01-16T10:00:00.000Z',
+        },
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook is called
+    const { result } = renderHook(() => useActiveCart(), {
+      wrapper: createWrapper(),
+    })
+
+    // Then date fields are Date instances, not strings
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const cart = result.current.data as
+      | { createdAt: unknown; completedAt: unknown }
+      | undefined
+    expect(cart?.createdAt).toBeInstanceOf(Date)
+    expect((cart?.createdAt as Date).getTime()).toBe(
+      new Date('2026-01-15T10:00:00.000Z').getTime(),
+    )
+    expect(cart?.completedAt).toBeInstanceOf(Date)
+  })
 })
 
 describe('useCheckout (cloud mode)', () => {
