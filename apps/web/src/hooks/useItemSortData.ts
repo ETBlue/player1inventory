@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useLastPurchaseDatesQuery } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
+import { computeExpiryDate } from '@/lib/expiration'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
@@ -34,9 +35,12 @@ export function useItemSortData(items: Item[] | undefined) {
     return map
   }, [cloudDatesData])
 
-  // ── Local: TanStack Query (unchanged from before) ─────────────────────────
+  // ── Local: TanStack Query ─────────────────────────────────────────────────
   const expiryKey = safeItems
-    .map((i) => `${i.id}:${String(i.dueDate)}:${String(i.estimatedDueDays)}`)
+    .map(
+      (i) =>
+        `${i.id}:${String(i.expirationMode)}:${String(i.dueDate)}:${String(i.estimatedDueDays)}`,
+    )
     .join(',')
 
   const { data: localExpiryDates } = useQuery({
@@ -45,14 +49,7 @@ export function useItemSortData(items: Item[] | undefined) {
       const map = new Map<string, Date | undefined>()
       for (const item of safeItems) {
         const lastPurchase = await getLastPurchaseDate(item.id)
-        const estimatedDate =
-          item.estimatedDueDays && lastPurchase
-            ? new Date(
-                lastPurchase.getTime() +
-                  item.estimatedDueDays * 24 * 60 * 60 * 1000,
-              )
-            : (item.dueDate ?? undefined)
-        map.set(item.id, estimatedDate)
+        map.set(item.id, computeExpiryDate(item, lastPurchase ?? undefined))
       }
       return map
     },
@@ -73,20 +70,13 @@ export function useItemSortData(items: Item[] | undefined) {
     enabled: !isCloud && safeItems.length > 0,
   })
 
-  // ── Compute cloud expiryDates from cloudPurchaseDates + item fields ───────
+  // ── Cloud: derive expiryDates from cloudPurchaseDates + computeExpiryDate ─
   const cloudExpiryDates = useMemo(() => {
     if (!isCloud) return undefined
     const map = new Map<string, Date | undefined>()
     for (const item of safeItems) {
-      const lastPurchase = cloudPurchaseDates.get(item.id) ?? null
-      const estimatedDate =
-        item.estimatedDueDays && lastPurchase
-          ? new Date(
-              lastPurchase.getTime() +
-                item.estimatedDueDays * 24 * 60 * 60 * 1000,
-            )
-          : (item.dueDate ?? undefined)
-      map.set(item.id, estimatedDate)
+      const lastPurchase = cloudPurchaseDates.get(item.id) ?? undefined
+      map.set(item.id, computeExpiryDate(item, lastPurchase))
     }
     return map
   }, [isCloud, safeItems, cloudPurchaseDates])
