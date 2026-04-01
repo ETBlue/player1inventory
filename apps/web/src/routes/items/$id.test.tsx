@@ -1446,3 +1446,223 @@ describe('consumeAmount change — recipe adjustment', () => {
     })
   })
 })
+
+describe('targetUnit change — recipe adjustment', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.recipes.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = async (itemId: string) => {
+    // Pre-seed the recipes query cache so useRecipes() returns data synchronously on mount,
+    // eliminating race conditions between the item loading and the recipe data being available.
+    await queryClient.prefetchQuery({
+      queryKey: ['recipes'],
+      queryFn: getRecipes,
+    })
+
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  it('user can switch measurement to package and recipe defaultAmount converts via amountPerPackage ratio', async () => {
+    const user = userEvent.setup()
+
+    // Given an item tracked in measurement: consumeAmount 100g, amountPerPackage 500
+    const item = await createItem({
+      name: 'Flour',
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      targetQuantity: 1000,
+      refillThreshold: 200,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+    // And a recipe using 500g (= 1 pack) per serving
+    const recipe = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 500 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Flour'))
+
+    // When user toggles track in measurement OFF (switching to package mode)
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a confirm dialog appears listing the affected recipe
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+      expect(screen.getByText('Bread')).toBeInTheDocument()
+    })
+
+    // When user confirms
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then recipe defaultAmount converts: 500g / 500 = 1 pack, snapped to consumeAmount 0.2
+    // calcRecipeDefaultAfterUnitSwitch(500, 500, 'package', 0.2):
+    //   ratio = 500/500 = 1; nearest = round(1/0.2)*0.2 = 5*0.2 = 1.0
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const ri = updated?.items.find((r) => r.itemId === item.id)
+      expect(ri?.defaultAmount).toBe(1)
+    })
+  })
+
+  it('user can switch package to measurement and recipe defaultAmount converts via amountPerPackage ratio', async () => {
+    const user = userEvent.setup()
+
+    // Given an item tracked in package: consumeAmount 1 pack, amountPerPackage 500
+    // (measurementUnit and amountPerPackage must be pre-filled so form can submit)
+    const item = await createItem({
+      name: 'Flour',
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    // And a recipe using 2 packs per serving
+    const recipe = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Flour'))
+
+    // When user toggles track in measurement ON (switching to measurement mode)
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a confirm dialog appears
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+      expect(screen.getByText('Bread')).toBeInTheDocument()
+    })
+
+    // When user confirms
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then recipe defaultAmount converts: 2 packs * 500g = 1000g, snapped to consumeAmount 500
+    // calcRecipeDefaultAfterUnitSwitch(2, 500, 'measurement', 500):
+    //   ratio = 2*500 = 1000; nearest = round(1000/500)*500 = 2*500 = 1000
+    await waitFor(async () => {
+      const updated = await db.recipes.get(recipe.id)
+      const ri = updated?.items.find((r) => r.itemId === item.id)
+      expect(ri?.defaultAmount).toBe(1000)
+    })
+  })
+
+  it('user can switch unit mode without affecting a recipe that has defaultAmount 0', async () => {
+    const user = userEvent.setup()
+
+    // Given an item in measurement mode and a recipe with defaultAmount 0 (optional ingredient)
+    const item = await createItem({
+      name: 'Salt',
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      targetQuantity: 500,
+      refillThreshold: 100,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 5,
+      tagIds: [],
+    })
+    await createRecipe({
+      name: 'Soup',
+      items: [{ itemId: item.id, defaultAmount: 0 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Salt'))
+
+    // When user switches to package mode and saves
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then NO dialog appears (defaultAmount 0 is unchanged)
+    // calcRecipeDefaultAfterUnitSwitch(0, ...) returns 0 early → 0 === 0 → skip
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      expect(updated?.targetUnit).toBe('package')
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('user can switch unit mode without a dialog when converted defaultAmount is unchanged', async () => {
+    const user = userEvent.setup()
+
+    // Given an item with amountPerPackage 1 (1:1 ratio, e.g. 1L per bottle)
+    // consumeAmount 0.5L; recipe defaultAmount 2 (= 2L per serving)
+    // Switch to package: ratio = 2/1 = 2; nearest = round(2/0.5)*0.5 = 4*0.5 = 2 (unchanged)
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'bottle',
+      measurementUnit: 'L',
+      amountPerPackage: 1,
+      targetUnit: 'measurement',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 0.5,
+      tagIds: [],
+    })
+    await createRecipe({
+      name: 'Smoothie',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    await renderItemDetailPage(item.id)
+    await waitFor(() => screen.getByText('Milk'))
+
+    // When user switches to package mode and saves
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then NO dialog appears (converted value equals old defaultAmount)
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      expect(updated?.targetUnit).toBe('package')
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+})
