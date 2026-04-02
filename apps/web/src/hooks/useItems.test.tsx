@@ -179,15 +179,25 @@ describe('useCreateItem (cloud mode)', () => {
       refetch: vi.fn(),
     })
 
-    // When the mutation is called
+    // When the mutation is called with full item data
     const { result } = renderHook(() => useCreateItem(), {
       wrapper: createWrapper(),
     })
-    const created = await result.current.mutateAsync({ name: 'Cheese' })
+    const itemInput = {
+      name: 'Cheese',
+      tagIds: [],
+      targetUnit: 'package' as const,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+    const created = await result.current.mutateAsync(itemInput)
 
-    // Then it delegates to cloudCreate
+    // Then it delegates to cloudCreate with wrapped input
     expect(mockCloudCreate).toHaveBeenCalledWith({
-      variables: { name: 'Cheese' },
+      variables: { input: itemInput },
     })
     expect((created as { name: string } | undefined)?.name).toBe('Cheese')
   })

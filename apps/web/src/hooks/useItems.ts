@@ -9,7 +9,7 @@ import {
   getLastPurchaseDate,
   updateItem,
 } from '@/db/operations'
-import type { UpdateItemInput } from '@/generated/graphql'
+import type { CreateItemInput, UpdateItemInput } from '@/generated/graphql'
 import {
   GetItemsDocument,
   GetRecipesDocument,
@@ -26,6 +26,18 @@ import { deserializeItem } from '@/lib/deserialization'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 import { useDataMode } from './useDataMode'
+
+// Map frontend Item (without id/timestamps) to the GraphQL CreateItemInput shape.
+// Converts dueDate from Date to ISO string; passes all other fields through.
+function toCreateItemInput(
+  input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
+): CreateItemInput {
+  const { dueDate, ...rest } = input
+  return {
+    ...rest,
+    dueDate: dueDate instanceof Date ? dueDate.toISOString() : undefined,
+  }
+}
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
 // Strips non-updatable fields and converts dueDate from Date to ISO string.
@@ -171,17 +183,17 @@ export function useCreateItem() {
   if (mode === 'cloud') {
     return {
       mutate: (
-        input: { name: string },
+        input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudCreate({ variables: { name: input.name } }).then(
+        cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: (input: { name: string }) =>
-        cloudCreate({ variables: { name: input.name } }).then(
+      mutateAsync: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) =>
+        cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
           (r) => r.data?.createItem,
         ),
       isPending: false,
