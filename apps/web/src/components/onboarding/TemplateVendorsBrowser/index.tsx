@@ -109,7 +109,7 @@ export function TemplateVendorsBrowser({
           onKeyDown={(e) => {
             if (e.key === 'Escape') setSearch('')
           }}
-          className="flex-1 border-none shadow-none bg-transparent h-auto py-2 text-sm"
+          className="flex-1 border-none shadow-none bg-transparent h-auto py-2 text-sm -my-2"
         />
         {search && (
           <Button
