@@ -42,19 +42,17 @@ export interface Tag {
 }
 
 export enum TagColor {
-  red = 'red',
   orange = 'orange',
+  brown = 'brown',
   amber = 'amber',
-  yellow = 'yellow',
+  lime = 'lime',
   green = 'green',
   teal = 'teal',
+  cyan = 'cyan',
   blue = 'blue',
   indigo = 'indigo',
   purple = 'purple',
   pink = 'pink',
-  brown = 'brown',
-  lime = 'lime',
-  cyan = 'cyan',
   rose = 'rose',
 }
 

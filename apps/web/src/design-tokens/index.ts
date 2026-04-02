@@ -1,9 +1,7 @@
 // Colors with tint/default variants
+import type { TagColor } from '@/types'
+
 export const colors = {
-  red: {
-    tint: 'var(--color-red-tint)',
-    default: 'var(--color-red)',
-  },
   orange: {
     tint: 'var(--color-orange-tint)',
     default: 'var(--color-orange)',
@@ -11,10 +9,6 @@ export const colors = {
   amber: {
     tint: 'var(--color-amber-tint)',
     default: 'var(--color-amber)',
-  },
-  yellow: {
-    tint: 'var(--color-yellow-tint)',
-    default: 'var(--color-yellow)',
   },
   green: {
     tint: 'var(--color-green-tint)',
@@ -58,7 +52,7 @@ export const colors = {
   },
 } as const
 
-export type ColorName = keyof typeof colors
+export type ColorName = TagColor
 export type ColorVariant = 'tint' | 'default'
 
 // Generic color utilities

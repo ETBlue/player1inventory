@@ -44,18 +44,16 @@ Dark mode: 3.9% → 10% → 15% (progressively lighter)
 </div>
 
 // Tag colors (from theme.css)
-import { colors, colorUtils } from '@/design-tokens'
+import { colors } from '@/design-tokens'
 
 <Badge style={{
-  backgroundColor: colors.red.tint,
-  color: colorUtils.dark
+  backgroundColor: colors.orange.tint,
 }}>
   Tag (light tint)
 </Badge>
 
 <Badge style={{
-  backgroundColor: colors.red.default,
-  color: colorUtils.tint
+  backgroundColor: colors.orange.default,
 }}>
   Tag (bold)
 </Badge>
@@ -63,14 +61,14 @@ import { colors, colorUtils } from '@/design-tokens'
 
 **Button color variants:**
 
-The Button component supports 20 color variants matching the Badge color palette:
-- Solid variants (14): red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose
-- Tint variants (14): red-tint, orange-tint, amber-tint, yellow-tint, green-tint, teal-tint, blue-tint, indigo-tint, purple-tint, pink-tint, brown-tint, lime-tint, cyan-tint, rose-tint
+The Button component supports 24 color variants matching the Badge color palette:
+- Solid variants (12): orange, brown, amber, lime, green, teal, cyan, blue, indigo, purple, pink, rose
+- Tint variants (12): orange-tint, brown-tint, amber-tint, lime-tint, green-tint, teal-tint, cyan-tint, blue-tint, indigo-tint, purple-tint, pink-tint, rose-tint
 
 Usage:
 ```tsx
 <Button variant="teal-tint">Teal Button</Button>
-<Button variant="red">Red Button</Button>
+<Button variant="orange">Orange Button</Button>
 ```
 
 These variants are used in tag type filter triggers (`TagTypeDropdown`) to display tag type colors when filters are selected.
@@ -78,8 +76,8 @@ These variants are used in tag type filter triggers (`TagTypeDropdown`) to displ
 **Token categories:**
 - **Theme**: Semantic colors (background, foreground, primary, card, destructive, etc.) - defined in theme.css
 - **Background layers**: base (page, 100% light / 3.9% dark) / surface (cards, 95% light / 10% dark) / elevated (toolbars, 90% light / 15% dark) - defined in theme.css
-- **Status colors**: ok, warning, error, inactive (with tint variants) - defined in theme.css
-- **Colors**: 14 presets (red, orange, amber, yellow, green, teal, blue, indigo, purple, pink, brown, lime, cyan, rose) - defined in theme.css
+- **Status colors**: ok, warning, error, inactive (with tint variants, each color-specific e.g. `text-status-error-tint`) - defined in theme.css
+- **Colors**: 12 presets (orange, brown, amber, lime, green, teal, cyan, blue, indigo, purple, pink, rose) - defined in theme.css
 - **Color variants**: tint (light background) / default (bold, high contrast)
 - **Inventory states**: lowStock, expiring, inStock, outOfStock - defined in theme.css
 - **Shadows**: sm, md, lg - defined in shadows.css
