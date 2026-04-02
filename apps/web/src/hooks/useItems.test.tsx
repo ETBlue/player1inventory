@@ -197,7 +197,7 @@ describe('useCreateItem (cloud mode)', () => {
 
     // Then it delegates to cloudCreate with wrapped input
     expect(mockCloudCreate).toHaveBeenCalledWith({
-      variables: { input: itemInput },
+      variables: { input: { ...itemInput, dueDate: null } },
     })
     expect((created as { name: string } | undefined)?.name).toBe('Cheese')
   })
