@@ -13,7 +13,7 @@ describe('TagBadge stories smoke tests', () => {
 
   it('DifferentColors renders without error', () => {
     render(<DifferentColors />)
-    expect(screen.getAllByText(/red/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/orange/i).length).toBeGreaterThan(0)
   })
 
   it('WithCountProp renders the provided count instead of database value', () => {

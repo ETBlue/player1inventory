@@ -5,13 +5,13 @@ import { ColorSelect } from '.'
 
 describe('ColorSelect', () => {
   it('renders with selected color', () => {
-    // Given a color select with red selected
+    // Given a color select with orange selected
     const onChange = vi.fn()
-    render(<ColorSelect value={TagColor.red} onChange={onChange} />)
+    render(<ColorSelect value={TagColor.orange} onChange={onChange} />)
 
     // Then the trigger shows the selected color (two badges: tint + bold)
     const trigger = screen.getByRole('combobox')
-    const badges = within(trigger).getAllByText('red')
+    const badges = within(trigger).getAllByText('orange')
     expect(badges).toHaveLength(2)
   })
 
@@ -29,7 +29,7 @@ describe('ColorSelect', () => {
   it('renders as a combobox', () => {
     // Given a color select
     const onChange = vi.fn()
-    render(<ColorSelect value={TagColor.red} onChange={onChange} />)
+    render(<ColorSelect value={TagColor.orange} onChange={onChange} />)
 
     // Then it renders as a combobox role
     expect(screen.getByRole('combobox')).toBeInTheDocument()
@@ -39,7 +39,11 @@ describe('ColorSelect', () => {
     // Given a color select with custom id
     const onChange = vi.fn()
     render(
-      <ColorSelect value={TagColor.red} onChange={onChange} id="custom-id" />,
+      <ColorSelect
+        value={TagColor.orange}
+        onChange={onChange}
+        id="custom-id"
+      />,
     )
 
     // Then the trigger has the custom id
