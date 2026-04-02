@@ -160,4 +160,60 @@ export class ItemPage {
     // Assigned vendor badge: role="button" aria-pressed=true (src/routes/items/$id/vendors.tsx)
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
+
+  // ── Expiration mode ──────────────────────────────────────────────────────────
+
+  async selectExpirationMode(mode: 'Specific Date' | 'Days from Purchase') {
+    // Expiration mode Select trigger: id="expirationMode", role="combobox"
+    // Label: "Calculate Expiration based on" (src/components/item/ItemForm/index.tsx:459-461)
+    // Modes available: "Specific Date" (value="date"), "Days from Purchase" (value="days")
+    // Default is "Specific Date", so selecting "Specific Date" when it's already selected
+    // will not appear as an option in the Radix dropdown (Radix hides the selected option).
+    //
+    // Radix Select also renders a visually-hidden native <select> for form compatibility.
+    // To avoid clicking the native <option>, we scope the option click to inside the
+    // visible Radix listbox (role="listbox") rather than using getByRole('option') globally.
+    //
+    // Pattern: click trigger → wait for listbox → click option scoped to listbox
+    const trigger = this.page.locator('#expirationMode')
+    await trigger.click()
+    // Wait for the Radix listbox portal to appear
+    const listbox = this.page.getByRole('listbox')
+    await listbox.waitFor({ state: 'visible' })
+    // Click the option scoped inside the listbox to avoid the hidden native <option>
+    await listbox.getByRole('option', { name: mode }).click()
+  }
+
+  async fillExpirationDueDate(date: string) {
+    // "Expires on" date input: id="expirationDueDate", type="date"
+    // In the Stock section — only visible on the item detail page (/items/$id),
+    // NOT on the new item page (/items/new). Shown when expirationMode === 'date'.
+    // (src/components/item/ItemForm/index.tsx:332-344)
+    await this.page.locator('#expirationDueDate').fill(date)
+  }
+
+  async fillEstimatedDueDays(days: string) {
+    // "Expires in (days)" input: id="expirationDueDays", type="number"
+    // In the Item Info section — visible on both new item and detail pages.
+    // Shown when expirationMode === 'days' (src/components/item/ItemForm/index.tsx:488-503)
+    await this.page.locator('#expirationDueDays').fill(days)
+  }
+
+  async fillTargetQuantity(quantity: string) {
+    // Target Quantity input: id="targetQuantity" (src/components/item/ItemForm/index.tsx:383)
+    await this.page.locator('#targetQuantity').fill(quantity)
+  }
+
+  async fillPackedQuantity(quantity: string) {
+    // Packed quantity input: id="packedQuantity", in Stock section
+    // Only visible on item detail page (/items/$id), not on /items/new
+    // (src/components/item/ItemForm/index.tsx:253-264)
+    await this.page.locator('#packedQuantity').fill(quantity)
+  }
+
+  getExpirationModeSelector(): Locator {
+    // The Select trigger for expiration mode: id="expirationMode", role="combobox"
+    // (src/components/item/ItemForm/index.tsx:468)
+    return this.page.locator('#expirationMode')
+  }
 }

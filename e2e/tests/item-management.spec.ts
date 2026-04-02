@@ -141,6 +141,56 @@ test('user can assign a vendor to an item', async ({ page, baseURL }) => {
   await expect(page.getByRole('main').getByText('Costco')).toBeVisible()
 })
 
+test('user can set specific-date expiration when creating an item', async ({ page }) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given user is on the new item page (expirationMode defaults to "Specific Date" = 'date')
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+
+  // When user fills name and sets targetQuantity > 0 (so item is not inactive)
+  // "Specific Date" is the default mode — no need to change the selector
+  await item.fillName('Expiry Date Item')
+  await item.fillTargetQuantity('1')
+  await item.save()
+
+  // Then on the detail page, set packedQuantity > 0 and enter a past due date
+  // (expirationDueDate lives in the Stock section, only accessible on the detail page)
+  // A past date guarantees the "Expires on" badge is visible (no future-threshold needed)
+  await item.fillPackedQuantity('1')
+  await item.fillExpirationDueDate('2020-01-01')
+  await item.saveExisting()
+
+  // Then the item card in the pantry shows the expiration date text
+  await pantry.navigateTo()
+  await expect(page.getByText(/Expires on 2020-01-01/)).toBeVisible()
+})
+
+test('user can set days-from-purchase expiration on an item', async ({ page }) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given an existing item (create first, then navigate to detail page)
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Expiry Days Item')
+  await item.save()
+  // save() navigates to /items/:id — capture the item ID before leaving
+  const itemId = item.getCurrentItemId()
+
+  // When user switches to "Days from Purchase" mode and enters estimated days
+  // (the detail page shows the full form including the mode selector in Item Info)
+  // The expirationDueDays input appears in the Item Info section when mode is 'days'
+  await item.selectExpirationMode('Days from Purchase')
+  await item.fillEstimatedDueDays('30')
+  await item.saveExisting()
+
+  // Then revisiting the item shows "Days from Purchase" mode persisted
+  await page.goto(`/items/${itemId}`)
+  await expect(item.getExpirationModeSelector()).toContainText('Days from Purchase')
+})
+
 test('user can delete an item', async ({ page }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
