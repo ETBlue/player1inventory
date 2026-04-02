@@ -28,10 +28,10 @@ function CloudModeCardContent({
   const { t } = useTranslation()
   return (
     <>
-      <Cloud className="h-5 w-5 text-foreground-muted " />
+      <Cloud className="h-5 w-5 text-foreground-muted" />
       <div className="flex-1">
         <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
-        <p className="text-sm text-foreground-muted">
+        <p className="text-sm text-foreground-muted break-all">
           {t('settings.dataMode.cloud.signedInAs', { email })}
         </p>
       </div>
