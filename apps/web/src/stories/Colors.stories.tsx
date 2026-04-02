@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useEffect, useRef, useState } from 'react'
-import { type ColorName, colors } from '@/design-tokens'
+import { colors } from '@/design-tokens'
+import { TagColor } from '@/types'
 
 const meta: Meta = {
   title: 'Colors',
@@ -219,18 +220,7 @@ const SimpleColorCard = ({ name, cssVar, usage }: SimpleColorCardProps) => {
   )
 }
 
-const COLOR_NAMES: ColorName[] = [
-  'red',
-  'orange',
-  'amber',
-  'yellow',
-  'green',
-  'teal',
-  'blue',
-  'indigo',
-  'purple',
-  'pink',
-]
+const COLOR_NAMES = Object.values(TagColor) as TagColor[]
 
 export const AllColors: Story = {
   render: () => (
