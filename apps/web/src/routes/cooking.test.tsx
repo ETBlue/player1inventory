@@ -1371,14 +1371,19 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('user can sort recipes by name alphabetically by default', async () => {
-    // Given two recipes created in non-alphabetical order
-    await createRecipe({ name: 'Zucchini Soup' })
-    await createRecipe({ name: 'Apple Tart' })
+  it('user can sort recipes by last cooked by default', async () => {
+    // Given two recipes with known lastCookedAt values (non-alphabetical cook order)
+    const zucchini = await createRecipe({ name: 'Zucchini Soup' })
+    const apple = await createRecipe({ name: 'Apple Tart' })
+    // Set Apple Tart as more recently cooked (desc default → it appears first)
+    await db.recipes.update(zucchini.id, {
+      lastCookedAt: new Date('2024-01-01'),
+    })
+    await db.recipes.update(apple.id, { lastCookedAt: new Date('2024-06-01') })
 
     renderPage()
 
-    // Then recipes appear alphabetically (Apple Tart before Zucchini Soup)
+    // Then recipes appear by last cooked descending (Apple Tart before Zucchini Soup)
     await waitFor(() => {
       const recipeNames = screen
         .getAllByRole('button')

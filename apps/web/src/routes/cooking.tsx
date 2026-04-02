@@ -53,9 +53,9 @@ export const Route = createFileRoute('/cooking')({
   component: CookingPage,
   validateSearch: (search: Record<string, unknown>) => ({
     sort:
-      search.sort === 'recent' || search.sort === 'count'
-        ? (search.sort as 'recent' | 'count')
-        : ('name' as const),
+      search.sort === 'name' || search.sort === 'count'
+        ? (search.sort as 'name' | 'count')
+        : ('recent' as const),
     dir: search.dir === 'desc' ? ('desc' as const) : ('asc' as const),
     q: typeof search.q === 'string' ? search.q : '',
     expanded: typeof search.expanded === 'string' ? search.expanded : '',
@@ -186,7 +186,7 @@ function CookingPage() {
       navigate({
         to: '/cooking',
         search: (prev) => ({
-          sort: prev.sort ?? 'name',
+          sort: prev.sort ?? 'recent',
           dir: prev.dir ?? 'asc',
           q: prev.q ?? '',
           expanded: [...newSet].join(','),
@@ -207,7 +207,7 @@ function CookingPage() {
     navigate({
       to: '/cooking',
       search: (prev) => ({
-        sort: prev.sort ?? 'name',
+        sort: prev.sort ?? 'recent',
         dir: prev.dir ?? 'asc',
         q: prev.q ?? '',
         expanded: [...newSet].join(','),
@@ -428,7 +428,7 @@ function CookingPage() {
           navigate({
             to: '/cooking',
             search: (prev) => ({
-              sort: prev.sort ?? 'name',
+              sort: prev.sort ?? 'recent',
               dir: prev.dir ?? 'asc',
               q: prev.q ?? '',
               expanded: recipes.map((r) => r.id).join(','),
@@ -440,7 +440,7 @@ function CookingPage() {
           navigate({
             to: '/cooking',
             search: (prev) => ({
-              sort: prev.sort ?? 'name',
+              sort: prev.sort ?? 'recent',
               dir: prev.dir ?? 'asc',
               q: prev.q ?? '',
               expanded: '',
