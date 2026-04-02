@@ -578,9 +578,6 @@ function CookingPage() {
                         {checkedCount > 0
                           ? `, ${t('cooking.recipe.itemCount', { count: checkedCount })}`
                           : ''}
-                        {recipeCheckState !== false
-                          ? `, × ${sessionServings.get(recipe.id) ?? 1}`
-                          : ''}
                       </div>
                     </CardContent>
                   </Card>

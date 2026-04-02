@@ -1016,13 +1016,13 @@ describe('Use (Cooking) Page', () => {
     })
     await user.click(screen.getByLabelText('Pasta'))
 
-    // Then subtitle text includes × 1
+    // Then subtitle text includes item count (× N was removed from subtitle)
     await waitFor(() => {
-      expect(screen.getByText(/× 1/)).toBeInTheDocument()
+      expect(screen.queryByText(/× 1/)).not.toBeInTheDocument()
     })
   })
 
-  it('recipe subtitle shows × N after increasing servings', async () => {
+  it('recipe subtitle does not show × N after increasing servings (× N removed from subtitle)', async () => {
     // Given a recipe with 1 item (defaultAmount > 0)
     const item = await makeItem('Flour', 1)
     await createRecipe({
@@ -1048,9 +1048,9 @@ describe('Use (Cooking) Page', () => {
     await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
     await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
 
-    // Then subtitle text includes × 3
+    // Then subtitle text does NOT include × N (removed from recipe card subtitle)
     await waitFor(() => {
-      expect(screen.getByText(/× 3/)).toBeInTheDocument()
+      expect(screen.queryByText(/× 3/)).not.toBeInTheDocument()
     })
   })
 
@@ -1079,7 +1079,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then count text shows 0 servings and Cancel button is absent
     await waitFor(() => {
-      expect(screen.getByText(/cooking 0 servings/i)).toBeInTheDocument()
+      expect(screen.getByText(/^0 servings$/i)).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /cancel/i }),
       ).not.toBeInTheDocument()
@@ -1101,7 +1101,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then count text updates to 1 serving cooked
     await waitFor(() => {
-      expect(screen.getByText(/cooking 1 serving/i)).toBeInTheDocument()
+      expect(screen.getByText(/^1 serving$/i)).toBeInTheDocument()
     })
 
     // Then Cancel button appears

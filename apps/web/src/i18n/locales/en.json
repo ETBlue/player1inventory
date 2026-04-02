@@ -63,8 +63,8 @@
   },
   "cooking": {
     "toolbar": {
-      "servingCount_one": "Cooking {{count}} serving",
-      "servingCount_other": "Cooking {{count}} servings"
+      "servingCount_one": "{{count}} serving",
+      "servingCount_other": "{{count}} servings"
     },
     "empty": {
       "title": "No recipes yet",
