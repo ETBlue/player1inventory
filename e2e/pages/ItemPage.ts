@@ -186,9 +186,9 @@ export class ItemPage {
 
   async fillExpirationDueDate(date: string) {
     // "Expires on" date input: id="expirationDueDate", type="date"
-    // In the Stock section — only visible on the item detail page (/items/$id),
-    // NOT on the new item page (/items/new). Shown when expirationMode === 'date'.
-    // (src/components/item/ItemForm/index.tsx:332-344)
+    // In the Item Info section — visible on both /items/new and /items/$id.
+    // Only rendered when expirationMode === 'date' (Specific Date).
+    // (src/components/item/ItemForm/index.tsx:486-513)
     await this.page.locator('#expirationDueDate').fill(date)
   }
 
