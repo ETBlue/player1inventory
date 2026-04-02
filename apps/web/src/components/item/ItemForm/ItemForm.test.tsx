@@ -161,6 +161,35 @@ describe('ItemForm — validation errors on page load', () => {
   })
 })
 
+describe('ItemForm — expirationMode select', () => {
+  it('shows No expiration, Specific Date, and Days from Purchase options', async () => {
+    // Given an ItemForm in create mode
+    const user = userEvent.setup()
+    render(<ItemForm onSubmit={vi.fn()} />)
+
+    // When user opens the expiration mode select
+    await user.click(
+      screen.getByRole('combobox', { name: /calculate expiration/i }),
+    )
+
+    // Then all three options are present (hidden: true to find portal-rendered options)
+    expect(
+      screen.getAllByRole('option', { name: /no expiration/i, hidden: true })
+        .length,
+    ).toBeGreaterThan(0)
+    expect(
+      screen.getAllByRole('option', { name: /specific date/i, hidden: true })
+        .length,
+    ).toBeGreaterThan(0)
+    expect(
+      screen.getAllByRole('option', {
+        name: /days from purchase/i,
+        hidden: true,
+      }).length,
+    ).toBeGreaterThan(0)
+  })
+})
+
 describe('ItemForm — edit mode (with onDirtyChange)', () => {
   const editInitialValues = {
     packedQuantity: 2,

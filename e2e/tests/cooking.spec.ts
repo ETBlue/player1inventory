@@ -18,7 +18,7 @@ async function seedDatabase(
     const gql = makeGql(request)
 
     const { createItem: flour } = await gql<{ createItem: { id: string } }>(
-      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: 'Flour' },
     )
     await gql(
@@ -27,7 +27,7 @@ async function seedDatabase(
     )
 
     const { createItem: eggs } = await gql<{ createItem: { id: string } }>(
-      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: 'Eggs' },
     )
     await gql(

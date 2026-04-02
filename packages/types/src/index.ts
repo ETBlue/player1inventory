@@ -1,5 +1,7 @@
 export const DEFAULT_PACKAGE_UNIT = 'pack'
 
+export type ExpirationMode = 'disabled' | 'date' | 'days from purchase'
+
 export interface Item {
   id: string
   name: string
@@ -25,6 +27,7 @@ export interface Item {
   dueDate?: Date
   estimatedDueDays?: number
   expirationThreshold?: number // Days before expiration to show warning
+  expirationMode?: ExpirationMode
 
   // Metadata
   createdAt: Date

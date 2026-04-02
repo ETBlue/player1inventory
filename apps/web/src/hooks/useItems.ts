@@ -9,7 +9,7 @@ import {
   getLastPurchaseDate,
   updateItem,
 } from '@/db/operations'
-import type { UpdateItemInput } from '@/generated/graphql'
+import type { CreateItemInput, UpdateItemInput } from '@/generated/graphql'
 import {
   GetItemsDocument,
   GetRecipesDocument,
@@ -22,18 +22,21 @@ import {
   useLastPurchaseDatesQuery,
   useUpdateItemMutation,
 } from '@/generated/graphql'
+import { deserializeItem } from '@/lib/deserialization'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 import { useDataMode } from './useDataMode'
 
-// GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
-function deserializeCloudItem(item: Record<string, unknown>): Item {
+// Map frontend Item (without id/timestamps) to the GraphQL CreateItemInput shape.
+// Converts dueDate from Date to ISO string; passes all other fields through.
+function toCreateItemInput(
+  input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
+): CreateItemInput {
+  const { dueDate, ...rest } = input
   return {
-    ...item,
-    dueDate: item.dueDate ? new Date(item.dueDate as string) : undefined,
-    createdAt: new Date(item.createdAt as string),
-    updatedAt: new Date(item.updatedAt as string),
-  } as Item
+    ...rest,
+    dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
+  }
 }
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
@@ -49,6 +52,7 @@ function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
     amountPerPackage: rest.amountPerPackage ?? null,
     estimatedDueDays: rest.estimatedDueDays ?? null,
     expirationThreshold: rest.expirationThreshold ?? null,
+    expirationMode: rest.expirationMode ?? null,
     dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
   }
 }
@@ -68,7 +72,7 @@ export function useItems() {
   if (isCloud) {
     return {
       data: cloud.data?.items.map((i) =>
-        deserializeCloudItem(i as Record<string, unknown>),
+        deserializeItem(i as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
       isError: !!cloud.error,
@@ -99,7 +103,7 @@ export function useItem(id: string) {
   if (isCloud) {
     return {
       data: cloud.data?.item
-        ? deserializeCloudItem(cloud.data.item as Record<string, unknown>)
+        ? deserializeItem(cloud.data.item as Record<string, unknown>)
         : undefined,
       isLoading: cloud.loading,
       isError: !!cloud.error,
@@ -179,17 +183,17 @@ export function useCreateItem() {
   if (mode === 'cloud') {
     return {
       mutate: (
-        input: { name: string },
+        input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudCreate({ variables: { name: input.name } }).then(
+        cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: (input: { name: string }) =>
-        cloudCreate({ variables: { name: input.name } }).then(
+      mutateAsync: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) =>
+        cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
           (r) => r.data?.createItem,
         ),
       isPending: false,

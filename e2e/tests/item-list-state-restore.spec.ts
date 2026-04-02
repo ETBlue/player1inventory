@@ -201,7 +201,7 @@ async function seedItems(
   if (options?.baseURL === CLOUD_WEB_URL && options.request) {
     const gql = makeGql(options.request)
     for (const name of names) {
-      await gql('mutation CreateItem($name: String!) { createItem(name: $name) { id } }', { name })
+      await gql('mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }', { name })
     }
     return
   }

@@ -24,7 +24,7 @@ const editValues: ItemFormValues = {
   targetQuantity: 4,
   refillThreshold: 2,
   consumeAmount: 1,
-  expirationMode: 'days',
+  expirationMode: 'days from purchase',
   expirationThreshold: 3,
   targetUnit: 'package',
   measurementUnit: '',

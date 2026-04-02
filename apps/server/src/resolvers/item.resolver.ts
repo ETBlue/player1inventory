@@ -30,17 +30,18 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Item'> = {
     },
   },
   Mutation: {
-    createItem: async (_, { name }, ctx) => {
+    createItem: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
       const doc = await ItemModel.create({
-        name,
-        tagIds: [],
+        // Required-field defaults (overridden by input if provided)
         targetUnit: 'package',
         targetQuantity: 0,
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
         consumeAmount: 1,
+        ...input,
+        tagIds: input.tagIds ?? [],
         userId,
       })
       // Cast needed: Mongoose document has Date fields; Item field resolvers convert them to strings

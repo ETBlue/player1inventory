@@ -14,16 +14,9 @@ import {
   useItemCountByVendorQuery,
   useUpdateVendorMutation,
 } from '@/generated/graphql'
+import { deserializeVendor } from '@/lib/deserialization'
 import type { Vendor } from '@/types'
 import { useDataMode } from './useDataMode'
-
-// GraphQL returns createdAt as ISO string; convert to Date.
-function deserializeCloudVendor(vendor: Record<string, unknown>): Vendor {
-  return {
-    ...vendor,
-    createdAt: new Date(vendor.createdAt as string),
-  } as Vendor
-}
 
 export function useVendors() {
   const { mode } = useDataMode()
@@ -40,7 +33,7 @@ export function useVendors() {
   if (isCloud) {
     return {
       data: cloud.data?.vendors.map((v) =>
-        deserializeCloudVendor(v as Record<string, unknown>),
+        deserializeVendor(v as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
       isError: !!cloud.error,

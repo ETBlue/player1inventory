@@ -7,7 +7,7 @@ import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
 import { ItemCard } from '.'
 
 vi.mock('@/hooks', () => ({
-  useLastPurchaseDate: () => ({ data: undefined }),
+  useLastPurchaseDate: () => ({ data: new Date() }),
 }))
 
 describe('ItemCard - Unit Display Logic', () => {
@@ -215,8 +215,9 @@ describe('ItemCard - Tag Sorting', () => {
       consumeAmount: 1,
       targetUnit: 'package',
       expirationThreshold: 7, // Warn when < 7 days
-      estimatedDueDays: 30, // triggers "Expires in X days" display format
-      dueDate: futureDate, // fallback used when no last purchase date in test env
+      expirationMode: 'days from purchase' as const,
+      estimatedDueDays: 30,
+      dueDate: futureDate,
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
@@ -247,8 +248,9 @@ describe('ItemCard - Tag Sorting', () => {
       consumeAmount: 1,
       targetUnit: 'package',
       expirationThreshold: 7, // Warn when < 7 days
-      estimatedDueDays: 3, // triggers "Expires in X days" display format
-      dueDate: soonDate, // fallback used when no last purchase date in test env
+      expirationMode: 'days from purchase' as const,
+      estimatedDueDays: 3,
+      dueDate: soonDate,
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
@@ -282,8 +284,9 @@ describe('ItemCard - Tag Sorting', () => {
       consumeAmount: 1,
       targetUnit: 'package',
       expirationThreshold: null, // no threshold configured
-      estimatedDueDays: 6, // triggers "Expires in X days" display format
-      dueDate: soonDate, // fallback used when no last purchase date in test env
+      expirationMode: 'days from purchase' as const,
+      estimatedDueDays: 6,
+      dueDate: soonDate,
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
@@ -318,8 +321,9 @@ describe('ItemCard - Tag Sorting', () => {
       consumeAmount: 1,
       targetUnit: 'package',
       expirationThreshold: 3, // warn within 3 days
-      estimatedDueDays: 2, // triggers "Expires in X days" display format
-      dueDate: soonDate, // fallback used when no last purchase date in test env
+      expirationMode: 'days from purchase' as const,
+      estimatedDueDays: 2,
+      dueDate: soonDate,
       createdAt: new Date(),
       updatedAt: new Date(),
       tagIds: [],
@@ -1152,6 +1156,7 @@ describe('ItemCard - showTags and showExpiration props', () => {
   it('shows expiration by default (showExpiration defaults to true)', async () => {
     const itemWithExpiry: Item = {
       ...mockItem,
+      expirationMode: 'date',
       dueDate: new Date(Date.now() + 10 * 86400000),
     }
     await renderWithRouter(

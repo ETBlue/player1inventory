@@ -39,10 +39,10 @@ describe('Item resolvers', () => {
     // When user creates an item
     const response = await server.executeOperation(
       {
-        query: `mutation CreateItem($name: String!) {
-          createItem(name: $name) { id name userId }
+        query: `mutation CreateItem($input: CreateItemInput!) {
+          createItem(input: $input) { id name userId }
         }`,
-        variables: { name: 'Milk' },
+        variables: { input: { name: 'Milk' } },
       },
       { contextValue: context },
     )
@@ -63,10 +63,10 @@ describe('Item resolvers', () => {
     // Given an item already exists
     await server.executeOperation(
       {
-        query: `mutation CreateItem($name: String!) {
-          createItem(name: $name) { id }
+        query: `mutation CreateItem($input: CreateItemInput!) {
+          createItem(input: $input) { id }
         }`,
-        variables: { name: 'Eggs' },
+        variables: { input: { name: 'Eggs' } },
       },
       { contextValue: context },
     )
@@ -91,7 +91,8 @@ describe('Item resolvers', () => {
     // Given an item exists
     const createResponse = await server.executeOperation(
       {
-        query: `mutation { createItem(name: "Butter") { id } }`,
+        query: `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+        variables: { input: { name: 'Butter' } },
       },
       { contextValue: context },
     )
@@ -117,7 +118,10 @@ describe('Item resolvers', () => {
 
     // Given an item exists
     const createResponse = await server.executeOperation(
-      { query: `mutation { createItem(name: "Oil") { id } }` },
+      {
+        query: `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+        variables: { input: { name: 'Oil' } },
+      },
       { contextValue: context },
     )
     const id =
@@ -147,7 +151,10 @@ describe('Item resolvers', () => {
 
     // Given an item exists
     const createResponse = await server.executeOperation(
-      { query: `mutation { createItem(name: "Trash") { id } }` },
+      {
+        query: `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+        variables: { input: { name: 'Trash' } },
+      },
       { contextValue: context },
     )
     const id =
@@ -173,7 +180,10 @@ describe('Item resolvers', () => {
   it('does not return items belonging to another user', async () => {
     // Given user A creates an item
     await server.executeOperation(
-      { query: `mutation { createItem(name: "UserA Item") { id } }` },
+      {
+        query: `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+        variables: { input: { name: 'UserA Item' } },
+      },
       { contextValue: { userId: 'user_A' } },
     )
 
@@ -194,7 +204,10 @@ describe('Item resolvers', () => {
 
     // Given an item and two recipes that reference it
     const createResponse = await server.executeOperation(
-      { query: `mutation { createItem(name: "Eggs") { id } }` },
+      {
+        query: `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+        variables: { input: { name: 'Eggs' } },
+      },
       { contextValue: context },
     )
     const itemId =
@@ -240,7 +253,10 @@ describe('Item resolvers', () => {
 
     // Given an item exists
     const createResponse = await server.executeOperation(
-      { query: `mutation { createItem(name: "Bread") { id } }` },
+      {
+        query: `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+        variables: { input: { name: 'Bread' } },
+      },
       { contextValue: context },
     )
     const itemId =

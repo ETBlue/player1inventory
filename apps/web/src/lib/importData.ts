@@ -144,6 +144,7 @@ export function toItemInput(item: Record<string, unknown>) {
     dueDate: item.dueDate as string | undefined,
     estimatedDueDays: item.estimatedDueDays as number | undefined,
     expirationThreshold: item.expirationThreshold as number | undefined,
+    expirationMode: item.expirationMode as string | undefined,
     createdAt,
     updatedAt,
   }
