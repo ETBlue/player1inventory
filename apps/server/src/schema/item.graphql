@@ -31,9 +31,28 @@ extend type Query {
 }
 
 extend type Mutation {
-  createItem(name: String!): Item!
+  createItem(input: CreateItemInput!): Item!
   updateItem(id: ID!, input: UpdateItemInput!): Item!
   deleteItem(id: ID!): Boolean!
+}
+
+input CreateItemInput {
+  name: String!
+  tagIds: [String!]
+  vendorIds: [String!]
+  targetUnit: String
+  targetQuantity: Float
+  refillThreshold: Float
+  packedQuantity: Float
+  unpackedQuantity: Float
+  consumeAmount: Float
+  packageUnit: String
+  measurementUnit: String
+  amountPerPackage: Float
+  dueDate: String
+  estimatedDueDays: Int
+  expirationThreshold: Int
+  expirationMode: String
 }
 
 input UpdateItemInput {
