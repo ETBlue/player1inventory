@@ -273,7 +273,7 @@ export function TemplateItemsBrowser({
           <div className="h-px bg-accessory-default" />
           <div className="flex items-center gap-2 px-3">
             <Input
-              placeholder={t('onboarding.itemsBrowser.title')}
+              placeholder={t('onboarding.itemsBrowser.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {

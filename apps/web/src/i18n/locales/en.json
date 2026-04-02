@@ -542,10 +542,11 @@
     },
     "itemsBrowser": {
       "title": "Sample Items",
+      "searchPlaceholder": "Search items...",
       "selected_one": "{{count}} item selected",
       "selected_other": "{{count}} items selected",
       "selectAll": "Select all visible",
-      "clearSelection": "Clear selection",
+      "clearSelection": "Clear",
       "showing": "Showing {{count}} of {{total}} items",
       "clearFilter": "Clear filter",
       "preservationFilter": "Preservation",
@@ -553,8 +554,9 @@
     },
     "vendorsBrowser": {
       "title": "Sample Vendors",
+      "searchPlaceholder": "Search vendors...",
       "selectAll": "Select all visible",
-      "clearSelection": "Clear selection",
+      "clearSelection": "Clear",
       "showing": "Showing {{count}} of {{total}} vendors",
       "clearFilter": "Clear filter",
       "selected_one": "{{count}} vendor selected",
