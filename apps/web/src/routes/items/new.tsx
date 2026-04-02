@@ -32,6 +32,9 @@ function buildCreateData(
     ...(values.expirationThreshold
       ? { expirationThreshold: Number(values.expirationThreshold) }
       : {}),
+    ...(values.expirationMode === 'date' && values.dueDate
+      ? { dueDate: new Date(values.dueDate) }
+      : {}),
     ...(values.expirationMode === 'days from purchase' &&
     values.estimatedDueDays
       ? { estimatedDueDays: Number(values.estimatedDueDays) }
