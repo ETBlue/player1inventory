@@ -123,7 +123,7 @@ async function seedRecipeViaApi(
 
   for (const item of items) {
     const data = await gql<{ createItem: { id: string } }>(
-      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: item.name },
     )
     itemIds.push(data.createItem.id)

@@ -17,7 +17,7 @@ async function seedCookingData(
   if (baseURL === CLOUD_WEB_URL) {
     const gql = makeGql(request)
     const { createItem: milk } = await gql<{ createItem: { id: string } }>(
-      'mutation CreateItem($name: String!) { createItem(name: $name) { id } }',
+      'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
       { name: 'Test Milk' },
     )
     await gql(

@@ -35,7 +35,7 @@ function toCreateItemInput(
   const { dueDate, ...rest } = input
   return {
     ...rest,
-    dueDate: dueDate instanceof Date ? dueDate.toISOString() : undefined,
+    dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
   }
 }
 
