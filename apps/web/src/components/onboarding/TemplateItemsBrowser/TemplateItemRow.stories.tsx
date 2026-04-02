@@ -1,17 +1,6 @@
-import type { Decorator, Meta, StoryObj } from '@storybook/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { Meta, StoryObj } from '@storybook/react'
 import { TagColor } from '@/types'
 import { TemplateItemRow } from './TemplateItemRow'
-
-// TagBadge uses useItemCountByTag — requires QueryClientProvider.
-// No router context needed (TemplateItemRow has no <Link>).
-const withQueryClient: Decorator = (Story) => (
-  <QueryClientProvider
-    client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-  >
-    <Story />
-  </QueryClientProvider>
-)
 
 const mockTagTypes = [
   { id: 'category', name: 'Category', color: TagColor.lime },
@@ -26,7 +15,6 @@ const mockTags = [
 const meta: Meta<typeof TemplateItemRow> = {
   title: 'Components/Onboarding/TemplateItemRow',
   component: TemplateItemRow,
-  decorators: [withQueryClient],
   args: {
     name: 'Rice',
     tags: [],

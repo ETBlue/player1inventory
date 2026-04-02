@@ -1,4 +1,4 @@
-import { TagBadge } from '@/components/tag/TagBadge'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { Tag, TagType } from '@/types'
@@ -32,7 +32,11 @@ export function TemplateItemRow({
           {tags.map((tag) => {
             const tagType = tagTypes.find((tt) => tt.id === tag.typeId)
             if (!tagType) return null
-            return <TagBadge key={tag.id} tag={tag} tagType={tagType} />
+            return (
+              <Badge key={tag.id} variant={`${tagType.color}-tint`}>
+                {tag.name}
+              </Badge>
+            )
           })}
         </CardContent>
       </Card>
