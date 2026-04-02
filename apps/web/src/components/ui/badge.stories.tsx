@@ -19,7 +19,6 @@ export const Default: Story = {
 export const Variants: Story = {
   render: () => {
     const tagColors = Object.values(TagColor) as TagColor[]
-    const hueColors = tagColors.filter((t) => !t.match(/tint/))
 
     const statusAndImportanceColors = [
       'ok',
@@ -35,7 +34,7 @@ export const Variants: Story = {
 
     return (
       <div className="inline-grid grid-cols-[auto_auto] justify-items-start gap-2">
-        {hueColors.map((color) => (
+        {tagColors.map((color) => (
           <>
             <Badge variant={color}>{color}</Badge>
             <Badge variant={`${color}-tint` as TagColor}>

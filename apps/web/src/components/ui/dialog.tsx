@@ -66,7 +66,7 @@ const DialogHeader = ({
   >
     {children}
     <div className="flex-1" />
-    <DialogPrimitive.Close className="opacity-70 transition-opacity hover:opacity-100 cursor-pointer rounded-sm p-2 -m-2 ">
+    <DialogPrimitive.Close className="opacity-75 transition-opacity hover:opacity-100 cursor-pointer rounded-sm p-2 -m-2 ">
       <X className="h-4 w-4" />
       <span className="sr-only">Close</span>
     </DialogPrimitive.Close>

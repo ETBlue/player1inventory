@@ -29,7 +29,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       className={cn(
         'relative p-3 pl-4',
         cardVariants({ variant }),
-        variant === 'inactive' && 'opacity-50',
+        variant === 'inactive' && 'opacity-80',
         className,
       )}
       {...props}
