@@ -32,6 +32,14 @@ export const Default: Story = {
   },
 }
 
+export const WithCountProp: Story = {
+  args: {
+    tag: { id: '2', name: 'Frozen', typeId: 'type-2' },
+    tagType: { id: 'type-2', name: 'Preservation', color: TagColor.cyan },
+    count: 42,
+  },
+}
+
 export const DifferentColors: Story = {
   render: () => {
     const tagColors = Object.values(TagColor) as TagColor[]
