@@ -28,10 +28,12 @@ for player, by player.
 <img src="docs/screenshots/Player%201%20Inventory%2000-welcome.png" width="180" alt="Welcome" />
 <img src="docs/screenshots/Player%201%20Inventory%2001-template.png" width="180" alt="Template selection" />
 <img src="docs/screenshots/Player%201%20Inventory%2002-template-items.png" width="180" alt="Template items" />
+<img src="docs/screenshots/Player%201%20Inventory%2002-template-vendors.png" width="180" alt="Template vendors" />
 <img src="docs/screenshots/Player%201%20Inventory%2003-review.png" width="180" alt="Review" />
 
 ### Pantry
 
+<img src="docs/screenshots/Player%201%20Inventory%2010-pantry.png" width="180" alt="Pantry" />
 <img src="docs/screenshots/Player%201%20Inventory%2011-pantry-filter.png" width="180" alt="Pantry with filters" />
 
 ### Shopping
