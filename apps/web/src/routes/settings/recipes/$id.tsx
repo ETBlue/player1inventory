@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ArrowLeft, ListTodo, Settings2 } from 'lucide-react'
+import { ArrowLeft, CookingPot, ListTodo, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -103,6 +103,7 @@ function RecipeDetailLayoutInner() {
             <ArrowLeft />
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
+          <CookingPot className="h-4 w-4 text-foreground-muted" />
           <h1 className="text-md font-regular truncate flex-1 capitalize">
             {recipe.name}
           </h1>
