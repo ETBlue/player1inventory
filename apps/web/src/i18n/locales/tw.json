@@ -72,8 +72,7 @@
       "createButton": "新增食譜"
     },
     "recipe": {
-      "itemCount_one": "已選 {{count}} 項",
-      "itemCount_other": "已選 {{count}} 項",
+      "itemCount": "{{count}} / {{total}} 項已勾選",
       "noItems": "食譜裡還沒有任何品項喔。"
     },
     "log": {

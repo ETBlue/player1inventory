@@ -574,10 +574,10 @@ function CookingPage() {
 
                       {/* Row 2: subtitle */}
                       <div className="mx-6 text-sm text-foreground-muted">
-                        {totalItemCount} item{totalItemCount !== 1 ? 's' : ''}
-                        {checkedCount > 0
-                          ? `, ${t('cooking.recipe.itemCount', { count: checkedCount })}`
-                          : ''}
+                        {t('cooking.recipe.itemCount', {
+                          count: checkedCount,
+                          total: totalItemCount,
+                        })}
                       </div>
                     </CardContent>
                   </Card>

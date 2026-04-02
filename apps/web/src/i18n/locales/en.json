@@ -72,8 +72,7 @@
       "createButton": "Create recipe"
     },
     "recipe": {
-      "itemCount_one": "{{count}} item selected",
-      "itemCount_other": "{{count}} items selected",
+      "itemCount": "{{count}} / {{total}} selected",
       "noItems": "No items in this recipe."
     },
     "log": {
