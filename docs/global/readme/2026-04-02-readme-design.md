@@ -85,7 +85,7 @@ for player, by player.
 
 ### Hero Screenshot
 
-File: `docs/screenshots/Player 1 Inventory 11-pantry.png`
+File: `docs/screenshots/Player 1 Inventory 10-pantry.png`
 
 The pantry list is the most information-rich screen: color-coded stock status, dual-unit quantities, expiry dates, tags, vendor/recipe counts, and the sort/filter toolbar — all visible at once. Shows the most UX craft in a single frame.
 
