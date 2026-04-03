@@ -67,15 +67,15 @@
   --background-surface: hsl(40 5% 20%);
   --background-elevated: hsl(40 5% 10%);
 
-  --foreground-muted: hsl(40 5% 78%);
-  --foreground-default: hsl(40 10% 90%);
-  --foreground-emphasized: hsl(40 50% 97.5%);
+  --foreground-muted: hsl(40 10% 65%);
+  --foreground-default: hsl(40 10% 80%);
+  --foreground-emphasized: hsl(40 5% 95%);
   --foreground-colorless: hsl(0 0% 90%);
   --foreground-colorless-inverse: hsl(0 0% 20%);
 
-  --accessory-muted: hsl(40 5% 40%);
-  --accessory-default: hsl(40 10% 50%);
-  --accessory-emphasized: hsl(40 20% 70%);
+  --accessory-muted: hsl(40 20% 30%);
+  --accessory-default: hsl(40 20% 40%);
+  --accessory-emphasized: hsl(40 20% 50%);
 
   --overlay: hsl(40 10% 90%);
   --outline: hsl(180 40% 60%);
@@ -84,16 +84,16 @@
   --importance-secondary: hsl(180 30% 65%);
   --importance-tertiary: hsl(180 10% 70%);
   --importance-destructive: hsl(330 90% 80%);
-  --importance-neutral: hsl(40 50% 80%);
+  --importance-neutral: hsl(40 30% 80%);
 
   --status-ok: hsl(75 80% 60%);
   --status-warning: hsl(45 90% 60%);
   --status-error: hsl(0 90% 70%);
   --status-inactive: hsl(40 5% 70%);
-  --status-ok-tint: hsl(75 10% 20%);
-  --status-warning-tint: hsl(45 10% 20%);
-  --status-error-tint: hsl(0 10% 20%);
-  --status-inactive-tint: hsl(40 10% 20%);
+  --status-ok-tint: hsl(75 90% 20%);
+  --status-warning-tint: hsl(45 90% 20%);
+  --status-error-tint: hsl(0 90% 20%);
+  --status-inactive-tint: hsl(40 5% 20%);
 
   /* Hue colors — dark mode */
   --hue-orange: hsl(20 90% 70%);
@@ -110,18 +110,18 @@
   --hue-rose: hsl(340 90% 80%);
 
   /* Hue tints — dark mode */
-  --hue-orange-tint: hsl(20 99% 15%);
-  --hue-brown-tint: hsl(30 99% 15%);
-  --hue-amber-tint: hsl(40 99% 15%);
-  --hue-lime-tint: hsl(90 99% 15%);
-  --hue-green-tint: hsl(120 99% 15%);
-  --hue-teal-tint: hsl(160 99% 15%);
-  --hue-cyan-tint: hsl(190 99% 15%);
-  --hue-blue-tint: hsl(210 99% 15%);
-  --hue-indigo-tint: hsl(240 99% 15%);
-  --hue-purple-tint: hsl(270 99% 15%);
-  --hue-pink-tint: hsl(300 99% 15%);
-  --hue-rose-tint: hsl(340 99% 15%);
+  --hue-orange-tint: hsl(20 0% 20%);
+  --hue-brown-tint: hsl(30 0% 20%);
+  --hue-amber-tint: hsl(40 0% 20%);
+  --hue-lime-tint: hsl(90 0% 20%);
+  --hue-green-tint: hsl(120 0% 20%);
+  --hue-teal-tint: hsl(160 0% 20%);
+  --hue-cyan-tint: hsl(190 0% 20%);
+  --hue-blue-tint: hsl(210 0% 20%);
+  --hue-indigo-tint: hsl(240 0% 20%);
+  --hue-purple-tint: hsl(270 0% 20%);
+  --hue-pink-tint: hsl(300 0% 20%);
+  --hue-rose-tint: hsl(340 0% 20%);
 }
 
 /* Map to Tailwind utilities */
