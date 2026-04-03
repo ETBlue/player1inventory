@@ -27,6 +27,7 @@ for player, by player.
 
 <img src="docs/screenshots/Player%201%20Inventory%2000-welcome.png" width="180" alt="Welcome" />
 <img src="docs/screenshots/Player%201%20Inventory%2001-template.png" width="180" alt="Template selection" />
+
 <img src="docs/screenshots/Player%201%20Inventory%2002-template-items.png" width="180" alt="Template items" />
 <img src="docs/screenshots/Player%201%20Inventory%2002-template-vendors.png" width="180" alt="Template vendors" />
 <img src="docs/screenshots/Player%201%20Inventory%2003-review.png" width="180" alt="Review" />
@@ -35,19 +36,29 @@ for player, by player.
 
 <img src="docs/screenshots/Player%201%20Inventory%2010-pantry.png" width="180" alt="Pantry" />
 <img src="docs/screenshots/Player%201%20Inventory%2011-pantry-filter.png" width="180" alt="Pantry with filters" />
+<img src="docs/screenshots/Player%201%20Inventory%2050-item.png" width="180" alt="Item details" />
 
-### Shopping
+### Shopping & Cooking
 
 <img src="docs/screenshots/Player%201%20Inventory%2021-shopping.png" width="180" alt="Shopping" />
-
-### Cooking
-
 <img src="docs/screenshots/Player%201%20Inventory%2031-cooking.png" width="180" alt="Cooking" />
 
 ### Settings
 
 <img src="docs/screenshots/Player%201%20Inventory%2041-settings-local.png" width="180" alt="Settings — offline mode" />
 <img src="docs/screenshots/Player%201%20Inventory%2041-settings-cloud.png" width="180" alt="Settings — cloud mode" />
+
+<img src="docs/screenshots/Player%201%20Inventory%2060-tags.png" width="180" alt="Settings — tags" />
+<img src="docs/screenshots/Player%201%20Inventory%2061-tag.png" width="180" alt="Settings — tag details" />
+<img src="docs/screenshots/Player%201%20Inventory%2062-tag-items.png" width="180" alt="Settings — tag items" />
+
+<img src="docs/screenshots/Player%201%20Inventory%2070-vendors.png" width="180" alt="Settings — vendors" />
+<img src="docs/screenshots/Player%201%20Inventory%2071-vendor.png" width="180" alt="Settings — vendor" />
+<img src="docs/screenshots/Player%201%20Inventory%2072-vendor-items.png" width="180" alt="Settings — vendor items" />
+
+<img src="docs/screenshots/Player%201%20Inventory%2080-recipes.png" width="180" alt="Settings — recipes" />
+<img src="docs/screenshots/Player%201%20Inventory%2081-recipe.png" width="180" alt="Settings — recipe" />
+<img src="docs/screenshots/Player%201%20Inventory%2082-recipe-items.png" width="180" alt="Settings — recipe items" />
 
 ## Stack
 
