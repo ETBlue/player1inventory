@@ -17,13 +17,33 @@ describe('computeExpiryDate', () => {
     expect(computeExpiryDate(item, lastPurchase)).toBeUndefined()
   })
 
-  it('returns undefined when mode is undefined (treats as disabled)', () => {
+  it('returns undefined when mode is undefined and all data is missing (truly disabled)', () => {
+    const item: ItemSlice = {
+      expirationMode: undefined,
+      dueDate: undefined,
+      estimatedDueDays: undefined,
+    }
+    expect(computeExpiryDate(item, lastPurchase)).toBeUndefined()
+  })
+
+  it('infers days from purchase mode when expirationMode is undefined but estimatedDueDays is set', () => {
+    const item: ItemSlice = {
+      expirationMode: undefined,
+      estimatedDueDays: 30,
+      dueDate: undefined,
+    }
+    const result = computeExpiryDate(item, lastPurchase)
+    const expected = new Date(lastPurchase.getTime() + 30 * 24 * 60 * 60 * 1000)
+    expect(result).toEqual(expected)
+  })
+
+  it('infers date mode when expirationMode is undefined but dueDate is set', () => {
     const item: ItemSlice = {
       expirationMode: undefined,
       dueDate,
-      estimatedDueDays: 30,
+      estimatedDueDays: undefined,
     }
-    expect(computeExpiryDate(item, lastPurchase)).toBeUndefined()
+    expect(computeExpiryDate(item)).toEqual(dueDate)
   })
 
   it('returns dueDate when mode is date', () => {
