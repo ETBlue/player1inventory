@@ -42,7 +42,7 @@ export function Navigation() {
               to={to}
               className={cn(
                 `flex flex-col items-center gap-1 
-                px-4 py-2 -mt-px`,
+                px-4 py-2`,
                 isActive
                   ? 'bg-background-base text-foreground-emphasized'
                   : 'text-foreground-muted',
