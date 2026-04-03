@@ -2,10 +2,10 @@
 
 Track what you have. Shop what you need. Cook what you can.
 
+<img src="docs/screenshots/Player%201%20Inventory%2010-pantry.png" width="360" alt="Pantry" />
+
 The real-life companion to [Guild Wars 2 Inventory](https://github.com/ETBlue/gw2inventory) —
 for player, by player.
-
-<img src="docs/screenshots/Player%201%20Inventory%2010-pantry.png" width="300" alt="Pantry" />
 
 ## Design Highlights
 
@@ -17,7 +17,7 @@ for player, by player.
 
 - **Offline-first, cloud-optional** — Full functionality without internet, designed for use inside wholesale stores with poor cell coverage. Cloud sync is available for multi-device and family sharing; switching modes is seamless.
 
-- **Two quantity update paths** — Quick manual corrections (±buttons in pantry) for users updating stock while standing in front of the fridge. Recipe-based deduction in cooking mode for users who prefer group updates with a full activity log.
+- **Flexible quantity updates** — Update stock casually in the pantry for a quick correction before a shopping trip. Log purchases formally through the shopping page, or batch-deduct ingredients through the cooking page — recipes group items so recording a meal takes one action per dish, not one per ingredient.
 
 - **Onboarding scaffold** — First-run setup includes a pre-built tag hierarchy and 20 common items + 19 vendors — useful immediately, not after hours of data entry.
 
@@ -45,16 +45,24 @@ for player, by player.
 
 ### Settings
 
+#### Data Mode
+
 <img src="docs/screenshots/Player%201%20Inventory%2041-settings-local.png" width="180" alt="Settings — offline mode" />
 <img src="docs/screenshots/Player%201%20Inventory%2041-settings-cloud.png" width="180" alt="Settings — cloud mode" />
+
+#### Tags
 
 <img src="docs/screenshots/Player%201%20Inventory%2060-tags.png" width="180" alt="Settings — tags" />
 <img src="docs/screenshots/Player%201%20Inventory%2061-tag.png" width="180" alt="Settings — tag details" />
 <img src="docs/screenshots/Player%201%20Inventory%2062-tag-items.png" width="180" alt="Settings — tag items" />
 
+#### Vendors
+
 <img src="docs/screenshots/Player%201%20Inventory%2070-vendors.png" width="180" alt="Settings — vendors" />
 <img src="docs/screenshots/Player%201%20Inventory%2071-vendor.png" width="180" alt="Settings — vendor" />
 <img src="docs/screenshots/Player%201%20Inventory%2072-vendor-items.png" width="180" alt="Settings — vendor items" />
+
+#### Recipes
 
 <img src="docs/screenshots/Player%201%20Inventory%2080-recipes.png" width="180" alt="Settings — recipes" />
 <img src="docs/screenshots/Player%201%20Inventory%2081-recipe.png" width="180" alt="Settings — recipe" />
@@ -71,4 +79,5 @@ Tailwind CSS v4 · shadcn/ui · Vitest · React Testing Library · Playwright
 pnpm install
 pnpm dev
 # open http://localhost:5173
+# cloud sync requires MongoDB + Clerk — see apps/server/.env.example
 ```
