@@ -2,6 +2,12 @@ import { test } from '@playwright/test'
 import { checkA11y, injectAxe } from 'axe-playwright'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 
+// WCAG AA target: 4.5:1 contrast ratio for normal text, 3:1 for large text.
+// Explicitly set runOnly so future tooling and AI agents know the intended level.
+const AXE_OPTIONS = {
+  runOnly: { type: 'tag' as const, values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },
+}
+
 // Prevent the empty-data redirect to /onboarding so tests can navigate to any
 // page without being intercepted. Onboarding tests set this key themselves.
 test.beforeEach(async ({ page }) => {
@@ -61,7 +67,7 @@ test('user can view pantry page without accessibility violations', async ({ page
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Shopping page (/shopping)
@@ -74,7 +80,7 @@ test('user can view shopping page without accessibility violations', async ({ pa
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Cooking page (/cooking)
@@ -87,7 +93,7 @@ test('user can view cooking page without accessibility violations', async ({ pag
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Settings main page (/settings)
@@ -100,7 +106,7 @@ test('user can view settings page without accessibility violations', async ({ pa
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Settings > Tags list (/settings/tags)
@@ -113,7 +119,7 @@ test('user can view settings tags list without accessibility violations', async 
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Settings > Vendors list (/settings/vendors)
@@ -126,7 +132,7 @@ test('user can view settings vendors list without accessibility violations', asy
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Settings > Recipes list (/settings/recipes)
@@ -139,7 +145,7 @@ test('user can view settings recipes list without accessibility violations', asy
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Onboarding page (/onboarding)
@@ -157,7 +163,7 @@ test('user can view onboarding page without accessibility violations', async ({ 
   await injectAxe(page)
 
   // Then there should be no violations
-  await checkA11y(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
 // Helper: seed an item into IndexedDB and return its ID
@@ -268,7 +274,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail page (/items/:id)
@@ -283,7 +289,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail tags tab (/items/:id/tags)
@@ -297,7 +303,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail vendors tab (/items/:id/vendors)
@@ -311,7 +317,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail recipes tab (/items/:id/recipes)
@@ -325,7 +331,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Tag detail (/settings/tags/:id)
@@ -339,7 +345,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Vendor new (/settings/vendors/new)
@@ -352,7 +358,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Vendor detail (/settings/vendors/:id)
@@ -366,7 +372,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Recipe new (/settings/recipes/new)
@@ -379,7 +385,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Recipe detail (/settings/recipes/:id)
@@ -393,7 +399,7 @@ test.describe('detail page a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 })
 
@@ -415,7 +421,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Shopping page (/shopping) in dark mode
@@ -428,7 +434,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Cooking page (/cooking) in dark mode
@@ -441,7 +447,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings main page (/settings) in dark mode
@@ -454,7 +460,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Tags list (/settings/tags) in dark mode
@@ -467,7 +473,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Vendors list (/settings/vendors) in dark mode
@@ -480,7 +486,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Recipes list (/settings/recipes) in dark mode
@@ -493,7 +499,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Onboarding page (/onboarding) in dark mode
@@ -506,7 +512,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item new page (/items/new) in dark mode
@@ -519,7 +525,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail page (/items/:id) in dark mode
@@ -534,7 +540,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail tags tab (/items/:id/tags) in dark mode
@@ -548,7 +554,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail vendors tab (/items/:id/vendors) in dark mode
@@ -562,7 +568,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Item detail recipes tab (/items/:id/recipes) in dark mode
@@ -576,7 +582,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Tag detail (/settings/tags/:id) in dark mode
@@ -590,7 +596,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Vendor new (/settings/vendors/new) in dark mode
@@ -603,7 +609,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Vendor detail (/settings/vendors/:id) in dark mode
@@ -617,7 +623,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Recipe new (/settings/recipes/new) in dark mode
@@ -630,7 +636,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   // Settings > Recipe detail (/settings/recipes/:id) in dark mode
@@ -644,7 +650,7 @@ test.describe('dark mode a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 })
 
@@ -660,7 +666,7 @@ test.describe('mobile viewport a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations (including the bottom Navigation component)
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   test('user can view shopping page without accessibility violations on mobile', async ({ page }) => {
@@ -672,7 +678,7 @@ test.describe('mobile viewport a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations (including the bottom Navigation component)
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   test('user can view cooking page without accessibility violations on mobile', async ({ page }) => {
@@ -684,7 +690,7 @@ test.describe('mobile viewport a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations (including the bottom Navigation component)
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
   test('user can view settings page without accessibility violations on mobile', async ({ page }) => {
@@ -696,6 +702,6 @@ test.describe('mobile viewport a11y', () => {
     await injectAxe(page)
 
     // Then there should be no violations (including the bottom Navigation component)
-    await checkA11y(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
   })
 })
