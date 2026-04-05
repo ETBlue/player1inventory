@@ -9,7 +9,8 @@ import {
   ItemCountByTagDocument,
   ItemCountByVendorDocument,
 } from '@/generated/graphql'
-import { useDeleteItem } from './useItems'
+import type { Item } from '@/types'
+import { toUpdateItemInput, useDeleteItem } from './useItems'
 
 const mockCloudDeleteItem = vi.fn()
 
@@ -169,5 +170,66 @@ describe('useDeleteItem (cloud mode)', () => {
         (q: { query: unknown }) => q.query === GetRecipesDocument,
       ),
     ).toBe(true)
+  })
+})
+
+// ─── toUpdateItemInput ─────────────────────────────────────────────────────────
+
+describe('toUpdateItemInput', () => {
+  it('does not include optional fields absent from the payload', () => {
+    // Given a partial update that only sets quantity fields
+    const input = { packedQuantity: 3, unpackedQuantity: 0 }
+
+    // When converted to GraphQL input
+    const result = toUpdateItemInput(input)
+
+    // Then the 7 optional clearable fields must be absent from the output
+    expect(result).not.toHaveProperty('packageUnit')
+    expect(result).not.toHaveProperty('measurementUnit')
+    expect(result).not.toHaveProperty('amountPerPackage')
+    expect(result).not.toHaveProperty('estimatedDueDays')
+    expect(result).not.toHaveProperty('expirationThreshold')
+    expect(result).not.toHaveProperty('expirationMode')
+    expect(result).not.toHaveProperty('dueDate')
+  })
+
+  it('sends null for an optional field explicitly set to undefined', () => {
+    // Given an update that deliberately includes packageUnit as undefined
+    // (meaning: clear this field in the DB)
+    const input: Partial<Item> = { packedQuantity: 3, packageUnit: undefined }
+
+    // When converted to GraphQL input
+    const result = toUpdateItemInput(input)
+
+    // Then packageUnit is present with value null
+    expect(result).toHaveProperty('packageUnit', null)
+  })
+
+  it('serializes a full payload including all optional fields', () => {
+    // Given a complete update payload from the full ItemForm
+    const dueDate = new Date('2026-12-01')
+    const input: Partial<Item> = {
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      estimatedDueDays: 7,
+      expirationThreshold: 3,
+      expirationMode: 'date',
+      dueDate,
+    }
+
+    // When converted to GraphQL input
+    const result = toUpdateItemInput(input)
+
+    // Then all optional fields are present with correct values
+    expect(result.packageUnit).toBe('pack')
+    expect(result.measurementUnit).toBe('g')
+    expect(result.amountPerPackage).toBe(500)
+    expect(result.estimatedDueDays).toBe(7)
+    expect(result.expirationThreshold).toBe(3)
+    expect(result.expirationMode).toBe('date')
+    expect(result.dueDate).toBe(dueDate.toISOString())
   })
 })

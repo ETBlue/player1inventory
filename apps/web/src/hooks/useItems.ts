@@ -41,19 +41,38 @@ function toCreateItemInput(
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
 // Strips non-updatable fields and converts dueDate from Date to ISO string.
-// Optional clearable fields are sent as explicit null when absent so that
-// MongoDB $set clears them; absent = deleted via buildUpdates() = user cleared.
-function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
+//
+// Semantics:
+//   - Field absent from `updates` → omitted from output → server leaves it alone
+//   - Field present with undefined/null value → sent as null → server clears it
+//
+// This means partial updates (quantity buttons, tag assignment, etc.) safely
+// omit expiration and measurement fields, leaving them untouched in MongoDB.
+// The full ItemForm explicitly sets these fields (to a value or undefined) so
+// it still controls their DB state.
+export function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
   const { id: _id, createdAt: _c, updatedAt: _u, dueDate, ...rest } = updates
   return {
     ...rest,
-    packageUnit: rest.packageUnit ?? null,
-    measurementUnit: rest.measurementUnit ?? null,
-    amountPerPackage: rest.amountPerPackage ?? null,
-    estimatedDueDays: rest.estimatedDueDays ?? null,
-    expirationThreshold: rest.expirationThreshold ?? null,
-    expirationMode: rest.expirationMode ?? null,
-    dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
+    ...('packageUnit' in rest && { packageUnit: rest.packageUnit ?? null }),
+    ...('measurementUnit' in rest && {
+      measurementUnit: rest.measurementUnit ?? null,
+    }),
+    ...('amountPerPackage' in rest && {
+      amountPerPackage: rest.amountPerPackage ?? null,
+    }),
+    ...('estimatedDueDays' in rest && {
+      estimatedDueDays: rest.estimatedDueDays ?? null,
+    }),
+    ...('expirationThreshold' in rest && {
+      expirationThreshold: rest.expirationThreshold ?? null,
+    }),
+    ...('expirationMode' in rest && {
+      expirationMode: rest.expirationMode ?? null,
+    }),
+    ...('dueDate' in updates && {
+      dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
+    }),
   }
 }
 
@@ -223,9 +242,9 @@ export function useUpdateItem() {
   })
 
   if (mode === 'cloud') {
-    // Cloud mode: updates must be a complete item payload (as produced by buildUpdates),
-    // not a true partial. Absent optional fields are sent as null to MongoDB $set,
-    // which clears them. A partial update with absent fields would silently clear them.
+    // Cloud mode: serializes updates to GraphQL input via toUpdateItemInput().
+    // Absent fields are omitted (server leaves them alone); fields present
+    // with undefined/null are sent as null (server clears them).
     return {
       mutate: (
         { id, updates }: { id: string; updates: Partial<Item> },
