@@ -31,15 +31,24 @@ There are 11 partial-update call sites affected across 6 route files.
 
 ## Fix Applied
 
-*TBD*
+Two coordinated changes:
+
+1. `toUpdateItemInput()` in `apps/web/src/hooks/useItems.ts` now uses sparse spreading via `'key' in rest` checks. Fields absent from the update payload are omitted from the GraphQL input; the server leaves them untouched. Fields present (even as `undefined`) are still sent as `null` to clear them.
+
+2. `buildUpdates()` in `apps/web/src/routes/items/$id/index.tsx` replaces `delete updates.field` with `updates.field = undefined` for the four optional clearable fields (`packageUnit`, `measurementUnit`, `amountPerPackage`, `expirationThreshold`). This keeps the key present in the object so `toUpdateItemInput()` correctly includes it as `null` when the user blanks the field in the full ItemForm.
 
 ## Test Added
 
-*TBD*
+Three unit tests added in `apps/web/src/hooks/useItems.test.ts` under `describe('toUpdateItemInput')`:
+- Partial payload (only `packedQuantity`) → the 7 optional fields are absent from the output
+- Payload with `packageUnit: undefined` → `packageUnit: null` is present in the output
+- Full payload with all optional fields → all fields serialized correctly (including `dueDate` as ISO string)
 
 ## PR / Commit
 
-*TBD*
+- Commit 1: `fix(items): use sparse building in toUpdateItemInput for cloud mode` (0296169)
+- Commit 2: `fix(items): replace delete with undefined in buildUpdates for cloud clears` (fa1e891)
+- PR: TBD
 
 ---
 
