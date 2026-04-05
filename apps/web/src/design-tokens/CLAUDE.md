@@ -19,6 +19,8 @@ src/design-tokens/
 - `@theme inline` maps CSS variables to Tailwind utilities (bg-background, text-foreground, etc.)
 - Two-layer approach preserves theming flexibility
 - OKLCH format (`oklch(L% C% H)`) enables perceptually uniform contrast reasoning via the L channel
+- L% values are calibrated for WCAG AA compliance (minimum 4.5:1 contrast ratio for text)
+- All 12 hue colors are normalized to L=55% in light mode and L=75% in dark mode for visual balance and guaranteed AA contrast
 
 **Background layers:**
 Three-level system for surface elevation hierarchy:

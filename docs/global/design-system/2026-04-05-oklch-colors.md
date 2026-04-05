@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-05
 **Branch:** docs-readme-rewrite
-**Status:** 🔲 Pending
+**Status:** ✅ Phase A complete, ✅ Phase B complete
 
 ---
 
@@ -128,31 +128,47 @@ refactor(design-tokens): convert color values from hsl to oklch
 
 ### Step 1: Audit contrast pairs
 
-For each semantic text/background pairing, compute the WCAG contrast ratio:
+For each semantic text/background pairing, compute the WCAG contrast ratio.
 
-| Foreground token | Background token | Required ratio | Current L delta |
-|---|---|---|---|
-| `--foreground-default` | `--background-base` | 4.5:1 | to be measured |
-| `--foreground-muted` | `--background-base` | 4.5:1 | to be measured |
-| `--importance-primary` | `--background-base` | 4.5:1 | to be measured |
-| `--importance-destructive` | `--background-base` | 4.5:1 | to be measured |
-| `--status-ok` (on tint) | `--status-ok-tint` | 4.5:1 | to be measured |
-| `--status-warning` (on tint) | `--status-warning-tint` | 4.5:1 | to be measured |
-| `--status-error` (on tint) | `--status-error-tint` | 4.5:1 | to be measured |
-| Each hue color (on white) | white (`oklch(100% 0 0)`) | 4.5:1 | to be measured |
-| Dark mode equivalents | — | same | to be measured |
+**Phase B audit results (measured via `scripts/audit-contrast.ts` with culori):**
 
-Use a script or [oklch.com](https://oklch.com) / browser DevTools to measure.
+| Pair | Mode | Before | After | Pass |
+|---|---|---|---|---|
+| `foreground-default` on `background-base` | light | 7.79:1 | 7.79:1 | ✅ |
+| `foreground-muted` on `background-base` | light | 4.75:1 | 4.75:1 | ✅ |
+| `foreground-emphasized` on `background-base` | light | 12.03:1 | 12.03:1 | ✅ |
+| `importance-primary` on `background-base` | light | 2.79:1 ❌ | 4.53:1 | ✅ |
+| `importance-secondary` on `background-base` | light | 3.10:1 ❌ | 4.61:1 | ✅ |
+| `importance-destructive` on `background-base` | light | 3.59:1 ❌ | 4.62:1 | ✅ |
+| `status-ok` on `status-ok-tint` | light | 2.54:1 ❌ | 4.50:1 | ✅ |
+| `status-warning` on `status-warning-tint` | light | 2.64:1 ❌ | 4.65:1 | ✅ |
+| `status-error` on `status-error-tint` | light | 3.19:1 ❌ | 4.62:1 | ✅ |
+| `status-inactive` on `status-inactive-tint` | light | 3.45:1 ❌ | 4.55:1 | ✅ |
+| hue-orange on white | light | 4.27:1 ❌ | 5.22:1 | ✅ |
+| hue-amber on white | light | 3.14:1 ❌ | 4.93:1 | ✅ |
+| hue-green on white | light | 4.48:1 ❌ | 4.63:1 | ✅ |
+| hue-teal on white | light | 3.17:1 ❌ | 4.56:1 | ✅ |
+| hue-lime on white | light | 3.06:1 ❌ | 4.60:1 | ✅ |
+| hue-cyan on white | light | 3.78:1 ❌ | 4.68:1 | ✅ |
+| hue-rose on white | light | 3.69:1 ❌ | 5.36:1 | ✅ |
+| `foreground-default` on `background-base` | dark | 12.67:1 | 12.67:1 | ✅ |
+| `importance-primary` on `background-base` | dark | 9.99:1 | 9.99:1 | ✅ |
+| `status-ok` on `status-ok-tint` | dark | 4.32:1 ❌ | 5.00:1 | ✅ |
+| `status-warning` on `status-warning-tint` | dark | 3.89:1 ❌ | 5.40:1 | ✅ |
+| `status-error` on `status-error-tint` | dark | 3.58:1 ❌ | 5.94:1 | ✅ |
+| `status-inactive` on `status-inactive-tint` | dark | 4.01:1 ❌ | 4.61:1 | ✅ |
+| All 12 dark hue colors on dark background | dark | all ✅ | all ✅ | ✅ |
 
 ### Step 2: Define the L budget
 
-Based on the audit, establish target L values per semantic role that guarantee the contrast budget:
+Established target L values per semantic role:
 
 ```
-Light mode backgrounds:  L ≈ 86% / 92% / 96%  (base / surface / elevated)
-Light mode text (AA):    L ≤ 46%  (ensures 4.5:1 on 86% background)
-Hue colors (on white):  L ≤ 65%  (heuristic; verify per color)
-Status colors (on tint): requires per-pair verification
+Light mode backgrounds:  L ≈ 89% / 95% / 99%  (base / surface / elevated)
+Light mode text (AA):    L ≤ 51%  (ensures 4.5:1 on ~89% background)
+Hue colors (light):      L = 55%  (universal target — all 12 hues pass on white)
+Hue colors (dark):       L = 75%  (universal target — all 12 hues pass on dark bg)
+Status colors:           L ≤ 55% on light tints, L ≥ 78% on dark tints
 
 All C values expressed as % (relative to 0.4 max chroma):
   e.g. C=0.1 → 25%,  C=0.2 → 50%,  C=0.4 → 100%
@@ -169,7 +185,7 @@ For each failing token, adjust `L` while preserving `C` and `H` as much as possi
 
 ### Step 4: Normalize hue colors to consistent L
 
-Optionally, align all 14 hue "default" colors to a single L value (e.g. `L=60%`) for visual balance. This is cosmetic, not a11y-required.
+All 12 hue "default" colors are normalized: L=55% in light mode, L=75% in dark mode. This satisfies both visual balance and WCAG AA requirements. The universal L was found by testing all 12 hues — L=55% is the highest value at which every hue passes 4.5:1 on white. L=75% is the target for dark mode (all hues pass by a wide margin at L=75%).
 
 ### Step 5: Visual QA
 

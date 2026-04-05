@@ -12,7 +12,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent |
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
 | [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done; **deferred:** post-login IndexedDB → MongoDB migration (see `global/backend/2026-03-27-post-login-migration.md`); seamless offline ↔ online migration with conflict UI 🔲 Pending (see `global/backend/2026-04-04-seamless-offline-online-migration-design.md`) |
-| [design-system](global/design-system/) | 🔲 Pending | Tokens, theme, typography, button variants all done; OKLCH color conversion pending (see `global/design-system/2026-04-05-oklch-colors.md`) |
+| [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done; OKLCH color conversion complete — Phase A (HSL→OKLCH) and Phase B (WCAG AA calibration) done (see `global/design-system/2026-04-05-oklch-colors.md`) |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags + shopping + cooking done; item list pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts, RWD mobile+desktop all done |
 | [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; Storybook language toolbar done; route-level stories + smoke tests done; items + tags + vendors + recipes + cooking + state-restore E2E (local + cloud) done; shopping cloud E2E done |

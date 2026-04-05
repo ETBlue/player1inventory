@@ -17,34 +17,35 @@
   --overlay: oklch(60.7% 3.4% 84.6);
   --outline: oklch(73.8% 27.2% 195.1);
 
-  --importance-primary: oklch(59.6% 25.1% 194.8);
-  --importance-secondary: oklch(57.4% 15.9% 195.5);
+  --importance-primary: oklch(48% 25.1% 194.8);
+  --importance-secondary: oklch(48% 15.9% 195.5);
   --importance-tertiary: oklch(62.1% 7.3% 196.4);
-  --importance-destructive: oklch(56.9% 43.5% 353.2);
+  --importance-destructive: oklch(51% 43.5% 353.2);
   --importance-neutral: oklch(52.4% 5.6% 84.6);
 
-  --status-ok: oklch(69.4% 43.5% 125.2);
-  --status-warning: oklch(69.1% 34.9% 86);
-  --status-error: oklch(62.9% 38.7% 22.6);
-  --status-inactive: oklch(60.7% 3.4% 84.6);
+  --status-ok: oklch(55% 43.5% 125.2);
+  --status-warning: oklch(55% 34.9% 86);
+  --status-error: oklch(54% 38.7% 22.6);
+  --status-inactive: oklch(54% 3.4% 84.6);
   --status-ok-tint: oklch(98.7% 8.1% 118.4);
   --status-warning-tint: oklch(98% 6.2% 91.6);
   --status-error-tint: oklch(94.5% 6.6% 17.6);
   --status-inactive-tint: oklch(96.3% 0.3% 84.6);
 
   /* Hue colors — light mode */
-  --hue-orange: oklch(59.8% 42.3% 42.4);
-  --hue-brown: oklch(54.3% 19.3% 65);
-  --hue-amber: oklch(66.1% 29.8% 80.8);
-  --hue-lime: oklch(65.1% 40.9% 132.8);
-  --hue-green: oklch(55.8% 28% 143.9);
-  --hue-teal: oklch(64% 30.5% 165.6);
-  --hue-cyan: oklch(60.2% 23.6% 214.3);
-  --hue-blue: oklch(50.1% 29% 251.3);
-  --hue-indigo: oklch(47.7% 39.5% 278.6);
-  --hue-purple: oklch(52.4% 39.7% 304.6);
-  --hue-pink: oklch(58.8% 45.3% 327.6);
-  --hue-rose: oklch(64% 45.4% 3.2);
+  /* All normalized to L=55% for perceptual balance and WCAG AA on white (4.5:1 minimum) */
+  --hue-orange: oklch(55% 42.3% 42.4);
+  --hue-brown: oklch(55% 19.3% 65);
+  --hue-amber: oklch(55% 29.8% 80.8);
+  --hue-lime: oklch(55% 40.9% 132.8);
+  --hue-green: oklch(55% 28% 143.9);
+  --hue-teal: oklch(55% 30.5% 165.6);
+  --hue-cyan: oklch(55% 23.6% 214.3);
+  --hue-blue: oklch(55% 29% 251.3);
+  --hue-indigo: oklch(55% 39.5% 278.6);
+  --hue-purple: oklch(55% 39.7% 304.6);
+  --hue-pink: oklch(55% 45.3% 327.6);
+  --hue-rose: oklch(55% 45.4% 3.2);
 
   /* Hue tints — light mode */
   --hue-orange-tint: oklch(96% 5.4% 48.5);
@@ -86,28 +87,29 @@
   --importance-destructive: oklch(72.4% 36.2% 350);
   --importance-neutral: oklch(77.5% 3.8% 84.6);
 
-  --status-ok: oklch(83% 38.2% 121.6);
-  --status-warning: oklch(79% 29.2% 91.1);
-  --status-error: oklch(71.3% 28.3% 20.3);
-  --status-inactive: oklch(77% 1.9% 84.6);
-  --status-ok-tint: oklch(45.9% 12% 119.7);
-  --status-warning-tint: oklch(44.7% 9.2% 91.8);
-  --status-error-tint: oklch(39.6% 10.8% 19.2);
+  --status-ok: oklch(85% 38.2% 121.6);
+  --status-warning: oklch(84% 29.2% 91.1);
+  --status-error: oklch(78% 28.3% 20.3);
+  --status-inactive: oklch(81% 1.9% 84.6);
+  --status-ok-tint: oklch(44% 12% 119.7);
+  --status-warning-tint: oklch(41% 9.2% 91.8);
+  --status-error-tint: oklch(33% 10.8% 19.2);
   --status-inactive-tint: oklch(42.4% 2.2% 84.6);
 
   /* Hue colors — dark mode */
-  --hue-orange: oklch(77.5% 31.5% 46.9);
-  --hue-brown: oklch(69.7% 40.1% 57.6);
-  --hue-amber: oklch(76% 33.8% 81.1);
-  --hue-lime: oklch(80.9% 41.6% 131.4);
-  --hue-green: oklch(75.1% 38.8% 143.8);
-  --hue-teal: oklch(77.4% 27.1% 169.3);
-  --hue-cyan: oklch(70.8% 28.1% 214.4);
-  --hue-blue: oklch(66.8% 32.2% 250.3);
-  --hue-indigo: oklch(65.5% 33.7% 282);
-  --hue-purple: oklch(70.5% 29% 306.6);
-  --hue-pink: oklch(74.4% 33.9% 326.8);
-  --hue-rose: oklch(80% 28.7% 358.5);
+  /* All normalized to L=75% for perceptual balance and WCAG AA on dark background (4.5:1 minimum) */
+  --hue-orange: oklch(75% 31.5% 46.9);
+  --hue-brown: oklch(75% 40.1% 57.6);
+  --hue-amber: oklch(75% 33.8% 81.1);
+  --hue-lime: oklch(75% 41.6% 131.4);
+  --hue-green: oklch(75% 38.8% 143.8);
+  --hue-teal: oklch(75% 27.1% 169.3);
+  --hue-cyan: oklch(75% 28.1% 214.4);
+  --hue-blue: oklch(75% 32.2% 250.3);
+  --hue-indigo: oklch(75% 33.7% 282);
+  --hue-purple: oklch(75% 29% 306.6);
+  --hue-pink: oklch(75% 33.9% 326.8);
+  --hue-rose: oklch(75% 28.7% 358.5);
 
   /* Hue tints — dark mode */
   --hue-orange-tint: oklch(32.1% 0% 0);
