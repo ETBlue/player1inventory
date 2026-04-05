@@ -13,8 +13,8 @@ Convert `apps/web/src/design-tokens/theme.css` from HSL to OKLCH in two phases:
 - **Phase A**: Mechanical conversion — same visual appearance, new format. Enables contrast reasoning by inspection via the perceptually uniform `L` channel.
 - **Phase B**: Palette redesign — adjust `L` values to guarantee WCAG AA compliance (4.5:1 normal text, 3:1 large text). Some colors will shift slightly.
 
-**Format convention:** `oklch(L% C H)` — L as percentage, C as decimal, H in degrees.
-Example: `hsl(40 20% 85%)` → `oklch(86% 0.012 84.6)`
+**Format convention:** `oklch(L% C% H)` — L and C both as percentages, H in degrees.
+Example: `hsl(40 20% 85%)` → `oklch(86% 3% 84.6)`
 
 **Scope:** Only `theme.css`. No changes to `index.ts`, `shadows.css`, or `borders.css`.
 
@@ -48,6 +48,9 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const filePath = 'apps/web/src/design-tokens/theme.css'
 const src = readFileSync(filePath, 'utf8')
 
+// Max OKLCH chroma reference value (CSS Color Level 4 defines C% relative to 0.4)
+const C_MAX = 0.4
+
 function hslToOklch(hslString: string): string {
   // culori parses CSS color strings natively
   const color = parse(hslString)
@@ -55,9 +58,9 @@ function hslToOklch(hslString: string): string {
   const ok = clampChroma(oklch(color), 'oklch')
   if (!ok) return hslString
   const l = (ok.l * 100).toFixed(1).replace(/\.0$/, '')
-  const c = ok.c.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+  const c = ((ok.c / C_MAX) * 100).toFixed(1).replace(/\.0$/, '')
   const h = (ok.h ?? 0).toFixed(1).replace(/\.0$/, '')
-  return `oklch(${l}% ${c} ${h})`
+  return `oklch(${l}% ${c}% ${h})`
 }
 
 const result = src.replace(
@@ -89,11 +92,11 @@ After conversion, verify a representative sample in browser DevTools or an OKLCH
 
 | Token | HSL (before) | Expected OKLCH (approx) |
 |---|---|---|
-| `--background-base` (light) | `hsl(40 20% 85%)` | `oklch(86% 0.012 85)` |
-| `--importance-primary` (light) | `hsl(180 90% 20%)` | `oklch(40% 0.096 196)` |
-| `--hue-red` | `hsl(0 84% 60%)` | `oklch(63% 0.257 29)` |
-| `--status-ok` | `hsl(75 60% 45%)` | `oklch(62% 0.147 124)` |
-| `--background-elevated` (dark) | `hsl(40 5% 10%)` | `oklch(12% 0.004 84)` |
+| `--background-base` (light) | `hsl(40 20% 85%)` | `oklch(86% 3% 85)` |
+| `--importance-primary` (light) | `hsl(180 90% 20%)` | `oklch(40% 24% 196)` |
+| `--hue-red` | `hsl(0 84% 60%)` | `oklch(63% 64% 29)` |
+| `--status-ok` | `hsl(75 60% 45%)` | `oklch(62% 37% 124)` |
+| `--background-elevated` (dark) | `hsl(40 5% 10%)` | `oklch(12% 1% 84)` |
 
 ### Step 5: Update CLAUDE.md
 
@@ -150,6 +153,9 @@ Light mode backgrounds:  L ≈ 86% / 92% / 96%  (base / surface / elevated)
 Light mode text (AA):    L ≤ 46%  (ensures 4.5:1 on 86% background)
 Hue colors (on white):  L ≤ 65%  (heuristic; verify per color)
 Status colors (on tint): requires per-pair verification
+
+All C values expressed as % (relative to 0.4 max chroma):
+  e.g. C=0.1 → 25%,  C=0.2 → 50%,  C=0.4 → 100%
 ```
 
 ### Step 3: Adjust non-compliant values

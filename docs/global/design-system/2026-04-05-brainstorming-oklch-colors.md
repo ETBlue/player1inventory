@@ -23,7 +23,7 @@ A: Keep separate declarations (same structure as today, just new format).
 A: No — it exports color names as constants, not raw values.
 
 **Q: Percentage vs decimals for OKLCH values?**
-A: Use percentage for L (e.g. `86%`), decimals for C, degrees for H. Example: `oklch(86% 0.012 84.6)`.
+A: Use percentage for both L and C, degrees for H. C% is relative to 0.4 (CSS Color Level 4 max chroma). Example: `oklch(86% 3% 84.6)`.
 
 ---
 
