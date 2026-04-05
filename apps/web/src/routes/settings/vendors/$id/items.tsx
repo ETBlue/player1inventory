@@ -43,7 +43,6 @@ function VendorItemsTab() {
     search,
     filterState,
     setFilterState,
-    isTagsVisible,
     selectedVendorIds,
     selectedRecipeIds,
     toggleVendorId,
@@ -223,7 +222,6 @@ function VendorItemsTab() {
           setSortBy(field)
           setSortDirection(direction)
         }}
-        isTagsToggleEnabled
         items={items}
         vendors={vendors}
         recipes={recipes}
@@ -266,7 +264,8 @@ function VendorItemsTab() {
                     item={item}
                     tags={itemTags}
                     tagTypes={tagTypes}
-                    showTags={isTagsVisible}
+                    showTags={false}
+                    showTagSummary={false}
                     showExpiration={false}
                     vendors={vendorMap.get(item.id) ?? []}
                     recipes={recipeMap.get(item.id) ?? []}

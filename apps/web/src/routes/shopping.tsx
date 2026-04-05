@@ -207,7 +207,6 @@ function Shopping() {
           tagTypes={tagTypes}
           mode="shopping"
           showTags={false}
-          showExpiration={false}
           showTagSummary={false}
           isChecked={!!ci}
           {...(ci ? { controlAmount: ci.quantity } : {})}
