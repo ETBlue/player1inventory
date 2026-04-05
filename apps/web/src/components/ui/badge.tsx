@@ -12,8 +12,6 @@ const badgeVariants = cva(
       variant: {
         orange: `bg-orange border-orange text-orange-tint`,
         brown: `bg-brown border-brown text-brown-tint`,
-        amber: `bg-amber border-amber text-amber-tint`,
-        lime: `bg-lime border-lime text-lime-tint`,
         green: `bg-green border-green text-green-tint`,
         teal: `bg-teal border-teal text-teal-tint`,
         cyan: `bg-cyan border-cyan text-cyan-tint`,
@@ -36,8 +34,6 @@ const badgeVariants = cva(
 
         'orange-tint': `bg-orange-tint border-orange text-foreground-colorless`,
         'brown-tint': `bg-brown-tint border-brown text-foreground-colorless`,
-        'amber-tint': `bg-amber-tint border-amber text-foreground-colorless`,
-        'lime-tint': `bg-lime-tint border-lime text-foreground-colorless`,
         'green-tint': `bg-green-tint border-green text-foreground-colorless`,
         'teal-tint': `bg-teal-tint border-teal text-foreground-colorless`,
         'cyan-tint': `bg-cyan-tint border-cyan text-foreground-colorless`,
@@ -47,10 +43,10 @@ const badgeVariants = cva(
         'pink-tint': `bg-pink-tint border-pink text-foreground-colorless`,
         'rose-tint': `bg-rose-tint border-rose text-foreground-colorless`,
 
-        'ok-outline': `border-status-ok text-status-ok`,
-        'warning-outline': `border-status-warning text-status-warning`,
-        'error-outline': `border-status-error text-status-error`,
-        'inactive-outline': `border-status-inactive text-status-inactive`,
+        'ok-outline': `bg-status-ok-tint border-status-ok text-status-ok`,
+        'warning-outline': `bg-status-warning-tint border-status-warning text-status-warning`,
+        'error-outline': `bg-status-error-tint border-status-error text-status-error`,
+        'inactive-outline': `bg-status-inactive-tint border-status-inactive text-status-inactive`,
 
         'primary-outline': `border-primary text-primary`,
         'secondary-outline': `border-secondary text-secondary`,
