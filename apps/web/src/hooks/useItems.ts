@@ -46,6 +46,9 @@ function toCreateItemInput(
 function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
   const { id: _id, createdAt: _c, updatedAt: _u, dueDate, ...rest } = updates
   return {
+    // Non-clearable fields (name, tagIds, quantities, etc.) pass through unchanged.
+    // Guard assignments below MUST come after ...rest — they coerce optional fields that
+    // rest may have written as undefined into explicit null for MongoDB $set.
     ...rest,
     packageUnit: rest.packageUnit ?? null,
     measurementUnit: rest.measurementUnit ?? null,

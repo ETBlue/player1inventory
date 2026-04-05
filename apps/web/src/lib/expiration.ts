@@ -1,11 +1,24 @@
-import type { Item } from '@/types'
+import type { ExpirationMode, Item } from '@/types'
+
+export function inferExpirationMode(
+  item: Pick<Item, 'expirationMode' | 'dueDate' | 'estimatedDueDays'>,
+): ExpirationMode {
+  return (
+    item.expirationMode ??
+    (item.estimatedDueDays != null
+      ? 'days from purchase'
+      : item.dueDate
+        ? 'date'
+        : 'disabled')
+  )
+}
 
 export function computeExpiryDate(
   item: Pick<Item, 'expirationMode' | 'dueDate' | 'estimatedDueDays'>,
   lastPurchaseDate?: Date,
 ): Date | undefined {
-  const mode = item.expirationMode
-  if (!mode || mode === 'disabled') return undefined
+  const mode = inferExpirationMode(item)
+  if (mode === 'disabled') return undefined
   if (mode === 'date') return item.dueDate
   // 'days from purchase'
   if (!lastPurchaseDate || !item.estimatedDueDays) return undefined

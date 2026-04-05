@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useLastPurchaseDate } from '@/hooks'
-import { computeExpiryDate } from '@/lib/expiration'
+import { computeExpiryDate, inferExpirationMode } from '@/lib/expiration'
 import {
   getCurrentQuantity,
   getStockStatus,
@@ -251,7 +251,7 @@ export function ItemCard({
                   )}
                 >
                   {isWarning && <TriangleAlert className="w-4 h-4" />}
-                  {item.expirationMode === 'days from purchase'
+                  {inferExpirationMode(item) === 'days from purchase'
                     ? // Relative mode: show "Expires in X days"
                       daysUntilExpiration >= 0
                       ? `Expires in ${daysUntilExpiration} days`
