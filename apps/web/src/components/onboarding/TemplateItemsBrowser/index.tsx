@@ -264,29 +264,6 @@ export function TemplateItemsBrowser({
         </>
       )}
 
-      {/* Filter status (conditional) */}
-      {isFiltered && (
-        <>
-          <div className="h-px bg-accessory-default" />
-          <div className="flex items-center justify-between gap-2 px-3 py-1">
-            <span className="text-xs text-foreground-muted">
-              {t('onboarding.itemsBrowser.showing', {
-                count: visibleItems.length,
-                total: templateItems.length,
-              })}
-            </span>
-            <button
-              type="button"
-              onClick={handleClearFilters}
-              className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground transition-colors"
-            >
-              <X className="h-3 w-3" />
-              {t('onboarding.itemsBrowser.clearFilter')}
-            </button>
-          </div>
-        </>
-      )}
-
       {/* Search input (conditional) */}
       {searchVisible && (
         <>
@@ -313,6 +290,29 @@ export function TemplateItemsBrowser({
                 <X />
               </Button>
             )}
+          </div>
+        </>
+      )}
+
+      {/* Filter status (conditional) */}
+      {isFiltered && (
+        <>
+          <div className="h-px bg-accessory-default" />
+          <div className="flex items-center justify-between gap-2 px-3 py-1">
+            <span className="text-xs text-foreground-muted">
+              {t('onboarding.itemsBrowser.showing', {
+                count: visibleItems.length,
+                total: templateItems.length,
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground transition-colors"
+            >
+              <X className="h-3 w-3" />
+              {t('onboarding.itemsBrowser.clearFilter')}
+            </button>
           </div>
         </>
       )}
