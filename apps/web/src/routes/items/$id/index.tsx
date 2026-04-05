@@ -53,17 +53,28 @@ function itemToFormValues(item: Item): ItemFormValues {
   }
 }
 
-// A wider update type that allows explicit `undefined` for optional expiration fields.
-// Passing `undefined` tells Dexie to delete those properties from the stored record.
-// We need a separate type here because `exactOptionalPropertyTypes: true` prevents assigning
-// `undefined` to fields typed as `?: T` on `Partial<Item>`.
+// A wider update type that allows explicit `undefined` for optional fields.
+// Passing `undefined` tells Dexie (local) to clear those properties and
+// tells toUpdateItemInput() (cloud) to send null so MongoDB clears them.
+// We need a separate type here because `exactOptionalPropertyTypes: true`
+// prevents assigning `undefined` to fields typed as `?: T` on `Partial<Item>`.
 type ItemUpdatePayload = Omit<
   Partial<Item>,
-  'dueDate' | 'estimatedDueDays' | 'expirationMode'
+  | 'dueDate'
+  | 'estimatedDueDays'
+  | 'expirationMode'
+  | 'packageUnit'
+  | 'measurementUnit'
+  | 'amountPerPackage'
+  | 'expirationThreshold'
 > & {
   dueDate?: Date | undefined
   estimatedDueDays?: number | undefined
   expirationMode?: Item['expirationMode']
+  packageUnit?: string | undefined
+  measurementUnit?: string | undefined
+  amountPerPackage?: number | undefined
+  expirationThreshold?: number | undefined
 }
 
 function buildUpdates(values: ItemFormValues): ItemUpdatePayload {
@@ -92,26 +103,19 @@ function buildUpdates(values: ItemFormValues): ItemUpdatePayload {
     updates.estimatedDueDays = undefined
   }
 
-  if (values.packageUnit) {
-    updates.packageUnit = values.packageUnit
-  } else {
-    delete updates.packageUnit
-  }
-  if (values.measurementUnit) {
-    updates.measurementUnit = values.measurementUnit
-  } else {
-    delete updates.measurementUnit
-  }
-  if (values.amountPerPackage) {
-    updates.amountPerPackage = Number(values.amountPerPackage)
-  } else {
-    delete updates.amountPerPackage
-  }
-  if (values.expirationThreshold) {
-    updates.expirationThreshold = Number(values.expirationThreshold)
-  } else {
-    delete updates.expirationThreshold
-  }
+  // Assign undefined (not delete) so toUpdateItemInput() sees the key as
+  // present and sends null to MongoDB — intentionally clearing the field
+  // when the user leaves it blank in the full ItemForm.
+  updates.packageUnit = values.packageUnit ? values.packageUnit : undefined
+  updates.measurementUnit = values.measurementUnit
+    ? values.measurementUnit
+    : undefined
+  updates.amountPerPackage = values.amountPerPackage
+    ? Number(values.amountPerPackage)
+    : undefined
+  updates.expirationThreshold = values.expirationThreshold
+    ? Number(values.expirationThreshold)
+    : undefined
 
   return updates
 }
