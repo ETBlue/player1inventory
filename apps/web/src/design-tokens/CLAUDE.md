@@ -14,10 +14,11 @@ src/design-tokens/
 ```
 
 **Theme system:**
-- `:root` defines HSL values for light mode semantic colors
+- `:root` defines OKLCH values for light mode semantic colors
 - `.dark` overrides for dark mode
 - `@theme inline` maps CSS variables to Tailwind utilities (bg-background, text-foreground, etc.)
 - Two-layer approach preserves theming flexibility
+- OKLCH format (`oklch(L% C% H)`) enables perceptually uniform contrast reasoning via the L channel
 
 **Background layers:**
 Three-level system for surface elevation hierarchy:
@@ -25,8 +26,8 @@ Three-level system for surface elevation hierarchy:
 - `--background-surface` / `bg-background-surface` / `bg-card`: Cards, panels, list items
 - `--background-elevated` / `bg-background-elevated`: Toolbars, headers, elevated elements
 
-Light mode: 100% → 95% → 90% (progressively darker)
-Dark mode: 3.9% → 10% → 15% (progressively lighter)
+Light mode: L≈89% → L≈95% → L≈99% (progressively lighter in OKLCH)
+Dark mode: L≈22% → L≈33% → L≈42% (progressively lighter in OKLCH)
 
 **Usage:**
 ```tsx
