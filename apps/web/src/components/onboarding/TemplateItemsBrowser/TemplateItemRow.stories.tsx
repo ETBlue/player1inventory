@@ -3,7 +3,7 @@ import { TagColor } from '@/types'
 import { TemplateItemRow } from './TemplateItemRow'
 
 const mockTagTypes = [
-  { id: 'category', name: 'Category', color: TagColor.lime },
+  { id: 'category', name: 'Category', color: TagColor.pink },
   { id: 'preservation', name: 'Preservation', color: TagColor.cyan },
 ]
 

@@ -6,10 +6,6 @@ export const colors = {
     tint: 'var(--color-orange-tint)',
     default: 'var(--color-orange)',
   },
-  amber: {
-    tint: 'var(--color-amber-tint)',
-    default: 'var(--color-amber)',
-  },
   green: {
     tint: 'var(--color-green-tint)',
     default: 'var(--color-green)',
@@ -37,10 +33,6 @@ export const colors = {
   brown: {
     tint: 'var(--color-brown-tint)',
     default: 'var(--color-brown)',
-  },
-  lime: {
-    tint: 'var(--color-lime-tint)',
-    default: 'var(--color-lime)',
   },
   cyan: {
     tint: 'var(--color-cyan-tint)',

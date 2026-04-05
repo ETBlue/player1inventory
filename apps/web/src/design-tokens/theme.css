@@ -1,129 +1,121 @@
 /* Base theme variables (light mode) */
 :root {
-  --background-base: oklch(89.4% 3.7% 84.6);
-  --background-surface: oklch(95.2% 3.7% 84.6);
-  --background-elevated: oklch(98.7% 2.4% 84.6);
+  --background-base: oklch(90% 4% 85);
+  --background-surface: oklch(95% 4% 85);
+  --background-elevated: oklch(98% 4% 85);
 
-  --foreground-muted: oklch(48.1% 9.5% 84.4);
-  --foreground-default: oklch(36.5% 13.8% 82.8);
-  --foreground-emphasized: oklch(23.9% 7.9% 83.5);
-  --foreground-colorless: oklch(32.1% 0% 0);
-  --foreground-colorless-inverse: oklch(92.3% 0% 0);
+  --foreground-muted: oklch(50% 6% 85);
+  --foreground-default: oklch(35% 8% 85);
+  --foreground-emphasized: oklch(20% 10% 85);
+  --foreground-colorless: oklch(35% 0% 85);
+  --foreground-colorless-inverse: oklch(95% 0% 85);
 
-  --accessory-muted: oklch(89.4% 3.7% 84.6);
-  --accessory-default: oklch(82.1% 6.3% 84.6);
-  --accessory-emphasized: oklch(71% 10.3% 84.5);
+  --accessory-muted: oklch(85% 6% 85);
+  --accessory-default: oklch(80% 6% 85);
+  --accessory-emphasized: oklch(75% 6% 85);
 
-  --overlay: oklch(60.7% 3.4% 84.6);
-  --outline: oklch(73.8% 27.2% 195.1);
+  --overlay: oklch(60% 4% 85);
+  --outline: oklch(70% 30% 195);
 
-  --importance-primary: oklch(48% 25.1% 194.8);
-  --importance-secondary: oklch(48% 15.9% 195.5);
-  --importance-tertiary: oklch(62.1% 7.3% 196.4);
-  --importance-destructive: oklch(51% 43.5% 353.2);
-  --importance-neutral: oklch(52.4% 5.6% 84.6);
+  --importance-primary: oklch(55% 70% 195);
+  --importance-secondary: oklch(57% 20% 195);
+  --importance-tertiary: oklch(60% 10% 195);
+  --importance-destructive: oklch(55% 40% 350);
+  --importance-neutral: oklch(50% 6% 85);
 
-  --status-ok: oklch(55% 43.5% 125.2);
-  --status-warning: oklch(55% 34.9% 86);
-  --status-error: oklch(54% 38.7% 22.6);
-  --status-inactive: oklch(54% 3.4% 84.6);
-  --status-ok-tint: oklch(98.7% 8.1% 118.4);
-  --status-warning-tint: oklch(98% 6.2% 91.6);
-  --status-error-tint: oklch(94.5% 6.6% 17.6);
-  --status-inactive-tint: oklch(96.3% 0.3% 84.6);
+  --status-ok: oklch(65% 70% 120);
+  --status-warning: oklch(65% 50% 95);
+  --status-error: oklch(60% 40% 20);
+  --status-inactive: oklch(60% 4% 85);
+  --status-ok-tint: oklch(97% 10% 120);
+  --status-warning-tint: oklch(97% 10% 95);
+  --status-error-tint: oklch(97% 10% 20);
+  --status-inactive-tint: oklch(97% 2% 85);
 
   /* Hue colors — light mode */
   /* All normalized to L=55% for perceptual balance and WCAG AA on white (4.5:1 minimum) */
-  --hue-orange: oklch(55% 42.3% 42.4);
-  --hue-brown: oklch(55% 19.3% 65);
-  --hue-amber: oklch(55% 29.8% 80.8);
-  --hue-lime: oklch(55% 40.9% 132.8);
-  --hue-green: oklch(55% 28% 143.9);
-  --hue-teal: oklch(55% 30.5% 165.6);
-  --hue-cyan: oklch(55% 23.6% 214.3);
-  --hue-blue: oklch(55% 29% 251.3);
-  --hue-indigo: oklch(55% 39.5% 278.6);
-  --hue-purple: oklch(55% 39.7% 304.6);
-  --hue-pink: oklch(55% 45.3% 327.6);
-  --hue-rose: oklch(55% 45.4% 3.2);
+  --hue-orange: oklch(55% 40% 40);
+  --hue-brown: oklch(55% 20% 65);
+  --hue-green: oklch(55% 25% 140);
+  --hue-teal: oklch(55% 25% 170);
+  --hue-cyan: oklch(55% 30% 215);
+  --hue-blue: oklch(55% 30% 250);
+  --hue-indigo: oklch(55% 30% 280);
+  --hue-purple: oklch(55% 35% 300);
+  --hue-pink: oklch(55% 40% 330);
+  --hue-rose: oklch(55% 40% 355);
 
   /* Hue tints — light mode */
-  --hue-orange-tint: oklch(96% 5.4% 48.5);
-  --hue-brown-tint: oklch(96.8% 5.4% 67.6);
-  --hue-amber-tint: oklch(97.7% 6% 84.6);
-  --hue-lime-tint: oklch(98.4% 8.9% 128.9);
-  --hue-green-tint: oklch(97.5% 10.6% 145.2);
-  --hue-teal-tint: oklch(97.9% 7.1% 173.7);
-  --hue-cyan-tint: oklch(97.3% 5.7% 211);
-  --hue-blue-tint: oklch(95.6% 5.4% 248.1);
-  --hue-indigo-tint: oklch(93.1% 8.5% 285.7);
-  --hue-purple-tint: oklch(94.1% 9% 308);
-  --hue-pink-tint: oklch(95.2% 10.7% 325.9);
-  --hue-rose-tint: oklch(94.7% 7.4% 355.5);
+  --hue-orange-tint: oklch(95% 4% 40);
+  --hue-brown-tint: oklch(95% 4% 65);
+  --hue-green-tint: oklch(95% 4% 140);
+  --hue-teal-tint: oklch(95% 4% 170);
+  --hue-cyan-tint: oklch(95% 4% 215);
+  --hue-blue-tint: oklch(95% 4% 250);
+  --hue-indigo-tint: oklch(95% 4% 280);
+  --hue-purple-tint: oklch(95% 4% 300);
+  --hue-pink-tint: oklch(95% 4% 330);
+  --hue-rose-tint: oklch(95% 4% 355);
 }
 
 /* Dark mode overrides */
 .dark {
-  --background-base: oklch(21.8% 0.9% 84.6);
-  --background-surface: oklch(32.5% 1.6% 84.6);
-  --background-elevated: oklch(42.4% 2.2% 84.6);
+  --background-base: oklch(20% 2% 85);
+  --background-surface: oklch(30% 2% 85);
+  --background-elevated: oklch(40% 2% 85);
 
-  --foreground-muted: oklch(81.3% 3.2% 84.6);
-  --foreground-default: oklch(89.4% 3.7% 84.6);
-  --foreground-emphasized: oklch(97.5% 5.4% 84.6);
-  --foreground-colorless: oklch(92.3% 0% 0);
-  --foreground-colorless-inverse: oklch(32.1% 0% 0);
+  --foreground-muted: oklch(80% 4% 85);
+  --foreground-default: oklch(90% 6% 85);
+  --foreground-emphasized: oklch(97% 8% 85);
+  --foreground-colorless: oklch(90% 0% 85);
+  --foreground-colorless-inverse: oklch(30% 0% 85);
 
-  --accessory-muted: oklch(60.7% 3.4% 84.6);
-  --accessory-default: oklch(68.9% 2.6% 84.6);
-  --accessory-emphasized: oklch(77% 1.9% 84.6);
+  --accessory-muted: oklch(55% 4% 85);
+  --accessory-default: oklch(65% 4% 85);
+  --accessory-emphasized: oklch(75% 4% 85);
 
-  --overlay: oklch(92.6% 1.2% 84.6);
-  --outline: oklch(76.2% 20% 195.6);
+  --overlay: oklch(90% 4% 85);
+  --outline: oklch(75% 20% 195);
 
-  --importance-primary: oklch(80.8% 27.1% 195.2);
-  --importance-secondary: oklch(77.2% 13.9% 196.1);
-  --importance-tertiary: oklch(77.8% 4.2% 196.8);
-  --importance-destructive: oklch(72.4% 36.2% 350);
-  --importance-neutral: oklch(77.5% 3.8% 84.6);
+  --importance-primary: oklch(75% 70% 195);
+  --importance-secondary: oklch(73% 30% 195);
+  --importance-tertiary: oklch(70% 15% 195);
+  --importance-destructive: oklch(75% 30% 350);
+  --importance-neutral: oklch(80% 6% 85);
 
-  --status-ok: oklch(85% 38.2% 121.6);
-  --status-warning: oklch(84% 29.2% 91.1);
-  --status-error: oklch(78% 28.3% 20.3);
-  --status-inactive: oklch(81% 1.9% 84.6);
-  --status-ok-tint: oklch(44% 12% 119.7);
-  --status-warning-tint: oklch(41% 9.2% 91.8);
-  --status-error-tint: oklch(33% 10.8% 19.2);
-  --status-inactive-tint: oklch(42.4% 2.2% 84.6);
+  --status-ok: oklch(80% 60% 120);
+  --status-warning: oklch(80% 60% 95);
+  --status-error: oklch(80% 40% 20);
+  --status-inactive: oklch(80% 2% 85);
+  --status-ok-tint: oklch(40% 10% 120);
+  --status-warning-tint: oklch(40% 10% 95);
+  --status-error-tint: oklch(40% 10% 20);
+  --status-inactive-tint: oklch(40% 2% 85);
 
   /* Hue colors — dark mode */
   /* All normalized to L=75% for perceptual balance and WCAG AA on dark background (4.5:1 minimum) */
-  --hue-orange: oklch(75% 31.5% 46.9);
-  --hue-brown: oklch(75% 40.1% 57.6);
-  --hue-amber: oklch(75% 33.8% 81.1);
-  --hue-lime: oklch(75% 41.6% 131.4);
-  --hue-green: oklch(75% 38.8% 143.8);
-  --hue-teal: oklch(75% 27.1% 169.3);
-  --hue-cyan: oklch(75% 28.1% 214.4);
-  --hue-blue: oklch(75% 32.2% 250.3);
-  --hue-indigo: oklch(75% 33.7% 282);
-  --hue-purple: oklch(75% 29% 306.6);
-  --hue-pink: oklch(75% 33.9% 326.8);
-  --hue-rose: oklch(75% 28.7% 358.5);
+  --hue-orange: oklch(75% 40% 40);
+  --hue-brown: oklch(75% 30% 65);
+  --hue-green: oklch(75% 30% 140);
+  --hue-teal: oklch(75% 30% 170);
+  --hue-cyan: oklch(75% 30% 215);
+  --hue-blue: oklch(75% 35% 250);
+  --hue-indigo: oklch(75% 35% 280);
+  --hue-purple: oklch(75% 30% 300);
+  --hue-pink: oklch(75% 35% 330);
+  --hue-rose: oklch(75% 40% 355);
 
   /* Hue tints — dark mode */
-  --hue-orange-tint: oklch(32.1% 0% 0);
-  --hue-brown-tint: oklch(32.1% 0% 0);
-  --hue-amber-tint: oklch(32.1% 0% 0);
-  --hue-lime-tint: oklch(32.1% 0% 0);
-  --hue-green-tint: oklch(32.1% 0% 0);
-  --hue-teal-tint: oklch(32.1% 0% 0);
-  --hue-cyan-tint: oklch(32.1% 0% 0);
-  --hue-blue-tint: oklch(32.1% 0% 0);
-  --hue-indigo-tint: oklch(32.1% 0% 0);
-  --hue-purple-tint: oklch(32.1% 0% 0);
-  --hue-pink-tint: oklch(32.1% 0% 0);
-  --hue-rose-tint: oklch(32.1% 0% 0);
+  --hue-orange-tint: oklch(35% 4% 40);
+  --hue-brown-tint: oklch(35% 4% 65);
+  --hue-green-tint: oklch(35% 4% 140);
+  --hue-teal-tint: oklch(35% 4% 170);
+  --hue-cyan-tint: oklch(35% 4% 215);
+  --hue-blue-tint: oklch(35% 4% 250);
+  --hue-indigo-tint: oklch(35% 4% 280);
+  --hue-purple-tint: oklch(35% 4% 300);
+  --hue-pink-tint: oklch(35% 4% 330);
+  --hue-rose-tint: oklch(35% 4% 355);
 }
 
 /* Map to Tailwind utilities */
@@ -180,8 +172,6 @@
   /* Hue color utilities */
   --color-orange: var(--hue-orange);
   --color-brown: var(--hue-brown);
-  --color-amber: var(--hue-amber);
-  --color-lime: var(--hue-lime);
   --color-green: var(--hue-green);
   --color-teal: var(--hue-teal);
   --color-cyan: var(--hue-cyan);
@@ -193,8 +183,6 @@
 
   --color-orange-tint: var(--hue-orange-tint);
   --color-brown-tint: var(--hue-brown-tint);
-  --color-amber-tint: var(--hue-amber-tint);
-  --color-lime-tint: var(--hue-lime-tint);
   --color-green-tint: var(--hue-green-tint);
   --color-teal-tint: var(--hue-teal-tint);
   --color-cyan-tint: var(--hue-cyan-tint);

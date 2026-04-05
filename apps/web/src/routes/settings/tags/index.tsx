@@ -68,8 +68,6 @@ export const Route = createFileRoute('/settings/tags/')({
 const TAG_COLOR_BORDER: Record<TagColor, string> = {
   orange: 'border-orange',
   brown: 'border-brown',
-  amber: 'border-amber',
-  lime: 'border-lime',
   green: 'border-green',
   teal: 'border-teal',
   cyan: 'border-cyan',
@@ -83,8 +81,6 @@ const TAG_COLOR_BORDER: Record<TagColor, string> = {
 const TAG_COLOR_TEXT: Record<TagColor, string> = {
   orange: 'text-orange',
   brown: 'text-brown',
-  amber: 'text-amber',
-  lime: 'text-lime',
   green: 'text-green',
   teal: 'text-teal',
   cyan: 'text-cyan',

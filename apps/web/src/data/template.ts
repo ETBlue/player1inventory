@@ -33,7 +33,7 @@ export const templateTagTypes: TemplateTagType[] = [
   {
     key: 'category',
     i18nKey: 'template.tagTypes.category',
-    color: TagColor.lime,
+    color: TagColor.pink,
   },
   {
     key: 'preservation',
