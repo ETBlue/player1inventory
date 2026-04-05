@@ -17,10 +17,10 @@
   --overlay: hsl(40 5% 50%);
   --outline: hsl(180 50% 50%);
 
-  --importance-primary: hsl(180 90% 25%);
-  --importance-secondary: hsl(180 40% 40%);
+  --importance-primary: hsl(180 90% 30%);
+  --importance-secondary: hsl(180 30% 40%);
   --importance-tertiary: hsl(180 10% 50%);
-  --importance-destructive: hsl(330 50% 45%);
+  --importance-destructive: hsl(330 50% 50%);
   --importance-neutral: hsl(40 10% 40%);
 
   --status-ok: hsl(75 95% 35%);
@@ -63,37 +63,37 @@
 
 /* Dark mode overrides */
 .dark {
-  --background-base: hsl(40 5% 30%);
+  --background-base: hsl(40 5% 10%);
   --background-surface: hsl(40 5% 20%);
-  --background-elevated: hsl(40 5% 10%);
+  --background-elevated: hsl(40 5% 30%);
 
-  --foreground-muted: hsl(40 10% 65%);
-  --foreground-default: hsl(40 10% 80%);
-  --foreground-emphasized: hsl(40 5% 95%);
+  --foreground-muted: hsl(40 10% 75%);
+  --foreground-default: hsl(40 20% 85%);
+  --foreground-emphasized: hsl(40 90% 95%);
   --foreground-colorless: hsl(0 0% 90%);
   --foreground-colorless-inverse: hsl(0 0% 20%);
 
-  --accessory-muted: hsl(40 20% 30%);
-  --accessory-default: hsl(40 20% 40%);
-  --accessory-emphasized: hsl(40 20% 50%);
+  --accessory-muted: hsl(40 5% 50%);
+  --accessory-default: hsl(40 5% 60%);
+  --accessory-emphasized: hsl(40 5% 70%);
 
   --overlay: hsl(40 10% 90%);
   --outline: hsl(180 40% 60%);
 
-  --importance-primary: hsl(180 70% 60%);
+  --importance-primary: hsl(180 60% 60%);
   --importance-secondary: hsl(180 30% 65%);
   --importance-tertiary: hsl(180 10% 70%);
-  --importance-destructive: hsl(330 90% 80%);
-  --importance-neutral: hsl(40 30% 80%);
+  --importance-destructive: hsl(330 70% 70%);
+  --importance-neutral: hsl(40 10% 70%);
 
-  --status-ok: hsl(75 80% 60%);
-  --status-warning: hsl(45 90% 60%);
-  --status-error: hsl(0 90% 70%);
+  --status-ok: hsl(75 60% 60%);
+  --status-warning: hsl(45 60% 60%);
+  --status-error: hsl(0 60% 70%);
   --status-inactive: hsl(40 5% 70%);
-  --status-ok-tint: hsl(75 90% 20%);
-  --status-warning-tint: hsl(45 90% 20%);
-  --status-error-tint: hsl(0 90% 20%);
-  --status-inactive-tint: hsl(40 5% 20%);
+  --status-ok-tint: hsl(75 20% 30%);
+  --status-warning-tint: hsl(45 20% 30%);
+  --status-error-tint: hsl(0 20% 30%);
+  --status-inactive-tint: hsl(40 5% 30%);
 
   /* Hue colors — dark mode */
   --hue-orange: hsl(20 90% 70%);
