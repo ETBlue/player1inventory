@@ -332,11 +332,6 @@ export const AllColors: Story = {
             usage="Secondary actions, supporting elements."
           />
           <ThemeColorCard
-            name="tertiary"
-            cssVar="var(--color-importance-tertiary)"
-            usage="Tertiary actions, low-priority elements."
-          />
-          <ThemeColorCard
             name="destructive"
             cssVar="var(--color-importance-destructive)"
             usage="Destructive actions, warnings, errors."

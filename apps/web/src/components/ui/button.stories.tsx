@@ -22,7 +22,6 @@ export const Variants: Story = {
     const baseVariants = [
       'primary',
       'secondary',
-      'tertiary',
       'destructive',
       'neutral',
     ] as const

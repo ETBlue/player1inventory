@@ -28,7 +28,6 @@ const badgeVariants = cva(
 
         primary: `bg-importance-primary border-importance-primary text-foreground-colorless-inverse`,
         secondary: `bg-importance-secondary border-importance-secondary text-foreground-colorless-inverse`,
-        tertiary: `bg-importance-tertiary border-importance-tertiary text-foreground-colorless-inverse`,
         destructive: `bg-importance-destructive border-importance-destructive text-foreground-colorless-inverse`,
         neutral: `bg-importance-neutral border-importance-neutral text-foreground-colorless-inverse`,
 
@@ -50,7 +49,6 @@ const badgeVariants = cva(
 
         'primary-outline': `border-importance-primary text-importance-primary-foreground`,
         'secondary-outline': `border-importance-secondary text-importance-secondary-foreground`,
-        'tertiary-outline': `border-importance-tertiary text-importance-tertiary-foreground`,
         'destructive-outline': `border-importance-destructive text-importance-destructive-foreground`,
         'neutral-outline': `border-importance-neutral text-importance-neutral-foreground`,
       },

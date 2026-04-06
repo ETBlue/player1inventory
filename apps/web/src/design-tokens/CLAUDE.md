@@ -46,7 +46,7 @@ Five importance levels, each with three sub-variants:
 - `--importance-primary-foreground` (text on foreground surface)
 - `--importance-primary-accessory` (borders, muted fills)
 
-Levels: `primary`, `secondary`, `tertiary`, `destructive`, `neutral`
+Levels: `primary`, `secondary`, `destructive`, `neutral`
 
 Tailwind classes: `bg-importance-primary`, `text-importance-primary-foreground`, `border-importance-primary-accessory`, etc.
 
@@ -88,11 +88,11 @@ Defined at the bottom of theme.css using `--color-` prefix for direct Tailwind c
 - Hue inverse: `orange-inverse`, ..., `rose-inverse` (light tint + colored border/text)
 - Status solid: `ok`, `warning`, `error`, `inactive`
 - Status inverse: `ok-inverse`, `warning-inverse`, `error-inverse`, `inactive-inverse`
-- Importance solid: `primary`, `secondary`, `tertiary`, `destructive`, `neutral`
+- Importance solid: `primary`, `secondary`, `destructive`, `neutral`
 - Importance outline: `primary-outline`, ..., `neutral-outline`
 
 **Button variants** (`src/components/ui/button.tsx`):
-Importance group: `primary`, `secondary`, `tertiary`, `destructive`, `neutral` + `-outline`, `-ghost`, `-link` suffixes (20 variants)
+Importance group: `primary`, `secondary`, `destructive`, `neutral` + `-outline`, `-ghost`, `-link` suffixes (16 variants)
 Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
 
 **Sizes:** `xs`, `sm`, `default`, `lg`, `icon-xs`, `icon-sm`, `icon`, `icon-lg`

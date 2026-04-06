@@ -97,7 +97,7 @@ for (const h of hues) {
 
 // Semantic sub-variant pairs: importance-primary-foreground on importance-primary-accessory
 console.log('\n--- Importance semantic sub-variants ---')
-const importanceLevels = ['primary','secondary','tertiary','destructive','neutral']
+const importanceLevels = ['primary','secondary','destructive','neutral']
 for (const level of importanceLevels) {
   row('light', `importance-${level}-foreground`, 'background-surface', light, 4.5)
 }

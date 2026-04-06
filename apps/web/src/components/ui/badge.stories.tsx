@@ -25,7 +25,6 @@ export const Variants: Story = {
     const importanceColors = [
       'primary',
       'secondary',
-      'tertiary',
       'destructive',
       'neutral',
     ] as const

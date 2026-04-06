@@ -23,19 +23,16 @@
 
   --importance-primary: oklch(60% 70% 195);
   --importance-secondary: oklch(65% 20% 195);
-  --importance-tertiary: oklch(69% 10% 195);
   --importance-destructive: oklch(60% 40% 350);
   --importance-neutral: oklch(60% 6% 85);
 
   --importance-primary-foreground: oklch(50% 70% 195);
   --importance-secondary-foreground: oklch(55% 20% 195);
-  --importance-tertiary-foreground: oklch(59% 10% 195);
   --importance-destructive-foreground: oklch(50% 40% 350);
   --importance-neutral-foreground: oklch(50% 6% 85);
 
   --importance-primary-accessory: oklch(70% 20% 195);
   --importance-secondary-accessory: oklch(75% 10% 195);
-  --importance-tertiary-accessory: oklch(79% 10% 195);
   --importance-destructive-accessory: oklch(70% 20% 350);
   --importance-neutral-accessory: oklch(70% 6% 85);
 
@@ -144,19 +141,16 @@
 
   --importance-primary: oklch(70% 70% 195);
   --importance-secondary: oklch(70% 30% 195);
-  --importance-tertiary: oklch(70% 15% 195);
   --importance-destructive: oklch(70% 40% 350);
   --importance-neutral: oklch(75% 6% 85);
 
   --importance-primary-foreground: oklch(80% 70% 195);
   --importance-secondary-foreground: oklch(80% 30% 195);
-  --importance-tertiary-foreground: oklch(80% 15% 195);
   --importance-destructive-foreground: oklch(80% 40% 350);
   --importance-neutral-foreground: oklch(85% 6% 85);
 
   --importance-primary-accessory: oklch(60% 20% 195);
   --importance-secondary-accessory: oklch(60% 10% 195);
-  --importance-tertiary-accessory: oklch(60% 10% 195);
   --importance-destructive-accessory: oklch(60% 20% 350);
   --importance-neutral-accessory: oklch(65% 6% 85);
 
@@ -272,19 +266,16 @@
   /* by importance */
   --color-importance-primary: var(--importance-primary);
   --color-importance-secondary: var(--importance-secondary);
-  --color-importance-tertiary: var(--importance-tertiary);
   --color-importance-destructive: var(--importance-destructive);
   --color-importance-neutral: var(--importance-neutral);
 
   --color-importance-primary-foreground: var(--importance-primary-foreground);
   --color-importance-secondary-foreground: var(--importance-secondary-foreground);
-  --color-importance-tertiary-foreground: var(--importance-tertiary-foreground);
   --color-importance-destructive-foreground: var(--importance-destructive-foreground);
   --color-importance-neutral-foreground: var(--importance-neutral-foreground);
 
   --color-importance-primary-accessory: var(--importance-primary-accessory);
   --color-importance-secondary-accessory: var(--importance-secondary-accessory);
-  --color-importance-tertiary-accessory: var(--importance-tertiary-accessory);
   --color-importance-destructive-accessory: var(--importance-destructive-accessory);
   --color-importance-neutral-accessory: var(--importance-neutral-accessory);
 
