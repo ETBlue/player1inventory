@@ -383,16 +383,36 @@ export async function migrateTagColorsToTypes(): Promise<void> {
 // Migration helper: convert legacy x-tint TagType colors to bold x colors
 export async function migrateTagColorTints(): Promise<void> {
   const tintToBase: Record<string, string> = {
-    'red-tint': 'red',
+    // Legacy -tint suffix (pre-redesign naming)
+    'red-tint': 'rose',
     'orange-tint': 'orange',
-    'amber-tint': 'amber',
-    'yellow-tint': 'yellow',
+    'amber-tint': 'orange',
+    'yellow-tint': 'orange',
     'green-tint': 'green',
     'teal-tint': 'teal',
     'blue-tint': 'blue',
     'indigo-tint': 'indigo',
     'purple-tint': 'purple',
     'pink-tint': 'pink',
+    // Legacy -inverse suffix (previous redesign iteration)
+    'red-inverse': 'rose',
+    'orange-inverse': 'orange',
+    'amber-inverse': 'orange',
+    'yellow-inverse': 'orange',
+    'green-inverse': 'green',
+    'teal-inverse': 'teal',
+    'blue-inverse': 'blue',
+    'indigo-inverse': 'indigo',
+    'purple-inverse': 'purple',
+    'pink-inverse': 'pink',
+    'brown-inverse': 'brown',
+    'cyan-inverse': 'cyan',
+    'rose-inverse': 'rose',
+    // Obsolete colors (removed from 10-hue system) → nearest equivalent
+    red: 'rose',
+    amber: 'orange',
+    yellow: 'orange',
+    lime: 'green',
   }
 
   const tagTypes = await getAllTagTypes()

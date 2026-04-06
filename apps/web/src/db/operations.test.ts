@@ -1310,17 +1310,18 @@ describe('migrateTagColorTints', () => {
   it('user can migrate tint tag type colors to their bold equivalents', async () => {
     // Given tag types with legacy tint color values in the DB
     await db.tagTypes.bulkPut([
-      { id: 'tt-red', name: 'Ingredient', color: 'red-tint' as TagColor },
-      { id: 'tt-blue', name: 'Storage', color: 'blue-tint' as TagColor },
+      { id: 'tt-red', name: 'Ingredient', color: 'red-inverse' as TagColor },
+      { id: 'tt-blue', name: 'Storage', color: 'blue-inverse' as TagColor },
       { id: 'tt-green', name: 'Category', color: 'green' as TagColor },
     ])
 
     // When migration runs
     await migrateTagColorTints()
 
-    // Then tint colors are replaced with bold; bold colors are unchanged
+    // Then tint colors are replaced with their base equivalents; bold colors are unchanged
+    // red-inverse → rose (red removed from 10-hue system; rose is the nearest equivalent)
     const types = await getAllTagTypes()
-    expect(types.find((t) => t.id === 'tt-red')?.color).toBe('red')
+    expect(types.find((t) => t.id === 'tt-red')?.color).toBe('rose')
     expect(types.find((t) => t.id === 'tt-blue')?.color).toBe('blue')
     expect(types.find((t) => t.id === 'tt-green')?.color).toBe('green')
   })
