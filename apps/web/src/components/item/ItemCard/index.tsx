@@ -246,8 +246,8 @@ export function ItemCard({
                   className={cn(
                     'inline-flex gap-1 text-xs',
                     isWarning
-                      ? 'bg-status-error text-status-error-tint px-2 py-1'
-                      : 'text-foreground-muted',
+                      ? 'text-status-error-inverse bg-status-error rounded-sm px-1 py-0.5'
+                      : 'text-foreground',
                   )}
                 >
                   {isWarning && <TriangleAlert className="w-4 h-4" />}
@@ -289,7 +289,7 @@ export function ItemCard({
               const tagVariant = bgColor
                 ? activeTagIds?.includes(tag.id)
                   ? bgColor
-                  : (`${bgColor}-tint` as BadgeProps['variant'])
+                  : (`${bgColor}-inverse` as BadgeProps['variant'])
                 : bgColor
               const isTagActive = activeTagIds?.includes(tag.id) ?? false
               return (

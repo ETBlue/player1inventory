@@ -28,7 +28,7 @@ export function TagBadge({
 
   return (
     <Badge
-      variant={`${tagType.color}-tint`}
+      variant={`${tagType.color}-inverse`}
       className={cn(className, onClick ? 'cursor-pointer' : '')}
       onClick={onClick}
     >

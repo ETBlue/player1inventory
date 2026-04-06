@@ -43,31 +43,15 @@ export const WithCountProp: Story = {
 export const DifferentColors: Story = {
   render: () => {
     const tagColors = Object.values(TagColor) as TagColor[]
-    const colors = tagColors.filter((t) => !t.match(/tint/g))
-    const tintColors = tagColors.filter((t) => t.match(/tint/g))
 
     return (
-      <div className="inline-grid grid-cols-2 justify-items-start gap-2">
-        {colors.map((color, index) => (
+      <div className="inline-grid grid-cols-1 justify-items-start gap-2">
+        {tagColors.map((color, _index) => (
           <>
             <TagBadge
               key={color}
               tag={{ id: color, name: color, typeId: color }}
               tagType={{ id: color, name: color, color }}
-              onClick={() => {}}
-            />
-            <TagBadge
-              key={tintColors[index]}
-              tag={{
-                id: tintColors[index],
-                name: tintColors[index],
-                typeId: tintColors[index],
-              }}
-              tagType={{
-                id: tintColors[index],
-                name: tintColors[index],
-                color: tintColors[index],
-              }}
               onClick={() => {}}
             />
           </>

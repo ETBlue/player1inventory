@@ -88,7 +88,7 @@ export const mockMultipleTags = [
 export const mockMultipleTagTypes = [
   { id: 'type-1', name: 'Category', color: TagColor.blue },
   { id: 'type-2', name: 'Quality', color: TagColor.green },
-  { id: 'type-3', name: 'Source', color: TagColor.amber },
+  { id: 'type-3', name: 'Source', color: TagColor.orange },
   { id: 'type-4', name: 'Price', color: TagColor.rose },
 ]
 
