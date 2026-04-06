@@ -72,7 +72,9 @@ function TagTypeSection({
               <Badge
                 role="button"
                 aria-pressed={isSelected}
-                variant={isSelected ? tagType.color : `${tagType.color}-tint`}
+                variant={
+                  isSelected ? tagType.color : `${tagType.color}-inverse`
+                }
                 className={`cursor-pointer z-10 relative`}
                 onClick={() => onToggle(tag.id)}
               >
@@ -141,7 +143,7 @@ function TagsTab() {
   if (!item) return null
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="p-4 space-y-6 max-w-2xl mx-auto">
       {tagTypes.length === 0 ? (
         <div className="flex flex-col items-center gap-4">
           <EmptyState

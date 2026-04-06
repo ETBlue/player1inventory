@@ -221,133 +221,138 @@ function Shopping() {
   }
 
   return (
-    <div>
-      {/* Cart toolbar */}
-      <Toolbar className="flex-wrap">
-        <span aria-live="polite" aria-atomic="true">
-          {t('shopping.toolbar.cartCount', { count: cartTotal })}
-        </span>
-        <div className="flex-1" />
-        {cartItems.length > 0 && (
-          <Button
-            variant="destructive-ghost"
-            onClick={() => setShowAbandonDialog(true)}
-          >
-            <X /> {t('common.cancel')}
-          </Button>
-        )}
-        <Button
-          disabled={!cartItems.some((ci) => ci.quantity > 0)}
-          onClick={() => setShowCheckoutDialog(true)}
-        >
-          <Check /> {t('common.done')}
-        </Button>
-      </Toolbar>
-
-      {/* Filter/sort toolbar */}
-      <ItemListToolbar
-        className="bg-transparent border-none"
-        sortBy={sortBy}
-        sortDirection={sortDirection}
-        onSortChange={(f, d) => {
-          setSortBy(f)
-          setSortDirection(d)
-        }}
-        items={vendorScopedItems}
-        recipes={recipes}
-        leading={
-          vendors.length > 0 ? (
-            <Select
-              value={selectedVendorId || 'all'}
-              disabled={!!search.trim()}
-              onValueChange={(v) => {
-                if (v === '__manage__') {
-                  navigate({ to: '/settings/vendors' })
-                  return
-                }
-                navigate({
-                  to: '/shopping',
-                  search: (prev) => ({ ...prev, vendor: v === 'all' ? '' : v }),
-                  replace: true,
-                })
-              }}
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+      <div>
+        {/* Cart toolbar */}
+        <Toolbar className="flex-wrap">
+          <span aria-live="polite" aria-atomic="true">
+            {t('shopping.toolbar.cartCount', { count: cartTotal })}
+          </span>
+          <div className="flex-1" />
+          {cartItems.length > 0 && (
+            <Button
+              variant="destructive-ghost"
+              onClick={() => setShowAbandonDialog(true)}
             >
-              <SelectTrigger className="bg-transparent border-none -mx-3 -my-2 mr-0 flex-1 text-sm">
-                <SelectValue
-                  placeholder={t('shopping.vendorFilter.allVendors')}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  {t('shopping.vendorFilter.allVendors')}
-                </SelectItem>
-                {vendors.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.name} ({vendorCounts.get(v.id) ?? 0})
-                  </SelectItem>
-                ))}
-                <SelectSeparator />
-                <SelectItem value="__manage__">
-                  {t('shopping.vendorFilter.manageVendors')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          ) : undefined
-        }
-        onCreateFromSearch={handleCreateFromSearch}
-        hasExactMatch={hasExactMatch}
-      />
-
-      <div className="h-px bg-accessory-default" />
-
-      {/* Cart section */}
-      {cartSectionItems.length > 0 && (
-        <>
-          <div className="space-y-px">
-            {activeCartItems.map((item) => (
-              <div key={item.id} className="bg-background-surface">
-                {renderItemCard(item)}
-              </div>
-            ))}
-            {inactiveCartItems.map((item) => (
-              <div key={item.id} className="bg-background-surface">
-                {renderItemCard(item)}
-              </div>
-            ))}
-          </div>
-          <div className="h-px bg-accessory-default" />
-        </>
-      )}
-
-      {/* Pending items section */}
-      {pendingItems.length > 0 && (
-        <div className="space-y-px mb-4">
-          {activePendingItems.map((item) => renderItemCard(item))}
-          {inactivePendingItems.length > 0 && (
-            <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-              {t('shopping.inactiveItems', {
-                count: inactivePendingItems.length,
-              })}
-            </div>
+              <X /> {t('common.cancel')}
+            </Button>
           )}
-          {inactivePendingItems.map((item) => renderItemCard(item))}
-        </div>
-      )}
+          <Button
+            disabled={!cartItems.some((ci) => ci.quantity > 0)}
+            onClick={() => setShowCheckoutDialog(true)}
+          >
+            <Check /> {t('common.done')}
+          </Button>
+        </Toolbar>
 
-      {/* Empty state */}
-      {displayItems.length === 0 &&
-        (items.length === 0 ? (
-          <EmptyState
-            title={t('shopping.empty.title')}
-            description={t('shopping.empty.description')}
-          />
-        ) : (
-          <EmptyState
-            title={t('shopping.emptyFiltered.title')}
-            description={t('shopping.emptyFiltered.description')}
-          />
-        ))}
+        {/* Filter/sort toolbar */}
+        <ItemListToolbar
+          className="bg-transparent border-none"
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={(f, d) => {
+            setSortBy(f)
+            setSortDirection(d)
+          }}
+          items={vendorScopedItems}
+          recipes={recipes}
+          leading={
+            vendors.length > 0 ? (
+              <Select
+                value={selectedVendorId || 'all'}
+                disabled={!!search.trim()}
+                onValueChange={(v) => {
+                  if (v === '__manage__') {
+                    navigate({ to: '/settings/vendors' })
+                    return
+                  }
+                  navigate({
+                    to: '/shopping',
+                    search: (prev) => ({
+                      ...prev,
+                      vendor: v === 'all' ? '' : v,
+                    }),
+                    replace: true,
+                  })
+                }}
+              >
+                <SelectTrigger className="bg-transparent border-none -mx-3 -my-2 mr-0 flex-1 text-sm">
+                  <SelectValue
+                    placeholder={t('shopping.vendorFilter.allVendors')}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    {t('shopping.vendorFilter.allVendors')}
+                  </SelectItem>
+                  {vendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name} ({vendorCounts.get(v.id) ?? 0})
+                    </SelectItem>
+                  ))}
+                  <SelectSeparator />
+                  <SelectItem value="__manage__">
+                    {t('shopping.vendorFilter.manageVendors')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : undefined
+          }
+          onCreateFromSearch={handleCreateFromSearch}
+          hasExactMatch={hasExactMatch}
+        />
 
+        <div className="h-px bg-accessory-default" />
+      </div>
+      <div className="overflow-y-auto [container-type:size]">
+        {/* Cart section */}
+        {cartSectionItems.length > 0 && (
+          <>
+            <div className="space-y-px">
+              {activeCartItems.map((item) => (
+                <div key={item.id} className="bg-background-surface">
+                  {renderItemCard(item)}
+                </div>
+              ))}
+              {inactiveCartItems.map((item) => (
+                <div key={item.id} className="bg-background-surface">
+                  {renderItemCard(item)}
+                </div>
+              ))}
+            </div>
+            <div className="h-px bg-accessory-default" />
+          </>
+        )}
+
+        {/* Pending items section */}
+        {pendingItems.length > 0 && (
+          <div className="space-y-px mb-4">
+            {activePendingItems.map((item) => renderItemCard(item))}
+            {inactivePendingItems.length > 0 && (
+              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+                {t('shopping.inactiveItems', {
+                  count: inactivePendingItems.length,
+                })}
+              </div>
+            )}
+            {inactivePendingItems.map((item) => renderItemCard(item))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {displayItems.length === 0 &&
+          (items.length === 0 ? (
+            <EmptyState
+              title={t('shopping.empty.title')}
+              description={t('shopping.empty.description')}
+            />
+          ) : (
+            <EmptyState
+              title={t('shopping.emptyFiltered.title')}
+              description={t('shopping.emptyFiltered.description')}
+            />
+          ))}
+      </div>
       {/* Abandon Cart Confirmation Dialog */}
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
         <AlertDialogContent>

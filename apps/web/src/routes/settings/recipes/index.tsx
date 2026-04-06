@@ -24,7 +24,7 @@ function RecipeSettings() {
   )
 
   return (
-    <div>
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar className="justify-between">
         <div className="flex items-center gap-2">
           <Button
@@ -48,7 +48,7 @@ function RecipeSettings() {
         </Button>
       </Toolbar>
 
-      <div className="space-y-px pb-4">
+      <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
         {sortedRecipes.length === 0 ? (
           <EmptyState
             title={t('settings.recipes.empty.title')}

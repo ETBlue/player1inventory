@@ -279,7 +279,7 @@ function ItemDetailTab() {
   }
 
   return (
-    <>
+    <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <ItemForm
         initialValues={formValues}
         sections={['stock', 'info', 'advanced']}
@@ -352,6 +352,6 @@ function ItemDetailTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }

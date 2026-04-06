@@ -28,7 +28,7 @@ function ItemHistory() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="p-4 max-w-2xl mx-auto">
       <div className="space-y-px -m-4">
         {[...logs].reverse().map((log) => (
           <Card key={log.id} className="bg-background-surface">

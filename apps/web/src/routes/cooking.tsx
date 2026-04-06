@@ -402,255 +402,267 @@ function CookingPage() {
     .reduce((sum, [recipeId]) => sum + (sessionServings.get(recipeId) ?? 1), 0)
 
   return (
-    <div>
-      <Toolbar className="justify-between">
-        <span className="flex-1">
-          {t('cooking.toolbar.servingCount', { count: totalServings })}
-        </span>
-        {anyChecked && (
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+      <div>
+        <Toolbar className="justify-between">
+          <span className="flex-1">
+            {t('cooking.toolbar.servingCount', { count: totalServings })}
+          </span>
+          {anyChecked && (
+            <Button
+              variant="destructive-ghost"
+              onClick={() => setShowCancelDialog(true)}
+            >
+              <X /> {t('common.cancel')}
+            </Button>
+          )}
           <Button
-            variant="destructive-ghost"
-            onClick={() => setShowCancelDialog(true)}
+            disabled={!anyChecked}
+            onClick={() => setShowDoneDialog(true)}
           >
-            <X /> {t('common.cancel')}
+            <Check /> {t('common.done')}
           </Button>
-        )}
-        <Button disabled={!anyChecked} onClick={() => setShowDoneDialog(true)}>
-          <Check /> {t('common.done')}
-        </Button>
-      </Toolbar>
+        </Toolbar>
 
-      <CookingControlBar
-        allExpanded={
-          recipes.length > 0 && expandedRecipeIds.size === recipes.length
-        }
-        onExpandAll={() =>
-          navigate({
-            to: '/cooking',
-            search: (prev) => ({
-              sort: prev.sort ?? 'recent',
-              dir: prev.dir ?? 'asc',
-              q: prev.q ?? '',
-              expanded: recipes.map((r) => r.id).join(','),
-            }),
-            replace: true,
-          })
-        }
-        onCollapseAll={() =>
-          navigate({
-            to: '/cooking',
-            search: (prev) => ({
-              sort: prev.sort ?? 'recent',
-              dir: prev.dir ?? 'asc',
-              q: prev.q ?? '',
-              expanded: '',
-            }),
-            replace: true,
-          })
-        }
-      />
-      <div className="h-px bg-accessory-default" />
-
-      {sortedRecipes.length === 0 ? (
-        <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
-          <div>
-            <p>{t('cooking.empty.title')}</p>
-            <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
+        <CookingControlBar
+          allExpanded={
+            recipes.length > 0 && expandedRecipeIds.size === recipes.length
+          }
+          onExpandAll={() =>
+            navigate({
+              to: '/cooking',
+              search: (prev) => ({
+                sort: prev.sort ?? 'recent',
+                dir: prev.dir ?? 'asc',
+                q: prev.q ?? '',
+                expanded: recipes.map((r) => r.id).join(','),
+              }),
+              replace: true,
+            })
+          }
+          onCollapseAll={() =>
+            navigate({
+              to: '/cooking',
+              search: (prev) => ({
+                sort: prev.sort ?? 'recent',
+                dir: prev.dir ?? 'asc',
+                q: prev.q ?? '',
+                expanded: '',
+              }),
+              replace: true,
+            })
+          }
+        />
+        <div className="h-px bg-accessory-default" />
+      </div>
+      <div className="overflow-y-auto [container-type:size]">
+        {sortedRecipes.length === 0 ? (
+          <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
+            <div>
+              <p>{t('cooking.empty.title')}</p>
+              <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
+            </div>
+            <Button asChild size="lg" className="px-8">
+              <Link to="/settings/recipes/new" search={{ name: '' }}>
+                <Plus />
+                {t('cooking.empty.createButton')}
+              </Link>
+            </Button>
           </div>
-          <Button asChild size="lg" className="px-8">
-            <Link to="/settings/recipes/new" search={{ name: '' }}>
-              <Plus />
-              {t('cooking.empty.createButton')}
-            </Link>
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-px mb-4">
-          {displayRecipes.map((recipe) => {
-            const searchMatchedItemIds = getSearchMatchedItemIds(recipe)
-            const isExpanded = searchMatchedItemIds
-              ? true
-              : expandedRecipeIds.has(recipe.id)
-            const recipeAmounts = sessionAmounts.get(recipe.id)
-            const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
-            const totalItemCount = recipe.items.length
+        ) : (
+          <div className="space-y-px mb-4">
+            {displayRecipes.map((recipe) => {
+              const searchMatchedItemIds = getSearchMatchedItemIds(recipe)
+              const isExpanded = searchMatchedItemIds
+                ? true
+                : expandedRecipeIds.has(recipe.id)
+              const recipeAmounts = sessionAmounts.get(recipe.id)
+              const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
+              const totalItemCount = recipe.items.length
 
-            // Tri-state for recipe checkbox — based on default items (defaultAmount > 0);
-            // falls back to all items when none have a default amount
-            const defaultItemIds = new Set(
-              recipe.items
-                .filter((ri) => ri.defaultAmount > 0)
-                .map((ri) => ri.itemId),
-            )
-            const effectiveItemIds =
-              defaultItemIds.size > 0
-                ? defaultItemIds
-                : new Set(recipe.items.map((ri) => ri.itemId))
-            const checkedEffectiveCount = [
-              ...(checkedItemIds.get(recipe.id) ?? new Set()),
-            ].filter((id) => effectiveItemIds.has(id)).length
-            const recipeCheckState: boolean | 'indeterminate' =
-              effectiveItemIds.size === 0
-                ? false
-                : checkedEffectiveCount === 0
+              // Tri-state for recipe checkbox — based on default items (defaultAmount > 0);
+              // falls back to all items when none have a default amount
+              const defaultItemIds = new Set(
+                recipe.items
+                  .filter((ri) => ri.defaultAmount > 0)
+                  .map((ri) => ri.itemId),
+              )
+              const effectiveItemIds =
+                defaultItemIds.size > 0
+                  ? defaultItemIds
+                  : new Set(recipe.items.map((ri) => ri.itemId))
+              const checkedEffectiveCount = [
+                ...(checkedItemIds.get(recipe.id) ?? new Set()),
+              ].filter((id) => effectiveItemIds.has(id)).length
+              const recipeCheckState: boolean | 'indeterminate' =
+                effectiveItemIds.size === 0
                   ? false
-                  : checkedEffectiveCount === effectiveItemIds.size
-                    ? true
-                    : 'indeterminate'
+                  : checkedEffectiveCount === 0
+                    ? false
+                    : checkedEffectiveCount === effectiveItemIds.size
+                      ? true
+                      : 'indeterminate'
 
-            return (
-              <React.Fragment key={recipe.id}>
-                <div
-                  className={recipeCheckState ? 'bg-background-surface' : ''}
-                >
-                  <Card className="relative mr-28">
-                    <CardContent>
-                      {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id={`recipe-${recipe.id}`}
-                          checked={recipeCheckState}
-                          onCheckedChange={() =>
-                            handleToggleRecipeCheckbox(recipe.id)
-                          }
-                          aria-label={recipe.name}
-                        />
-                        {/* Name: navigates to recipe detail */}
-                        <button
-                          type="button"
-                          className="flex-1 text-left font-medium capitalize hover:underline truncate"
-                          onClick={() =>
-                            navigate({
-                              to: '/settings/recipes/$id',
-                              params: { id: recipe.id },
-                            })
-                          }
-                        >
-                          {highlight(recipe.name, q)}
-                        </button>
-                        {/* Chevron: toggles expand/collapse */}
-                        <button
-                          type="button"
-                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
-                          className="shrink-0 text-foreground-muted hover:text-foreground"
-                          onClick={() => handleToggleExpand(recipe.id)}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronLeft className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
-                      {/* Serving stepper — always reserved, empty when no items checked */}
-                      {recipeCheckState !== false && (
-                        <div className="flex items-center items-stretch absolute -right-26 top-1.5">
-                          <Button
-                            variant="neutral-outline"
-                            className="rounded-tr-none rounded-br-none"
-                            size="icon"
-                            aria-label="Decrease servings"
-                            onClick={() => handleAdjustServings(recipe.id, -1)}
-                            disabled={
-                              (sessionServings.get(recipe.id) ?? 1) <= 1
+              return (
+                <React.Fragment key={recipe.id}>
+                  <div
+                    className={recipeCheckState ? 'bg-background-surface' : ''}
+                  >
+                    <Card className="relative mr-28">
+                      <CardContent>
+                        {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`recipe-${recipe.id}`}
+                            checked={recipeCheckState}
+                            onCheckedChange={() =>
+                              handleToggleRecipeCheckbox(recipe.id)
+                            }
+                            aria-label={recipe.name}
+                          />
+                          {/* Name: navigates to recipe detail */}
+                          <button
+                            type="button"
+                            className="flex-1 text-left font-medium capitalize hover:underline truncate"
+                            onClick={() =>
+                              navigate({
+                                to: '/settings/recipes/$id',
+                                params: { id: recipe.id },
+                              })
                             }
                           >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
-                            {sessionServings.get(recipe.id) ?? 1}
-                          </span>
-                          <Button
-                            variant="neutral-outline"
-                            className="rounded-tl-none rounded-bl-none"
-                            size="icon"
-                            aria-label="Increase servings"
-                            onClick={() => handleAdjustServings(recipe.id, 1)}
+                            {highlight(recipe.name, q)}
+                          </button>
+                          {/* Chevron: toggles expand/collapse */}
+                          <button
+                            type="button"
+                            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
+                            className="shrink-0 text-foreground-muted hover:text-foreground"
+                            onClick={() => handleToggleExpand(recipe.id)}
                           >
-                            <Plus className="h-4 w-4" />
-                          </Button>
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronLeft className="h-4 w-4" />
+                            )}
+                          </button>
                         </div>
-                      )}
-
-                      {/* Row 2: subtitle */}
-                      <div className="mx-6 text-sm text-foreground-muted">
-                        {t('cooking.recipe.itemCount', {
-                          count: checkedCount,
-                          total: totalItemCount,
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                {isExpanded && (
-                  <div className="space-y-px">
-                    {recipe.items.length === 0 && (
-                      <p className="text-sm text-foreground-muted px-4">
-                        {t('cooking.recipe.noItems')}
-                      </p>
-                    )}
-                    {[...recipe.items]
-                      .sort((a, b) => {
-                        const dateA = expiryDates?.get(a.itemId)
-                        const dateB = expiryDates?.get(b.itemId)
-                        if (!dateA && !dateB) return 0
-                        if (!dateA) return 1
-                        if (!dateB) return -1
-                        return dateA.getTime() - dateB.getTime()
-                      })
-                      .filter((ri) =>
-                        searchMatchedItemIds
-                          ? searchMatchedItemIds.has(ri.itemId)
-                          : true,
-                      )
-                      .map((ri) => {
-                        const item = items.find((i) => i.id === ri.itemId)
-                        if (!item) return null
-                        const itemTags = tags.filter((t) =>
-                          item.tagIds.includes(t.id),
-                        )
-                        const amount =
-                          recipeAmounts?.get(ri.itemId) ?? ri.defaultAmount
-                        const isItemChecked =
-                          checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? false
-
-                        return (
-                          <div
-                            key={ri.itemId}
-                            className={
-                              isItemChecked ? 'bg-background-surface' : ''
-                            }
-                          >
-                            <ItemCard
-                              item={item}
-                              tags={itemTags}
-                              tagTypes={tagTypes}
-                              mode="cooking"
-                              showTags={false}
-                              showTagSummary={false}
-                              isChecked={isItemChecked}
-                              onCheckboxToggle={() =>
-                                handleToggleItem(recipe.id, ri.itemId)
+                        {/* Serving stepper — always reserved, empty when no items checked */}
+                        {recipeCheckState !== false && (
+                          <div className="flex items-center items-stretch absolute -right-26 top-1.5">
+                            <Button
+                              variant="neutral-outline"
+                              className="rounded-tr-none rounded-br-none"
+                              size="icon"
+                              aria-label="Decrease servings"
+                              onClick={() =>
+                                handleAdjustServings(recipe.id, -1)
                               }
-                              controlAmount={amount}
-                              onAmountChange={(delta) =>
-                                handleAdjustAmount(recipe.id, ri.itemId, delta)
+                              disabled={
+                                (sessionServings.get(recipe.id) ?? 1) <= 1
                               }
-                              highlightedName={
-                                q ? highlight(item.name, q) : undefined
-                              }
-                            />
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
+                              {sessionServings.get(recipe.id) ?? 1}
+                            </span>
+                            <Button
+                              variant="neutral-outline"
+                              className="rounded-tl-none rounded-bl-none"
+                              size="icon"
+                              aria-label="Increase servings"
+                              onClick={() => handleAdjustServings(recipe.id, 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
                           </div>
-                        )
-                      })}
-                  </div>
-                )}
-              </React.Fragment>
-            )
-          })}
-        </div>
-      )}
+                        )}
 
+                        {/* Row 2: subtitle */}
+                        <div className="mx-6 text-sm text-foreground-muted">
+                          {t('cooking.recipe.itemCount', {
+                            count: checkedCount,
+                            total: totalItemCount,
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  {isExpanded && (
+                    <div className="space-y-px">
+                      {recipe.items.length === 0 && (
+                        <p className="text-sm text-foreground-muted px-4">
+                          {t('cooking.recipe.noItems')}
+                        </p>
+                      )}
+                      {[...recipe.items]
+                        .sort((a, b) => {
+                          const dateA = expiryDates?.get(a.itemId)
+                          const dateB = expiryDates?.get(b.itemId)
+                          if (!dateA && !dateB) return 0
+                          if (!dateA) return 1
+                          if (!dateB) return -1
+                          return dateA.getTime() - dateB.getTime()
+                        })
+                        .filter((ri) =>
+                          searchMatchedItemIds
+                            ? searchMatchedItemIds.has(ri.itemId)
+                            : true,
+                        )
+                        .map((ri) => {
+                          const item = items.find((i) => i.id === ri.itemId)
+                          if (!item) return null
+                          const itemTags = tags.filter((t) =>
+                            item.tagIds.includes(t.id),
+                          )
+                          const amount =
+                            recipeAmounts?.get(ri.itemId) ?? ri.defaultAmount
+                          const isItemChecked =
+                            checkedItemIds.get(recipe.id)?.has(ri.itemId) ??
+                            false
+
+                          return (
+                            <div
+                              key={ri.itemId}
+                              className={
+                                isItemChecked ? 'bg-background-surface' : ''
+                              }
+                            >
+                              <ItemCard
+                                item={item}
+                                tags={itemTags}
+                                tagTypes={tagTypes}
+                                mode="cooking"
+                                showTags={false}
+                                showTagSummary={false}
+                                isChecked={isItemChecked}
+                                onCheckboxToggle={() =>
+                                  handleToggleItem(recipe.id, ri.itemId)
+                                }
+                                controlAmount={amount}
+                                onAmountChange={(delta) =>
+                                  handleAdjustAmount(
+                                    recipe.id,
+                                    ri.itemId,
+                                    delta,
+                                  )
+                                }
+                                highlightedName={
+                                  q ? highlight(item.name, q) : undefined
+                                }
+                              />
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </div>
+        )}
+      </div>
       {/* Done Confirmation Dialog */}
       <AlertDialog open={showDoneDialog} onOpenChange={setShowDoneDialog}>
         <AlertDialogContent>
@@ -665,7 +677,7 @@ function CookingPage() {
           <AlertDialogDescription>
             {t('cooking.doneDialog.description')}
             {insufficientItems.length > 0 && (
-              <span className="block mt-2 text-destructive">
+              <span className="block mt-2 text-importance-destructive">
                 {t('cooking.doneDialog.warningHeader')}
                 {insufficientItems.map(({ item, requested, available }) => (
                   <span key={item.id} className="block">

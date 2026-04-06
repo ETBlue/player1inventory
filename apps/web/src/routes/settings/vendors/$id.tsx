@@ -85,13 +85,11 @@ function VendorDetailLayoutInner() {
 
   return (
     <>
-      <div className="min-h-screen">
+      <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         {/* Fixed Top Bar */}
         <header
-          className={`px-3 flex items-center gap-2
-          fixed top-0 left-0 right-0 z-50
-          bg-background-surface
-          border-b-2 border-accessory-default`}
+          className={`px-3 flex items-center gap-2 w-[100cqw]
+          bg-background-surface border-b-2 border-accessory-default`}
         >
           <Button
             variant="neutral-ghost"
@@ -137,7 +135,7 @@ function VendorDetailLayoutInner() {
         </header>
 
         {/* Main Content with padding to clear fixed bar */}
-        <div className="mt-[50px]">
+        <div className="overflow-y-auto [container-type:size]">
           <Outlet key={router.state.location.pathname} />
         </div>
       </div>
