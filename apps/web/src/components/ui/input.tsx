@@ -19,13 +19,15 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             disabled:cursor-not-allowed disabled:opacity-50 md:text-sm
             border border-accessory bg-background-surface
             rounded-sm`,
-            error && 'border-destructive',
+            error && 'border-importance-destructive',
             className,
           )}
           ref={ref}
           {...props}
         />
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+        {error && (
+          <p className="text-sm text-importance-destructive mt-1">{error}</p>
+        )}
       </div>
     )
   },
