@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   abandonCart,
@@ -230,13 +231,16 @@ export function useRemoveFromCart() {
 export function useCheckout() {
   const { mode } = useDataMode()
   const queryClient = useQueryClient()
+  // Always call at top level (Rules of Hooks). Safe in local mode because
+  // main.tsx wraps every render with a no-op ApolloProvider.
+  const client = useApolloClient()
 
   const localMutation = useMutation({
     mutationFn: ({ cartId, note }: { cartId: string; note?: string }) =>
       checkout(cartId, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cart'] })
-      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'all' })
       queryClient.invalidateQueries({ queryKey: ['sort', 'purchaseDates'] })
     },
   })
@@ -258,8 +262,16 @@ export function useCheckout() {
           ],
         }).then(
           async () => {
+            client.cache.evict({
+              id: 'ROOT_QUERY',
+              fieldName: 'lastPurchaseDates',
+            })
+            client.cache.gc()
             await queryClient.invalidateQueries({ queryKey: ['cart'] })
-            await queryClient.invalidateQueries({ queryKey: ['items'] })
+            await queryClient.invalidateQueries({
+              queryKey: ['items'],
+              refetchType: 'all',
+            })
             await queryClient.invalidateQueries({
               queryKey: ['sort', 'purchaseDates'],
             })
@@ -284,8 +296,16 @@ export function useCheckout() {
             { query: GetItemsDocument },
           ],
         })
+        client.cache.evict({
+          id: 'ROOT_QUERY',
+          fieldName: 'lastPurchaseDates',
+        })
+        client.cache.gc()
         await queryClient.invalidateQueries({ queryKey: ['cart'] })
-        await queryClient.invalidateQueries({ queryKey: ['items'] })
+        await queryClient.invalidateQueries({
+          queryKey: ['items'],
+          refetchType: 'all',
+        })
         await queryClient.invalidateQueries({
           queryKey: ['sort', 'purchaseDates'],
         })

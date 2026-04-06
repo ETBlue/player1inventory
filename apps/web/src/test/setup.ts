@@ -11,6 +11,22 @@ beforeEach(() => {
   localStorage.setItem('e2e-skip-onboarding', 'true')
 })
 
+// Mock useApolloClient so tests don't require an ApolloProvider.
+// All tests run in local mode; useApolloClient is only used in the cloud
+// path of useCheckout, so a no-op stub with cache.evict/gc is sufficient.
+vi.mock('@apollo/client/react', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@apollo/client/react')>()
+  return {
+    ...original,
+    useApolloClient: vi.fn(() => ({
+      cache: {
+        evict: vi.fn(),
+        gc: vi.fn(),
+      },
+    })),
+  }
+})
+
 // Mock @clerk/react so tests don't require ClerkProvider.
 // Per-file vi.mock('@clerk/react', ...) overrides this for tests that need
 // specific user IDs (DataModeCard.test.tsx, FamilyGroupCard.test.tsx).
