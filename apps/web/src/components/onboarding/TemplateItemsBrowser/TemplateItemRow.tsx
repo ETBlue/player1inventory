@@ -33,7 +33,7 @@ export function TemplateItemRow({
             const tagType = tagTypes.find((tt) => tt.id === tag.typeId)
             if (!tagType) return null
             return (
-              <Badge key={tag.id} variant={`${tagType.color}-tint`}>
+              <Badge key={tag.id} variant={`${tagType.color}-inverse`}>
                 {tag.name}
               </Badge>
             )

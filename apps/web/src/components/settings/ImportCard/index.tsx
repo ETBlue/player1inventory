@@ -230,7 +230,7 @@ export function ImportCard() {
                 </p>
                 <div className="w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-primary h-2 rounded-full transition-all"
+                    className="bg-importance-primary h-2 rounded-full transition-all"
                     style={{
                       width: `${
                         importStatus.progress.totalBatches > 0
@@ -254,7 +254,7 @@ export function ImportCard() {
 
             {importStatus.phase === 'error' && (
               <div className="mt-2 space-y-2">
-                <p className="text-sm text-destructive">
+                <p className="text-sm text-importance-destructive">
                   {t('settings.import.importError', {
                     entity: importStatus.errorEntity,
                   })}

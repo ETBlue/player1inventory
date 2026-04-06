@@ -138,7 +138,7 @@ const ColorCard = ({
           </div>
           <div className="text-xs space-y-1">
             <div className="font-mono text-foreground-muted">
-              --color-{name}-tint
+              --color-{name}-inverse
             </div>
           </div>
         </div>
