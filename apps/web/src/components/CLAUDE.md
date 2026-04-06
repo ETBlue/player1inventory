@@ -18,7 +18,15 @@ src/components/
 
 One-time structural components that appear once in the app shell.
 
-**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — fixed left navigation sidebar shown at `lg:` (1024px+). Same visibility rules as `Navigation` — hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). Shows "Player 1 Inventory" header and 4 nav links (Pantry, Shopping, Cooking, Settings) with icon + label side-by-side. Active: `text-primary bg-background-elevated`. `Layout` adds `lg:ml-56` offset to the content area when the sidebar is visible.
+**`Layout`** (`src/components/global/Layout/index.tsx`) — root shell that wraps every page. Uses a CSS grid layout (`h-screen grid grid-cols-[auto_1fr]`):
+- Column 1: Sidebar (desktop only, `hidden lg:flex`, `w-56`)
+- Column 2: inner grid (`grid-rows-[1fr_auto]`) — main content area on top, Navigation on bottom
+- Main element uses `[container-type:size]` enabling `cqh`-based container queries in children
+- A skip-to-main-content link is rendered inside a `<header>` landmark before the sidebar
+
+**`Navigation`** (`src/components/global/Navigation/index.tsx`) — mobile-only bottom navigation bar (`lg:hidden`). Renders 4 nav links (Pantry, Shopping, Cooking, Settings) in a `grid-cols-4` row. Hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). On fullscreen pages the component renders `null` — no padding is added to the page.
+
+**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation. Shows "Player 1 Inventory" header and 4 nav links with icon + label side-by-side. Active: `text-importance-primary bg-background-elevated`.
 
 ## Shared Components
 
