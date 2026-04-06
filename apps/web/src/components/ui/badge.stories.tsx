@@ -20,11 +20,9 @@ export const Variants: Story = {
   render: () => {
     const tagColors = Object.values(TagColor) as TagColor[]
 
-    const statusAndImportanceColors = [
-      'ok',
-      'warning',
-      'error',
-      'inactive',
+    const statusColors = ['ok', 'warning', 'error', 'inactive'] as const
+
+    const importanceColors = [
       'primary',
       'secondary',
       'tertiary',
@@ -33,24 +31,42 @@ export const Variants: Story = {
     ] as const
 
     return (
-      <div className="inline-grid grid-cols-[auto_auto] justify-items-start gap-2">
-        {tagColors.map((color) => (
-          <>
-            <Badge variant={color}>{color}</Badge>
-            <Badge variant={`${color}-tint` as TagColor}>
-              {`${color}-tint`}
-            </Badge>
-          </>
-        ))}
+      <div className="space-y-4">
+        <h2>Importance</h2>
+        <div className="inline-grid grid-cols-[auto_auto] justify-items-start gap-2">
+          {importanceColors.map((color) => (
+            <>
+              <Badge variant={color}>{color}</Badge>
+              <Badge variant={`${color}-outline` as `${typeof color}-outline`}>
+                {`${color}-outline`}
+              </Badge>
+            </>
+          ))}
+        </div>
+        <h2>Status</h2>
 
-        {statusAndImportanceColors.map((color) => (
-          <>
-            <Badge variant={color}>{color}</Badge>
-            <Badge variant={`${color}-outline` as `${typeof color}-outline`}>
-              {`${color}-outline`}
-            </Badge>
-          </>
-        ))}
+        <div className="inline-grid grid-cols-[auto_auto] justify-items-start gap-2">
+          {statusColors.map((color) => (
+            <>
+              <Badge variant={color}>{color}</Badge>
+              <Badge variant={`${color}-inverse` as TagColor}>
+                {`${color}-inverse`}
+              </Badge>
+            </>
+          ))}
+        </div>
+        <h2>Tag</h2>
+
+        <div className="inline-grid grid-cols-[auto_auto] justify-items-start gap-2">
+          {tagColors.map((color) => (
+            <>
+              <Badge variant={color}>{color}</Badge>
+              <Badge variant={`${color}-inverse` as TagColor}>
+                {`${color}-inverse`}
+              </Badge>
+            </>
+          ))}
+        </div>
       </div>
     )
   },

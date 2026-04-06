@@ -61,8 +61,8 @@ export const Variants: Story = {
                 <Button className="w-30" variant={color}>
                   {color}
                 </Button>
-                <Button className="w-30" variant={`${color}-tint`}>
-                  {color}-tint
+                <Button className="w-40" variant={`${color}-inverse`}>
+                  {color}-inverse
                 </Button>
               </div>
             ))}
