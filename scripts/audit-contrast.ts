@@ -51,16 +51,16 @@ const lightPairs: [string, string, number][] = [
   ['importance-primary', 'background-base', 4.5],
   ['importance-secondary', 'background-base', 4.5],
   ['importance-destructive', 'background-base', 4.5],
-  ['status-ok', 'status-ok-tint', 4.5],
-  ['status-warning', 'status-warning-tint', 4.5],
-  ['status-error', 'status-error-tint', 4.5],
-  ['status-inactive', 'status-inactive-tint', 4.5],
+  ['status-ok', 'status-ok-inverse', 4.5],
+  ['status-warning', 'status-warning-inverse', 4.5],
+  ['status-error', 'status-error-inverse', 4.5],
+  ['status-inactive', 'status-inactive-inverse', 4.5],
 ]
 for (const [fg, bg, req] of lightPairs) row('light', fg, bg, light, req)
 
-// Hue colors on white
+// Hue colors on white (10-hue system; amber/lime/red/yellow removed)
 const white = 'oklch(100% 0% 0)'
-const hues = ['red','orange','amber','yellow','green','teal','blue','indigo','purple','pink','brown','lime','cyan','rose']
+const hues = ['orange','brown','green','teal','cyan','blue','indigo','purple','pink','rose']
 console.log()
 for (const h of hues) {
   const fg = light[`hue-${h}`]
@@ -77,10 +77,10 @@ const darkPairs: [string, string, number][] = [
   ['foreground-muted', 'background-base', 4.5],
   ['importance-primary', 'background-base', 4.5],
   ['importance-destructive', 'background-base', 4.5],
-  ['status-ok', 'status-ok-tint', 4.5],
-  ['status-warning', 'status-warning-tint', 4.5],
-  ['status-error', 'status-error-tint', 4.5],
-  ['status-inactive', 'status-inactive-tint', 4.5],
+  ['status-ok', 'status-ok-inverse', 4.5],
+  ['status-warning', 'status-warning-inverse', 4.5],
+  ['status-error', 'status-error-inverse', 4.5],
+  ['status-inactive', 'status-inactive-inverse', 4.5],
 ]
 for (const [fg, bg, req] of darkPairs) row('dark', fg, bg, { ...light, ...dark }, req)
 
@@ -93,4 +93,24 @@ for (const h of hues) {
   const r = ratio(fg, darkBg)
   const pass = r >= 4.5 ? '✅' : '❌'
   console.log(`  ${pass} dark   | ${r.toFixed(2).padStart(5)}:1 (need 4.5:1) | hue-${h} on dark background-base`)
+}
+
+// Semantic sub-variant pairs: importance-primary-foreground on importance-primary-accessory
+console.log('\n--- Importance semantic sub-variants ---')
+const importanceLevels = ['primary','secondary','tertiary','destructive','neutral']
+for (const level of importanceLevels) {
+  row('light', `importance-${level}-foreground`, 'background-surface', light, 4.5)
+}
+console.log()
+for (const level of importanceLevels) {
+  const combined = { ...light, ...dark }
+  row('dark', `importance-${level}-foreground`, 'background-surface', combined, 4.5)
+}
+
+// Status foreground on status-inverse backgrounds
+console.log('\n--- Status foreground on inverse ---')
+const statusLevels = ['ok','warning','error','inactive']
+for (const level of statusLevels) {
+  row('light', `status-${level}-foreground`, `status-${level}-inverse`, light, 4.5)
+  row('dark', `status-${level}-foreground`, `status-${level}-inverse`, { ...light, ...dark }, 4.5)
 }
