@@ -1,57 +1,51 @@
-// Colors with tint/default variants
+// Colors with inverse/default variants
 import type { TagColor } from '@/types'
 
 export const colors = {
   orange: {
-    tint: 'var(--color-orange-tint)',
+    inverse: 'var(--color-orange-inverse)',
     default: 'var(--color-orange)',
   },
   green: {
-    tint: 'var(--color-green-tint)',
+    inverse: 'var(--color-green-inverse)',
     default: 'var(--color-green)',
   },
   teal: {
-    tint: 'var(--color-teal-tint)',
+    inverse: 'var(--color-teal-inverse)',
     default: 'var(--color-teal)',
   },
   blue: {
-    tint: 'var(--color-blue-tint)',
+    inverse: 'var(--color-blue-inverse)',
     default: 'var(--color-blue)',
   },
   indigo: {
-    tint: 'var(--color-indigo-tint)',
+    inverse: 'var(--color-indigo-inverse)',
     default: 'var(--color-indigo)',
   },
   purple: {
-    tint: 'var(--color-purple-tint)',
+    inverse: 'var(--color-purple-inverse)',
     default: 'var(--color-purple)',
   },
   pink: {
-    tint: 'var(--color-pink-tint)',
+    inverse: 'var(--color-pink-inverse)',
     default: 'var(--color-pink)',
   },
   brown: {
-    tint: 'var(--color-brown-tint)',
+    inverse: 'var(--color-brown-inverse)',
     default: 'var(--color-brown)',
   },
   cyan: {
-    tint: 'var(--color-cyan-tint)',
+    inverse: 'var(--color-cyan-inverse)',
     default: 'var(--color-cyan)',
   },
   rose: {
-    tint: 'var(--color-rose-tint)',
+    inverse: 'var(--color-rose-inverse)',
     default: 'var(--color-rose)',
   },
 } as const
 
 export type ColorName = TagColor
-export type ColorVariant = 'tint' | 'default'
-
-// Generic color utilities
-export const colorUtils = {
-  tint: 'var(--color-tint)',
-  dark: 'var(--color-dark)',
-} as const
+export type ColorVariant = 'inverse' | 'default'
 
 // Shadows
 export const shadows = {
