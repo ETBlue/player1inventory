@@ -31,7 +31,7 @@ export function Layout({ children }: LayoutProps) {
           {t('common.skipToMainContent')}
         </a>
       </header>
-      <div className="overflow-y-auto  bg-background-surface border-r border-accessory-default">
+      <div className="overflow-y-auto">
         <Sidebar />
       </div>
       <div className="grid grid-rows-[1fr_auto]">
