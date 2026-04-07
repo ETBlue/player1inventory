@@ -91,12 +91,17 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 Users can manually set current inventory quantities in the item detail form:
 - **Packed Quantity** - Number of whole packages (always visible)
 - **Unpacked Quantity** - Loose amount from opened packages (only for dual-unit items)
-- **Pack unpacked button** - Manually converts complete units from unpacked to packed
+- **Pack button** (`Package` icon) - Converts all complete units from unpacked into packed packages. In package mode: floors unpacked count and adds to packed. In measurement mode: uses `amountPerPackage` to calculate whole packages. Disabled when there are no complete packages available in unpacked.
+- **Unpack button** (`PackageOpen` icon) - Unpacks 1 package from packed to unpacked. In package mode: decrements packed by 1, increments unpacked by 1. In measurement mode: decrements packed by 1, adds `amountPerPackage` to unpacked. Disabled when `packedQuantity < 1`.
+
+**Stock Status layout:** Each quantity row pairs with its action button inline:
+- Row 1: Packed input + **Unpack** button
+- Row 2: Unpacked input + **Pack** button
 
 **+/- Button Behavior (Pantry Page):**
 - Both + and - buttons always operate on unpacked quantity
 - No automatic normalization/packing
-- Use "Pack unpacked" button in item detail form to manually pack complete units
+- Use the **Pack** button in item detail form to manually pack complete units
 
 **Location:** Item detail page (`/items/$id`) via ItemForm component
 
