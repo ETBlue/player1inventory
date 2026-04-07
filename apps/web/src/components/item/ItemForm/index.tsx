@@ -2,7 +2,8 @@ import {
   Calendar,
   Clock,
   Infinity as InfinityIcon,
-  PackagePlus,
+  Package,
+  PackageOpen,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -248,92 +249,121 @@ export function ItemForm({
             <div className="h-px bg-accessory-emphasized" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="packedQuantity">
-                Packed{' '}
-                <span className="text-xs font-normal">
-                  ({packageUnit || DEFAULT_PACKAGE_UNIT})
-                </span>
-              </Label>
-              <Input
-                id="packedQuantity"
-                type="number"
-                min={0}
-                step={1}
-                value={packedQuantity}
-                onChange={(e) => setPackedQuantity(Number(e.target.value))}
-              />
-              <p className="text-xs text-foreground-muted">
-                Number of whole packages in stock
-              </p>
+          <div className="space-y-3">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label htmlFor="packedQuantity">
+                  Packed{' '}
+                  <span className="text-xs font-normal">
+                    ({packageUnit || DEFAULT_PACKAGE_UNIT})
+                  </span>
+                </Label>
+                <Input
+                  id="packedQuantity"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={packedQuantity}
+                  onChange={(e) => setPackedQuantity(Number(e.target.value))}
+                />
+                <p className="text-xs text-foreground-muted">
+                  Number of whole packages in stock
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="neutral"
+                size="sm"
+                className="mb-5"
+                disabled={packedQuantity < 1}
+                onClick={() => {
+                  const amount = Number(amountPerPackage)
+                  if (targetUnit === 'package') {
+                    setPackedQuantity(packedQuantity - 1)
+                    setUnpackedQuantity(
+                      Math.round((unpackedQuantity + 1) * 1000) / 1000,
+                    )
+                  } else if (targetUnit === 'measurement' && amount > 0) {
+                    setPackedQuantity(packedQuantity - 1)
+                    setUnpackedQuantity(
+                      Math.round((unpackedQuantity + amount) * 1000) / 1000,
+                    )
+                  }
+                }}
+              >
+                <PackageOpen />
+                Unpack
+              </Button>
             </div>
 
-            <div>
-              <Label htmlFor="unpackedQuantity">
-                Unpacked{' '}
-                <span className="text-xs font-normal">
-                  (
-                  {targetUnit === 'measurement'
-                    ? measurementUnit
-                    : packageUnit || DEFAULT_PACKAGE_UNIT}
-                  )
-                </span>
-              </Label>
-              <Input
-                id="unpackedQuantity"
-                type="number"
-                min={0}
-                step={consumeAmount || 1}
-                value={unpackedQuantity}
-                onChange={(e) =>
-                  setUnpackedQuantity(
-                    roundToStep(Number(e.target.value), consumeAmount || 1),
-                  )
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label htmlFor="unpackedQuantity">
+                  Unpacked{' '}
+                  <span className="text-xs font-normal">
+                    (
+                    {targetUnit === 'measurement'
+                      ? measurementUnit
+                      : packageUnit || DEFAULT_PACKAGE_UNIT}
+                    )
+                  </span>
+                </Label>
+                <Input
+                  id="unpackedQuantity"
+                  type="number"
+                  min={0}
+                  step={consumeAmount || 1}
+                  value={unpackedQuantity}
+                  onChange={(e) =>
+                    setUnpackedQuantity(
+                      roundToStep(Number(e.target.value), consumeAmount || 1),
+                    )
+                  }
+                />
+                <p className="text-xs text-foreground-muted">
+                  Loose amount from opened package(s)
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="neutral"
+                size="sm"
+                className="mb-5"
+                disabled={
+                  targetUnit === 'package'
+                    ? unpackedQuantity < 1
+                    : targetUnit === 'measurement'
+                      ? !amountPerPackage ||
+                        unpackedQuantity < Number(amountPerPackage)
+                      : true
                 }
-              />
-              <p className="text-xs text-foreground-muted">
-                Loose amount from opened package(s)
-              </p>
+                onClick={() => {
+                  const amount = Number(amountPerPackage)
+                  if (targetUnit === 'package') {
+                    const packs = Math.floor(unpackedQuantity)
+                    if (packs > 0) {
+                      setPackedQuantity(packedQuantity + packs)
+                      setUnpackedQuantity(
+                        Math.round((unpackedQuantity - packs) * 1000) / 1000,
+                      )
+                    }
+                  } else if (targetUnit === 'measurement' && amount > 0) {
+                    const packs = Math.floor(unpackedQuantity / amount)
+                    if (packs > 0) {
+                      setPackedQuantity(packedQuantity + packs)
+                      setUnpackedQuantity(
+                        Math.round((unpackedQuantity - packs * amount) * 1000) /
+                          1000,
+                      )
+                    }
+                  }
+                }}
+              >
+                <Package />
+                Pack
+              </Button>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="neutral"
-            size="sm"
-            disabled={
-              targetUnit === 'package'
-                ? unpackedQuantity < 1
-                : targetUnit === 'measurement'
-                  ? !amountPerPackage ||
-                    unpackedQuantity < Number(amountPerPackage)
-                  : true
-            }
-            onClick={() => {
-              const amount = Number(amountPerPackage)
-              if (targetUnit === 'package') {
-                const packs = Math.floor(unpackedQuantity)
-                if (packs > 0) {
-                  setPackedQuantity(packedQuantity + packs)
-                  setUnpackedQuantity(
-                    Math.round((unpackedQuantity - packs) * 1000) / 1000,
-                  )
-                }
-              } else if (targetUnit === 'measurement' && amount > 0) {
-                const packs = Math.floor(unpackedQuantity / amount)
-                if (packs > 0) {
-                  setPackedQuantity(packedQuantity + packs)
-                  setUnpackedQuantity(
-                    Math.round((unpackedQuantity - packs * amount) * 1000) /
-                      1000,
-                  )
-                }
-              }
-            }}
-          >
-            <PackagePlus />
-            Pack unpacked
-          </Button>
         </div>
       )}
 

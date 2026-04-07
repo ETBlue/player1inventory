@@ -467,7 +467,7 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('shows pack unpacked button always', async () => {
+  it('shows pack and unpack buttons', async () => {
     // Given an item with some unpacked quantity
     const item = await createItem({
       name: 'Test Item',
@@ -488,10 +488,9 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
     })
 
-    // Then pack unpacked button is visible
-    expect(
-      screen.getByRole('button', { name: /pack unpacked/i }),
-    ).toBeInTheDocument()
+    // Then pack and unpack buttons are visible
+    expect(screen.getByRole('button', { name: 'Pack' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unpack' })).toBeInTheDocument()
   })
 
   it('disables pack button when tracking measurement without amountPerPackage', async () => {
@@ -511,7 +510,7 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      const button = screen.getByRole('button', { name: 'Pack' })
       expect(button).toBeDisabled()
     })
   })
@@ -532,7 +531,7 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      const button = screen.getByRole('button', { name: 'Pack' })
       expect(button).toBeEnabled()
     })
   })
@@ -555,7 +554,7 @@ describe('Item detail page - manual quantity input', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => {
-      const button = screen.getByRole('button', { name: /pack unpacked/i })
+      const button = screen.getByRole('button', { name: 'Pack' })
       expect(button).toBeEnabled()
     })
   })
@@ -582,7 +581,7 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByDisplayValue('2500')).toBeInTheDocument() // unpackedQuantity
     })
 
-    const button = screen.getByRole('button', { name: /pack unpacked/i })
+    const button = screen.getByRole('button', { name: 'Pack' })
     fireEvent.click(button)
 
     // Should pack 2 bottles (2000g) and leave 500g unpacked
@@ -620,8 +619,8 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByDisplayValue('2500')).toBeInTheDocument() // unpackedQuantity
     })
 
-    // When user clicks "Pack unpacked"
-    const packButton = screen.getByRole('button', { name: /pack unpacked/i })
+    // When user clicks "Pack"
+    const packButton = screen.getByRole('button', { name: 'Pack' })
     fireEvent.click(packButton)
 
     // Form updates: 1+2=3 packed, 2500-2000=500 unpacked
@@ -639,6 +638,124 @@ describe('Item detail page - manual quantity input', () => {
       const savedItem = await db.items.get(item.id)
       expect(savedItem?.packedQuantity).toBe(3)
       expect(savedItem?.unpackedQuantity).toBe(500)
+    })
+  })
+
+  it('disables unpack button when packedQuantity is 0', async () => {
+    // Given an item with 0 packed quantity
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Unpack' })
+      expect(button).toBeDisabled()
+    })
+  })
+
+  it('enables unpack button when packedQuantity >= 1', async () => {
+    // Given an item with 2 packed
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Unpack' })
+      expect(button).toBeEnabled()
+    })
+  })
+
+  it('unpacks 1 package when unpack button clicked in package mode', async () => {
+    // Given an item with 3 packed and 0.5 unpacked
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 10,
+      refillThreshold: 5,
+      packedQuantity: 3,
+      unpackedQuantity: 0.5,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+
+    const packedInput = screen.getByLabelText(/^packed/i)
+    const unpackedInput = screen.getByLabelText(/^unpacked/i)
+    expect(packedInput).toHaveValue(3)
+    expect(unpackedInput).toHaveValue(0.5)
+
+    // When user clicks Unpack
+    const button = screen.getByRole('button', { name: 'Unpack' })
+    fireEvent.click(button)
+
+    // Then 1 package moves from packed to unpacked
+    await waitFor(() => {
+      expect(packedInput).toHaveValue(2) // packedQuantity: 3 - 1
+      expect(unpackedInput).toHaveValue(1.5) // unpackedQuantity: 0.5 + 1
+    })
+  })
+
+  it('unpacks 1 package using amountPerPackage in measurement mode', async () => {
+    // Given an item with 3 packed and 500g unpacked, 1000g per bottle
+    const item = await createItem({
+      name: 'Olive Oil',
+      packageUnit: 'bottle',
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      targetQuantity: 5000,
+      refillThreshold: 2000,
+      packedQuantity: 3,
+      unpackedQuantity: 500,
+      consumeAmount: 100,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+
+    const packedInput = screen.getByLabelText(/^packed/i)
+    const unpackedInput = screen.getByLabelText(/^unpacked/i)
+    expect(packedInput).toHaveValue(3)
+    expect(unpackedInput).toHaveValue(500)
+
+    // When user clicks Unpack
+    const button = screen.getByRole('button', { name: 'Unpack' })
+    fireEvent.click(button)
+
+    // Then 1 bottle is unpacked: 3-1=2 packed, 500+1000=1500 unpacked
+    await waitFor(() => {
+      expect(packedInput).toHaveValue(2)
+      expect(unpackedInput).toHaveValue(1500)
     })
   })
 
