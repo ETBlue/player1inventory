@@ -39,32 +39,32 @@
   /* status — light mode */
 
   --status-ok: oklch(65% 70% 120);
-  --status-warning: oklch(65% 50% 100);
+  --status-warning: oklch(65% 50% 90);
   --status-error: oklch(60% 30% 20);
   --status-inactive: oklch(60% 4% 85);
 
   --status-ok-muted: oklch(75% 70% 120);
-  --status-warning-muted: oklch(75% 50% 100);
+  --status-warning-muted: oklch(75% 50% 90);
   --status-error-muted: oklch(70% 30% 20);
   --status-inactive-muted: oklch(70% 4% 85);
 
   --status-ok-foreground: oklch(55% 70% 120);
-  --status-warning-foreground: oklch(55% 50% 100);
+  --status-warning-foreground: oklch(55% 50% 90);
   --status-error-foreground: oklch(50% 30% 20);
   --status-inactive-foreground: oklch(50% 4% 85);
 
   --status-ok-accessory: oklch(75% 20% 120);
-  --status-warning-accessory: oklch(75% 20% 100);
+  --status-warning-accessory: oklch(75% 20% 90);
   --status-error-accessory: oklch(70% 20% 20);
   --status-inactive-accessory: oklch(70% 4% 85);
 
   --status-ok-accessory-muted: oklch(75% 5% 120);
-  --status-warning-accessory-muted: oklch(75% 5% 100);
+  --status-warning-accessory-muted: oklch(75% 5% 90);
   --status-error-accessory-muted: oklch(70% 5% 20);
   --status-inactive-accessory-muted: oklch(70% 2% 85);
 
   --status-ok-inverse: oklch(97% 10% 120);
-  --status-warning-inverse: oklch(97% 10% 100);
+  --status-warning-inverse: oklch(97% 10% 90);
   --status-error-inverse: oklch(97% 10% 20);
   --status-inactive-inverse: oklch(97% 2% 85);
 
@@ -157,32 +157,32 @@
   /* status — dark mode */
 
   --status-ok: oklch(75% 80% 120);
-  --status-warning: oklch(75% 70% 100);
+  --status-warning: oklch(75% 70% 90);
   --status-error: oklch(75% 30% 20);
   --status-inactive: oklch(75% 2% 85);
 
   --status-ok-muted: oklch(65% 80% 120);
-  --status-warning-muted: oklch(65% 70% 100);
+  --status-warning-muted: oklch(65% 70% 90);
   --status-error-muted: oklch(65% 30% 20);
   --status-inactive-muted: oklch(65% 2% 85);
 
   --status-ok-foreground: oklch(85% 80% 120);
-  --status-warning-foreground: oklch(85% 70% 100);
+  --status-warning-foreground: oklch(85% 70% 90);
   --status-error-foreground: oklch(85% 30% 20);
   --status-inactive-foreground: oklch(85% 2% 85);
 
   --status-ok-accessory: oklch(65% 20% 120);
-  --status-warning-accessory: oklch(65% 20% 100);
+  --status-warning-accessory: oklch(65% 20% 90);
   --status-error-accessory: oklch(65% 20% 20);
   --status-inactive-accessory: oklch(65% 2% 85);
 
   --status-ok-accessory-muted: oklch(65% 5% 120);
-  --status-warning-accessory-muted: oklch(65% 5% 100);
+  --status-warning-accessory-muted: oklch(65% 5% 90);
   --status-error-accessory-muted: oklch(65% 5% 20);
   --status-inactive-accessory-muted: oklch(65% 1% 85);
 
   --status-ok-inverse: oklch(40% 10% 120);
-  --status-warning-inverse: oklch(40% 10% 100);
+  --status-warning-inverse: oklch(40% 10% 90);
   --status-error-inverse: oklch(40% 10% 20);
   --status-inactive-inverse: oklch(40% 2% 85);
 
