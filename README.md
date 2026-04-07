@@ -100,7 +100,10 @@ Items, tags, vendors, and recipes are connected in a many-to-many structure. A u
 Object creation works in both directions: from an item's page, users can create tags, vendors, or recipes inline. From a tag, vendor, or recipe's items tab, the search bar doubles as a creation path — typing a name that doesn't match any item reveals a "+ Create" row. The primary item creation entry point remains the pantry page, but the secondary path removes a navigation round-trip when working from a categorization angle.
 
 <img src="docs/screenshots/Player%201%20Inventory%2051-item-tags.png" width="300" alt="Item tags" />
+
 <img src="docs/screenshots/Player%201%20Inventory%2062-tag-items.png" width="300" alt="Settings — tag items" />
+<img src="docs/screenshots/feature-tag-items-search.png" width="300" alt="Settings — tag items" />
+<img src="docs/screenshots/feature-tag-items-search-create.png" width="300" alt="Settings — tag items search" />
 
 ### Challenge 5: Efforts of initial pantry setup
 
