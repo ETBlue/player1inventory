@@ -12,7 +12,7 @@ import {
   templateTagTypes,
 } from '@/data/template'
 import { buildDepthFirstTagList } from '@/lib/tagUtils'
-import type { Tag, TagColor, TagType } from '@/types'
+import type { Item, Tag, TagColor, TagType } from '@/types'
 import { TemplateItemRow } from './TemplateItemRow'
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,26 @@ export function TemplateItemsBrowser({
   const mockTagsWithDepth = useMemo(
     () => buildDepthFirstTagList(mockTags),
     [mockTags],
+  )
+
+  // Minimal Item-shaped objects so ItemFilters can compute tag counts against
+  // the template data set. Only `id` and `tagIds` are needed by calculateTagCount.
+  const templateItemsAsItems = useMemo(
+    (): Item[] =>
+      templateItems.map((item) => ({
+        id: item.key,
+        name: item.key,
+        tagIds: item.tagKeys,
+        targetUnit: 'package' as const,
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      })),
+    [],
   )
 
   // ---------------------------------------------------------------------------
@@ -231,7 +251,7 @@ export function TemplateItemsBrowser({
         <>
           <div className="h-px bg-accessory-default" />
           <ItemFilters
-            items={[]}
+            items={templateItemsAsItems}
             tagTypes={mockTagTypes}
             tags={mockTags}
             tagsWithDepth={mockTagsWithDepth}
@@ -241,6 +261,36 @@ export function TemplateItemsBrowser({
             hideRecipeFilter
             hideEditTagsLink
           />
+        </>
+      )}
+
+      {/* Search input (conditional) */}
+      {searchVisible && (
+        <>
+          <div className="h-px bg-accessory-default" />
+          <div className="flex items-center gap-2 px-3">
+            <Input
+              placeholder={t('onboarding.itemsBrowser.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearch('')
+              }}
+              className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
+              autoFocus
+            />
+            {search && (
+              <Button
+                size="icon"
+                variant="neutral-ghost"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setSearch('')}
+                aria-label={t('itemListToolbar.clearSearch')}
+              >
+                <X />
+              </Button>
+            )}
+          </div>
         </>
       )}
 
@@ -263,36 +313,6 @@ export function TemplateItemsBrowser({
               <X className="h-3 w-3" />
               {t('onboarding.itemsBrowser.clearFilter')}
             </button>
-          </div>
-        </>
-      )}
-
-      {/* Search input (conditional) */}
-      {searchVisible && (
-        <>
-          <div className="h-px bg-accessory-default" />
-          <div className="flex items-center gap-2 px-3">
-            <Input
-              placeholder={t('onboarding.itemsBrowser.title')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setSearch('')
-              }}
-              className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-              autoFocus
-            />
-            {search && (
-              <Button
-                size="icon"
-                variant="neutral-ghost"
-                className="h-6 w-6 shrink-0"
-                onClick={() => setSearch('')}
-                aria-label={t('itemListToolbar.clearSearch')}
-              >
-                <X />
-              </Button>
-            )}
           </div>
         </>
       )}

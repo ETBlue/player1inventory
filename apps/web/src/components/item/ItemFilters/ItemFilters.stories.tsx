@@ -182,7 +182,7 @@ export const HideRecipeFilter: Story = {
 
 const controlledTagTypes: TagType[] = [
   { id: 'preservation', name: 'Preservation', color: TagColor.cyan },
-  { id: 'category', name: 'Category', color: TagColor.lime },
+  { id: 'category', name: 'Category', color: TagColor.pink },
 ]
 
 const controlledTags: Tag[] = [

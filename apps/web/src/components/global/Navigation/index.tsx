@@ -28,7 +28,7 @@ export function Navigation() {
   return (
     <nav
       aria-label="Bottom navigation"
-      className="lg:hidden fixed bottom-0 left-0 right-0 bg-background-surface"
+      className="lg:hidden bg-background-surface"
     >
       <div className="grid grid-cols-4">
         {navItems.map(({ to, label, icon: Icon }) => {
@@ -42,7 +42,7 @@ export function Navigation() {
               to={to}
               className={cn(
                 `flex flex-col items-center gap-1 
-                px-4 py-2 -mt-px`,
+                px-4 py-2`,
                 isActive
                   ? 'bg-background-base text-foreground-emphasized'
                   : 'text-foreground-muted',

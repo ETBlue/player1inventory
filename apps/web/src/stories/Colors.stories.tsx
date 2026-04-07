@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useEffect, useRef, useState } from 'react'
-import { type ColorName, colors } from '@/design-tokens'
+import { colors } from '@/design-tokens'
+import { TagColor } from '@/types'
 
 const meta: Meta = {
   title: 'Colors',
@@ -137,7 +138,7 @@ const ColorCard = ({
           </div>
           <div className="text-xs space-y-1">
             <div className="font-mono text-foreground-muted">
-              --color-{name}-tint
+              --color-{name}-inverse
             </div>
           </div>
         </div>
@@ -219,18 +220,7 @@ const SimpleColorCard = ({ name, cssVar, usage }: SimpleColorCardProps) => {
   )
 }
 
-const COLOR_NAMES: ColorName[] = [
-  'red',
-  'orange',
-  'amber',
-  'yellow',
-  'green',
-  'teal',
-  'blue',
-  'indigo',
-  'purple',
-  'pink',
-]
+const COLOR_NAMES = Object.values(TagColor) as TagColor[]
 
 export const AllColors: Story = {
   render: () => (
@@ -340,11 +330,6 @@ export const AllColors: Story = {
             name="secondary"
             cssVar="var(--color-importance-secondary)"
             usage="Secondary actions, supporting elements."
-          />
-          <ThemeColorCard
-            name="tertiary"
-            cssVar="var(--color-importance-tertiary)"
-            usage="Tertiary actions, low-priority elements."
           />
           <ThemeColorCard
             name="destructive"

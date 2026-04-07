@@ -84,7 +84,9 @@ export function TagTypeDropdown({
               )}
               <div className="flex items-center justify-between w-full">
                 <Badge
-                  variant={isChecked ? tagType.color : `${tagType.color}-tint`}
+                  variant={
+                    isChecked ? tagType.color : `${tagType.color}-inverse`
+                  }
                 >
                   {tag.name}
                 </Badge>

@@ -107,7 +107,7 @@ export function ConflictDialog({
           <Button onClick={onReplace}>
             {t('settings.import.conflictDialog.replace')}
           </Button>
-          <Button variant="red" onClick={onClear}>
+          <Button variant="destructive" onClick={onClear}>
             {t('settings.import.conflictDialog.clear')}
           </Button>
         </DialogFooter>

@@ -72,8 +72,7 @@
       "createButton": "新增食譜"
     },
     "recipe": {
-      "itemCount_one": "已選 {{count}} 項",
-      "itemCount_other": "已選 {{count}} 項",
+      "itemCount": "{{count}} / {{total}} 項已勾選",
       "noItems": "食譜裡還沒有任何品項喔。"
     },
     "log": {
@@ -538,6 +537,7 @@
     },
     "itemsBrowser": {
       "title": "範例品項",
+      "searchPlaceholder": "搜尋品項...",
       "selected_one": "已選擇 {{count}} 個品項",
       "selected_other": "已選擇 {{count}} 個品項",
       "selectAll": "選擇全部可見項目",
@@ -549,6 +549,7 @@
     },
     "vendorsBrowser": {
       "title": "範例供應商",
+      "searchPlaceholder": "搜尋供應商...",
       "selectAll": "選擇全部可見項目",
       "clearSelection": "清除選擇項目",
       "showing": "顯示 {{count}} / {{total}} 個供應商",

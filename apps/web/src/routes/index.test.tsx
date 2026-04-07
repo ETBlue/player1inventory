@@ -722,7 +722,7 @@ describe('Home page filtering integration', () => {
     // Then the vendor badge on the item card uses the filled (neutral) style
     await waitFor(() => {
       const badge = screen.getByTestId('vendor-badge-Costco')
-      expect(badge.className).toContain('bg-neutral')
+      expect(badge.className).toContain('bg-importance-neutral')
     })
   })
 
@@ -755,7 +755,7 @@ describe('Home page filtering integration', () => {
     // Then the vendor badge uses the outline (neutral-outline) style
     await waitFor(() => {
       const badge = screen.getByTestId('vendor-badge-Costco')
-      expect(badge.className).not.toContain('bg-neutral')
+      expect(badge.className).not.toContain('bg-importance-neutral')
     })
   })
 
@@ -790,7 +790,7 @@ describe('Home page filtering integration', () => {
     // Then the recipe badge on the item card uses the filled (neutral) style
     await waitFor(() => {
       const badge = screen.getByTestId('recipe-badge-Cereal Bowl')
-      expect(badge.className).toContain('bg-neutral')
+      expect(badge.className).toContain('bg-importance-neutral')
     })
   })
 
@@ -826,10 +826,10 @@ describe('Home page filtering integration', () => {
       </QueryClientProvider>,
     )
 
-    // Then the tag badge uses the bold (non-tint) variant
+    // Then the tag badge uses the bold (non-inverse) variant
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
-      expect(badge.className).not.toContain('bg-blue-tint')
+      expect(badge.className).not.toContain('bg-blue-inverse')
       expect(badge.className).toContain('bg-blue')
     })
   })
@@ -867,7 +867,7 @@ describe('Home page filtering integration', () => {
     // Then the tag badge uses the tint variant
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
-      expect(badge.className).toContain('bg-blue-tint')
+      expect(badge.className).toContain('bg-blue-inverse')
     })
   })
 

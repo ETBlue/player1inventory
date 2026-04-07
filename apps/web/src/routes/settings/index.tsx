@@ -20,13 +20,13 @@ function Settings() {
   const { t } = useTranslation()
 
   return (
-    <div>
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
         <h1 className="px-3">{t('settings.title')}</h1>
         <span className="h-8" />
       </Toolbar>
 
-      <div className="space-y-px">
+      <div className="overflow-y-auto [container-type:size] space-y-px">
         <ThemeCard />
         <LanguageCard />
         <DataModeCard />

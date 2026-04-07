@@ -28,7 +28,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Sidebar navigation"
-      className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-background-surface border-r border-accessory-default z-10"
+      className="hidden lg:flex flex-col w-56 min-h-[100cqh] bg-background-surface border-r border-accessory-default"
     >
       <h1 className="px-5 py-4 font-rosario">{t('appName')}</h1>
       <div className="flex flex-col gap-1 px-2">

@@ -258,42 +258,42 @@ export function ItemForm({
                     ({packageUnit || DEFAULT_PACKAGE_UNIT})
                   </span>
                 </Label>
-                <Input
-                  id="packedQuantity"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={packedQuantity}
-                  onChange={(e) => setPackedQuantity(Number(e.target.value))}
-                />
+                <div className="grid grid-cols-[auto_8rem] gap-2">
+                  <Input
+                    id="packedQuantity"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={packedQuantity}
+                    onChange={(e) => setPackedQuantity(Number(e.target.value))}
+                  />
+                  <Button
+                    type="button"
+                    variant="neutral-outline"
+                    disabled={packedQuantity < 1}
+                    onClick={() => {
+                      const amount = Number(amountPerPackage)
+                      if (targetUnit === 'package') {
+                        setPackedQuantity(packedQuantity - 1)
+                        setUnpackedQuantity(
+                          Math.round((unpackedQuantity + 1) * 1000) / 1000,
+                        )
+                      } else if (targetUnit === 'measurement' && amount > 0) {
+                        setPackedQuantity(packedQuantity - 1)
+                        setUnpackedQuantity(
+                          Math.round((unpackedQuantity + amount) * 1000) / 1000,
+                        )
+                      }
+                    }}
+                  >
+                    <PackageOpen />
+                    Unpack
+                  </Button>
+                </div>
                 <p className="text-xs text-foreground-muted">
                   Number of whole packages in stock
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="neutral"
-                size="sm"
-                className="mb-5"
-                disabled={packedQuantity < 1}
-                onClick={() => {
-                  const amount = Number(amountPerPackage)
-                  if (targetUnit === 'package') {
-                    setPackedQuantity(packedQuantity - 1)
-                    setUnpackedQuantity(
-                      Math.round((unpackedQuantity + 1) * 1000) / 1000,
-                    )
-                  } else if (targetUnit === 'measurement' && amount > 0) {
-                    setPackedQuantity(packedQuantity - 1)
-                    setUnpackedQuantity(
-                      Math.round((unpackedQuantity + amount) * 1000) / 1000,
-                    )
-                  }
-                }}
-              >
-                <PackageOpen />
-                Unpack
-              </Button>
             </div>
 
             <div className="flex items-end gap-2">
@@ -308,60 +308,62 @@ export function ItemForm({
                     )
                   </span>
                 </Label>
-                <Input
-                  id="unpackedQuantity"
-                  type="number"
-                  min={0}
-                  step={consumeAmount || 1}
-                  value={unpackedQuantity}
-                  onChange={(e) =>
-                    setUnpackedQuantity(
-                      roundToStep(Number(e.target.value), consumeAmount || 1),
-                    )
-                  }
-                />
+                <div className="grid grid-cols-[auto_8rem] gap-2">
+                  <Input
+                    id="unpackedQuantity"
+                    type="number"
+                    min={0}
+                    step={consumeAmount || 1}
+                    value={unpackedQuantity}
+                    onChange={(e) =>
+                      setUnpackedQuantity(
+                        roundToStep(Number(e.target.value), consumeAmount || 1),
+                      )
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="neutral-outline"
+                    disabled={
+                      targetUnit === 'package'
+                        ? unpackedQuantity < 1
+                        : targetUnit === 'measurement'
+                          ? !amountPerPackage ||
+                            unpackedQuantity < Number(amountPerPackage)
+                          : true
+                    }
+                    onClick={() => {
+                      const amount = Number(amountPerPackage)
+                      if (targetUnit === 'package') {
+                        const packs = Math.floor(unpackedQuantity)
+                        if (packs > 0) {
+                          setPackedQuantity(packedQuantity + packs)
+                          setUnpackedQuantity(
+                            Math.round((unpackedQuantity - packs) * 1000) /
+                              1000,
+                          )
+                        }
+                      } else if (targetUnit === 'measurement' && amount > 0) {
+                        const packs = Math.floor(unpackedQuantity / amount)
+                        if (packs > 0) {
+                          setPackedQuantity(packedQuantity + packs)
+                          setUnpackedQuantity(
+                            Math.round(
+                              (unpackedQuantity - packs * amount) * 1000,
+                            ) / 1000,
+                          )
+                        }
+                      }
+                    }}
+                  >
+                    <Package />
+                    Pack
+                  </Button>
+                </div>
                 <p className="text-xs text-foreground-muted">
                   Loose amount from opened package(s)
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="neutral"
-                size="sm"
-                className="mb-5"
-                disabled={
-                  targetUnit === 'package'
-                    ? unpackedQuantity < 1
-                    : targetUnit === 'measurement'
-                      ? !amountPerPackage ||
-                        unpackedQuantity < Number(amountPerPackage)
-                      : true
-                }
-                onClick={() => {
-                  const amount = Number(amountPerPackage)
-                  if (targetUnit === 'package') {
-                    const packs = Math.floor(unpackedQuantity)
-                    if (packs > 0) {
-                      setPackedQuantity(packedQuantity + packs)
-                      setUnpackedQuantity(
-                        Math.round((unpackedQuantity - packs) * 1000) / 1000,
-                      )
-                    }
-                  } else if (targetUnit === 'measurement' && amount > 0) {
-                    const packs = Math.floor(unpackedQuantity / amount)
-                    if (packs > 0) {
-                      setPackedQuantity(packedQuantity + packs)
-                      setUnpackedQuantity(
-                        Math.round((unpackedQuantity - packs * amount) * 1000) /
-                          1000,
-                      )
-                    }
-                  }
-                }}
-              >
-                <Package />
-                Pack
-              </Button>
             </div>
           </div>
         </div>

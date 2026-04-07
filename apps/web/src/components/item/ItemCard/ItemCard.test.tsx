@@ -230,9 +230,9 @@ describe('ItemCard - Tag Sorting', () => {
     // Message should show even though 30 days > 7 day threshold
     expect(screen.getByText(/Expires in 30 days/i)).toBeInTheDocument()
 
-    // Should be muted style (not error background)
+    // Should be default foreground style (not error background)
     const messageEl = screen.getByText(/Expires in 30 days/i)
-    expect(messageEl).toHaveClass('text-foreground-muted')
+    expect(messageEl).toHaveClass('text-foreground')
     expect(messageEl).not.toHaveClass('bg-status-error')
   })
 
@@ -264,7 +264,7 @@ describe('ItemCard - Tag Sorting', () => {
 
     // Should have warning style
     expect(messageEl).toHaveClass('bg-status-error')
-    expect(messageEl).toHaveClass('text-tint')
+    expect(messageEl).toHaveClass('text-status-error-inverse')
 
     // Should show warning icon (TriangleAlert component)
     const icon = messageEl.querySelector('svg')
@@ -297,11 +297,11 @@ describe('ItemCard - Tag Sorting', () => {
       <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
-    // Then badge shows plain muted text, not error styling
+    // Then badge shows plain foreground text, not error styling
     const messageEl = screen.getByText(/Expires in 6 days/i)
-    expect(messageEl).toHaveClass('text-foreground-muted')
+    expect(messageEl).toHaveClass('text-foreground')
     expect(messageEl).not.toHaveClass('bg-status-error')
-    expect(messageEl).not.toHaveClass('text-tint')
+    expect(messageEl).not.toHaveClass('text-status-error-inverse')
 
     // And no TriangleAlert icon
     const icon = messageEl.querySelector('svg')
@@ -337,7 +337,7 @@ describe('ItemCard - Tag Sorting', () => {
     // Then badge shows error styling (regression guard)
     const messageEl = screen.getByText(/Expires in 2 days/i)
     expect(messageEl).toHaveClass('bg-status-error')
-    expect(messageEl).toHaveClass('text-tint')
+    expect(messageEl).toHaveClass('text-status-error-inverse')
 
     // And TriangleAlert icon is present
     const icon = messageEl.querySelector('svg')
@@ -1201,7 +1201,7 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge uses the tint variant
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal-tint')
+    expect(badge).toHaveClass('bg-teal-inverse')
     expect(badge).not.toHaveClass('bg-teal')
   })
 
@@ -1219,7 +1219,7 @@ describe('ItemCard tag badge variants', () => {
     // Then badge uses the bold variant
     const badge = screen.getByTestId('tag-badge-Dairy')
     expect(badge).toHaveClass('bg-teal')
-    expect(badge).not.toHaveClass('bg-teal-tint')
+    expect(badge).not.toHaveClass('bg-teal-inverse')
   })
 
   it('renders tag badge with tint variant when activeTagIds is not provided', async () => {
@@ -1230,7 +1230,7 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge defaults to tint (unselected appearance)
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal-tint')
+    expect(badge).toHaveClass('bg-teal-inverse')
   })
 })
 
@@ -1257,7 +1257,7 @@ describe('ItemCard - inactive item progress bar', () => {
     // Inactive item with packedQuantity=2 > 0 renders the target=0 full-bar branch
     const fillDiv = container.querySelector('div.overflow-hidden > div')
     expect(fillDiv).toBeInTheDocument()
-    expect(fillDiv).toHaveClass('bg-status-inactive')
+    expect(fillDiv).toHaveClass('bg-status-inactive-muted')
   })
 
   it('renders with default (not error/warning) card styling when inactive with refillThreshold > 0', async () => {
@@ -1274,7 +1274,7 @@ describe('ItemCard - inactive item progress bar', () => {
 
     // Card should NOT have error or warning tint background styling
     const card = container.firstElementChild
-    expect(card).not.toHaveClass('bg-status-error-tint')
-    expect(card).not.toHaveClass('bg-status-warning-tint')
+    expect(card).not.toHaveClass('bg-status-error-inverse')
+    expect(card).not.toHaveClass('bg-status-warning-inverse')
   })
 })

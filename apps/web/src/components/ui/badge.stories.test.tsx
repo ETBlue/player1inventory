@@ -13,6 +13,6 @@ describe('Badge stories smoke tests', () => {
 
   it('Variants renders without error', () => {
     render(<Variants />)
-    expect(screen.getAllByText('red').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('orange').length).toBeGreaterThan(0)
   })
 })

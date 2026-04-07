@@ -91,7 +91,7 @@ export const InForm: Story = {
 
         <button
           type="submit"
-          className="inline-flex items-center justify-center gap-2 whitespace-nowrap border rounded-sm text-sm font-medium cursor-pointer disabled:pointer-events-none opacity-90 hover:opacity-100 disabled:opacity-50 h-8 px-4 border-transparent bg-primary text-tint shadow-sm hover:shadow-md"
+          className="inline-flex items-center justify-center gap-2 whitespace-nowrap border rounded-sm text-sm font-medium cursor-pointer disabled:pointer-events-none opacity-90 hover:opacity-100 disabled:opacity-50 h-8 px-4 border-transparent bg-importance-primary text-foreground-colorless-inverse shadow-sm hover:shadow-md"
         >
           Create Tag
         </button>

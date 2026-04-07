@@ -121,7 +121,7 @@ Row 2:            [N items, M selected, × S]
 - `highlightedName?: React.ReactNode` — optional override for the item name display; used by cooking page to pass highlighted search matches
 
 **URL search params** (validated by `validateSearch` on the route):
-- `?sort` — `name` | `recent` | `count` (default: `name`)
+- `?sort` — `name` | `recent` | `count` (default: `recent`)
 - `?dir` — `asc` | `desc` (default: `asc`)
 - `?q` — search query string (default: `''`)
 - `?expanded` — comma-separated expanded recipe IDs (default: `''` = all collapsed); derived via `useMemo` into `Set<string>`

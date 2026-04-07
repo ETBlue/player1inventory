@@ -103,13 +103,13 @@ export function TemplateVendorsBrowser({
       {/* Row 2: Search input + Select All */}
       <Toolbar className="bg-transparent border-none">
         <Input
-          placeholder={t('onboarding.vendorsBrowser.title')}
+          placeholder={t('onboarding.vendorsBrowser.searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setSearch('')
           }}
-          className="flex-1 border-none shadow-none bg-transparent h-auto py-2 text-sm"
+          className="flex-1 border-none shadow-none bg-transparent h-auto py-2 text-sm -my-2"
         />
         {search && (
           <Button

@@ -89,7 +89,7 @@ function TagInfoTab() {
   if (!tag || tagTypes.length === 0) return null
 
   return (
-    <div className="p-4">
+    <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="space-y-4 max-w-2xl mx-auto">
         <TagInfoForm
           tag={tag}

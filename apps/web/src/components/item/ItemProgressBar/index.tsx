@@ -71,27 +71,36 @@ function SegmentedProgressBar({
 
     const fillColor =
       status === 'ok'
-        ? 'bg-status-ok'
+        ? 'bg-status-ok-muted'
         : status === 'warning'
-          ? 'bg-status-warning'
+          ? 'bg-status-warning-muted'
           : status === 'error'
-            ? 'bg-status-error'
+            ? 'bg-status-error-muted'
             : status === 'inactive'
-              ? 'bg-status-inactive'
+              ? 'bg-status-inactive-muted'
               : 'bg-accessory-emphasized'
 
     const packedColor =
       status === 'ok'
-        ? 'bg-status-ok'
+        ? 'bg-status-ok-muted'
         : status === 'warning'
-          ? 'bg-status-warning'
+          ? 'bg-status-warning-muted'
           : status === 'error'
-            ? 'bg-status-error'
+            ? 'bg-status-error-muted'
             : status === 'inactive'
-              ? 'bg-status-inactive'
+              ? 'bg-status-inactive-muted'
               : 'bg-accessory-emphasized'
 
-    const unpackedColor = 'bg-accessory-default'
+    const unpackedColor =
+      status === 'ok'
+        ? 'bg-status-ok-accessory-muted'
+        : status === 'warning'
+          ? 'bg-status-warning-accessory-muted'
+          : status === 'error'
+            ? 'bg-status-error-accessory-muted'
+            : status === 'inactive'
+              ? 'bg-status-inactive-accessory-muted'
+              : 'bg-accessory-muted'
 
     return (
       <div
@@ -103,7 +112,7 @@ function SegmentedProgressBar({
         data-unpacked={unpackedFill}
         className={cn(
           'h-2 flex-1 rounded-xs relative overflow-hidden',
-          'border border-accessory-emphasized',
+          'border border-accessory-default',
         )}
       >
         {showSeparate ? (
@@ -155,19 +164,28 @@ function ContinuousProgressBar({
 
     const packedColor =
       status === 'ok'
-        ? 'bg-status-ok'
+        ? 'bg-status-ok-muted'
         : status === 'warning'
-          ? 'bg-status-warning'
+          ? 'bg-status-warning-muted'
           : status === 'error'
-            ? 'bg-status-error'
+            ? 'bg-status-error-muted'
             : status === 'inactive'
-              ? 'bg-status-inactive'
+              ? 'bg-status-inactive-muted'
               : 'bg-accessory-emphasized'
 
-    const unpackedColor = 'bg-accessory-default'
+    const unpackedColor =
+      status === 'ok'
+        ? 'bg-status-ok-accessory-muted'
+        : status === 'warning'
+          ? 'bg-status-warning-accessory-muted'
+          : status === 'error'
+            ? 'bg-status-error-accessory-muted'
+            : status === 'inactive'
+              ? 'bg-status-inactive-accessory-muted'
+              : 'bg-accessory-muted'
 
     return (
-      <div className="relative h-2 w-full overflow-hidden rounded-xs border border-accessory-emphasized">
+      <div className="relative h-2 w-full overflow-hidden rounded-xs border border-accessory-default">
         {/* Packed portion */}
         <div
           className={cn(
@@ -197,13 +215,13 @@ function ContinuousProgressBar({
       className={cn(
         'h-2 [&>div]:transition-all [&>div]:duration-300',
         status === 'ok'
-          ? '[&>div]:bg-status-ok'
+          ? '[&>div]:bg-status-ok-muted'
           : status === 'warning'
-            ? '[&>div]:bg-status-warning'
+            ? '[&>div]:bg-status-warning-muted'
             : status === 'error'
-              ? '[&>div]:bg-status-error'
+              ? '[&>div]:bg-status-error-muted'
               : status === 'inactive'
-                ? '[&>div]:bg-status-inactive'
+                ? '[&>div]:bg-status-inactive-muted'
                 : '[&>div]:bg-accessory-emphasized',
       )}
     />
@@ -225,17 +243,17 @@ export function ItemProgressBar({
     if (current > 0) {
       const fillColor =
         status === 'ok'
-          ? 'bg-status-ok'
+          ? 'bg-status-ok-muted'
           : status === 'warning'
-            ? 'bg-status-warning'
+            ? 'bg-status-warning-muted'
             : status === 'error'
-              ? 'bg-status-error'
+              ? 'bg-status-error-muted'
               : status === 'inactive'
-                ? 'bg-status-inactive'
+                ? 'bg-status-inactive-muted'
                 : 'bg-accessory-emphasized'
       return (
         <div className="flex-1">
-          <div className="h-2 w-full rounded-xs border border-accessory-emphasized overflow-hidden">
+          <div className="h-2 w-full rounded-xs border border-accessory-default overflow-hidden">
             <div className={cn('h-full w-full', fillColor)} />
           </div>
         </div>
@@ -243,7 +261,7 @@ export function ItemProgressBar({
     }
     return (
       <div className="flex-1">
-        <div className="h-2 w-full rounded-xs border border-accessory-emphasized" />
+        <div className="h-2 w-full rounded-xs border border-accessory-default" />
       </div>
     )
   }

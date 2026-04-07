@@ -102,7 +102,7 @@ describe('DeleteButton', () => {
       <DeleteButton
         trigger="Delete"
         buttonVariant="ghost"
-        buttonClassName="text-destructive"
+        buttonClassName="text-importance-destructive"
         dialogTitle="Delete?"
         dialogDescription="Sure?"
         onDelete={handleDelete}
@@ -111,7 +111,7 @@ describe('DeleteButton', () => {
 
     // Given button has custom classes
     const button = screen.getByRole('button', { name: /delete/i })
-    expect(button.className).toContain('text-destructive')
+    expect(button.className).toContain('text-importance-destructive')
   })
 
   it('button has aria-label when buttonAriaLabel is provided', () => {

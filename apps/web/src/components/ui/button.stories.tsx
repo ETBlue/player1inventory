@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { PlusIcon } from 'lucide-react'
+import { TagColor } from '@/types'
 import { Button } from './button'
 
 const meta: Meta<typeof Button> = {
@@ -21,23 +22,11 @@ export const Variants: Story = {
     const baseVariants = [
       'primary',
       'secondary',
-      'tertiary',
       'destructive',
       'neutral',
     ] as const
 
-    const colors = [
-      'red',
-      'orange',
-      'amber',
-      'yellow',
-      'green',
-      'teal',
-      'blue',
-      'indigo',
-      'purple',
-      'pink',
-    ] as const
+    const colors = Object.values(TagColor) as TagColor[]
 
     return (
       <div className="space-y-8">
@@ -65,31 +54,17 @@ export const Variants: Story = {
         {/* Color Variants */}
         <div>
           <h3 className="text-sm font-semibold mb-3">Color Variants</h3>
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-xs font-medium mb-2 text-foreground-muted">
-                Solid
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {colors.map((color) => (
-                  <Button key={color} variant={color}>
-                    {color}
-                  </Button>
-                ))}
+          <div className="space-y-2">
+            {colors.map((color) => (
+              <div key={color} className="flex gap-2">
+                <Button className="w-30" variant={color}>
+                  {color}
+                </Button>
+                <Button className="w-40" variant={`${color}-inverse`}>
+                  {color}-inverse
+                </Button>
               </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-medium mb-2 text-foreground-muted">
-                Tint
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {colors.map((color) => (
-                  <Button key={`${color}-tint`} variant={`${color}-tint`}>
-                    {color}-tint
-                  </Button>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>

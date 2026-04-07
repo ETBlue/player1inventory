@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ArrowLeft, ListTodo, Settings2 } from 'lucide-react'
+import { ArrowLeft, ListTodo, Settings2, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -85,13 +85,11 @@ function TagDetailLayoutInner() {
 
   return (
     <>
-      <div className="min-h-screen">
+      <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         {/* Fixed Top Bar */}
         <header
-          className={`px-3 flex items-center gap-2
-          fixed top-0 left-0 right-0 z-50
-          bg-background-surface
-          border-b-2 border-accessory-default`}
+          className={`px-3 flex items-center gap-2 w-[100cqw]
+          bg-background-surface border-b-2 border-accessory-default`}
         >
           <Button
             variant="neutral-ghost"
@@ -103,6 +101,7 @@ function TagDetailLayoutInner() {
             <ArrowLeft />
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
+          <Tags className="h-4 w-4 text-foreground-muted" />
           <h1 className="text-md font-regular truncate flex-1 capitalize">
             {tag.name}
           </h1>
@@ -134,7 +133,7 @@ function TagDetailLayoutInner() {
         </header>
 
         {/* Main Content with padding to clear fixed bar */}
-        <div className="mt-[50px]">
+        <div className="overflow-y-auto [container-type:size]">
           <Outlet key={router.state.location.pathname} />
         </div>
       </div>

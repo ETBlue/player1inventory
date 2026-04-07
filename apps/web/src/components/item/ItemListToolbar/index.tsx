@@ -279,40 +279,44 @@ export function ItemListToolbar({
 
       {/* Row 2: search input */}
       {searchVisible && (
-        <div className="flex items-center gap-2 border-t border-accessory-default px-3">
-          <Input
-            placeholder={t('itemListToolbar.searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-            autoFocus
-          />
-          {search && (
-            <>
-              <Button
-                size="icon"
-                variant="neutral-ghost"
-                className="h-6 w-6 shrink-0"
-                onClick={() => setSearch('')}
-                aria-label={t('itemListToolbar.clearSearch')}
-              >
-                <X />
-              </Button>
-              {onCreateFromSearch && !hasExactMatch && (
+        <>
+          <div className="h-px bg-accessory-default" />
+
+          <div className="flex items-center gap-2 px-3">
+            <Input
+              placeholder={t('itemListToolbar.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
+              autoFocus
+            />
+            {search && (
+              <>
                 <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => onCreateFromSearch(search.trim())}
-                  aria-label={t('itemListToolbar.createItem')}
+                  size="icon"
+                  variant="neutral-ghost"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => setSearch('')}
+                  aria-label={t('itemListToolbar.clearSearch')}
                 >
-                  <Plus />
-                  {t('itemListToolbar.create')}
+                  <X />
                 </Button>
-              )}
-            </>
-          )}
-        </div>
+                {onCreateFromSearch && !hasExactMatch && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => onCreateFromSearch(search.trim())}
+                    aria-label={t('itemListToolbar.createItem')}
+                  >
+                    <Plus />
+                    {t('itemListToolbar.create')}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        </>
       )}
     </>
   )

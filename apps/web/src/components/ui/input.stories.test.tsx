@@ -42,7 +42,9 @@ describe('Input error prop', () => {
 
   it('applies destructive border class when error prop is set', () => {
     const { container } = render(<Input error="Error" />)
-    expect(container.querySelector('input')).toHaveClass('border-destructive')
+    expect(container.querySelector('input')).toHaveClass(
+      'border-importance-destructive',
+    )
   })
 
   it('does not show error message when error prop is undefined', () => {

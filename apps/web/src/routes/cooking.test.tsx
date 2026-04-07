@@ -1016,13 +1016,13 @@ describe('Use (Cooking) Page', () => {
     })
     await user.click(screen.getByLabelText('Pasta'))
 
-    // Then subtitle text includes × 1
+    // Then subtitle text includes item count (× N was removed from subtitle)
     await waitFor(() => {
-      expect(screen.getByText(/× 1/)).toBeInTheDocument()
+      expect(screen.queryByText(/× 1/)).not.toBeInTheDocument()
     })
   })
 
-  it('recipe subtitle shows × N after increasing servings', async () => {
+  it('recipe subtitle does not show × N after increasing servings (× N removed from subtitle)', async () => {
     // Given a recipe with 1 item (defaultAmount > 0)
     const item = await makeItem('Flour', 1)
     await createRecipe({
@@ -1048,9 +1048,9 @@ describe('Use (Cooking) Page', () => {
     await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
     await user.click(screen.getByRole('button', { name: /increase.*serving/i }))
 
-    // Then subtitle text includes × 3
+    // Then subtitle text does NOT include × N (removed from recipe card subtitle)
     await waitFor(() => {
-      expect(screen.getByText(/× 3/)).toBeInTheDocument()
+      expect(screen.queryByText(/× 3/)).not.toBeInTheDocument()
     })
   })
 
@@ -1079,7 +1079,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then count text shows 0 servings and Cancel button is absent
     await waitFor(() => {
-      expect(screen.getByText(/cooking 0 servings/i)).toBeInTheDocument()
+      expect(screen.getByText(/^0 servings$/i)).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /cancel/i }),
       ).not.toBeInTheDocument()
@@ -1101,7 +1101,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then count text updates to 1 serving cooked
     await waitFor(() => {
-      expect(screen.getByText(/cooking 1 serving/i)).toBeInTheDocument()
+      expect(screen.getByText(/^1 serving$/i)).toBeInTheDocument()
     })
 
     // Then Cancel button appears
@@ -1371,14 +1371,19 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('user can sort recipes by name alphabetically by default', async () => {
-    // Given two recipes created in non-alphabetical order
-    await createRecipe({ name: 'Zucchini Soup' })
-    await createRecipe({ name: 'Apple Tart' })
+  it('user can sort recipes by last cooked by default', async () => {
+    // Given two recipes with known lastCookedAt values (non-alphabetical cook order)
+    const zucchini = await createRecipe({ name: 'Zucchini Soup' })
+    const apple = await createRecipe({ name: 'Apple Tart' })
+    // Set Apple Tart as more recently cooked (desc default → it appears first)
+    await db.recipes.update(zucchini.id, {
+      lastCookedAt: new Date('2024-01-01'),
+    })
+    await db.recipes.update(apple.id, { lastCookedAt: new Date('2024-06-01') })
 
     renderPage()
 
-    // Then recipes appear alphabetically (Apple Tart before Zucchini Soup)
+    // Then recipes appear by last cooked descending (Apple Tart before Zucchini Soup)
     await waitFor(() => {
       const recipeNames = screen
         .getAllByRole('button')

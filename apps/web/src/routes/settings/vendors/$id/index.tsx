@@ -38,7 +38,7 @@ function VendorInfoTab() {
   if (!vendor) return null
 
   return (
-    <div className="p-4">
+    <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="max-w-2xl mx-auto">
         <VendorInfoForm
           vendor={vendor}

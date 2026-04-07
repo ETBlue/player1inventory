@@ -200,154 +200,164 @@ function PantryView() {
   }
 
   return (
-    <div>
-      <ItemListToolbar
-        sortBy={sortBy}
-        sortDirection={sortDirection}
-        onSortChange={(field, direction) => {
-          setSortBy(field)
-          setSortDirection(direction)
-        }}
-        isTagsToggleEnabled
-        items={items}
-        className="border-b"
-        onCreateFromSearch={handleCreateFromSearch}
-        hasExactMatch={hasExactMatch}
-        vendors={vendors}
-        recipes={recipes}
-      >
-        <Link to="/items/new">
-          <Button
-            size="icon"
-            className="lg:w-auto lg:px-3"
-            aria-label="Add item"
-          >
-            <Plus />
-            <span className="hidden lg:inline">Add</span>
-          </Button>
-        </Link>
-      </ItemListToolbar>
-
-      <div className="h-px bg-accessory-default" />
-
-      {items.length === 0 ? (
-        <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
-          <div>
-            <p>{t('pantry.empty.title')}</p>
-            <p className="text-sm mt-1">{t('pantry.empty.description')}</p>
-          </div>
-          <Button asChild size="lg" className="px-8">
-            <Link to="/items/new">
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+      <div>
+        <ItemListToolbar
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={(field, direction) => {
+            setSortBy(field)
+            setSortDirection(direction)
+          }}
+          isTagsToggleEnabled
+          items={items}
+          className="border-b"
+          onCreateFromSearch={handleCreateFromSearch}
+          hasExactMatch={hasExactMatch}
+          vendors={vendors}
+          recipes={recipes}
+        >
+          <Link to="/items/new">
+            <Button
+              size="icon"
+              className="lg:w-auto lg:px-3"
+              aria-label="Add item"
+            >
               <Plus />
-              {t('pantry.empty.createButton')}
-            </Link>
-          </Button>
-        </div>
-      ) : sortedItems.length === 0 ? (
-        <div className="text-center py-12 text-foreground-muted">
-          <p>No items match the current filters.</p>
-          <p className="text-sm mt-1">
-            Try adjusting or clearing your filters.
-          </p>
-        </div>
-      ) : (
-        <div className="bg-background-base flex flex-col gap-px mb-4">
-          {activeItems.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              tags={tags.filter((t) => item.tagIds.includes(t.id))}
-              tagTypes={tagTypes}
-              showTags={isTagsVisible}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              activeVendorIds={selectedVendorIds}
-              activeRecipeIds={selectedRecipeIds}
-              activeTagIds={activeTagIds}
-              onAmountChange={async (delta) => {
-                const updatedItem = { ...item }
-                if (delta > 0) {
-                  const purchaseDate = new Date()
-                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-                  await updateItem.mutateAsync({
-                    id: item.id,
-                    updates: {
-                      packedQuantity: updatedItem.packedQuantity,
-                      unpackedQuantity: updatedItem.unpackedQuantity,
-                      ...(updatedItem.dueDate
-                        ? { dueDate: updatedItem.dueDate }
-                        : {}),
-                    },
-                  })
-                } else {
-                  consumeItem(updatedItem, updatedItem.consumeAmount)
-                  await updateItem.mutateAsync({
-                    id: item.id,
-                    updates: {
-                      packedQuantity: updatedItem.packedQuantity,
-                      unpackedQuantity: updatedItem.unpackedQuantity,
-                    },
-                  })
-                }
-              }}
-              onTagClick={handleTagClick}
-              onVendorClick={handleVendorClick}
-              onRecipeClick={handleRecipeClick}
-            />
-          ))}
-
-          {inactiveItems.length > 0 && (
-            <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-              {inactiveItems.length} inactive item
-              {inactiveItems.length !== 1 ? 's' : ''}
+              <span className="hidden lg:inline">Add</span>
+            </Button>
+          </Link>
+        </ItemListToolbar>
+        <div className="h-px bg-accessory-default" />
+      </div>
+      <div className="overflow-y-auto [container-type:size]">
+        {items.length === 0 ? (
+          <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
+            <div>
+              <p>{t('pantry.empty.title')}</p>
+              <p className="text-sm mt-1">{t('pantry.empty.description')}</p>
             </div>
-          )}
+            <Button asChild size="lg" className="px-8">
+              <Link to="/items/new">
+                <Plus />
+                {t('pantry.empty.createButton')}
+              </Link>
+            </Button>
+          </div>
+        ) : sortedItems.length === 0 ? (
+          <div className="text-center py-12 text-foreground-muted">
+            <p>No items match the current filters.</p>
+            <p className="text-sm mt-1">
+              Try adjusting or clearing your filters.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-background-base flex flex-col gap-px mb-4">
+            {activeItems.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                tags={tags.filter((t) => item.tagIds.includes(t.id))}
+                tagTypes={tagTypes}
+                showTags={isTagsVisible}
+                vendors={vendorMap.get(item.id) ?? []}
+                recipes={recipeMap.get(item.id) ?? []}
+                activeVendorIds={selectedVendorIds}
+                activeRecipeIds={selectedRecipeIds}
+                activeTagIds={activeTagIds}
+                onAmountChange={async (delta) => {
+                  const updatedItem = { ...item }
+                  if (delta > 0) {
+                    const purchaseDate = new Date()
+                    addItem(
+                      updatedItem,
+                      updatedItem.consumeAmount,
+                      purchaseDate,
+                    )
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        ...(updatedItem.dueDate
+                          ? { dueDate: updatedItem.dueDate }
+                          : {}),
+                      },
+                    })
+                  } else {
+                    consumeItem(updatedItem, updatedItem.consumeAmount)
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                      },
+                    })
+                  }
+                }}
+                onTagClick={handleTagClick}
+                onVendorClick={handleVendorClick}
+                onRecipeClick={handleRecipeClick}
+              />
+            ))}
 
-          {inactiveItems.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              tags={tags.filter((t) => item.tagIds.includes(t.id))}
-              tagTypes={tagTypes}
-              showTags={isTagsVisible}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              activeVendorIds={selectedVendorIds}
-              activeRecipeIds={selectedRecipeIds}
-              activeTagIds={activeTagIds}
-              onAmountChange={async (delta) => {
-                const updatedItem = { ...item }
-                if (delta > 0) {
-                  const purchaseDate = new Date()
-                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-                  await updateItem.mutateAsync({
-                    id: item.id,
-                    updates: {
-                      packedQuantity: updatedItem.packedQuantity,
-                      unpackedQuantity: updatedItem.unpackedQuantity,
-                      ...(updatedItem.dueDate
-                        ? { dueDate: updatedItem.dueDate }
-                        : {}),
-                    },
-                  })
-                } else {
-                  consumeItem(updatedItem, updatedItem.consumeAmount)
-                  await updateItem.mutateAsync({
-                    id: item.id,
-                    updates: {
-                      packedQuantity: updatedItem.packedQuantity,
-                      unpackedQuantity: updatedItem.unpackedQuantity,
-                    },
-                  })
-                }
-              }}
-              onTagClick={handleTagClick}
-              onVendorClick={handleVendorClick}
-              onRecipeClick={handleRecipeClick}
-            />
-          ))}
-        </div>
-      )}
+            {inactiveItems.length > 0 && (
+              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+                {inactiveItems.length} inactive item
+                {inactiveItems.length !== 1 ? 's' : ''}
+              </div>
+            )}
+
+            {inactiveItems.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                tags={tags.filter((t) => item.tagIds.includes(t.id))}
+                tagTypes={tagTypes}
+                showTags={isTagsVisible}
+                vendors={vendorMap.get(item.id) ?? []}
+                recipes={recipeMap.get(item.id) ?? []}
+                activeVendorIds={selectedVendorIds}
+                activeRecipeIds={selectedRecipeIds}
+                activeTagIds={activeTagIds}
+                onAmountChange={async (delta) => {
+                  const updatedItem = { ...item }
+                  if (delta > 0) {
+                    const purchaseDate = new Date()
+                    addItem(
+                      updatedItem,
+                      updatedItem.consumeAmount,
+                      purchaseDate,
+                    )
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        ...(updatedItem.dueDate
+                          ? { dueDate: updatedItem.dueDate }
+                          : {}),
+                      },
+                    })
+                  } else {
+                    consumeItem(updatedItem, updatedItem.consumeAmount)
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                      },
+                    })
+                  }
+                }}
+                onTagClick={handleTagClick}
+                onVendorClick={handleVendorClick}
+                onRecipeClick={handleRecipeClick}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

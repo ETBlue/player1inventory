@@ -1,119 +1,237 @@
 /* Base theme variables (light mode) */
 :root {
-  --background-base: hsl(40 20% 85%);
-  --background-surface: hsl(40 40% 92.5%);
-  --background-elevated: hsl(40 80% 97.5%);
+  --overlay: oklch(60% 4% 85);
+  --outline: oklch(70% 30% 195);
 
-  --foreground-muted: hsl(40 20% 34%);
-  --foreground-default: hsl(40 50% 20%);
-  --foreground-emphasized: hsl(40 50% 10%);
-  --foreground-colorless: hsl(0 0% 20%);
-  --foreground-colorless-inverse: hsl(0 0% 90%);
+  /* baseline — light mode */
 
-  --accessory-muted: hsl(40 20% 85%);
-  --accessory-default: hsl(40 20% 75%);
-  --accessory-emphasized: hsl(40 20% 60%);
+  --background-base: oklch(90% 4% 85);
+  --background-surface: oklch(95% 4% 85);
+  --background-elevated: oklch(98% 4% 85);
 
-  --overlay: hsl(40 5% 50%);
-  --outline: hsl(180 50% 50%);
+  --foreground-muted: oklch(50% 6% 85);
+  --foreground-default: oklch(35% 8% 85);
+  --foreground-emphasized: oklch(20% 10% 85);
+  --foreground-colorless: oklch(35% 0% 85);
+  --foreground-colorless-inverse: oklch(95% 0% 85);
 
-  --importance-primary: hsl(180 90% 20%);
-  --importance-secondary: hsl(180 40% 45%);
-  --importance-tertiary: hsl(180 10% 60%);
-  --importance-destructive: hsl(330 60% 32%);
-  --importance-neutral: hsl(40 5% 30%);
+  --accessory-muted: oklch(85% 6% 85);
+  --accessory-default: oklch(80% 6% 85);
+  --accessory-emphasized: oklch(75% 6% 85);
 
-  --status-ok: hsl(75 60% 45%);
-  --status-warning: hsl(45 75% 45%);
-  --status-error: hsl(0 60% 60%);
-  --status-inactive: hsl(45 2.5% 60%);
-  --status-ok-tint: hsl(75 95% 92.5%);
-  --status-warning-tint: hsl(45 95% 92.5%);
-  --status-error-tint: hsl(0 95% 92.5%);
-  --status-inactive-tint: hsl(45 2.5% 95%);
+  /* importance — light mode */
 
-  /* Hue colors */
-  --hue-red: hsl(0 84% 60%);
-  --hue-orange: hsl(25 95% 53%);
-  --hue-amber: hsl(38 92% 50%);
-  --hue-yellow: hsl(48 96% 48%);
-  --hue-green: hsl(142 71% 45%);
-  --hue-teal: hsl(174 77% 39%);
-  --hue-blue: hsl(217 91% 52%);
-  --hue-indigo: hsl(239 84% 67%);
-  --hue-purple: hsl(271 91% 65%);
-  --hue-pink: hsl(330 81% 60%);
-  --hue-brown: hsl(30 60% 38%);
-  --hue-lime: hsl(82 65% 45%);
-  --hue-cyan: hsl(186 90% 42%);
-  --hue-rose: hsl(350 85% 60%);
+  --importance-primary: oklch(60% 70% 195);
+  --importance-secondary: oklch(65% 20% 195);
+  --importance-destructive: oklch(60% 40% 350);
+  --importance-neutral: oklch(60% 6% 85);
+
+  --importance-primary-foreground: oklch(50% 70% 195);
+  --importance-secondary-foreground: oklch(55% 20% 195);
+  --importance-destructive-foreground: oklch(50% 40% 350);
+  --importance-neutral-foreground: oklch(50% 6% 85);
+
+  --importance-primary-accessory: oklch(70% 20% 195);
+  --importance-secondary-accessory: oklch(75% 10% 195);
+  --importance-destructive-accessory: oklch(70% 20% 350);
+  --importance-neutral-accessory: oklch(70% 6% 85);
+
+  /* status — light mode */
+
+  --status-ok: oklch(65% 70% 120);
+  --status-warning: oklch(65% 50% 90);
+  --status-error: oklch(60% 30% 20);
+  --status-inactive: oklch(60% 4% 85);
+
+  --status-ok-muted: oklch(75% 70% 120);
+  --status-warning-muted: oklch(75% 50% 90);
+  --status-error-muted: oklch(70% 30% 20);
+  --status-inactive-muted: oklch(70% 4% 85);
+
+  --status-ok-foreground: oklch(55% 70% 120);
+  --status-warning-foreground: oklch(55% 50% 90);
+  --status-error-foreground: oklch(50% 30% 20);
+  --status-inactive-foreground: oklch(50% 4% 85);
+
+  --status-ok-accessory: oklch(75% 20% 120);
+  --status-warning-accessory: oklch(75% 20% 90);
+  --status-error-accessory: oklch(70% 20% 20);
+  --status-inactive-accessory: oklch(70% 4% 85);
+
+  --status-ok-accessory-muted: oklch(75% 5% 120);
+  --status-warning-accessory-muted: oklch(75% 5% 90);
+  --status-error-accessory-muted: oklch(70% 5% 20);
+  --status-inactive-accessory-muted: oklch(70% 2% 85);
+
+  --status-ok-inverse: oklch(97% 10% 120);
+  --status-warning-inverse: oklch(97% 10% 90);
+  --status-error-inverse: oklch(97% 10% 20);
+  --status-inactive-inverse: oklch(97% 2% 85);
+
+  /* Hue colors — light mode */
+  /* All normalized to L=55% for perceptual balance and WCAG AA on white (4.5:1 minimum) */
+  --hue-orange: oklch(65% 40% 40);
+  --hue-brown: oklch(65% 20% 65);
+  --hue-green: oklch(65% 25% 140);
+  --hue-teal: oklch(65% 25% 170);
+  --hue-cyan: oklch(65% 30% 215);
+  --hue-blue: oklch(65% 30% 250);
+  --hue-indigo: oklch(65% 30% 280);
+  --hue-purple: oklch(65% 35% 300);
+  --hue-pink: oklch(65% 40% 330);
+  --hue-rose: oklch(65% 40% 355);
+
+  --hue-orange-foreground: oklch(55% 40% 40);
+  --hue-brown-foreground: oklch(55% 20% 65);
+  --hue-green-foreground: oklch(55% 25% 140);
+  --hue-teal-foreground: oklch(55% 25% 170);
+  --hue-cyan-foreground: oklch(55% 30% 215);
+  --hue-blue-foreground: oklch(55% 30% 250);
+  --hue-indigo-foreground: oklch(55% 30% 280);
+  --hue-purple-foreground: oklch(55% 35% 300);
+  --hue-pink-foreground: oklch(55% 40% 330);
+  --hue-rose-foreground: oklch(55% 40% 355);
+
+  --hue-orange-accessory: oklch(75% 20% 40);
+  --hue-brown-accessory: oklch(75% 20% 65);
+  --hue-green-accessory: oklch(75% 20% 140);
+  --hue-teal-accessory: oklch(75% 20% 170);
+  --hue-cyan-accessory: oklch(75% 20% 215);
+  --hue-blue-accessory: oklch(75% 20% 250);
+  --hue-indigo-accessory: oklch(75% 20% 280);
+  --hue-purple-accessory: oklch(75% 20% 300);
+  --hue-pink-accessory: oklch(75% 20% 330);
+  --hue-rose-accessory: oklch(75% 20% 355);
 
   /* Hue tints — light mode */
-  --hue-red-tint: hsl(0 93% 94%);
-  --hue-orange-tint: hsl(34 100% 92%);
-  --hue-amber-tint: hsl(48 96% 89%);
-  --hue-yellow-tint: hsl(55 97% 88%);
-  --hue-green-tint: hsl(141 84% 93%);
-  --hue-teal-tint: hsl(166 76% 90%);
-  --hue-blue-tint: hsl(214 95% 93%);
-  --hue-indigo-tint: hsl(231 77% 94%);
-  --hue-purple-tint: hsl(270 100% 95%);
-  --hue-pink-tint: hsl(327 73% 95%);
-  --hue-brown-tint: hsl(30 95% 92%);
-  --hue-lime-tint: hsl(82 95% 92%);
-  --hue-cyan-tint: hsl(186 95% 92%);
-  --hue-rose-tint: hsl(350 95% 92%);
+  --hue-orange-inverse: oklch(95% 4% 40);
+  --hue-brown-inverse: oklch(95% 4% 65);
+  --hue-green-inverse: oklch(95% 4% 140);
+  --hue-teal-inverse: oklch(95% 4% 170);
+  --hue-cyan-inverse: oklch(95% 4% 215);
+  --hue-blue-inverse: oklch(95% 4% 250);
+  --hue-indigo-inverse: oklch(95% 4% 280);
+  --hue-purple-inverse: oklch(95% 4% 300);
+  --hue-pink-inverse: oklch(95% 4% 330);
+  --hue-rose-inverse: oklch(95% 4% 355);
 }
 
 /* Dark mode overrides */
 .dark {
-  --background-base: hsl(40 5% 30%);
-  --background-surface: hsl(40 5% 20%);
-  --background-elevated: hsl(40 5% 10%);
+  --overlay: oklch(90% 4% 85);
+  --outline: oklch(75% 20% 195);
 
-  --foreground-muted: hsl(40 5% 78%);
-  --foreground-default: hsl(40 10% 90%);
-  --foreground-emphasized: hsl(40 50% 97.5%);
-  --foreground-colorless: hsl(0 0% 90%);
-  --foreground-colorless-inverse: hsl(0 0% 20%);
+  /* baseline — dark mode */
 
-  --accessory-muted: hsl(40 5% 40%);
-  --accessory-default: hsl(40 10% 50%);
-  --accessory-emphasized: hsl(40 20% 70%);
+  --background-base: oklch(20% 2% 85);
+  --background-surface: oklch(30% 2% 85);
+  --background-elevated: oklch(40% 2% 85);
 
-  --overlay: hsl(40 10% 90%);
-  --outline: hsl(180 40% 60%);
+  --foreground-muted: oklch(80% 4% 85);
+  --foreground-default: oklch(90% 6% 85);
+  --foreground-emphasized: oklch(97% 8% 85);
+  --foreground-colorless: oklch(90% 0% 85);
+  --foreground-colorless-inverse: oklch(30% 0% 85);
 
-  --importance-primary: hsl(180 70% 62%);
-  --importance-secondary: hsl(180 30% 60%);
-  --importance-tertiary: hsl(180 10% 60%);
-  --importance-destructive: hsl(330 90% 86%);
-  --importance-neutral: hsl(40 20% 80%);
+  --accessory-muted: oklch(55% 4% 85);
+  --accessory-default: oklch(65% 4% 85);
+  --accessory-emphasized: oklch(75% 4% 85);
 
-  --status-ok: hsl(75 60% 45%);
-  --status-warning: hsl(45 75% 45%);
-  --status-error: hsl(0 60% 60%);
-  --status-inactive: hsl(45 2.5% 60%);
-  --status-ok-tint: hsl(75 20% 30%);
-  --status-warning-tint: hsl(45 20% 30%);
-  --status-error-tint: hsl(0 20% 30%);
-  --status-inactive-tint: hsl(45 0% 25%);
+  /* importance — dark mode */
 
-  /* Hue tints — dark mode (bold hue colors unchanged) */
-  --hue-red-tint: hsl(0 20% 30%);
-  --hue-orange-tint: hsl(25 20% 30%);
-  --hue-amber-tint: hsl(38 20% 30%);
-  --hue-yellow-tint: hsl(48 20% 30%);
-  --hue-green-tint: hsl(142 20% 30%);
-  --hue-teal-tint: hsl(174 20% 30%);
-  --hue-blue-tint: hsl(217 20% 30%);
-  --hue-indigo-tint: hsl(239 20% 30%);
-  --hue-purple-tint: hsl(271 20% 30%);
-  --hue-pink-tint: hsl(330 20% 30%);
-  --hue-brown-tint: hsl(30 20% 30%);
-  --hue-lime-tint: hsl(82 20% 30%);
-  --hue-cyan-tint: hsl(186 20% 30%);
-  --hue-rose-tint: hsl(350 20% 30%);
+  --importance-primary: oklch(70% 70% 195);
+  --importance-secondary: oklch(70% 30% 195);
+  --importance-destructive: oklch(70% 40% 350);
+  --importance-neutral: oklch(75% 6% 85);
+
+  --importance-primary-foreground: oklch(80% 70% 195);
+  --importance-secondary-foreground: oklch(80% 30% 195);
+  --importance-destructive-foreground: oklch(80% 40% 350);
+  --importance-neutral-foreground: oklch(85% 6% 85);
+
+  --importance-primary-accessory: oklch(60% 20% 195);
+  --importance-secondary-accessory: oklch(60% 10% 195);
+  --importance-destructive-accessory: oklch(60% 20% 350);
+  --importance-neutral-accessory: oklch(65% 6% 85);
+
+  /* status — dark mode */
+
+  --status-ok: oklch(75% 80% 120);
+  --status-warning: oklch(75% 70% 90);
+  --status-error: oklch(75% 30% 20);
+  --status-inactive: oklch(75% 2% 85);
+
+  --status-ok-muted: oklch(65% 80% 120);
+  --status-warning-muted: oklch(65% 70% 90);
+  --status-error-muted: oklch(65% 30% 20);
+  --status-inactive-muted: oklch(65% 2% 85);
+
+  --status-ok-foreground: oklch(85% 80% 120);
+  --status-warning-foreground: oklch(85% 70% 90);
+  --status-error-foreground: oklch(85% 30% 20);
+  --status-inactive-foreground: oklch(85% 2% 85);
+
+  --status-ok-accessory: oklch(65% 20% 120);
+  --status-warning-accessory: oklch(65% 20% 90);
+  --status-error-accessory: oklch(65% 20% 20);
+  --status-inactive-accessory: oklch(65% 2% 85);
+
+  --status-ok-accessory-muted: oklch(65% 5% 120);
+  --status-warning-accessory-muted: oklch(65% 5% 90);
+  --status-error-accessory-muted: oklch(65% 5% 20);
+  --status-inactive-accessory-muted: oklch(65% 1% 85);
+
+  --status-ok-inverse: oklch(40% 10% 120);
+  --status-warning-inverse: oklch(40% 10% 90);
+  --status-error-inverse: oklch(40% 10% 20);
+  --status-inactive-inverse: oklch(40% 2% 85);
+
+  /* Hue colors — dark mode */
+  /* All normalized to L=75% for perceptual balance and WCAG AA on dark background (4.5:1 minimum) */
+  --hue-orange: oklch(75% 40% 40);
+  --hue-brown: oklch(75% 30% 65);
+  --hue-green: oklch(75% 30% 140);
+  --hue-teal: oklch(75% 30% 170);
+  --hue-cyan: oklch(75% 30% 215);
+  --hue-blue: oklch(75% 35% 250);
+  --hue-indigo: oklch(75% 35% 280);
+  --hue-purple: oklch(75% 30% 300);
+  --hue-pink: oklch(75% 35% 330);
+  --hue-rose: oklch(75% 40% 355);
+
+  --hue-orange-foreground: oklch(85% 40% 40);
+  --hue-brown-foreground: oklch(85% 30% 65);
+  --hue-green-foreground: oklch(85% 30% 140);
+  --hue-teal-foreground: oklch(85% 30% 170);
+  --hue-cyan-foreground: oklch(85% 30% 215);
+  --hue-blue-foreground: oklch(85% 35% 250);
+  --hue-indigo-foreground: oklch(85% 35% 280);
+  --hue-purple-foreground: oklch(85% 30% 300);
+  --hue-pink-foreground: oklch(85% 35% 330);
+  --hue-rose-foreground: oklch(85% 40% 355);
+
+  --hue-orange-accessory: oklch(65% 20% 40);
+  --hue-brown-accessory: oklch(65% 20% 65);
+  --hue-green-accessory: oklch(65% 20% 140);
+  --hue-teal-accessory: oklch(65% 20% 170);
+  --hue-cyan-accessory: oklch(65% 20% 215);
+  --hue-blue-accessory: oklch(65% 20% 250);
+  --hue-indigo-accessory: oklch(65% 20% 280);
+  --hue-purple-accessory: oklch(65% 20% 300);
+  --hue-pink-accessory: oklch(65% 20% 330);
+  --hue-rose-accessory: oklch(65% 20% 355);
+
+  /* Hue tints — dark mode */
+  --hue-orange-inverse: oklch(35% 4% 40);
+  --hue-brown-inverse: oklch(35% 4% 65);
+  --hue-green-inverse: oklch(35% 4% 140);
+  --hue-teal-inverse: oklch(35% 4% 170);
+  --hue-cyan-inverse: oklch(35% 4% 215);
+  --hue-blue-inverse: oklch(35% 4% 250);
+  --hue-indigo-inverse: oklch(35% 4% 280);
+  --hue-purple-inverse: oklch(35% 4% 300);
+  --hue-pink-inverse: oklch(35% 4% 330);
+  --hue-rose-inverse: oklch(35% 4% 355);
 }
 
 /* Map to Tailwind utilities */
@@ -141,66 +259,101 @@
   --color-overlay: var(--overlay);
   --color-outline: var(--outline);
 
-  /* by importance */
-  --color-primary: var(--importance-primary);
-  --color-importance-primary: var(--importance-primary);
-  --color-secondary: var(--importance-secondary);
-  --color-importance-secondary: var(--importance-secondary);
-  --color-tertiary: var(--importance-tertiary);
-  --color-importance-tertiary: var(--importance-tertiary);
-  --color-destructive: var(--importance-destructive);
-  --color-importance-destructive: var(--importance-destructive);
-  --color-neutral: var(--importance-neutral);
-  --color-importance-neutral: var(--importance-neutral);
-
   /* shadcn compatibility - popover (dropdowns, tooltips) */
   --color-popover: var(--background-elevated);
   --color-popover-foreground: var(--foreground-default);
+
+  /* by importance */
+  --color-importance-primary: var(--importance-primary);
+  --color-importance-secondary: var(--importance-secondary);
+  --color-importance-destructive: var(--importance-destructive);
+  --color-importance-neutral: var(--importance-neutral);
+
+  --color-importance-primary-foreground: var(--importance-primary-foreground);
+  --color-importance-secondary-foreground: var(--importance-secondary-foreground);
+  --color-importance-destructive-foreground: var(--importance-destructive-foreground);
+  --color-importance-neutral-foreground: var(--importance-neutral-foreground);
+
+  --color-importance-primary-accessory: var(--importance-primary-accessory);
+  --color-importance-secondary-accessory: var(--importance-secondary-accessory);
+  --color-importance-destructive-accessory: var(--importance-destructive-accessory);
+  --color-importance-neutral-accessory: var(--importance-neutral-accessory);
 
   /* by status */
   --color-status-ok: var(--status-ok);
   --color-status-warning: var(--status-warning);
   --color-status-error: var(--status-error);
   --color-status-inactive: var(--status-inactive);
-  --color-status-ok-tint: var(--status-ok-tint);
-  --color-status-warning-tint: var(--status-warning-tint);
-  --color-status-error-tint: var(--status-error-tint);
-  --color-status-inactive-tint: var(--status-inactive-tint);
+
+  --color-status-ok-muted: var(--status-ok-muted);
+  --color-status-warning-muted: var(--status-warning-muted);
+  --color-status-error-muted: var(--status-error-muted);
+  --color-status-inactive-muted: var(--status-inactive-muted);
+
+  --color-status-ok-foreground: var(--status-ok-foreground);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-error-foreground: var(--status-error-foreground);
+  --color-status-inactive-foreground: var(--status-inactive-foreground);
+
+  --color-status-ok-accessory: var(--status-ok-accessory);
+  --color-status-warning-accessory: var(--status-warning-accessory);
+  --color-status-error-accessory: var(--status-error-accessory);
+  --color-status-inactive-accessory: var(--status-inactive-accessory);
+
+  --color-status-ok-accessory-muted: var(--status-ok-accessory-muted);
+  --color-status-warning-accessory-muted: var(--status-warning-accessory-muted);
+  --color-status-error-accessory-muted: var(--status-error-accessory-muted);
+  --color-status-inactive-accessory-muted: var(--status-inactive-accessory-muted);
+
+  --color-status-ok-inverse: var(--status-ok-inverse);
+  --color-status-warning-inverse: var(--status-warning-inverse);
+  --color-status-error-inverse: var(--status-error-inverse);
+  --color-status-inactive-inverse: var(--status-inactive-inverse);
 
   /* Hue color utilities */
-  --color-red: var(--hue-red);
   --color-orange: var(--hue-orange);
-  --color-amber: var(--hue-amber);
-  --color-yellow: var(--hue-yellow);
+  --color-brown: var(--hue-brown);
   --color-green: var(--hue-green);
   --color-teal: var(--hue-teal);
+  --color-cyan: var(--hue-cyan);
   --color-blue: var(--hue-blue);
   --color-indigo: var(--hue-indigo);
   --color-purple: var(--hue-purple);
   --color-pink: var(--hue-pink);
-  --color-brown: var(--hue-brown);
-  --color-lime: var(--hue-lime);
-  --color-cyan: var(--hue-cyan);
   --color-rose: var(--hue-rose);
 
-  --color-red-tint: var(--hue-red-tint);
-  --color-orange-tint: var(--hue-orange-tint);
-  --color-amber-tint: var(--hue-amber-tint);
-  --color-yellow-tint: var(--hue-yellow-tint);
-  --color-green-tint: var(--hue-green-tint);
-  --color-teal-tint: var(--hue-teal-tint);
-  --color-blue-tint: var(--hue-blue-tint);
-  --color-indigo-tint: var(--hue-indigo-tint);
-  --color-purple-tint: var(--hue-purple-tint);
-  --color-pink-tint: var(--hue-pink-tint);
-  --color-brown-tint: var(--hue-brown-tint);
-  --color-lime-tint: var(--hue-lime-tint);
-  --color-cyan-tint: var(--hue-cyan-tint);
-  --color-rose-tint: var(--hue-rose-tint);
+  --color-orange-foreground: var(--hue-orange-foreground);
+  --color-brown-foreground: var(--hue-brown-foreground);
+  --color-green-foreground: var(--hue-green-foreground);
+  --color-teal-foreground: var(--hue-teal-foreground);
+  --color-cyan-foreground: var(--hue-cyan-foreground);
+  --color-blue-foreground: var(--hue-blue-foreground);
+  --color-indigo-foreground: var(--hue-indigo-foreground);
+  --color-purple-foreground: var(--hue-purple-foreground);
+  --color-pink-foreground: var(--hue-pink-foreground);
+  --color-rose-foreground: var(--hue-rose-foreground);
 
-  /* Brightness utilities (text-tint, text-dark, bg-tint, bg-dark) */
-  --color-tint: var(--brightness-tint);
-  --color-dark: var(--brightness-dark);
+  --color-orange-accessory: var(--hue-orange-accessory);
+  --color-brown-accessory: var(--hue-brown-accessory);
+  --color-green-accessory: var(--hue-green-accessory);
+  --color-teal-accessory: var(--hue-teal-accessory);
+  --color-cyan-accessory: var(--hue-cyan-accessory);
+  --color-blue-accessory: var(--hue-blue-accessory);
+  --color-indigo-accessory: var(--hue-indigo-accessory);
+  --color-purple-accessory: var(--hue-purple-accessory);
+  --color-pink-accessory: var(--hue-pink-accessory);
+  --color-rose-accessory: var(--hue-rose-accessory);
+
+  --color-orange-inverse: var(--hue-orange-inverse);
+  --color-brown-inverse: var(--hue-brown-inverse);
+  --color-green-inverse: var(--hue-green-inverse);
+  --color-teal-inverse: var(--hue-teal-inverse);
+  --color-cyan-inverse: var(--hue-cyan-inverse);
+  --color-blue-inverse: var(--hue-blue-inverse);
+  --color-indigo-inverse: var(--hue-indigo-inverse);
+  --color-purple-inverse: var(--hue-purple-inverse);
+  --color-pink-inverse: var(--hue-pink-inverse);
+  --color-rose-inverse: var(--hue-rose-inverse);
 }
 
 /* Inventory-specific state mappings */

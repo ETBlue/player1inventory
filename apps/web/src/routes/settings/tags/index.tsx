@@ -66,36 +66,28 @@ export const Route = createFileRoute('/settings/tags/')({
 })
 
 const TAG_COLOR_BORDER: Record<TagColor, string> = {
-  red: 'border-red',
   orange: 'border-orange',
-  amber: 'border-amber',
-  yellow: 'border-yellow',
+  brown: 'border-brown',
   green: 'border-green',
   teal: 'border-teal',
+  cyan: 'border-cyan',
   blue: 'border-blue',
   indigo: 'border-indigo',
   purple: 'border-purple',
   pink: 'border-pink',
-  brown: 'border-brown',
-  lime: 'border-lime',
-  cyan: 'border-cyan',
   rose: 'border-rose',
 }
 
 const TAG_COLOR_TEXT: Record<TagColor, string> = {
-  red: 'text-red',
   orange: 'text-orange',
-  amber: 'text-amber',
-  yellow: 'text-yellow',
+  brown: 'text-brown',
   green: 'text-green',
   teal: 'text-teal',
+  cyan: 'text-cyan',
   blue: 'text-blue',
   indigo: 'text-indigo',
   purple: 'text-purple',
   pink: 'text-pink',
-  brown: 'text-brown',
-  lime: 'text-lime',
-  cyan: 'text-cyan',
   rose: 'text-rose',
 }
 
@@ -448,57 +440,61 @@ export function TagSettings() {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <Toolbar>
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          className="lg:w-auto lg:mr-3"
-          onClick={goBack}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden lg:inline">{t('common.goBack')}</span>
-        </Button>
-        <h1 className="">{t('settings.tags.label')}</h1>
-        <div className="flex-1" />
-        <Button onClick={() => setNewTagTypeDialog(true)}>
-          <Plus className="h-4 w-4" />
-          {t('settings.tags.newTagType')}
-        </Button>
-      </Toolbar>
-      <div className="space-y-px pb-4">
-        {[...tagTypes]
-          .sort((a, b) =>
-            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
-          )
-          .map((tagType) => {
-            const typeTags = tags.filter((tag) => tag.typeId === tagType.id)
-            // Use depth-annotated tags for rendering, preserving depth-first order
-            // (parent before children). Top-level tags are sorted by name; child tags
-            // follow their parent in depth-first traversal.
-            const typeTagsWithDepth = tagsWithDepth.filter(
-              (tag) => tag.typeId === tagType.id,
+      <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+        <Toolbar>
+          <Button
+            variant="neutral-ghost"
+            size="icon"
+            className="lg:w-auto lg:mr-3"
+            onClick={goBack}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden lg:inline">{t('common.goBack')}</span>
+          </Button>
+          <h1 className="">{t('settings.tags.label')}</h1>
+          <div className="flex-1" />
+          <Button onClick={() => setNewTagTypeDialog(true)}>
+            <Plus className="h-4 w-4" />
+            {t('settings.tags.newTagType')}
+          </Button>
+        </Toolbar>
+        <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
+          {[...tagTypes]
+            .sort((a, b) =>
+              a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
             )
-            const sortedTypeTags =
-              typeTagsWithDepth.length > 0
-                ? typeTagsWithDepth
-                : sortTagsByName(typeTags).map((tag) => ({ ...tag, depth: 0 }))
-            return (
-              <DroppableTagTypeCard
-                key={tagType.id}
-                tagType={tagType}
-                sortedTypeTags={sortedTypeTags}
-                tagCount={typeTags.length}
-                onEdit={() => {
-                  setEditTagType(tagType)
-                }}
-                onDelete={() => deleteTagType.mutate(tagType.id)}
-                onAddTag={() => setAddTagDialog(tagType.id)}
-                onDeleteTag={handleDeleteTag}
-              />
-            )
-          })}
+            .map((tagType) => {
+              const typeTags = tags.filter((tag) => tag.typeId === tagType.id)
+              // Use depth-annotated tags for rendering, preserving depth-first order
+              // (parent before children). Top-level tags are sorted by name; child tags
+              // follow their parent in depth-first traversal.
+              const typeTagsWithDepth = tagsWithDepth.filter(
+                (tag) => tag.typeId === tagType.id,
+              )
+              const sortedTypeTags =
+                typeTagsWithDepth.length > 0
+                  ? typeTagsWithDepth
+                  : sortTagsByName(typeTags).map((tag) => ({
+                      ...tag,
+                      depth: 0,
+                    }))
+              return (
+                <DroppableTagTypeCard
+                  key={tagType.id}
+                  tagType={tagType}
+                  sortedTypeTags={sortedTypeTags}
+                  tagCount={typeTags.length}
+                  onEdit={() => {
+                    setEditTagType(tagType)
+                  }}
+                  onDelete={() => deleteTagType.mutate(tagType.id)}
+                  onAddTag={() => setAddTagDialog(tagType.id)}
+                  onDeleteTag={handleDeleteTag}
+                />
+              )
+            })}
+        </div>
       </div>
-
       {/* New Tag Type Dialog */}
       <Dialog open={newTagTypeDialog} onOpenChange={setNewTagTypeDialog}>
         <DialogContent>

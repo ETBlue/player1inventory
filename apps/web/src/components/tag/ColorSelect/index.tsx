@@ -18,7 +18,7 @@ function ColorPreview({ color }: { color: TagColor }) {
   return (
     <div className="flex items-center gap-1">
       <Badge
-        variant={`${color}-tint` as Parameters<typeof Badge>[0]['variant']}
+        variant={`${color}-inverse` as Parameters<typeof Badge>[0]['variant']}
       >
         {color}
       </Badge>
