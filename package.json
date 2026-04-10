@@ -43,5 +43,8 @@
     "apps/web/src/**/*.{ts,tsx}": [
       "pnpm --filter web check --write --unsafe"
     ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/engines", "prisma"]
   }
 }

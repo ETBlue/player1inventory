@@ -1,0 +1,208 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TargetUnit {
+  package
+  measurement
+}
+
+enum ExpirationMode {
+  disabled
+  date
+  days_from_purchase
+}
+
+enum CartStatus {
+  active
+  completed
+  abandoned
+}
+
+enum TagColor {
+  red
+  orange
+  yellow
+  green
+  teal
+  blue
+  indigo
+  purple
+  pink
+  gray
+}
+
+model TagType {
+  id       String   @id @default(cuid())
+  name     String
+  color    TagColor
+  userId   String
+  familyId String?
+
+  tags Tag[]
+
+  @@index([userId, name])
+  @@index([familyId, name])
+}
+
+model Tag {
+  id       String  @id @default(cuid())
+  name     String
+  typeId   String
+  userId   String
+  familyId String?
+  parentId String?
+
+  type     TagType   @relation(fields: [typeId], references: [id])
+  parent   Tag?      @relation("TagHierarchy", fields: [parentId], references: [id])
+  children Tag[]     @relation("TagHierarchy")
+  items    ItemTag[]
+
+  @@index([userId, typeId])
+  @@index([familyId, typeId])
+}
+
+model Vendor {
+  id       String  @id @default(cuid())
+  name     String
+  userId   String
+  familyId String?
+
+  items ItemVendor[]
+
+  @@index([userId, name])
+  @@index([familyId, name])
+}
+
+model Item {
+  id                  String         @id @default(cuid())
+  name                String
+  packageUnit         String?
+  measurementUnit     String?
+  amountPerPackage    Float?
+  targetUnit          TargetUnit
+  targetQuantity      Float          @default(0)
+  refillThreshold     Float          @default(0)
+  packedQuantity      Float          @default(0)
+  unpackedQuantity    Float          @default(0)
+  consumeAmount       Float          @default(1)
+  dueDate             DateTime?
+  estimatedDueDays    Int?
+  expirationThreshold Int?
+  expirationMode      ExpirationMode @default(disabled)
+  userId              String
+  familyId            String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  tags          ItemTag[]
+  vendors       ItemVendor[]
+  recipes       RecipeItem[]
+  inventoryLogs InventoryLog[]
+  cartItems     CartItem[]
+
+  @@index([familyId, updatedAt])
+  @@index([familyId, name])
+}
+
+model ItemTag {
+  itemId String
+  tagId  String
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, tagId])
+}
+
+model ItemVendor {
+  itemId   String
+  vendorId String
+
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, vendorId])
+}
+
+model Recipe {
+  id           String    @id @default(cuid())
+  name         String
+  lastCookedAt DateTime?
+  userId       String
+  familyId     String?
+
+  items RecipeItem[]
+
+  @@index([userId, name])
+  @@index([familyId, name])
+}
+
+model RecipeItem {
+  recipeId      String
+  itemId        String
+  defaultAmount Float
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, itemId])
+}
+
+model Cart {
+  id          String     @id @default(cuid())
+  status      CartStatus
+  userId      String
+  familyId    String?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  items CartItem[]
+
+  @@index([userId, status])
+}
+
+model CartItem {
+  id       String @id @default(cuid())
+  cartId   String
+  itemId   String
+  quantity Float
+  userId   String
+
+  cart Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([cartId])
+  @@index([itemId])
+}
+
+model InventoryLog {
+  id         String   @id @default(cuid())
+  itemId     String
+  delta      Float
+  quantity   Float
+  occurredAt DateTime
+  userId     String
+  note       String?
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, occurredAt(sort: Desc)])
+}
+
+model FamilyGroup {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique
+  ownerUserId   String
+  memberUserIds String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([code])
+}
