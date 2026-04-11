@@ -10,7 +10,7 @@ import { typeDefs } from './schema/index.js'
 import { resolvers } from './resolvers/index.js'
 import type { Context } from './context.js'
 
-const E2E_TEST_MODE = !!process.env.E2E_TEST_MODE
+const E2E_TEST_MODE = process.env.E2E_TEST_MODE === 'true'
 
 const app = express()
 app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN }))
