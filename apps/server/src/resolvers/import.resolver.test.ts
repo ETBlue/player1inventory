@@ -13,6 +13,7 @@ vi.mock('../lib/prisma.js', () => ({
       findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     itemTag: {
       createMany: vi.fn(),
@@ -26,22 +27,26 @@ vi.mock('../lib/prisma.js', () => ({
       createMany: vi.fn(),
       findMany: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     tagType: {
       createMany: vi.fn(),
       findMany: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     vendor: {
       createMany: vi.fn(),
       findMany: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     recipe: {
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     recipeItem: {
       createMany: vi.fn(),
