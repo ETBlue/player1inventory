@@ -31,7 +31,6 @@ export const resolvers: Resolvers = {
     ...inventoryLogResolvers.Mutation,
     ...purgeResolvers.Mutation,
   },
-  Item: itemResolvers.Item,
   Recipe: recipeResolvers.Recipe,
   FamilyGroup: familyGroupResolvers.FamilyGroup,
   Cart: cartResolvers.Cart,
