@@ -5,20 +5,12 @@ import { clerkMiddleware, getAuth } from '@clerk/express'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
-import { connectDB } from './db.js'
+import { prisma } from './lib/prisma.js'
 import { typeDefs } from './schema/index.js'
 import { resolvers } from './resolvers/index.js'
-import { ItemModel } from './models/Item.model.js'
-import { TagModel, TagTypeModel } from './models/Tag.model.js'
-import { VendorModel } from './models/Vendor.model.js'
-import { RecipeModel } from './models/Recipe.model.js'
-import { CartItemModel, CartModel } from './models/Cart.model.js'
-import { InventoryLogModel } from './models/InventoryLog.model.js'
 import type { Context } from './context.js'
 
-const E2E_TEST_MODE = !!process.env.E2E_TEST_MODE
-
-await connectDB()
+const E2E_TEST_MODE = process.env.E2E_TEST_MODE === 'true'
 
 const app = express()
 app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN }))
@@ -34,15 +26,18 @@ if (E2E_TEST_MODE) {
       res.status(400).json({ error: 'Missing x-e2e-user-id header' })
       return
     }
-    await Promise.all([
-      ItemModel.deleteMany({ userId }),
-      TagModel.deleteMany({ userId }),
-      TagTypeModel.deleteMany({ userId }),
-      VendorModel.deleteMany({ userId }),
-      RecipeModel.deleteMany({ userId }),
-      CartModel.deleteMany({ userId }),
-      CartItemModel.deleteMany({ userId }),
-      InventoryLogModel.deleteMany({ userId }),
+    await prisma.$transaction([
+      prisma.inventoryLog.deleteMany({ where: { userId } }),
+      prisma.cartItem.deleteMany({ where: { userId } }),
+      prisma.cart.deleteMany({ where: { userId } }),
+      prisma.itemTag.deleteMany({ where: { item: { userId } } }),
+      prisma.itemVendor.deleteMany({ where: { item: { userId } } }),
+      prisma.recipeItem.deleteMany({ where: { item: { userId } } }),
+      prisma.item.deleteMany({ where: { userId } }),
+      prisma.tag.deleteMany({ where: { userId } }),
+      prisma.tagType.deleteMany({ where: { userId } }),
+      prisma.vendor.deleteMany({ where: { userId } }),
+      prisma.recipe.deleteMany({ where: { userId } }),
     ])
     res.json({ ok: true })
   })
@@ -68,6 +63,11 @@ app.use(
 )
 
 const PORT = process.env.PORT ?? DEFAULT_PORT
+
+process.on('beforeExit', async () => {
+  await prisma.$disconnect()
+})
+
 app.listen(PORT, () => {
   console.log(`Server ready at http://localhost:${PORT}${GRAPHQL_PATH}`)
 })

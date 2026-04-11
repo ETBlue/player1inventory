@@ -16,6 +16,7 @@ input ItemInput {
   dueDate: String
   estimatedDueDays: Int
   expirationThreshold: Int
+  expirationMode: String
   createdAt: String!
   updatedAt: String!
 }
@@ -24,6 +25,7 @@ input TagInput {
   id: ID!
   name: String!
   typeId: String!
+  parentId: String
 }
 
 input TagTypeInput {
