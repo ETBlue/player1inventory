@@ -5,11 +5,10 @@ import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import { ItemModel } from '../models/Item.model.js'
-import { TagModel, TagTypeModel } from '../models/Tag.model.js'
-import { VendorModel } from '../models/Vendor.model.js'
 import { RecipeModel } from '../models/Recipe.model.js'
 import { CartModel, CartItemModel } from '../models/Cart.model.js'
 import { InventoryLogModel } from '../models/InventoryLog.model.js'
+import { prisma } from '../lib/prisma.js'
 import type { Context } from '../context.js'
 
 let mongod: MongoMemoryServer
@@ -31,13 +30,13 @@ afterAll(async () => {
 afterEach(async () => {
   await Promise.all([
     ItemModel.deleteMany({}),
-    TagModel.deleteMany({}),
-    TagTypeModel.deleteMany({}),
-    VendorModel.deleteMany({}),
     RecipeModel.deleteMany({}),
     CartModel.deleteMany({}),
     CartItemModel.deleteMany({}),
     InventoryLogModel.deleteMany({}),
+    prisma.tag.deleteMany({}),
+    prisma.tagType.deleteMany({}),
+    prisma.vendor.deleteMany({}),
   ])
 })
 
@@ -52,8 +51,8 @@ describe('purgeUserData resolver', () => {
     // Given a user with data in multiple collections
     const userId = 'user_purge_test'
     const item = await ItemModel.create({ name: 'Milk', userId, targetUnit: 'package' })
-    await TagTypeModel.create({ name: 'Category', color: 'blue', userId })
-    await VendorModel.create({ name: 'Costco', userId })
+    await prisma.tagType.create({ data: { name: 'Category', color: 'blue', userId } })
+    await prisma.vendor.create({ data: { name: 'Costco', userId } })
 
     // When user calls purgeUserData
     const context: Context = { userId }
@@ -75,7 +74,7 @@ describe('purgeUserData resolver', () => {
 
     // And the documents are actually deleted
     expect(await ItemModel.findById(item._id)).toBeNull()
-    expect(await VendorModel.countDocuments({ userId })).toBe(0)
+    expect(await prisma.vendor.count({ where: { userId } })).toBe(0)
   })
 
   it('user can only purge their own data, not other users data', async () => {

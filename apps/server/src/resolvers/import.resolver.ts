@@ -1,11 +1,11 @@
 import { ItemModel } from '../models/Item.model.js'
-import { TagModel, TagTypeModel } from '../models/Tag.model.js'
-import { VendorModel } from '../models/Vendor.model.js'
 import { RecipeModel } from '../models/Recipe.model.js'
 import { InventoryLogModel } from '../models/InventoryLog.model.js'
 import { CartModel, CartItemModel } from '../models/Cart.model.js'
+import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Tag, TagType, Vendor } from '../generated/graphql.js'
+import type { TagColor } from '@prisma/client'
 
 // Strip export-only fields and reassign userId when inserting imported records
 function stripForInsert(record: Record<string, unknown>, userId: string): Record<string, unknown> {
@@ -45,24 +45,42 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateTags: async (_, { tags }, ctx) => {
       const userId = requireAuth(ctx)
       if (tags.length === 0) return []
-      const docs = tags.map((tag) => withId(tag as unknown as Record<string, unknown>, userId))
-      const inserted = await TagModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      const ids = tags.map((t) => (t as unknown as { id: string }).id)
+      const docs = tags.map((tag) => {
+        const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
+        return { id: id as string, ...rest, userId }
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await prisma.tag.createMany({ data: docs as any, skipDuplicates: true })
+      const inserted = await prisma.tag.findMany({ where: { id: { in: ids } } })
       return inserted as unknown as Tag[]
     },
 
     bulkCreateTagTypes: async (_, { tagTypes }, ctx) => {
       const userId = requireAuth(ctx)
       if (tagTypes.length === 0) return []
-      const docs = tagTypes.map((tt) => withId(tt as unknown as Record<string, unknown>, userId))
-      const inserted = await TagTypeModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      const ids = tagTypes.map((t) => (t as unknown as { id: string }).id)
+      const docs = tagTypes.map((tt) => {
+        const { id, userId: _u, familyId: _f, ...rest } = tt as unknown as Record<string, unknown>
+        return { id: id as string, ...rest, color: (rest as { color: string }).color as TagColor, userId }
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await prisma.tagType.createMany({ data: docs as any, skipDuplicates: true })
+      const inserted = await prisma.tagType.findMany({ where: { id: { in: ids } } })
       return inserted as unknown as TagType[]
     },
 
     bulkCreateVendors: async (_, { vendors }, ctx) => {
       const userId = requireAuth(ctx)
       if (vendors.length === 0) return []
-      const docs = vendors.map((v) => withId(v as unknown as Record<string, unknown>, userId))
-      const inserted = await VendorModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
+      const ids = vendors.map((v) => (v as unknown as { id: string }).id)
+      const docs = vendors.map((v) => {
+        const { id, userId: _u, familyId: _f, ...rest } = v as unknown as Record<string, unknown>
+        return { id: id as string, ...rest, userId }
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await prisma.vendor.createMany({ data: docs as any, skipDuplicates: true })
+      const inserted = await prisma.vendor.findMany({ where: { id: { in: ids } } })
       return inserted as unknown as Vendor[]
     },
 
@@ -133,48 +151,45 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertTags: async (_, { tags }, ctx) => {
       const userId = requireAuth(ctx)
       if (tags.length === 0) return []
-      const ops = tags.map((tag) => ({
-        replaceOne: {
-          filter: { _id: tag.id },
-          replacement: withId(tag as unknown as Record<string, unknown>, userId),
-          upsert: true,
-        },
-      }))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await TagModel.bulkWrite(ops as any)
-      const inserted = await TagModel.find({ _id: { $in: tags.map((t) => t.id) } })
+      await Promise.all(
+        tags.map((tag) => {
+          const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
+          const data = { ...rest, userId }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return prisma.tag.upsert({ where: { id: id as string }, create: { id: id as string, ...data } as any, update: data as any })
+        }),
+      )
+      const inserted = await prisma.tag.findMany({ where: { id: { in: tags.map((t) => t.id) } } })
       return inserted as unknown as Tag[]
     },
 
     bulkUpsertTagTypes: async (_, { tagTypes }, ctx) => {
       const userId = requireAuth(ctx)
       if (tagTypes.length === 0) return []
-      const ops = tagTypes.map((tt) => ({
-        replaceOne: {
-          filter: { _id: tt.id },
-          replacement: withId(tt as unknown as Record<string, unknown>, userId),
-          upsert: true,
-        },
-      }))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await TagTypeModel.bulkWrite(ops as any)
-      const inserted = await TagTypeModel.find({ _id: { $in: tagTypes.map((t) => t.id) } })
+      await Promise.all(
+        tagTypes.map((tt) => {
+          const { id, userId: _u, familyId: _f, ...rest } = tt as unknown as Record<string, unknown>
+          const data = { ...rest, color: (rest as { color: string }).color as TagColor, userId }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return prisma.tagType.upsert({ where: { id: id as string }, create: { id: id as string, ...data } as any, update: data as any })
+        }),
+      )
+      const inserted = await prisma.tagType.findMany({ where: { id: { in: tagTypes.map((t) => t.id) } } })
       return inserted as unknown as TagType[]
     },
 
     bulkUpsertVendors: async (_, { vendors }, ctx) => {
       const userId = requireAuth(ctx)
       if (vendors.length === 0) return []
-      const ops = vendors.map((v) => ({
-        replaceOne: {
-          filter: { _id: v.id },
-          replacement: withId(v as unknown as Record<string, unknown>, userId),
-          upsert: true,
-        },
-      }))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await VendorModel.bulkWrite(ops as any)
-      const inserted = await VendorModel.find({ _id: { $in: vendors.map((v) => v.id) } })
+      await Promise.all(
+        vendors.map((v) => {
+          const { id, userId: _u, familyId: _f, ...rest } = v as unknown as Record<string, unknown>
+          const data = { ...rest, userId }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return prisma.vendor.upsert({ where: { id: id as string }, create: { id: id as string, ...data } as any, update: data as any })
+        }),
+      )
+      const inserted = await prisma.vendor.findMany({ where: { id: { in: vendors.map((v) => v.id) } } })
       return inserted as unknown as Vendor[]
     },
 
@@ -246,10 +261,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       await CartItemModel.deleteMany({ userId })
       await CartModel.deleteMany({ userId })
       await InventoryLogModel.deleteMany({ userId })
-      await TagModel.deleteMany({ userId })
-      await TagTypeModel.deleteMany({ userId })
+      await prisma.tag.deleteMany({ where: { userId } })
+      await prisma.tagType.deleteMany({ where: { userId } })
       await RecipeModel.deleteMany({ userId })
-      await VendorModel.deleteMany({ userId })
+      await prisma.vendor.deleteMany({ where: { userId } })
       await ItemModel.deleteMany({ userId })
       return true
     },

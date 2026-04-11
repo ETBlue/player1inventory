@@ -1,186 +1,169 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
-import { ItemModel } from '../models/Item.model.js'
-import { VendorModel } from '../models/Vendor.model.js'
 import type { Context } from '../context.js'
 
-let mongod: MongoMemoryServer
-let server: ApolloServer<Context>
+// ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
-  await mongoose.connect(mongod.getUri())
-  server = new ApolloServer<Context>({ typeDefs, resolvers })
-  await server.start()
-}, 120000)
-
-afterAll(async () => {
-  await server.stop()
-  await mongoose.disconnect()
-  await mongod.stop()
-})
-
-afterEach(async () => {
-  await VendorModel.deleteMany({})
-  await ItemModel.deleteMany({})
-})
-
-const ctx: Context = { userId: 'user_test123' }
-
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-async function createVendor(name = 'Costco') {
-  const r = await server.executeOperation(
-    {
-      query: `mutation($name: String!) { createVendor(name: $name) { id } }`,
-      variables: { name },
+vi.mock('../lib/prisma.js', () => ({
+  prisma: {
+    vendor: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
-    { contextValue: ctx },
-  )
-  return (r.body.kind === 'single' ? r.body.singleResult.data?.createVendor : null) as { id: string }
+  },
+}))
+
+import { prisma } from '../lib/prisma.js'
+
+const mockPrisma = prisma as unknown as {
+  vendor: {
+    findMany: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+  }
 }
 
-// ─── Vendor resolvers ────────────────────────────────────────────────────────
+// ─── Test setup ───────────────────────────────────────────────────────────────
+
+let server: ApolloServer<Context>
+const ctx: Context = { userId: 'user_test123' }
+
+beforeEach(async () => {
+  vi.clearAllMocks()
+  server = new ApolloServer<Context>({ typeDefs, resolvers })
+  await server.start()
+})
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+async function execOp(query: string, variables?: Record<string, unknown>) {
+  const r = await server.executeOperation({ query, variables }, { contextValue: ctx })
+  return r.body.kind === 'single' ? r.body.singleResult : null
+}
+
+// ─── Vendor resolvers ─────────────────────────────────────────────────────────
 
 describe('Vendor resolvers', () => {
   it('user can create a vendor via GraphQL', async () => {
-    const response = await server.executeOperation(
-      {
-        query: `mutation CreateVendor($name: String!) {
-          createVendor(name: $name) { id name userId }
-        }`,
-        variables: { name: 'Costco' },
-      },
-      { contextValue: ctx },
+    // Given prisma.vendor.create resolves with a new vendor
+    const newVendor = { id: 'v_1', name: 'Costco', userId: 'user_test123', familyId: null }
+    mockPrisma.vendor.create.mockResolvedValue(newVendor)
+
+    // When creating a vendor
+    const result = await execOp(
+      `mutation CreateVendor($name: String!) {
+        createVendor(name: $name) { id name userId }
+      }`,
+      { name: 'Costco' },
     )
 
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      const vendor = response.body.singleResult.data?.createVendor as {
-        id: string; name: string; userId: string
-      }
-      expect(vendor.name).toBe('Costco')
-      expect(vendor.userId).toBe('user_test123')
-      expect(vendor.id).toBeDefined()
-    }
+    // Then the vendor is returned
+    const vendor = result?.data?.createVendor as { id: string; name: string; userId: string }
+    expect(vendor.name).toBe('Costco')
+    expect(vendor.userId).toBe('user_test123')
+    expect(vendor.id).toBeDefined()
+    expect(mockPrisma.vendor.create).toHaveBeenCalledWith({
+      data: { name: 'Costco', userId: 'user_test123' },
+    })
   })
 
   it('user can list their vendors', async () => {
-    await VendorModel.create({ name: 'Costco', userId: 'user_test123' })
+    // Given one vendor for this user
+    mockPrisma.vendor.findMany.mockResolvedValue([
+      { id: 'v_1', name: 'Costco', userId: 'user_test123', familyId: null },
+    ])
 
-    const response = await server.executeOperation(
-      { query: `query { vendors { id name } }` },
-      { contextValue: ctx },
-    )
+    // When listing vendors
+    const result = await execOp(`query { vendors { id name } }`)
 
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      const vendors = response.body.singleResult.data?.vendors as { id: string }[]
-      expect(Array.isArray(vendors)).toBe(true)
-      expect(vendors.length).toBe(1)
-    }
+    // Then all vendors are returned
+    const vendors = result?.data?.vendors as { id: string }[]
+    expect(Array.isArray(vendors)).toBe(true)
+    expect(vendors).toHaveLength(1)
+    expect(mockPrisma.vendor.findMany).toHaveBeenCalledWith({ where: { userId: 'user_test123' } })
   })
 
   it('user can update a vendor', async () => {
-    // Given a vendor exists
-    const { id } = await createVendor('Old Name')
+    // Given Prisma returns the updated vendor
+    mockPrisma.vendor.update.mockResolvedValue({
+      id: 'v_1', name: 'New Name', userId: 'user_test123', familyId: null,
+    })
 
-    // When updating the name
-    const response = await server.executeOperation(
-      {
-        query: `mutation UpdateVendor($id: ID!, $name: String) {
-          updateVendor(id: $id, name: $name) { id name }
-        }`,
-        variables: { id, name: 'New Name' },
-      },
-      { contextValue: ctx },
+    // When updating the vendor name
+    const result = await execOp(
+      `mutation UpdateVendor($id: ID!, $name: String) {
+        updateVendor(id: $id, name: $name) { id name }
+      }`,
+      { id: 'v_1', name: 'New Name' },
     )
 
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect((response.body.singleResult.data?.updateVendor as { name: string }).name).toBe('New Name')
-    }
+    // Then the updated vendor is returned
+    expect((result?.data?.updateVendor as { name: string }).name).toBe('New Name')
+  })
+
+  it('returns NOT_FOUND error when updating a non-existent vendor', async () => {
+    // Given Prisma throws on update
+    mockPrisma.vendor.update.mockRejectedValue(new Error('Record not found'))
+
+    // When updating a non-existent vendor
+    const result = await execOp(
+      `mutation UpdateVendor($id: ID!, $name: String) {
+        updateVendor(id: $id, name: $name) { id }
+      }`,
+      { id: 'does_not_exist', name: 'Anything' },
+    )
+
+    // Then a NOT_FOUND error is returned
+    expect(result?.errors?.[0]?.extensions?.code).toBe('NOT_FOUND')
   })
 
   it('user can delete a vendor', async () => {
-    const { id } = await createVendor()
+    // Given Prisma delete succeeds (ItemVendor rows cascade automatically)
+    mockPrisma.vendor.delete.mockResolvedValue({ id: 'v_1' })
 
-    const response = await server.executeOperation(
-      {
-        query: `mutation DeleteVendor($id: ID!) { deleteVendor(id: $id) }`,
-        variables: { id },
-      },
-      { contextValue: ctx },
+    // When deleting a vendor
+    const result = await execOp(
+      `mutation DeleteVendor($id: ID!) { deleteVendor(id: $id) }`,
+      { id: 'v_1' },
     )
 
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect(response.body.singleResult.data?.deleteVendor).toBe(true)
-    }
+    // Then true is returned
+    expect(result?.data?.deleteVendor).toBe(true)
+    expect(mockPrisma.vendor.delete).toHaveBeenCalledWith({ where: { id: 'v_1' } })
   })
 
-  it('deleting a vendor removes it from all item vendorIds (cascade)', async () => {
-    // Given a vendor and 2 items that reference it
-    const { id: vendorId } = await createVendor('Cascade Vendor')
-    await ItemModel.create([
-      { name: 'Milk', tagIds: [], vendorIds: [vendorId], targetUnit: 'package', targetQuantity: 1, refillThreshold: 0, packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1, userId: 'user_test123' },
-      { name: 'Cheese', tagIds: [], vendorIds: [vendorId], targetUnit: 'package', targetQuantity: 1, refillThreshold: 0, packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1, userId: 'user_test123' },
-    ])
+  it('returns false when deleting a non-existent vendor', async () => {
+    // Given Prisma throws on delete
+    mockPrisma.vendor.delete.mockRejectedValue(new Error('Record not found'))
 
-    // When deleting the vendor
-    await server.executeOperation(
-      {
-        query: `mutation DeleteVendor($id: ID!) { deleteVendor(id: $id) }`,
-        variables: { id: vendorId },
-      },
-      { contextValue: ctx },
+    // When deleting a non-existent vendor
+    const result = await execOp(
+      `mutation DeleteVendor($id: ID!) { deleteVendor(id: $id) }`,
+      { id: 'does_not_exist' },
     )
 
-    // Then the vendorId is removed from all items
-    const items = await ItemModel.find({ userId: 'user_test123' })
-    for (const item of items) {
-      expect(item.vendorIds).not.toContain(vendorId)
-    }
+    // Then false is returned
+    expect(result?.data?.deleteVendor).toBe(false)
   })
 
   it('does not return vendors belonging to another user', async () => {
-    await VendorModel.create({ name: 'Other Vendor', userId: 'user_A' })
+    // Given no vendors for user_B
+    mockPrisma.vendor.findMany.mockResolvedValue([])
 
-    const response = await server.executeOperation(
+    // When listing vendors as user_B
+    const r = await server.executeOperation(
       { query: `query { vendors { id } }` },
       { contextValue: { userId: 'user_B' } },
     )
+    const result = r.body.kind === 'single' ? r.body.singleResult : null
 
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect(response.body.singleResult.data?.vendors).toHaveLength(0)
-    }
-  })
-
-  it('user can get item count for a vendor', async () => {
-    // Given a vendor and 2 items using it
-    const { id: vendorId } = await createVendor('Costco')
-    await ItemModel.create([
-      { name: 'Milk', tagIds: [], vendorIds: [vendorId], targetUnit: 'package', targetQuantity: 1, refillThreshold: 0, packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1, userId: 'user_test123' },
-      { name: 'Cheese', tagIds: [], vendorIds: [vendorId], targetUnit: 'package', targetQuantity: 1, refillThreshold: 0, packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1, userId: 'user_test123' },
-    ])
-
-    // When querying item count for that vendor
-    const response = await server.executeOperation(
-      {
-        query: `query ItemCountByVendor($vendorId: String!) { itemCountByVendor(vendorId: $vendorId) }`,
-        variables: { vendorId },
-      },
-      { contextValue: ctx },
-    )
-
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect(response.body.singleResult.data?.itemCountByVendor).toBe(2)
-    }
+    // Then an empty list is returned
+    expect(result?.data?.vendors).toHaveLength(0)
+    expect(mockPrisma.vendor.findMany).toHaveBeenCalledWith({ where: { userId: 'user_B' } })
   })
 })

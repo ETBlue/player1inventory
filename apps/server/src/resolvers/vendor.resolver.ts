@@ -1,42 +1,39 @@
 import { GraphQLError } from 'graphql'
-import { ItemModel } from '../models/Item.model.js'
-import { VendorModel } from '../models/Vendor.model.js'
+import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
 
-export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Vendor'> = {
+export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     vendors: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      return VendorModel.find({ userId }) as unknown as Promise<Vendor[]>
+      return prisma.vendor.findMany({ where: { userId } }) as unknown as Promise<Vendor[]>
     },
   },
   Mutation: {
     createVendor: async (_, { name }, ctx) => {
       const userId = requireAuth(ctx)
-      return VendorModel.create({ name, userId }) as unknown as Promise<Vendor>
+      return prisma.vendor.create({ data: { name, userId } }) as unknown as Promise<Vendor>
     },
     updateVendor: async (_, { id, name }, ctx) => {
-      const userId = requireAuth(ctx)
-      const updates: Record<string, unknown> = {}
-      if (name !== undefined) updates.name = name
-      const vendor = await VendorModel.findOneAndUpdate(
-        { _id: id, userId },
-        { $set: updates },
-        { new: true },
-      )
-      if (!vendor) throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
-      return vendor as unknown as Vendor
+      requireAuth(ctx)
+      const data: Record<string, unknown> = {}
+      if (name !== undefined) data.name = name
+      try {
+        return await prisma.vendor.update({ where: { id }, data }) as unknown as Vendor
+      } catch {
+        throw new GraphQLError('Vendor not found', { extensions: { code: 'NOT_FOUND' } })
+      }
     },
     deleteVendor: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      // Cascade: remove vendorId from all items before deleting
-      await ItemModel.updateMany({ userId, vendorIds: id }, { $pull: { vendorIds: id } })
-      const result = await VendorModel.deleteOne({ _id: id, userId })
-      return result.deletedCount > 0
+      requireAuth(ctx)
+      // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
+      try {
+        await prisma.vendor.delete({ where: { id } })
+        return true
+      } catch {
+        return false
+      }
     },
-  },
-  Vendor: {
-    id: (vendor) => (vendor as unknown as { _id: { toString(): string } })._id.toString(),
   },
 }
