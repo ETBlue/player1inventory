@@ -73,10 +73,17 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           },
         })
         if (tagIds?.length) {
-          await prisma.itemTag.createMany({
-            data: tagIds.map((tagId) => ({ itemId: id, tagId })),
-            skipDuplicates: true,
+          const existingTags = await prisma.tag.findMany({
+            where: { id: { in: tagIds } },
+            select: { id: true },
           })
+          const validTagIds = existingTags.map((t) => t.id)
+          if (validTagIds.length > 0) {
+            await prisma.itemTag.createMany({
+              data: validTagIds.map((tagId) => ({ itemId: id, tagId })),
+              skipDuplicates: true,
+            })
+          }
         }
         if (vendorIds?.length) {
           await prisma.itemVendor.createMany({
@@ -101,8 +108,32 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
         return { id: id as string, ...rest, userId }
       })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await prisma.tag.createMany({ data: docs as any, skipDuplicates: true })
+      // Filter out tags whose typeId references a TagType that doesn't exist
+      // (orphaned tags from deleted TagTypes in the source data).
+      const typeIds = [...new Set(docs.map((d) => d.typeId as string))]
+      const existingTypeIds = await prisma.tagType.findMany({
+        where: { id: { in: typeIds } },
+        select: { id: true },
+      })
+      const validTypeIdSet = new Set(existingTypeIds.map((t) => t.id))
+      let remaining = docs.filter((d) => validTypeIdSet.has(d.typeId as string))
+      // Insert in topological order: parents before children. Each pass inserts
+      // tags whose parentId is either null or already present in the DB.
+      const insertedIds = new Set(
+        (await prisma.tag.findMany({ where: { id: { in: remaining.map((d) => d.id) } }, select: { id: true } }))
+          .map((t) => t.id),
+      )
+      while (remaining.length > 0) {
+        const batch = remaining.filter(
+          (d) => !d.parentId || insertedIds.has(d.parentId as string),
+        )
+        if (batch.length === 0) break // cycle or unresolvable parentIds — stop to avoid infinite loop
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await prisma.tag.createMany({ data: batch as any, skipDuplicates: true })
+        const batchIds = new Set(batch.map((d) => d.id))
+        batchIds.forEach((id) => insertedIds.add(id))
+        remaining = remaining.filter((d) => !batchIds.has(d.id))
+      }
       const inserted = await prisma.tag.findMany({ where: { id: { in: ids } } })
       return inserted as unknown as Tag[]
     },
@@ -171,6 +202,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id, occurredAt, note, ...rest } = log
         const existing = await prisma.inventoryLog.findUnique({ where: { id } })
         if (existing) continue
+        const itemExists = await prisma.item.findUnique({ where: { id: (rest as { itemId: string }).itemId }, select: { id: true } })
+        if (!itemExists) continue
         const created = await prisma.inventoryLog.create({
           data: {
             id,
@@ -180,10 +213,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             userId,
           },
         })
-        results.push({
-          ...created,
-          occurredAt: created.occurredAt.toISOString(),
-        } as unknown as InventoryLog)
+        results.push(created as unknown as InventoryLog)
       }
       return results
     },
@@ -205,11 +235,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             userId,
           },
         })
-        results.push({
-          ...created,
-          createdAt: created.createdAt.toISOString(),
-          completedAt: created.completedAt ? created.completedAt.toISOString() : null,
-        } as unknown as Cart)
+        results.push(created as unknown as Cart)
       }
       return results
     },
@@ -222,6 +248,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         const { id, cartId, itemId, quantity } = ci
         const existing = await prisma.cartItem.findUnique({ where: { id } })
         if (existing) continue
+        const cartExists = await prisma.cart.findUnique({ where: { id: cartId }, select: { id: true } })
+        if (!cartExists) continue
+        const itemExists = await prisma.item.findUnique({ where: { id: itemId }, select: { id: true } })
+        if (!itemExists) continue
         const created = await prisma.cartItem.create({
           data: { id, cartId, itemId, quantity, userId },
         })
@@ -371,10 +401,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           create: { id, ...data },
           update: data,
         })
-        results.push({
-          ...upserted,
-          occurredAt: upserted.occurredAt.toISOString(),
-        } as unknown as InventoryLog)
+        results.push(upserted as unknown as InventoryLog)
       }
       return results
     },
@@ -396,11 +423,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           create: { id, ...data },
           update: data,
         })
-        results.push({
-          ...upserted,
-          createdAt: upserted.createdAt.toISOString(),
-          completedAt: upserted.completedAt ? upserted.completedAt.toISOString() : null,
-        } as unknown as Cart)
+        results.push(upserted as unknown as Cart)
       }
       return results
     },
