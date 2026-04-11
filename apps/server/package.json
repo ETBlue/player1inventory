@@ -15,7 +15,7 @@
     "@as-integrations/express5": "^1.1.2",
     "@clerk/express": "^1.5.0",
     "@p1i/types": "workspace:*",
-    "@prisma/client": "^7.7.0",
+    "@prisma/client": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^5.1.0",
@@ -29,7 +29,7 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.10.10",
     "@types/ws": "^8.5.14",
-    "prisma": "^7.7.0",
+    "prisma": "^6.0.0",
     "tsx": "^4.19.4",
     "typescript": "~5.9.3",
     "vitest": "^4.0.18"
