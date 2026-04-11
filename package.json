@@ -45,6 +45,6 @@
     ]
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/engines", "prisma"]
+    "onlyBuiltDependencies": ["@parcel/watcher", "@prisma/engines", "prisma"]
   }
 }
