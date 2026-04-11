@@ -1,51 +1,102 @@
-import { ItemModel } from '../models/Item.model.js'
-import { RecipeModel } from '../models/Recipe.model.js'
-import { InventoryLogModel } from '../models/InventoryLog.model.js'
-import { CartModel, CartItemModel } from '../models/Cart.model.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Tag, TagType, Vendor } from '../generated/graphql.js'
-import type { TagColor } from '@prisma/client'
+import type { CartStatus, ExpirationMode, TagColor, TargetUnit } from '@prisma/client'
 
-// Strip export-only fields and reassign userId when inserting imported records
-function stripForInsert(record: Record<string, unknown>, userId: string): Record<string, unknown> {
-  const { id: _id, userId: _userId, createdAt: _c, updatedAt: _u, familyId: _f, ...rest } = record
-  return { ...rest, userId }
-}
-
-// Build the MongoDB _id override so the imported record keeps its original ID
-function withId(record: Record<string, unknown>, userId: string): Record<string, unknown> {
-  return { ...stripForInsert(record, userId), _id: record.id }
-}
-
-// Mongoose 8 + ordered:false throws BulkWriteError even when some docs succeeded.
-// Extract the successfully inserted docs so callers get partial results instead of an error.
-// Typed `never` so `.catch(insertedDocsOrRethrow)` preserves the Promise's resolved type.
-function insertedDocsOrRethrow(err: unknown): never {
-  const bulkErr = err as { insertedDocs?: unknown[] }
-  if (Array.isArray(bulkErr?.insertedDocs)) return bulkErr.insertedDocs as never
-  throw err
+// Map a Prisma item (with junction rows) to the GraphQL Item shape
+function itemToGraphQL(item: {
+  id: string
+  name: string
+  targetUnit: TargetUnit
+  targetQuantity: number
+  refillThreshold: number
+  packedQuantity: number
+  unpackedQuantity: number
+  consumeAmount: number
+  packageUnit?: string | null
+  measurementUnit?: string | null
+  amountPerPackage?: number | null
+  dueDate?: Date | null
+  estimatedDueDays?: number | null
+  expirationThreshold?: number | null
+  expirationMode: ExpirationMode
+  userId: string
+  familyId?: string | null
+  createdAt: Date
+  updatedAt: Date
+  tags: { tagId: string }[]
+  vendors: { vendorId: string }[]
+}): Item {
+  const expirationMode =
+    item.expirationMode === 'days_from_purchase'
+      ? 'days from purchase'
+      : (item.expirationMode as string)
+  return {
+    ...item,
+    expirationMode,
+    tagIds: item.tags.map((t) => t.tagId),
+    vendorIds: item.vendors.map((v) => v.vendorId),
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    dueDate: item.dueDate ? item.dueDate.toISOString() : null,
+  } as unknown as Item
 }
 
 export const importResolvers: Pick<Resolvers, 'Mutation'> = {
   Mutation: {
     // -------------------------------------------------------------------------
     // Bulk create — inserts records with original IDs, skips existing ones.
-    // Mongoose 8 throws BulkWriteError on duplicate keys even with ordered:false;
-    // we catch it and return only the successfully inserted docs (skip semantics).
     // -------------------------------------------------------------------------
     bulkCreateItems: async (_, { items }, ctx) => {
       const userId = requireAuth(ctx)
       if (items.length === 0) return []
-      const docs = items.map((item) => withId(item as unknown as Record<string, unknown>, userId))
-      const inserted = await ItemModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
-      return inserted as unknown as Item[]
+      const results: Item[] = []
+      for (const item of items) {
+        const { id, tagIds, vendorIds, createdAt, updatedAt, dueDate, targetUnit, expirationThreshold, ...rest } = item
+        // Skip if already exists
+        const existing = await prisma.item.findUnique({ where: { id } })
+        if (existing) continue
+        const expirationMode = (rest as { expirationMode?: string }).expirationMode
+        const created = await prisma.item.create({
+          data: {
+            id,
+            ...rest,
+            targetUnit: targetUnit as TargetUnit,
+            expirationThreshold: expirationThreshold ?? undefined,
+            expirationMode: expirationMode
+              ? (expirationMode === 'days from purchase' ? 'days_from_purchase' : expirationMode as ExpirationMode)
+              : 'disabled',
+            dueDate: dueDate ? new Date(dueDate) : undefined,
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+            userId,
+          },
+        })
+        if (tagIds?.length) {
+          await prisma.itemTag.createMany({
+            data: tagIds.map((tagId) => ({ itemId: id, tagId })),
+            skipDuplicates: true,
+          })
+        }
+        if (vendorIds?.length) {
+          await prisma.itemVendor.createMany({
+            data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+            skipDuplicates: true,
+          })
+        }
+        const full = await prisma.item.findUniqueOrThrow({
+          where: { id: created.id },
+          include: { tags: true, vendors: true },
+        })
+        results.push(itemToGraphQL(full))
+      }
+      return results
     },
 
     bulkCreateTags: async (_, { tags }, ctx) => {
       const userId = requireAuth(ctx)
       if (tags.length === 0) return []
-      const ids = tags.map((t) => (t as unknown as { id: string }).id)
+      const ids = tags.map((t) => t.id)
       const docs = tags.map((tag) => {
         const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
         return { id: id as string, ...rest, userId }
@@ -59,7 +110,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateTagTypes: async (_, { tagTypes }, ctx) => {
       const userId = requireAuth(ctx)
       if (tagTypes.length === 0) return []
-      const ids = tagTypes.map((t) => (t as unknown as { id: string }).id)
+      const ids = tagTypes.map((t) => t.id)
       const docs = tagTypes.map((tt) => {
         const { id, userId: _u, familyId: _f, ...rest } = tt as unknown as Record<string, unknown>
         return { id: id as string, ...rest, color: (rest as { color: string }).color as TagColor, userId }
@@ -73,7 +124,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateVendors: async (_, { vendors }, ctx) => {
       const userId = requireAuth(ctx)
       if (vendors.length === 0) return []
-      const ids = vendors.map((v) => (v as unknown as { id: string }).id)
+      const ids = vendors.map((v) => v.id)
       const docs = vendors.map((v) => {
         const { id, userId: _u, familyId: _f, ...rest } = v as unknown as Record<string, unknown>
         return { id: id as string, ...rest, userId }
@@ -87,42 +138,96 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkCreateRecipes: async (_, { recipes }, ctx) => {
       const userId = requireAuth(ctx)
       if (recipes.length === 0) return []
-      const docs = recipes.map((r) => withId(r as unknown as Record<string, unknown>, userId))
-      const inserted = await RecipeModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
-      return inserted as unknown as Recipe[]
+      const results: Recipe[] = []
+      for (const recipe of recipes) {
+        const { id, items, lastCookedAt } = recipe
+        const existing = await prisma.recipe.findUnique({ where: { id } })
+        if (existing) continue
+        await prisma.recipe.create({
+          data: {
+            id,
+            name: recipe.name,
+            userId,
+            lastCookedAt: lastCookedAt ? new Date(lastCookedAt) : undefined,
+          },
+        })
+        if (items?.length) {
+          await prisma.recipeItem.createMany({
+            data: items.map((i) => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+            skipDuplicates: true,
+          })
+        }
+        const full = await prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } })
+        results.push(full as unknown as Recipe)
+      }
+      return results
     },
 
     bulkCreateInventoryLogs: async (_, { logs }, ctx) => {
       const userId = requireAuth(ctx)
       if (logs.length === 0) return []
-      const docs = logs.map((log) => {
-        const { id: _id, userId: _userId, familyId: _f, ...rest } = log as unknown as Record<string, unknown>
-        return { ...rest, _id, userId, occurredAt: new Date(rest.occurredAt as string) }
-      })
-      const inserted = await InventoryLogModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
-      return inserted.map((l) => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
+      const results: InventoryLog[] = []
+      for (const log of logs) {
+        const { id, occurredAt, note, ...rest } = log
+        const existing = await prisma.inventoryLog.findUnique({ where: { id } })
+        if (existing) continue
+        const created = await prisma.inventoryLog.create({
+          data: {
+            id,
+            ...rest,
+            occurredAt: new Date(occurredAt),
+            note: note ?? undefined,
+            userId,
+          },
+        })
+        results.push({
+          ...created,
+          occurredAt: created.occurredAt.toISOString(),
+        } as unknown as InventoryLog)
+      }
+      return results
     },
 
     bulkCreateShoppingCarts: async (_, { carts }, ctx) => {
       const userId = requireAuth(ctx)
       if (carts.length === 0) return []
-      const docs = carts.map((cart) => {
-        const { id: _id, userId: _userId, familyId: _f, ...rest } = cart as unknown as Record<string, unknown>
-        return { ...rest, _id, userId }
-      })
-      const inserted = await CartModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
-      return inserted.map((c) => ({ ...c.toObject(), id: c._id.toString() })) as unknown as Cart[]
+      const results: Cart[] = []
+      for (const cart of carts) {
+        const { id, status, createdAt, completedAt } = cart
+        const existing = await prisma.cart.findUnique({ where: { id } })
+        if (existing) continue
+        const created = await prisma.cart.create({
+          data: {
+            id,
+            status: status as CartStatus,
+            createdAt: new Date(createdAt),
+            completedAt: completedAt ? new Date(completedAt) : undefined,
+            userId,
+          },
+        })
+        results.push({
+          ...created,
+          createdAt: created.createdAt.toISOString(),
+          completedAt: created.completedAt ? created.completedAt.toISOString() : null,
+        } as unknown as Cart)
+      }
+      return results
     },
 
     bulkCreateCartItems: async (_, { cartItems }, ctx) => {
       const userId = requireAuth(ctx)
       if (cartItems.length === 0) return []
-      const docs = cartItems.map((ci) => {
-        const { id: _id, userId: _userId, ...rest } = ci as unknown as Record<string, unknown>
-        return { ...rest, _id, userId }
-      })
-      const inserted = await CartItemModel.insertMany(docs, { ordered: false }).catch(insertedDocsOrRethrow)
-      return inserted.map((ci) => ({ ...ci.toObject(), id: ci._id.toString() })) as unknown as CartItem[]
+      const results: CartItem[] = []
+      for (const ci of cartItems) {
+        const { id, cartId, itemId, quantity } = ci
+        const existing = await prisma.cartItem.findUnique({ where: { id } })
+        if (existing) continue
+        const created = await prisma.cartItem.create({
+          data: { id, cartId, itemId, quantity, userId },
+        })
+        results.push(created as unknown as CartItem)
+      }
+      return results
     },
 
     // -------------------------------------------------------------------------
@@ -131,21 +236,47 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertItems: async (_, { items }, ctx) => {
       const userId = requireAuth(ctx)
       if (items.length === 0) return []
-      const ops = items.map((item) => {
-        const doc = withId(item as unknown as Record<string, unknown>, userId)
-        return {
-          replaceOne: {
-            filter: { _id: item.id },
-            replacement: doc,
-            upsert: true,
-          },
+      const results: Item[] = []
+      for (const item of items) {
+        const { id, tagIds, vendorIds, createdAt, updatedAt, dueDate, targetUnit, expirationThreshold, ...rest } = item
+        const expirationMode = (rest as { expirationMode?: string }).expirationMode
+        const data = {
+          ...rest,
+          targetUnit: targetUnit as TargetUnit,
+          expirationThreshold: expirationThreshold ?? undefined,
+          expirationMode: expirationMode
+            ? (expirationMode === 'days from purchase' ? 'days_from_purchase' : expirationMode as ExpirationMode)
+            : 'disabled',
+          dueDate: dueDate ? new Date(dueDate) : undefined,
+          createdAt: new Date(createdAt),
+          updatedAt: new Date(updatedAt),
+          userId,
         }
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await ItemModel.bulkWrite(ops as any)
-      const ids = items.map((i) => i.id)
-      const inserted = await ItemModel.find({ _id: { $in: ids } })
-      return inserted as unknown as Item[]
+        await prisma.item.upsert({
+          where: { id },
+          create: { id, ...data },
+          update: data,
+        })
+        // Replace junction rows
+        await prisma.itemTag.deleteMany({ where: { itemId: id } })
+        await prisma.itemVendor.deleteMany({ where: { itemId: id } })
+        if (tagIds?.length) {
+          await prisma.itemTag.createMany({
+            data: tagIds.map((tagId) => ({ itemId: id, tagId })),
+          })
+        }
+        if (vendorIds?.length) {
+          await prisma.itemVendor.createMany({
+            data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+          })
+        }
+        const full = await prisma.item.findUniqueOrThrow({
+          where: { id },
+          include: { tags: true, vendors: true },
+        })
+        results.push(itemToGraphQL(full))
+      }
+      return results
     },
 
     bulkUpsertTags: async (_, { tags }, ctx) => {
@@ -196,59 +327,99 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     bulkUpsertRecipes: async (_, { recipes }, ctx) => {
       const userId = requireAuth(ctx)
       if (recipes.length === 0) return []
-      const ops = recipes.map((r) => ({
-        replaceOne: {
-          filter: { _id: r.id },
-          replacement: withId(r as unknown as Record<string, unknown>, userId),
-          upsert: true,
-        },
-      }))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await RecipeModel.bulkWrite(ops as any)
-      const inserted = await RecipeModel.find({ _id: { $in: recipes.map((r) => r.id) } })
-      return inserted as unknown as Recipe[]
+      const results: Recipe[] = []
+      for (const recipe of recipes) {
+        const { id, items, lastCookedAt } = recipe
+        const data = {
+          name: recipe.name,
+          userId,
+          lastCookedAt: lastCookedAt ? new Date(lastCookedAt) : undefined,
+        }
+        await prisma.recipe.upsert({
+          where: { id },
+          create: { id, ...data },
+          update: data,
+        })
+        if (items != null) {
+          await prisma.recipeItem.deleteMany({ where: { recipeId: id } })
+          if (items.length) {
+            await prisma.recipeItem.createMany({
+              data: items.map((i) => ({ recipeId: id, itemId: i.itemId, defaultAmount: i.defaultAmount })),
+            })
+          }
+        }
+        const full = await prisma.recipe.findUniqueOrThrow({ where: { id }, include: { items: true } })
+        results.push(full as unknown as Recipe)
+      }
+      return results
     },
 
     bulkUpsertInventoryLogs: async (_, { logs }, ctx) => {
       const userId = requireAuth(ctx)
       if (logs.length === 0) return []
-      const ops = logs.map((log) => {
-        const { id: _id, userId: _userId, familyId: _f, ...rest } = log as unknown as Record<string, unknown>
-        const doc = { ...rest, _id, userId, occurredAt: new Date(rest.occurredAt as string) }
-        return { replaceOne: { filter: { _id }, replacement: doc, upsert: true } }
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await InventoryLogModel.bulkWrite(ops as any)
-      const inserted = await InventoryLogModel.find({ _id: { $in: logs.map((l) => l.id) } })
-      return inserted.map((l) => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
+      const results: InventoryLog[] = []
+      for (const log of logs) {
+        const { id, occurredAt, note, ...rest } = log
+        const data = {
+          ...rest,
+          occurredAt: new Date(occurredAt),
+          note: note ?? undefined,
+          userId,
+        }
+        const upserted = await prisma.inventoryLog.upsert({
+          where: { id },
+          create: { id, ...data },
+          update: data,
+        })
+        results.push({
+          ...upserted,
+          occurredAt: upserted.occurredAt.toISOString(),
+        } as unknown as InventoryLog)
+      }
+      return results
     },
 
     bulkUpsertShoppingCarts: async (_, { carts }, ctx) => {
       const userId = requireAuth(ctx)
       if (carts.length === 0) return []
-      const ops = carts.map((cart) => {
-        const { id: _id, userId: _userId, familyId: _f, ...rest } = cart as unknown as Record<string, unknown>
-        const doc = { ...rest, _id, userId }
-        return { replaceOne: { filter: { _id }, replacement: doc, upsert: true } }
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await CartModel.bulkWrite(ops as any)
-      const inserted = await CartModel.find({ _id: { $in: carts.map((c) => c.id) } })
-      return inserted.map((c) => ({ ...c.toObject(), id: c._id.toString() })) as unknown as Cart[]
+      const results: Cart[] = []
+      for (const cart of carts) {
+        const { id, status, createdAt, completedAt } = cart
+        const data = {
+          status: status as CartStatus,
+          createdAt: new Date(createdAt),
+          completedAt: completedAt ? new Date(completedAt) : undefined,
+          userId,
+        }
+        const upserted = await prisma.cart.upsert({
+          where: { id },
+          create: { id, ...data },
+          update: data,
+        })
+        results.push({
+          ...upserted,
+          createdAt: upserted.createdAt.toISOString(),
+          completedAt: upserted.completedAt ? upserted.completedAt.toISOString() : null,
+        } as unknown as Cart)
+      }
+      return results
     },
 
     bulkUpsertCartItems: async (_, { cartItems }, ctx) => {
       const userId = requireAuth(ctx)
       if (cartItems.length === 0) return []
-      const ops = cartItems.map((ci) => {
-        const { id: _id, userId: _userId, ...rest } = ci as unknown as Record<string, unknown>
-        const doc = { ...rest, _id, userId }
-        return { replaceOne: { filter: { _id }, replacement: doc, upsert: true } }
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await CartItemModel.bulkWrite(ops as any)
-      const inserted = await CartItemModel.find({ _id: { $in: cartItems.map((ci) => ci.id) } })
-      return inserted.map((ci) => ({ ...ci.toObject(), id: ci._id.toString() })) as unknown as CartItem[]
+      const results: CartItem[] = []
+      for (const ci of cartItems) {
+        const { id, cartId, itemId, quantity } = ci
+        const data = { cartId, itemId, quantity, userId }
+        const upserted = await prisma.cartItem.upsert({
+          where: { id },
+          create: { id, ...data },
+          update: data,
+        })
+        results.push(upserted as unknown as CartItem)
+      }
+      return results
     },
 
     // -------------------------------------------------------------------------
@@ -257,15 +428,19 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
     // -------------------------------------------------------------------------
     clearAllData: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      // Delete in dependency order: dependents first, then dependencies
-      await CartItemModel.deleteMany({ userId })
-      await CartModel.deleteMany({ userId })
-      await InventoryLogModel.deleteMany({ userId })
-      await prisma.tag.deleteMany({ where: { userId } })
-      await prisma.tagType.deleteMany({ where: { userId } })
-      await RecipeModel.deleteMany({ userId })
-      await prisma.vendor.deleteMany({ where: { userId } })
-      await ItemModel.deleteMany({ userId })
+      await prisma.$transaction([
+        prisma.inventoryLog.deleteMany({ where: { userId } }),
+        prisma.cartItem.deleteMany({ where: { userId } }),
+        prisma.cart.deleteMany({ where: { userId } }),
+        prisma.recipeItem.deleteMany({ where: { recipe: { userId } } }),
+        prisma.recipe.deleteMany({ where: { userId } }),
+        prisma.itemTag.deleteMany({ where: { item: { userId } } }),
+        prisma.itemVendor.deleteMany({ where: { item: { userId } } }),
+        prisma.item.deleteMany({ where: { userId } }),
+        prisma.tag.deleteMany({ where: { userId } }),
+        prisma.tagType.deleteMany({ where: { userId } }),
+        prisma.vendor.deleteMany({ where: { userId } }),
+      ])
       return true
     },
   },

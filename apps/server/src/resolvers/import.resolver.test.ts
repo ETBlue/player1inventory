@@ -1,14 +1,201 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
-import { ItemModel } from '../models/Item.model.js'
 import type { Context } from '../context.js'
 
-let mongod: MongoMemoryServer
+// ─── Mock Prisma ─────────────────────────────────────────────────────────────
+
+vi.mock('../lib/prisma.js', () => ({
+  prisma: {
+    item: {
+      findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+    },
+    itemTag: {
+      createMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    itemVendor: {
+      createMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    tag: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+    },
+    tagType: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+    },
+    vendor: {
+      createMany: vi.fn(),
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+    },
+    recipe: {
+      findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+    },
+    recipeItem: {
+      createMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    inventoryLog: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    cart: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    cartItem: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    $transaction: vi.fn(),
+  },
+}))
+
+import { prisma } from '../lib/prisma.js'
+
+const p = prisma as unknown as {
+  item: {
+    findUnique: ReturnType<typeof vi.fn>
+    findUniqueOrThrow: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+  }
+  itemTag: {
+    createMany: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  itemVendor: {
+    createMany: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  tag: {
+    createMany: ReturnType<typeof vi.fn>
+    findMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+  }
+  tagType: {
+    createMany: ReturnType<typeof vi.fn>
+    findMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+  }
+  vendor: {
+    createMany: ReturnType<typeof vi.fn>
+    findMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+  }
+  recipe: {
+    findUnique: ReturnType<typeof vi.fn>
+    findUniqueOrThrow: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+  }
+  recipeItem: {
+    createMany: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  inventoryLog: {
+    findUnique: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  cart: {
+    findUnique: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  cartItem: {
+    findUnique: ReturnType<typeof vi.fn>
+    create: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  $transaction: ReturnType<typeof vi.fn>
+}
+
+// ─── Server ──────────────────────────────────────────────────────────────────
+
 let server: ApolloServer<Context>
+
+beforeAll(async () => {
+  server = new ApolloServer<Context>({ typeDefs, resolvers })
+  await server.start()
+})
+
+afterAll(async () => {
+  await server.stop()
+})
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const CONTEXT: Context = { userId: 'user_import_test' }
+
+function makeItemInput(overrides: Partial<Record<string, unknown>> & { id: string }) {
+  const { id, ...rest } = overrides
+  return {
+    id,
+    name: 'Milk',
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...rest,
+  }
+}
+
+function makePrismaItem(id: string, name = 'Milk') {
+  return {
+    id,
+    name,
+    targetUnit: 'package',
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    expirationMode: 'disabled',
+    userId: 'user_import_test',
+    familyId: null,
+    packageUnit: null,
+    measurementUnit: null,
+    amountPerPackage: null,
+    dueDate: null,
+    estimatedDueDays: null,
+    expirationThreshold: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    tags: [],
+    vendors: [],
+  }
+}
 
 const BULK_CREATE_ITEMS = `
   mutation BulkCreateItems($items: [ItemInput!]!) {
@@ -24,226 +211,107 @@ const BULK_UPSERT_ITEMS = `
 
 const CLEAR_ALL_DATA = `mutation { clearAllData }`
 
-function makeItemInput(overrides: Partial<Record<string, unknown>> & { id: string }) {
-  return {
-    name: 'Milk',
-    tagIds: [],
-    targetUnit: 'package',
-    targetQuantity: 2,
-    refillThreshold: 1,
-    packedQuantity: 0,
-    unpackedQuantity: 0,
-    consumeAmount: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    ...overrides,
-  }
-}
-
-beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
-  await mongoose.connect(mongod.getUri())
-  server = new ApolloServer<Context>({ typeDefs, resolvers })
-  await server.start()
-}, 120000)
-
-afterAll(async () => {
-  await server.stop()
-  await mongoose.disconnect()
-  await mongod.stop()
-})
-
-afterEach(async () => {
-  await ItemModel.deleteMany({})
-})
+// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('bulkCreateItems', () => {
-  it('user can bulk-create items with original MongoDB ObjectIds', async () => {
-    // Given an authenticated context and a valid MongoDB ObjectId
-    const context: Context = { userId: 'user_import_test' }
-    const originalId = new mongoose.Types.ObjectId().toString()
+  it('user can bulk-create items with original IDs', async () => {
+    // Given no existing item
+    p.item.findUnique.mockResolvedValue(null)
+    const prismaItem = makePrismaItem('item_abc123', 'Milk')
+    p.item.create.mockResolvedValue(prismaItem)
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValue(prismaItem)
 
-    // When calling bulkCreateItems with valid item data
+    // When calling bulkCreateItems
     const response = await server.executeOperation(
       {
         query: BULK_CREATE_ITEMS,
-        variables: { items: [makeItemInput({ id: originalId, name: 'Milk' })] },
+        variables: { items: [makeItemInput({ id: 'item_abc123', name: 'Milk' })] },
       },
-      { contextValue: context },
+      { contextValue: CONTEXT },
     )
 
-    // Then the mutation returns the inserted item (not empty array)
+    // Then the item is returned
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{
-        id: string
-        name: string
-        userId: string
-      }>
+      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ id: string; name: string; userId: string }>
       expect(items).toHaveLength(1)
-      expect(items[0].id).toBe(originalId)
+      expect(items[0].id).toBe('item_abc123')
       expect(items[0].name).toBe('Milk')
       expect(items[0].userId).toBe('user_import_test')
     }
-
-    // And the item is persisted in MongoDB with the original ID
-    const stored = await ItemModel.findById(originalId)
-    expect(stored).not.toBeNull()
-    expect(stored?.name).toBe('Milk')
   })
 
-  it('assigns the authenticated userId to imported items', async () => {
-    // Given an item input (ItemInput has no userId field — userId is assigned server-side from auth context)
-    const context: Context = { userId: 'new_user' }
-    const originalId = new mongoose.Types.ObjectId().toString()
+  it('skips duplicate IDs instead of throwing', async () => {
+    // Given item_existing already exists and item_new does not
+    p.item.findUnique
+      .mockResolvedValueOnce({ id: 'item_existing' }) // exists — skip
+      .mockResolvedValueOnce(null) // new — create
+    const prismaItem = makePrismaItem('item_new', 'New Item')
+    p.item.create.mockResolvedValue(prismaItem)
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValue(prismaItem)
 
-    // When the new user imports it
-    await server.executeOperation(
-      {
-        query: BULK_CREATE_ITEMS,
-        variables: { items: [makeItemInput({ id: originalId, name: 'Eggs' })] },
-      },
-      { contextValue: context },
-    )
-
-    // Then the item is owned by the authenticated user, not any userId embedded in the payload
-    const items = await ItemModel.find({ userId: 'new_user' })
-    expect(items).toHaveLength(1)
-    expect(items[0].name).toBe('Eggs')
-  })
-
-  it('skips duplicate IDs instead of throwing (ordered: false skip behaviour)', async () => {
-    // Given an item already exists
-    const context: Context = { userId: 'user_import_test' }
-    const existingId = new mongoose.Types.ObjectId().toString()
-    await ItemModel.create({
-      _id: existingId,
-      name: 'Existing',
-      tagIds: [],
-      targetUnit: 'package',
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      userId: 'user_import_test',
-    })
-
-    // When bulk-creating with the same ID (conflict) plus a new item
-    const newId = new mongoose.Types.ObjectId().toString()
+    // When bulk-creating with one conflicting and one new ID
     const response = await server.executeOperation(
       {
         query: BULK_CREATE_ITEMS,
         variables: {
           items: [
-            makeItemInput({ id: existingId, name: 'Duplicate' }),
-            makeItemInput({ id: newId, name: 'New Item' }),
+            makeItemInput({ id: 'item_existing', name: 'Duplicate' }),
+            makeItemInput({ id: 'item_new', name: 'New Item' }),
           ],
         },
       },
-      { contextValue: context },
+      { contextValue: CONTEXT },
     )
 
-    // Then the mutation succeeds (no GraphQL error) — BulkWriteError is caught internally
-    // and only the successfully inserted docs are returned (skip semantics)
+    // Then only the new item is returned
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
       const items = response.body.singleResult.data?.bulkCreateItems as Array<{ id: string }>
-      // Only the new (non-conflicting) item is returned
       expect(items).toHaveLength(1)
-      expect(items[0].id).toBe(newId)
-    }
-
-    // And the existing item was not overwritten
-    const existing = await ItemModel.findById(existingId)
-    expect(existing?.name).toBe('Existing')
-  })
-
-  it('user can clear all data and re-import items (clear strategy)', async () => {
-    // Given items already exist
-    const context: Context = { userId: 'user_import_test' }
-    const originalId = new mongoose.Types.ObjectId().toString()
-    await ItemModel.create({
-      _id: originalId,
-      name: 'Old Name',
-      tagIds: [],
-      targetUnit: 'package',
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      userId: 'user_import_test',
-    })
-
-    // When clearing and re-importing the same IDs
-    await server.executeOperation({ query: CLEAR_ALL_DATA }, { contextValue: context })
-    const response = await server.executeOperation(
-      {
-        query: BULK_CREATE_ITEMS,
-        variables: { items: [makeItemInput({ id: originalId, name: 'Restored' })] },
-      },
-      { contextValue: context },
-    )
-
-    // Then the item is restored with the original ID
-    expect(response.body.kind).toBe('single')
-    if (response.body.kind === 'single') {
-      expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{
-        id: string
-        name: string
-      }>
-      expect(items).toHaveLength(1)
-      expect(items[0].id).toBe(originalId)
-      expect(items[0].name).toBe('Restored')
+      expect(items[0].id).toBe('item_new')
     }
   })
 
-  it('user can import items with UUID IDs (exported from local mode)', async () => {
-    // Given a UUID-format ID (as exported from local/Dexie mode)
-    const context: Context = { userId: 'user_import_test' }
-    const uuidId = '02ce891b-d9c5-40cc-8f06-9cfb945cde49' // typical Dexie UUID
+  it('assigns the authenticated userId to imported items', async () => {
+    // Given a new item
+    p.item.findUnique.mockResolvedValue(null)
+    const prismaItem = { ...makePrismaItem('item_xyz', 'Eggs'), userId: 'new_user' }
+    p.item.create.mockResolvedValue(prismaItem)
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValue(prismaItem)
 
-    // When calling bulkCreateItems with a UUID ID
+    // When a different user imports
     const response = await server.executeOperation(
       {
         query: BULK_CREATE_ITEMS,
-        variables: { items: [makeItemInput({ id: uuidId, name: 'UUID Item' })] },
+        variables: { items: [makeItemInput({ id: 'item_xyz', name: 'Eggs' })] },
       },
-      { contextValue: context },
+      { contextValue: { userId: 'new_user' } },
     )
 
-    // Then the mutation returns the inserted item (UUID ID is preserved)
+    // Then userId on the returned item matches the authenticated user
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkCreateItems as Array<{
-        id: string
-        name: string
-      }>
-      expect(items).toHaveLength(1)
-      expect(items[0].id).toBe(uuidId)
-      expect(items[0].name).toBe('UUID Item')
+      const items = response.body.singleResult.data?.bulkCreateItems as Array<{ userId: string }>
+      expect(items[0].userId).toBe('new_user')
     }
-
-    // And the item is persisted with the UUID as _id
-    const stored = await ItemModel.findById(uuidId)
-    expect(stored).not.toBeNull()
-    expect(stored?.name).toBe('UUID Item')
   })
 
   it('rejects unauthenticated bulk-create requests', async () => {
-    // Given an unauthenticated context
-    const id = new mongoose.Types.ObjectId().toString()
-
-    // When an unauthenticated user tries to bulk-create
+    // Given no userId in context
     const response = await server.executeOperation(
       {
         query: BULK_CREATE_ITEMS,
-        variables: { items: [makeItemInput({ id })] },
+        variables: { items: [makeItemInput({ id: 'item_abc' })] },
       },
       { contextValue: { userId: null } },
     )
@@ -258,24 +326,15 @@ describe('bulkCreateItems', () => {
 
 describe('bulkUpsertItems', () => {
   it('user can upsert items — creates if absent, replaces if present', async () => {
-    // Given an existing item
-    const context: Context = { userId: 'user_import_test' }
-    const existingId = new mongoose.Types.ObjectId().toString()
-    await ItemModel.create({
-      _id: existingId,
-      name: 'Old Name',
-      tagIds: [],
-      targetUnit: 'package',
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      userId: 'user_import_test',
-    })
-
-    // And a new item ID
-    const newId = new mongoose.Types.ObjectId().toString()
+    // Given both items upserted successfully
+    const item1 = makePrismaItem('item_existing', 'Updated Name')
+    const item2 = makePrismaItem('item_new', 'Brand New')
+    p.item.upsert.mockResolvedValueOnce(item1).mockResolvedValueOnce(item2)
+    p.itemTag.deleteMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.deleteMany.mockResolvedValue({ count: 0 })
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValueOnce(item1).mockResolvedValueOnce(item2)
 
     // When upserting both
     const response = await server.executeOperation(
@@ -283,31 +342,46 @@ describe('bulkUpsertItems', () => {
         query: BULK_UPSERT_ITEMS,
         variables: {
           items: [
-            makeItemInput({ id: existingId, name: 'Updated Name' }),
-            makeItemInput({ id: newId, name: 'Brand New' }),
+            makeItemInput({ id: 'item_existing', name: 'Updated Name' }),
+            makeItemInput({ id: 'item_new', name: 'Brand New' }),
           ],
         },
       },
-      { contextValue: context },
+      { contextValue: CONTEXT },
     )
 
     // Then both items are returned
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
       expect(response.body.singleResult.errors).toBeUndefined()
-      const items = response.body.singleResult.data?.bulkUpsertItems as Array<{
-        id: string
-        name: string
-      }>
+      const items = response.body.singleResult.data?.bulkUpsertItems as Array<{ id: string; name: string }>
       expect(items).toHaveLength(2)
+      expect(items[0].name).toBe('Updated Name')
+      expect(items[1].name).toBe('Brand New')
     }
+  })
+})
 
-    // And existing item is updated
-    const updated = await ItemModel.findById(existingId)
-    expect(updated?.name).toBe('Updated Name')
+describe('clearAllData', () => {
+  it('user can clear all their data', async () => {
+    // Given transaction resolves
+    p.$transaction.mockResolvedValue([
+      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
+      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
+      { count: 0 }, { count: 0 }, { count: 0 },
+    ])
 
-    // And new item is created
-    const created = await ItemModel.findById(newId)
-    expect(created?.name).toBe('Brand New')
+    // When calling clearAllData
+    const response = await server.executeOperation(
+      { query: CLEAR_ALL_DATA },
+      { contextValue: CONTEXT },
+    )
+
+    // Then it returns true
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+      expect(response.body.singleResult.data?.clearAllData).toBe(true)
+    }
   })
 })

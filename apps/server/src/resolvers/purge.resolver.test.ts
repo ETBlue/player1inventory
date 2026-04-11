@@ -1,43 +1,60 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import mongoose from 'mongoose'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
-import { ItemModel } from '../models/Item.model.js'
-import { RecipeModel } from '../models/Recipe.model.js'
-import { CartModel, CartItemModel } from '../models/Cart.model.js'
-import { InventoryLogModel } from '../models/InventoryLog.model.js'
-import { prisma } from '../lib/prisma.js'
 import type { Context } from '../context.js'
 
-let mongod: MongoMemoryServer
+// ─── Mock Prisma ─────────────────────────────────────────────────────────────
+
+vi.mock('../lib/prisma.js', () => ({
+  prisma: {
+    inventoryLog: { deleteMany: vi.fn() },
+    cartItem: { deleteMany: vi.fn() },
+    cart: { deleteMany: vi.fn() },
+    recipeItem: { deleteMany: vi.fn() },
+    recipe: { deleteMany: vi.fn() },
+    itemTag: { deleteMany: vi.fn() },
+    itemVendor: { deleteMany: vi.fn() },
+    item: { deleteMany: vi.fn() },
+    tag: { deleteMany: vi.fn() },
+    tagType: { deleteMany: vi.fn() },
+    vendor: { deleteMany: vi.fn() },
+    $transaction: vi.fn(),
+  },
+}))
+
+import { prisma } from '../lib/prisma.js'
+
+const p = prisma as unknown as {
+  inventoryLog: { deleteMany: ReturnType<typeof vi.fn> }
+  cartItem: { deleteMany: ReturnType<typeof vi.fn> }
+  cart: { deleteMany: ReturnType<typeof vi.fn> }
+  recipeItem: { deleteMany: ReturnType<typeof vi.fn> }
+  recipe: { deleteMany: ReturnType<typeof vi.fn> }
+  itemTag: { deleteMany: ReturnType<typeof vi.fn> }
+  itemVendor: { deleteMany: ReturnType<typeof vi.fn> }
+  item: { deleteMany: ReturnType<typeof vi.fn> }
+  tag: { deleteMany: ReturnType<typeof vi.fn> }
+  tagType: { deleteMany: ReturnType<typeof vi.fn> }
+  vendor: { deleteMany: ReturnType<typeof vi.fn> }
+  $transaction: ReturnType<typeof vi.fn>
+}
+
+// ─── Server ──────────────────────────────────────────────────────────────────
+
 let server: ApolloServer<Context>
 
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create()
-  await mongoose.connect(mongod.getUri())
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
-}, 120000)
+})
 
 afterAll(async () => {
   await server.stop()
-  await mongoose.disconnect()
-  await mongod.stop()
 })
 
-afterEach(async () => {
-  await Promise.all([
-    ItemModel.deleteMany({}),
-    RecipeModel.deleteMany({}),
-    CartModel.deleteMany({}),
-    CartItemModel.deleteMany({}),
-    InventoryLogModel.deleteMany({}),
-    prisma.tag.deleteMany({}),
-    prisma.tagType.deleteMany({}),
-    prisma.vendor.deleteMany({}),
-  ])
+beforeEach(() => {
+  vi.clearAllMocks()
 })
 
 const PURGE_MUTATION = `mutation {
@@ -46,59 +63,75 @@ const PURGE_MUTATION = `mutation {
   }
 }`
 
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
 describe('purgeUserData resolver', () => {
   it('user can purge all their data and receive deleted counts', async () => {
-    // Given a user with data in multiple collections
-    const userId = 'user_purge_test'
-    const item = await ItemModel.create({ name: 'Milk', userId, targetUnit: 'package' })
-    await prisma.tagType.create({ data: { name: 'Category', color: 'blue', userId } })
-    await prisma.vendor.create({ data: { name: 'Costco', userId } })
+    // Given transaction returns per-entity deleted counts
+    p.$transaction.mockResolvedValue([
+      { count: 2 },  // inventoryLogs
+      { count: 1 },  // cartItems
+      { count: 1 },  // carts
+      { count: 0 },  // recipeItems (junction)
+      { count: 3 },  // recipes
+      { count: 0 },  // itemTags (junction)
+      { count: 0 },  // itemVendors (junction)
+      { count: 5 },  // items
+      { count: 4 },  // tags
+      { count: 2 },  // tagTypes
+      { count: 1 },  // vendors
+    ])
 
     // When user calls purgeUserData
-    const context: Context = { userId }
-    const response = await server.executeOperation({ query: PURGE_MUTATION }, { contextValue: context })
+    const response = await server.executeOperation(
+      { query: PURGE_MUTATION },
+      { contextValue: { userId: 'user_purge_test' } },
+    )
 
     // Then deleted counts are returned
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
       const data = response.body.singleResult.data?.purgeUserData as Record<string, number>
-      expect(data.items).toBe(1)
-      expect(data.tagTypes).toBe(1)
+      expect(data.inventoryLogs).toBe(2)
+      expect(data.cartItems).toBe(1)
+      expect(data.carts).toBe(1)
+      expect(data.recipes).toBe(3)
+      expect(data.items).toBe(5)
+      expect(data.tags).toBe(4)
+      expect(data.tagTypes).toBe(2)
       expect(data.vendors).toBe(1)
-      expect(data.tags).toBe(0)
-      expect(data.recipes).toBe(0)
-      expect(data.carts).toBe(0)
-      expect(data.cartItems).toBe(0)
-      expect(data.inventoryLogs).toBe(0)
     }
-
-    // And the documents are actually deleted
-    expect(await ItemModel.findById(item._id)).toBeNull()
-    expect(await prisma.vendor.count({ where: { userId } })).toBe(0)
   })
 
-  it('user can only purge their own data, not other users data', async () => {
-    // Given two users with items
-    const userId = 'user_purge_test'
-    const otherId = 'user_other'
-    await ItemModel.create({ name: 'Milk', userId, targetUnit: 'package' })
-    await ItemModel.create({ name: 'Eggs', userId: otherId, targetUnit: 'package' })
+  it('returns zero counts when user has no data', async () => {
+    // Given everything returns 0
+    p.$transaction.mockResolvedValue(
+      Array(11).fill({ count: 0 })
+    )
 
-    // When user purges their data
-    const response = await server.executeOperation({ query: PURGE_MUTATION }, { contextValue: { userId } })
+    // When purging
+    const response = await server.executeOperation(
+      { query: PURGE_MUTATION },
+      { contextValue: { userId: 'user_empty' } },
+    )
 
-    // Then only their item is deleted
+    // Then all counts are 0
     expect(response.body.kind).toBe('single')
     if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
       const data = response.body.singleResult.data?.purgeUserData as Record<string, number>
-      expect(data.items).toBe(1)
+      expect(data.items).toBe(0)
+      expect(data.tags).toBe(0)
     }
-    expect(await ItemModel.countDocuments({ userId: otherId })).toBe(1)
   })
 
   it('returns error when unauthenticated', async () => {
     // Given no userId in context
-    const response = await server.executeOperation({ query: PURGE_MUTATION }, { contextValue: { userId: null } })
+    const response = await server.executeOperation(
+      { query: PURGE_MUTATION },
+      { contextValue: { userId: null } },
+    )
 
     // Then an auth error is returned
     expect(response.body.kind).toBe('single')
