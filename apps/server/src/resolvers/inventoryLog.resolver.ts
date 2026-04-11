@@ -1,4 +1,4 @@
-import { InventoryLogModel } from '../models/InventoryLog.model.js'
+import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
 
@@ -6,31 +6,34 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   Query: {
     itemLogs: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
-      const logs = await InventoryLogModel.find({ itemId, userId }).sort({ occurredAt: 1 })
-      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
+      return prisma.inventoryLog.findMany({
+        where: { itemId, userId },
+        orderBy: { occurredAt: 'asc' },
+      }) as unknown as Promise<InventoryLog[]>
     },
 
     inventoryLogCountByItem: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
-      return InventoryLogModel.countDocuments({ itemId, userId })
+      return prisma.inventoryLog.count({ where: { itemId, userId } })
     },
 
     inventoryLogs: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      const logs = await InventoryLogModel.find({ userId }).sort({ occurredAt: 1 })
-      return logs.map(l => ({ ...l.toObject(), id: l._id.toString() })) as unknown as InventoryLog[]
+      return prisma.inventoryLog.findMany({
+        where: { userId },
+        orderBy: { occurredAt: 'asc' },
+      }) as unknown as Promise<InventoryLog[]>
     },
 
     lastPurchaseDates: async (_, { itemIds }, ctx) => {
       const userId = requireAuth(ctx)
       const results = await Promise.all(
         itemIds.map(async (itemId) => {
-          const log = await InventoryLogModel.findOne(
-            { itemId, userId, delta: { $gt: 0 } },
-            null,
-            { sort: { occurredAt: -1 } },
-          )
-          return { itemId, date: log ? log.occurredAt.toISOString() : null }
+          const log = await prisma.inventoryLog.findFirst({
+            where: { itemId, userId, delta: { gt: 0 } },
+            orderBy: { occurredAt: 'desc' },
+          })
+          return { itemId, date: log?.occurredAt?.toISOString() ?? null }
         }),
       )
       return results
@@ -40,28 +43,24 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   Mutation: {
     addInventoryLog: async (_, { itemId, delta, quantity, occurredAt, note }, ctx) => {
       const userId = requireAuth(ctx)
-      const log = await InventoryLogModel.create({
-        itemId,
-        delta,
-        quantity,
-        occurredAt: new Date(occurredAt),
-        userId,
-        ...(note ? { note } : {}),
-      })
-      return { ...log.toObject(), id: log._id.toString() } as unknown as InventoryLog
+      return prisma.inventoryLog.create({
+        data: {
+          itemId,
+          delta,
+          quantity,
+          occurredAt: new Date(occurredAt),
+          userId,
+          ...(note ? { note } : {}),
+        },
+      }) as unknown as Promise<InventoryLog>
     },
   },
 
   InventoryLog: {
-    id: (log) => (log as unknown as { _id: { toString(): string } })._id.toString(),
-    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
-    // to satisfy the non-nullable String! contract in the GraphQL schema.
     occurredAt: (log) => {
       const d = (log as unknown as { occurredAt: Date | null }).occurredAt
       return d != null ? d.toISOString() : new Date(0).toISOString()
     },
-    // Legacy MongoDB documents may have null for numeric fields — coalesce to 0
-    // to satisfy the non-nullable Float! contract in the GraphQL schema.
     quantity: (log) => (log as unknown as { quantity: number | null }).quantity ?? 0,
     delta: (log) => (log as unknown as { delta: number | null }).delta ?? 0,
   },
