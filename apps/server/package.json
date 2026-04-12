@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && cp src/schema/*.graphql dist/schema/",
     "start": "node dist/index.js",
     "test": "vitest run",
     "postinstall": "prisma generate"
