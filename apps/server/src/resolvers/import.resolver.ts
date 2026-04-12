@@ -104,7 +104,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const userId = requireAuth(ctx)
       if (tags.length === 0) return []
       const ids = tags.map((t) => t.id)
-      const docs = tags.map((tag) => {
+      const docs = tags.map((tag): Record<string, unknown> & { id: string; userId: string } => {
         const { id, userId: _u, familyId: _f, ...rest } = tag as unknown as Record<string, unknown>
         return { id: id as string, ...rest, userId }
       })
