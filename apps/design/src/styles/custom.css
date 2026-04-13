@@ -1,0 +1,81 @@
+/* Import source of truth from apps/web — no copy-paste */
+@import '../../../web/src/design-tokens/theme.css';
+
+/*
+  Map app CSS variables → Starlight CSS variables.
+  Reference: https://starlight.astro.build/guides/css-and-tailwind/
+
+  App token conventions:
+  - Primary color: --importance-primary (teal/cyan hue, oklch hue ~195)
+  - Backgrounds: --background-base / --background-surface / --background-elevated
+  - Foregrounds: --foreground-default / --foreground-muted / --foreground-emphasized
+  - Accessories (borders): --accessory-muted / --accessory-default / --accessory-emphasized
+  - Font: Rosario (sans-serif), defined as --font-rosario in index.css @theme block
+*/
+
+/* Load Rosario font (same source as apps/web) */
+@import url('https://fonts.googleapis.com/css2?family=Rosario:ital,wght@0,300..700;1,300..700&display=swap');
+
+/* ── Light mode ─────────────────────────────────────────────── */
+:root,
+[data-theme='light'] {
+  /* Accent colors — mapped from primary importance (teal/cyan ~195) */
+  --sl-color-accent-low:  var(--importance-primary-accessory); /* muted teal, low contrast accent fill */
+  --sl-color-accent:      var(--importance-primary);           /* main teal accent */
+  --sl-color-accent-high: var(--importance-primary-foreground);/* high-contrast teal for text */
+
+  /* Text extremes */
+  --sl-color-white: var(--foreground-colorless-inverse); /* near-white for dark-bg text */
+  --sl-color-black: var(--foreground-emphasized);        /* near-black for light-bg text */
+
+  /* Gray scale — mapped to foreground / accessory / background layers */
+  --sl-color-gray-1: var(--foreground-emphasized);   /* darkest text */
+  --sl-color-gray-2: var(--foreground-default);      /* body text */
+  --sl-color-gray-3: var(--foreground-muted);        /* muted text */
+  --sl-color-gray-4: var(--accessory-emphasized);    /* strong borders */
+  --sl-color-gray-5: var(--accessory-default);       /* normal borders */
+  --sl-color-gray-6: var(--background-elevated);     /* elevated surface */
+  --sl-color-gray-7: var(--background-surface);      /* card surface */
+
+  /* Background */
+  --sl-color-bg:          var(--background-base);
+  --sl-color-bg-nav:      var(--background-elevated);
+  --sl-color-bg-sidebar:  var(--background-surface);
+  --sl-color-bg-inline-code: var(--background-elevated);
+  --sl-color-bg-accent:   var(--importance-primary-accessory);
+
+  /* Typography */
+  --sl-font: 'Rosario', sans-serif;
+  /* --sl-font-mono is left at its Starlight default (no mono token in apps/web) */
+}
+
+/* ── Dark mode ──────────────────────────────────────────────── */
+[data-theme='dark'] {
+  /* Accent colors — dark mode primary (brighter teal) */
+  --sl-color-accent-low:  var(--importance-primary-accessory); /* dark-mode muted teal */
+  --sl-color-accent:      var(--importance-primary);           /* main teal accent */
+  --sl-color-accent-high: var(--importance-primary-foreground);/* high-contrast teal */
+
+  /* Text extremes */
+  --sl-color-white: var(--foreground-emphasized);        /* near-white for dark-bg text */
+  --sl-color-black: var(--foreground-colorless-inverse); /* near-black for light-bg text */
+
+  /* Gray scale */
+  --sl-color-gray-1: var(--foreground-emphasized);   /* brightest text */
+  --sl-color-gray-2: var(--foreground-default);      /* body text */
+  --sl-color-gray-3: var(--foreground-muted);        /* muted text */
+  --sl-color-gray-4: var(--accessory-emphasized);    /* strong borders */
+  --sl-color-gray-5: var(--accessory-default);       /* normal borders */
+  --sl-color-gray-6: var(--background-elevated);     /* elevated surface */
+  --sl-color-gray-7: var(--background-surface);      /* card surface */
+
+  /* Background */
+  --sl-color-bg:          var(--background-base);
+  --sl-color-bg-nav:      var(--background-elevated);
+  --sl-color-bg-sidebar:  var(--background-surface);
+  --sl-color-bg-inline-code: var(--background-elevated);
+  --sl-color-bg-accent:   var(--importance-primary-accessory);
+
+  /* Typography */
+  --sl-font: 'Rosario', sans-serif;
+}
