@@ -99,7 +99,13 @@ Railway redeploys automatically after saving env var changes.
 
 **Cause:** Prisma migrations had never been run against the Neon production database. The schema existed in code but the tables weren't created.
 
-**Fix:** Run migrations from local machine:
+**Fix:** Run migrations from local machine, passing both connection strings inline (no `.env` changes needed — the inline values override local env for that command only):
 ```bash
-DATABASE_URL="<neon-pooled-connection-string>" pnpm prisma migrate deploy
+DATABASE_URL="<neon-pooled-url>" DIRECT_URL="<neon-direct-url>" pnpm prisma migrate deploy
 ```
+
+`DIRECT_URL` is required because `schema.prisma` configures `directUrl` and Neon's pooled connection (PgBouncer) doesn't support the transaction mode Prisma needs for migrations. Prisma automatically uses `directUrl` for migrations when set.
+
+Both URLs are in the Neon dashboard. The pooled URL contains `-pooler` in the hostname; the direct URL does not.
+
+The connection strings contain embedded credentials (`postgresql://user:password@host/dbname`) so they act as a password — do not commit them to the repo.
