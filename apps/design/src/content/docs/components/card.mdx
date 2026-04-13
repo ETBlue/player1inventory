@@ -2,4 +2,52 @@
 title: Card
 ---
 
-TODO: Add content.
+The `Card` component provides a surface container used throughout the app for list items, settings panels, and status summaries. It sits on `--background-surface` within the three-level elevation hierarchy.
+
+## Variants
+
+Cards support an optional `variant` prop that applies a status-themed left border and tinted background:
+
+| Variant | Token used | Context |
+|---------|-----------|---------|
+| _(default)_ | `--background-surface` | Neutral containers, settings panels |
+| `ok` | `--status-ok-inverse` | In-stock or success states |
+| `warning` | `--status-warning-inverse` | Low-stock alerts |
+| `error` | `--status-error-inverse` | Expiring or error states |
+| `inactive` | `--status-inactive-inverse` | Out-of-stock or disabled items |
+
+## Sub-components
+
+`Card` composes four sub-components for layout:
+
+```tsx
+<Card>
+  <CardHeader>
+    <CardTitle>Title</CardTitle>
+    <CardDescription>Supporting text</CardDescription>
+  </CardHeader>
+  <CardContent>…</CardContent>
+  <CardFooter>…</CardFooter>
+</Card>
+```
+
+## Usage
+
+```tsx
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
+// Default card
+<Card>
+  <CardHeader><CardTitle>Milk</CardTitle></CardHeader>
+  <CardContent>2 left in pantry</CardContent>
+</Card>
+
+// Status variant
+<Card variant="warning">
+  <CardContent>Running low — only 1 remaining</CardContent>
+</Card>
+```
+
+## Resources
+
+- [Card stories on Storybook](https://storybook.player1inventory.etblue.tw/?path=/docs/components-ui-card--docs)

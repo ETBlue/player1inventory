@@ -11,7 +11,9 @@ export default defineConfig({
     starlight({
       title: 'Player 1 Inventory — Design Guide',
       customCss: ['./src/styles/custom.css'],
-      social: {},
+      social: {
+        github: 'https://github.com/ETBlue/player1inventory',
+      },
       sidebar: [
         {
           label: 'Tokens',
@@ -48,6 +50,11 @@ export default defineConfig({
             { label: 'Overview', slug: 'voice-tone/overview' },
             { label: 'Copy Guidelines', slug: 'voice-tone/copy-guidelines' },
           ],
+        },
+        {
+          label: '↗ Storybook',
+          link: 'https://storybook.player1inventory.etblue.tw',
+          attrs: { target: '_blank', rel: 'noopener noreferrer' },
         },
       ],
     }),
