@@ -1,7 +1,7 @@
 # Rename index.tsx to ComponentName.tsx
 
 **Date:** 2026-04-13
-**Status:** Pending implementation
+**Status:** Implemented (refactor/rename-index-tsx)
 
 ## Problem
 
@@ -43,11 +43,12 @@ After the rename:
 ```bash
 (cd apps/web && pnpm lint)
 (cd apps/web && pnpm build)
+(cd apps/web && pnpm check)
 (cd apps/web && pnpm test)
 (cd apps/web && pnpm build-storybook)
 ```
 
-All four must pass. No E2E tests required — no runtime behavior changes.
+All five must pass. No E2E tests required — no runtime behavior changes.
 
 ## Branch and Commit
 
