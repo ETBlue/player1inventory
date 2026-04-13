@@ -106,4 +106,48 @@ describe('DataModeCard', () => {
       screen.getByRole('button', { name: 'Switch...' }),
     ).toBeInTheDocument()
   })
+
+  it('shows Sign Out button in cloud mode', () => {
+    // Given cloud mode is set in localStorage
+    localStorage.setItem('data-mode', 'cloud')
+
+    // When DataModeCard is rendered
+    render(<DataModeCard />)
+
+    // Then "Sign Out" button is shown
+    expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
+  })
+
+  it('shows sign out offline dialog when user clicks Sign Out', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user clicks "Sign Out"
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    // Then the sign out / offline dialog appears
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Switch to offline mode?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows migrate dialog when user chooses to switch to offline', async () => {
+    // Given cloud mode and the askOffline dialog is open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    // When user clicks "Switch to offline"
+    await user.click(screen.getByRole('button', { name: 'Switch to offline' }))
+
+    // Then the migrate dialog appears
+    expect(
+      screen.getByRole('heading', { name: 'Copy cloud data to this device?' }),
+    ).toBeInTheDocument()
+  })
 })
