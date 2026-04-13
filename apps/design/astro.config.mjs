@@ -1,5 +1,10 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
+import react from '@astrojs/react'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   integrations: [
@@ -46,5 +51,14 @@ export default defineConfig({
         },
       ],
     }),
+    react(),
   ],
+  vite: {
+    resolve: {
+      alias: {
+        '@web': path.resolve(__dirname, '../web/src'),
+        '@': path.resolve(__dirname, '../web/src'),
+      },
+    },
+  },
 })

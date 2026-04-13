@@ -2,4 +2,49 @@
 title: Button
 ---
 
-TODO: Add content.
+import { ButtonDemo } from '../../../components/ButtonDemo'
+
+The `Button` component is used for all interactive actions in the app. It is built on shadcn/ui with a custom variant system driven by the app's semantic design tokens.
+
+## Variants
+
+Buttons are organised into four **style groups** (solid, outline, ghost, link) across four **importance levels** (primary, secondary, destructive, neutral), giving 16 variants in the importance group plus 20 hue-colored variants for tag contexts.
+
+<ButtonDemo client:load />
+
+## Importance levels
+
+| Level | Use case |
+|-------|----------|
+| `primary` | Main call-to-action (save, confirm, navigate forward) |
+| `secondary` | Secondary action or softer CTA |
+| `destructive` | Irreversible or dangerous action (delete, clear) |
+| `neutral` | Cancel, dismiss, or low-emphasis action |
+
+## Style groups
+
+| Style | When to use |
+|-------|-------------|
+| Solid | High-emphasis, prominent placement |
+| Outline | Medium-emphasis, adjacent to a solid button |
+| Ghost | Low-emphasis, toolbar actions |
+| Link | Inline text-level actions |
+
+## Sizes
+
+Available sizes: `xs`, `sm`, `default` (h-8), `lg`, plus square icon sizes `icon-xs`, `icon-sm`, `icon`, `icon-lg`.
+
+## Usage
+
+```tsx
+import { Button } from '@/components/ui/button'
+
+// Importance variants
+<Button variant="primary">Save</Button>
+<Button variant="neutral-outline">Cancel</Button>
+<Button variant="destructive">Delete</Button>
+
+// With size
+<Button variant="primary" size="sm">Save</Button>
+<Button variant="primary" size="icon"><PlusIcon /></Button>
+```
