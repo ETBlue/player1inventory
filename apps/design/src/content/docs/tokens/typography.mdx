@@ -2,4 +2,63 @@
 title: Typography
 ---
 
-TODO: Add content.
+import { TypographyScale } from '../../../components/TypographyScale'
+
+Player 1 Inventory uses a single typeface — **Rosario** — for all UI text. It is a humanist sans-serif that balances warmth with legibility, well-suited for a grocery app where users scan lists quickly.
+
+## Font
+
+| Property | Value |
+|----------|-------|
+| Typeface | Rosario |
+| Source | Google Fonts |
+| Weights loaded | 300 – 700 (variable font, italic included) |
+| Fallback | `sans-serif` |
+| CSS variable | `--font-rosario` (mapped as `font-rosario` Tailwind utility via `@theme`) |
+| Starlight variable | `--sl-font` |
+
+The font is loaded via a `<link>` in `apps/web/index.html` and replicated in `apps/design/src/styles/custom.css` so both the app and the design guide share the same typeface.
+
+```css
+/* apps/web/src/design-tokens/index.css */
+@theme {
+  --font-rosario: 'Rosario', sans-serif;
+}
+```
+
+## Type scale
+
+The app uses Tailwind's default type scale. No custom size tokens are defined — the built-in `text-xs` through `text-3xl` utilities cover all current needs.
+
+<TypographyScale client:load />
+
+## Line height
+
+The app's `body` rule sets a base line height:
+
+```css
+body {
+  line-height: 1.25em;
+}
+```
+
+Individual components override this through Tailwind utilities (`leading-tight`, `leading-normal`, `leading-relaxed`) as needed.
+
+## Weight conventions
+
+| Weight | Tailwind class | Usage |
+|--------|---------------|-------|
+| 400 | `font-normal` | Body copy, descriptions, metadata |
+| 500 | `font-medium` | List item primaries, row labels |
+| 600 | `font-semibold` | Sub-headings, card titles |
+| 700 | `font-bold` | Page headings, dialog titles |
+
+## Name display convention
+
+Entity names (items, tags, recipes) are displayed in title case using Tailwind's `capitalize` class. This is purely visual — stored values are unchanged, so search and comparison logic is unaffected.
+
+**Vendor names are excluded** — vendors may use intentional casing (e.g. "iHerb", "7-Eleven"). Vendor badges explicitly add `normal-case` to override the Badge component's built-in `capitalize`.
+
+## Mono font
+
+No custom mono font token is defined. The Starlight documentation site falls back to its default system mono stack for code blocks.
