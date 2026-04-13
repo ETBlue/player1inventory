@@ -346,7 +346,8 @@
       "cloud": {
         "title": "Cloud Mode",
         "signedInAs": "Signed in as {{email}}",
-        "disableButton": "Switch..."
+        "switchButton": "Switch...",
+        "signOutButton": "Sign Out"
       },
       "familyWarnDialog": {
         "title": "You're in a family group",
@@ -367,9 +368,27 @@
       },
       "enableDialog": {
         "title": "Switch to cloud mode?",
-        "description": "Once switched, your data will be stored in the cloud. You will be able to collaborate with family members, but signing in will be required.",
+        "description": "Once switched, your data will be stored in the cloud. You will be able to collaborate with family members, but signing in will be required. After signing in, you'll be offered to import any local data you have.",
         "enable": "Switch to cloud"
+      },
+      "signOutOfflineDialog": {
+        "title": "Switch to offline mode?",
+        "description": "You can sign back in any time to re-enable cloud sync.",
+        "switchToOffline": "Switch to offline",
+        "justSignOut": "Just sign out"
+      },
+      "signOutMigrateDialog": {
+        "title": "Copy cloud data to this device?",
+        "description": "A copy of your cloud data will be saved on this device for offline use.",
+        "copy": "Copy data",
+        "skip": "Skip"
       }
+    },
+    "postLoginMigration": {
+      "title": "Import local data to cloud?",
+      "description": "You have local data on this device. Would you like to import it to your cloud account?",
+      "import": "Import",
+      "skip": "Skip"
     },
     "familyGroup": {
       "title": "Family group",
