@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,25 +13,35 @@ import { usePostLoginMigration } from '@/hooks/usePostLoginMigration'
 
 export function PostLoginMigrationDialog() {
   const { state, dismiss, importData } = usePostLoginMigration()
+  const { t } = useTranslation()
 
   return (
     <>
       {/* Import prompt dialog */}
-      <AlertDialog open={state === 'prompting'}>
+      <AlertDialog open={state === 'prompting' || state === 'importing'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Import your local data to the cloud?
+              {t('settings.postLoginMigration.title')}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            You have local data on this device. Would you like to import it to
-            the cloud?
+            {t('settings.postLoginMigration.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={dismiss}>Skip</AlertDialogCancel>
-            <AlertDialogAction onClick={() => importData('append')}>
-              Import
+            <AlertDialogCancel
+              onClick={dismiss}
+              disabled={state === 'importing'}
+            >
+              {t('settings.postLoginMigration.skip')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => importData('append')}
+              disabled={state === 'importing'}
+            >
+              {state === 'importing'
+                ? '...'
+                : t('settings.postLoginMigration.import')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

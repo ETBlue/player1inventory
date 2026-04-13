@@ -1,6 +1,9 @@
+import { useApolloClient } from '@apollo/client/react'
 import { useAuth } from '@clerk/react'
 import { useEffect, useState } from 'react'
 import { getAllItems } from '@/db/operations'
+import { fetchLocalPayload } from '@/lib/exportData'
+import { importCloudData } from '@/lib/importData'
 
 const MIGRATION_PROMPTED_KEY = 'migration-prompted'
 
@@ -14,6 +17,7 @@ export type MigrationState =
 export function usePostLoginMigration() {
   const { isSignedIn, isLoaded } = useAuth()
   const [state, setState] = useState<MigrationState>('idle')
+  const apolloClient = useApolloClient()
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
@@ -35,13 +39,9 @@ export function usePostLoginMigration() {
 
   async function importData(conflictResolution: 'append' | 'replace') {
     setState('importing')
-    // TODO: call bulk import mutation with conflictResolution
-    // const items = await getAllItems()
-    // await bulkImport({ variables: { items, conflictResolution } })
-    console.log(
-      'TODO: bulk import local data to cloud, conflictResolution:',
-      conflictResolution,
-    )
+    const payload = await fetchLocalPayload()
+    const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
+    await importCloudData(payload, strategy, apolloClient)
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
     setState('done')
   }
