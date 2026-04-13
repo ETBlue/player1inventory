@@ -111,6 +111,13 @@ cd apps/design && pnpm build
 cd apps/web && pnpm build-storybook
 ```
 
+### Verified build (2026-04-13)
+
+- `pnpm build-storybook` completes successfully from `apps/web/`
+- Output directory: `apps/web/storybook-static/` (confirmed)
+- Output size: ~12 MB on disk (largest chunks: `iframe-BJTNGWnU.js` at 1.3 MB unminified, `DocsRenderer` at 744 kB — within Cloudflare Pages limits)
+- Only warnings: Rollup chunk size advisory (chunks > 500 kB) — no errors
+
 ### DNS
 
 Two CNAME records on `player1inventory.etblue.tw`:
