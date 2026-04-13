@@ -61,6 +61,7 @@ src/
 - **Database operations** in `src/db/operations.ts` with tests in `src/db/operations.test.ts`
 - **Query hooks** wrap database operations and handle cache invalidation
 - **Routes** auto-generate `src/routeTree.gen.ts` on dev server start
+- **Component file naming:** each component directory contains `ComponentName.tsx` (the implementation) and a thin barrel `index.ts` (`export * from './ComponentName'`). Import via the directory: `@/components/item/ItemCard`. Do **not** use `index.tsx` for components — it breaks VS Code Cmd+P discoverability.
 
 ## Shared Components
 

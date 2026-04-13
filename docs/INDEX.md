@@ -15,6 +15,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done; OKLCH color conversion complete — Phase A (HSL→OKLCH) and Phase B (WCAG AA calibration) done (see `global/design-system/2026-04-05-oklch-colors.md`) |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags + shopping + cooking done; item list pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts, RWD mobile+desktop all done |
+| [refactoring](global/refactoring/) | ✅ Implemented | Renamed all component index.tsx files to ComponentName.tsx (refactor/rename-index-tsx) |
 | [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; Storybook language toolbar done; route-level stories + smoke tests done; items + tags + vendors + recipes + cooking + state-restore E2E (local + cloud) done; shopping cloud E2E done |
 | [ui-polish](global/ui-polish/) | ⚠️ Partial | Dialogs, toolbars, delete flows, component extraction done; RWD improvements done; form validation UX done; empty state consolidation 🔲 Pending |
 
