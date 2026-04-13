@@ -13,7 +13,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
 | [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done; **deferred:** post-login IndexedDB → MongoDB migration (see `global/backend/2026-03-27-post-login-migration.md`); seamless offline ↔ online migration with conflict UI 🔲 Pending (see `global/backend/2026-04-04-seamless-offline-online-migration-design.md`) |
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done; OKLCH color conversion complete — Phase A (HSL→OKLCH) and Phase B (WCAG AA calibration) done (see `global/design-system/2026-04-05-oklch-colors.md`) |
-| [design-guide](global/design-system/) | 🔲 Pending | Starlight + Storybook public showcase; `design.*` + `storybook.*` subdomains on Cloudflare Pages (see `global/design-system/2026-04-13-design-guide.md`) |
+| [design-guide](global/design-system/) | 🔄 In Progress | Starlight + Storybook live at `design.*` and `storybook.*`; content scaffold complete, filling content (see `global/design-system/2026-04-13-design-guide.md`) |
 | [i18n](global/i18n/) | ⚠️ Partial | Core + settings/tags + shopping + cooking done; item list pages still hardcoded |
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts, RWD mobile+desktop all done |
 | [refactoring](global/refactoring/) | ✅ Implemented | Renamed all component index.tsx files to ComponentName.tsx (refactor/rename-index-tsx) |
