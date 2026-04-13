@@ -1,0 +1,43 @@
+---
+title: Badge
+---
+
+The `Badge` component renders a small label used to categorise and annotate items — most commonly as tag badges, status indicators, and recipe labels.
+
+## Variants
+
+Badges come in three families:
+
+| Family | Variants | Use case |
+|--------|----------|----------|
+| Hue solid | `orange`, `brown`, `green`, `teal`, `cyan`, `blue`, `indigo`, `purple`, `pink`, `rose` | Tag category labels |
+| Hue inverse | `orange-inverse`, … `rose-inverse` | Softer tag labels (light tint + coloured border) |
+| Status solid | `ok`, `warning`, `error`, `inactive` | Inventory status chips |
+| Status inverse | `ok-inverse`, `warning-inverse`, `error-inverse`, `inactive-inverse` | Muted status backgrounds |
+| Importance solid | `primary`, `secondary`, `destructive`, `neutral` | Action-relevant labels |
+| Importance outline | `primary-outline`, `secondary-outline`, `destructive-outline`, `neutral-outline` | Lower-emphasis labels |
+
+## Usage
+
+```tsx
+import { Badge } from '@/components/ui/badge'
+
+// Tag badges
+<Badge variant="teal-inverse">Storage</Badge>   // light tint
+<Badge variant="orange">Category</Badge>         // bold fill
+
+// Status badges
+<Badge variant="ok">In stock</Badge>
+<Badge variant="warning">Low stock</Badge>
+
+// Importance badges
+<Badge variant="primary">New</Badge>
+```
+
+## Name display convention
+
+Tag names and recipe names in badges are displayed in title case using Tailwind's `capitalize` class. Vendor badges explicitly add `normal-case` to override this behaviour because vendor names may use intentional casing (e.g. "iHerb", "7-Eleven").
+
+## Resources
+
+- [Badge stories on Storybook](https://storybook.player1inventory.etblue.tw/?path=/docs/components-ui-badge--docs)

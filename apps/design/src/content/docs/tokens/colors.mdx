@@ -1,0 +1,52 @@
+---
+title: Colors
+---
+
+import { ColorSwatches } from '../../../components/ColorSwatches'
+
+The color system uses **OKLCH** for all token values, providing perceptually uniform color representation.
+All hue colors are normalized to the same lightness level (L=65% light / L=75% dark) to guarantee WCAG AA contrast across all 10 hues without per-color tuning.
+
+The tokens are defined in `apps/web/src/design-tokens/theme.css` and imported directly into the design guide — no copy-paste.
+
+## Token categories
+
+| Category | Purpose |
+|----------|---------|
+| **Background** | Surface elevation hierarchy (base → surface → elevated) |
+| **Foreground** | Text hierarchy (emphasized → default → muted) |
+| **Accessory** | Borders and decorative elements |
+| **Importance** | Semantic CTA colors (primary, secondary, destructive, neutral) |
+| **Status** | Feedback states (ok, warning, error, inactive) |
+| **Hue** | Tag colors — 10 hues with solid and inverse (tint) variants |
+
+## Swatches
+
+<ColorSwatches client:load />
+
+## Usage
+
+Tokens are consumed through Tailwind utility classes via `@theme inline` mappings.
+
+```tsx
+// Background layers
+<div className="bg-background-base">      {/* Page background */}
+<div className="bg-background-surface">   {/* Card / list item */}
+<div className="bg-background-elevated">  {/* Toolbar / header */}
+
+// Importance (CTA) colors
+<div className="bg-importance-primary text-foreground-colorless-inverse" />
+<div className="border-importance-destructive text-importance-destructive-foreground" />
+
+// Status feedback
+<div className="bg-status-ok-inverse text-status-ok-foreground" />
+
+// Hue colors (tags)
+<Badge className="bg-teal text-teal-inverse" />
+<Badge className="bg-teal-inverse border-teal-accessory text-teal-foreground" />
+```
+
+## Dark mode
+
+All tokens are defined in both `:root` (light) and `.dark` (dark) selectors.
+The theme is controlled by the `dark` class on `<html>` — toggled via `localStorage` and OS preference detection.

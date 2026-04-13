@@ -20,11 +20,16 @@ pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome
 pnpm format       # Format with Biome
 pnpm check        # Run all Biome checks
-pnpm storybook    # Start Storybook
+pnpm storybook         # Start Storybook dev server
+pnpm storybook:build   # Build Storybook to apps/web/storybook-static/
+pnpm design            # Start design guide dev server (Astro/Starlight)
+pnpm design:build      # Build design guide to apps/design/dist/
+pnpm design:preview    # Preview built design guide locally
 ```
 
 ## Tech Stack
 
+### `apps/web` — Main app
 - **Build**: Vite
 - **Framework**: React 19 + TypeScript (strict)
 - **Routing**: TanStack Router (file-based)
@@ -32,6 +37,12 @@ pnpm storybook    # Start Storybook
 - **Styling**: Tailwind CSS v4 + shadcn/ui
 - **Code Quality**: Biome
 - **Testing**: Vitest + React Testing Library
+
+### `apps/design` — Design guide
+- **Build**: Astro + Starlight
+- **Content**: MDX with React islands for live component demos
+- **Tokens**: imported directly from `apps/web/src/design-tokens/` — no duplication
+- **Deployed to**: `design.player1inventory.etblue.tw` (Cloudflare Pages)
 
 ## Architecture
 
