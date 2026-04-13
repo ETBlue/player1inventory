@@ -5,6 +5,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Player 1 Inventory — Design Guide',
+      customCss: ['./src/styles/custom.css'],
       social: {},
       sidebar: [
         {
