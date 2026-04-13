@@ -22,6 +22,7 @@
     "format": "pnpm --filter web format",
     "check": "pnpm --filter web check",
     "storybook": "pnpm --filter web storybook",
+    "storybook:build": "pnpm --filter web build-storybook",
     "design": "pnpm --filter design dev",
     "design:build": "pnpm --filter design build",
     "design:preview": "pnpm --filter design preview",
