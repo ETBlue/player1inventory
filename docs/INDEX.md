@@ -30,6 +30,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [items](features/items/) | 🔄 In Progress | Item card, form, filters, create-on-search all done; explicit expirationMode field in progress (`feature/expiration-mode`) |
 | [pantry](features/pantry/) | ✅ Implemented | Toolbar, sort/filter pipeline, unified filters done |
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
+| [sign-out-and-migration](features/settings/) | 🔲 Pending | Sign Out button (cloud mode); Switch button symmetry (offline ↔ cloud); migration wiring (doDisable + usePostLoginMigration); DataModeCard refactor |
 | [data-import-export](features/settings/) | ✅ Implemented | Export (local + cloud), import (local + cloud), conflict dialog with skip/replace/clear strategies, dual-mode, E2E verified |
 | [shopping](features/shopping/) | ✅ Implemented | Cloud backend + E2E done; vendor selection in URL done; vendor carts 🔲 Pending |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
