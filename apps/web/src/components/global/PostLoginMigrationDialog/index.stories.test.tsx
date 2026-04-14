@@ -23,7 +23,7 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
     it('renders without error — dialog title visible once db is ready', async () => {
       render(<Prompting />)
       expect(
-        await screen.findByText('Import your local data to the cloud?'),
+        await screen.findByText('Import local data to cloud?'),
       ).toBeInTheDocument()
     })
   })

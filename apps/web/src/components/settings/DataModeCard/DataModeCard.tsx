@@ -227,10 +227,8 @@ function CloudModeSection() {
       {/* ── Sign out flow dialogs ───────────────────────────────────────── */}
 
       {/* Dialog 1: askOffline — offer to switch to offline or just sign out */}
-      <AlertDialog
-        open={signOutFlow === 'askOffline'}
-        onOpenChange={(open) => !open && setSignOutFlow('idle')}
-      >
+      {/* No onOpenChange: all state transitions are driven by the buttons */}
+      <AlertDialog open={signOutFlow === 'askOffline'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -255,11 +253,9 @@ function CloudModeSection() {
       </AlertDialog>
 
       {/* Dialog 2: askMigrate — offer to copy data before switching */}
+      {/* No onOpenChange: all state transitions are driven by the buttons */}
       <AlertDialog
         open={signOutFlow === 'askMigrate' || signOutFlow === 'migrating'}
-        onOpenChange={(open) =>
-          !open && signOutFlow !== 'migrating' && setSignOutFlow('idle')
-        }
       >
         <AlertDialogContent>
           <AlertDialogHeader>
