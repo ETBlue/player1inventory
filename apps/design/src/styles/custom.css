@@ -19,6 +19,11 @@
   - Font: Rosario (sans-serif), defined as --font-rosario in index.css @theme block
 */
 
+/* ── App name — Rosario only, consistent with GW2 Inventory sister app ── */
+.site-title {
+  font-family: var(--font-rosario), sans-serif;
+}
+
 /* ── Light mode ─────────────────────────────────────────────── */
 :root,
 [data-theme='light'] {
@@ -47,8 +52,6 @@
   --sl-color-bg-inline-code: var(--background-elevated);
   --sl-color-bg-accent:   var(--importance-primary-accessory);
 
-  /* Typography */
-  --sl-font: 'Rosario', sans-serif;
   /* --sl-font-mono is left at its Starlight default (no mono token in apps/web) */
 }
 
@@ -79,6 +82,4 @@
   --sl-color-bg-inline-code: var(--background-elevated);
   --sl-color-bg-accent:   var(--importance-primary-accessory);
 
-  /* Typography */
-  --sl-font: 'Rosario', sans-serif;
 }
