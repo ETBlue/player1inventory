@@ -90,6 +90,9 @@ For each component page, include:
 
 ### Page: `components/button.mdx` (has live demo — add anatomy, do/don't, a11y)
 ### Page: `components/badge.mdx` (placeholder)
+- User-color badges (tags) vs. system-color badges (vendor/recipe) — visual differentiation rules
+- Badge click behavior rules across views (consistent interaction model)
+
 ### Page: `components/card.mdx` (placeholder)
 
 ---
@@ -126,6 +129,22 @@ For each component page, include:
 - Form-level errors (top-of-form summary)
 - Page-level errors (404, 500, network)
 - Toast/alert errors (transient vs. persistent)
+
+### Page: `patterns/object-detail.mdx` (new)
+- Top bar anatomy and visuals for object detail pages
+- Background elevation relative to list pages
+- Back behavior: unsaved changes dialog, when to show
+- Location history management on tab switch
+
+### Page: `patterns/search-and-create.mdx` (new)
+- Search input behavior (when to show, debounce, clear)
+- Creating a new object from a search result
+- Consistency rules across item/tag/vendor/recipe/shelf
+
+### Page: `patterns/object-cards.mdx` (new)
+- Object card anatomy in settings pages
+- Delete button position and behavior
+- Differentiation between object types (item/tag/vendor/recipe/shelf) in list vs. detail views
 
 ---
 
@@ -187,7 +206,7 @@ For each component page, include:
 Add to sidebar:
 1. `{ label: 'Principles', slug: 'principles' }` — before Tokens
 2. Under Tokens: `effects`, `theming`, `layout`
-3. Under Patterns: `navigation`, `error-states`
+3. Under Patterns: `navigation`, `error-states`, `object-detail`, `search-and-create`, `object-cards`
 4. `{ label: 'Governance', slug: 'governance' }` — after Voice & Tone
 
 ---
