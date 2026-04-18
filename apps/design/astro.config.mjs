@@ -15,6 +15,7 @@ export default defineConfig({
         github: 'https://github.com/ETBlue/player1inventory',
       },
       sidebar: [
+        { label: 'Principles', slug: 'principles' },
         {
           label: 'Tokens',
           items: [
