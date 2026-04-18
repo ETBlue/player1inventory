@@ -46,6 +46,52 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 <Badge className="bg-teal-inverse border-teal-accessory text-teal-foreground" />
 ```
 
+## When to use each group
+
+| You need to... | Reach for... |
+|----------------|-------------|
+| Set a page, card, or toolbar background | `background-base`, `background-surface`, `background-elevated` |
+| Color text (body copy, labels, headings) | `foreground-muted`, `foreground-default`, `foreground-emphasized` |
+| Color borders and dividers | `accessory-muted`, `accessory-default`, `accessory-emphasized` |
+| Style a primary action button or CTA | `importance-primary` + `importance-primary-foreground` |
+| Indicate a destructive action (delete, remove) | `importance-destructive` + `importance-destructive-foreground` |
+| Show an inventory status (ok / warning / error / inactive) | `status-ok`, `status-warning`, `status-error`, `status-inactive` and their `-inverse` / `-foreground` variants |
+| Color a tag badge | A hue token: `orange`, `teal`, `blue`, etc. |
+
+**Background group** — use the three elevation layers to create visual hierarchy without shadows. Base is the page, surface is for cards and list items, elevated is for toolbars, popovers, and sticky headers.
+
+**Foreground group** — muted for metadata and placeholder text, default for body copy, emphasized for headings and high-contrast labels. Avoid hardcoding `text-white` or `text-black` — use `foreground-colorless-inverse` and `foreground-colorless` instead.
+
+**Accessory group** — borders, dividers, and decorative rules. Use muted for subtle separators, default for standard borders, emphasized for interactive or prominent borders.
+
+**Importance group** — semantic CTA colors for buttons and interactive elements. Primary is the main action, secondary is a softer action, destructive is for irreversible actions, neutral is the default non-opinionated style.
+
+**Status group** — feedback and inventory state. Use the inverse variant for card/section backgrounds, the base for icon fills and progress bars, and the foreground variant for text on a neutral surface.
+
+**Hue group** — exclusively for tag badge colors. Ten hues cover the full spectrum so each tag type can have a distinct color. Use inverse (tint) variants for most badges; solid variants for emphasis or active state.
+
+## Semantic vs primitive
+
+Always reach for **semantic tokens** when building components. Semantic tokens carry intent — they adapt to light/dark mode automatically and communicate meaning (e.g. "this is a primary action" or "this item is expiring").
+
+```tsx
+// Correct — semantic intent, adapts to theme
+<button className="bg-importance-primary text-foreground-colorless-inverse" />
+
+// Wrong — raw hue value, breaks in dark mode and carries no meaning
+<button className="bg-teal" />
+```
+
+**The one exception is tag badges.** Hue tokens (`orange`, `teal`, `blue`, etc.) are the correct primitive choice for tag color assignment because the purpose _is_ to assign a visual hue, not to express a semantic state. Use the full set of hue variants (`base`, `-inverse`, `-foreground`, `-accessory`) to style the badge itself.
+
+```tsx
+// Correct — hue primitives used intentionally for tag colorization
+<Badge className="bg-teal-inverse border-teal-accessory text-teal-foreground" />
+<Badge className="bg-teal" />  // solid variant for active/selected
+```
+
+Never use raw OKLCH values or Tailwind's built-in color scale (e.g. `bg-blue-500`) — those bypass the token system and will not respond to theme changes.
+
 ## Dark mode
 
 All tokens are defined in both `:root` (light) and `.dark` (dark) selectors.

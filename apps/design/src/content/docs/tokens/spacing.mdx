@@ -2,4 +2,83 @@
 title: Spacing
 ---
 
-TODO: Add content.
+Player 1 Inventory uses **Tailwind's default 4px-base spacing scale** with no custom CSS variables. All spacing is expressed through utility classes — `p-`, `m-`, `gap-`, `space-`, `px-`, `py-`, etc.
+
+No custom spacing tokens are defined. The standard scale provides enough resolution for all current needs.
+
+## The scale
+
+Tailwind's spacing scale maps numeric values to rem multiples of 4px:
+
+| Class suffix | px equivalent | rem |
+|-------------|--------------|-----|
+| `0.5` | 2px | 0.125rem |
+| `1` | 4px | 0.25rem |
+| `1.5` | 6px | 0.375rem |
+| `2` | 8px | 0.5rem |
+| `3` | 12px | 0.75rem |
+| `4` | 16px | 1rem |
+| `5` | 20px | 1.25rem |
+| `6` | 24px | 1.5rem |
+| `8` | 32px | 2rem |
+| `10` | 40px | 2.5rem |
+| `12` | 48px | 3rem |
+| `16` | 64px | 4rem |
+
+## Semantic groupings
+
+Although there are no named tokens, three informal tiers emerge from actual usage in components:
+
+### Tight — 4–8px (`1`–`2`)
+
+Used for internal component spacing: icon-to-label gaps, inline badge margins, button padding, and intra-row whitespace. Keeps related elements visually grouped.
+
+```tsx
+<div className="flex items-center gap-1">   {/* icon + label */}
+<div className="flex flex-wrap gap-1.5">   {/* badge row */}
+<button className="px-3 py-1.5">          {/* small button */}
+```
+
+### Default — 8–16px (`2`–`4`)
+
+The workhorse tier. Used for list item padding, card internal padding, vertical spacing between form fields, and gaps between sibling sections.
+
+```tsx
+<div className="space-y-2">    {/* form field stack */}
+<div className="px-3 py-2">   {/* list item / row padding */}
+<div className="gap-4">       {/* sibling section gap */}
+```
+
+### Loose — 24px+ (`6`+)
+
+Used for page-level whitespace, empty-state illustrations, and section separation. Applied sparingly — most layout density comes from the tighter tiers.
+
+```tsx
+<div className="py-16 gap-6">   {/* empty-state vertical centering */}
+<div className="py-12">         {/* "no results" padding */}
+<div className="p-6">          {/* modal / dialog body */}
+```
+
+## Most-used utilities
+
+Based on actual component usage, these are the spacing utilities that appear most frequently:
+
+| Utility | Frequency | Typical context |
+|---------|-----------|----------------|
+| `gap-2` | Very high | Flex rows — icon+label, badge rows, button groups |
+| `space-y-2` | High | Vertical stacks — form fields, settings sections |
+| `px-3` | High | List item and row horizontal padding |
+| `py-2` | High | List item and row vertical padding |
+| `mb-2` | High | Inline margin below a heading or label |
+| `space-y-4` | Medium | Looser vertical stacks — card sections |
+| `gap-1` | Medium | Very tight icon clusters |
+| `gap-4` | Medium | Wider flex layouts |
+| `py-4` | Medium | Taller rows and panel padding |
+| `p-4` | Medium | Card body padding |
+
+## Rules of thumb
+
+- **Prefer `gap-*` over `space-*`** when the container is a flex or grid layout — it handles edge children correctly.
+- **Use `space-y-*` for vertical stacks** inside non-flex containers (e.g. a `div` with block children).
+- **Match padding to component density** — tight for UI chrome (toolbars, badges), default for content rows, loose for empty states and dialogs.
+- **Do not invent custom spacing values** (e.g. `p-[18px]`) — always snap to the nearest step on the 4px scale.

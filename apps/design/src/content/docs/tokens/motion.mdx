@@ -2,4 +2,75 @@
 title: Motion
 ---
 
-TODO: Add content.
+Player 1 Inventory uses **Tailwind's default transition utilities** — no custom motion tokens are defined. Transitions are applied selectively to interactive elements; the majority of the UI is static.
+
+The design philosophy favors restraint: motion should confirm interactions, not decorate them.
+
+## Transition patterns
+
+Three transition types appear in the codebase:
+
+### `transition-colors` — color state changes
+
+Used on interactive elements where the color (background, border, text) changes on hover or focus. The most semantically targeted option.
+
+```tsx
+<button className="transition-colors hover:bg-importance-primary-accessory" />
+```
+
+### `transition-all` — general transitions
+
+Used where multiple properties may change simultaneously (e.g. a button that changes size, color, and opacity together). Apply with care — it captures every animatable property, which can be expensive.
+
+```tsx
+<div className="transition-all" />
+```
+
+### `transition-opacity` and `transition-transform`
+
+Used for show/hide and translate animations — fade-ins, slide-ins, and collapsible panel reveals.
+
+```tsx
+<div className="transition-opacity opacity-0 group-hover:opacity-100" />
+<div className="transition-transform -translate-y-1 hover:translate-y-0" />
+```
+
+## Duration
+
+The single duration value used across the codebase is `duration-300` (300ms). This applies to all transition types.
+
+```tsx
+<button className="transition-colors duration-300" />
+```
+
+300ms is long enough to be perceptible without feeling sluggish — appropriate for panel reveals and color shifts. For near-instant feedback (hover highlights), the default Tailwind duration (150ms) is acceptable without an explicit `duration-*` class.
+
+## Easing
+
+No custom `ease-*` classes are used. Tailwind's default `ease-in-out` applies to all transitions.
+
+## Reduced-motion
+
+The app respects the OS-level `prefers-reduced-motion` setting. This rule in `apps/web/src/index.css` collapses all animations and transitions to near-zero duration:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+```
+
+This is a global catch-all — no per-component reduced-motion logic is needed. When adding new animated components, write them as normal Tailwind transitions and the global rule will handle accessibility automatically.
+
+## Guidelines
+
+- **Prefer `transition-colors`** over `transition-all` when only color changes — it is more performant and explicit.
+- **Use `duration-300`** for panel-level transitions (collapsibles, drawers). Omit the duration class for hover highlights to get the faster default.
+- **Do not add motion for decoration** — transitions should confirm an interaction or reveal a state change, not attract attention.
+- **Do not worry about reduced-motion per-component** — the global CSS rule handles it.

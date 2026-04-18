@@ -24,6 +24,9 @@ export default defineConfig({
             { label: 'Typography', slug: 'tokens/typography' },
             { label: 'Spacing', slug: 'tokens/spacing' },
             { label: 'Motion', slug: 'tokens/motion' },
+            { label: 'Effects', slug: 'tokens/effects' },
+            { label: 'Theming', slug: 'tokens/theming' },
+            { label: 'Layout', slug: 'tokens/layout' },
           ],
         },
         {

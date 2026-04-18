@@ -1,0 +1,77 @@
+---
+title: Effects
+---
+
+This page covers the visual effects layer: border radius, shadows, and elevation. Together these determine how surfaces are distinguished from each other and from the page background.
+
+## Border radius
+
+The app uses **Tailwind's default `rounded-*` utilities** — no custom radius tokens are defined. Four values account for nearly all usage:
+
+| Class | Value | When to use |
+|-------|-------|-------------|
+| `rounded-xs` | 2px | Tight inset badges, micro chips |
+| `rounded-sm` | 4px | **Default for most UI elements** — buttons, inputs, list items, cards |
+| `rounded-md` | 6px | Slightly softer cards, dialogs, popovers |
+| `rounded-lg` | 8px | Large panels and sheets |
+| `rounded-full` | 9999px | Circular avatars, pill badges, icon buttons |
+
+`rounded-sm` is the dominant value — it appears on buttons, input fields, and list row containers. It signals interactivity without looking overly rounded.
+
+`rounded-full` is used for pill-shaped tag badges and circular icon-only buttons.
+
+Corner overrides (`rounded-tl`, `rounded-tr`, `rounded-bl`, `rounded-br`) appear where one side of a surface is flush against an edge — for example, a left-bar indicator on a status card.
+
+## Shadows
+
+Three custom shadow tokens are defined in `apps/web/src/design-tokens/shadows.css` via `@theme`:
+
+| Token | Value | Tailwind class |
+|-------|-------|----------------|
+| `--shadow-sm` | `0 1px 2px 0 rgb(0 0 0 / 0.05)` | `shadow-sm` |
+| `--shadow-md` | `0 4px 6px -1px rgb(0 0 0 / 0.1)` | `shadow-md` |
+| `--shadow-lg` | `0 10px 15px -3px rgb(0 0 0 / 0.1)` | `shadow-lg` |
+
+### When to use each
+
+**`shadow-sm`** — subtle lift for cards and interactive rows on a surface background. Use when the element needs to feel slightly raised but the background-layer hierarchy already carries the primary elevation signal.
+
+**`shadow-md`** — standard elevation for floating elements such as dropdown menus, date pickers, and search suggestion panels. Clearly separates the element from the page.
+
+**`shadow-lg`** — strong elevation for modals, sheets, and full-screen dialogs. Use sparingly — most UI never needs this level.
+
+## Elevation
+
+**Shadows are supplementary.** The primary elevation mechanism in this app is the **three-layer background system**:
+
+| Layer | Token | Tailwind class | Used for |
+|-------|-------|----------------|---------|
+| Base | `--background-base` | `bg-background-base` | Page background, list container |
+| Surface | `--background-surface` | `bg-background-surface` | Cards, list items, panels |
+| Elevated | `--background-elevated` | `bg-background-elevated` | Toolbars, sticky headers, popovers |
+
+In light mode the layers step from L=90% → L=95% → L=98% (OKLCH), making elevated surfaces progressively lighter. In dark mode they step from L=20% → L=30% → L=40%, making elevated surfaces progressively lighter against a dark base.
+
+This means a card (`bg-background-surface`) placed on a page background (`bg-background-base`) reads as elevated **without any shadow at all** — the background color difference does the work. Shadows are then added only when a physical sense of floating is needed (dropdowns, modals).
+
+```tsx
+// Background elevation — the default approach
+<div className="bg-background-base">           {/* Page */}
+  <div className="bg-background-surface">      {/* Card */}
+    <div className="bg-background-elevated">   {/* Toolbar inside card */}
+    </div>
+  </div>
+</div>
+
+// Shadow added for floating panels only
+<div className="bg-background-elevated shadow-md rounded-md">
+  {/* Dropdown / popover */}
+</div>
+```
+
+## Rules of thumb
+
+- Establish hierarchy with background layers first; add shadows only when float is needed.
+- Use `rounded-sm` as the default radius; use `rounded-full` for pills and circles.
+- Do not mix both elevated background and a heavy shadow on the same element — one signal is enough.
+- Avoid `shadow-lg` outside of full-screen dialogs and sheets.

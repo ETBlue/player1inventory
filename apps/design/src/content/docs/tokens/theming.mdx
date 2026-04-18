@@ -1,0 +1,120 @@
+---
+title: Theming
+---
+
+Player 1 Inventory supports **three theme states**: light, dark, and system (auto-detects OS preference). Both light and dark modes are fully implemented — every token has a value for both.
+
+## How it works
+
+### Token switching
+
+All color tokens are defined in two blocks inside `apps/web/src/design-tokens/theme.css`:
+
+```css
+/* Light mode — applied by default */
+:root {
+  --background-base: oklch(90% 4% 85);
+  --foreground-default: oklch(35% 8% 85);
+  /* … */
+}
+
+/* Dark mode — overrides when .dark is on <html> */
+.dark,
+[data-theme='dark'] {
+  --background-base: oklch(20% 2% 85);
+  --foreground-default: oklch(90% 6% 85);
+  /* … */
+}
+```
+
+When the `.dark` class is present on `<html>`, every token resolves to its dark-mode value. The `[data-theme='dark']` selector covers the Starlight design guide site. No component-level theming is needed — switching the class on `<html>` updates the entire UI simultaneously.
+
+### Anti-flash script
+
+Themes are applied by an inline `<script>` in `apps/web/index.html` that runs **before React loads** and before the browser paints. This prevents the flash of wrong theme that would occur if theme initialization happened inside a React effect.
+
+The script reads `localStorage.getItem('theme-preference')`, checks `matchMedia('(prefers-color-scheme: dark)')` for the system state, then adds or removes the `dark` class on `<html>` immediately. It also writes `window.__THEME_INIT__` so the React hook can read the already-applied state without recalculating.
+
+### localStorage key
+
+The user's preference is stored under the key `theme-preference` in `localStorage`. Valid values are `'light'`, `'dark'`, and `'system'`.
+
+## The `useTheme` hook
+
+Import `useTheme` from `@/hooks/useTheme` to read or change the theme in any component:
+
+```tsx
+import { useTheme } from '@/hooks/useTheme'
+
+function ThemeToggle() {
+  const { preference, theme, setPreference } = useTheme()
+
+  // preference: 'light' | 'dark' | 'system'
+  // The user's stored choice. Use this to show the active state in a toggle UI.
+
+  // theme: 'light' | 'dark'
+  // The theme actually applied to the page. Use this for conditional rendering
+  // (e.g. swapping a logo variant).
+
+  // setPreference: (pref: 'light' | 'dark' | 'system') => void
+  // Updates localStorage and immediately applies the new theme.
+
+  return (
+    <button onClick={() => setPreference(preference === 'dark' ? 'light' : 'dark')}>
+      {theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+    </button>
+  )
+}
+```
+
+The hook also listens for OS-level theme changes via `matchMedia`. When preference is `'system'`, toggling the OS dark mode setting updates `theme` in real time without requiring a page reload.
+
+## Three-state preference
+
+| Preference value | Behavior |
+|-----------------|---------|
+| `'light'` | Always light, regardless of OS |
+| `'dark'` | Always dark, regardless of OS |
+| `'system'` | Follows OS preference; updates in real time |
+
+The default preference is `'system'`.
+
+## Rules for adding new tokens
+
+When adding a new CSS custom property to the token system:
+
+1. **Always define both light and dark values.** Add the property to both the `:root` block and the `.dark, [data-theme='dark']` block in `theme.css`.
+2. **Map to a Tailwind utility** in the `@theme inline` block so components can use `bg-`, `text-`, or `border-` classes.
+3. **Use OKLCH format.** Adjust the L channel for contrast — target L=35–55% in light mode and L=75–85% in dark mode for text tokens; L=90–98% light / L=20–40% dark for background tokens.
+4. **Test in both modes** before merging.
+
+```css
+/* Example: adding a new token */
+
+:root {
+  --my-new-token: oklch(60% 20% 195);  /* light value */
+}
+
+.dark,
+[data-theme='dark'] {
+  --my-new-token: oklch(75% 20% 195);  /* dark value */
+}
+
+@theme inline {
+  --color-my-new-token: var(--my-new-token);  /* → bg-my-new-token, text-my-new-token */
+}
+```
+
+## Do not use dark: prefix
+
+Because all tokens already switch via CSS custom properties, the `dark:` Tailwind prefix is **rarely needed**. Reaching for `dark:` is a signal that you may be bypassing the token system.
+
+```tsx
+// Wrong — hardcoded values that bypass tokens
+<div className="bg-white dark:bg-gray-900" />
+
+// Correct — semantic token that adapts automatically
+<div className="bg-background-surface" />
+```
+
+The only legitimate use of `dark:` is for one-off non-token properties that genuinely differ between modes and don't warrant a new token (e.g. a specific icon opacity tweak).
