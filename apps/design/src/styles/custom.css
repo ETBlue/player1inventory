@@ -1,5 +1,11 @@
+/* Load Rosario font (same source as apps/web) */
+@import url('https://fonts.googleapis.com/css2?family=Rosario:ital,wght@0,300..700;1,300..700&display=swap');
+
+/* Tailwind utilities only — skip preflight/reset to avoid clashing with Starlight's base styles */
+@import 'tailwindcss/utilities';
+
 /* Import source of truth from apps/web — no copy-paste */
-@import '../../../web/src/design-tokens/theme.css';
+@import '../../../web/src/design-tokens/index.css';
 
 /*
   Map app CSS variables → Starlight CSS variables.
@@ -12,9 +18,6 @@
   - Accessories (borders): --accessory-muted / --accessory-default / --accessory-emphasized
   - Font: Rosario (sans-serif), defined as --font-rosario in index.css @theme block
 */
-
-/* Load Rosario font (same source as apps/web) */
-@import url('https://fonts.googleapis.com/css2?family=Rosario:ital,wght@0,300..700;1,300..700&display=swap');
 
 /* ── Light mode ─────────────────────────────────────────────── */
 :root,

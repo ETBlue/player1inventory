@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 import react from '@astrojs/react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -62,6 +63,7 @@ export default defineConfig({
     react(),
   ],
   vite: {
+    plugins: [tailwindcss()],
     resolve: {
       alias: {
         '@web': path.resolve(__dirname, '../web/src'),
