@@ -116,8 +116,9 @@
   --hue-rose-inverse: oklch(95% 4% 355);
 }
 
-/* Dark mode overrides */
-.dark {
+/* Dark mode overrides — .dark for the web app, [data-theme='dark'] for Starlight */
+.dark,
+[data-theme='dark'] {
   --overlay: oklch(90% 4% 85);
   --outline: oklch(75% 20% 195);
 
