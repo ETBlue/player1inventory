@@ -26,8 +26,8 @@ src/design-tokens/
 **Background layers:**
 Three-level system for surface elevation hierarchy:
 - `--background-base` / `bg-background-base`: Base page background
-- `--background-surface` / `bg-background-surface`: Cards, panels, list items
-- `--background-elevated` / `bg-background-elevated`: Toolbars, headers, popovers, elevated elements
+- `--background-surface` / `bg-background-surface`: Toolbars, sticky headers, popovers
+- `--background-elevated` / `bg-background-elevated`: Cards, panels, list items
 
 Light mode: L=90% → L=95% → L=98% (progressively lighter in OKLCH)
 Dark mode: L=20% → L=30% → L=40% (progressively lighter in OKLCH)
@@ -102,8 +102,8 @@ Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
 ```tsx
 // Background layers
 <div className="bg-background-base">         {/* Page */}
-  <div className="bg-background-surface">    {/* Card/list item */}
-    <div className="bg-background-elevated"> {/* Toolbar/header */}
+  <div className="bg-background-surface">    {/* Toolbar/header */}
+    <div className="bg-background-elevated"> {/* Card/list item */}
 
 // Status-aware components
 <Card variant="ok">        {/* bg-status-ok-inverse + green left bar */}

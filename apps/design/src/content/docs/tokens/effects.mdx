@@ -46,25 +46,25 @@ Three custom shadow tokens are defined in `apps/web/src/design-tokens/shadows.cs
 
 | Layer | Token | Tailwind class | Used for |
 |-------|-------|----------------|---------|
-| Base | `--background-base` | `bg-background-base` | Page background, list container |
-| Surface | `--background-surface` | `bg-background-surface` | Cards, list items, panels |
-| Elevated | `--background-elevated` | `bg-background-elevated` | Toolbars, sticky headers, popovers |
+| Base | `--background-base` | `bg-background-base` | Page background |
+| Surface | `--background-surface` | `bg-background-surface` | Toolbars, sticky headers, popovers |
+| Elevated | `--background-elevated` | `bg-background-elevated` | Cards, list items, panels |
 
 In light mode the layers step from L=90% → L=95% → L=98% (OKLCH), making elevated surfaces progressively lighter. In dark mode they step from L=20% → L=30% → L=40%, making elevated surfaces progressively lighter against a dark base.
 
-This means a card (`bg-background-surface`) placed on a page background (`bg-background-base`) reads as elevated **without any shadow at all** — the background color difference does the work. Shadows are then added only when a physical sense of floating is needed (dropdowns, modals).
+This means a card (`bg-background-elevated`) placed on a page background (`bg-background-base`) reads as elevated **without any shadow at all** — the background color difference does the work. Shadows are then added only when a physical sense of floating is needed (dropdowns, modals).
 
 ```tsx
 // Background elevation — the default approach
 <div className="bg-background-base">           {/* Page */}
-  <div className="bg-background-surface">      {/* Card */}
-    <div className="bg-background-elevated">   {/* Toolbar inside card */}
-    </div>
+  <div className="bg-background-surface">      {/* Toolbar / header */}
+  </div>
+  <div className="bg-background-elevated">     {/* Card / list item */}
   </div>
 </div>
 
 // Shadow added for floating panels only
-<div className="bg-background-elevated shadow-md rounded-md">
+<div className="bg-background-surface shadow-md rounded-md">
   {/* Dropdown / popover */}
 </div>
 ```
