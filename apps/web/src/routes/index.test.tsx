@@ -829,8 +829,8 @@ describe('Home page filtering integration', () => {
     // Then the tag badge uses the bold (non-inverse) variant
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
-      expect(badge.className).not.toContain('bg-blue-inverse')
-      expect(badge.className).toContain('bg-blue')
+      expect(badge.className).not.toContain('bg-tag-blue-inverse')
+      expect(badge.className).toContain('bg-tag-blue')
     })
   })
 
@@ -867,7 +867,7 @@ describe('Home page filtering integration', () => {
     // Then the tag badge uses the tint variant
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
-      expect(badge.className).toContain('bg-blue-inverse')
+      expect(badge.className).toContain('bg-tag-blue-inverse')
     })
   })
 

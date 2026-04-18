@@ -68,52 +68,52 @@
   --status-error-inverse: oklch(97% 10% 20);
   --status-inactive-inverse: oklch(97% 2% 85);
 
-  /* Hue colors — light mode */
+  /* Tag colors — light mode */
   /* All normalized to L=55% for perceptual balance and WCAG AA on white (4.5:1 minimum) */
-  --hue-orange: oklch(65% 40% 40);
-  --hue-brown: oklch(65% 20% 65);
-  --hue-green: oklch(65% 25% 140);
-  --hue-teal: oklch(65% 25% 170);
-  --hue-cyan: oklch(65% 30% 215);
-  --hue-blue: oklch(65% 30% 250);
-  --hue-indigo: oklch(65% 30% 280);
-  --hue-purple: oklch(65% 35% 300);
-  --hue-pink: oklch(65% 40% 330);
-  --hue-rose: oklch(65% 40% 355);
+  --tag-orange: oklch(65% 40% 40);
+  --tag-brown: oklch(65% 20% 65);
+  --tag-green: oklch(65% 25% 140);
+  --tag-teal: oklch(65% 25% 170);
+  --tag-cyan: oklch(65% 30% 215);
+  --tag-blue: oklch(65% 30% 250);
+  --tag-indigo: oklch(65% 30% 280);
+  --tag-purple: oklch(65% 35% 300);
+  --tag-pink: oklch(65% 40% 330);
+  --tag-rose: oklch(65% 40% 355);
 
-  --hue-orange-foreground: oklch(55% 40% 40);
-  --hue-brown-foreground: oklch(55% 20% 65);
-  --hue-green-foreground: oklch(55% 25% 140);
-  --hue-teal-foreground: oklch(55% 25% 170);
-  --hue-cyan-foreground: oklch(55% 30% 215);
-  --hue-blue-foreground: oklch(55% 30% 250);
-  --hue-indigo-foreground: oklch(55% 30% 280);
-  --hue-purple-foreground: oklch(55% 35% 300);
-  --hue-pink-foreground: oklch(55% 40% 330);
-  --hue-rose-foreground: oklch(55% 40% 355);
+  --tag-orange-foreground: oklch(55% 40% 40);
+  --tag-brown-foreground: oklch(55% 20% 65);
+  --tag-green-foreground: oklch(55% 25% 140);
+  --tag-teal-foreground: oklch(55% 25% 170);
+  --tag-cyan-foreground: oklch(55% 30% 215);
+  --tag-blue-foreground: oklch(55% 30% 250);
+  --tag-indigo-foreground: oklch(55% 30% 280);
+  --tag-purple-foreground: oklch(55% 35% 300);
+  --tag-pink-foreground: oklch(55% 40% 330);
+  --tag-rose-foreground: oklch(55% 40% 355);
 
-  --hue-orange-accessory: oklch(75% 20% 40);
-  --hue-brown-accessory: oklch(75% 20% 65);
-  --hue-green-accessory: oklch(75% 20% 140);
-  --hue-teal-accessory: oklch(75% 20% 170);
-  --hue-cyan-accessory: oklch(75% 20% 215);
-  --hue-blue-accessory: oklch(75% 20% 250);
-  --hue-indigo-accessory: oklch(75% 20% 280);
-  --hue-purple-accessory: oklch(75% 20% 300);
-  --hue-pink-accessory: oklch(75% 20% 330);
-  --hue-rose-accessory: oklch(75% 20% 355);
+  --tag-orange-accessory: oklch(75% 20% 40);
+  --tag-brown-accessory: oklch(75% 20% 65);
+  --tag-green-accessory: oklch(75% 20% 140);
+  --tag-teal-accessory: oklch(75% 20% 170);
+  --tag-cyan-accessory: oklch(75% 20% 215);
+  --tag-blue-accessory: oklch(75% 20% 250);
+  --tag-indigo-accessory: oklch(75% 20% 280);
+  --tag-purple-accessory: oklch(75% 20% 300);
+  --tag-pink-accessory: oklch(75% 20% 330);
+  --tag-rose-accessory: oklch(75% 20% 355);
 
-  /* Hue tints — light mode */
-  --hue-orange-inverse: oklch(95% 4% 40);
-  --hue-brown-inverse: oklch(95% 4% 65);
-  --hue-green-inverse: oklch(95% 4% 140);
-  --hue-teal-inverse: oklch(95% 4% 170);
-  --hue-cyan-inverse: oklch(95% 4% 215);
-  --hue-blue-inverse: oklch(95% 4% 250);
-  --hue-indigo-inverse: oklch(95% 4% 280);
-  --hue-purple-inverse: oklch(95% 4% 300);
-  --hue-pink-inverse: oklch(95% 4% 330);
-  --hue-rose-inverse: oklch(95% 4% 355);
+  /* Tag tints — light mode */
+  --tag-orange-inverse: oklch(95% 4% 40);
+  --tag-brown-inverse: oklch(95% 4% 65);
+  --tag-green-inverse: oklch(95% 4% 140);
+  --tag-teal-inverse: oklch(95% 4% 170);
+  --tag-cyan-inverse: oklch(95% 4% 215);
+  --tag-blue-inverse: oklch(95% 4% 250);
+  --tag-indigo-inverse: oklch(95% 4% 280);
+  --tag-purple-inverse: oklch(95% 4% 300);
+  --tag-pink-inverse: oklch(95% 4% 330);
+  --tag-rose-inverse: oklch(95% 4% 355);
 }
 
 /* Dark mode overrides — .dark for the web app, [data-theme='dark'] for Starlight */
@@ -187,52 +187,52 @@
   --status-error-inverse: oklch(40% 10% 20);
   --status-inactive-inverse: oklch(40% 2% 85);
 
-  /* Hue colors — dark mode */
+  /* Tag colors — dark mode */
   /* All normalized to L=75% for perceptual balance and WCAG AA on dark background (4.5:1 minimum) */
-  --hue-orange: oklch(75% 40% 40);
-  --hue-brown: oklch(75% 30% 65);
-  --hue-green: oklch(75% 30% 140);
-  --hue-teal: oklch(75% 30% 170);
-  --hue-cyan: oklch(75% 30% 215);
-  --hue-blue: oklch(75% 35% 250);
-  --hue-indigo: oklch(75% 35% 280);
-  --hue-purple: oklch(75% 30% 300);
-  --hue-pink: oklch(75% 35% 330);
-  --hue-rose: oklch(75% 40% 355);
+  --tag-orange: oklch(75% 40% 40);
+  --tag-brown: oklch(75% 30% 65);
+  --tag-green: oklch(75% 30% 140);
+  --tag-teal: oklch(75% 30% 170);
+  --tag-cyan: oklch(75% 30% 215);
+  --tag-blue: oklch(75% 35% 250);
+  --tag-indigo: oklch(75% 35% 280);
+  --tag-purple: oklch(75% 30% 300);
+  --tag-pink: oklch(75% 35% 330);
+  --tag-rose: oklch(75% 40% 355);
 
-  --hue-orange-foreground: oklch(85% 40% 40);
-  --hue-brown-foreground: oklch(85% 30% 65);
-  --hue-green-foreground: oklch(85% 30% 140);
-  --hue-teal-foreground: oklch(85% 30% 170);
-  --hue-cyan-foreground: oklch(85% 30% 215);
-  --hue-blue-foreground: oklch(85% 35% 250);
-  --hue-indigo-foreground: oklch(85% 35% 280);
-  --hue-purple-foreground: oklch(85% 30% 300);
-  --hue-pink-foreground: oklch(85% 35% 330);
-  --hue-rose-foreground: oklch(85% 40% 355);
+  --tag-orange-foreground: oklch(85% 40% 40);
+  --tag-brown-foreground: oklch(85% 30% 65);
+  --tag-green-foreground: oklch(85% 30% 140);
+  --tag-teal-foreground: oklch(85% 30% 170);
+  --tag-cyan-foreground: oklch(85% 30% 215);
+  --tag-blue-foreground: oklch(85% 35% 250);
+  --tag-indigo-foreground: oklch(85% 35% 280);
+  --tag-purple-foreground: oklch(85% 30% 300);
+  --tag-pink-foreground: oklch(85% 35% 330);
+  --tag-rose-foreground: oklch(85% 40% 355);
 
-  --hue-orange-accessory: oklch(65% 20% 40);
-  --hue-brown-accessory: oklch(65% 20% 65);
-  --hue-green-accessory: oklch(65% 20% 140);
-  --hue-teal-accessory: oklch(65% 20% 170);
-  --hue-cyan-accessory: oklch(65% 20% 215);
-  --hue-blue-accessory: oklch(65% 20% 250);
-  --hue-indigo-accessory: oklch(65% 20% 280);
-  --hue-purple-accessory: oklch(65% 20% 300);
-  --hue-pink-accessory: oklch(65% 20% 330);
-  --hue-rose-accessory: oklch(65% 20% 355);
+  --tag-orange-accessory: oklch(65% 20% 40);
+  --tag-brown-accessory: oklch(65% 20% 65);
+  --tag-green-accessory: oklch(65% 20% 140);
+  --tag-teal-accessory: oklch(65% 20% 170);
+  --tag-cyan-accessory: oklch(65% 20% 215);
+  --tag-blue-accessory: oklch(65% 20% 250);
+  --tag-indigo-accessory: oklch(65% 20% 280);
+  --tag-purple-accessory: oklch(65% 20% 300);
+  --tag-pink-accessory: oklch(65% 20% 330);
+  --tag-rose-accessory: oklch(65% 20% 355);
 
-  /* Hue tints — dark mode */
-  --hue-orange-inverse: oklch(35% 4% 40);
-  --hue-brown-inverse: oklch(35% 4% 65);
-  --hue-green-inverse: oklch(35% 4% 140);
-  --hue-teal-inverse: oklch(35% 4% 170);
-  --hue-cyan-inverse: oklch(35% 4% 215);
-  --hue-blue-inverse: oklch(35% 4% 250);
-  --hue-indigo-inverse: oklch(35% 4% 280);
-  --hue-purple-inverse: oklch(35% 4% 300);
-  --hue-pink-inverse: oklch(35% 4% 330);
-  --hue-rose-inverse: oklch(35% 4% 355);
+  /* Tag tints — dark mode */
+  --tag-orange-inverse: oklch(35% 4% 40);
+  --tag-brown-inverse: oklch(35% 4% 65);
+  --tag-green-inverse: oklch(35% 4% 140);
+  --tag-teal-inverse: oklch(35% 4% 170);
+  --tag-cyan-inverse: oklch(35% 4% 215);
+  --tag-blue-inverse: oklch(35% 4% 250);
+  --tag-indigo-inverse: oklch(35% 4% 280);
+  --tag-purple-inverse: oklch(35% 4% 300);
+  --tag-pink-inverse: oklch(35% 4% 330);
+  --tag-rose-inverse: oklch(35% 4% 355);
 }
 
 /* Map to Tailwind utilities */
@@ -311,50 +311,50 @@
   --color-status-error-inverse: var(--status-error-inverse);
   --color-status-inactive-inverse: var(--status-inactive-inverse);
 
-  /* Hue color utilities */
-  --color-orange: var(--hue-orange);
-  --color-brown: var(--hue-brown);
-  --color-green: var(--hue-green);
-  --color-teal: var(--hue-teal);
-  --color-cyan: var(--hue-cyan);
-  --color-blue: var(--hue-blue);
-  --color-indigo: var(--hue-indigo);
-  --color-purple: var(--hue-purple);
-  --color-pink: var(--hue-pink);
-  --color-rose: var(--hue-rose);
+  /* Tag color utilities */
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-brown: var(--tag-brown);
+  --color-tag-green: var(--tag-green);
+  --color-tag-teal: var(--tag-teal);
+  --color-tag-cyan: var(--tag-cyan);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-indigo: var(--tag-indigo);
+  --color-tag-purple: var(--tag-purple);
+  --color-tag-pink: var(--tag-pink);
+  --color-tag-rose: var(--tag-rose);
 
-  --color-orange-foreground: var(--hue-orange-foreground);
-  --color-brown-foreground: var(--hue-brown-foreground);
-  --color-green-foreground: var(--hue-green-foreground);
-  --color-teal-foreground: var(--hue-teal-foreground);
-  --color-cyan-foreground: var(--hue-cyan-foreground);
-  --color-blue-foreground: var(--hue-blue-foreground);
-  --color-indigo-foreground: var(--hue-indigo-foreground);
-  --color-purple-foreground: var(--hue-purple-foreground);
-  --color-pink-foreground: var(--hue-pink-foreground);
-  --color-rose-foreground: var(--hue-rose-foreground);
+  --color-tag-orange-foreground: var(--tag-orange-foreground);
+  --color-tag-brown-foreground: var(--tag-brown-foreground);
+  --color-tag-green-foreground: var(--tag-green-foreground);
+  --color-tag-teal-foreground: var(--tag-teal-foreground);
+  --color-tag-cyan-foreground: var(--tag-cyan-foreground);
+  --color-tag-blue-foreground: var(--tag-blue-foreground);
+  --color-tag-indigo-foreground: var(--tag-indigo-foreground);
+  --color-tag-purple-foreground: var(--tag-purple-foreground);
+  --color-tag-pink-foreground: var(--tag-pink-foreground);
+  --color-tag-rose-foreground: var(--tag-rose-foreground);
 
-  --color-orange-accessory: var(--hue-orange-accessory);
-  --color-brown-accessory: var(--hue-brown-accessory);
-  --color-green-accessory: var(--hue-green-accessory);
-  --color-teal-accessory: var(--hue-teal-accessory);
-  --color-cyan-accessory: var(--hue-cyan-accessory);
-  --color-blue-accessory: var(--hue-blue-accessory);
-  --color-indigo-accessory: var(--hue-indigo-accessory);
-  --color-purple-accessory: var(--hue-purple-accessory);
-  --color-pink-accessory: var(--hue-pink-accessory);
-  --color-rose-accessory: var(--hue-rose-accessory);
+  --color-tag-orange-accessory: var(--tag-orange-accessory);
+  --color-tag-brown-accessory: var(--tag-brown-accessory);
+  --color-tag-green-accessory: var(--tag-green-accessory);
+  --color-tag-teal-accessory: var(--tag-teal-accessory);
+  --color-tag-cyan-accessory: var(--tag-cyan-accessory);
+  --color-tag-blue-accessory: var(--tag-blue-accessory);
+  --color-tag-indigo-accessory: var(--tag-indigo-accessory);
+  --color-tag-purple-accessory: var(--tag-purple-accessory);
+  --color-tag-pink-accessory: var(--tag-pink-accessory);
+  --color-tag-rose-accessory: var(--tag-rose-accessory);
 
-  --color-orange-inverse: var(--hue-orange-inverse);
-  --color-brown-inverse: var(--hue-brown-inverse);
-  --color-green-inverse: var(--hue-green-inverse);
-  --color-teal-inverse: var(--hue-teal-inverse);
-  --color-cyan-inverse: var(--hue-cyan-inverse);
-  --color-blue-inverse: var(--hue-blue-inverse);
-  --color-indigo-inverse: var(--hue-indigo-inverse);
-  --color-purple-inverse: var(--hue-purple-inverse);
-  --color-pink-inverse: var(--hue-pink-inverse);
-  --color-rose-inverse: var(--hue-rose-inverse);
+  --color-tag-orange-inverse: var(--tag-orange-inverse);
+  --color-tag-brown-inverse: var(--tag-brown-inverse);
+  --color-tag-green-inverse: var(--tag-green-inverse);
+  --color-tag-teal-inverse: var(--tag-teal-inverse);
+  --color-tag-cyan-inverse: var(--tag-cyan-inverse);
+  --color-tag-blue-inverse: var(--tag-blue-inverse);
+  --color-tag-indigo-inverse: var(--tag-indigo-inverse);
+  --color-tag-purple-inverse: var(--tag-purple-inverse);
+  --color-tag-pink-inverse: var(--tag-pink-inverse);
+  --color-tag-rose-inverse: var(--tag-rose-inverse);
 }
 
 /* Inventory-specific state mappings */

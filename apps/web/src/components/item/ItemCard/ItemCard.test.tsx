@@ -1201,8 +1201,8 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge uses the tint variant
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal-inverse')
-    expect(badge).not.toHaveClass('bg-teal')
+    expect(badge).toHaveClass('bg-tag-teal-inverse')
+    expect(badge).not.toHaveClass('bg-tag-teal')
   })
 
   it('renders tag badge with bold variant when tag is in activeTagIds', async () => {
@@ -1218,8 +1218,8 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge uses the bold variant
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal')
-    expect(badge).not.toHaveClass('bg-teal-inverse')
+    expect(badge).toHaveClass('bg-tag-teal')
+    expect(badge).not.toHaveClass('bg-tag-teal-inverse')
   })
 
   it('renders tag badge with tint variant when activeTagIds is not provided', async () => {
@@ -1230,7 +1230,7 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge defaults to tint (unselected appearance)
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal-inverse')
+    expect(badge).toHaveClass('bg-tag-teal-inverse')
   })
 })
 

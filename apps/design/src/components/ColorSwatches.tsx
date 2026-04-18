@@ -105,30 +105,30 @@ const accessorySwatches: SwatchEntry[] = [
   { token: '--accessory-muted', label: 'Muted' },
 ]
 
-const hueSwatches: SwatchEntry[] = [
-  { token: '--hue-orange', label: 'Orange' },
-  { token: '--hue-brown', label: 'Brown' },
-  { token: '--hue-green', label: 'Green' },
-  { token: '--hue-teal', label: 'Teal' },
-  { token: '--hue-cyan', label: 'Cyan' },
-  { token: '--hue-blue', label: 'Blue' },
-  { token: '--hue-indigo', label: 'Indigo' },
-  { token: '--hue-purple', label: 'Purple' },
-  { token: '--hue-pink', label: 'Pink' },
-  { token: '--hue-rose', label: 'Rose' },
+const tagSwatches: SwatchEntry[] = [
+  { token: '--tag-orange', label: 'Orange' },
+  { token: '--tag-brown', label: 'Brown' },
+  { token: '--tag-green', label: 'Green' },
+  { token: '--tag-teal', label: 'Teal' },
+  { token: '--tag-cyan', label: 'Cyan' },
+  { token: '--tag-blue', label: 'Blue' },
+  { token: '--tag-indigo', label: 'Indigo' },
+  { token: '--tag-purple', label: 'Purple' },
+  { token: '--tag-pink', label: 'Pink' },
+  { token: '--tag-rose', label: 'Rose' },
 ]
 
-const hueInverseSwatches: SwatchEntry[] = [
-  { token: '--hue-orange-inverse', label: 'Orange Tint' },
-  { token: '--hue-brown-inverse', label: 'Brown Tint' },
-  { token: '--hue-green-inverse', label: 'Green Tint' },
-  { token: '--hue-teal-inverse', label: 'Teal Tint' },
-  { token: '--hue-cyan-inverse', label: 'Cyan Tint' },
-  { token: '--hue-blue-inverse', label: 'Blue Tint' },
-  { token: '--hue-indigo-inverse', label: 'Indigo Tint' },
-  { token: '--hue-purple-inverse', label: 'Purple Tint' },
-  { token: '--hue-pink-inverse', label: 'Pink Tint' },
-  { token: '--hue-rose-inverse', label: 'Rose Tint' },
+const tagInverseSwatches: SwatchEntry[] = [
+  { token: '--tag-orange-inverse', label: 'Orange Tint' },
+  { token: '--tag-brown-inverse', label: 'Brown Tint' },
+  { token: '--tag-green-inverse', label: 'Green Tint' },
+  { token: '--tag-teal-inverse', label: 'Teal Tint' },
+  { token: '--tag-cyan-inverse', label: 'Cyan Tint' },
+  { token: '--tag-blue-inverse', label: 'Blue Tint' },
+  { token: '--tag-indigo-inverse', label: 'Indigo Tint' },
+  { token: '--tag-purple-inverse', label: 'Purple Tint' },
+  { token: '--tag-pink-inverse', label: 'Pink Tint' },
+  { token: '--tag-rose-inverse', label: 'Rose Tint' },
 ]
 
 export function ColorSwatches() {
@@ -142,8 +142,8 @@ export function ColorSwatches() {
       <SwatchGroup heading="Importance — Accessory" entries={importanceAccessorySwatches} />
       <SwatchGroup heading="Status — Solid" entries={statusSwatches} />
       <SwatchGroup heading="Status — Inverse (tinted backgrounds)" entries={statusInverseSwatches} />
-      <SwatchGroup heading="Hue palette — Solid (tag colors)" entries={hueSwatches} />
-      <SwatchGroup heading="Hue palette — Inverse (light tints)" entries={hueInverseSwatches} />
+      <SwatchGroup heading="Tag palette — Solid (tag colors)" entries={tagSwatches} />
+      <SwatchGroup heading="Tag palette — Inverse (light tints)" entries={tagInverseSwatches} />
     </div>
   )
 }

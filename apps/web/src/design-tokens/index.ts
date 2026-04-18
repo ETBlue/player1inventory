@@ -3,44 +3,44 @@ import type { TagColor } from '@/types'
 
 export const colors = {
   orange: {
-    inverse: 'var(--color-orange-inverse)',
-    default: 'var(--color-orange)',
+    inverse: 'var(--color-tag-orange-inverse)',
+    default: 'var(--color-tag-orange)',
   },
   green: {
-    inverse: 'var(--color-green-inverse)',
-    default: 'var(--color-green)',
+    inverse: 'var(--color-tag-green-inverse)',
+    default: 'var(--color-tag-green)',
   },
   teal: {
-    inverse: 'var(--color-teal-inverse)',
-    default: 'var(--color-teal)',
+    inverse: 'var(--color-tag-teal-inverse)',
+    default: 'var(--color-tag-teal)',
   },
   blue: {
-    inverse: 'var(--color-blue-inverse)',
-    default: 'var(--color-blue)',
+    inverse: 'var(--color-tag-blue-inverse)',
+    default: 'var(--color-tag-blue)',
   },
   indigo: {
-    inverse: 'var(--color-indigo-inverse)',
-    default: 'var(--color-indigo)',
+    inverse: 'var(--color-tag-indigo-inverse)',
+    default: 'var(--color-tag-indigo)',
   },
   purple: {
-    inverse: 'var(--color-purple-inverse)',
-    default: 'var(--color-purple)',
+    inverse: 'var(--color-tag-purple-inverse)',
+    default: 'var(--color-tag-purple)',
   },
   pink: {
-    inverse: 'var(--color-pink-inverse)',
-    default: 'var(--color-pink)',
+    inverse: 'var(--color-tag-pink-inverse)',
+    default: 'var(--color-tag-pink)',
   },
   brown: {
-    inverse: 'var(--color-brown-inverse)',
-    default: 'var(--color-brown)',
+    inverse: 'var(--color-tag-brown-inverse)',
+    default: 'var(--color-tag-brown)',
   },
   cyan: {
-    inverse: 'var(--color-cyan-inverse)',
-    default: 'var(--color-cyan)',
+    inverse: 'var(--color-tag-cyan-inverse)',
+    default: 'var(--color-tag-cyan)',
   },
   rose: {
-    inverse: 'var(--color-rose-inverse)',
-    default: 'var(--color-rose)',
+    inverse: 'var(--color-tag-rose-inverse)',
+    default: 'var(--color-tag-rose)',
   },
 } as const
 

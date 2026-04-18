@@ -18,7 +18,7 @@ The tokens are defined in `apps/web/src/design-tokens/theme.css` and imported di
 | **Accessory** | Borders and decorative elements |
 | **Importance** | Semantic CTA colors (primary, secondary, destructive, neutral) |
 | **Status** | Feedback states (ok, warning, error, inactive) |
-| **Hue** | Tag colors — 10 hues with solid and inverse (tint) variants |
+| **Tag** | Tag colors — 10 hues with solid and inverse (tint) variants |
 
 ## Swatches
 
@@ -42,8 +42,8 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 <div className="bg-status-ok-inverse text-status-ok-foreground" />
 
 // Hue colors (tags)
-<Badge className="bg-teal text-teal-inverse" />
-<Badge className="bg-teal-inverse border-teal-accessory text-teal-foreground" />
+<Badge className="bg-tag-teal text-tag-teal-inverse" />
+<Badge className="bg-tag-teal-inverse border-tag-teal-accessory text-tag-teal-foreground" />
 ```
 
 ## When to use each group
@@ -68,7 +68,7 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 
 **Status group** — feedback and inventory state. Use the inverse variant for card/section backgrounds, the base for icon fills and progress bars, and the foreground variant for text on a neutral surface.
 
-**Hue group** — exclusively for tag badge colors. Ten hues cover the full spectrum so each tag type can have a distinct color. Use inverse (tint) variants for most badges; solid variants for emphasis or active state.
+**Tag group** — exclusively for tag badge colors. Ten hues cover the full spectrum so each tag type can have a distinct color. Use inverse (tint) variants for most badges; solid variants for emphasis or active state.
 
 ## Semantic vs primitive
 
@@ -78,16 +78,16 @@ Always reach for **semantic tokens** when building components. Semantic tokens c
 // Correct — semantic intent, adapts to theme
 <button className="bg-importance-primary text-foreground-colorless-inverse" />
 
-// Wrong — raw hue value, breaks in dark mode and carries no meaning
-<button className="bg-teal" />
+// Wrong — raw tag hue value used on a button; carries no semantic meaning
+<button className="bg-tag-teal" />
 ```
 
-**The one exception is tag badges.** Hue tokens (`orange`, `teal`, `blue`, etc.) are the correct primitive choice for tag color assignment because the purpose _is_ to assign a visual hue, not to express a semantic state. Use the full set of hue variants (`base`, `-inverse`, `-foreground`, `-accessory`) to style the badge itself.
+**The one exception is tag badges.** Tag tokens (`orange`, `teal`, `blue`, etc.) are the correct primitive choice for tag color assignment because the purpose _is_ to assign a visual hue, not to express a semantic state. Use the full set of tag variants (`base`, `-inverse`, `-foreground`, `-accessory`) to style the badge itself.
 
 ```tsx
-// Correct — hue primitives used intentionally for tag colorization
-<Badge className="bg-teal-inverse border-teal-accessory text-teal-foreground" />
-<Badge className="bg-teal" />  // solid variant for active/selected
+// Correct — tag color tokens used intentionally for tag colorization
+<Badge className="bg-tag-teal-inverse border-tag-teal-accessory text-tag-teal-foreground" />
+<Badge className="bg-tag-teal" />  // solid variant for active/selected
 ```
 
 Never use raw OKLCH values or Tailwind's built-in color scale (e.g. `bg-blue-500`) — those bypass the token system and will not respond to theme changes.
