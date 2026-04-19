@@ -261,10 +261,13 @@ export function ShelfSettingsPage() {
               variant="neutral-ghost"
               size="icon"
               className="lg:w-auto lg:mr-3"
+              aria-label="Go back"
               onClick={goBack}
             >
               <ArrowLeft className="h-4 w-4" />
-              <span className="hidden lg:inline">Go back</span>
+              <span className="hidden lg:inline" aria-hidden="true">
+                Go back
+              </span>
             </Button>
             <h1>Shelves</h1>
           </div>
