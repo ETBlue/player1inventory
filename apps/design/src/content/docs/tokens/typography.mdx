@@ -4,20 +4,18 @@ title: Typography
 
 import { TypographyScale } from '../../../components/TypographyScale'
 
-Player 1 Inventory uses a single typeface — **Rosario** — for all UI text. It is a humanist sans-serif that balances warmth with legibility, well-suited for a grocery app where users scan lists quickly.
+Player 1 Inventory uses the **system sans-serif** stack for all UI text. The system font renders crisply at any weight, requires no network request, and matches the native feel of each platform — appropriate for a grocery app where users scan lists quickly.
 
-## Font
+**Rosario** (`--font-rosario`) is reserved for the app name only, consistent with its sister app GW2 Inventory. It is a humanist serif that adds warmth and brand recognition to the wordmark without affecting readability of content text.
 
-| Property | Value |
-|----------|-------|
-| Typeface | Rosario |
-| Source | Google Fonts |
-| Weights loaded | 300 – 700 (variable font, italic included) |
-| Fallback | `sans-serif` |
-| CSS variable | `--font-rosario` (mapped as `font-rosario` Tailwind utility via `@theme`) |
-| Starlight variable | `--sl-font` |
+## Fonts
 
-The font is loaded via a `<link>` in `apps/web/index.html` and replicated in `apps/design/src/styles/custom.css` so both the app and the design guide share the same typeface.
+| Role | Typeface | Token | How to use |
+|------|----------|-------|------------|
+| App name only | Rosario | `--font-rosario` / `font-rosario` Tailwind utility | Apply only to the app name wordmark |
+| All UI text | System sans-serif | (none — browser default) | No class needed; `body` inherits automatically |
+
+Rosario is loaded via a `<link>` in `apps/web/index.html` and mapped as a Tailwind utility via `@theme`:
 
 ```css
 /* apps/web/src/design-tokens/index.css */
@@ -25,6 +23,14 @@ The font is loaded via a `<link>` in `apps/web/index.html` and replicated in `ap
   --font-rosario: 'Rosario', sans-serif;
 }
 ```
+
+For the app name, apply the utility class:
+
+```tsx
+<span className="font-rosario">Player 1 Inventory</span>
+```
+
+All other text inherits the system sans-serif from `body` — no utility class needed.
 
 ## Type scale
 

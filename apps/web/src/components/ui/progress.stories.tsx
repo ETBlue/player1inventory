@@ -45,15 +45,15 @@ export const WithCustomColor: Story = {
       </div>
       <div>
         <p className="text-sm mb-2">Warning</p>
-        <Progress value={66} className="[&>div]:bg-status-warning" />
+        <Progress value={66} className="[&>div]:bg-status-warning-background" />
       </div>
       <div>
         <p className="text-sm mb-2">Error</p>
-        <Progress value={66} className="[&>div]:bg-status-error" />
+        <Progress value={66} className="[&>div]:bg-status-error-background" />
       </div>
       <div>
         <p className="text-sm mb-2">Success</p>
-        <Progress value={66} className="[&>div]:bg-status-ok" />
+        <Progress value={66} className="[&>div]:bg-status-ok-background" />
       </div>
     </div>
   ),

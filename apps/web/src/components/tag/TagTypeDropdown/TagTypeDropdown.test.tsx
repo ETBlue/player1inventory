@@ -202,7 +202,7 @@ describe('TagTypeDropdown', () => {
     // Then tag badges include tint variant class in their background
     const badges = screen.getAllByText(/vegetables|fruits/i)
     for (const badge of badges) {
-      expect(badge.className).toMatch(/bg-blue-inverse/)
+      expect(badge.className).toMatch(/bg-tag-blue-background-inverse/)
     }
   })
 
@@ -225,12 +225,14 @@ describe('TagTypeDropdown', () => {
 
     // Then selected tag (Vegetables) has solid variant — bg class has no 'tint'
     const selectedBadge = screen.getByText(/vegetables/i)
-    expect(selectedBadge.className).toMatch(/bg-blue\b/)
-    expect(selectedBadge.className).not.toMatch(/bg-blue-inverse/)
+    expect(selectedBadge.className).toMatch(/bg-tag-blue-background\b/)
+    expect(selectedBadge.className).not.toMatch(
+      /bg-tag-blue-background-inverse/,
+    )
 
     // And unselected tag (Fruits) has tint variant — bg class includes 'tint'
     const unselectedBadge = screen.getByText(/fruits/i)
-    expect(unselectedBadge.className).toMatch(/bg-blue-inverse/)
+    expect(unselectedBadge.className).toMatch(/bg-tag-blue-background-inverse/)
   })
 
   it('displays tags in the order received from parent', async () => {

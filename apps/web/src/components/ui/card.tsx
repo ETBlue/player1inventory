@@ -7,10 +7,10 @@ const cardVariants = cva('text-foreground-default', {
   variants: {
     variant: {
       default: 'bg-background-elevated',
-      ok: 'bg-status-ok-inverse',
-      warning: 'bg-status-warning-inverse',
-      error: 'bg-status-error-inverse',
-      inactive: 'bg-status-inactive-inverse',
+      ok: 'bg-status-ok-background-inverse',
+      warning: 'bg-status-warning-background-inverse',
+      error: 'bg-status-error-background-inverse',
+      inactive: 'bg-status-inactive-background-inverse',
     },
   },
   defaultVariants: {
@@ -38,10 +38,10 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
         <div
           className={cn(
             'absolute left-0 top-0 bottom-0 w-1',
-            variant === 'ok' && 'bg-status-ok-muted',
-            variant === 'warning' && 'bg-status-warning-muted',
-            variant === 'error' && 'bg-status-error-muted',
-            variant === 'inactive' && 'bg-status-inactive-muted',
+            variant === 'ok' && 'bg-status-ok-background-muted',
+            variant === 'warning' && 'bg-status-warning-background-muted',
+            variant === 'error' && 'bg-status-error-background-muted',
+            variant === 'inactive' && 'bg-status-inactive-background-muted',
           )}
         />
       )}

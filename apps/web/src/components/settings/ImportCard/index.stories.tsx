@@ -66,7 +66,7 @@ function ImportingProgressStory() {
       <p className="text-sm text-foreground-muted">Importing Items…</p>
       <div className="w-full bg-muted rounded-full h-2">
         <div
-          className="bg-importance-primary h-2 rounded-full transition-all"
+          className="bg-importance-primary-background h-2 rounded-full transition-all"
           style={{ width: '50%' }}
         />
       </div>
@@ -78,7 +78,7 @@ function ImportingProgressStory() {
 function ImportErrorStory() {
   return (
     <div className="p-4 max-w-sm space-y-2">
-      <p className="text-sm text-importance-destructive">
+      <p className="text-sm text-importance-destructive-foreground">
         Import failed during Network error.
       </p>
       <button
@@ -94,7 +94,7 @@ function ImportErrorStory() {
 function ImportDoneStory() {
   return (
     <div className="p-4 max-w-sm">
-      <p className="text-sm text-ok">Import complete.</p>
+      <p className="text-sm text-status-ok-foreground">Import complete.</p>
     </div>
   )
 }

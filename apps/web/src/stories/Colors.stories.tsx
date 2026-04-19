@@ -323,22 +323,22 @@ export const AllColors: Story = {
         <div className="grid grid-cols-3 gap-4">
           <ThemeColorCard
             name="primary"
-            cssVar="var(--color-importance-primary)"
+            cssVar="var(--color-importance-primary-background)"
             usage="Primary actions, key interactive elements."
           />
           <ThemeColorCard
             name="secondary"
-            cssVar="var(--color-importance-secondary)"
+            cssVar="var(--color-importance-secondary-background)"
             usage="Secondary actions, supporting elements."
           />
           <ThemeColorCard
             name="destructive"
-            cssVar="var(--color-importance-destructive)"
+            cssVar="var(--color-importance-destructive-background)"
             usage="Destructive actions, warnings, errors."
           />
           <ThemeColorCard
             name="neutral"
-            cssVar="var(--color-importance-neutral)"
+            cssVar="var(--color-importance-neutral-background)"
             usage="Neutral actions, informational elements."
           />
         </div>
@@ -352,22 +352,22 @@ export const AllColors: Story = {
         <div className="grid grid-cols-3 gap-4">
           <SimpleColorCard
             name="ok"
-            cssVar="var(--color-status-ok)"
+            cssVar="var(--color-status-ok-background)"
             usage="Success states, positive feedback, items in stock."
           />
           <SimpleColorCard
             name="warning"
-            cssVar="var(--color-status-warning)"
+            cssVar="var(--color-status-warning-background)"
             usage="Warning states, items needing attention, low stock."
           />
           <SimpleColorCard
             name="error"
-            cssVar="var(--color-status-error)"
+            cssVar="var(--color-status-error-background)"
             usage="Error states, critical issues, expiring items."
           />
           <SimpleColorCard
             name="inactive"
-            cssVar="var(--color-status-inactive)"
+            cssVar="var(--color-status-inactive-background)"
             usage="Disabled states, inactive elements, out of stock items."
           />
         </div>

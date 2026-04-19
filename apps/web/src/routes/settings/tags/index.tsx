@@ -66,29 +66,29 @@ export const Route = createFileRoute('/settings/tags/')({
 })
 
 const TAG_COLOR_BORDER: Record<TagColor, string> = {
-  orange: 'border-orange',
-  brown: 'border-brown',
-  green: 'border-green',
-  teal: 'border-teal',
-  cyan: 'border-cyan',
-  blue: 'border-blue',
-  indigo: 'border-indigo',
-  purple: 'border-purple',
-  pink: 'border-pink',
-  rose: 'border-rose',
+  orange: 'border-tag-orange-accessory',
+  brown: 'border-tag-brown-accessory',
+  green: 'border-tag-green-accessory',
+  teal: 'border-tag-teal-accessory',
+  cyan: 'border-tag-cyan-accessory',
+  blue: 'border-tag-blue-accessory',
+  indigo: 'border-tag-indigo-accessory',
+  purple: 'border-tag-purple-accessory',
+  pink: 'border-tag-pink-accessory',
+  rose: 'border-tag-rose-accessory',
 }
 
 const TAG_COLOR_TEXT: Record<TagColor, string> = {
-  orange: 'text-orange',
-  brown: 'text-brown',
-  green: 'text-green',
-  teal: 'text-teal',
-  cyan: 'text-cyan',
-  blue: 'text-blue',
-  indigo: 'text-indigo',
-  purple: 'text-purple',
-  pink: 'text-pink',
-  rose: 'text-rose',
+  orange: 'text-tag-orange-foreground',
+  brown: 'text-tag-brown-foreground',
+  green: 'text-tag-green-foreground',
+  teal: 'text-tag-teal-foreground',
+  cyan: 'text-tag-cyan-foreground',
+  blue: 'text-tag-blue-foreground',
+  indigo: 'text-tag-indigo-foreground',
+  purple: 'text-tag-purple-foreground',
+  pink: 'text-tag-pink-foreground',
+  rose: 'text-tag-rose-foreground',
 }
 
 function DraggableTagBadge({

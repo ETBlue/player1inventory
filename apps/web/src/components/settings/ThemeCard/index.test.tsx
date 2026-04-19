@@ -143,11 +143,21 @@ describe('ThemeCard', () => {
     const lightButton = screen.getByRole('button', { name: 'Light' })
     const systemButton = screen.getByRole('button', { name: 'System' })
 
-    expect(darkButton.className).toContain('bg-importance-neutral')
-    expect(darkButton.className).toContain('border-importance-neutral')
-    expect(lightButton.className).toContain('border-importance-neutral')
-    expect(lightButton.className).not.toContain('bg-importance-neutral')
-    expect(systemButton.className).toContain('border-importance-neutral')
-    expect(systemButton.className).not.toContain('bg-importance-neutral')
+    expect(darkButton.className).toContain('bg-importance-neutral-background')
+    expect(darkButton.className).toContain(
+      'border-importance-neutral-background',
+    )
+    expect(lightButton.className).toContain(
+      'border-importance-neutral-background',
+    )
+    expect(lightButton.className).not.toContain(
+      'bg-importance-neutral-background',
+    )
+    expect(systemButton.className).toContain(
+      'border-importance-neutral-background',
+    )
+    expect(systemButton.className).not.toContain(
+      'bg-importance-neutral-background',
+    )
   })
 })

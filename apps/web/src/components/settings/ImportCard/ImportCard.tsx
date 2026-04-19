@@ -228,9 +228,9 @@ export function ImportCard() {
                       : '…',
                   })}
                 </p>
-                <div className="w-full bg-muted rounded-full h-2">
+                <div className="w-full bg-background-elevated rounded-full h-2">
                   <div
-                    className="bg-importance-primary h-2 rounded-full transition-all"
+                    className="bg-importance-primary-background h-2 rounded-full transition-all"
                     style={{
                       width: `${
                         importStatus.progress.totalBatches > 0
@@ -254,7 +254,7 @@ export function ImportCard() {
 
             {importStatus.phase === 'error' && (
               <div className="mt-2 space-y-2">
-                <p className="text-sm text-importance-destructive">
+                <p className="text-sm text-importance-destructive-foreground">
                   {t('settings.import.importError', {
                     entity: importStatus.errorEntity,
                   })}
@@ -276,7 +276,7 @@ export function ImportCard() {
             )}
 
             {importStatus.phase === 'done' && (
-              <p className="mt-2 text-sm text-ok">
+              <p className="mt-2 text-sm text-status-ok-foreground">
                 {t('settings.import.importDone')}
               </p>
             )}

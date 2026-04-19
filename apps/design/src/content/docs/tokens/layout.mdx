@@ -1,0 +1,120 @@
+---
+title: Layout
+---
+
+Player 1 Inventory is a **mobile-first** application. The default (unstyled) layout targets small screens; responsive modifiers (`lg:`) layer on desktop enhancements. No custom layout tokens are defined — all layout is done through Tailwind's default utilities.
+
+## Mobile-first approach
+
+The app is used primarily on phones while shopping or cooking. The baseline layout is optimized for a single-column vertical flow on a small screen. Desktop (`lg:`) breakpoint additions are primarily cosmetic — revealing labels next to icons, adjusting button widths — rather than restructuring the layout.
+
+```tsx
+// Desktop breakpoints reveal text that is hidden on mobile
+<Button size="icon" className="lg:w-auto lg:px-3">
+  <Plus />
+  <span className="hidden lg:inline">Add</span>
+</Button>
+
+// Navigation adapts from bottom bar (mobile) to sidebar (desktop)
+className="lg:flex lg:hidden"
+```
+
+## Breakpoints
+
+Tailwind's default breakpoints are available. Only two are actively used in the codebase:
+
+| Breakpoint | Width | Usage in app |
+|-----------|-------|-------------|
+| `sm` | 640px | Rare — occasional flex-row reflow on small tablets |
+| `md` | 768px | Occasional text size adjustments |
+| `lg` | 1024px | **Primary desktop breakpoint** — sidebar nav, label reveals, icon button expansion |
+| `xl` | 1280px | Not used |
+| `2xl` | 1536px | Not used |
+
+The `lg:` breakpoint is the single practical threshold between the mobile and desktop experiences.
+
+## Flex vs grid
+
+Both flex and grid are used, but for different purposes:
+
+### Flexbox — for rows and linear arrangements
+
+Flex is the default layout for most UI rows: toolbars, list items, badge rows, button groups. It handles horizontal alignment and `flex-1` expansion naturally.
+
+```tsx
+// Toolbar row
+<div className="flex items-center gap-2">
+  <span className="flex-1">{title}</span>
+  <Button />
+</div>
+
+// Badge/tag row (wrapping)
+<div className="flex flex-wrap gap-1.5">
+  {tags.map(tag => <Badge key={tag.id} />)}
+</div>
+```
+
+### Grid — for structured two-dimensional layouts
+
+Grid is used for page-level slot layouts (e.g. `grid-rows-[auto_1fr]` for a fixed toolbar + scrollable content area) and for multi-column settings forms.
+
+```tsx
+// Page layout: toolbar row + scrollable body
+<div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar */}</div>
+  <div className="overflow-y-auto">{/* Scrollable list */}</div>
+</div>
+
+// Settings form
+<div className="grid grid-cols-2 gap-4">
+  {/* … */}
+</div>
+```
+
+## Max-width and containers
+
+The app uses `max-w-*` constraints in dialogs, forms, and settings panels — not on the main list views, which stretch to fill the available width.
+
+| Class | Width | Where used |
+|-------|-------|-----------|
+| `max-w-sm` | 384px | Narrow confirmation dialogs |
+| `max-w-md` | 448px | Standard form dialogs |
+| `max-w-lg` | 512px | Wider dialogs |
+| `max-w-2xl` | 672px | Settings pages, onboarding panels |
+
+The `container` utility (with Tailwind's default breakpoint-responsive max-widths) appears in component-level centering contexts.
+
+## Page layout pattern
+
+The main list views (pantry, shopping, cooking) share a common two-slot page structure:
+
+```
+┌─────────────────────┐
+│  Fixed toolbar row  │  auto height
+├─────────────────────┤
+│                     │
+│  Scrollable list    │  1fr (fills remaining height)
+│                     │
+└─────────────────────┘
+```
+
+Implemented with CSS grid and container queries:
+
+```tsx
+<div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+The `h-[100cqh]` constrains the page to the container's query height rather than the full viewport, which avoids conflicts with browser chrome on mobile.
+
+## Rules of thumb
+
+- Design for mobile first — the default layout should work on a 375px screen.
+- Use `lg:` to add desktop enhancements, not to fix mobile layouts.
+- Use flex for linear rows and wrapping sets; use grid for two-dimensional page slots.
+- Apply `max-w-*` constraints to dialogs and forms, not to full-page lists.
+- Do not use custom pixel values for breakpoints — snap to `sm`/`md`/`lg`.

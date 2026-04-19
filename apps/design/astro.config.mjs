@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 import react from '@astrojs/react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -15,6 +16,7 @@ export default defineConfig({
         github: 'https://github.com/ETBlue/player1inventory',
       },
       sidebar: [
+        { label: 'Principles', slug: 'principles' },
         {
           label: 'Tokens',
           items: [
@@ -22,6 +24,9 @@ export default defineConfig({
             { label: 'Typography', slug: 'tokens/typography' },
             { label: 'Spacing', slug: 'tokens/spacing' },
             { label: 'Motion', slug: 'tokens/motion' },
+            { label: 'Effects', slug: 'tokens/effects' },
+            { label: 'Theming', slug: 'tokens/theming' },
+            { label: 'Layout', slug: 'tokens/layout' },
           ],
         },
         {
@@ -61,6 +66,7 @@ export default defineConfig({
     react(),
   ],
   vite: {
+    plugins: [tailwindcss()],
     resolve: {
       alias: {
         '@web': path.resolve(__dirname, '../web/src'),

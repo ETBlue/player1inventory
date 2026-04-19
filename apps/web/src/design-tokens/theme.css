@@ -21,10 +21,10 @@
 
   /* importance — light mode */
 
-  --importance-primary: oklch(60% 70% 195);
-  --importance-secondary: oklch(65% 20% 195);
-  --importance-destructive: oklch(60% 40% 350);
-  --importance-neutral: oklch(60% 6% 85);
+  --importance-primary-background: oklch(60% 70% 195);
+  --importance-secondary-background: oklch(65% 20% 195);
+  --importance-destructive-background: oklch(60% 40% 350);
+  --importance-neutral-background: oklch(60% 6% 85);
 
   --importance-primary-foreground: oklch(50% 70% 195);
   --importance-secondary-foreground: oklch(55% 20% 195);
@@ -38,15 +38,15 @@
 
   /* status — light mode */
 
-  --status-ok: oklch(65% 70% 120);
-  --status-warning: oklch(65% 50% 90);
-  --status-error: oklch(60% 30% 20);
-  --status-inactive: oklch(60% 4% 85);
+  --status-ok-background: oklch(65% 70% 120);
+  --status-warning-background: oklch(65% 50% 90);
+  --status-error-background: oklch(60% 30% 20);
+  --status-inactive-background: oklch(60% 4% 85);
 
-  --status-ok-muted: oklch(75% 70% 120);
-  --status-warning-muted: oklch(75% 50% 90);
-  --status-error-muted: oklch(70% 30% 20);
-  --status-inactive-muted: oklch(70% 4% 85);
+  --status-ok-background-muted: oklch(75% 70% 120);
+  --status-warning-background-muted: oklch(75% 50% 90);
+  --status-error-background-muted: oklch(70% 30% 20);
+  --status-inactive-background-muted: oklch(70% 4% 85);
 
   --status-ok-foreground: oklch(55% 70% 120);
   --status-warning-foreground: oklch(55% 50% 90);
@@ -63,61 +63,62 @@
   --status-error-accessory-muted: oklch(70% 5% 20);
   --status-inactive-accessory-muted: oklch(70% 2% 85);
 
-  --status-ok-inverse: oklch(97% 10% 120);
-  --status-warning-inverse: oklch(97% 10% 90);
-  --status-error-inverse: oklch(97% 10% 20);
-  --status-inactive-inverse: oklch(97% 2% 85);
+  --status-ok-background-inverse: oklch(97% 10% 120);
+  --status-warning-background-inverse: oklch(97% 10% 90);
+  --status-error-background-inverse: oklch(97% 10% 20);
+  --status-inactive-background-inverse: oklch(97% 2% 85);
 
-  /* Hue colors — light mode */
+  /* Tag colors — light mode */
   /* All normalized to L=55% for perceptual balance and WCAG AA on white (4.5:1 minimum) */
-  --hue-orange: oklch(65% 40% 40);
-  --hue-brown: oklch(65% 20% 65);
-  --hue-green: oklch(65% 25% 140);
-  --hue-teal: oklch(65% 25% 170);
-  --hue-cyan: oklch(65% 30% 215);
-  --hue-blue: oklch(65% 30% 250);
-  --hue-indigo: oklch(65% 30% 280);
-  --hue-purple: oklch(65% 35% 300);
-  --hue-pink: oklch(65% 40% 330);
-  --hue-rose: oklch(65% 40% 355);
+  --tag-orange-background: oklch(65% 40% 40);
+  --tag-brown-background: oklch(65% 20% 65);
+  --tag-green-background: oklch(65% 25% 140);
+  --tag-teal-background: oklch(65% 25% 170);
+  --tag-cyan-background: oklch(65% 30% 215);
+  --tag-blue-background: oklch(65% 30% 250);
+  --tag-indigo-background: oklch(65% 30% 280);
+  --tag-purple-background: oklch(65% 35% 300);
+  --tag-pink-background: oklch(65% 40% 330);
+  --tag-rose-background: oklch(65% 40% 355);
 
-  --hue-orange-foreground: oklch(55% 40% 40);
-  --hue-brown-foreground: oklch(55% 20% 65);
-  --hue-green-foreground: oklch(55% 25% 140);
-  --hue-teal-foreground: oklch(55% 25% 170);
-  --hue-cyan-foreground: oklch(55% 30% 215);
-  --hue-blue-foreground: oklch(55% 30% 250);
-  --hue-indigo-foreground: oklch(55% 30% 280);
-  --hue-purple-foreground: oklch(55% 35% 300);
-  --hue-pink-foreground: oklch(55% 40% 330);
-  --hue-rose-foreground: oklch(55% 40% 355);
+  --tag-orange-foreground: oklch(55% 40% 40);
+  --tag-brown-foreground: oklch(55% 20% 65);
+  --tag-green-foreground: oklch(55% 25% 140);
+  --tag-teal-foreground: oklch(55% 25% 170);
+  --tag-cyan-foreground: oklch(55% 30% 215);
+  --tag-blue-foreground: oklch(55% 30% 250);
+  --tag-indigo-foreground: oklch(55% 30% 280);
+  --tag-purple-foreground: oklch(55% 35% 300);
+  --tag-pink-foreground: oklch(55% 40% 330);
+  --tag-rose-foreground: oklch(55% 40% 355);
 
-  --hue-orange-accessory: oklch(75% 20% 40);
-  --hue-brown-accessory: oklch(75% 20% 65);
-  --hue-green-accessory: oklch(75% 20% 140);
-  --hue-teal-accessory: oklch(75% 20% 170);
-  --hue-cyan-accessory: oklch(75% 20% 215);
-  --hue-blue-accessory: oklch(75% 20% 250);
-  --hue-indigo-accessory: oklch(75% 20% 280);
-  --hue-purple-accessory: oklch(75% 20% 300);
-  --hue-pink-accessory: oklch(75% 20% 330);
-  --hue-rose-accessory: oklch(75% 20% 355);
+  --tag-orange-accessory: oklch(75% 20% 40);
+  --tag-brown-accessory: oklch(75% 20% 65);
+  --tag-green-accessory: oklch(75% 20% 140);
+  --tag-teal-accessory: oklch(75% 20% 170);
+  --tag-cyan-accessory: oklch(75% 20% 215);
+  --tag-blue-accessory: oklch(75% 20% 250);
+  --tag-indigo-accessory: oklch(75% 20% 280);
+  --tag-purple-accessory: oklch(75% 20% 300);
+  --tag-pink-accessory: oklch(75% 20% 330);
+  --tag-rose-accessory: oklch(75% 20% 355);
 
-  /* Hue tints — light mode */
-  --hue-orange-inverse: oklch(95% 4% 40);
-  --hue-brown-inverse: oklch(95% 4% 65);
-  --hue-green-inverse: oklch(95% 4% 140);
-  --hue-teal-inverse: oklch(95% 4% 170);
-  --hue-cyan-inverse: oklch(95% 4% 215);
-  --hue-blue-inverse: oklch(95% 4% 250);
-  --hue-indigo-inverse: oklch(95% 4% 280);
-  --hue-purple-inverse: oklch(95% 4% 300);
-  --hue-pink-inverse: oklch(95% 4% 330);
-  --hue-rose-inverse: oklch(95% 4% 355);
+  /* Tag tints — light mode */
+  --tag-orange-background-inverse: oklch(95% 4% 40);
+  --tag-brown-background-inverse: oklch(95% 4% 65);
+  --tag-green-background-inverse: oklch(95% 4% 140);
+  --tag-teal-background-inverse: oklch(95% 4% 170);
+  --tag-cyan-background-inverse: oklch(95% 4% 215);
+  --tag-blue-background-inverse: oklch(95% 4% 250);
+  --tag-indigo-background-inverse: oklch(95% 4% 280);
+  --tag-purple-background-inverse: oklch(95% 4% 300);
+  --tag-pink-background-inverse: oklch(95% 4% 330);
+  --tag-rose-background-inverse: oklch(95% 4% 355);
 }
 
-/* Dark mode overrides */
-.dark {
+/* Dark mode overrides — .dark for the web app, [data-theme='dark'] for Starlight */
+.dark,
+[data-theme='dark'] {
   --overlay: oklch(90% 4% 85);
   --outline: oklch(75% 20% 195);
 
@@ -139,10 +140,10 @@
 
   /* importance — dark mode */
 
-  --importance-primary: oklch(70% 70% 195);
-  --importance-secondary: oklch(70% 30% 195);
-  --importance-destructive: oklch(70% 40% 350);
-  --importance-neutral: oklch(75% 6% 85);
+  --importance-primary-background: oklch(70% 70% 195);
+  --importance-secondary-background: oklch(70% 30% 195);
+  --importance-destructive-background: oklch(70% 40% 350);
+  --importance-neutral-background: oklch(75% 6% 85);
 
   --importance-primary-foreground: oklch(80% 70% 195);
   --importance-secondary-foreground: oklch(80% 30% 195);
@@ -156,15 +157,15 @@
 
   /* status — dark mode */
 
-  --status-ok: oklch(75% 80% 120);
-  --status-warning: oklch(75% 70% 90);
-  --status-error: oklch(75% 30% 20);
-  --status-inactive: oklch(75% 2% 85);
+  --status-ok-background: oklch(75% 80% 120);
+  --status-warning-background: oklch(75% 70% 90);
+  --status-error-background: oklch(75% 30% 20);
+  --status-inactive-background: oklch(75% 2% 85);
 
-  --status-ok-muted: oklch(65% 80% 120);
-  --status-warning-muted: oklch(65% 70% 90);
-  --status-error-muted: oklch(65% 30% 20);
-  --status-inactive-muted: oklch(65% 2% 85);
+  --status-ok-background-muted: oklch(65% 80% 120);
+  --status-warning-background-muted: oklch(65% 70% 90);
+  --status-error-background-muted: oklch(65% 30% 20);
+  --status-inactive-background-muted: oklch(65% 2% 85);
 
   --status-ok-foreground: oklch(85% 80% 120);
   --status-warning-foreground: oklch(85% 70% 90);
@@ -181,57 +182,57 @@
   --status-error-accessory-muted: oklch(65% 5% 20);
   --status-inactive-accessory-muted: oklch(65% 1% 85);
 
-  --status-ok-inverse: oklch(40% 10% 120);
-  --status-warning-inverse: oklch(40% 10% 90);
-  --status-error-inverse: oklch(40% 10% 20);
-  --status-inactive-inverse: oklch(40% 2% 85);
+  --status-ok-background-inverse: oklch(40% 10% 120);
+  --status-warning-background-inverse: oklch(40% 10% 90);
+  --status-error-background-inverse: oklch(40% 10% 20);
+  --status-inactive-background-inverse: oklch(40% 2% 85);
 
-  /* Hue colors — dark mode */
+  /* Tag colors — dark mode */
   /* All normalized to L=75% for perceptual balance and WCAG AA on dark background (4.5:1 minimum) */
-  --hue-orange: oklch(75% 40% 40);
-  --hue-brown: oklch(75% 30% 65);
-  --hue-green: oklch(75% 30% 140);
-  --hue-teal: oklch(75% 30% 170);
-  --hue-cyan: oklch(75% 30% 215);
-  --hue-blue: oklch(75% 35% 250);
-  --hue-indigo: oklch(75% 35% 280);
-  --hue-purple: oklch(75% 30% 300);
-  --hue-pink: oklch(75% 35% 330);
-  --hue-rose: oklch(75% 40% 355);
+  --tag-orange-background: oklch(75% 40% 40);
+  --tag-brown-background: oklch(75% 30% 65);
+  --tag-green-background: oklch(75% 30% 140);
+  --tag-teal-background: oklch(75% 30% 170);
+  --tag-cyan-background: oklch(75% 30% 215);
+  --tag-blue-background: oklch(75% 35% 250);
+  --tag-indigo-background: oklch(75% 35% 280);
+  --tag-purple-background: oklch(75% 30% 300);
+  --tag-pink-background: oklch(75% 35% 330);
+  --tag-rose-background: oklch(75% 40% 355);
 
-  --hue-orange-foreground: oklch(85% 40% 40);
-  --hue-brown-foreground: oklch(85% 30% 65);
-  --hue-green-foreground: oklch(85% 30% 140);
-  --hue-teal-foreground: oklch(85% 30% 170);
-  --hue-cyan-foreground: oklch(85% 30% 215);
-  --hue-blue-foreground: oklch(85% 35% 250);
-  --hue-indigo-foreground: oklch(85% 35% 280);
-  --hue-purple-foreground: oklch(85% 30% 300);
-  --hue-pink-foreground: oklch(85% 35% 330);
-  --hue-rose-foreground: oklch(85% 40% 355);
+  --tag-orange-foreground: oklch(85% 40% 40);
+  --tag-brown-foreground: oklch(85% 30% 65);
+  --tag-green-foreground: oklch(85% 30% 140);
+  --tag-teal-foreground: oklch(85% 30% 170);
+  --tag-cyan-foreground: oklch(85% 30% 215);
+  --tag-blue-foreground: oklch(85% 35% 250);
+  --tag-indigo-foreground: oklch(85% 35% 280);
+  --tag-purple-foreground: oklch(85% 30% 300);
+  --tag-pink-foreground: oklch(85% 35% 330);
+  --tag-rose-foreground: oklch(85% 40% 355);
 
-  --hue-orange-accessory: oklch(65% 20% 40);
-  --hue-brown-accessory: oklch(65% 20% 65);
-  --hue-green-accessory: oklch(65% 20% 140);
-  --hue-teal-accessory: oklch(65% 20% 170);
-  --hue-cyan-accessory: oklch(65% 20% 215);
-  --hue-blue-accessory: oklch(65% 20% 250);
-  --hue-indigo-accessory: oklch(65% 20% 280);
-  --hue-purple-accessory: oklch(65% 20% 300);
-  --hue-pink-accessory: oklch(65% 20% 330);
-  --hue-rose-accessory: oklch(65% 20% 355);
+  --tag-orange-accessory: oklch(65% 20% 40);
+  --tag-brown-accessory: oklch(65% 20% 65);
+  --tag-green-accessory: oklch(65% 20% 140);
+  --tag-teal-accessory: oklch(65% 20% 170);
+  --tag-cyan-accessory: oklch(65% 20% 215);
+  --tag-blue-accessory: oklch(65% 20% 250);
+  --tag-indigo-accessory: oklch(65% 20% 280);
+  --tag-purple-accessory: oklch(65% 20% 300);
+  --tag-pink-accessory: oklch(65% 20% 330);
+  --tag-rose-accessory: oklch(65% 20% 355);
 
-  /* Hue tints — dark mode */
-  --hue-orange-inverse: oklch(35% 4% 40);
-  --hue-brown-inverse: oklch(35% 4% 65);
-  --hue-green-inverse: oklch(35% 4% 140);
-  --hue-teal-inverse: oklch(35% 4% 170);
-  --hue-cyan-inverse: oklch(35% 4% 215);
-  --hue-blue-inverse: oklch(35% 4% 250);
-  --hue-indigo-inverse: oklch(35% 4% 280);
-  --hue-purple-inverse: oklch(35% 4% 300);
-  --hue-pink-inverse: oklch(35% 4% 330);
-  --hue-rose-inverse: oklch(35% 4% 355);
+  /* Tag tints — dark mode */
+  --tag-orange-background-inverse: oklch(35% 4% 40);
+  --tag-brown-background-inverse: oklch(35% 4% 65);
+  --tag-green-background-inverse: oklch(35% 4% 140);
+  --tag-teal-background-inverse: oklch(35% 4% 170);
+  --tag-cyan-background-inverse: oklch(35% 4% 215);
+  --tag-blue-background-inverse: oklch(35% 4% 250);
+  --tag-indigo-background-inverse: oklch(35% 4% 280);
+  --tag-purple-background-inverse: oklch(35% 4% 300);
+  --tag-pink-background-inverse: oklch(35% 4% 330);
+  --tag-rose-background-inverse: oklch(35% 4% 355);
 }
 
 /* Map to Tailwind utilities */
@@ -264,10 +265,10 @@
   --color-popover-foreground: var(--foreground-default);
 
   /* by importance */
-  --color-importance-primary: var(--importance-primary);
-  --color-importance-secondary: var(--importance-secondary);
-  --color-importance-destructive: var(--importance-destructive);
-  --color-importance-neutral: var(--importance-neutral);
+  --color-importance-primary-background: var(--importance-primary-background);
+  --color-importance-secondary-background: var(--importance-secondary-background);
+  --color-importance-destructive-background: var(--importance-destructive-background);
+  --color-importance-neutral-background: var(--importance-neutral-background);
 
   --color-importance-primary-foreground: var(--importance-primary-foreground);
   --color-importance-secondary-foreground: var(--importance-secondary-foreground);
@@ -280,15 +281,15 @@
   --color-importance-neutral-accessory: var(--importance-neutral-accessory);
 
   /* by status */
-  --color-status-ok: var(--status-ok);
-  --color-status-warning: var(--status-warning);
-  --color-status-error: var(--status-error);
-  --color-status-inactive: var(--status-inactive);
+  --color-status-ok-background: var(--status-ok-background);
+  --color-status-warning-background: var(--status-warning-background);
+  --color-status-error-background: var(--status-error-background);
+  --color-status-inactive-background: var(--status-inactive-background);
 
-  --color-status-ok-muted: var(--status-ok-muted);
-  --color-status-warning-muted: var(--status-warning-muted);
-  --color-status-error-muted: var(--status-error-muted);
-  --color-status-inactive-muted: var(--status-inactive-muted);
+  --color-status-ok-background-muted: var(--status-ok-background-muted);
+  --color-status-warning-background-muted: var(--status-warning-background-muted);
+  --color-status-error-background-muted: var(--status-error-background-muted);
+  --color-status-inactive-background-muted: var(--status-inactive-background-muted);
 
   --color-status-ok-foreground: var(--status-ok-foreground);
   --color-status-warning-foreground: var(--status-warning-foreground);
@@ -305,63 +306,63 @@
   --color-status-error-accessory-muted: var(--status-error-accessory-muted);
   --color-status-inactive-accessory-muted: var(--status-inactive-accessory-muted);
 
-  --color-status-ok-inverse: var(--status-ok-inverse);
-  --color-status-warning-inverse: var(--status-warning-inverse);
-  --color-status-error-inverse: var(--status-error-inverse);
-  --color-status-inactive-inverse: var(--status-inactive-inverse);
+  --color-status-ok-background-inverse: var(--status-ok-background-inverse);
+  --color-status-warning-background-inverse: var(--status-warning-background-inverse);
+  --color-status-error-background-inverse: var(--status-error-background-inverse);
+  --color-status-inactive-background-inverse: var(--status-inactive-background-inverse);
 
-  /* Hue color utilities */
-  --color-orange: var(--hue-orange);
-  --color-brown: var(--hue-brown);
-  --color-green: var(--hue-green);
-  --color-teal: var(--hue-teal);
-  --color-cyan: var(--hue-cyan);
-  --color-blue: var(--hue-blue);
-  --color-indigo: var(--hue-indigo);
-  --color-purple: var(--hue-purple);
-  --color-pink: var(--hue-pink);
-  --color-rose: var(--hue-rose);
+  /* Tag color utilities */
+  --color-tag-orange-background: var(--tag-orange-background);
+  --color-tag-brown-background: var(--tag-brown-background);
+  --color-tag-green-background: var(--tag-green-background);
+  --color-tag-teal-background: var(--tag-teal-background);
+  --color-tag-cyan-background: var(--tag-cyan-background);
+  --color-tag-blue-background: var(--tag-blue-background);
+  --color-tag-indigo-background: var(--tag-indigo-background);
+  --color-tag-purple-background: var(--tag-purple-background);
+  --color-tag-pink-background: var(--tag-pink-background);
+  --color-tag-rose-background: var(--tag-rose-background);
 
-  --color-orange-foreground: var(--hue-orange-foreground);
-  --color-brown-foreground: var(--hue-brown-foreground);
-  --color-green-foreground: var(--hue-green-foreground);
-  --color-teal-foreground: var(--hue-teal-foreground);
-  --color-cyan-foreground: var(--hue-cyan-foreground);
-  --color-blue-foreground: var(--hue-blue-foreground);
-  --color-indigo-foreground: var(--hue-indigo-foreground);
-  --color-purple-foreground: var(--hue-purple-foreground);
-  --color-pink-foreground: var(--hue-pink-foreground);
-  --color-rose-foreground: var(--hue-rose-foreground);
+  --color-tag-orange-foreground: var(--tag-orange-foreground);
+  --color-tag-brown-foreground: var(--tag-brown-foreground);
+  --color-tag-green-foreground: var(--tag-green-foreground);
+  --color-tag-teal-foreground: var(--tag-teal-foreground);
+  --color-tag-cyan-foreground: var(--tag-cyan-foreground);
+  --color-tag-blue-foreground: var(--tag-blue-foreground);
+  --color-tag-indigo-foreground: var(--tag-indigo-foreground);
+  --color-tag-purple-foreground: var(--tag-purple-foreground);
+  --color-tag-pink-foreground: var(--tag-pink-foreground);
+  --color-tag-rose-foreground: var(--tag-rose-foreground);
 
-  --color-orange-accessory: var(--hue-orange-accessory);
-  --color-brown-accessory: var(--hue-brown-accessory);
-  --color-green-accessory: var(--hue-green-accessory);
-  --color-teal-accessory: var(--hue-teal-accessory);
-  --color-cyan-accessory: var(--hue-cyan-accessory);
-  --color-blue-accessory: var(--hue-blue-accessory);
-  --color-indigo-accessory: var(--hue-indigo-accessory);
-  --color-purple-accessory: var(--hue-purple-accessory);
-  --color-pink-accessory: var(--hue-pink-accessory);
-  --color-rose-accessory: var(--hue-rose-accessory);
+  --color-tag-orange-accessory: var(--tag-orange-accessory);
+  --color-tag-brown-accessory: var(--tag-brown-accessory);
+  --color-tag-green-accessory: var(--tag-green-accessory);
+  --color-tag-teal-accessory: var(--tag-teal-accessory);
+  --color-tag-cyan-accessory: var(--tag-cyan-accessory);
+  --color-tag-blue-accessory: var(--tag-blue-accessory);
+  --color-tag-indigo-accessory: var(--tag-indigo-accessory);
+  --color-tag-purple-accessory: var(--tag-purple-accessory);
+  --color-tag-pink-accessory: var(--tag-pink-accessory);
+  --color-tag-rose-accessory: var(--tag-rose-accessory);
 
-  --color-orange-inverse: var(--hue-orange-inverse);
-  --color-brown-inverse: var(--hue-brown-inverse);
-  --color-green-inverse: var(--hue-green-inverse);
-  --color-teal-inverse: var(--hue-teal-inverse);
-  --color-cyan-inverse: var(--hue-cyan-inverse);
-  --color-blue-inverse: var(--hue-blue-inverse);
-  --color-indigo-inverse: var(--hue-indigo-inverse);
-  --color-purple-inverse: var(--hue-purple-inverse);
-  --color-pink-inverse: var(--hue-pink-inverse);
-  --color-rose-inverse: var(--hue-rose-inverse);
+  --color-tag-orange-background-inverse: var(--tag-orange-background-inverse);
+  --color-tag-brown-background-inverse: var(--tag-brown-background-inverse);
+  --color-tag-green-background-inverse: var(--tag-green-background-inverse);
+  --color-tag-teal-background-inverse: var(--tag-teal-background-inverse);
+  --color-tag-cyan-background-inverse: var(--tag-cyan-background-inverse);
+  --color-tag-blue-background-inverse: var(--tag-blue-background-inverse);
+  --color-tag-indigo-background-inverse: var(--tag-indigo-background-inverse);
+  --color-tag-purple-background-inverse: var(--tag-purple-background-inverse);
+  --color-tag-pink-background-inverse: var(--tag-pink-background-inverse);
+  --color-tag-rose-background-inverse: var(--tag-rose-background-inverse);
 }
 
 /* Inventory-specific state mappings */
 :root {
-  --color-inventory-low-stock: var(--color-status-warning);
-  --color-inventory-expiring: var(--color-status-error);
-  --color-inventory-in-stock: var(--color-status-ok);
-  --color-inventory-out-of-stock: var(--color-status-inactive);
+  --color-inventory-low-stock: var(--color-status-warning-background);
+  --color-inventory-expiring: var(--color-status-error-background);
+  --color-inventory-in-stock: var(--color-status-ok-background);
+  --color-inventory-out-of-stock: var(--color-status-inactive-background);
 }
 
 body {

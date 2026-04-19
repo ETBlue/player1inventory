@@ -233,7 +233,7 @@ describe('ItemCard - Tag Sorting', () => {
     // Should be default foreground style (not error background)
     const messageEl = screen.getByText(/Expires in 30 days/i)
     expect(messageEl).toHaveClass('text-foreground')
-    expect(messageEl).not.toHaveClass('bg-status-error')
+    expect(messageEl).not.toHaveClass('bg-status-error-background')
   })
 
   it('shows warning style when within expiration threshold', async () => {
@@ -263,8 +263,8 @@ describe('ItemCard - Tag Sorting', () => {
     const messageEl = screen.getByText(/Expires in 3 days/i)
 
     // Should have warning style
-    expect(messageEl).toHaveClass('bg-status-error')
-    expect(messageEl).toHaveClass('text-status-error-inverse')
+    expect(messageEl).toHaveClass('bg-status-error-background')
+    expect(messageEl).toHaveClass('text-foreground-colorless-inverse')
 
     // Should show warning icon (TriangleAlert component)
     const icon = messageEl.querySelector('svg')
@@ -300,8 +300,8 @@ describe('ItemCard - Tag Sorting', () => {
     // Then badge shows plain foreground text, not error styling
     const messageEl = screen.getByText(/Expires in 6 days/i)
     expect(messageEl).toHaveClass('text-foreground')
-    expect(messageEl).not.toHaveClass('bg-status-error')
-    expect(messageEl).not.toHaveClass('text-status-error-inverse')
+    expect(messageEl).not.toHaveClass('bg-status-error-background')
+    expect(messageEl).not.toHaveClass('text-foreground-colorless-inverse')
 
     // And no TriangleAlert icon
     const icon = messageEl.querySelector('svg')
@@ -336,8 +336,8 @@ describe('ItemCard - Tag Sorting', () => {
 
     // Then badge shows error styling (regression guard)
     const messageEl = screen.getByText(/Expires in 2 days/i)
-    expect(messageEl).toHaveClass('bg-status-error')
-    expect(messageEl).toHaveClass('text-status-error-inverse')
+    expect(messageEl).toHaveClass('bg-status-error-background')
+    expect(messageEl).toHaveClass('text-foreground-colorless-inverse')
 
     // And TriangleAlert icon is present
     const icon = messageEl.querySelector('svg')
@@ -1201,8 +1201,8 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge uses the tint variant
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal-inverse')
-    expect(badge).not.toHaveClass('bg-teal')
+    expect(badge).toHaveClass('bg-tag-teal-background-inverse')
+    expect(badge).not.toHaveClass('bg-tag-teal-background')
   })
 
   it('renders tag badge with bold variant when tag is in activeTagIds', async () => {
@@ -1218,8 +1218,8 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge uses the bold variant
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal')
-    expect(badge).not.toHaveClass('bg-teal-inverse')
+    expect(badge).toHaveClass('bg-tag-teal-background')
+    expect(badge).not.toHaveClass('bg-tag-teal-background-inverse')
   })
 
   it('renders tag badge with tint variant when activeTagIds is not provided', async () => {
@@ -1230,7 +1230,7 @@ describe('ItemCard tag badge variants', () => {
 
     // Then badge defaults to tint (unselected appearance)
     const badge = screen.getByTestId('tag-badge-Dairy')
-    expect(badge).toHaveClass('bg-teal-inverse')
+    expect(badge).toHaveClass('bg-tag-teal-background-inverse')
   })
 })
 
@@ -1257,7 +1257,7 @@ describe('ItemCard - inactive item progress bar', () => {
     // Inactive item with packedQuantity=2 > 0 renders the target=0 full-bar branch
     const fillDiv = container.querySelector('div.overflow-hidden > div')
     expect(fillDiv).toBeInTheDocument()
-    expect(fillDiv).toHaveClass('bg-status-inactive-muted')
+    expect(fillDiv).toHaveClass('bg-status-inactive-background-muted')
   })
 
   it('renders with default (not error/warning) card styling when inactive with refillThreshold > 0', async () => {
@@ -1274,7 +1274,7 @@ describe('ItemCard - inactive item progress bar', () => {
 
     // Card should NOT have error or warning tint background styling
     const card = container.firstElementChild
-    expect(card).not.toHaveClass('bg-status-error-inverse')
-    expect(card).not.toHaveClass('bg-status-warning-inverse')
+    expect(card).not.toHaveClass('bg-status-error-background-inverse')
+    expect(card).not.toHaveClass('bg-status-warning-background-inverse')
   })
 })
