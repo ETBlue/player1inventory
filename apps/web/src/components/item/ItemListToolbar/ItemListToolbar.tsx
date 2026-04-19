@@ -51,6 +51,8 @@ interface ItemListToolbarProps {
   recipes?: Recipe[]
   hideVendorFilter?: boolean
   hideRecipeFilter?: boolean
+  // When true: hides the Filters toggle button (caller renders filters externally)
+  hideFiltersToggle?: boolean
 }
 
 export function ItemListToolbar({
@@ -69,6 +71,7 @@ export function ItemListToolbar({
   recipes,
   hideVendorFilter,
   hideRecipeFilter,
+  hideFiltersToggle,
 }: ItemListToolbarProps) {
   const { t } = useTranslation()
 
@@ -216,16 +219,18 @@ export function ItemListToolbar({
           </Button>
         )}
 
-        <Button
-          size="icon"
-          variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
-          onClick={() => setIsFiltersVisible(!isFiltersVisible)}
-          aria-label={t('itemListToolbar.toggleFilters')}
-          className="lg:w-auto lg:px-3"
-        >
-          <Filter />
-          <span className="hidden lg:inline">{t('common.filters')}</span>
-        </Button>
+        {!hideFiltersToggle && (
+          <Button
+            size="icon"
+            variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
+            onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+            aria-label={t('itemListToolbar.toggleFilters')}
+            className="lg:w-auto lg:px-3"
+          >
+            <Filter />
+            <span className="hidden lg:inline">{t('common.filters')}</span>
+          </Button>
+        )}
 
         <Button
           size="icon"

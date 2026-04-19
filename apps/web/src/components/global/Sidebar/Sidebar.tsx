@@ -20,7 +20,9 @@ export function Sidebar() {
     location.pathname.startsWith('/items/') ||
     location.pathname.startsWith('/settings/tags') ||
     location.pathname.startsWith('/settings/vendors') ||
-    location.pathname.startsWith('/settings/recipes')
+    location.pathname.startsWith('/settings/recipes') ||
+    location.pathname.startsWith('/settings/shelves') ||
+    location.pathname.startsWith('/shelves/')
   if (isFullscreenPage) {
     return null
   }
