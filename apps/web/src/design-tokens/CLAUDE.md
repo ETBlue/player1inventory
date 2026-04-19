@@ -63,16 +63,14 @@ Levels: `ok`, `warning`, `error`, `inactive`
 
 Tailwind classes: `bg-status-ok-background`, `bg-status-ok-background-muted`, `text-status-ok-foreground`, `bg-status-ok-background-inverse`, etc.
 
-### Hue colors (tag colors)
-10 hue presets, each with four sub-variants:
-- `--hue-orange` → `bg-orange` (base fill — dark text readable via inverse)
-- `--hue-orange-foreground` → `text-orange-foreground` (for text on neutral surface)
-- `--hue-orange-accessory` → `border-orange-accessory` (muted border)
-- `--hue-orange-inverse` → `bg-orange-inverse` (light tint background)
+### Tag colors
+10 tag color presets, each with four sub-variants:
+- `--tag-orange-background` → `bg-tag-orange-background` (fill — for solid tag badges)
+- `--tag-orange-foreground` → `text-tag-orange-foreground` (colored text on neutral surface)
+- `--tag-orange-accessory` → `border-tag-orange-accessory` (muted border)
+- `--tag-orange-background-inverse` → `bg-tag-orange-background-inverse` (light tint background)
 
-Hues: orange, brown, green, teal, cyan, blue, indigo, purple, pink, rose
-
-Note: Tailwind utilities drop the `hue-` prefix: `bg-orange`, `text-orange-foreground`, `border-orange-accessory`, `bg-orange-inverse`.
+Tags: orange, brown, green, teal, cyan, blue, indigo, purple, pink, rose
 
 ### Inventory state mappings
 Defined at the bottom of theme.css using `--color-` prefix for direct Tailwind consumption:
@@ -84,8 +82,8 @@ Defined at the bottom of theme.css using `--color-` prefix for direct Tailwind c
 ## Badge & Button Variant System
 
 **Badge variants** (`src/components/ui/badge.tsx`):
-- Hue solid: `orange`, `brown`, `green`, ..., `rose` (10 total)
-- Hue inverse: `orange-inverse`, ..., `rose-inverse` (light tint + colored border/text)
+- Tag solid: `tag-orange`, `tag-brown`, `tag-green`, ..., `tag-rose` (10 total)
+- Tag inverse: `tag-orange-inverse`, ..., `tag-rose-inverse` (light tint + colored border/text)
 - Status solid: `ok`, `warning`, `error`, `inactive`
 - Status inverse: `ok-inverse`, `warning-inverse`, `error-inverse`, `inactive-inverse`
 - Importance solid: `primary`, `secondary`, `destructive`, `neutral`
@@ -93,7 +91,7 @@ Defined at the bottom of theme.css using `--color-` prefix for direct Tailwind c
 
 **Button variants** (`src/components/ui/button.tsx`):
 Importance group: `primary`, `secondary`, `destructive`, `neutral` + `-outline`, `-ghost`, `-link` suffixes (16 variants)
-Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
+Tag group: `tag-orange`, ..., `tag-rose` + `*-inverse` (20 variants)
 
 **Sizes:** `xs`, `sm`, `default`, `lg`, `icon-xs`, `icon-sm`, `icon`, `icon-lg`
 
@@ -115,9 +113,9 @@ Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
 <div className="bg-status-ok-background-muted" />
 <div className="bg-status-warning-background-muted" />
 
-// Tag badges use hue variants (inverse = light tint; solid = bold)
-<Badge variant="teal-inverse">Storage</Badge>   {/* light tint bg, colored border */}
-<Badge variant="orange">Category</Badge>        {/* bold orange fill */}
+// Tag badges use tag variants (inverse = light tint; solid = bold)
+<Badge variant="tag-teal-inverse">Storage</Badge>   {/* light tint bg, colored border */}
+<Badge variant="tag-orange">Category</Badge>        {/* bold orange fill */}
 
 // Importance buttons
 <Button variant="primary">Save</Button>
@@ -126,8 +124,8 @@ Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
 
 // TypeScript access to token values (for inline styles)
 import { colors, statusColors, inventoryStates } from '@/design-tokens'
-// colors.orange.default  → 'var(--color-orange)'
-// colors.orange.inverse  → 'var(--color-orange-inverse)'
+// colors.orange.default  → 'var(--color-tag-orange-background)'
+// colors.orange.inverse  → 'var(--color-tag-orange-background-inverse)'
 // statusColors.ok        → 'var(--color-status-ok-background)'
 // inventoryStates.inStock → 'var(--color-inventory-in-stock)'
 ```
