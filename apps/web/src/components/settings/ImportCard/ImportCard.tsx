@@ -228,7 +228,7 @@ export function ImportCard() {
                       : '…',
                   })}
                 </p>
-                <div className="w-full bg-muted rounded-full h-2">
+                <div className="w-full bg-background-elevated rounded-full h-2">
                   <div
                     className="bg-importance-primary-background h-2 rounded-full transition-all"
                     style={{

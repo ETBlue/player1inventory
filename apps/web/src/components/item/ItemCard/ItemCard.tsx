@@ -246,7 +246,7 @@ export function ItemCard({
                   className={cn(
                     'inline-flex gap-1 text-xs',
                     isWarning
-                      ? 'text-status-error-background-inverse bg-status-error-background rounded-sm px-1 py-0.5'
+                      ? 'text-foreground-colorless-inverse bg-status-error-background rounded-sm px-1 py-0.5'
                       : 'text-foreground',
                   )}
                 >

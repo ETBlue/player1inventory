@@ -319,7 +319,7 @@ function ItemDetailTab() {
           {pendingAdjustments && (
             <table className="w-full text-sm mt-2">
               <thead>
-                <tr className="text-left text-muted-foreground">
+                <tr className="text-left text-foreground-muted">
                   <th className="pb-1">
                     {t('items.detail.recipeAdjustDialog.recipeHeader')}
                   </th>

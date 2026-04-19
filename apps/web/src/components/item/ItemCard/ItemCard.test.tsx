@@ -264,7 +264,7 @@ describe('ItemCard - Tag Sorting', () => {
 
     // Should have warning style
     expect(messageEl).toHaveClass('bg-status-error-background')
-    expect(messageEl).toHaveClass('text-status-error-background-inverse')
+    expect(messageEl).toHaveClass('text-foreground-colorless-inverse')
 
     // Should show warning icon (TriangleAlert component)
     const icon = messageEl.querySelector('svg')
@@ -301,7 +301,7 @@ describe('ItemCard - Tag Sorting', () => {
     const messageEl = screen.getByText(/Expires in 6 days/i)
     expect(messageEl).toHaveClass('text-foreground')
     expect(messageEl).not.toHaveClass('bg-status-error-background')
-    expect(messageEl).not.toHaveClass('text-status-error-background-inverse')
+    expect(messageEl).not.toHaveClass('text-foreground-colorless-inverse')
 
     // And no TriangleAlert icon
     const icon = messageEl.querySelector('svg')
@@ -337,7 +337,7 @@ describe('ItemCard - Tag Sorting', () => {
     // Then badge shows error styling (regression guard)
     const messageEl = screen.getByText(/Expires in 2 days/i)
     expect(messageEl).toHaveClass('bg-status-error-background')
-    expect(messageEl).toHaveClass('text-status-error-background-inverse')
+    expect(messageEl).toHaveClass('text-foreground-colorless-inverse')
 
     // And TriangleAlert icon is present
     const icon = messageEl.querySelector('svg')

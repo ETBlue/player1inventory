@@ -677,7 +677,7 @@ function CookingPage() {
           <AlertDialogDescription>
             {t('cooking.doneDialog.description')}
             {insufficientItems.length > 0 && (
-              <span className="block mt-2 text-importance-destructive-background">
+              <span className="block mt-2 text-importance-destructive-foreground">
                 {t('cooking.doneDialog.warningHeader')}
                 {insufficientItems.map(({ item, requested, available }) => (
                   <span key={item.id} className="block">
