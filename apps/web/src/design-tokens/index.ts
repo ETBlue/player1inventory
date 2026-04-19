@@ -3,44 +3,44 @@ import type { TagColor } from '@/types'
 
 export const colors = {
   orange: {
-    inverse: 'var(--color-tag-orange-inverse)',
-    default: 'var(--color-tag-orange)',
+    inverse: 'var(--color-tag-orange-background-inverse)',
+    default: 'var(--color-tag-orange-background)',
   },
   green: {
-    inverse: 'var(--color-tag-green-inverse)',
-    default: 'var(--color-tag-green)',
+    inverse: 'var(--color-tag-green-background-inverse)',
+    default: 'var(--color-tag-green-background)',
   },
   teal: {
-    inverse: 'var(--color-tag-teal-inverse)',
-    default: 'var(--color-tag-teal)',
+    inverse: 'var(--color-tag-teal-background-inverse)',
+    default: 'var(--color-tag-teal-background)',
   },
   blue: {
-    inverse: 'var(--color-tag-blue-inverse)',
-    default: 'var(--color-tag-blue)',
+    inverse: 'var(--color-tag-blue-background-inverse)',
+    default: 'var(--color-tag-blue-background)',
   },
   indigo: {
-    inverse: 'var(--color-tag-indigo-inverse)',
-    default: 'var(--color-tag-indigo)',
+    inverse: 'var(--color-tag-indigo-background-inverse)',
+    default: 'var(--color-tag-indigo-background)',
   },
   purple: {
-    inverse: 'var(--color-tag-purple-inverse)',
-    default: 'var(--color-tag-purple)',
+    inverse: 'var(--color-tag-purple-background-inverse)',
+    default: 'var(--color-tag-purple-background)',
   },
   pink: {
-    inverse: 'var(--color-tag-pink-inverse)',
-    default: 'var(--color-tag-pink)',
+    inverse: 'var(--color-tag-pink-background-inverse)',
+    default: 'var(--color-tag-pink-background)',
   },
   brown: {
-    inverse: 'var(--color-tag-brown-inverse)',
-    default: 'var(--color-tag-brown)',
+    inverse: 'var(--color-tag-brown-background-inverse)',
+    default: 'var(--color-tag-brown-background)',
   },
   cyan: {
-    inverse: 'var(--color-tag-cyan-inverse)',
-    default: 'var(--color-tag-cyan)',
+    inverse: 'var(--color-tag-cyan-background-inverse)',
+    default: 'var(--color-tag-cyan-background)',
   },
   rose: {
-    inverse: 'var(--color-tag-rose-inverse)',
-    default: 'var(--color-tag-rose)',
+    inverse: 'var(--color-tag-rose-background-inverse)',
+    default: 'var(--color-tag-rose-background)',
   },
 } as const
 
@@ -62,10 +62,10 @@ export const borders = {
 
 // Status colors
 export const statusColors = {
-  ok: 'var(--color-status-ok)',
-  warning: 'var(--color-status-warning)',
-  error: 'var(--color-status-error)',
-  inactive: 'var(--color-status-inactive)',
+  ok: 'var(--color-status-ok-background)',
+  warning: 'var(--color-status-warning-background)',
+  error: 'var(--color-status-error-background)',
+  inactive: 'var(--color-status-inactive-background)',
 } as const
 
 // Inventory states

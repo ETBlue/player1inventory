@@ -204,17 +204,17 @@ describe('ItemProgressBar with partial segments', () => {
     // Should have an inner fill div (not just an empty track)
     const inner = container.querySelector('.flex-1 > div > div')
     expect(inner).toBeInTheDocument()
-    expect(inner).toHaveClass('bg-status-ok-muted')
+    expect(inner).toHaveClass('bg-status-ok-background-muted')
   })
   it('renders fill bar with inactive color when status is inactive and current > 0', () => {
     const { container } = render(
       <ItemProgressBar current={2} target={0} status="inactive" />,
     )
 
-    // Should have an inner fill div with bg-status-inactive-muted
+    // Should have an inner fill div with bg-status-inactive-background-muted
     const inner = container.querySelector('.flex-1 > div > div')
     expect(inner).toBeInTheDocument()
-    expect(inner).toHaveClass('bg-status-inactive-muted')
+    expect(inner).toHaveClass('bg-status-inactive-background-muted')
   })
 
   it('renders segmented bar with inactive fill color when status is inactive', () => {
@@ -228,7 +228,7 @@ describe('ItemProgressBar with partial segments', () => {
     // First two segments should be filled — check a filled segment's child div
     const firstSegment = segments[0]
     const fillDiv = firstSegment.querySelector('div')
-    expect(fillDiv).toHaveClass('bg-status-inactive-muted')
+    expect(fillDiv).toHaveClass('bg-status-inactive-background-muted')
   })
 
   it('renders continuous bar with inactive fill color when status is inactive', () => {
@@ -247,7 +247,7 @@ describe('ItemProgressBar with partial segments', () => {
     // The Progress component renders a child div with the fill color via [&>div]
     // We verify the wrapper has the inactive-muted class applied
     const wrapper = container.querySelector('.flex-1 > div')
-    expect(wrapper).toHaveClass('[&>div]:bg-status-inactive-muted')
+    expect(wrapper).toHaveClass('[&>div]:bg-status-inactive-background-muted')
   })
 
   it('uses segmented mode for measurement item with amountPerPackage when package count ≤ 30', () => {

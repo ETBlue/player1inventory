@@ -12,7 +12,7 @@
   Reference: https://starlight.astro.build/guides/css-and-tailwind/
 
   App token conventions:
-  - Primary color: --importance-primary (teal/cyan hue, oklch hue ~195)
+  - Primary color: --importance-primary-background (teal/cyan hue, oklch hue ~195)
   - Backgrounds: --background-base / --background-surface / --background-elevated
   - Foregrounds: --foreground-default / --foreground-muted / --foreground-emphasized
   - Accessories (borders): --accessory-muted / --accessory-default / --accessory-emphasized
@@ -33,7 +33,7 @@
 :root {
   /* Accent colors */
   --sl-color-accent-low:  var(--importance-primary-accessory);
-  --sl-color-accent:      var(--importance-primary);
+  --sl-color-accent:      var(--importance-primary-background);
   --sl-color-accent-high: var(--importance-primary-foreground);
 
   /* Text extremes — light mode defaults */

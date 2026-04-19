@@ -16,7 +16,7 @@ src/design-tokens/
 **Theme system:**
 - `:root` defines OKLCH values for light mode semantic colors
 - `.dark` overrides for dark mode
-- `@theme inline` maps CSS variables to Tailwind utilities (e.g. `bg-background-base`, `text-foreground`, `bg-status-ok`)
+- `@theme inline` maps CSS variables to Tailwind utilities (e.g. `bg-background-base`, `text-foreground`, `bg-status-ok-background`)
 - Two-layer approach preserves theming flexibility
 - OKLCH format (`oklch(L% C% H)`) enables perceptually uniform contrast reasoning via the L channel
 - L% values are calibrated for WCAG AA compliance (minimum 4.5:1 contrast ratio for text)
@@ -42,26 +42,26 @@ Dark mode: L=20% → L=30% → L=40% (progressively lighter in OKLCH)
 
 ### Importance tokens (semantic CTA colors)
 Five importance levels, each with three sub-variants:
-- `--importance-primary` (base fill color)
+- `--importance-primary-background` (base fill color)
 - `--importance-primary-foreground` (text on foreground surface)
 - `--importance-primary-accessory` (borders, muted fills)
 
 Levels: `primary`, `secondary`, `destructive`, `neutral`
 
-Tailwind classes: `bg-importance-primary`, `text-importance-primary-foreground`, `border-importance-primary-accessory`, etc.
+Tailwind classes: `bg-importance-primary-background`, `text-importance-primary-foreground`, `border-importance-primary-accessory`, etc.
 
 ### Status tokens
 Four status levels, each with six sub-variants:
-- `--status-ok` (base)
-- `--status-ok-muted` (progress bar fills, softened fills)
+- `--status-ok-background` (base)
+- `--status-ok-background-muted` (progress bar fills, softened fills)
 - `--status-ok-foreground` (text on surface)
 - `--status-ok-accessory` (borders)
 - `--status-ok-accessory-muted` (subtle borders)
-- `--status-ok-inverse` (tinted background for status cards)
+- `--status-ok-background-inverse` (tinted background for status cards)
 
 Levels: `ok`, `warning`, `error`, `inactive`
 
-Tailwind classes: `bg-status-ok`, `bg-status-ok-muted`, `text-status-ok-foreground`, `bg-status-ok-inverse`, etc.
+Tailwind classes: `bg-status-ok-background`, `bg-status-ok-background-muted`, `text-status-ok-foreground`, `bg-status-ok-background-inverse`, etc.
 
 ### Hue colors (tag colors)
 10 hue presets, each with four sub-variants:
@@ -76,10 +76,10 @@ Note: Tailwind utilities drop the `hue-` prefix: `bg-orange`, `text-orange-foreg
 
 ### Inventory state mappings
 Defined at the bottom of theme.css using `--color-` prefix for direct Tailwind consumption:
-- `--color-inventory-low-stock` → alias for `--color-status-warning`
-- `--color-inventory-expiring` → alias for `--color-status-error`
-- `--color-inventory-in-stock` → alias for `--color-status-ok`
-- `--color-inventory-out-of-stock` → alias for `--color-status-inactive`
+- `--color-inventory-low-stock` → alias for `--color-status-warning-background`
+- `--color-inventory-expiring` → alias for `--color-status-error-background`
+- `--color-inventory-in-stock` → alias for `--color-status-ok-background`
+- `--color-inventory-out-of-stock` → alias for `--color-status-inactive-background`
 
 ## Badge & Button Variant System
 
@@ -106,14 +106,14 @@ Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
     <div className="bg-background-elevated"> {/* Card/list item */}
 
 // Status-aware components
-<Card variant="ok">        {/* bg-status-ok-inverse + green left bar */}
-<Card variant="warning">   {/* bg-status-warning-inverse + orange left bar */}
-<Card variant="error">     {/* bg-status-error-inverse + red left bar */}
-<Card variant="inactive">  {/* bg-status-inactive-inverse + gray left bar */}
+<Card variant="ok">        {/* bg-status-ok-background-inverse + green left bar */}
+<Card variant="warning">   {/* bg-status-warning-background-inverse + orange left bar */}
+<Card variant="error">     {/* bg-status-error-background-inverse + red left bar */}
+<Card variant="inactive">  {/* bg-status-inactive-background-inverse + gray left bar */}
 
 // Progress bars use -muted fills (softer than base status color)
-<div className="bg-status-ok-muted" />
-<div className="bg-status-warning-muted" />
+<div className="bg-status-ok-background-muted" />
+<div className="bg-status-warning-background-muted" />
 
 // Tag badges use hue variants (inverse = light tint; solid = bold)
 <Badge variant="teal-inverse">Storage</Badge>   {/* light tint bg, colored border */}
@@ -128,7 +128,7 @@ Hue group: `orange`, ..., `rose` + `*-inverse` (20 variants)
 import { colors, statusColors, inventoryStates } from '@/design-tokens'
 // colors.orange.default  → 'var(--color-orange)'
 // colors.orange.inverse  → 'var(--color-orange-inverse)'
-// statusColors.ok        → 'var(--color-status-ok)'
+// statusColors.ok        → 'var(--color-status-ok-background)'
 // inventoryStates.inStock → 'var(--color-inventory-in-stock)'
 ```
 

@@ -113,7 +113,7 @@ export function TemplateOverview({
         </Button>
       </div>
       {error && (
-        <p className="text-sm text-importance-destructive text-center">
+        <p className="text-sm text-importance-destructive-background text-center">
           {t('onboarding.templateOverview.importError')}
         </p>
       )}

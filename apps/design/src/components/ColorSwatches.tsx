@@ -51,10 +51,10 @@ function SwatchGroup({ heading, entries }: SwatchGroupProps) {
 }
 
 const importanceSwatches: SwatchEntry[] = [
-  { token: '--importance-primary', label: 'Primary' },
-  { token: '--importance-secondary', label: 'Secondary' },
-  { token: '--importance-destructive', label: 'Destructive' },
-  { token: '--importance-neutral', label: 'Neutral' },
+  { token: '--importance-primary-background', label: 'Primary' },
+  { token: '--importance-secondary-background', label: 'Secondary' },
+  { token: '--importance-destructive-background', label: 'Destructive' },
+  { token: '--importance-neutral-background', label: 'Neutral' },
 ]
 
 const importanceForegroundSwatches: SwatchEntry[] = [
@@ -72,17 +72,17 @@ const importanceAccessorySwatches: SwatchEntry[] = [
 ]
 
 const statusSwatches: SwatchEntry[] = [
-  { token: '--status-ok', label: 'OK' },
-  { token: '--status-warning', label: 'Warning' },
-  { token: '--status-error', label: 'Error' },
-  { token: '--status-inactive', label: 'Inactive' },
+  { token: '--status-ok-background', label: 'OK' },
+  { token: '--status-warning-background', label: 'Warning' },
+  { token: '--status-error-background', label: 'Error' },
+  { token: '--status-inactive-background', label: 'Inactive' },
 ]
 
 const statusInverseSwatches: SwatchEntry[] = [
-  { token: '--status-ok-inverse', label: 'OK Inverse' },
-  { token: '--status-warning-inverse', label: 'Warning Inverse' },
-  { token: '--status-error-inverse', label: 'Error Inverse' },
-  { token: '--status-inactive-inverse', label: 'Inactive Inverse' },
+  { token: '--status-ok-background-inverse', label: 'OK Inverse' },
+  { token: '--status-warning-background-inverse', label: 'Warning Inverse' },
+  { token: '--status-error-background-inverse', label: 'Error Inverse' },
+  { token: '--status-inactive-background-inverse', label: 'Inactive Inverse' },
 ]
 
 const backgroundSwatches: SwatchEntry[] = [
@@ -106,29 +106,29 @@ const accessorySwatches: SwatchEntry[] = [
 ]
 
 const tagSwatches: SwatchEntry[] = [
-  { token: '--tag-orange', label: 'Orange' },
-  { token: '--tag-brown', label: 'Brown' },
-  { token: '--tag-green', label: 'Green' },
-  { token: '--tag-teal', label: 'Teal' },
-  { token: '--tag-cyan', label: 'Cyan' },
-  { token: '--tag-blue', label: 'Blue' },
-  { token: '--tag-indigo', label: 'Indigo' },
-  { token: '--tag-purple', label: 'Purple' },
-  { token: '--tag-pink', label: 'Pink' },
-  { token: '--tag-rose', label: 'Rose' },
+  { token: '--tag-orange-background', label: 'Orange' },
+  { token: '--tag-brown-background', label: 'Brown' },
+  { token: '--tag-green-background', label: 'Green' },
+  { token: '--tag-teal-background', label: 'Teal' },
+  { token: '--tag-cyan-background', label: 'Cyan' },
+  { token: '--tag-blue-background', label: 'Blue' },
+  { token: '--tag-indigo-background', label: 'Indigo' },
+  { token: '--tag-purple-background', label: 'Purple' },
+  { token: '--tag-pink-background', label: 'Pink' },
+  { token: '--tag-rose-background', label: 'Rose' },
 ]
 
 const tagInverseSwatches: SwatchEntry[] = [
-  { token: '--tag-orange-inverse', label: 'Orange Tint' },
-  { token: '--tag-brown-inverse', label: 'Brown Tint' },
-  { token: '--tag-green-inverse', label: 'Green Tint' },
-  { token: '--tag-teal-inverse', label: 'Teal Tint' },
-  { token: '--tag-cyan-inverse', label: 'Cyan Tint' },
-  { token: '--tag-blue-inverse', label: 'Blue Tint' },
-  { token: '--tag-indigo-inverse', label: 'Indigo Tint' },
-  { token: '--tag-purple-inverse', label: 'Purple Tint' },
-  { token: '--tag-pink-inverse', label: 'Pink Tint' },
-  { token: '--tag-rose-inverse', label: 'Rose Tint' },
+  { token: '--tag-orange-background-inverse', label: 'Orange Tint' },
+  { token: '--tag-brown-background-inverse', label: 'Brown Tint' },
+  { token: '--tag-green-background-inverse', label: 'Green Tint' },
+  { token: '--tag-teal-background-inverse', label: 'Teal Tint' },
+  { token: '--tag-cyan-background-inverse', label: 'Cyan Tint' },
+  { token: '--tag-blue-background-inverse', label: 'Blue Tint' },
+  { token: '--tag-indigo-background-inverse', label: 'Indigo Tint' },
+  { token: '--tag-purple-background-inverse', label: 'Purple Tint' },
+  { token: '--tag-pink-background-inverse', label: 'Pink Tint' },
+  { token: '--tag-rose-background-inverse', label: 'Rose Tint' },
 ]
 
 export function ColorSwatches() {

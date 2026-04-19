@@ -722,7 +722,7 @@ describe('Home page filtering integration', () => {
     // Then the vendor badge on the item card uses the filled (neutral) style
     await waitFor(() => {
       const badge = screen.getByTestId('vendor-badge-Costco')
-      expect(badge.className).toContain('bg-importance-neutral')
+      expect(badge.className).toContain('bg-importance-neutral-background')
     })
   })
 
@@ -755,7 +755,7 @@ describe('Home page filtering integration', () => {
     // Then the vendor badge uses the outline (neutral-outline) style
     await waitFor(() => {
       const badge = screen.getByTestId('vendor-badge-Costco')
-      expect(badge.className).not.toContain('bg-importance-neutral')
+      expect(badge.className).not.toContain('bg-importance-neutral-background')
     })
   })
 
@@ -790,7 +790,7 @@ describe('Home page filtering integration', () => {
     // Then the recipe badge on the item card uses the filled (neutral) style
     await waitFor(() => {
       const badge = screen.getByTestId('recipe-badge-Cereal Bowl')
-      expect(badge.className).toContain('bg-importance-neutral')
+      expect(badge.className).toContain('bg-importance-neutral-background')
     })
   })
 
@@ -829,8 +829,8 @@ describe('Home page filtering integration', () => {
     // Then the tag badge uses the bold (non-inverse) variant
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
-      expect(badge.className).not.toContain('bg-tag-blue-inverse')
-      expect(badge.className).toContain('bg-tag-blue')
+      expect(badge.className).not.toContain('bg-tag-blue-background-inverse')
+      expect(badge.className).toContain('bg-tag-blue-background')
     })
   })
 
@@ -867,7 +867,7 @@ describe('Home page filtering integration', () => {
     // Then the tag badge uses the tint variant
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
-      expect(badge.className).toContain('bg-tag-blue-inverse')
+      expect(badge.className).toContain('bg-tag-blue-background-inverse')
     })
   })
 

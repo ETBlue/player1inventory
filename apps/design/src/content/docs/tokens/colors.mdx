@@ -35,16 +35,16 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 <div className="bg-background-elevated">  {/* Card / list item */}
 
 // Importance colors — base for fills, foreground for colored text on neutral bg
-<div className="bg-importance-primary" />                         {/* badge / button fill */}
+<div className="bg-importance-primary-background" />                         {/* badge / button fill */}
 <span className="text-importance-primary-foreground" />           {/* colored label on page */}
-<div className="border-importance-destructive text-importance-destructive-foreground" />
+<div className="border-importance-destructive-background text-importance-destructive-foreground" />
 
 // Status feedback
-<div className="bg-status-ok-inverse text-status-ok-foreground" />
+<div className="bg-status-ok-background-inverse text-status-ok-foreground" />
 
 // Hue colors (tags)
-<Badge className="bg-tag-teal text-tag-teal-inverse" />
-<Badge className="bg-tag-teal-inverse border-tag-teal-accessory text-tag-teal-foreground" />
+<Badge className="bg-tag-teal-background text-tag-teal-background-inverse" />
+<Badge className="bg-tag-teal-background-inverse border-tag-teal-accessory text-tag-teal-foreground" />
 ```
 
 ## When to use each group
@@ -56,10 +56,10 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 | Set a card or list item background | `background-elevated` |
 | Color text (body copy, labels, headings) | `foreground-muted`, `foreground-default`, `foreground-emphasized` |
 | Color borders and dividers | `accessory-muted`, `accessory-default`, `accessory-emphasized` |
-| Fill a badge or button with an importance color | `importance-primary`, `importance-destructive`, etc. |
+| Fill a badge or button with an importance color | `importance-primary-background`, `importance-destructive-background`, etc. |
 | Show a colored label or text on a neutral background | `importance-primary-foreground`, `importance-destructive-foreground`, etc. |
-| Show an inventory status (ok / warning / error / inactive) | `status-ok`, `status-warning`, etc. for fills; `-foreground` for text on neutral bg; `-inverse` for section backgrounds |
-| Color a tag badge | `tag-orange`, `tag-teal`, `tag-blue`, etc. |
+| Show an inventory status (ok / warning / error / inactive) | `status-ok-background`, `status-warning-background`, etc. for fills; `-foreground` for text on neutral bg; `-inverse` for section backgrounds |
+| Color a tag badge | `tag-orange-background`, `tag-teal-background`, `tag-blue-background`, etc. |
 
 **Background group** — three elevation layers for visual hierarchy without shadows. Base is the page; surface is for toolbars, sticky headers, and popovers; elevated is for cards and list items.
 
@@ -68,7 +68,7 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 **Accessory group** — borders, dividers, and decorative rules. Use muted for subtle separators, default for standard borders, emphasized for interactive or prominent borders.
 
 **Importance group** — two independent use cases, not a pairing:
-- Base (`importance-primary`, `importance-destructive`, etc.) — fill color for badges, buttons, and indicators
+- Base (`importance-primary-background`, `importance-destructive-background`, etc.) — fill color for badges, buttons, and indicators
 - Foreground (`importance-primary-foreground`, etc.) — colored text placed on a neutral page background, e.g. a section label or status note
 
 **Status group** — same two-use-case pattern as importance:
@@ -84,18 +84,18 @@ Always reach for **semantic tokens** when building components. Semantic tokens c
 
 ```tsx
 // Correct — semantic intent, adapts to theme
-<button className="bg-importance-primary text-foreground-colorless-inverse" />
+<button className="bg-importance-primary-background text-foreground-colorless-inverse" />
 
 // Wrong — raw tag hue value used on a button; carries no semantic meaning
-<button className="bg-tag-teal" />
+<button className="bg-tag-teal-background" />
 ```
 
 **The one exception is tag badges.** Tag tokens (`orange`, `teal`, `blue`, etc.) are the correct primitive choice for tag color assignment because the purpose _is_ to assign a visual hue, not to express a semantic state. Use the full set of tag variants (`base`, `-inverse`, `-foreground`, `-accessory`) to style the badge itself.
 
 ```tsx
 // Correct — tag color tokens used intentionally for tag colorization
-<Badge className="bg-tag-teal-inverse border-tag-teal-accessory text-tag-teal-foreground" />
-<Badge className="bg-tag-teal" />  // solid variant for active/selected
+<Badge className="bg-tag-teal-background-inverse border-tag-teal-accessory text-tag-teal-foreground" />
+<Badge className="bg-tag-teal-background" />  // solid variant for active/selected
 ```
 
 Never use raw OKLCH values or Tailwind's built-in color scale (e.g. `bg-blue-500`) — those bypass the token system and will not respond to theme changes.
