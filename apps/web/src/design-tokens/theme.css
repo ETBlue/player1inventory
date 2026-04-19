@@ -24,12 +24,12 @@
   --importance-primary-background: oklch(50% 25% 195);
   --importance-secondary-background: oklch(60% 15% 195);
   --importance-destructive-background: oklch(55% 30% 350);
-  --importance-neutral-background: oklch(60% 6% 85);
+  --importance-neutral-background: oklch(50% 6% 85);
 
   --importance-primary-foreground: oklch(45% 25% 195);
   --importance-secondary-foreground: oklch(55% 15% 195);
   --importance-destructive-foreground: oklch(50% 30% 350);
-  --importance-neutral-foreground: oklch(45% 6% 85);
+  --importance-neutral-foreground: oklch(40% 6% 85);
 
   --importance-primary-accessory: oklch(70% 20% 195);
   --importance-secondary-accessory: oklch(75% 10% 195);
@@ -124,9 +124,9 @@
 
   /* baseline — dark mode */
 
-  --background-base: oklch(20% 2% 85);
-  --background-surface: oklch(30% 2% 85);
-  --background-elevated: oklch(40% 2% 85);
+  --background-base: oklch(10% 2% 85);
+  --background-surface: oklch(20% 2% 85);
+  --background-elevated: oklch(30% 2% 85);
 
   --foreground-muted: oklch(80% 4% 85);
   --foreground-default: oklch(90% 6% 85);
