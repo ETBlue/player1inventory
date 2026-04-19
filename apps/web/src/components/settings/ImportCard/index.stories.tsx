@@ -78,7 +78,7 @@ function ImportingProgressStory() {
 function ImportErrorStory() {
   return (
     <div className="p-4 max-w-sm space-y-2">
-      <p className="text-sm text-importance-destructive-background">
+      <p className="text-sm text-importance-destructive-foreground">
         Import failed during Network error.
       </p>
       <button

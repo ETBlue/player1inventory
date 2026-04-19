@@ -13,7 +13,7 @@ const Switch = React.forwardRef<
       inline-flex shrink-0 items-center 
       border-2 border-transparent transition-colors 
       disabled:cursor-not-allowed disabled:opacity-50 
-      data-[state=checked]:bg-importance-primary data-[state=unchecked]:bg-accessory-default`,
+      data-[state=checked]:bg-importance-primary-background data-[state=unchecked]:bg-accessory-default`,
       className,
     )}
     {...props}

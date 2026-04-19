@@ -254,7 +254,7 @@ export function ImportCard() {
 
             {importStatus.phase === 'error' && (
               <div className="mt-2 space-y-2">
-                <p className="text-sm text-importance-destructive-background">
+                <p className="text-sm text-importance-destructive-foreground">
                   {t('settings.import.importError', {
                     entity: importStatus.errorEntity,
                   })}
