@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ export const Route = createFileRoute('/settings/shelves/$shelfId/')({
 })
 
 function ShelfInfoTab() {
+  const { t } = useTranslation()
   const { shelfId } = Route.useParams()
   const { data: shelf, isLoading } = useShelfQuery(shelfId)
   const updateShelf = useUpdateShelfMutation()
@@ -31,13 +33,20 @@ function ShelfInfoTab() {
   const [sortBy, setSortBy] = useState<string>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  // Initialize / reset state when shelf loads or changes
+  // Track whether the form has been initialized from shelf data
+  const initializedRef = useRef(false)
+
+  // Initialize state once when shelf first loads; skip on background refetches
   useEffect(() => {
-    if (!shelf) return
+    if (!shelf || initializedRef.current) return
+    initializedRef.current = true
     setName(shelf.name)
     setSortBy(shelf.filterConfig?.sortBy ?? 'name')
     setSortDir(shelf.filterConfig?.sortDir ?? 'asc')
   }, [shelf])
+
+  // nameError — required field validation
+  const nameError = !name.trim() ? t('validation.required') : undefined
 
   // isDirty — compare current state vs saved shelf data
   const isDirty = useMemo(() => {
@@ -97,6 +106,7 @@ function ShelfInfoTab() {
           onChange={(e) => setName(e.target.value)}
           className="capitalize"
           aria-label="Shelf name"
+          error={nameError}
         />
       </div>
 
@@ -166,7 +176,7 @@ function ShelfInfoTab() {
         type="submit"
         className="mt-2 w-full"
         variant="primary"
-        disabled={!isDirty}
+        disabled={!!nameError || !isDirty || updateShelf.isPending}
       >
         Save
       </Button>
