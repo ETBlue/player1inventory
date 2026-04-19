@@ -21,10 +21,8 @@ describe('ShelfSettingsDetailPage stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
-  it('NotFound renders shelf settings heading', async () => {
+  it('NotFound renders not found message', async () => {
     render(<NotFound />)
-    expect(
-      await screen.findByRole('heading', { name: /shelf settings/i }),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/shelf not found/i)).toBeInTheDocument()
   })
 })
