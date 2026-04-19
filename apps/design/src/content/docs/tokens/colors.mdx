@@ -22,7 +22,7 @@ The tokens are defined in `apps/web/src/design-tokens/theme.css` and imported di
 
 ## Swatches
 
-<ColorSwatches client:load />
+<ColorSwatches />
 
 ## Usage
 
@@ -55,28 +55,47 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 | Set a toolbar or header background | `background-surface` |
 | Set a card or list item background | `background-elevated` |
 | Color text (body copy, labels, headings) | `foreground-muted`, `foreground-default`, `foreground-emphasized` |
+| White text on a colored fill (button, badge) | `foreground-colorless-inverse` |
+| Black text on a light fill | `foreground-colorless` |
 | Color borders and dividers | `accessory-muted`, `accessory-default`, `accessory-emphasized` |
-| Fill a badge or button with an importance color | `importance-primary-background`, `importance-destructive-background`, etc. |
-| Show a colored label or text on a neutral background | `importance-primary-foreground`, `importance-destructive-foreground`, etc. |
-| Show an inventory status (ok / warning / error / inactive) | `status-ok-background`, `status-warning-background`, etc. for fills; `-foreground` for text on neutral bg; `-inverse` for section backgrounds |
-| Color a tag badge | `tag-orange-background`, `tag-teal-background`, `tag-blue-background`, etc. |
+| Fill a badge or button with an importance color | `importance-*-background` |
+| Show a colored label or text on a neutral background | `importance-*-foreground` |
+| Draw an outline-style importance border | `importance-*-accessory` |
+| Show a bold status fill (icon, badge, indicator) | `status-*-background` |
+| Show a soft status fill (progress bar track) | `status-*-background-muted` |
+| Show a tinted status section background | `status-*-background-inverse` |
+| Show colored status text on a neutral background | `status-*-foreground` |
+| Draw a status-colored border | `status-*-accessory` |
+| Draw a subtle status-colored border | `status-*-accessory-muted` |
+| Color a solid tag badge | `tag-*-background` |
+| Color a tint (inverse) tag badge background | `tag-*-background-inverse` |
+| Color text inside a tag badge | `tag-*-foreground` |
+| Draw a tag badge border | `tag-*-accessory` |
 
 **Background group** — three elevation layers for visual hierarchy without shadows. Base is the page; surface is for toolbars, sticky headers, and popovers; elevated is for cards and list items.
 
-**Foreground group** — muted for metadata and placeholder text, default for body copy, emphasized for headings and high-contrast labels. Avoid hardcoding `text-white` or `text-black` — use `foreground-colorless-inverse` and `foreground-colorless` instead.
+**Foreground group** — muted for metadata and placeholder text, default for body copy, emphasized for headings and high-contrast labels. `foreground-colorless-inverse` is white-in-light / white-in-dark — use it for text on any colored fill. `foreground-colorless` is the reverse (dark on light fill). Never hardcode `text-white` or `text-black`.
 
 **Accessory group** — borders, dividers, and decorative rules. Use muted for subtle separators, default for standard borders, emphasized for interactive or prominent borders.
 
-**Importance group** — two independent use cases, not a pairing:
-- Base (`importance-primary-background`, `importance-destructive-background`, etc.) — fill color for badges, buttons, and indicators
-- Foreground (`importance-primary-foreground`, etc.) — colored text placed on a neutral page background, e.g. a section label or status note
+**Importance group** — three independent sub-variants, each for a different use case:
+- Background (`importance-*-background`) — fill color for badges, buttons, and indicators
+- Foreground (`importance-*-foreground`) — colored text on a neutral page background, e.g. a section label
+- Accessory (`importance-*-accessory`) — border color for outline-style buttons and badges
 
-**Status group** — same two-use-case pattern as importance:
-- Base — fill for icons, progress bars, and compact indicators
-- Foreground — colored text on neutral backgrounds
-- Inverse — tinted section or card background for status-aware layouts
+**Status group** — six sub-variants covering fills, text, and borders at two intensities each:
+- Background — bold fill for icons, compact indicators, and badge fills
+- Background muted — softened fill for progress bar tracks and subtle highlights
+- Background inverse — tinted section background for status-aware card layouts
+- Foreground — colored status text on a neutral background
+- Accessory — status-colored border at normal intensity
+- Accessory muted — subtle status-colored border (e.g. a low-key warning outline)
 
-**Tag group** — exclusively for tag badge colors. Ten hues cover the full spectrum so each tag type can have a distinct color. Use inverse (tint) variants for most badges; solid variants for emphasis or active state.
+**Tag group** — exclusively for tag badge colors. Ten hues cover the full spectrum so each tag type can have a distinct color. Four sub-variants per hue:
+- Background — solid fill for active or selected badges
+- Background inverse — light tint background for default (non-selected) badges
+- Foreground — colored text inside an inverse badge
+- Accessory — border color for an inverse badge
 
 ## Semantic vs primitive
 
