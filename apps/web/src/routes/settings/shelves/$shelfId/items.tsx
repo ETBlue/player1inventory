@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { useItems, useTagTypes } from '@/hooks'
+import { useCreateItem, useItems, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -31,6 +31,7 @@ function ShelfItemsTab() {
   const { shelfId } = Route.useParams()
   const { data: shelf } = useShelfQuery(shelfId)
   const updateShelf = useUpdateShelfMutation()
+  const createItem = useCreateItem()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -144,6 +145,33 @@ function ShelfItemsTab() {
     })
   }
 
+  const handleCreateFromSearch = async () => {
+    if (!shelf) return
+    const trimmed = search.trim()
+    if (!trimmed) return
+    try {
+      const newItem = await createItem.mutateAsync({
+        name: trimmed,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 0,
+      })
+      if (!newItem) return
+      const currentIds = shelf.itemIds ?? []
+      await updateShelf.mutateAsync({
+        id: shelf.id,
+        data: { itemIds: [...currentIds, newItem.id] },
+      })
+    } catch {
+      // input stays populated for retry
+    }
+  }
+
   // Not applicable for non-selection shelves
   if (shelf && shelf.type !== 'selection') {
     return (
@@ -204,6 +232,7 @@ function ShelfItemsTab() {
         items={items}
         vendors={vendors}
         recipes={recipes}
+        onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
         className="bg-transparent border-none"
       />
