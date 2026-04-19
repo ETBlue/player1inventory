@@ -103,3 +103,22 @@ export interface Recipe {
   updatedAt: Date
   lastCookedAt?: Date
 }
+
+export interface FilterConfig {
+  tagIds?: string[]
+  vendorIds?: string[]
+  recipeIds?: string[]
+  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
+  sortDir?: 'asc' | 'desc'
+}
+
+export interface Shelf {
+  id: string
+  name: string
+  type: 'filter' | 'selection' | 'system'
+  order: number
+  filterConfig?: FilterConfig
+  itemIds?: string[]
+  createdAt: Date
+  updatedAt: Date
+}

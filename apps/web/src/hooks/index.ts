@@ -1,6 +1,7 @@
 export * from './useInventoryLogs'
 export * from './useItems'
 export * from './useOnboardingSetup'
+export * from './useShelves'
 export * from './useShoppingCart'
 export * from './useTags'
 export * from './useTheme'

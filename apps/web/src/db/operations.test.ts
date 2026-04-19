@@ -8,11 +8,13 @@ import {
   checkout,
   createItem,
   createRecipe,
+  createShelf,
   createTag,
   createTagType,
   createVendor,
   deleteItem,
   deleteRecipe,
+  deleteShelf,
   deleteTag,
   deleteTagType,
   deleteVendor,
@@ -31,15 +33,20 @@ import {
   getOrCreateActiveCart,
   getRecipe,
   getRecipes,
+  getShelf,
   getTagCountByType,
   getTagsByType,
   getVendors,
+  listShelves,
   migrateTagColorTints,
+  reorderShelfItems,
+  reorderShelves,
   seedDefaultData,
   updateCartItem,
   updateItem,
   updateRecipe,
   updateRecipeLastCookedAt,
+  updateShelf,
   updateTag,
   updateVendor,
 } from './operations'
@@ -1393,5 +1400,155 @@ describe('seedDefaultData', () => {
     expect(storageTags).toContain('freezer')
     expect(storageTags).toContain('fridge')
     expect(storageTags).toContain('pantry')
+  })
+})
+
+describe('shelves', () => {
+  beforeEach(async () => {
+    await db.shelves.clear()
+  })
+
+  it('user can create a shelf (selection type)', async () => {
+    // Given shelf data for a selection shelf
+    const data = {
+      name: 'Breakfast',
+      type: 'selection' as const,
+      order: 0,
+      itemIds: [],
+    }
+
+    // When creating the shelf
+    const shelf = await createShelf(data)
+
+    // Then shelf is persisted with id and timestamps
+    expect(shelf.id).toBeDefined()
+    expect(shelf.name).toBe('Breakfast')
+    expect(shelf.type).toBe('selection')
+    expect(shelf.order).toBe(0)
+    expect(shelf.createdAt).toBeInstanceOf(Date)
+    expect(shelf.updatedAt).toBeInstanceOf(Date)
+  })
+
+  it('user can create a filter shelf', async () => {
+    // Given shelf data for a filter shelf with filterConfig
+    const data = {
+      name: 'Low Stock',
+      type: 'filter' as const,
+      order: 1,
+      filterConfig: {
+        sortBy: 'stock' as const,
+        sortDir: 'asc' as const,
+      },
+    }
+
+    // When creating the filter shelf
+    const shelf = await createShelf(data)
+
+    // Then shelf is persisted with filterConfig
+    expect(shelf.id).toBeDefined()
+    expect(shelf.type).toBe('filter')
+    expect(shelf.filterConfig?.sortBy).toBe('stock')
+    expect(shelf.filterConfig?.sortDir).toBe('asc')
+  })
+
+  it('user can get a shelf by id', async () => {
+    // Given an existing shelf
+    const created = await createShelf({
+      name: 'Pantry',
+      type: 'selection',
+      order: 0,
+    })
+
+    // When getting the shelf by id
+    const found = await getShelf(created.id)
+
+    // Then the correct shelf is returned
+    expect(found).toBeDefined()
+    expect(found?.id).toBe(created.id)
+    expect(found?.name).toBe('Pantry')
+  })
+
+  it('user can list shelves ordered by order field', async () => {
+    // Given three shelves with different order values
+    await createShelf({ name: 'Third', type: 'selection', order: 2 })
+    await createShelf({ name: 'First', type: 'selection', order: 0 })
+    await createShelf({ name: 'Second', type: 'filter', order: 1 })
+
+    // When listing shelves
+    const shelves = await listShelves()
+
+    // Then shelves are returned in ascending order
+    expect(shelves).toHaveLength(3)
+    expect(shelves[0].name).toBe('First')
+    expect(shelves[1].name).toBe('Second')
+    expect(shelves[2].name).toBe('Third')
+  })
+
+  it('user can update a shelf', async () => {
+    // Given an existing shelf
+    const shelf = await createShelf({
+      name: 'Old Name',
+      type: 'selection',
+      order: 0,
+    })
+    const originalUpdatedAt = shelf.updatedAt
+
+    // When updating the shelf name
+    const updated = await updateShelf(shelf.id, { name: 'New Name' })
+
+    // Then the shelf reflects the new name and updatedAt is refreshed
+    expect(updated.name).toBe('New Name')
+    expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      originalUpdatedAt.getTime(),
+    )
+  })
+
+  it('user can delete a shelf', async () => {
+    // Given an existing shelf
+    const shelf = await createShelf({
+      name: 'To Delete',
+      type: 'selection',
+      order: 0,
+    })
+
+    // When deleting the shelf
+    await deleteShelf(shelf.id)
+
+    // Then the shelf no longer exists
+    const found = await getShelf(shelf.id)
+    expect(found).toBeUndefined()
+  })
+
+  it('user can reorder shelves', async () => {
+    // Given three shelves in initial order
+    const a = await createShelf({ name: 'A', type: 'selection', order: 0 })
+    const b = await createShelf({ name: 'B', type: 'selection', order: 1 })
+    const c = await createShelf({ name: 'C', type: 'selection', order: 2 })
+
+    // When reordering to C, A, B
+    await reorderShelves([c.id, a.id, b.id])
+
+    // Then shelves are listed in the new order
+    const shelves = await listShelves()
+    expect(shelves[0].name).toBe('C')
+    expect(shelves[1].name).toBe('A')
+    expect(shelves[2].name).toBe('B')
+  })
+
+  it('user can reorder items in a selection shelf', async () => {
+    // Given a selection shelf with itemIds
+    const shelf = await createShelf({
+      name: 'Weekly',
+      type: 'selection',
+      order: 0,
+      itemIds: ['id-1', 'id-2', 'id-3'],
+    })
+
+    // When reordering the items
+    await reorderShelfItems(shelf.id, ['id-3', 'id-1', 'id-2'])
+
+    // Then the shelf reflects the new item order
+    const updated = await getShelf(shelf.id)
+    expect(updated?.itemIds).toEqual(['id-3', 'id-1', 'id-2'])
   })
 })
