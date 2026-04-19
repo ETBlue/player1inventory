@@ -62,7 +62,7 @@ export function TemplateOverview({
             <span>
               {selectedItemCount} {t('onboarding.templateOverview.selected')}
             </span>
-            <ChevronRight className="h-4 w-4 shrink-0" />
+            <ChevronRight className="shrink-0" />
           </span>
         </Button>
 
@@ -85,7 +85,7 @@ export function TemplateOverview({
             <span>
               {selectedVendorCount} {t('onboarding.templateOverview.selected')}
             </span>
-            <ChevronRight className="h-4 w-4 shrink-0" />
+            <ChevronRight className="shrink-0" />
           </span>
         </Button>
       </div>
