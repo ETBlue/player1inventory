@@ -10,7 +10,8 @@ import {
   Filter,
   ListTodo,
   Settings2,
-  ShelvingUnit,
+  SlidersVertical,
+  SquareMousePointer,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -111,13 +112,23 @@ function ShelfDetailLayoutInner() {
             <ArrowLeft />
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
-          <ShelvingUnit className="h-4 w-4 text-foreground-muted" />
           <h1 className="text-md font-regular truncate flex-1 capitalize">
             {shelf.name}
           </h1>
-          <Badge variant="neutral-outline" className="text-xs capitalize">
-            {shelf.type}
-          </Badge>
+          {shelf.type !== 'system' && (
+            <Badge
+              variant="neutral-outline"
+              className="text-xs capitalize shrink-0 gap-1"
+            >
+              {shelf.type === 'filter' && (
+                <SlidersVertical className="h-3 w-3 text-foreground-muted" />
+              )}
+              {shelf.type === 'selection' && (
+                <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
+              )}
+              {shelf.type}
+            </Badge>
+          )}
 
           {/* Tabs */}
           <div className="flex items-center">

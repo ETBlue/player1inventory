@@ -88,7 +88,7 @@ function ShelfInfoTab() {
   if (!shelf) return null
 
   return (
-    <div className="p-4 space-y-6 max-w-2xl mx-auto">
+    <form className="p-4 space-y-6 max-w-2xl mx-auto" onSubmit={handleSave}>
       {/* Name */}
       <div className="space-y-2">
         <Label>Name</Label>
@@ -162,7 +162,12 @@ function ShelfInfoTab() {
       )}
 
       {/* Save button */}
-      <Button className="mt-2 w-full" variant="primary" onClick={handleSave}>
+      <Button
+        type="submit"
+        className="mt-2 w-full"
+        variant="primary"
+        disabled={!isDirty}
+      >
         Save
       </Button>
 
@@ -177,6 +182,6 @@ function ShelfInfoTab() {
           goBack()
         }}
       />
-    </div>
+    </form>
   )
 }

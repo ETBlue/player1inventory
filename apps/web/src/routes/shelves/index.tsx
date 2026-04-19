@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Settings2 } from 'lucide-react'
+import { Settings, Settings2 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
@@ -134,9 +134,14 @@ export function ShelvesPage() {
         <Toolbar>
           <ViewToggle current="shelf" onChange={handleViewChange} />
           <div className="flex-1" />
-          <Button size="icon" className="lg:w-auto lg:px-3" asChild>
+          <Button
+            size="icon"
+            variant="neutral-ghost"
+            className="lg:w-auto lg:px-3"
+            asChild
+          >
             <Link to="/settings/shelves" aria-label="Manage shelves">
-              <Settings2 />
+              <Settings />
               <span className="hidden lg:inline">Manage</span>
             </Link>
           </Button>

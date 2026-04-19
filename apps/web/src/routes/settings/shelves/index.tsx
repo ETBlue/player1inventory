@@ -21,9 +21,10 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeft,
   GripVertical,
-  Pencil,
+  Lock,
   Plus,
-  ShelvingUnit,
+  SlidersVertical,
+  SquareMousePointer,
   Trash2,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -88,57 +89,53 @@ function SortableShelfRow({
   return (
     <div ref={setNodeRef} style={style}>
       <Card className="py-1">
-        <CardContent className="flex items-center justify-between">
+        <CardContent className="flex items-center gap-2">
           {/* Left side: drag handle + icon + name + count */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <button
-              type="button"
-              className="cursor-grab active:cursor-grabbing text-foreground-muted hover:text-foreground shrink-0"
-              aria-label={`Drag to reorder ${shelf.name}`}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="h-4 w-4" />
-            </button>
-            <ShelvingUnit className="h-4 w-4 text-foreground-muted shrink-0" />
-            <Link
-              to="/settings/shelves/$shelfId"
-              params={{ shelfId: shelf.id }}
-              className="font-medium capitalize hover:underline truncate"
-            >
-              {shelf.name}
-            </Link>
-            <span className="text-sm text-foreground-muted shrink-0">
-              · {itemCount} {itemCount === 1 ? 'item' : 'items'}
-            </span>
+          <button
+            type="button"
+            className="cursor-grab active:cursor-grabbing text-foreground-muted hover:text-foreground shrink-0"
+            aria-label={`Drag to reorder ${shelf.name}`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <Link
+            to="/settings/shelves/$shelfId"
+            params={{ shelfId: shelf.id }}
+            className="font-medium capitalize hover:underline truncate"
+          >
+            {shelf.name}
+          </Link>
+          <span className="text-sm text-foreground-muted shrink-0">
+            · {itemCount} {itemCount === 1 ? 'item' : 'items'}
+          </span>
+          <div className="flex-1" />
+
+          {shelf.type !== 'system' && (
             <Badge
               variant="neutral-outline"
-              className="text-xs capitalize shrink-0"
+              className="text-xs capitalize shrink-0 gap-1"
             >
+              {shelf.type === 'filter' && (
+                <SlidersVertical className="h-3 w-3 text-foreground-muted" />
+              )}
+              {shelf.type === 'selection' && (
+                <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
+              )}
               {shelf.type}
             </Badge>
-          </div>
-
-          {/* Right side: edit + delete */}
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="neutral-ghost"
-              size="icon"
-              aria-label={`Edit ${shelf.name}`}
-              onClick={onNavigateToEdit}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <DeleteButton
-              trigger={<Trash2 className="h-4 w-4" />}
-              buttonVariant="destructive-ghost"
-              buttonSize="icon"
-              buttonAriaLabel={`Delete ${shelf.name}`}
-              dialogTitle={`Delete "${shelf.name}"?`}
-              dialogDescription="Items will move to Unsorted."
-              onDelete={onDelete}
-            />
-          </div>
+          )}
+          {/* Right side: delete */}
+          <DeleteButton
+            trigger={<Trash2 className="h-4 w-4" />}
+            buttonVariant="destructive-ghost"
+            buttonSize="icon"
+            buttonAriaLabel={`Delete ${shelf.name}`}
+            dialogTitle={`Delete "${shelf.name}"?`}
+            dialogDescription="Items will move to Unsorted."
+            onDelete={onDelete}
+          />
         </CardContent>
       </Card>
     </div>
@@ -319,22 +316,16 @@ export function ShelfSettingsPage() {
 
           {/* Virtual Unsorted row — always last, non-draggable, non-deletable */}
           {hasUnsorted && (
-            <Card className="py-2">
-              <CardContent className="flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <ShelvingUnit className="h-4 w-4 text-foreground-muted shrink-0" />
-                  <span className="font-medium">Unsorted</span>
-                  <span className="text-sm text-foreground-muted shrink-0">
-                    {getUnsortedCount()}{' '}
-                    {getUnsortedCount() === 1 ? 'item' : 'items'}
-                  </span>
-                  <Badge
-                    variant="neutral-outline"
-                    className="text-xs capitalize shrink-0"
-                  >
-                    system
-                  </Badge>
-                </div>
+            <Card className="py-0">
+              <CardContent className="h-10 flex items-center gap-2">
+                <Lock className="h-4 w-4 text-foreground-muted" />
+                <span className="font-medium capitalize truncate">
+                  Unsorted
+                </span>
+                <span className="text-sm text-foreground-muted shrink-0">
+                  {getUnsortedCount()}{' '}
+                  {getUnsortedCount() === 1 ? 'item' : 'items'}
+                </span>
               </CardContent>
             </Card>
           )}
@@ -346,7 +337,6 @@ export function ShelfSettingsPage() {
         {activeShelf && (
           <div className="flex items-center gap-2 px-3 py-2 bg-background-surface border border-border rounded-md shadow-lg opacity-90">
             <GripVertical className="h-4 w-4 text-foreground-muted" />
-            <ShelvingUnit className="h-4 w-4 text-foreground-muted" />
             <span className="text-sm font-medium capitalize">
               {activeShelf.name}
             </span>
