@@ -94,7 +94,7 @@ function ImportErrorStory() {
 function ImportDoneStory() {
   return (
     <div className="p-4 max-w-sm">
-      <p className="text-sm text-ok">Import complete.</p>
+      <p className="text-sm text-status-ok-foreground">Import complete.</p>
     </div>
   )
 }

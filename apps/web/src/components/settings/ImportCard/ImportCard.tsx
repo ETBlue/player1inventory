@@ -276,7 +276,7 @@ export function ImportCard() {
             )}
 
             {importStatus.phase === 'done' && (
-              <p className="mt-2 text-sm text-ok">
+              <p className="mt-2 text-sm text-status-ok-foreground">
                 {t('settings.import.importDone')}
               </p>
             )}
