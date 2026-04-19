@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   GripVertical,
@@ -61,14 +61,12 @@ interface SortableShelfRowProps {
   shelf: Shelf
   itemCount: number
   onDelete: () => void
-  onNavigateToEdit: () => void
 }
 
 function SortableShelfRow({
   shelf,
   itemCount,
   onDelete,
-  onNavigateToEdit,
 }: SortableShelfRowProps) {
   const {
     attributes,
@@ -153,7 +151,6 @@ export function ShelfSettingsPage() {
   const createShelf = useCreateShelfMutation()
   const deleteShelf = useDeleteShelfMutation()
   const reorderShelves = useReorderShelvesMutation()
-  const navigate = useNavigate()
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -302,12 +299,6 @@ export function ShelfSettingsPage() {
                   key={shelf.id}
                   shelf={shelf}
                   itemCount={getItemCount(shelf)}
-                  onNavigateToEdit={() =>
-                    navigate({
-                      to: '/settings/shelves/$shelfId',
-                      params: { shelfId: shelf.id },
-                    })
-                  }
                   onDelete={() => deleteShelf.mutate(shelf.id)}
                 />
               ))}
