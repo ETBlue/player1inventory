@@ -9,11 +9,11 @@
   --background-surface: oklch(95% 4% 85);
   --background-elevated: oklch(98% 4% 85);
 
-  --foreground-muted: oklch(50% 6% 85);
-  --foreground-default: oklch(35% 8% 85);
+  --foreground-muted: oklch(40% 6% 85);
+  --foreground-default: oklch(30% 8% 85);
   --foreground-emphasized: oklch(20% 10% 85);
-  --foreground-colorless: oklch(35% 0% 85);
-  --foreground-colorless-inverse: oklch(95% 0% 85);
+  --foreground-colorless: oklch(30% 0% 85);
+  --foreground-colorless-inverse: oklch(100% 0% 85);
 
   --accessory-muted: oklch(85% 6% 85);
   --accessory-default: oklch(80% 6% 85);
@@ -21,15 +21,15 @@
 
   /* importance — light mode */
 
-  --importance-primary-background: oklch(60% 70% 195);
-  --importance-secondary-background: oklch(65% 20% 195);
-  --importance-destructive-background: oklch(60% 40% 350);
+  --importance-primary-background: oklch(50% 25% 195);
+  --importance-secondary-background: oklch(60% 15% 195);
+  --importance-destructive-background: oklch(55% 30% 350);
   --importance-neutral-background: oklch(60% 6% 85);
 
-  --importance-primary-foreground: oklch(50% 70% 195);
-  --importance-secondary-foreground: oklch(55% 20% 195);
-  --importance-destructive-foreground: oklch(50% 40% 350);
-  --importance-neutral-foreground: oklch(50% 6% 85);
+  --importance-primary-foreground: oklch(45% 25% 195);
+  --importance-secondary-foreground: oklch(55% 15% 195);
+  --importance-destructive-foreground: oklch(50% 30% 350);
+  --importance-neutral-foreground: oklch(45% 6% 85);
 
   --importance-primary-accessory: oklch(70% 20% 195);
   --importance-secondary-accessory: oklch(75% 10% 195);
@@ -51,7 +51,7 @@
   --status-ok-foreground: oklch(55% 70% 120);
   --status-warning-foreground: oklch(55% 50% 90);
   --status-error-foreground: oklch(50% 30% 20);
-  --status-inactive-foreground: oklch(50% 4% 85);
+  --status-inactive-foreground: oklch(45% 4% 85);
 
   --status-ok-accessory: oklch(75% 20% 120);
   --status-warning-accessory: oklch(75% 20% 90);

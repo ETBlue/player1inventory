@@ -149,8 +149,7 @@ test('user can view settings recipes list without accessibility violations', asy
 })
 
 // Shelves page (/shelves)
-// TODO: fix color-contrast violations (text-foreground-muted on item count spans fails WCAG AA in light mode)
-test.skip('user can view shelves page without accessibility violations', async ({ page }) => {
+test('user can view shelves page without accessibility violations', async ({ page }) => {
   // Given the user navigates to the shelves page
   await page.goto('/shelves')
   await page.waitForLoadState('networkidle')
@@ -163,8 +162,7 @@ test.skip('user can view shelves page without accessibility violations', async (
 })
 
 // Settings > Shelves list (/settings/shelves)
-// TODO: fix color-contrast violations (text-foreground-muted on item count spans fails WCAG AA in light mode)
-test.skip('user can view settings shelves list without accessibility violations', async ({ page }) => {
+test('user can view settings shelves list without accessibility violations', async ({ page }) => {
   // Given the user navigates to the shelves settings page
   await page.goto('/settings/shelves')
   await page.waitForLoadState('networkidle')
@@ -771,8 +769,7 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // TODO: fix color-contrast violations (text-foreground-muted on item count spans fails WCAG AA in light mode)
-  test.skip('user can view settings shelves list without accessibility violations on mobile', async ({ page }) => {
+  test('user can view settings shelves list without accessibility violations on mobile', async ({ page }) => {
     // Given the user navigates to the shelves settings page on a mobile viewport
     await page.goto('/settings/shelves')
     await page.waitForLoadState('networkidle')
