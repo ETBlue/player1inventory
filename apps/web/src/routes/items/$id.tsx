@@ -16,6 +16,7 @@ import {
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,10 +102,7 @@ function ItemLayoutInner() {
     <>
       <div className="h-screen grid grid-rows-[auto_1fr]">
         {/* Fixed Top Bar */}
-        <header
-          className={`px-3 flex items-center gap-2 w-[100cqw]
-          bg-background-surface border-b-2 border-accessory-default`}
-        >
+        <Toolbar className="w-[100cqw] py-0">
           <Button
             variant="neutral-ghost"
             size="icon"
@@ -183,7 +181,7 @@ function ItemLayoutInner() {
               <History className="h-4 w-4" />
             </Link>
           </div>
-        </header>
+        </Toolbar>
 
         {/* Main Content with padding to clear fixed bar */}
         <div className="overflow-y-auto [container-type:size]">
