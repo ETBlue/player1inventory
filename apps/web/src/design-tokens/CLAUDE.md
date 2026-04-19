@@ -30,7 +30,7 @@ Three-level system for surface elevation hierarchy:
 - `--background-elevated` / `bg-background-elevated`: Cards, panels, list items
 
 Light mode: L=90% → L=95% → L=98% (progressively lighter in OKLCH)
-Dark mode: L=20% → L=30% → L=40% (progressively lighter in OKLCH)
+Dark mode: L=10% → L=20% → L=30% (progressively lighter in OKLCH)
 
 **Token categories:**
 
