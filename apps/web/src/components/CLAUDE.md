@@ -11,7 +11,7 @@ src/components/
   vendor/         — vendor-specific: VendorCard, VendorInfoForm
   recipe/         — recipe-specific: CookingControlBar, RecipeCard, RecipeInfoForm
   settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
-  shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog, SortDropdown, FilterChips, AddToShelfBlock
+  shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog, AddToShelfBlock
   ui/             — shadcn/ui primitives (flat files, not folders)
 ```
 
@@ -77,15 +77,11 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 Components for the shelf-view feature.
 
-**`ShelfCard`** (`src/components/shelf/ShelfCard/ShelfCard.tsx`) — card row for a shelf in the shelves list. Props: `shelf`, `itemCount`, `onClick`, `filterSummary?`, `dragHandleProps?`. Shows shelf name, item count, type badge, and chevron.
+**`ShelfCard`** (`src/components/shelf/ShelfCard/ShelfCard.tsx`) — card row for a shelf in the shelves list. Props: `shelf`, `itemCount`, `onClick`, `filterSummary?`. Shows shelf name, item count, type badge, and chevron.
 
-**`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — drag-and-drop sortable list of shelves. Props: `shelves`, `onShelfClick`, `onReorder`, `getItemCount`, `getFilterSummary?`. Uses `@dnd-kit` for drag-to-reorder.
+**`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`.
 
 **`AddShelfDialog`** (`src/components/shelf/AddShelfDialog/AddShelfDialog.tsx`) — dialog for creating a new shelf. Exports `AddShelfDialog` and `CreateShelfInput` type.
-
-**`SortDropdown`** (`src/components/shelf/SortDropdown/SortDropdown.tsx`) — reusable sort field selector + direction toggle. Props: `value: { sortBy: string; sortDir: 'asc' | 'desc' }`, `onChange`, `options: { value: string; label: string }[]`. Uses shadcn/ui `Select` for field and a toggle `Button` for direction.
-
-**`FilterChips`** (`src/components/shelf/FilterChips/FilterChips.tsx`) — read-only display of filter criteria (tags, vendors, recipes) as Badges. Props: `tags: Tag[]`, `vendors: Vendor[]`, `recipes: Recipe[]`. Returns `null` when all arrays are empty.
 
 **`AddToShelfBlock`** (`src/components/shelf/AddToShelfBlock/AddToShelfBlock.tsx`) — compact row for adding items to a shelf during search. Props: `itemName`, `onAdd`, `disabled?`, `label?`. When `disabled`, shows "Matches filter" badge; otherwise shows "Add" button.
 
