@@ -4,6 +4,7 @@ import type {
   InventoryLog,
   Item,
   Recipe,
+  Shelf,
   ShoppingCart,
   Tag,
   TagType,
@@ -19,6 +20,7 @@ const db = new Dexie('Player1Inventory') as Dexie & {
   cartItems: EntityTable<CartItem, 'id'>
   vendors: EntityTable<Vendor, 'id'>
   recipes: EntityTable<Recipe, 'id'>
+  shelves: EntityTable<Shelf, 'id'>
 }
 
 // Version 1: Original schema
@@ -98,6 +100,19 @@ db.version(7).stores({
   cartItems: 'id, cartId, itemId',
   vendors: 'id, name',
   recipes: 'id, name, lastCookedAt',
+})
+
+// Version 8: Add shelves table for shelf-view feature
+db.version(8).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, typeId, parentId, createdAt',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
+  recipes: 'id, name, lastCookedAt',
+  shelves: '++id, name, type, order',
 })
 
 export { db }

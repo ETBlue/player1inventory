@@ -1,10 +1,16 @@
-import { createFileRoute, Link, useRouterState } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -21,6 +27,7 @@ import {
 } from '@/lib/filterUtils'
 import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
+import { getStoredPantryView, setPantryView } from '@/lib/viewPreference'
 import type { Recipe, Vendor } from '@/types'
 
 export const Route = createFileRoute('/')({
@@ -29,6 +36,14 @@ export const Route = createFileRoute('/')({
 
 function PantryView() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+
+  // Redirect to /shelves only if the user has explicitly stored a 'shelf' preference
+  useEffect(() => {
+    if (getStoredPantryView() === 'shelf') {
+      navigate({ to: '/shelves' })
+    }
+  }, [navigate])
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
@@ -216,6 +231,17 @@ function PantryView() {
           hasExactMatch={hasExactMatch}
           vendors={vendors}
           recipes={recipes}
+          leading={
+            <ViewToggle
+              current="list"
+              onChange={(view) => {
+                if (view === 'shelf') {
+                  setPantryView('shelf')
+                  navigate({ to: '/shelves' })
+                }
+              }}
+            />
+          }
         >
           <Link to="/items/new">
             <Button

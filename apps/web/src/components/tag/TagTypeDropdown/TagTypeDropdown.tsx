@@ -19,7 +19,7 @@ interface TagTypeDropdownProps {
   tagType: TagType
   tags: TagWithOptionalDepth[]
   selectedTagIds: string[]
-  tagCounts: number[]
+  tagCounts?: number[]
   onToggleTag: (tagId: string) => void
   onClear: () => void
 }
@@ -90,9 +90,13 @@ export function TagTypeDropdown({
                 >
                   {tag.name}
                 </Badge>
-                <span className="text-foreground-muted text-xs ml-2">
-                  ({tagCounts[index]})
-                </span>
+                {tagCounts !== undefined &&
+                  tagCounts[index] !== undefined &&
+                  tagCounts[index] > 0 && (
+                    <span className="text-foreground-muted text-xs ml-2">
+                      ({tagCounts[index]})
+                    </span>
+                  )}
               </div>
             </DropdownMenuCheckboxItem>
           )

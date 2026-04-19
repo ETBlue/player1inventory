@@ -297,6 +297,10 @@
         }
       }
     },
+    "shelves": {
+      "label": "貨架",
+      "description": "管理貨架與設定篩選條件"
+    },
     "recipes": {
       "label": "食譜",
       "description": "管理食譜",

@@ -300,6 +300,10 @@
         }
       }
     },
+    "shelves": {
+      "label": "Shelves",
+      "description": "Manage shelves and shelf filters"
+    },
     "recipes": {
       "label": "Recipes",
       "description": "Manage recipes",

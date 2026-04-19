@@ -43,6 +43,13 @@ export function isSamePage(url1: string, url2: string): boolean {
     return true
   }
 
+  // Shelf detail pages: /settings/shelves/:shelfId/*
+  const shelfMatch1 = path1.match(/^\/settings\/shelves\/([^/]+)/)
+  const shelfMatch2 = path2.match(/^\/settings\/shelves\/([^/]+)/)
+  if (shelfMatch1 && shelfMatch2 && shelfMatch1[1] === shelfMatch2[1]) {
+    return true
+  }
+
   return false
 }
 

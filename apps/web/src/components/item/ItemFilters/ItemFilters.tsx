@@ -1,18 +1,12 @@
 // src/components/ItemFilters.tsx
 
 import { Link } from '@tanstack/react-router'
-import { ChevronDown, CookingPot, Pencil, Store, X } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { RecipeFilterDropdown } from '@/components/recipe/RecipeFilterDropdown'
 import { TagTypeDropdown } from '@/components/tag/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { VendorFilterDropdown } from '@/components/vendor/VendorFilterDropdown'
 import { useTags, useTagsWithDepth, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { calculateTagCount } from '@/lib/filterUtils'
@@ -145,131 +139,25 @@ function ItemFiltersRenderer({
       )}
     >
       {showVendors && (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant={
-                selectedVendorIds.length > 0 ? 'neutral' : 'neutral-ghost'
-              }
-              size="xs"
-              className="gap-1"
-            >
-              <Store />
-              {t('settings.vendors.label')}
-              {selectedVendorIds.length > 0 && (
-                <span className="text-xs font-semibold">
-                  {selectedVendorIds.length}
-                </span>
-              )}
-              <ChevronDown />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {vendors.map((vendor) => {
-              const count = items.filter((item) =>
-                item.vendorIds?.includes(vendor.id),
-              ).length
-              return (
-                <DropdownMenuCheckboxItem
-                  key={vendor.id}
-                  checked={selectedVendorIds.includes(vendor.id)}
-                  onCheckedChange={() => toggleVendorId(vendor.id)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span>{vendor.name}</span>
-                    <span className="text-foreground-muted text-xs ml-2">
-                      ({count})
-                    </span>
-                  </div>
-                </DropdownMenuCheckboxItem>
-              )
-            })}
-            {selectedVendorIds.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={clearVendorIds}>
-                  <X className="h-4 w-4" />
-                  <span className="text-xs">{t('common.clear')}</span>
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings/vendors"
-                className="flex items-center gap-1.5"
-              >
-                <Pencil className="h-4 w-4" />
-                <span className="text-xs">{t('common.manage')}</span>
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <VendorFilterDropdown
+          vendors={vendors}
+          selectedIds={selectedVendorIds}
+          onToggle={toggleVendorId}
+          onClear={clearVendorIds}
+          items={items}
+          showManageLink
+        />
       )}
 
       {showRecipes && (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant={
-                selectedRecipeIds.length > 0 ? 'neutral' : 'neutral-ghost'
-              }
-              size="xs"
-              className="gap-1"
-            >
-              <CookingPot />
-              {t('settings.recipes.label')}
-              {selectedRecipeIds.length > 0 && (
-                <span className="text-xs font-semibold">
-                  {selectedRecipeIds.length}
-                </span>
-              )}
-              <ChevronDown />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {recipes.map((recipe) => {
-              const count = items.filter((item) =>
-                recipe.items.some((ri) => ri.itemId === item.id),
-              ).length
-              return (
-                <DropdownMenuCheckboxItem
-                  key={recipe.id}
-                  checked={selectedRecipeIds.includes(recipe.id)}
-                  onCheckedChange={() => toggleRecipeId(recipe.id)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="capitalize">{recipe.name}</span>
-                    <span className="text-foreground-muted text-xs ml-2">
-                      ({count})
-                    </span>
-                  </div>
-                </DropdownMenuCheckboxItem>
-              )
-            })}
-            {selectedRecipeIds.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={clearRecipeIds}>
-                  <X className="h-4 w-4" />
-                  <span className="text-xs">{t('common.clear')}</span>
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link
-                to="/settings/recipes"
-                className="flex items-center gap-1.5"
-              >
-                <Pencil className="h-4 w-4" />
-                <span className="text-xs">{t('common.manage')}</span>
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <RecipeFilterDropdown
+          recipes={recipes}
+          selectedIds={selectedRecipeIds}
+          onToggle={toggleRecipeId}
+          onClear={clearRecipeIds}
+          items={items}
+          showManageLink
+        />
       )}
 
       {tagTypesWithTags.map((tagType) => {

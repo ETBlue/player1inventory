@@ -6,6 +6,7 @@ import type {
   Item,
   Recipe,
   RecipeItem,
+  Shelf,
   ShoppingCart,
   Tag,
   TagType,
@@ -508,6 +509,61 @@ export async function deleteRecipe(id: string): Promise<void> {
 export async function getItemCountByRecipe(recipeId: string): Promise<number> {
   const recipe = await db.recipes.get(recipeId)
   return recipe?.items.length ?? 0
+}
+
+// Shelf operations
+
+export async function listShelves(): Promise<Shelf[]> {
+  return db.shelves.orderBy('order').toArray()
+}
+
+export async function getShelf(id: string): Promise<Shelf | undefined> {
+  return db.shelves.get(id)
+}
+
+export async function createShelf(
+  data: Omit<Shelf, 'id' | 'createdAt' | 'updatedAt'>,
+): Promise<Shelf> {
+  const now = new Date()
+  const shelf: Shelf = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.shelves.add(shelf)
+  return shelf
+}
+
+export async function updateShelf(
+  id: string,
+  data: Partial<Omit<Shelf, 'id' | 'createdAt'>>,
+): Promise<Shelf> {
+  await db.shelves.update(id, { ...data, updatedAt: new Date() })
+  const updated = await db.shelves.get(id)
+  if (!updated) throw new Error(`Shelf not found: ${id}`)
+  return updated
+}
+
+export async function deleteShelf(id: string): Promise<void> {
+  await db.shelves.delete(id)
+}
+
+export async function reorderShelves(orderedIds: string[]): Promise<void> {
+  const now = new Date()
+  for (const [i, id] of orderedIds.entries()) {
+    await db.shelves.update(id, { order: i, updatedAt: now })
+  }
+}
+
+export async function reorderShelfItems(
+  shelfId: string,
+  orderedItemIds: string[],
+): Promise<void> {
+  await db.shelves.update(shelfId, {
+    itemIds: orderedItemIds,
+    updatedAt: new Date(),
+  })
 }
 
 // --- Seed Data ---

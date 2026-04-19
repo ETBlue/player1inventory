@@ -11,22 +11,28 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as ShoppingRouteImport } from './routes/shopping'
+import { Route as ShelvesRouteImport } from './routes/shelves'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as CookingRouteImport } from './routes/cooking'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ShelvesIndexRouteImport } from './routes/shelves/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as ShelvesShelfIdRouteImport } from './routes/shelves/$shelfId'
 import { Route as SettingsVendorsRouteImport } from './routes/settings/vendors'
 import { Route as SettingsTagsRouteImport } from './routes/settings/tags'
+import { Route as SettingsShelvesRouteImport } from './routes/settings/shelves'
 import { Route as SettingsRecipesRouteImport } from './routes/settings/recipes'
 import { Route as ItemsNewRouteImport } from './routes/items/new'
 import { Route as ItemsIdRouteImport } from './routes/items/$id'
 import { Route as SettingsVendorsIndexRouteImport } from './routes/settings/vendors/index'
 import { Route as SettingsTagsIndexRouteImport } from './routes/settings/tags/index'
+import { Route as SettingsShelvesIndexRouteImport } from './routes/settings/shelves/index'
 import { Route as SettingsRecipesIndexRouteImport } from './routes/settings/recipes/index'
 import { Route as ItemsIdIndexRouteImport } from './routes/items/$id/index'
 import { Route as SettingsVendorsNewRouteImport } from './routes/settings/vendors/new'
 import { Route as SettingsVendorsIdRouteImport } from './routes/settings/vendors/$id'
 import { Route as SettingsTagsIdRouteImport } from './routes/settings/tags/$id'
+import { Route as SettingsShelvesShelfIdRouteImport } from './routes/settings/shelves/$shelfId'
 import { Route as SettingsRecipesNewRouteImport } from './routes/settings/recipes/new'
 import { Route as SettingsRecipesIdRouteImport } from './routes/settings/recipes/$id'
 import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
@@ -35,9 +41,12 @@ import { Route as ItemsIdRecipesRouteImport } from './routes/items/$id/recipes'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id/log'
 import { Route as SettingsVendorsIdIndexRouteImport } from './routes/settings/vendors/$id/index'
 import { Route as SettingsTagsIdIndexRouteImport } from './routes/settings/tags/$id/index'
+import { Route as SettingsShelvesShelfIdIndexRouteImport } from './routes/settings/shelves/$shelfId/index'
 import { Route as SettingsRecipesIdIndexRouteImport } from './routes/settings/recipes/$id/index'
 import { Route as SettingsVendorsIdItemsRouteImport } from './routes/settings/vendors/$id/items'
 import { Route as SettingsTagsIdItemsRouteImport } from './routes/settings/tags/$id/items'
+import { Route as SettingsShelvesShelfIdItemsRouteImport } from './routes/settings/shelves/$shelfId/items'
+import { Route as SettingsShelvesShelfIdFiltersRouteImport } from './routes/settings/shelves/$shelfId/filters'
 import { Route as SettingsRecipesIdItemsRouteImport } from './routes/settings/recipes/$id/items'
 
 const SignInRoute = SignInRouteImport.update({
@@ -48,6 +57,11 @@ const SignInRoute = SignInRouteImport.update({
 const ShoppingRoute = ShoppingRouteImport.update({
   id: '/shopping',
   path: '/shopping',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShelvesRoute = ShelvesRouteImport.update({
+  id: '/shelves',
+  path: '/shelves',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -65,10 +79,20 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShelvesIndexRoute = ShelvesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ShelvesRoute,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ShelvesShelfIdRoute = ShelvesShelfIdRouteImport.update({
+  id: '/$shelfId',
+  path: '/$shelfId',
+  getParentRoute: () => ShelvesRoute,
 } as any)
 const SettingsVendorsRoute = SettingsVendorsRouteImport.update({
   id: '/settings/vendors',
@@ -78,6 +102,11 @@ const SettingsVendorsRoute = SettingsVendorsRouteImport.update({
 const SettingsTagsRoute = SettingsTagsRouteImport.update({
   id: '/settings/tags',
   path: '/settings/tags',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsShelvesRoute = SettingsShelvesRouteImport.update({
+  id: '/settings/shelves',
+  path: '/settings/shelves',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRecipesRoute = SettingsRecipesRouteImport.update({
@@ -105,6 +134,11 @@ const SettingsTagsIndexRoute = SettingsTagsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsTagsRoute,
 } as any)
+const SettingsShelvesIndexRoute = SettingsShelvesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsShelvesRoute,
+} as any)
 const SettingsRecipesIndexRoute = SettingsRecipesIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -129,6 +163,11 @@ const SettingsTagsIdRoute = SettingsTagsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => SettingsTagsRoute,
+} as any)
+const SettingsShelvesShelfIdRoute = SettingsShelvesShelfIdRouteImport.update({
+  id: '/$shelfId',
+  path: '/$shelfId',
+  getParentRoute: () => SettingsShelvesRoute,
 } as any)
 const SettingsRecipesNewRoute = SettingsRecipesNewRouteImport.update({
   id: '/new',
@@ -170,6 +209,12 @@ const SettingsTagsIdIndexRoute = SettingsTagsIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsTagsIdRoute,
 } as any)
+const SettingsShelvesShelfIdIndexRoute =
+  SettingsShelvesShelfIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => SettingsShelvesShelfIdRoute,
+  } as any)
 const SettingsRecipesIdIndexRoute = SettingsRecipesIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -185,6 +230,18 @@ const SettingsTagsIdItemsRoute = SettingsTagsIdItemsRouteImport.update({
   path: '/items',
   getParentRoute: () => SettingsTagsIdRoute,
 } as any)
+const SettingsShelvesShelfIdItemsRoute =
+  SettingsShelvesShelfIdItemsRouteImport.update({
+    id: '/items',
+    path: '/items',
+    getParentRoute: () => SettingsShelvesShelfIdRoute,
+  } as any)
+const SettingsShelvesShelfIdFiltersRoute =
+  SettingsShelvesShelfIdFiltersRouteImport.update({
+    id: '/filters',
+    path: '/filters',
+    getParentRoute: () => SettingsShelvesShelfIdRoute,
+  } as any)
 const SettingsRecipesIdItemsRoute = SettingsRecipesIdItemsRouteImport.update({
   id: '/items',
   path: '/items',
@@ -195,31 +252,40 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
+  '/shelves': typeof ShelvesRouteWithChildren
   '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
   '/settings/recipes': typeof SettingsRecipesRouteWithChildren
+  '/settings/shelves': typeof SettingsShelvesRouteWithChildren
   '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
+  '/shelves/$shelfId': typeof ShelvesShelfIdRoute
   '/settings/': typeof SettingsIndexRoute
+  '/shelves/': typeof ShelvesIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdRouteWithChildren
   '/settings/recipes/new': typeof SettingsRecipesNewRoute
+  '/settings/shelves/$shelfId': typeof SettingsShelvesShelfIdRouteWithChildren
   '/settings/tags/$id': typeof SettingsTagsIdRouteWithChildren
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
   '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/recipes/': typeof SettingsRecipesIndexRoute
+  '/settings/shelves/': typeof SettingsShelvesIndexRoute
   '/settings/tags/': typeof SettingsTagsIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
   '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
+  '/settings/shelves/$shelfId/filters': typeof SettingsShelvesShelfIdFiltersRoute
+  '/settings/shelves/$shelfId/items': typeof SettingsShelvesShelfIdItemsRoute
   '/settings/tags/$id/items': typeof SettingsTagsIdItemsRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
   '/settings/recipes/$id/': typeof SettingsRecipesIdIndexRoute
+  '/settings/shelves/$shelfId/': typeof SettingsShelvesShelfIdIndexRoute
   '/settings/tags/$id/': typeof SettingsTagsIdIndexRoute
   '/settings/vendors/$id/': typeof SettingsVendorsIdIndexRoute
 }
@@ -230,7 +296,9 @@ export interface FileRoutesByTo {
   '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
   '/items/new': typeof ItemsNewRoute
+  '/shelves/$shelfId': typeof ShelvesShelfIdRoute
   '/settings': typeof SettingsIndexRoute
+  '/shelves': typeof ShelvesIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
@@ -239,12 +307,16 @@ export interface FileRoutesByTo {
   '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id': typeof ItemsIdIndexRoute
   '/settings/recipes': typeof SettingsRecipesIndexRoute
+  '/settings/shelves': typeof SettingsShelvesIndexRoute
   '/settings/tags': typeof SettingsTagsIndexRoute
   '/settings/vendors': typeof SettingsVendorsIndexRoute
   '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
+  '/settings/shelves/$shelfId/filters': typeof SettingsShelvesShelfIdFiltersRoute
+  '/settings/shelves/$shelfId/items': typeof SettingsShelvesShelfIdItemsRoute
   '/settings/tags/$id/items': typeof SettingsTagsIdItemsRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdIndexRoute
+  '/settings/shelves/$shelfId': typeof SettingsShelvesShelfIdIndexRoute
   '/settings/tags/$id': typeof SettingsTagsIdIndexRoute
   '/settings/vendors/$id': typeof SettingsVendorsIdIndexRoute
 }
@@ -253,31 +325,40 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
+  '/shelves': typeof ShelvesRouteWithChildren
   '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/items/new': typeof ItemsNewRoute
   '/settings/recipes': typeof SettingsRecipesRouteWithChildren
+  '/settings/shelves': typeof SettingsShelvesRouteWithChildren
   '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
+  '/shelves/$shelfId': typeof ShelvesShelfIdRoute
   '/settings/': typeof SettingsIndexRoute
+  '/shelves/': typeof ShelvesIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdRouteWithChildren
   '/settings/recipes/new': typeof SettingsRecipesNewRoute
+  '/settings/shelves/$shelfId': typeof SettingsShelvesShelfIdRouteWithChildren
   '/settings/tags/$id': typeof SettingsTagsIdRouteWithChildren
   '/settings/vendors/$id': typeof SettingsVendorsIdRouteWithChildren
   '/settings/vendors/new': typeof SettingsVendorsNewRoute
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/recipes/': typeof SettingsRecipesIndexRoute
+  '/settings/shelves/': typeof SettingsShelvesIndexRoute
   '/settings/tags/': typeof SettingsTagsIndexRoute
   '/settings/vendors/': typeof SettingsVendorsIndexRoute
   '/settings/recipes/$id/items': typeof SettingsRecipesIdItemsRoute
+  '/settings/shelves/$shelfId/filters': typeof SettingsShelvesShelfIdFiltersRoute
+  '/settings/shelves/$shelfId/items': typeof SettingsShelvesShelfIdItemsRoute
   '/settings/tags/$id/items': typeof SettingsTagsIdItemsRoute
   '/settings/vendors/$id/items': typeof SettingsVendorsIdItemsRoute
   '/settings/recipes/$id/': typeof SettingsRecipesIdIndexRoute
+  '/settings/shelves/$shelfId/': typeof SettingsShelvesShelfIdIndexRoute
   '/settings/tags/$id/': typeof SettingsTagsIdIndexRoute
   '/settings/vendors/$id/': typeof SettingsVendorsIdIndexRoute
 }
@@ -287,31 +368,40 @@ export interface FileRouteTypes {
     | '/'
     | '/cooking'
     | '/onboarding'
+    | '/shelves'
     | '/shopping'
     | '/sign-in'
     | '/items/$id'
     | '/items/new'
     | '/settings/recipes'
+    | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/shelves/$shelfId'
     | '/settings/'
+    | '/shelves/'
     | '/items/$id/log'
     | '/items/$id/recipes'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/$id'
     | '/settings/recipes/new'
+    | '/settings/shelves/$shelfId'
     | '/settings/tags/$id'
     | '/settings/vendors/$id'
     | '/settings/vendors/new'
     | '/items/$id/'
     | '/settings/recipes/'
+    | '/settings/shelves/'
     | '/settings/tags/'
     | '/settings/vendors/'
     | '/settings/recipes/$id/items'
+    | '/settings/shelves/$shelfId/filters'
+    | '/settings/shelves/$shelfId/items'
     | '/settings/tags/$id/items'
     | '/settings/vendors/$id/items'
     | '/settings/recipes/$id/'
+    | '/settings/shelves/$shelfId/'
     | '/settings/tags/$id/'
     | '/settings/vendors/$id/'
   fileRoutesByTo: FileRoutesByTo
@@ -322,7 +412,9 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/sign-in'
     | '/items/new'
+    | '/shelves/$shelfId'
     | '/settings'
+    | '/shelves'
     | '/items/$id/log'
     | '/items/$id/recipes'
     | '/items/$id/tags'
@@ -331,12 +423,16 @@ export interface FileRouteTypes {
     | '/settings/vendors/new'
     | '/items/$id'
     | '/settings/recipes'
+    | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
     | '/settings/recipes/$id/items'
+    | '/settings/shelves/$shelfId/filters'
+    | '/settings/shelves/$shelfId/items'
     | '/settings/tags/$id/items'
     | '/settings/vendors/$id/items'
     | '/settings/recipes/$id'
+    | '/settings/shelves/$shelfId'
     | '/settings/tags/$id'
     | '/settings/vendors/$id'
   id:
@@ -344,31 +440,40 @@ export interface FileRouteTypes {
     | '/'
     | '/cooking'
     | '/onboarding'
+    | '/shelves'
     | '/shopping'
     | '/sign-in'
     | '/items/$id'
     | '/items/new'
     | '/settings/recipes'
+    | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/shelves/$shelfId'
     | '/settings/'
+    | '/shelves/'
     | '/items/$id/log'
     | '/items/$id/recipes'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/$id'
     | '/settings/recipes/new'
+    | '/settings/shelves/$shelfId'
     | '/settings/tags/$id'
     | '/settings/vendors/$id'
     | '/settings/vendors/new'
     | '/items/$id/'
     | '/settings/recipes/'
+    | '/settings/shelves/'
     | '/settings/tags/'
     | '/settings/vendors/'
     | '/settings/recipes/$id/items'
+    | '/settings/shelves/$shelfId/filters'
+    | '/settings/shelves/$shelfId/items'
     | '/settings/tags/$id/items'
     | '/settings/vendors/$id/items'
     | '/settings/recipes/$id/'
+    | '/settings/shelves/$shelfId/'
     | '/settings/tags/$id/'
     | '/settings/vendors/$id/'
   fileRoutesById: FileRoutesById
@@ -377,11 +482,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CookingRoute: typeof CookingRoute
   OnboardingRoute: typeof OnboardingRoute
+  ShelvesRoute: typeof ShelvesRouteWithChildren
   ShoppingRoute: typeof ShoppingRoute
   SignInRoute: typeof SignInRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   ItemsNewRoute: typeof ItemsNewRoute
   SettingsRecipesRoute: typeof SettingsRecipesRouteWithChildren
+  SettingsShelvesRoute: typeof SettingsShelvesRouteWithChildren
   SettingsTagsRoute: typeof SettingsTagsRouteWithChildren
   SettingsVendorsRoute: typeof SettingsVendorsRouteWithChildren
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -401,6 +508,13 @@ declare module '@tanstack/react-router' {
       path: '/shopping'
       fullPath: '/shopping'
       preLoaderRoute: typeof ShoppingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shelves': {
+      id: '/shelves'
+      path: '/shelves'
+      fullPath: '/shelves'
+      preLoaderRoute: typeof ShelvesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -424,12 +538,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shelves/': {
+      id: '/shelves/'
+      path: '/'
+      fullPath: '/shelves/'
+      preLoaderRoute: typeof ShelvesIndexRouteImport
+      parentRoute: typeof ShelvesRoute
+    }
     '/settings/': {
       id: '/settings/'
       path: '/settings'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/shelves/$shelfId': {
+      id: '/shelves/$shelfId'
+      path: '/$shelfId'
+      fullPath: '/shelves/$shelfId'
+      preLoaderRoute: typeof ShelvesShelfIdRouteImport
+      parentRoute: typeof ShelvesRoute
     }
     '/settings/vendors': {
       id: '/settings/vendors'
@@ -443,6 +571,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/tags'
       fullPath: '/settings/tags'
       preLoaderRoute: typeof SettingsTagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/shelves': {
+      id: '/settings/shelves'
+      path: '/settings/shelves'
+      fullPath: '/settings/shelves'
+      preLoaderRoute: typeof SettingsShelvesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/recipes': {
@@ -480,6 +615,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsTagsIndexRouteImport
       parentRoute: typeof SettingsTagsRoute
     }
+    '/settings/shelves/': {
+      id: '/settings/shelves/'
+      path: '/'
+      fullPath: '/settings/shelves/'
+      preLoaderRoute: typeof SettingsShelvesIndexRouteImport
+      parentRoute: typeof SettingsShelvesRoute
+    }
     '/settings/recipes/': {
       id: '/settings/recipes/'
       path: '/'
@@ -514,6 +656,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/tags/$id'
       preLoaderRoute: typeof SettingsTagsIdRouteImport
       parentRoute: typeof SettingsTagsRoute
+    }
+    '/settings/shelves/$shelfId': {
+      id: '/settings/shelves/$shelfId'
+      path: '/$shelfId'
+      fullPath: '/settings/shelves/$shelfId'
+      preLoaderRoute: typeof SettingsShelvesShelfIdRouteImport
+      parentRoute: typeof SettingsShelvesRoute
     }
     '/settings/recipes/new': {
       id: '/settings/recipes/new'
@@ -571,6 +720,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsTagsIdIndexRouteImport
       parentRoute: typeof SettingsTagsIdRoute
     }
+    '/settings/shelves/$shelfId/': {
+      id: '/settings/shelves/$shelfId/'
+      path: '/'
+      fullPath: '/settings/shelves/$shelfId/'
+      preLoaderRoute: typeof SettingsShelvesShelfIdIndexRouteImport
+      parentRoute: typeof SettingsShelvesShelfIdRoute
+    }
     '/settings/recipes/$id/': {
       id: '/settings/recipes/$id/'
       path: '/'
@@ -592,6 +748,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsTagsIdItemsRouteImport
       parentRoute: typeof SettingsTagsIdRoute
     }
+    '/settings/shelves/$shelfId/items': {
+      id: '/settings/shelves/$shelfId/items'
+      path: '/items'
+      fullPath: '/settings/shelves/$shelfId/items'
+      preLoaderRoute: typeof SettingsShelvesShelfIdItemsRouteImport
+      parentRoute: typeof SettingsShelvesShelfIdRoute
+    }
+    '/settings/shelves/$shelfId/filters': {
+      id: '/settings/shelves/$shelfId/filters'
+      path: '/filters'
+      fullPath: '/settings/shelves/$shelfId/filters'
+      preLoaderRoute: typeof SettingsShelvesShelfIdFiltersRouteImport
+      parentRoute: typeof SettingsShelvesShelfIdRoute
+    }
     '/settings/recipes/$id/items': {
       id: '/settings/recipes/$id/items'
       path: '/items'
@@ -601,6 +771,19 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface ShelvesRouteChildren {
+  ShelvesShelfIdRoute: typeof ShelvesShelfIdRoute
+  ShelvesIndexRoute: typeof ShelvesIndexRoute
+}
+
+const ShelvesRouteChildren: ShelvesRouteChildren = {
+  ShelvesShelfIdRoute: ShelvesShelfIdRoute,
+  ShelvesIndexRoute: ShelvesIndexRoute,
+}
+
+const ShelvesRouteWithChildren =
+  ShelvesRoute._addFileChildren(ShelvesRouteChildren)
 
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
@@ -648,6 +831,38 @@ const SettingsRecipesRouteChildren: SettingsRecipesRouteChildren = {
 
 const SettingsRecipesRouteWithChildren = SettingsRecipesRoute._addFileChildren(
   SettingsRecipesRouteChildren,
+)
+
+interface SettingsShelvesShelfIdRouteChildren {
+  SettingsShelvesShelfIdFiltersRoute: typeof SettingsShelvesShelfIdFiltersRoute
+  SettingsShelvesShelfIdItemsRoute: typeof SettingsShelvesShelfIdItemsRoute
+  SettingsShelvesShelfIdIndexRoute: typeof SettingsShelvesShelfIdIndexRoute
+}
+
+const SettingsShelvesShelfIdRouteChildren: SettingsShelvesShelfIdRouteChildren =
+  {
+    SettingsShelvesShelfIdFiltersRoute: SettingsShelvesShelfIdFiltersRoute,
+    SettingsShelvesShelfIdItemsRoute: SettingsShelvesShelfIdItemsRoute,
+    SettingsShelvesShelfIdIndexRoute: SettingsShelvesShelfIdIndexRoute,
+  }
+
+const SettingsShelvesShelfIdRouteWithChildren =
+  SettingsShelvesShelfIdRoute._addFileChildren(
+    SettingsShelvesShelfIdRouteChildren,
+  )
+
+interface SettingsShelvesRouteChildren {
+  SettingsShelvesShelfIdRoute: typeof SettingsShelvesShelfIdRouteWithChildren
+  SettingsShelvesIndexRoute: typeof SettingsShelvesIndexRoute
+}
+
+const SettingsShelvesRouteChildren: SettingsShelvesRouteChildren = {
+  SettingsShelvesShelfIdRoute: SettingsShelvesShelfIdRouteWithChildren,
+  SettingsShelvesIndexRoute: SettingsShelvesIndexRoute,
+}
+
+const SettingsShelvesRouteWithChildren = SettingsShelvesRoute._addFileChildren(
+  SettingsShelvesRouteChildren,
 )
 
 interface SettingsTagsIdRouteChildren {
@@ -711,11 +926,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CookingRoute: CookingRoute,
   OnboardingRoute: OnboardingRoute,
+  ShelvesRoute: ShelvesRouteWithChildren,
   ShoppingRoute: ShoppingRoute,
   SignInRoute: SignInRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
   ItemsNewRoute: ItemsNewRoute,
   SettingsRecipesRoute: SettingsRecipesRouteWithChildren,
+  SettingsShelvesRoute: SettingsShelvesRouteWithChildren,
   SettingsTagsRoute: SettingsTagsRouteWithChildren,
   SettingsVendorsRoute: SettingsVendorsRouteWithChildren,
   SettingsIndexRoute: SettingsIndexRoute,

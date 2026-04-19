@@ -5,12 +5,13 @@
 ```
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
-  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar, ViewToggle
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagDetailDialog, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: VendorCard, VendorInfoForm
   recipe/         — recipe-specific: CookingControlBar, RecipeCard, RecipeInfoForm
   settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
+  shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog, AddToShelfBlock
   ui/             — shadcn/ui primitives (flat files, not folders)
 ```
 
@@ -39,6 +40,8 @@ Reusable across multiple features and pages.
 **`LoadingSpinner`** (`src/components/shared/LoadingSpinner/index.tsx`) — centered animated spinner for page-level loading states. No props. Renders `Loader2` icon (`size-8 animate-spin text-foreground-muted`) inside a `flex min-h-[50vh] items-center justify-center` container. Used in pantry page, item detail, and item log tab.
 
 **`EmptyState`** (`src/components/shared/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
+
+**`ViewToggle`** (`src/components/shared/ViewToggle/index.tsx`) — toggle control for switching between list and grid views. Used on the pantry page and shelves page.
 
 ## Item Components
 
@@ -69,6 +72,18 @@ Self-contained card components for the settings page. Each lives in `src/compone
 **`ConflictDialog`** (`src/components/settings/ConflictDialog/index.tsx`) — import conflict resolution dialog. Props: `open`, `conflicts: ConflictSummary`, `onSkip`, `onReplace`, `onClear`, `onClose`. Groups conflicts by entity type, shows names and match reasons (ID/name/both). Three action buttons: Skip conflicts · Replace matches · Clear & import (destructive).
 
 **`SettingsNavCard`** (`src/components/settings/SettingsNavCard/index.tsx`) — navigation link card for settings list items. Props: `icon: LucideIcon`, `label: string`, `description: string`, `to: string`. Renders a TanStack Router Link wrapping a Card with icon, label, description, and ChevronRight.
+
+## Shelf Components
+
+Components for the shelf-view feature.
+
+**`ShelfCard`** (`src/components/shelf/ShelfCard/ShelfCard.tsx`) — card row for a shelf in the shelves list. Props: `shelf`, `itemCount`, `onClick`, `filterSummary?`. Shows shelf name, item count, type badge, and chevron.
+
+**`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`.
+
+**`AddShelfDialog`** (`src/components/shelf/AddShelfDialog/AddShelfDialog.tsx`) — dialog for creating a new shelf. Exports `AddShelfDialog` and `CreateShelfInput` type.
+
+**`AddToShelfBlock`** (`src/components/shelf/AddToShelfBlock/AddToShelfBlock.tsx`) — compact row for adding items to a shelf during search. Props: `itemName`, `onAdd`, `disabled?`, `label?`. When `disabled`, shows "Matches filter" badge; otherwise shows "Add" button.
 
 ## Dialog Layout Pattern
 
