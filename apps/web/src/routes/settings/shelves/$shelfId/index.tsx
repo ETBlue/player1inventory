@@ -64,7 +64,8 @@ function ShelfInfoTab() {
     registerDirtyState(isDirty)
   }, [isDirty, registerDirtyState])
 
-  const handleSave = () => {
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault()
     if (!shelf) return
     if (shelf.type === 'filter') {
       const base = shelf.filterConfig ?? {}
