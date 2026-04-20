@@ -43,7 +43,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { addItem, consumeItem } from '@/lib/quantityUtils'
+import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
@@ -536,44 +536,70 @@ export function ShelfDetailPage() {
       <div className="overflow-y-auto">
         <div className="h-px bg-accessory-default" />
         <div className="flex flex-col gap-px">
-          {/* In-shelf items */}
-          {displayedInShelfItems.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              tags={tags.filter((t) => item.tagIds.includes(t.id))}
-              tagTypes={tagTypes}
-              vendors={vendorMap.get(item.id) ?? []}
-              recipes={recipeMap.get(item.id) ?? []}
-              showTags={isTagsVisible}
-              onAmountChange={async (delta) => {
-                const updatedItem = { ...item }
-                if (delta > 0) {
-                  const purchaseDate = new Date()
-                  addItem(updatedItem, updatedItem.consumeAmount, purchaseDate)
-                  await updateItem.mutateAsync({
-                    id: item.id,
-                    updates: {
-                      packedQuantity: updatedItem.packedQuantity,
-                      unpackedQuantity: updatedItem.unpackedQuantity,
-                      ...(updatedItem.dueDate
-                        ? { dueDate: updatedItem.dueDate }
-                        : {}),
-                    },
-                  })
-                } else {
-                  consumeItem(updatedItem, updatedItem.consumeAmount)
-                  await updateItem.mutateAsync({
-                    id: item.id,
-                    updates: {
-                      packedQuantity: updatedItem.packedQuantity,
-                      unpackedQuantity: updatedItem.unpackedQuantity,
-                    },
-                  })
-                }
-              }}
-            />
-          ))}
+          {/* In-shelf items: active first, inactive at the bottom */}
+          {(() => {
+            const activeDisplayed = displayedInShelfItems.filter(
+              (item) => !isInactive(item),
+            )
+            const inactiveDisplayed = displayedInShelfItems.filter((item) =>
+              isInactive(item),
+            )
+
+            const renderItemCard = (item: Item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                tags={tags.filter((t) => item.tagIds.includes(t.id))}
+                tagTypes={tagTypes}
+                vendors={vendorMap.get(item.id) ?? []}
+                recipes={recipeMap.get(item.id) ?? []}
+                showTags={isTagsVisible}
+                onAmountChange={async (delta) => {
+                  const updatedItem = { ...item }
+                  if (delta > 0) {
+                    const purchaseDate = new Date()
+                    addItem(
+                      updatedItem,
+                      updatedItem.consumeAmount,
+                      purchaseDate,
+                    )
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                        ...(updatedItem.dueDate
+                          ? { dueDate: updatedItem.dueDate }
+                          : {}),
+                      },
+                    })
+                  } else {
+                    consumeItem(updatedItem, updatedItem.consumeAmount)
+                    await updateItem.mutateAsync({
+                      id: item.id,
+                      updates: {
+                        packedQuantity: updatedItem.packedQuantity,
+                        unpackedQuantity: updatedItem.unpackedQuantity,
+                      },
+                    })
+                  }
+                }}
+              />
+            )
+
+            return (
+              <>
+                {activeDisplayed.map(renderItemCard)}
+                {inactiveDisplayed.length > 0 && (
+                  <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+                    {inactiveDisplayed.length} inactive item
+                    {inactiveDisplayed.length !== 1 ? 's' : ''}
+                  </div>
+                )}
+                {inactiveDisplayed.map(renderItemCard)}
+              </>
+            )
+          })()}
 
           {/* Items not in this shelf — shown when searching */}
           {trimmedSearch && outsideShelfSearchMatches.length > 0 && (
