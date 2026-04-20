@@ -150,4 +150,60 @@ describe('DataModeCard', () => {
       screen.getByRole('heading', { name: 'Copy cloud data to this device?' }),
     ).toBeInTheDocument()
   })
+
+  it('shows copy dialog when user clicks Continue in family-warn dialog', async () => {
+    // Given cloud mode and user is in a family group
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseMyFamilyGroupQuery.mockReturnValue({
+      data: { myFamilyGroup: { id: 'family_123', name: 'My Family' } },
+      loading: false,
+      error: undefined,
+      refetch: vi.fn(),
+    })
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user clicks "Switch..." (which opens familyWarn dialog)
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+
+    // Then the family-warn dialog appears
+    expect(
+      screen.getByRole('heading', { name: "You're in a family group" }),
+    ).toBeInTheDocument()
+
+    // When user clicks "Continue"
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    // Then the copy dialog appears (not idle)
+    expect(
+      screen.getByRole('heading', {
+        name: 'Copy your cloud data to local storage?',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows conflict dialog when user clicks Copy in the copy dialog', async () => {
+    // Given cloud mode and user is NOT in a family group (copy dialog opens directly)
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user clicks "Switch..." (which opens copy dialog directly since no family group)
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+
+    // Then the copy dialog appears
+    expect(
+      screen.getByRole('heading', {
+        name: 'Copy your cloud data to local storage?',
+      }),
+    ).toBeInTheDocument()
+
+    // When user clicks "Copy"
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+
+    // Then the conflict dialog appears (not idle)
+    expect(
+      screen.getByRole('heading', { name: 'Local storage already has items' }),
+    ).toBeInTheDocument()
+  })
 })

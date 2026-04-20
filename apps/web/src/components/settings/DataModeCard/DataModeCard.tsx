@@ -152,10 +152,8 @@ function CloudModeSection() {
       {/* ── Switch flow dialogs ─────────────────────────────────────────── */}
 
       {/* Family group warning dialog */}
-      <AlertDialog
-        open={switchFlow === 'familyWarn'}
-        onOpenChange={(open) => !open && setSwitchFlow('idle')}
-      >
+      {/* No onOpenChange: buttons drive all state transitions */}
+      <AlertDialog open={switchFlow === 'familyWarn'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -175,10 +173,8 @@ function CloudModeSection() {
       </AlertDialog>
 
       {/* Copy cloud data dialog */}
-      <AlertDialog
-        open={switchFlow === 'copy'}
-        onOpenChange={(open) => !open && setSwitchFlow('idle')}
-      >
+      {/* No onOpenChange: buttons drive all state transitions */}
+      <AlertDialog open={switchFlow === 'copy'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
