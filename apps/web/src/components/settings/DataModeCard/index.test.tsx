@@ -70,23 +70,105 @@ describe('DataModeCard', () => {
     ).toBeInTheDocument()
   })
 
-  it('sets cloud mode and reloads when user confirms enable sharing', async () => {
-    // Given local mode and a mocked window.location.reload
+  it('shows copy dialog when user confirms switch to cloud', async () => {
+    // Given local mode
     const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user clicks "Switch..." then confirms "Switch to cloud"
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+
+    // Then the copy dialog appears
+    expect(
+      screen.getByRole('heading', { name: 'Copy local data to cloud?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('switches to cloud without copying when user clicks Switch without copying', async () => {
+    // Given local mode and mocked reload
     const reloadMock = vi.fn()
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: reloadMock },
       writable: true,
     })
+    const user = userEvent.setup()
     render(<DataModeCard />)
 
-    // When user clicks "Switch...", then confirms with "Switch to cloud"
+    // When user goes through Switch... → Switch to cloud → Switch without copying
     await user.click(screen.getByRole('button', { name: 'Switch...' }))
     await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(
+      screen.getByRole('button', { name: 'Switch without copying' }),
+    )
 
-    // Then localStorage is set to 'cloud'
+    // Then data-mode is set to cloud
     expect(localStorage.getItem('data-mode')).toBe('cloud')
+    // And migration-prompted flag is set (so PostLoginMigrationDialog won't show)
+    expect(localStorage.getItem('migration-prompted')).toBe('1')
+    // And migration-strategy is NOT set
+    expect(localStorage.getItem('migration-strategy')).toBeNull()
+    // And reload was called
+    expect(reloadMock).toHaveBeenCalledOnce()
+  })
 
+  it('shows strategy dialog when user clicks Yes copy data', async () => {
+    // Given local mode
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user clicks through to "Yes, copy data"
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
+
+    // Then the strategy dialog appears
+    expect(
+      screen.getByRole('heading', { name: 'How to handle conflicts?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('goes back to copy dialog when user cancels strategy dialog', async () => {
+    // Given local mode, strategy dialog is open
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
+    expect(
+      screen.getByRole('heading', { name: 'How to handle conflicts?' }),
+    ).toBeInTheDocument()
+
+    // When user clicks Cancel in strategy dialog
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then the copy dialog is shown again
+    expect(
+      screen.getByRole('heading', { name: 'Copy local data to cloud?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('stores strategy and switches to cloud when user chooses Skip conflicts', async () => {
+    // Given local mode and mocked reload
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    })
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user selects "Skip conflicts" strategy
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
+    await user.click(screen.getByRole('button', { name: 'Skip conflicts' }))
+
+    // Then migration-strategy is stored
+    expect(localStorage.getItem('migration-strategy')).toBe('skip')
+    // And data-mode is cloud
+    expect(localStorage.getItem('data-mode')).toBe('cloud')
     // And reload was called
     expect(reloadMock).toHaveBeenCalledOnce()
   })

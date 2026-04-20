@@ -17,14 +17,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useMyFamilyGroupQuery } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
+import {
+  MIGRATION_PROMPTED_KEY,
+  MIGRATION_STRATEGY_KEY,
+} from '@/hooks/usePostLoginMigration'
 import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 import { fetchCloudPayload } from '@/lib/exportData'
-import { importLocalData } from '@/lib/importData'
+import { type ImportStrategy, importLocalData } from '@/lib/importData'
 
 // ─── Switch flow (cloud → local) ─────────────────────────────────────────────
 
 type SwitchFlow = 'idle' | 'familyWarn' | 'copy' | 'conflict'
 type SignOutFlow = 'idle' | 'askOffline' | 'askMigrate' | 'migrating'
+type EnableFlow = 'idle' | 'confirm' | 'copyAsk' | 'strategyAsk'
 
 // Inner component that calls useUser() — only rendered when not in E2E mode
 function CloudModeSectionWithUser({
@@ -286,10 +291,13 @@ function CloudModeSection() {
 
 export function DataModeCard() {
   const { mode } = useDataMode()
-  const [showEnableConfirm, setShowEnableConfirm] = useState(false)
+  const [enableFlow, setEnableFlow] = useState<EnableFlow>('idle')
   const { t } = useTranslation()
 
-  function confirmEnableSharing() {
+  function doEnableSwitch(strategy?: ImportStrategy) {
+    if (strategy) {
+      localStorage.setItem(MIGRATION_STRATEGY_KEY, strategy)
+    }
     localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
     window.location.reload()
   }
@@ -311,7 +319,7 @@ export function DataModeCard() {
               </div>
               <Button
                 variant="neutral-outline"
-                onClick={() => setShowEnableConfirm(true)}
+                onClick={() => setEnableFlow('confirm')}
               >
                 {t('settings.dataMode.local.enableButton')}
               </Button>
@@ -321,8 +329,8 @@ export function DataModeCard() {
         </CardContent>
       </Card>
 
-      {/* Enable Sharing Confirm Dialog */}
-      <AlertDialog open={showEnableConfirm} onOpenChange={setShowEnableConfirm}>
+      {/* ① Confirm dialog — no onOpenChange: buttons drive transitions */}
+      <AlertDialog open={enableFlow === 'confirm'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -333,9 +341,69 @@ export function DataModeCard() {
             {t('settings.dataMode.enableDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmEnableSharing}>
+            <AlertDialogCancel onClick={() => setEnableFlow('idle')}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => setEnableFlow('copyAsk')}>
               {t('settings.dataMode.enableDialog.enable')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ② Copy local data? dialog — no onOpenChange: buttons drive transitions */}
+      <AlertDialog open={enableFlow === 'copyAsk'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.dataMode.enableCopyDialog.title')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.enableCopyDialog.description')}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setEnableFlow('idle')}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogCancel
+              onClick={() => {
+                localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+                doEnableSwitch()
+              }}
+            >
+              {t('settings.dataMode.enableCopyDialog.no')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => setEnableFlow('strategyAsk')}>
+              {t('settings.dataMode.enableCopyDialog.yes')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ③ Strategy dialog — no onOpenChange: buttons drive transitions */}
+      <AlertDialog open={enableFlow === 'strategyAsk'}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.dataMode.enableStrategyDialog.title')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('settings.dataMode.enableStrategyDialog.description')}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setEnableFlow('copyAsk')}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => doEnableSwitch('skip')}>
+              {t('settings.dataMode.enableStrategyDialog.skip')}
+            </AlertDialogAction>
+            <AlertDialogAction onClick={() => doEnableSwitch('replace')}>
+              {t('settings.dataMode.enableStrategyDialog.overwrite')}
+            </AlertDialogAction>
+            <AlertDialogAction onClick={() => doEnableSwitch('clear')}>
+              {t('settings.dataMode.enableStrategyDialog.clearAndImport')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
