@@ -161,6 +161,25 @@ describe('Shelf Settings - Info Tab', () => {
     })
   })
 
+  it('user can see sort controls on a selection shelf info tab', async () => {
+    // Given a selection shelf exists
+    const shelf = await createShelf({
+      name: 'Pantry Essentials',
+      type: 'selection',
+      order: 0,
+      itemIds: [],
+    })
+
+    // When the info tab is rendered
+    renderInfoTab(shelf.id)
+
+    // Then sort controls are visible (not gated by shelf type)
+    await waitFor(() => {
+      expect(screen.getByText('Sort by')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('radio', { name: /name/i })).toBeInTheDocument()
+  })
+
   describe('navigation happens only after mutation succeeds', () => {
     afterEach(() => {
       vi.restoreAllMocks()
