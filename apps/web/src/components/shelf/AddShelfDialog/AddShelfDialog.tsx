@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
   SelectContent,
@@ -127,31 +128,27 @@ export function AddShelfDialog({
 
           {/* Type */}
           <div className="space-y-2">
-            <p className="text-sm font-medium leading-none">Type</p>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="shelfType"
-                  value="filter"
-                  checked={type === 'filter'}
-                  onChange={() => setType('filter')}
-                  className="accent-importance-primary"
-                />
-                <span className="text-sm">Filter</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="shelfType"
-                  value="selection"
-                  checked={type === 'selection'}
-                  onChange={() => setType('selection')}
-                  className="accent-importance-primary"
-                />
-                <span className="text-sm">Selection</span>
-              </label>
-            </div>
+            <Label>Type</Label>
+            <RadioGroup
+              value={type}
+              onValueChange={(v) => setType(v as 'filter' | 'selection')}
+              className="flex gap-4"
+            >
+              {[
+                { value: 'filter', label: 'Filter' },
+                { value: 'selection', label: 'Selection' },
+              ].map(({ value, label }) => (
+                <div key={value} className="flex items-center gap-2">
+                  <RadioGroupItem value={value} id={`shelf-type-${value}`} />
+                  <Label
+                    htmlFor={`shelf-type-${value}`}
+                    className="font-normal cursor-pointer"
+                  >
+                    {label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
           </div>
 
           {/* Filter config — only shown for filter type */}
