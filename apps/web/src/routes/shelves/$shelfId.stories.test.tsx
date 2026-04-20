@@ -53,7 +53,7 @@ describe('ShelfDetail stories smoke tests', () => {
   })
 
   it('WithInactiveItems renders inactive items divider and active item before it', async () => {
-    const { container } = render(<WithInactiveItems />)
+    render(<WithInactiveItems />)
 
     // Wait for shelf heading
     await screen.findByRole(
@@ -81,17 +81,15 @@ describe('ShelfDetail stories smoke tests', () => {
     expect(inactiveCard).toBeInTheDocument()
 
     // Active item should appear before the divider, divider before the inactive item
-    const allElements = Array.from(container.querySelectorAll('*'))
-    const activeIdx = allElements.findIndex(
-      (el) => el.textContent === 'active item',
-    )
-    const dividerIdx = allElements.findIndex(
-      (el) => el.textContent === '1 inactive item',
-    )
-    const inactiveIdx = allElements.findIndex(
-      (el) => el.textContent === 'inactive item',
-    )
-    expect(activeIdx).toBeLessThan(dividerIdx)
-    expect(dividerIdx).toBeLessThan(inactiveIdx)
+    // Use compareDocumentPosition instead of textContent index — the inactive item's
+    // h3 includes a sr-only "Inactive" prefix, so exact textContent matching fails.
+    expect(
+      activeCard.compareDocumentPosition(divider) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      divider.compareDocumentPosition(inactiveCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 })
