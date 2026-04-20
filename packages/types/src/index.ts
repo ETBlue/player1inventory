@@ -108,8 +108,6 @@ export interface FilterConfig {
   tagIds?: string[]
   vendorIds?: string[]
   recipeIds?: string[]
-  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
-  sortDir?: 'asc' | 'desc'
 }
 
 export interface Shelf {
@@ -117,6 +115,8 @@ export interface Shelf {
   name: string
   type: 'filter' | 'selection' | 'system'
   order: number
+  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
+  sortDir?: 'asc' | 'desc'
   filterConfig?: FilterConfig
   itemIds?: string[]
   createdAt: Date

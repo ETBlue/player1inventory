@@ -95,12 +95,12 @@ export function ShelfDetailPage() {
   const isShelfWithConfig = !isUnsorted && shelf !== undefined
 
   const sortBy: SortField = isShelfWithConfig
-    ? ((shelf?.filterConfig?.sortBy === 'lastPurchased'
+    ? ((shelf?.sortBy === 'lastPurchased'
         ? 'purchased'
-        : (shelf?.filterConfig?.sortBy ?? 'name')) as SortField)
+        : (shelf?.sortBy ?? 'name')) as SortField)
     : localSortBy
   const sortDirection: SortDirection = isShelfWithConfig
-    ? (shelf?.filterConfig?.sortDir ?? 'asc')
+    ? (shelf?.sortDir ?? 'asc')
     : localSortDirection
 
   // Search / filter state (URL-backed for back-navigation restoration)
@@ -248,25 +248,11 @@ export function ShelfDetailPage() {
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     if (isShelfWithConfig && shelf) {
       const rawSortBy = field === 'purchased' ? 'lastPurchased' : field
-      const base = shelf.filterConfig ?? {}
       updateShelf.mutate({
         id: shelf.id,
         data: {
-          filterConfig: {
-            ...(base.tagIds !== undefined ? { tagIds: base.tagIds } : {}),
-            ...(base.vendorIds !== undefined
-              ? { vendorIds: base.vendorIds }
-              : {}),
-            ...(base.recipeIds !== undefined
-              ? { recipeIds: base.recipeIds }
-              : {}),
-            sortBy: rawSortBy as
-              | 'name'
-              | 'stock'
-              | 'expiring'
-              | 'lastPurchased',
-            sortDir: dir,
-          },
+          sortBy: rawSortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
+          sortDir: dir,
         },
       })
     } else {

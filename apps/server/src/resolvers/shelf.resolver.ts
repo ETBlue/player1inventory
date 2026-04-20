@@ -19,7 +19,7 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
   },
   Mutation: {
-    createShelf: async (_, { name, type, filterConfig, itemIds }, ctx) => {
+    createShelf: async (_, { name, type, sortBy, sortDir, filterConfig, itemIds }, ctx) => {
       const userId = requireAuth(ctx)
       const count = await prisma.shelf.count({ where: { userId } })
       return prisma.shelf.create({
@@ -27,13 +27,15 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           name,
           type,
           order: count + 1,
+          sortBy: sortBy ?? undefined,
+          sortDir: sortDir ?? undefined,
           filterConfig: filterConfig ?? undefined,
           itemIds: itemIds ?? [],
           userId,
         },
       }) as unknown as Promise<Shelf>
     },
-    updateShelf: async (_, { id, name, type, order, filterConfig, itemIds }, ctx) => {
+    updateShelf: async (_, { id, name, type, order, sortBy, sortDir, filterConfig, itemIds }, ctx) => {
       const userId = requireAuth(ctx)
       const existing = await prisma.shelf.findFirst({ where: { id, userId } })
       if (!existing) throw new GraphQLError('Shelf not found', { extensions: { code: 'NOT_FOUND' } })
@@ -41,6 +43,8 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       if (name != null) data.name = name
       if (type != null) data.type = type
       if (order != null) data.order = order
+      if (sortBy !== undefined) data.sortBy = sortBy
+      if (sortDir !== undefined) data.sortDir = sortDir
       if (filterConfig != null) data.filterConfig = filterConfig
       if (itemIds != null) data.itemIds = itemIds
       return prisma.shelf.update({ where: { id }, data }) as unknown as Promise<Shelf>

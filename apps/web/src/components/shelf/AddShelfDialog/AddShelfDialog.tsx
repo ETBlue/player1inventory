@@ -29,6 +29,8 @@ import type { FilterConfig } from '@/types'
 export interface CreateShelfInput {
   name: string
   type: 'filter' | 'selection'
+  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
+  sortDir?: 'asc' | 'desc'
   filterConfig?: FilterConfig
 }
 
@@ -87,14 +89,14 @@ export function AddShelfDialog({
     }
 
     if (type === 'filter') {
+      data.sortBy = sortBy
+      data.sortDir = sortDir
       data.filterConfig = {
         ...(Object.values(tagFilterState).flat().length > 0 && {
           tagIds: Object.values(tagFilterState).flat(),
         }),
         ...(selectedVendorIds.length > 0 && { vendorIds: selectedVendorIds }),
         ...(selectedRecipeIds.length > 0 && { recipeIds: selectedRecipeIds }),
-        sortBy,
-        sortDir,
       }
     }
 

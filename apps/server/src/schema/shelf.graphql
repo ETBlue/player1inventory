@@ -2,16 +2,12 @@ type FilterConfig {
   tagIds: [String!]
   vendorIds: [String!]
   recipeIds: [String!]
-  sortBy: String
-  sortDir: String
 }
 
 input FilterConfigInput {
   tagIds: [String!]
   vendorIds: [String!]
   recipeIds: [String!]
-  sortBy: String
-  sortDir: String
 }
 
 type Shelf {
@@ -19,6 +15,8 @@ type Shelf {
   name: String!
   type: String!
   order: Int!
+  sortBy: String
+  sortDir: String
   filterConfig: FilterConfig
   itemIds: [String!]
   userId: String!
@@ -31,8 +29,8 @@ extend type Query {
 }
 
 extend type Mutation {
-  createShelf(name: String!, type: String!, filterConfig: FilterConfigInput, itemIds: [String!]): Shelf!
-  updateShelf(id: ID!, name: String, type: String, order: Int, filterConfig: FilterConfigInput, itemIds: [String!]): Shelf!
+  createShelf(name: String!, type: String!, sortBy: String, sortDir: String, filterConfig: FilterConfigInput, itemIds: [String!]): Shelf!
+  updateShelf(id: ID!, name: String, type: String, order: Int, sortBy: String, sortDir: String, filterConfig: FilterConfigInput, itemIds: [String!]): Shelf!
   deleteShelf(id: ID!): Boolean!
   reorderShelves(orderedIds: [String!]!): Boolean!
   reorderShelfItems(shelfId: ID!, orderedItemIds: [String!]!): Boolean!

@@ -31,6 +31,7 @@ export function deserializeRecipe(raw: Record<string, unknown>): Recipe {
 }
 
 // GraphQL Shelf has no createdAt/updatedAt; use epoch as a safe fallback.
+// sortBy/sortDir are top-level fields on Shelf and pass through via spread.
 // GraphQL may return null for filterConfig array fields when no filters are set;
 // normalize nulls to empty arrays so callers can safely call .length / .includes.
 export function deserializeShelf(raw: Record<string, unknown>): Shelf {

@@ -41,8 +41,8 @@ function ShelfInfoTab() {
     if (!shelf || initializedRef.current) return
     initializedRef.current = true
     setName(shelf.name)
-    setSortBy(shelf.filterConfig?.sortBy ?? 'name')
-    setSortDir(shelf.filterConfig?.sortDir ?? 'asc')
+    setSortBy(shelf.sortBy ?? 'name')
+    setSortDir(shelf.sortDir ?? 'asc')
   }, [shelf])
 
   // nameError — required field validation
@@ -53,8 +53,8 @@ function ShelfInfoTab() {
     if (!shelf) return false
     if (name.trim() !== shelf.name) return true
     if (shelf.type === 'filter') {
-      if (sortBy !== (shelf.filterConfig?.sortBy ?? 'name')) return true
-      if (sortDir !== (shelf.filterConfig?.sortDir ?? 'asc')) return true
+      if (sortBy !== (shelf.sortBy ?? 'name')) return true
+      if (sortDir !== (shelf.sortDir ?? 'asc')) return true
     }
     return false
   }, [name, shelf, sortBy, sortDir])
@@ -74,6 +74,8 @@ function ShelfInfoTab() {
           id: shelf.id,
           data: {
             name: name.trim(),
+            sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
+            sortDir,
             filterConfig: {
               ...(base.tagIds && base.tagIds.length > 0
                 ? { tagIds: base.tagIds }
@@ -84,8 +86,6 @@ function ShelfInfoTab() {
               ...(base.recipeIds && base.recipeIds.length > 0
                 ? { recipeIds: base.recipeIds }
                 : {}),
-              sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
-              sortDir,
             },
           },
         },

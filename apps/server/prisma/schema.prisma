@@ -215,6 +215,8 @@ model Shelf {
   name         String
   type         String
   order        Int
+  sortBy       String?
+  sortDir      String?
   filterConfig Json?
   itemIds      String[]
   userId       String

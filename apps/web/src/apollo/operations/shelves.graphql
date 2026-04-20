@@ -4,12 +4,12 @@ query GetShelves {
     name
     type
     order
+    sortBy
+    sortDir
     filterConfig {
       tagIds
       vendorIds
       recipeIds
-      sortBy
-      sortDir
     }
     itemIds
     userId
@@ -23,12 +23,12 @@ query GetShelf($id: ID!) {
     name
     type
     order
+    sortBy
+    sortDir
     filterConfig {
       tagIds
       vendorIds
       recipeIds
-      sortBy
-      sortDir
     }
     itemIds
     userId
@@ -36,35 +36,35 @@ query GetShelf($id: ID!) {
   }
 }
 
-mutation CreateShelf($name: String!, $type: String!, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
-  createShelf(name: $name, type: $type, filterConfig: $filterConfig, itemIds: $itemIds) {
+mutation CreateShelf($name: String!, $type: String!, $sortBy: String, $sortDir: String, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
+  createShelf(name: $name, type: $type, sortBy: $sortBy, sortDir: $sortDir, filterConfig: $filterConfig, itemIds: $itemIds) {
     id
     name
     type
     order
+    sortBy
+    sortDir
     filterConfig {
       tagIds
       vendorIds
       recipeIds
-      sortBy
-      sortDir
     }
     itemIds
   }
 }
 
-mutation UpdateShelf($id: ID!, $name: String, $type: String, $order: Int, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
-  updateShelf(id: $id, name: $name, type: $type, order: $order, filterConfig: $filterConfig, itemIds: $itemIds) {
+mutation UpdateShelf($id: ID!, $name: String, $type: String, $order: Int, $sortBy: String, $sortDir: String, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
+  updateShelf(id: $id, name: $name, type: $type, order: $order, sortBy: $sortBy, sortDir: $sortDir, filterConfig: $filterConfig, itemIds: $itemIds) {
     id
     name
     type
     order
+    sortBy
+    sortDir
     filterConfig {
       tagIds
       vendorIds
       recipeIds
-      sortBy
-      sortDir
     }
     itemIds
   }
