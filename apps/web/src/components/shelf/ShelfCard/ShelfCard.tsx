@@ -20,7 +20,7 @@ export function ShelfCard({
     <Card className="flex items-center gap-2">
       <button
         type="button"
-        className="flex-1 flex items-center justify-between gap-2 min-w-0 text-left"
+        className="flex-1 flex items-center justify-between gap-2 min-w-0 text-left cursor-pointer"
         onClick={onClick}
       >
         <CardContent className="flex-1 flex items-center justify-between gap-2 py-0 px-0 min-w-0">
