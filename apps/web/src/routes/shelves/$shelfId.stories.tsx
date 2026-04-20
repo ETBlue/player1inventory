@@ -182,6 +182,50 @@ export const FilterShelf: Story = {
   render: () => <FilterShelfStory />,
 }
 
+// Story 5: Selection shelf with inactive items pushed to the bottom
+function WithInactiveItemsStory() {
+  return (
+    <ShelfDetailStory
+      setup={async () => {
+        const item1 = await createItem({
+          name: 'active item',
+          tagIds: [],
+          vendorIds: [],
+          targetUnit: 'package',
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        // targetQuantity: 0 → isInactive returns true
+        const item2 = await createItem({
+          name: 'inactive item',
+          tagIds: [],
+          vendorIds: [],
+          targetUnit: 'package',
+          targetQuantity: 0,
+          refillThreshold: 0,
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const shelf = await createShelf({
+          name: 'mixed shelf',
+          type: 'selection',
+          order: 0,
+          itemIds: [item2.id, item1.id], // inactive first in shelf order
+        })
+        return `/shelves/${shelf.id}`
+      }}
+    />
+  )
+}
+
+export const WithInactiveItems: Story = {
+  render: () => <WithInactiveItemsStory />,
+}
+
 // Story 4: Empty selection shelf
 function EmptySelectionStory() {
   return (
