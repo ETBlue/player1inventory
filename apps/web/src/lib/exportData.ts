@@ -81,7 +81,7 @@ export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
   }
 }
 
-export async function exportAllData(): Promise<void> {
+export async function fetchLocalPayload(): Promise<ExportPayload> {
   const [
     items,
     tags,
@@ -106,7 +106,7 @@ export async function exportAllData(): Promise<void> {
   const activeCartIds = new Set(shoppingCarts.map((c) => c.id))
   const activeCartItems = cartItems.filter((ci) => activeCartIds.has(ci.cartId))
 
-  const payload = buildExportPayload({
+  return buildExportPayload({
     items,
     tags,
     tagTypes,
@@ -116,7 +116,10 @@ export async function exportAllData(): Promise<void> {
     shoppingCarts,
     cartItems: activeCartItems,
   })
+}
 
+export async function exportAllData(): Promise<void> {
+  const payload = await fetchLocalPayload()
   triggerDownload(payload)
 }
 
@@ -132,7 +135,9 @@ function triggerDownload(payload: ExportPayload): void {
   URL.revokeObjectURL(url)
 }
 
-export async function exportCloudData(client: ApolloClient): Promise<void> {
+export async function fetchCloudPayload(
+  client: ApolloClient,
+): Promise<ExportPayload> {
   const fetchPolicy = 'network-only' as const
 
   const [
@@ -190,5 +195,10 @@ export async function exportCloudData(client: ApolloClient): Promise<void> {
     cartItems: activeCartItems,
   })
 
-  triggerDownload(sanitiseCloudPayload(payload))
+  return sanitiseCloudPayload(payload)
+}
+
+export async function exportCloudData(client: ApolloClient): Promise<void> {
+  const payload = await fetchCloudPayload(client)
+  triggerDownload(payload)
 }

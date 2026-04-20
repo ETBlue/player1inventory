@@ -57,7 +57,7 @@ Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` a
 
 Self-contained card components for the settings page. Each lives in `src/components/settings/` and accepts no props — all state is read from hooks internally.
 
-**`DataModeCard`** (`src/components/settings/DataModeCard/index.tsx`) — data mode toggle card (local ↔ cloud). No props. Uses `useDataMode`. Renders different content for local vs cloud mode. Cloud mode includes a multi-step disable flow with confirmation dialogs.
+**`DataModeCard`** (`src/components/settings/DataModeCard/DataModeCard.tsx`) — data mode toggle card (local ↔ cloud). No props. Uses `useDataMode`. Renders different content for local vs cloud mode. Cloud mode renders `CloudModeSection` which owns all cloud state and dialogs: a **Switch** flow (switch to offline, optional cloud→local data copy, Clerk session kept alive) and a **Sign Out** flow (sign out of Clerk, optionally switch offline and/or copy cloud data). Sign Out button appears inline with the signed-in email.
 
 **`FamilyGroupCard`** (`src/components/settings/FamilyGroupCard/index.tsx`) — family group management card. No props. Cloud mode only (rendered conditionally by the settings page).
 

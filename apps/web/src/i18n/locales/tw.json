@@ -342,7 +342,8 @@
       "cloud": {
         "title": "雲端模式",
         "signedInAs": "已登入：{{email}}",
-        "disableButton": "切換..."
+        "switchButton": "切換...",
+        "signOutButton": "登出"
       },
       "familyWarnDialog": {
         "title": "你正在家庭群組中",
@@ -363,9 +364,41 @@
       },
       "enableDialog": {
         "title": "切換到雲端模式？",
-        "description": "切換後，您的資料將儲存在雲端，可以和家人共享協作，但需要登入才能使用。",
+        "description": "切換後，您的資料將儲存在雲端，可以和家人共享協作，但需要登入才能使用。登入後，您可以將裝置上的本地資料匯入雲端。",
         "enable": "切換到雲端"
+      },
+      "signOutOfflineDialog": {
+        "title": "切換至離線模式？",
+        "description": "您隨時可以重新登入以啟用雲端同步。",
+        "switchToOffline": "切換至離線",
+        "justSignOut": "僅登出"
+      },
+      "signOutMigrateDialog": {
+        "title": "將雲端資料複製到此裝置？",
+        "description": "您的雲端資料將儲存至此裝置以供離線使用。",
+        "copy": "複製資料",
+        "skip": "略過"
+      },
+      "enableCopyDialog": {
+        "title": "將本機資料複製到雲端？",
+        "description": "登入後，您的本機資料將立即匯入雲端帳戶。",
+        "yes": "是，複製資料",
+        "no": "直接切換，不複製"
+      },
+      "enableStrategyDialog": {
+        "title": "衝突時如何處理？",
+        "description": "請選擇當雲端帳戶已有相同資料時的處理方式。",
+        "clearAndImport": "清空後全數匯入",
+        "overwrite": "覆蓋衝突項目",
+        "skip": "跳過衝突項目"
       }
+    },
+    "postLoginMigration": {
+      "title": "將本地資料匯入雲端？",
+      "description": "此裝置上有本地資料。是否要匯入您的雲端帳戶？",
+      "import": "匯入",
+      "skip": "略過",
+      "autoImporting": "正在將本機資料複製到雲端…"
     },
     "familyGroup": {
       "title": "家庭群組",

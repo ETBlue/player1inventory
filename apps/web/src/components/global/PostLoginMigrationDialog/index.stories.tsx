@@ -70,3 +70,16 @@ export const Prompting: Story = {
   name: 'Prompting — local data found, import dialog open',
   render: () => <PromptingStory />,
 }
+
+// Story 3: AutoImporting — stored strategy triggers immediate migration progress dialog
+export const AutoImporting: Story = {
+  name: 'AutoImporting — stored strategy, progress dialog shown',
+  beforeEach() {
+    localStorage.setItem('migration-strategy', 'skip')
+    localStorage.removeItem('migration-prompted')
+    return () => {
+      localStorage.removeItem('migration-strategy')
+      localStorage.removeItem('migration-prompted')
+    }
+  },
+}

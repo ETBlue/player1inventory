@@ -13,7 +13,7 @@ beforeEach(() => {
 
 // Mock useApolloClient so tests don't require an ApolloProvider.
 // All tests run in local mode; useApolloClient is only used in the cloud
-// path of useCheckout, so a no-op stub with cache.evict/gc is sufficient.
+// path of useCheckout and importCloudData, so a no-op stub is sufficient.
 vi.mock('@apollo/client/react', async (importOriginal) => {
   const original = await importOriginal<typeof import('@apollo/client/react')>()
   return {
@@ -23,6 +23,9 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
         evict: vi.fn(),
         gc: vi.fn(),
       },
+      query: vi.fn().mockResolvedValue({ data: {} }),
+      mutate: vi.fn().mockResolvedValue({ data: {} }),
+      resetStore: vi.fn().mockResolvedValue(null),
     })),
   }
 })
