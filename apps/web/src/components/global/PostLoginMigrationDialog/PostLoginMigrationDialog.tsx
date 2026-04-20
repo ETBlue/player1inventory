@@ -17,7 +17,18 @@ export function PostLoginMigrationDialog() {
 
   return (
     <>
-      {/* Import prompt dialog */}
+      {/* Auto-import progress dialog — no buttons, user already chose strategy */}
+      <AlertDialog open={state === 'auto-importing'}>
+        <AlertDialogContent aria-describedby={undefined}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.postLoginMigration.autoImporting')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Manual import prompt dialog */}
       <AlertDialog open={state === 'prompting' || state === 'importing'}>
         <AlertDialogContent>
           <AlertDialogHeader>

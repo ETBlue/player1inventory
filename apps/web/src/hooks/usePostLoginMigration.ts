@@ -3,15 +3,17 @@ import { useAuth } from '@clerk/react'
 import { useEffect, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
-import { importCloudData } from '@/lib/importData'
+import { type ImportStrategy, importCloudData } from '@/lib/importData'
 
-const MIGRATION_PROMPTED_KEY = 'migration-prompted'
+export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
+export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
 
 export type MigrationState =
   | 'idle'
   | 'prompting'
   | 'conflict'
   | 'importing'
+  | 'auto-importing'
   | 'done'
 
 export function usePostLoginMigration() {
@@ -23,6 +25,24 @@ export function usePostLoginMigration() {
     if (!isLoaded || !isSignedIn) return
     if (localStorage.getItem(MIGRATION_PROMPTED_KEY)) return
 
+    const storedStrategy = localStorage.getItem(
+      MIGRATION_STRATEGY_KEY,
+    ) as ImportStrategy | null
+
+    if (storedStrategy) {
+      setState('auto-importing')
+      fetchLocalPayload()
+        .then((payload) =>
+          importCloudData(payload, storedStrategy, apolloClient),
+        )
+        .then(() => {
+          localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+          localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+          setState('done')
+        })
+      return
+    }
+
     getAllItems().then((items) => {
       if (items.length > 0) {
         setState('prompting')
@@ -30,7 +50,7 @@ export function usePostLoginMigration() {
         localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       }
     })
-  }, [isLoaded, isSignedIn])
+  }, [isLoaded, isSignedIn, apolloClient])
 
   function dismiss() {
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
