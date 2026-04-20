@@ -1,4 +1,4 @@
-import type { Item, Recipe, ShoppingCart, Vendor } from '@/types'
+import type { Item, Recipe, Shelf, ShoppingCart, Vendor } from '@/types'
 
 // GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
 export function deserializeItem(raw: Record<string, unknown>): Item {
@@ -28,6 +28,15 @@ export function deserializeRecipe(raw: Record<string, unknown>): Recipe {
       ? new Date(raw.lastCookedAt as string)
       : undefined,
   } as Recipe
+}
+
+// GraphQL Shelf has no createdAt/updatedAt; use epoch as a safe fallback.
+export function deserializeShelf(raw: Record<string, unknown>): Shelf {
+  return {
+    ...raw,
+    createdAt: raw.createdAt ? new Date(raw.createdAt as string) : new Date(0),
+    updatedAt: raw.updatedAt ? new Date(raw.updatedAt as string) : new Date(0),
+  } as Shelf
 }
 
 // GraphQL returns createdAt/completedAt as ISO strings; convert to Date.
