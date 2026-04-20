@@ -52,14 +52,16 @@ function CloudModeSectionWithUser({
           <p className="text-sm text-foreground-muted break-all">
             {t('settings.dataMode.cloud.signedInAs', { email })}
           </p>
-          <Button variant="neutral-ghost" size="sm" onClick={onSignOut}>
-            {t('settings.dataMode.cloud.signOutButton')}
-          </Button>
         </div>
       </div>
-      <Button variant="neutral-outline" onClick={onSwitch}>
-        {t('settings.dataMode.cloud.switchButton')}
-      </Button>
+      <div className="grid grid-cols-1 gap-2">
+        <Button variant="neutral-outline" onClick={onSwitch}>
+          {t('settings.dataMode.cloud.switchButton')}
+        </Button>
+        <Button variant="neutral-outline" onClick={onSignOut}>
+          {t('settings.dataMode.cloud.signOutButton')}
+        </Button>
+      </div>
     </>
   )
 }
@@ -149,6 +151,7 @@ function CloudModeSection() {
   return (
     <>
       {import.meta.env.VITE_E2E_TEST_USER_ID ? (
+        // TODO: remove e2e specific code
         <CloudModeSectionE2E {...cloudSectionProps} />
       ) : (
         <CloudModeSectionWithUser {...cloudSectionProps} />
