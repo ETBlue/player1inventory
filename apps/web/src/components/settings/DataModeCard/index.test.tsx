@@ -264,6 +264,29 @@ describe('DataModeCard', () => {
     ).toBeInTheDocument()
   })
 
+  it('clears migration-prompted when storing a strategy so auto-migration can run', async () => {
+    // Given local mode and migration-prompted already set (simulates a prior cloud session)
+    localStorage.setItem('migration-prompted', '1')
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    })
+    const user = userEvent.setup()
+    render(<DataModeCard />)
+
+    // When user selects a copy strategy
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
+    await user.click(screen.getByRole('button', { name: 'Clear & import' }))
+
+    // Then migration-prompted is cleared so usePostLoginMigration won't skip auto-migration
+    expect(localStorage.getItem('migration-prompted')).toBeNull()
+    // And the strategy is stored
+    expect(localStorage.getItem('migration-strategy')).toBe('clear')
+  })
+
   it('shows conflict dialog when user clicks Copy in the copy dialog', async () => {
     // Given cloud mode and user is NOT in a family group (copy dialog opens directly)
     localStorage.setItem('data-mode', 'cloud')

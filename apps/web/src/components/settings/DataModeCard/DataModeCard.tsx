@@ -297,6 +297,7 @@ export function DataModeCard() {
   function doEnableSwitch(strategy?: ImportStrategy) {
     if (strategy) {
       localStorage.setItem(MIGRATION_STRATEGY_KEY, strategy)
+      localStorage.removeItem(MIGRATION_PROMPTED_KEY)
     }
     localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
     window.location.reload()
