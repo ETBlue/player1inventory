@@ -183,6 +183,28 @@ describe('deserializeShelf', () => {
     expect(result.filterConfig?.recipeIds).toEqual([])
   })
 
+  it('preserves sortBy and sortDir from filterConfig', () => {
+    // Given a raw shelf from GraphQL with sortBy/sortDir in filterConfig
+    const raw = {
+      id: '1',
+      name: 'My Shelf',
+      filterConfig: {
+        tagIds: [],
+        vendorIds: [],
+        recipeIds: [],
+        sortBy: 'name',
+        sortDir: 'asc',
+      },
+    }
+
+    // When the shelf is deserialized
+    const result = deserializeShelf(raw)
+
+    // Then sortBy and sortDir are preserved
+    expect(result.filterConfig?.sortBy).toBe('name')
+    expect(result.filterConfig?.sortDir).toBe('asc')
+  })
+
   it('uses epoch as fallback when createdAt/updatedAt are absent', () => {
     // Given a shelf without timestamps
     const raw = { id: '1', name: 'My Shelf' }

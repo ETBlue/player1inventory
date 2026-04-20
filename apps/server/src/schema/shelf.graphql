@@ -2,12 +2,16 @@ type FilterConfig {
   tagIds: [String!]
   vendorIds: [String!]
   recipeIds: [String!]
+  sortBy: String
+  sortDir: String
 }
 
 input FilterConfigInput {
   tagIds: [String!]
   vendorIds: [String!]
   recipeIds: [String!]
+  sortBy: String
+  sortDir: String
 }
 
 type Shelf {

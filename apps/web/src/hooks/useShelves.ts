@@ -83,18 +83,26 @@ export function useShelfQuery(id: string) {
   }
 }
 
-// Strip sortBy/sortDir from FilterConfig before sending to GraphQL —
-// the server schema only accepts tagIds, vendorIds, recipeIds.
+// Map local FilterConfig to the GraphQL FilterConfigInput shape.
 function toGqlFilterConfig(filterConfig: FilterConfig): {
   tagIds?: string[]
   vendorIds?: string[]
   recipeIds?: string[]
+  sortBy?: string
+  sortDir?: string
 } {
-  const gql: { tagIds?: string[]; vendorIds?: string[]; recipeIds?: string[] } =
-    {}
+  const gql: {
+    tagIds?: string[]
+    vendorIds?: string[]
+    recipeIds?: string[]
+    sortBy?: string
+    sortDir?: string
+  } = {}
   if (filterConfig.tagIds) gql.tagIds = filterConfig.tagIds
   if (filterConfig.vendorIds) gql.vendorIds = filterConfig.vendorIds
   if (filterConfig.recipeIds) gql.recipeIds = filterConfig.recipeIds
+  if (filterConfig.sortBy) gql.sortBy = filterConfig.sortBy
+  if (filterConfig.sortDir) gql.sortDir = filterConfig.sortDir
   return gql
 }
 
@@ -189,6 +197,8 @@ export function useUpdateShelfMutation() {
           tagIds?: string[]
           vendorIds?: string[]
           recipeIds?: string[]
+          sortBy?: string
+          sortDir?: string
         }
         itemIds?: string[]
       } = { id }
