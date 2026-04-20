@@ -43,9 +43,10 @@ interface FilterConfig {
   tagIds?: string[]
   vendorIds?: string[]
   recipeIds?: string[]
-  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
-  sortDir?: 'asc' | 'desc'
 }
+
+// sortBy and sortDir are top-level Shelf fields (not inside FilterConfig)
+// They apply to all shelf types and persist independently of filter changes.
 ```
 
 ### "Unsorted" virtual shelf
@@ -54,7 +55,7 @@ Not stored in the database. Computed at render time as all items that:
 - Are not referenced in any selection shelf's `itemIds`, AND
 - Do not match any filter shelf's `filterConfig`
 
-Sort preference for Unsorted shelf stored separately in `localStorage` (`unsortedShelf.sortBy` / `unsortedShelf.sortDir`).
+Sort preference for Unsorted shelf stored separately in `localStorage` (`unsortedShelf.sortBy` / `unsortedShelf.sortDir`). For all other shelves, `sortBy`/`sortDir` are top-level fields on the `Shelf` object.
 
 ### Persistence
 
@@ -137,7 +138,7 @@ On confirm: shelf created, user navigates to the new shelf's detail page.
 
 **Filter shelf:**
 - Filter chips row: each active filter shown as a chip (tag/vendor/recipe name)
-- Sort dropdown (editable inline, persists to `filterConfig.sortBy/Dir`)
+- Sort dropdown (editable inline, persists to `shelf.sortBy`/`shelf.sortDir`)
 
 **Selection shelf:**
 - Type badge: "Selection"
@@ -163,7 +164,7 @@ Search result behavior:
 
 ### Item list
 
-- **Filter shelf**: items derived from `filterConfig`; sorted by `filterConfig.sortBy/Dir`; no manual reorder
+- **Filter shelf**: items derived from `filterConfig`; sorted by `shelf.sortBy`/`shelf.sortDir`; no manual reorder
 - **Selection shelf**: items in `itemIds` order; drag-drop to reorder
 - **Unsorted shelf**: all unassigned items; sorted by Unsorted sort preference
 
