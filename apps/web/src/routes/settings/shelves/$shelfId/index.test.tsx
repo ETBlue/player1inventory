@@ -7,9 +7,10 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createShelf } from '@/db/operations'
+import * as useShelvesModule from '@/hooks/useShelves'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -157,6 +158,86 @@ describe('Shelf Settings - Info Tab', () => {
     await waitFor(async () => {
       const updated = await db.shelves.get(shelf.id)
       expect(updated?.name).toBe('Pantry')
+    })
+  })
+
+  describe('navigation happens only after mutation succeeds', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('user is not navigated back when mutation never resolves (regression guard for goBack-before-onSuccess bug)', async () => {
+      // Given: mutation fires but never resolves
+      vi.spyOn(useShelvesModule, 'useUpdateShelfMutation').mockReturnValue({
+        mutate: vi.fn(), // never calls onSuccess — navigation must NOT happen
+        isPending: false,
+      } as unknown as ReturnType<
+        typeof useShelvesModule.useUpdateShelfMutation
+      >)
+
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      sessionStorage.setItem(
+        'app-navigation-history',
+        JSON.stringify(['/settings/shelves']),
+      )
+
+      renderInfoTab(shelf.id)
+      const user = userEvent.setup()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Shelf name')).toHaveValue('Fridge'),
+      )
+      await user.clear(screen.getByLabelText('Shelf name'))
+      await user.type(screen.getByLabelText('Shelf name'), 'Freezer')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then navigation does NOT happen — the form stays visible
+      // (if goBack() is called immediately after mutate(), the form would be gone)
+      expect(screen.getByLabelText('Shelf name')).toBeInTheDocument()
+    })
+
+    it('user is navigated back after saving when mutation resolves (fix: goBack in onSuccess)', async () => {
+      // Given: mutation resolves (the fix: goBack is called in onSuccess)
+      vi.spyOn(useShelvesModule, 'useUpdateShelfMutation').mockReturnValue({
+        mutate: vi.fn((_vars, options?: { onSuccess?: () => void }) => {
+          // Simulate mutation succeeding — call onSuccess immediately
+          options?.onSuccess?.()
+        }),
+        isPending: false,
+      } as unknown as ReturnType<
+        typeof useShelvesModule.useUpdateShelfMutation
+      >)
+
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      sessionStorage.setItem(
+        'app-navigation-history',
+        JSON.stringify(['/settings/shelves']),
+      )
+
+      renderInfoTab(shelf.id)
+      const user = userEvent.setup()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Shelf name')).toHaveValue('Fridge'),
+      )
+      await user.clear(screen.getByLabelText('Shelf name'))
+      await user.type(screen.getByLabelText('Shelf name'), 'Freezer')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then navigation DOES happen — the form is gone, shelves list is visible
+      await waitFor(() => {
+        expect(screen.queryByLabelText('Shelf name')).not.toBeInTheDocument()
+      })
     })
   })
 })

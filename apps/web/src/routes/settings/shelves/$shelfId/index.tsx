@@ -68,29 +68,34 @@ function ShelfInfoTab() {
     if (!shelf) return
     if (shelf.type === 'filter') {
       const base = shelf.filterConfig ?? {}
-      updateShelf.mutate({
-        id: shelf.id,
-        data: {
-          name: name.trim(),
-          filterConfig: {
-            ...(base.tagIds && base.tagIds.length > 0
-              ? { tagIds: base.tagIds }
-              : {}),
-            ...(base.vendorIds && base.vendorIds.length > 0
-              ? { vendorIds: base.vendorIds }
-              : {}),
-            ...(base.recipeIds && base.recipeIds.length > 0
-              ? { recipeIds: base.recipeIds }
-              : {}),
-            sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
-            sortDir,
+      updateShelf.mutate(
+        {
+          id: shelf.id,
+          data: {
+            name: name.trim(),
+            filterConfig: {
+              ...(base.tagIds && base.tagIds.length > 0
+                ? { tagIds: base.tagIds }
+                : {}),
+              ...(base.vendorIds && base.vendorIds.length > 0
+                ? { vendorIds: base.vendorIds }
+                : {}),
+              ...(base.recipeIds && base.recipeIds.length > 0
+                ? { recipeIds: base.recipeIds }
+                : {}),
+              sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
+              sortDir,
+            },
           },
         },
-      })
+        { onSuccess: () => goBack() },
+      )
     } else {
-      updateShelf.mutate({ id: shelf.id, data: { name: name.trim() } })
+      updateShelf.mutate(
+        { id: shelf.id, data: { name: name.trim() } },
+        { onSuccess: () => goBack() },
+      )
     }
-    goBack()
   }
 
   if (isLoading) return <LoadingSpinner />
