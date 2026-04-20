@@ -1,0 +1,35 @@
+type FilterConfig {
+  tagIds: [String!]
+  vendorIds: [String!]
+  recipeIds: [String!]
+}
+
+input FilterConfigInput {
+  tagIds: [String!]
+  vendorIds: [String!]
+  recipeIds: [String!]
+}
+
+type Shelf {
+  id: ID!
+  name: String!
+  type: String!
+  order: Int!
+  filterConfig: FilterConfig
+  itemIds: [String!]
+  userId: String!
+  familyId: String
+}
+
+extend type Query {
+  shelves: [Shelf!]!
+  shelf(id: ID!): Shelf
+}
+
+extend type Mutation {
+  createShelf(name: String!, type: String!, filterConfig: FilterConfigInput, itemIds: [String!]): Shelf!
+  updateShelf(id: ID!, name: String, type: String, order: Int, filterConfig: FilterConfigInput, itemIds: [String!]): Shelf!
+  deleteShelf(id: ID!): Boolean!
+  reorderShelves(orderedIds: [String!]!): Boolean!
+  reorderShelfItems(shelfId: ID!, orderedItemIds: [String!]!): Boolean!
+}
