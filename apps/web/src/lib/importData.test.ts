@@ -97,6 +97,7 @@ function emptyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
     inventoryLogs: [],
     shoppingCarts: [],
     cartItems: [],
+    shelves: [],
     ...overrides,
   }
 }
@@ -111,6 +112,7 @@ function emptyExisting(overrides: Partial<ExistingData> = {}): ExistingData {
     inventoryLogs: [],
     shoppingCarts: [],
     cartItems: [],
+    shelves: [],
     ...overrides,
   }
 }
@@ -289,6 +291,7 @@ describe('hasConflicts', () => {
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     }
     expect(hasConflicts(empty)).toBe(false)
   })
@@ -303,6 +306,7 @@ describe('hasConflicts', () => {
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     }
     expect(hasConflicts(withConflict)).toBe(true)
   })
@@ -886,6 +890,7 @@ describe('importCloudData — batched cloud import', () => {
           inventoryLogs: [],
           shoppingCarts: [],
           allCartItems: [],
+          shelves: [],
         },
       }),
     }
