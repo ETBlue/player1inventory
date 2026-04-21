@@ -192,6 +192,40 @@ mutation BulkUpsertCartItems($cartItems: [CartItemInput!]!) {
   }
 }
 
+mutation BulkCreateShelves($shelves: [ShelfInput!]!) {
+  bulkCreateShelves(shelves: $shelves) {
+    id
+    name
+    type
+    order
+    sortBy
+    sortDir
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation BulkUpsertShelves($shelves: [ShelfInput!]!) {
+  bulkUpsertShelves(shelves: $shelves) {
+    id
+    name
+    type
+    order
+    sortBy
+    sortDir
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
 mutation ClearAllData {
   clearAllData
 }
