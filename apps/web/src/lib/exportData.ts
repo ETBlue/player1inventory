@@ -27,6 +27,7 @@ import {
   toInventoryLogInput,
   toItemInput,
   toRecipeInput,
+  toShelfInput,
   toShoppingCartInput,
   toTagInput,
   toTagTypeInput,
@@ -51,29 +52,6 @@ export function buildExportPayload(
   data: Omit<ExportPayload, 'version' | 'exportedAt'>,
 ): ExportPayload {
   return { version: 1, exportedAt: new Date().toISOString(), ...data }
-}
-
-function toShelfInputLocal(shelf: Record<string, unknown>) {
-  return {
-    id: shelf.id as string,
-    name: shelf.name as string,
-    type: shelf.type as string,
-    order: shelf.order as number,
-    sortBy: shelf.sortBy as string | undefined,
-    sortDir: shelf.sortDir as string | undefined,
-    filterConfig: shelf.filterConfig as
-      | { tagIds?: string[]; vendorIds?: string[]; recipeIds?: string[] }
-      | undefined,
-    itemIds: shelf.itemIds as string[] | undefined,
-    createdAt:
-      shelf.createdAt instanceof Date
-        ? (shelf.createdAt as Date).toISOString()
-        : (shelf.createdAt as string),
-    updatedAt:
-      shelf.updatedAt instanceof Date
-        ? (shelf.updatedAt as Date).toISOString()
-        : (shelf.updatedAt as string),
-  }
 }
 
 /**
@@ -105,7 +83,7 @@ export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
       toCartItemInput(ci as Record<string, unknown>),
     ),
     shelves: payload.shelves.map((s) =>
-      toShelfInputLocal(s as Record<string, unknown>),
+      toShelfInput(s as Record<string, unknown>),
     ),
   }
 }
