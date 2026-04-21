@@ -7,6 +7,7 @@ import {
   BulkCreateInventoryLogsDocument,
   BulkCreateItemsDocument,
   BulkCreateRecipesDocument,
+  BulkCreateShelvesDocument,
   BulkCreateShoppingCartsDocument,
   BulkCreateTagsDocument,
   BulkCreateTagTypesDocument,
@@ -15,6 +16,7 @@ import {
   BulkUpsertInventoryLogsDocument,
   BulkUpsertItemsDocument,
   BulkUpsertRecipesDocument,
+  BulkUpsertShelvesDocument,
   BulkUpsertShoppingCartsDocument,
   BulkUpsertTagsDocument,
   BulkUpsertTagTypesDocument,
@@ -24,6 +26,8 @@ import {
   type GetItemsQuery,
   GetRecipesDocument,
   type GetRecipesQuery,
+  GetShelvesDocument,
+  type GetShelvesQuery,
   GetTagsDocument,
   type GetTagsQuery,
   GetTagTypesDocument,
@@ -40,6 +44,7 @@ import type {
   InventoryLog,
   Item,
   Recipe,
+  Shelf,
   ShoppingCart,
   Tag,
   TagType,
@@ -225,6 +230,31 @@ export function toCartItemInput(cartItem: Record<string, unknown>) {
   }
 }
 
+export function toShelfInput(shelf: Record<string, unknown>) {
+  const createdAt =
+    shelf.createdAt instanceof Date
+      ? shelf.createdAt.toISOString()
+      : (shelf.createdAt as string)
+  const updatedAt =
+    shelf.updatedAt instanceof Date
+      ? shelf.updatedAt.toISOString()
+      : (shelf.updatedAt as string)
+  return {
+    id: shelf.id as string,
+    name: shelf.name as string,
+    type: shelf.type as string,
+    order: shelf.order as number,
+    sortBy: shelf.sortBy as string | undefined,
+    sortDir: shelf.sortDir as string | undefined,
+    filterConfig: shelf.filterConfig as
+      | { tagIds?: string[]; vendorIds?: string[]; recipeIds?: string[] }
+      | undefined,
+    itemIds: shelf.itemIds as string[] | undefined,
+    createdAt,
+    updatedAt,
+  }
+}
+
 export interface ConflictEntry {
   id: string
   name: string
@@ -240,6 +270,7 @@ export interface ConflictSummary {
   inventoryLogs: ConflictEntry[]
   shoppingCarts: ConflictEntry[]
   cartItems: ConflictEntry[]
+  shelves: ConflictEntry[]
 }
 
 export interface ExistingData {
@@ -251,6 +282,7 @@ export interface ExistingData {
   inventoryLogs: InventoryLog[]
   shoppingCarts: ShoppingCart[]
   cartItems: CartItem[]
+  shelves: Shelf[]
 }
 
 // Entities that have a meaningful "name" field for conflict detection
@@ -383,6 +415,11 @@ export function detectConflicts(
       existing.cartItems,
       (e) => (e as CartItem).id,
     ),
+    shelves: detectIdOnlyConflicts(
+      (payload.shelves ?? []) as IdOnlyEntity[],
+      existing.shelves,
+      (e) => (e as Shelf).id,
+    ),
   }
 }
 
@@ -395,7 +432,8 @@ export function hasConflicts(summary: ConflictSummary): boolean {
     summary.recipes.length > 0 ||
     summary.inventoryLogs.length > 0 ||
     summary.shoppingCarts.length > 0 ||
-    summary.cartItems.length > 0
+    summary.cartItems.length > 0 ||
+    summary.shelves.length > 0
   )
 }
 
@@ -411,6 +449,7 @@ function emptyPayload(): ExportPayload {
     inventoryLogs: [],
     shoppingCarts: [],
     cartItems: [],
+    shelves: [],
   }
 }
 
@@ -442,6 +481,7 @@ export function partitionPayload(
       inventoryLogs: getConflictIds(conflicts.inventoryLogs),
       shoppingCarts: getConflictIds(conflicts.shoppingCarts),
       cartItems: getConflictIds(conflicts.cartItems),
+      shelves: getConflictIds(conflicts.shelves),
     }
 
     return {
@@ -471,6 +511,9 @@ export function partitionPayload(
         cartItems: (payload.cartItems as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.cartItems.has(e.id),
         ),
+        shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
+          (e) => !conflictIdSets.shelves.has(e.id),
+        ),
       },
       toUpsert: emptyPayload(),
     }
@@ -487,6 +530,7 @@ export function partitionPayload(
     inventoryLogs: getConflictIds(conflicts.inventoryLogs),
     shoppingCarts: getConflictIds(conflicts.shoppingCarts),
     cartItems: getConflictIds(conflicts.cartItems),
+    shelves: getConflictIds(conflicts.shelves),
   }
 
   return {
@@ -516,6 +560,9 @@ export function partitionPayload(
       cartItems: (payload.cartItems as IdOnlyEntity[]).filter(
         (e) => !conflictIdSets.cartItems.has(e.id),
       ),
+      shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
+        (e) => !conflictIdSets.shelves.has(e.id),
+      ),
     },
     toUpsert: {
       ...payload,
@@ -543,6 +590,9 @@ export function partitionPayload(
       cartItems: (payload.cartItems as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.cartItems.has(e.id),
       ),
+      shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter((e) =>
+        conflictIdSets.shelves.has(e.id),
+      ),
     },
   }
 }
@@ -567,6 +617,7 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
     inventoryLogs,
     shoppingCarts,
     cartItems,
+    shelves,
   ] = await Promise.all([
     db.items.toArray(),
     db.tags.toArray(),
@@ -576,6 +627,7 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
     db.inventoryLogs.toArray(),
     db.shoppingCarts.toArray(),
     db.cartItems.toArray(),
+    db.shelves.toArray(),
   ])
 
   return {
@@ -587,6 +639,7 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
     inventoryLogs,
     shoppingCarts,
     cartItems,
+    shelves,
   }
 }
 
@@ -596,6 +649,7 @@ export async function importLocalData(
 ): Promise<void> {
   if (strategy === 'clear') {
     // Delete all tables in dependency order (children before parents)
+    await db.shelves.clear()
     await db.cartItems.clear()
     await db.shoppingCarts.clear()
     await db.inventoryLogs.clear()
@@ -622,6 +676,19 @@ export async function importLocalData(
     )
     await db.shoppingCarts.bulkAdd(payload.shoppingCarts as ShoppingCart[])
     await db.cartItems.bulkAdd(payload.cartItems as CartItem[])
+    await db.shelves.bulkAdd(
+      ((payload.shelves ?? []) as Shelf[]).map((s) => ({
+        ...s,
+        createdAt:
+          s.createdAt instanceof Date
+            ? s.createdAt
+            : new Date(s.createdAt as unknown as string),
+        updatedAt:
+          s.updatedAt instanceof Date
+            ? s.updatedAt
+            : new Date(s.updatedAt as unknown as string),
+      })),
+    )
     return
   }
 
@@ -656,6 +723,20 @@ export async function importLocalData(
     await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
       allKeys: false,
     })
+    await db.shelves.bulkAdd(
+      ((toCreate.shelves ?? []) as Shelf[]).map((s) => ({
+        ...s,
+        createdAt:
+          s.createdAt instanceof Date
+            ? s.createdAt
+            : new Date(s.createdAt as unknown as string),
+        updatedAt:
+          s.updatedAt instanceof Date
+            ? s.updatedAt
+            : new Date(s.updatedAt as unknown as string),
+      })),
+      { allKeys: false },
+    )
     return
   }
 
@@ -685,6 +766,20 @@ export async function importLocalData(
   await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
     allKeys: false,
   })
+  await db.shelves.bulkAdd(
+    ((toCreate.shelves ?? []) as Shelf[]).map((s) => ({
+      ...s,
+      createdAt:
+        s.createdAt instanceof Date
+          ? s.createdAt
+          : new Date(s.createdAt as unknown as string),
+      updatedAt:
+        s.updatedAt instanceof Date
+          ? s.updatedAt
+          : new Date(s.updatedAt as unknown as string),
+    })),
+    { allKeys: false },
+  )
 
   await db.items.bulkPut((toUpsert.items as Item[]).map(deserializeItem))
   await db.vendors.bulkPut(toUpsert.vendors as Vendor[])
@@ -702,6 +797,19 @@ export async function importLocalData(
   )
   await db.shoppingCarts.bulkPut(toUpsert.shoppingCarts as ShoppingCart[])
   await db.cartItems.bulkPut(toUpsert.cartItems as CartItem[])
+  await db.shelves.bulkPut(
+    ((toUpsert.shelves ?? []) as Shelf[]).map((s) => ({
+      ...s,
+      createdAt:
+        s.createdAt instanceof Date
+          ? s.createdAt
+          : new Date(s.createdAt as unknown as string),
+      updatedAt:
+        s.updatedAt instanceof Date
+          ? s.updatedAt
+          : new Date(s.updatedAt as unknown as string),
+    })),
+  )
 }
 
 async function fetchCloudExistingData(
@@ -718,6 +826,7 @@ async function fetchCloudExistingData(
     inventoryLogsResult,
     shoppingCartsResult,
     allCartItemsResult,
+    shelvesResult,
   ] = await Promise.all([
     client.query<GetItemsQuery>({ query: GetItemsDocument, fetchPolicy }),
     client.query<GetTagsQuery>({ query: GetTagsDocument, fetchPolicy }),
@@ -736,6 +845,7 @@ async function fetchCloudExistingData(
       query: AllCartItemsDocument,
       fetchPolicy,
     }),
+    client.query<GetShelvesQuery>({ query: GetShelvesDocument, fetchPolicy }),
   ])
 
   return {
@@ -750,6 +860,7 @@ async function fetchCloudExistingData(
       []) as unknown as ShoppingCart[],
     cartItems: (allCartItemsResult.data?.allCartItems ??
       []) as unknown as CartItem[],
+    shelves: (shelvesResult.data?.shelves ?? []) as unknown as Shelf[],
   }
 }
 
@@ -892,6 +1003,21 @@ async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
             variables: {
               cartItems: batch.map((ci) =>
                 toCartItemInput(ci as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'shelves',
+      items: data.shelves ?? [],
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateShelvesDocument,
+            variables: {
+              shelves: batch.map((s) =>
+                toShelfInput(s as Record<string, unknown>),
               ),
             },
           })
@@ -1052,6 +1178,21 @@ async function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
           })
           .then(() => undefined),
     },
+    {
+      entityType: 'shelves',
+      items: data.shelves ?? [],
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertShelvesDocument,
+            variables: {
+              shelves: batch.map((s) =>
+                toShelfInput(s as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
   ]
 
   for (const group of entityGroups) {
@@ -1085,7 +1226,8 @@ function computeTotalBatches(data: ExportPayload): number {
     chunk(data.recipes, BATCH_SIZE).length +
     chunk(data.inventoryLogs, BATCH_SIZE).length +
     chunk(data.shoppingCarts, BATCH_SIZE).length +
-    chunk(data.cartItems, BATCH_SIZE).length
+    chunk(data.cartItems, BATCH_SIZE).length +
+    chunk(data.shelves ?? [], BATCH_SIZE).length
   )
 }
 
