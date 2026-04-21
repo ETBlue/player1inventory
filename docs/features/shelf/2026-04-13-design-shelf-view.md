@@ -1,8 +1,8 @@
 # Design — Shelf View
 
 **Date:** 2026-04-13
-**Status:** 🔲 Pending
-**Branch:** `feature/shelf-view`
+**Status:** ✅ Implemented
+**Branch:** `feature/shelf-view`, `feature/shelf-cloud`
 
 ---
 
@@ -214,4 +214,4 @@ When the user taps "Add" for an item in the Unsorted shelf's search results, the
 - Hide the Add button in Unsorted (items outside the Unsorted shelf would be items in other shelves — still show them as read-only)
 - Show "Move to Unsorted" only for items currently in shelves (remove from those shelves)
 
-**Decision deferred to implementation phase.**
+**Decision (implemented):** No Add button is shown in the Unsorted shelf's outside-shelf search results (nor in filter shelves). The Add button appears only for `selection` type shelves. In Unsorted, all items already belong there by definition; the outside-shelf section shows items that are assigned to other shelves — they are displayed read-only with no action button.
