@@ -16,6 +16,7 @@ This plan covers the content of the public-facing design guide. It does not cove
 - `tokens/layout.mdx` — grid system, breakpoints
 - `patterns/navigation.mdx` — navbar, sidebar, tabs, breadcrumbs
 - `patterns/error-states.mdx` — error messages, validation states
+- `patterns/shelf-items.mdx` — items tab within shelf detail: assignment modes, item list view
 - `principles.mdx` — top-level design principles (new top-level sidebar entry)
 - `governance.mdx` — naming conventions, review process, versioning
 
@@ -131,10 +132,22 @@ For each component page, include:
 - Toast/alert errors (transient vs. persistent)
 
 ### Page: `patterns/object-detail.mdx` (new)
+- Applies to all objects: item, tag, vendor, recipe, shelf
 - Top bar anatomy and visuals for object detail pages
 - Background elevation relative to list pages
 - Back behavior: unsaved changes dialog, when to show
 - Location history management on tab switch
+- Toolbar consistency rules: button placement and available actions across all object types
+- Layout and spacing grid: consistent structure when navigating between object types
+- Shelf-specific: dual-tab structure (Info + Items tab); Info tab follows standard form behavior
+
+### Page: `patterns/shelf-items.mdx` (new)
+- Items tab anatomy within shelf detail view
+- Two assignment modes: filter-based (auto-assigns matching items), selection (manually chosen items)
+- Visual differentiation of assignment mode in the shelf header/toolbar
+- How item count and current assignment mode surface in the shelf card and detail header
+- Toolbar actions in the Items tab context (configure filter, add/remove items)
+- Empty state per assignment mode (no items matched filter, no items selected)
 
 ### Page: `patterns/search-and-create.mdx` (new)
 - Search input behavior (when to show, debounce, clear)
@@ -145,6 +158,8 @@ For each component page, include:
 - Object card anatomy in settings pages
 - Delete button position and behavior
 - Differentiation between object types (item/tag/vendor/recipe/shelf) in list vs. detail views
+- Shelf list in settings: card layout, spacing, and available actions consistent with other object lists
+- Shelf card: surfaces item count and active assignment mode (filter / selection)
 
 ---
 
@@ -206,7 +221,7 @@ For each component page, include:
 Add to sidebar:
 1. `{ label: 'Principles', slug: 'principles' }` — before Tokens
 2. Under Tokens: `effects`, `theming`, `layout`
-3. Under Patterns: `navigation`, `error-states`, `object-detail`, `search-and-create`, `object-cards`
+3. Under Patterns: `navigation`, `error-states`, `object-detail`, `shelf-items`, `search-and-create`, `object-cards`
 4. `{ label: 'Governance', slug: 'governance' }` — after Voice & Tone
 
 ---
