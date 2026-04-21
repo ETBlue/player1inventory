@@ -871,6 +871,32 @@ describe('cloud import input mappers — strip server-only fields', () => {
   })
 })
 
+describe('toItemInput — null normalization', () => {
+  it('toItemInput normalizes vendorIds null to undefined', () => {
+    // Given a raw item record where vendorIds is null (as stored in a backup JSON)
+    const rawItem = {
+      id: 'item-1',
+      name: 'Apple',
+      tagIds: [],
+      vendorIds: null,
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    // When mapped to ItemInput
+    const result = toItemInput(rawItem as unknown as Record<string, unknown>)
+
+    // Then vendorIds is undefined (not null), safe for Dexie and downstream filters
+    expect(result.vendorIds).toBeUndefined()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // importCloudData — batched cloud import
 // ---------------------------------------------------------------------------

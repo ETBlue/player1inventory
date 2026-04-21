@@ -136,7 +136,8 @@ export function toItemInput(item: Record<string, unknown>) {
     id: item.id as string,
     name: item.name as string,
     tagIds: (item.tagIds ?? []) as string[],
-    vendorIds: item.vendorIds as string[] | undefined,
+    vendorIds:
+      item.vendorIds != null ? (item.vendorIds as string[]) : undefined,
     packageUnit: item.packageUnit as string | undefined,
     measurementUnit: item.measurementUnit as string | undefined,
     amountPerPackage: item.amountPerPackage as number | undefined,
