@@ -18,6 +18,7 @@ export const purgeResolvers: Pick<Resolvers, 'Mutation'> = {
         tags,
         tagTypes,
         vendors,
+        shelves,
       ] = await prisma.$transaction([
         prisma.inventoryLog.deleteMany({ where: { userId } }),
         prisma.cartItem.deleteMany({ where: { userId } }),
@@ -30,6 +31,7 @@ export const purgeResolvers: Pick<Resolvers, 'Mutation'> = {
         prisma.tag.deleteMany({ where: { userId } }),
         prisma.tagType.deleteMany({ where: { userId } }),
         prisma.vendor.deleteMany({ where: { userId } }),
+        prisma.shelf.deleteMany({ where: { userId } }),
       ])
       // recipeItems, itemTags, itemVendors are junction rows — rolled into items/recipes counts
       void recipeItems
@@ -44,6 +46,7 @@ export const purgeResolvers: Pick<Resolvers, 'Mutation'> = {
         carts: carts.count,
         cartItems: cartItems.count,
         inventoryLogs: inventoryLogs.count,
+        shelves: shelves.count,
       }
     },
   },
