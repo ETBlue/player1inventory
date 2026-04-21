@@ -49,28 +49,14 @@ Tokens are consumed through Tailwind utility classes via `@theme inline` mapping
 
 ## When to use each group
 
-| You need to... | Reach for... |
-|----------------|-------------|
-| Set a page background | `background-base` |
-| Set a toolbar or header background | `background-surface` |
-| Set a card or list item background | `background-elevated` |
-| Color text (body copy, labels, headings) | `foreground-muted`, `foreground-default`, `foreground-emphasized` |
-| White text on a colored fill (button, badge) | `foreground-colorless-inverse` |
-| Black text on a light fill | `foreground-colorless` |
-| Color borders and dividers | `accessory-muted`, `accessory-default`, `accessory-emphasized` |
-| Fill a badge or button with an importance color | `importance-*-background` |
-| Show a colored label or text on a neutral background | `importance-*-foreground` |
-| Draw an outline-style importance border | `importance-*-accessory` |
-| Show a bold status fill (icon, badge, indicator) | `status-*-background` |
-| Show a soft status fill (progress bar track) | `status-*-background-muted` |
-| Show a tinted status section background | `status-*-background-inverse` |
-| Show colored status text on a neutral background | `status-*-foreground` |
-| Draw a status-colored border | `status-*-accessory` |
-| Draw a subtle status-colored border | `status-*-accessory-muted` |
-| Color a solid tag badge | `tag-*-background` |
-| Color a tint (inverse) tag badge background | `tag-*-background-inverse` |
-| Color text inside a tag badge | `tag-*-foreground` |
-| Draw a tag badge border | `tag-*-accessory` |
+| Group | Reach for when… |
+|-------|----------------|
+| **Background** | Setting surface elevation — page (`base`), toolbars/headers (`surface`), cards/list items (`elevated`) |
+| **Foreground** | Coloring text — sub-variant sets hierarchy (`muted` → `default` → `emphasized`); use `colorless-inverse` for text on any colored fill |
+| **Accessory** | Coloring borders and dividers — `muted` for subtle separators, `default` for standard, `emphasized` for interactive |
+| **Importance** | Expressing semantic intent (primary, secondary, destructive, neutral) — sub-variant selects fill (`background`), colored text (`foreground`), or outline border (`accessory`) |
+| **Status** | Showing feedback states (ok, warning, error, inactive) — sub-variant selects fill intensity, text, or border; see detail below |
+| **Tag** | Styling tag badges exclusively — hue-based colorization only; see detail below |
 
 **Background group** — three elevation layers for visual hierarchy without shadows. Base is the page; surface is for toolbars, sticky headers, and popovers; elevated is for cards and list items.
 
