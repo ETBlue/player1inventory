@@ -28,7 +28,7 @@
 
   --importance-primary-foreground: oklch(45% 25% 195);
   --importance-secondary-foreground: oklch(55% 15% 195);
-  --importance-destructive-foreground: oklch(50% 30% 350);
+  --importance-destructive-foreground: oklch(45% 30% 350);
   --importance-neutral-foreground: oklch(40% 6% 85);
 
   --importance-primary-accessory: oklch(70% 20% 195);
