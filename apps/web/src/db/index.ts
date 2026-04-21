@@ -115,4 +115,17 @@ db.version(8).stores({
   shelves: '++id, name, type, order',
 })
 
+// Version 9: Move sortBy/sortDir from filterConfig to top-level shelf fields
+db.version(9).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, typeId, parentId, createdAt',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
+  recipes: 'id, name, lastCookedAt',
+  shelves: 'id, name, type, order, sortBy, sortDir',
+})
+
 export { db }

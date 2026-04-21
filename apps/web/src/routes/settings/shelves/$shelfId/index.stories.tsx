@@ -126,3 +126,26 @@ function FilterShelfWithSortStory() {
 export const FilterShelfWithSort: Story = {
   render: () => <FilterShelfWithSortStory />,
 }
+
+// Story 4: Selection shelf with custom sort config
+function SelectionShelfWithSortStory() {
+  return (
+    <ShelfInfoTabStory
+      setup={async () => {
+        const shelf = await createShelf({
+          name: 'Pantry Essentials',
+          type: 'selection',
+          order: 1,
+          itemIds: [],
+          sortBy: 'expiring',
+          sortDir: 'desc',
+        })
+        return `/settings/shelves/${shelf.id}`
+      }}
+    />
+  )
+}
+
+export const SelectionShelfWithSort: Story = {
+  render: () => <SelectionShelfWithSortStory />,
+}

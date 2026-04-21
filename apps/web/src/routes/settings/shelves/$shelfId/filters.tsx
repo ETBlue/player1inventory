@@ -50,8 +50,6 @@ function ShelfFiltersTab() {
         : base.recipeIds && base.recipeIds.length > 0
           ? { recipeIds: base.recipeIds }
           : {}),
-      ...(base.sortBy !== undefined ? { sortBy: base.sortBy } : {}),
-      ...(base.sortDir !== undefined ? { sortDir: base.sortDir } : {}),
     }
     updateShelf.mutate({ id: shelf.id, data: { filterConfig: merged } })
   }

@@ -268,6 +268,34 @@ async function seedVendor(page: import('@playwright/test').Page): Promise<string
   })
 }
 
+// Helper: seed a shelf into IndexedDB and return its ID
+async function seedShelf(page: import('@playwright/test').Page): Promise<string> {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const id = crypto.randomUUID()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('shelves', 'readwrite')
+      tx.objectStore('shelves').add({
+        id,
+        name: 'test shelf',
+        type: 'filter',
+        order: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    return id
+  })
+}
+
 // Helper: seed a recipe into IndexedDB and return its ID
 async function seedRecipe(page: import('@playwright/test').Page): Promise<string> {
   await page.goto('/')
@@ -421,6 +449,35 @@ test.describe('detail page a11y', () => {
 
     // When the user navigates to the recipe detail page (trailing slash required for TanStack Router index child)
     await page.goto(`/settings/recipes/${recipeId}/`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Shelf detail page (/shelves/:id)
+  test('user can view shelf detail page without accessibility violations', async ({ page }) => {
+    // Given a seeded shelf
+    const shelfId = await seedShelf(page)
+
+    // When the user navigates to the shelf detail page
+    await page.goto(`/shelves/${shelfId}`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Settings > Shelf detail (/settings/shelves/:id)
+  test('user can view settings shelf detail page without accessibility violations', async ({ page }) => {
+    // Given a seeded shelf
+    const shelfId = await seedShelf(page)
+
+    // When the user navigates to the shelf settings detail page
+    await page.goto(`/settings/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -704,6 +761,35 @@ test.describe('dark mode a11y', () => {
     // Then there should be no violations
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
+
+  // Shelf detail page (/shelves/:id) in dark mode
+  test('user can view shelf detail page without accessibility violations in dark mode', async ({ page }) => {
+    // Given a seeded shelf with dark mode enabled
+    const shelfId = await seedShelf(page)
+
+    // When the user navigates to the shelf detail page
+    await page.goto(`/shelves/${shelfId}`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Settings > Shelf detail (/settings/shelves/:id) in dark mode
+  test('user can view settings shelf detail page without accessibility violations in dark mode', async ({ page }) => {
+    // Given a seeded shelf with dark mode enabled
+    const shelfId = await seedShelf(page)
+
+    // When the user navigates to the shelf settings detail page
+    await page.goto(`/settings/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
 })
 
 test.describe('mobile viewport a11y', () => {
@@ -775,6 +861,33 @@ test.describe('mobile viewport a11y', () => {
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  test('user can view shelf detail page without accessibility violations on mobile', async ({ page }) => {
+    // Given a seeded shelf on a mobile viewport
+    const shelfId = await seedShelf(page)
+
+    // When the user navigates to the shelf detail page
+    await page.goto(`/shelves/${shelfId}`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations (including the bottom Navigation component)
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  test('user can view settings shelf detail page without accessibility violations on mobile', async ({ page }) => {
+    // Given a seeded shelf on a mobile viewport
+    const shelfId = await seedShelf(page)
+
+    // When the user navigates to the shelf settings detail page
+    await page.goto(`/settings/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
+    await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
     // Then there should be no violations (including the bottom Navigation component)

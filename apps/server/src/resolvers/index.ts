@@ -8,6 +8,7 @@ import { purgeResolvers } from './purge.resolver.js'
 import { recipeResolvers } from './recipe.resolver.js'
 import { tagResolvers } from './tag.resolver.js'
 import { vendorResolvers } from './vendor.resolver.js'
+import { shelfResolvers } from './shelf.resolver.js'
 
 export const resolvers: Resolvers = {
   Query: {
@@ -19,6 +20,7 @@ export const resolvers: Resolvers = {
     ...familyGroupResolvers.Query,
     ...cartResolvers.Query,
     ...inventoryLogResolvers.Query,
+    ...shelfResolvers.Query,
   },
   Mutation: {
     ...itemResolvers.Mutation,
@@ -30,6 +32,7 @@ export const resolvers: Resolvers = {
     ...cartResolvers.Mutation,
     ...inventoryLogResolvers.Mutation,
     ...purgeResolvers.Mutation,
+    ...shelfResolvers.Mutation,
   },
   Recipe: recipeResolvers.Recipe,
   FamilyGroup: familyGroupResolvers.FamilyGroup,

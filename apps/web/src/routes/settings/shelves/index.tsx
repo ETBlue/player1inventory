@@ -195,6 +195,8 @@ export function ShelfSettingsPage() {
       name: data.name,
       type: data.type,
       order: shelves.length,
+      ...(data.sortBy !== undefined ? { sortBy: data.sortBy } : {}),
+      ...(data.sortDir !== undefined ? { sortDir: data.sortDir } : {}),
       ...(data.filterConfig ? { filterConfig: data.filterConfig } : {}),
     })
   }

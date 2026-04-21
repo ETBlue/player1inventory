@@ -1,0 +1,83 @@
+query GetShelves {
+  shelves {
+    id
+    name
+    type
+    order
+    sortBy
+    sortDir
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+    userId
+    familyId
+  }
+}
+
+query GetShelf($id: ID!) {
+  shelf(id: $id) {
+    id
+    name
+    type
+    order
+    sortBy
+    sortDir
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+    userId
+    familyId
+  }
+}
+
+mutation CreateShelf($name: String!, $type: String!, $sortBy: String, $sortDir: String, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
+  createShelf(name: $name, type: $type, sortBy: $sortBy, sortDir: $sortDir, filterConfig: $filterConfig, itemIds: $itemIds) {
+    id
+    name
+    type
+    order
+    sortBy
+    sortDir
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation UpdateShelf($id: ID!, $name: String, $type: String, $order: Int, $sortBy: String, $sortDir: String, $filterConfig: FilterConfigInput, $itemIds: [String!]) {
+  updateShelf(id: $id, name: $name, type: $type, order: $order, sortBy: $sortBy, sortDir: $sortDir, filterConfig: $filterConfig, itemIds: $itemIds) {
+    id
+    name
+    type
+    order
+    sortBy
+    sortDir
+    filterConfig {
+      tagIds
+      vendorIds
+      recipeIds
+    }
+    itemIds
+  }
+}
+
+mutation DeleteShelf($id: ID!) {
+  deleteShelf(id: $id)
+}
+
+mutation ReorderShelves($orderedIds: [String!]!) {
+  reorderShelves(orderedIds: $orderedIds)
+}
+
+mutation ReorderShelfItems($shelfId: ID!, $orderedItemIds: [String!]!) {
+  reorderShelfItems(shelfId: $shelfId, orderedItemIds: $orderedItemIds)
+}

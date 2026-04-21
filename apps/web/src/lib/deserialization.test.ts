@@ -3,6 +3,7 @@ import {
   deserializeCart,
   deserializeItem,
   deserializeRecipe,
+  deserializeShelf,
   deserializeVendor,
 } from './deserialization'
 
@@ -136,6 +137,84 @@ describe('deserializeRecipe', () => {
     }
     const result = deserializeRecipe(raw)
     expect(result.lastCookedAt).toBeUndefined()
+  })
+})
+
+describe('deserializeShelf', () => {
+  it('normalizes null filterConfig array fields to empty arrays', () => {
+    // Given a raw shelf with null filterConfig array fields (as returned by GraphQL)
+    const raw = {
+      id: '1',
+      name: 'My Shelf',
+      filterConfig: {
+        tagIds: null,
+        vendorIds: null,
+        recipeIds: null,
+      },
+    }
+
+    // When the shelf is deserialized
+    const result = deserializeShelf(raw)
+
+    // Then null array fields are normalized to empty arrays
+    expect(result.filterConfig?.tagIds).toEqual([])
+    expect(result.filterConfig?.vendorIds).toEqual([])
+    expect(result.filterConfig?.recipeIds).toEqual([])
+  })
+
+  it('preserves non-null filterConfig array fields unchanged', () => {
+    // Given a raw shelf with populated filterConfig arrays
+    const raw = {
+      id: '1',
+      name: 'My Shelf',
+      filterConfig: {
+        tagIds: ['tag-1', 'tag-2'],
+        vendorIds: ['vendor-1'],
+        recipeIds: [],
+      },
+    }
+
+    // When the shelf is deserialized
+    const result = deserializeShelf(raw)
+
+    // Then the arrays are passed through unchanged
+    expect(result.filterConfig?.tagIds).toEqual(['tag-1', 'tag-2'])
+    expect(result.filterConfig?.vendorIds).toEqual(['vendor-1'])
+    expect(result.filterConfig?.recipeIds).toEqual([])
+  })
+
+  it('preserves top-level sortBy and sortDir', () => {
+    // Given a raw shelf from GraphQL with sortBy/sortDir as top-level fields
+    const raw = {
+      id: '1',
+      name: 'My Shelf',
+      sortBy: 'name',
+      sortDir: 'asc',
+      filterConfig: {
+        tagIds: [],
+        vendorIds: [],
+        recipeIds: [],
+      },
+    }
+
+    // When the shelf is deserialized
+    const result = deserializeShelf(raw)
+
+    // Then sortBy and sortDir are preserved at the top level
+    expect(result.sortBy).toBe('name')
+    expect(result.sortDir).toBe('asc')
+  })
+
+  it('uses epoch as fallback when createdAt/updatedAt are absent', () => {
+    // Given a shelf without timestamps
+    const raw = { id: '1', name: 'My Shelf' }
+
+    // When deserialized
+    const result = deserializeShelf(raw)
+
+    // Then epoch is used as fallback
+    expect(result.createdAt).toEqual(new Date(0))
+    expect(result.updatedAt).toEqual(new Date(0))
   })
 })
 

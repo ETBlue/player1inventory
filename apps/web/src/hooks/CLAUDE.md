@@ -17,3 +17,10 @@
 
 **Cloud / Auth:**
 - `usePostLoginMigration()` (`src/hooks/usePostLoginMigration.ts`) - Cloud mode only. Detects when a signed-in user has local IndexedDB items and has not been prompted before (localStorage `migration-prompted` key). Exposes `state: MigrationState`, `dismiss()`, and `importData(conflictResolution)`. `importData` calls `fetchLocalPayload()` then `importCloudData()` to migrate local data to cloud. Used by `PostLoginMigrationDialog`.
+
+**Shelf:**
+- `useShelvesQuery()` (`src/hooks/useShelves.ts`) - Returns all shelves. Dual-mode: local uses TanStack Query + Dexie; cloud uses `useGetShelvesQuery` (Apollo).
+- `useShelfQuery(id)` (`src/hooks/useShelves.ts`) - Returns a single shelf by ID. Dual-mode.
+- `useCreateShelfMutation()` / `useUpdateShelfMutation()` / `useDeleteShelfMutation()` (`src/hooks/useShelves.ts`) - CRUD mutations. Dual-mode.
+- `useReorderShelvesMutation()` / `useReorderShelfItemsMutation()` (`src/hooks/useShelves.ts`) - Reorder mutations. Dual-mode.
+- Note: `sortBy`/`sortDir` are top-level `Shelf` fields (not inside `filterConfig`). `FilterConfig` only holds `tagIds`, `vendorIds`, `recipeIds`.

@@ -41,8 +41,8 @@ function ShelfInfoTab() {
     if (!shelf || initializedRef.current) return
     initializedRef.current = true
     setName(shelf.name)
-    setSortBy(shelf.filterConfig?.sortBy ?? 'name')
-    setSortDir(shelf.filterConfig?.sortDir ?? 'asc')
+    setSortBy(shelf.sortBy ?? 'name')
+    setSortDir(shelf.sortDir ?? 'asc')
   }, [shelf])
 
   // nameError — required field validation
@@ -52,10 +52,8 @@ function ShelfInfoTab() {
   const isDirty = useMemo(() => {
     if (!shelf) return false
     if (name.trim() !== shelf.name) return true
-    if (shelf.type === 'filter') {
-      if (sortBy !== (shelf.filterConfig?.sortBy ?? 'name')) return true
-      if (sortDir !== (shelf.filterConfig?.sortDir ?? 'asc')) return true
-    }
+    if (sortBy !== (shelf.sortBy ?? 'name')) return true
+    if (sortDir !== (shelf.sortDir ?? 'asc')) return true
     return false
   }, [name, shelf, sortBy, sortDir])
 
@@ -74,6 +72,8 @@ function ShelfInfoTab() {
           id: shelf.id,
           data: {
             name: name.trim(),
+            sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
+            sortDir,
             filterConfig: {
               ...(base.tagIds && base.tagIds.length > 0
                 ? { tagIds: base.tagIds }
@@ -84,8 +84,6 @@ function ShelfInfoTab() {
               ...(base.recipeIds && base.recipeIds.length > 0
                 ? { recipeIds: base.recipeIds }
                 : {}),
-              sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
-              sortDir,
             },
           },
         },
@@ -93,7 +91,14 @@ function ShelfInfoTab() {
       )
     } else {
       updateShelf.mutate(
-        { id: shelf.id, data: { name: name.trim() } },
+        {
+          id: shelf.id,
+          data: {
+            name: name.trim(),
+            sortBy: sortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
+            sortDir,
+          },
+        },
         { onSuccess: () => goBack() },
       )
     }
@@ -116,66 +121,64 @@ function ShelfInfoTab() {
         />
       </div>
 
-      {/* Sort / order (filter shelves only) */}
-      {shelf.type === 'filter' && (
-        <div className="space-y-4">
-          {/* Sort by */}
-          <div className="space-y-1.5">
-            <Label>Sort by</Label>
-            <RadioGroup
-              value={sortBy}
-              onValueChange={setSortBy}
-              className="flex flex-wrap gap-x-4 gap-y-2"
-            >
-              {[
-                { value: 'name', label: 'Name' },
-                { value: 'stock', label: 'Stock' },
-                { value: 'expiring', label: 'Expiring' },
-                { value: 'lastPurchased', label: 'Last purchased' },
-              ].map(({ value, label }) => (
-                <div key={value} className="flex items-center gap-2">
-                  <RadioGroupItem value={value} id={`shelf-sort-${value}`} />
-                  <Label
-                    htmlFor={`shelf-sort-${value}`}
-                    className="font-normal cursor-pointer"
-                  >
-                    {label}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
-
-          {/* Order */}
-          <div className="space-y-1.5">
-            <Label>Order</Label>
-            <RadioGroup
-              value={sortDir}
-              onValueChange={(v: string) => setSortDir(v as 'asc' | 'desc')}
-              className="flex gap-4"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="asc" id="shelf-sort-asc" />
+      {/* Sort / order (all shelf types) */}
+      <div className="space-y-4">
+        {/* Sort by */}
+        <div className="space-y-1.5">
+          <Label>Sort by</Label>
+          <RadioGroup
+            value={sortBy}
+            onValueChange={setSortBy}
+            className="flex flex-wrap gap-x-4 gap-y-2"
+          >
+            {[
+              { value: 'name', label: 'Name' },
+              { value: 'stock', label: 'Stock' },
+              { value: 'expiring', label: 'Expiring' },
+              { value: 'lastPurchased', label: 'Last purchased' },
+            ].map(({ value, label }) => (
+              <div key={value} className="flex items-center gap-2">
+                <RadioGroupItem value={value} id={`shelf-sort-${value}`} />
                 <Label
-                  htmlFor="shelf-sort-asc"
+                  htmlFor={`shelf-sort-${value}`}
                   className="font-normal cursor-pointer"
                 >
-                  Ascending
+                  {label}
                 </Label>
               </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="desc" id="shelf-sort-desc" />
-                <Label
-                  htmlFor="shelf-sort-desc"
-                  className="font-normal cursor-pointer"
-                >
-                  Descending
-                </Label>
-              </div>
-            </RadioGroup>
-          </div>
+            ))}
+          </RadioGroup>
         </div>
-      )}
+
+        {/* Order */}
+        <div className="space-y-1.5">
+          <Label>Order</Label>
+          <RadioGroup
+            value={sortDir}
+            onValueChange={(v: string) => setSortDir(v as 'asc' | 'desc')}
+            className="flex gap-4"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="asc" id="shelf-sort-asc" />
+              <Label
+                htmlFor="shelf-sort-asc"
+                className="font-normal cursor-pointer"
+              >
+                Ascending
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="desc" id="shelf-sort-desc" />
+              <Label
+                htmlFor="shelf-sort-desc"
+                className="font-normal cursor-pointer"
+              >
+                Descending
+              </Label>
+            </div>
+          </RadioGroup>
+        </div>
+      </div>
 
       {/* Save button */}
       <Button
