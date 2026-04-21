@@ -475,8 +475,9 @@ test.describe('detail page a11y', () => {
     // Given a seeded shelf
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf settings detail page (trailing slash required for TanStack Router index child)
+    // When the user navigates to the shelf settings detail page
     await page.goto(`/settings/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -780,8 +781,9 @@ test.describe('dark mode a11y', () => {
     // Given a seeded shelf with dark mode enabled
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf settings detail page (trailing slash required for TanStack Router index child)
+    // When the user navigates to the shelf settings detail page
     await page.goto(`/settings/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -882,8 +884,9 @@ test.describe('mobile viewport a11y', () => {
     // Given a seeded shelf on a mobile viewport
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf settings detail page (trailing slash required for TanStack Router index child)
+    // When the user navigates to the shelf settings detail page
     await page.goto(`/settings/shelves/${shelfId}/`)
+    await page.waitForURL(`**/settings/shelves/${shelfId}/**`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
