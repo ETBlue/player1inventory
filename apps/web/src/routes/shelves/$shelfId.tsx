@@ -441,7 +441,12 @@ export function ShelfDetailPage() {
               params={{ shelfId }}
               aria-label="Shelf settings"
             >
-              <Button variant="neutral-ghost" size="icon" tabIndex={-1}>
+              <Button
+                variant="neutral-ghost"
+                size="icon"
+                tabIndex={-1}
+                aria-hidden={true}
+              >
                 <Settings />
               </Button>
             </Link>
