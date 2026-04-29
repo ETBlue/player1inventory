@@ -14,6 +14,7 @@ import {
   toInventoryLogInput,
   toItemInput,
   toRecipeInput,
+  toShelfInput,
   toShoppingCartInput,
   toTagInput,
   toTagTypeInput,
@@ -894,6 +895,67 @@ describe('toItemInput — null normalization', () => {
 
     // Then vendorIds is undefined (not null), safe for Dexie and downstream filters
     expect(result.vendorIds).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// toShelfInput — filterConfig __typename stripping and timestamp fallback
+// ---------------------------------------------------------------------------
+
+describe('toShelfInput', () => {
+  it('strips __typename from filterConfig', () => {
+    // Given a shelf with a filterConfig that has __typename (as added by Apollo)
+    const input = {
+      id: 'shelf-1',
+      name: 'Proteins',
+      type: 'filter',
+      order: 1,
+      sortBy: 'stock',
+      sortDir: 'asc',
+      filterConfig: {
+        __typename: 'FilterConfig',
+        tagIds: ['t1'],
+        vendorIds: null,
+        recipeIds: null,
+      },
+      itemIds: [],
+      createdAt: '2026-04-21T00:00:00.000Z',
+      updatedAt: '2026-04-21T00:00:00.000Z',
+    }
+
+    // When mapped to ShelfInput
+    const result = toShelfInput(input as unknown as Record<string, unknown>)
+
+    // Then __typename is not present in filterConfig
+    expect(
+      (result.filterConfig as Record<string, unknown>)?.__typename,
+    ).toBeUndefined()
+    // And valid filterConfig fields are preserved
+    expect((result.filterConfig as Record<string, unknown>)?.tagIds).toEqual([
+      't1',
+    ])
+  })
+
+  it('falls back to current ISO date when createdAt is missing', () => {
+    // Given a shelf from an old backup without createdAt or updatedAt
+    const input = {
+      id: 'shelf-1',
+      name: 'Manual',
+      type: 'selection',
+      order: 2,
+      itemIds: [],
+      filterConfig: null,
+      // no createdAt or updatedAt
+    }
+
+    // When mapped to ShelfInput
+    const result = toShelfInput(input as unknown as Record<string, unknown>)
+
+    // Then createdAt and updatedAt are non-empty ISO strings
+    expect(result.createdAt).toBeTruthy()
+    expect(result.updatedAt).toBeTruthy()
+    expect(() => new Date(result.createdAt)).not.toThrow()
+    expect(() => new Date(result.updatedAt)).not.toThrow()
   })
 })
 

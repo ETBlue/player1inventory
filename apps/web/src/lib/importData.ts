@@ -235,11 +235,32 @@ export function toShelfInput(shelf: Record<string, unknown>) {
   const createdAt =
     shelf.createdAt instanceof Date
       ? shelf.createdAt.toISOString()
-      : (shelf.createdAt as string)
+      : typeof shelf.createdAt === 'string' && shelf.createdAt
+        ? shelf.createdAt
+        : new Date().toISOString() // fallback for old backups without timestamps
+
   const updatedAt =
     shelf.updatedAt instanceof Date
       ? shelf.updatedAt.toISOString()
-      : (shelf.updatedAt as string)
+      : typeof shelf.updatedAt === 'string' && shelf.updatedAt
+        ? shelf.updatedAt
+        : new Date().toISOString() // fallback for old backups without timestamps
+
+  // Strip __typename from filterConfig (Apollo adds it to cloud-fetched nested objects).
+  // Also normalizes null array fields to undefined for consistency.
+  const rawFilter = shelf.filterConfig as
+    | Record<string, unknown>
+    | null
+    | undefined
+  const filterConfig =
+    rawFilter != null
+      ? {
+          tagIds: (rawFilter.tagIds as string[] | null) ?? undefined,
+          vendorIds: (rawFilter.vendorIds as string[] | null) ?? undefined,
+          recipeIds: (rawFilter.recipeIds as string[] | null) ?? undefined,
+        }
+      : undefined
+
   return {
     id: shelf.id as string,
     name: shelf.name as string,
@@ -247,9 +268,7 @@ export function toShelfInput(shelf: Record<string, unknown>) {
     order: shelf.order as number,
     sortBy: shelf.sortBy as string | undefined,
     sortDir: shelf.sortDir as string | undefined,
-    filterConfig: shelf.filterConfig as
-      | { tagIds?: string[]; vendorIds?: string[]; recipeIds?: string[] }
-      | undefined,
+    filterConfig,
     itemIds: shelf.itemIds as string[] | undefined,
     createdAt,
     updatedAt,
