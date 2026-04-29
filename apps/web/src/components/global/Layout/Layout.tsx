@@ -21,7 +21,7 @@ export function Layout({ children }: LayoutProps) {
     location.pathname.startsWith('/shelves/')
 
   return (
-    <div className="h-screen bg-background-base grid grid-cols-[auto_1fr]">
+    <div className="h-dvh bg-background-base grid grid-cols-[auto_1fr]">
       {/* Skip link must come before Sidebar so it is the first focusable element.
           Wrapped in <header> (banner landmark) to satisfy the axe `region` rule — all
           page content must be inside a landmark. */}

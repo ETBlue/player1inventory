@@ -19,7 +19,7 @@ src/components/
 
 One-time structural components that appear once in the app shell.
 
-**`Layout`** (`src/components/global/Layout/index.tsx`) — root shell that wraps every page. Uses a CSS grid layout (`h-screen grid grid-cols-[auto_1fr]`):
+**`Layout`** (`src/components/global/Layout/index.tsx`) — root shell that wraps every page. Uses a CSS grid layout (`h-dvh grid grid-cols-[auto_1fr]`):
 - Column 1: Sidebar (desktop only, `hidden lg:flex`, `w-56`)
 - Column 2: inner grid (`grid-rows-[1fr_auto]`) — main content area on top, Navigation on bottom
 - Main element uses `[container-type:size]` enabling `cqh`-based container queries in children
