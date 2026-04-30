@@ -38,6 +38,8 @@ import {
   type InventoryLogsQuery,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
+  UpdateShelfDocument,
+  type UpdateShelfMutation,
 } from '@/generated/graphql'
 import type {
   CartItem,
@@ -757,6 +759,28 @@ export async function importLocalData(
       })),
       { allKeys: false },
     )
+
+    // For conflicting shelves in "skip" mode: merge newly created item IDs
+    const newItemIds = new Set(
+      (toCreate.items as Array<{ id: string }>).map((i) => i.id),
+    )
+    const payloadShelvesMap = new Map(
+      (
+        (payload.shelves ?? []) as Array<{ id: string; itemIds?: string[] }>
+      ).map((s) => [s.id, s]),
+    )
+    for (const conflictEntry of conflicts.shelves) {
+      const payloadShelf = payloadShelvesMap.get(conflictEntry.id)
+      if (!payloadShelf?.itemIds?.length) continue
+      const addedIds = payloadShelf.itemIds.filter((id) => newItemIds.has(id))
+      if (!addedIds.length) continue
+      const existingShelf = await db.shelves.get(conflictEntry.id)
+      if (!existingShelf) continue
+      const existingItemIds = existingShelf.itemIds ?? []
+      const mergedIds = [...new Set([...existingItemIds, ...addedIds])]
+      await db.shelves.update(conflictEntry.id, { itemIds: mergedIds })
+    }
+
     return
   }
 
@@ -1299,6 +1323,34 @@ export async function importCloudData(
         startCompleted: 0,
         totalBatches,
       })
+
+      // For conflicting shelves in "skip" mode: merge newly created item IDs into cloud shelf
+      const newItemIds = new Set(
+        (toCreate.items as Array<{ id: string }>).map((i) => i.id),
+      )
+      const payloadShelvesMap = new Map(
+        (
+          (payload.shelves ?? []) as Array<{ id: string; itemIds?: string[] }>
+        ).map((s) => [s.id, s]),
+      )
+      for (const conflictEntry of conflicts.shelves) {
+        const payloadShelf = payloadShelvesMap.get(conflictEntry.id)
+        if (!payloadShelf?.itemIds?.length) continue
+        const addedIds = payloadShelf.itemIds.filter((id) => newItemIds.has(id))
+        if (!addedIds.length) continue
+        const existingShelf = existing.shelves.find(
+          (s) => s.id === conflictEntry.id,
+        )
+        if (!existingShelf) continue
+        const existingItemIds =
+          (existingShelf.itemIds as string[] | null | undefined) ?? []
+        const mergedIds = [...new Set([...existingItemIds, ...addedIds])]
+        await client.mutate<UpdateShelfMutation>({
+          mutation: UpdateShelfDocument,
+          variables: { id: conflictEntry.id, itemIds: mergedIds },
+        })
+      }
+
       await client.resetStore()
       return
     }

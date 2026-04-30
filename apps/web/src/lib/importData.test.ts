@@ -378,6 +378,7 @@ async function clearAllTables() {
   await db.recipes.clear()
   await db.vendors.clear()
   await db.items.clear()
+  await db.shelves.clear()
 }
 
 describe('importLocalData', () => {
@@ -1079,5 +1080,161 @@ describe('importCloudData — batched cloud import', () => {
     const completedKeys = caughtError?.session?.completedBatchKeys
     expect(completedKeys?.has('items:0')).toBe(true)
     expect(completedKeys?.has('items:1')).toBe(false)
+  })
+
+  it('merges newly created item IDs into a conflicting shelf on skip (cloud)', async () => {
+    // Given: cloud has shelf-1 with itemIds: ['item-old']
+    const existingShelf = {
+      id: 'shelf-1',
+      name: 'My Shelf',
+      type: 'selection',
+      order: 1,
+      itemIds: ['item-old'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const client = {
+      mutate: vi.fn().mockResolvedValue({}),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [
+            {
+              id: 'item-old',
+              name: 'OldItem',
+              tagIds: [],
+              targetUnit: 'package',
+              targetQuantity: 1,
+              refillThreshold: 0,
+              packedQuantity: 0,
+              unpackedQuantity: 0,
+              consumeAmount: 1,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [existingShelf],
+        },
+      }),
+    }
+
+    // And: payload has shelf-1 (conflict) with itemIds: ['item-old', 'item-new'],
+    //      and item-new is new (non-conflicting)
+    const payload = emptyPayload({
+      items: [makeItem('item-new', 'NewItem')],
+      shelves: [
+        {
+          id: 'shelf-1',
+          name: 'My Shelf',
+          type: 'selection',
+          order: 1,
+          itemIds: ['item-old', 'item-new'],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    })
+
+    // When importing with skip
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then UpdateShelf was called with merged itemIds containing both item-old and item-new
+    const mutateCalls = (client.mutate as ReturnType<typeof vi.fn>).mock.calls
+    const updateCall = mutateCalls.find(
+      (call: Array<{ variables?: { id?: string } }>) =>
+        call[0]?.variables?.id === 'shelf-1',
+    )
+    expect(updateCall).toBeDefined()
+    const vars = updateCall[0].variables as { itemIds: string[] }
+    expect(vars.itemIds).toContain('item-old')
+    expect(vars.itemIds).toContain('item-new')
+  })
+})
+
+describe('importLocalData — shelf itemIds merge on skip conflict', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  it('user can merge newly created item IDs into a conflicting shelf on skip', async () => {
+    // Given: shelf-1 already exists in local DB with item-old in its itemIds
+    const existingShelf = {
+      id: 'shelf-1',
+      name: 'My Shelf',
+      type: 'selection' as const,
+      order: 1,
+      itemIds: ['item-old'],
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+    }
+    await db.items.add(makeItem('item-old', 'OldItem'))
+    await db.shelves.add(existingShelf)
+
+    // And: payload has same shelf-1 (conflict) with item-old + item-new in itemIds,
+    //      and item-new is a new item (not in existing DB)
+    const payload = emptyPayload({
+      items: [makeItem('item-new', 'NewItem')],
+      shelves: [
+        {
+          ...existingShelf,
+          itemIds: ['item-old', 'item-new'],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    })
+
+    // When importing with skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then item-new is created
+    const items = await db.items.toArray()
+    expect(items.map((i) => i.id)).toContain('item-new')
+
+    // And shelf-1 now contains both item-old AND item-new
+    const shelf = await db.shelves.get('shelf-1')
+    expect(shelf?.itemIds).toContain('item-old')
+    expect(shelf?.itemIds).toContain('item-new')
+  })
+
+  it('does not modify a conflicting shelf when no newly created items belong to it', async () => {
+    // Given: shelf-1 exists with item-old
+    const existingShelf = {
+      id: 'shelf-1',
+      name: 'My Shelf',
+      type: 'selection' as const,
+      order: 1,
+      itemIds: ['item-old'],
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+    }
+    await db.items.add(makeItem('item-old', 'OldItem'))
+    await db.shelves.add(existingShelf)
+
+    // And: payload has same shelf-1 but its itemIds only references item-old (also conflicting)
+    const payload = emptyPayload({
+      items: [makeItem('item-old', 'OldItem')], // item-old is also conflicting
+      shelves: [
+        {
+          ...existingShelf,
+          itemIds: ['item-old'],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    })
+
+    // When importing with skip
+    await importLocalData(payload, 'skip')
+
+    // Then shelf-1 itemIds is still just item-old (no changes)
+    const shelf = await db.shelves.get('shelf-1')
+    expect(shelf?.itemIds).toEqual(['item-old'])
   })
 })
