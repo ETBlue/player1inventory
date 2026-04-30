@@ -56,7 +56,7 @@ async function seedLocalFixture(page: import('@playwright/test').Page, fixture: 
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
-    const storeNames = ['tagTypes', 'tags', 'vendors', 'items', 'recipes', 'inventoryLogs', 'shoppingCarts', 'cartItems']
+    const storeNames = ['tagTypes', 'tags', 'vendors', 'items', 'recipes', 'inventoryLogs', 'shoppingCarts', 'cartItems', 'shelves']
     // Clear all stores first (removes default-populated data from Dexie's populate hook)
     for (const storeName of storeNames) {
       const tx = db.transaction([storeName], 'readwrite')
@@ -76,6 +76,7 @@ async function seedLocalFixture(page: import('@playwright/test').Page, fixture: 
       ['inventoryLogs', fixture.inventoryLogs],
       ['shoppingCarts', fixture.shoppingCarts],
       ['cartItems', fixture.cartItems],
+      ['shelves', fixture.shelves ?? []],
     ]
     for (const [storeName, records] of entries) {
       const tx = db.transaction([storeName], 'readwrite')
@@ -130,6 +131,10 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   // 6. Cart item in shopping page
   await shopping.navigateTo()
   await expect(shopping.getItemCard('Fixture Item')).toBeVisible()
+
+  // 7. Shelf exists and contains the fixture item
+  await page.goto('/shelves')
+  await expect(page.getByText('Fixture Shelf')).toBeVisible()
 }
 
 test('user can export and re-import local data (local → local)', async ({ page }) => {

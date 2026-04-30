@@ -199,7 +199,7 @@ function ShelfInfoTab() {
         dialogDescription="Items will move to Unsorted."
         onDelete={() => {
           deleteShelf.mutate(shelf.id, {
-            onSuccess: () => navigate({ to: '/shelves' }),
+            onSuccess: () => navigate({ to: '/shelves/' }),
           })
         }}
       />
