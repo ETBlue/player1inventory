@@ -2,7 +2,7 @@
 title: Plan — Shelf in Data Operations
 date: 2026-04-21
 area: shelf
-status: pending
+status: complete
 ---
 
 ## Implementation Plan
