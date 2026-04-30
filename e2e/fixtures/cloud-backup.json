@@ -56,5 +56,16 @@
       "itemId": "aaaaaa000000000000000004",
       "quantity": 2
     }
+  ],
+  "shelves": [
+    {
+      "id": "aaaaaa000000000000000009",
+      "name": "Fixture Shelf",
+      "type": "selection",
+      "order": 1,
+      "itemIds": ["aaaaaa000000000000000004"],
+      "createdAt": "2026-03-24T00:00:00.000Z",
+      "updatedAt": "2026-03-24T00:00:00.000Z"
+    }
   ]
 }

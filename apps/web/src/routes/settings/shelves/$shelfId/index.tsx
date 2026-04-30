@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
@@ -26,6 +26,7 @@ function ShelfInfoTab() {
   const updateShelf = useUpdateShelfMutation()
   const deleteShelf = useDeleteShelfMutation()
   const { goBack } = useAppNavigation('/settings/shelves')
+  const navigate = useNavigate()
   const { registerDirtyState } = useShelfLayout()
 
   // Flat state for editable fields
@@ -197,8 +198,9 @@ function ShelfInfoTab() {
         dialogTitle={`Delete "${shelf.name}"?`}
         dialogDescription="Items will move to Unsorted."
         onDelete={() => {
-          deleteShelf.mutate(shelf.id)
-          goBack()
+          deleteShelf.mutate(shelf.id, {
+            onSuccess: () => navigate({ to: '/shelves/' }),
+          })
         }}
       />
     </form>

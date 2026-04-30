@@ -12,6 +12,7 @@ describe('buildExportPayload', () => {
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     })
 
     expect(payload.version).toBe(1)
@@ -28,6 +29,7 @@ describe('buildExportPayload', () => {
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     })
 
     expect(payload.items).toHaveLength(1)
@@ -52,6 +54,7 @@ describe('buildExportPayload', () => {
       cartItems: [
         { id: 'ci-1', cartId: 'cart-1', itemId: 'item-1', quantity: 2 },
       ],
+      shelves: [],
     })
     expect(payload.shoppingCarts).toHaveLength(1)
     expect(payload.cartItems).toHaveLength(1)
@@ -95,6 +98,7 @@ describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export'
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     })
     const clean = sanitiseCloudPayload(raw)
 
@@ -131,6 +135,7 @@ describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export'
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     })
     const clean = sanitiseCloudPayload(raw)
 
@@ -172,6 +177,7 @@ describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export'
       inventoryLogs: [],
       shoppingCarts: [],
       cartItems: [],
+      shelves: [],
     })
     const clean = sanitiseCloudPayload(raw)
 

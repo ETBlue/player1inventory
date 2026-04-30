@@ -180,6 +180,71 @@ describe('Shelf Settings - Info Tab', () => {
     expect(screen.getByRole('radio', { name: /name/i })).toBeInTheDocument()
   })
 
+  describe('delete navigates to shelf list after mutation succeeds', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('user can delete a shelf and navigate to the shelf list', async () => {
+      // Given: deleteShelf.mutate that never calls onSuccess (mutation pending)
+      const mutateFn = vi.fn()
+      vi.spyOn(useShelvesModule, 'useDeleteShelfMutation').mockReturnValue({
+        mutate: mutateFn,
+        isPending: false,
+      } as unknown as ReturnType<
+        typeof useShelvesModule.useDeleteShelfMutation
+      >)
+
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'filter',
+        order: 0,
+        filterConfig: { sortBy: 'name', sortDir: 'asc' },
+      })
+
+      renderInfoTab(shelf.id)
+      const user = userEvent.setup()
+
+      // Wait for form to load
+      await waitFor(() =>
+        expect(screen.getByLabelText('Shelf name')).toHaveValue('Fridge'),
+      )
+
+      // When user clicks Delete to open confirmation dialog
+      await user.click(screen.getByRole('button', { name: /delete shelf/i }))
+      // Wait for confirmation dialog to appear
+      await waitFor(() =>
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument(),
+      )
+
+      // Confirm the deletion (use exact match to avoid matching "Delete shelf" trigger)
+      await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      // Then mutate is called at all (basic sanity check)
+      await waitFor(() => expect(mutateFn).toHaveBeenCalled())
+
+      // And mutate is called with shelf.id AND an onSuccess callback
+      expect(mutateFn).toHaveBeenCalledWith(
+        shelf.id,
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      )
+
+      // And navigation has NOT happened yet (mutation is still pending)
+      expect(screen.getByLabelText('Shelf name')).toBeInTheDocument()
+
+      // When onSuccess fires
+      const capturedOptions = mutateFn.mock.calls[0][1] as {
+        onSuccess: () => void
+      }
+      capturedOptions.onSuccess()
+
+      // Then navigation happens (form is gone)
+      await waitFor(() => {
+        expect(screen.queryByLabelText('Shelf name')).not.toBeInTheDocument()
+      })
+    })
+  })
+
   describe('navigation happens only after mutation succeeds', () => {
     afterEach(() => {
       vi.restoreAllMocks()

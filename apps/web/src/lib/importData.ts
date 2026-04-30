@@ -7,6 +7,7 @@ import {
   BulkCreateInventoryLogsDocument,
   BulkCreateItemsDocument,
   BulkCreateRecipesDocument,
+  BulkCreateShelvesDocument,
   BulkCreateShoppingCartsDocument,
   BulkCreateTagsDocument,
   BulkCreateTagTypesDocument,
@@ -15,6 +16,7 @@ import {
   BulkUpsertInventoryLogsDocument,
   BulkUpsertItemsDocument,
   BulkUpsertRecipesDocument,
+  BulkUpsertShelvesDocument,
   BulkUpsertShoppingCartsDocument,
   BulkUpsertTagsDocument,
   BulkUpsertTagTypesDocument,
@@ -24,6 +26,8 @@ import {
   type GetItemsQuery,
   GetRecipesDocument,
   type GetRecipesQuery,
+  GetShelvesDocument,
+  type GetShelvesQuery,
   GetTagsDocument,
   type GetTagsQuery,
   GetTagTypesDocument,
@@ -34,12 +38,17 @@ import {
   type InventoryLogsQuery,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
+  UpdateRecipeDocument,
+  type UpdateRecipeMutation,
+  UpdateShelfDocument,
+  type UpdateShelfMutation,
 } from '@/generated/graphql'
 import type {
   CartItem,
   InventoryLog,
   Item,
   Recipe,
+  Shelf,
   ShoppingCart,
   Tag,
   TagType,
@@ -131,7 +140,8 @@ export function toItemInput(item: Record<string, unknown>) {
     id: item.id as string,
     name: item.name as string,
     tagIds: (item.tagIds ?? []) as string[],
-    vendorIds: item.vendorIds as string[] | undefined,
+    vendorIds:
+      item.vendorIds != null ? (item.vendorIds as string[]) : undefined,
     packageUnit: item.packageUnit as string | undefined,
     measurementUnit: item.measurementUnit as string | undefined,
     amountPerPackage: item.amountPerPackage as number | undefined,
@@ -225,6 +235,50 @@ export function toCartItemInput(cartItem: Record<string, unknown>) {
   }
 }
 
+export function toShelfInput(shelf: Record<string, unknown>) {
+  const createdAt =
+    shelf.createdAt instanceof Date
+      ? shelf.createdAt.toISOString()
+      : typeof shelf.createdAt === 'string' && shelf.createdAt
+        ? shelf.createdAt
+        : new Date().toISOString() // fallback for old backups without timestamps
+
+  const updatedAt =
+    shelf.updatedAt instanceof Date
+      ? shelf.updatedAt.toISOString()
+      : typeof shelf.updatedAt === 'string' && shelf.updatedAt
+        ? shelf.updatedAt
+        : new Date().toISOString() // fallback for old backups without timestamps
+
+  // Strip __typename from filterConfig (Apollo adds it to cloud-fetched nested objects).
+  // Also normalizes null array fields to undefined for consistency.
+  const rawFilter = shelf.filterConfig as
+    | Record<string, unknown>
+    | null
+    | undefined
+  const filterConfig =
+    rawFilter != null
+      ? {
+          tagIds: (rawFilter.tagIds as string[] | null) ?? undefined,
+          vendorIds: (rawFilter.vendorIds as string[] | null) ?? undefined,
+          recipeIds: (rawFilter.recipeIds as string[] | null) ?? undefined,
+        }
+      : undefined
+
+  return {
+    id: shelf.id as string,
+    name: shelf.name as string,
+    type: shelf.type as string,
+    order: shelf.order as number,
+    sortBy: shelf.sortBy as string | undefined,
+    sortDir: shelf.sortDir as string | undefined,
+    filterConfig,
+    itemIds: shelf.itemIds as string[] | undefined,
+    createdAt,
+    updatedAt,
+  }
+}
+
 export interface ConflictEntry {
   id: string
   name: string
@@ -240,6 +294,7 @@ export interface ConflictSummary {
   inventoryLogs: ConflictEntry[]
   shoppingCarts: ConflictEntry[]
   cartItems: ConflictEntry[]
+  shelves: ConflictEntry[]
 }
 
 export interface ExistingData {
@@ -251,6 +306,7 @@ export interface ExistingData {
   inventoryLogs: InventoryLog[]
   shoppingCarts: ShoppingCart[]
   cartItems: CartItem[]
+  shelves: Shelf[]
 }
 
 // Entities that have a meaningful "name" field for conflict detection
@@ -383,6 +439,11 @@ export function detectConflicts(
       existing.cartItems,
       (e) => (e as CartItem).id,
     ),
+    shelves: detectIdOnlyConflicts(
+      (payload.shelves ?? []) as IdOnlyEntity[],
+      existing.shelves,
+      (e) => (e as Shelf).id,
+    ),
   }
 }
 
@@ -395,7 +456,8 @@ export function hasConflicts(summary: ConflictSummary): boolean {
     summary.recipes.length > 0 ||
     summary.inventoryLogs.length > 0 ||
     summary.shoppingCarts.length > 0 ||
-    summary.cartItems.length > 0
+    summary.cartItems.length > 0 ||
+    summary.shelves.length > 0
   )
 }
 
@@ -411,6 +473,7 @@ function emptyPayload(): ExportPayload {
     inventoryLogs: [],
     shoppingCarts: [],
     cartItems: [],
+    shelves: [],
   }
 }
 
@@ -442,6 +505,7 @@ export function partitionPayload(
       inventoryLogs: getConflictIds(conflicts.inventoryLogs),
       shoppingCarts: getConflictIds(conflicts.shoppingCarts),
       cartItems: getConflictIds(conflicts.cartItems),
+      shelves: getConflictIds(conflicts.shelves),
     }
 
     return {
@@ -471,6 +535,9 @@ export function partitionPayload(
         cartItems: (payload.cartItems as IdOnlyEntity[]).filter(
           (e) => !conflictIdSets.cartItems.has(e.id),
         ),
+        shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
+          (e) => !conflictIdSets.shelves.has(e.id),
+        ),
       },
       toUpsert: emptyPayload(),
     }
@@ -487,6 +554,7 @@ export function partitionPayload(
     inventoryLogs: getConflictIds(conflicts.inventoryLogs),
     shoppingCarts: getConflictIds(conflicts.shoppingCarts),
     cartItems: getConflictIds(conflicts.cartItems),
+    shelves: getConflictIds(conflicts.shelves),
   }
 
   return {
@@ -516,6 +584,9 @@ export function partitionPayload(
       cartItems: (payload.cartItems as IdOnlyEntity[]).filter(
         (e) => !conflictIdSets.cartItems.has(e.id),
       ),
+      shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter(
+        (e) => !conflictIdSets.shelves.has(e.id),
+      ),
     },
     toUpsert: {
       ...payload,
@@ -543,6 +614,9 @@ export function partitionPayload(
       cartItems: (payload.cartItems as IdOnlyEntity[]).filter((e) =>
         conflictIdSets.cartItems.has(e.id),
       ),
+      shelves: ((payload.shelves ?? []) as IdOnlyEntity[]).filter((e) =>
+        conflictIdSets.shelves.has(e.id),
+      ),
     },
   }
 }
@@ -567,6 +641,7 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
     inventoryLogs,
     shoppingCarts,
     cartItems,
+    shelves,
   ] = await Promise.all([
     db.items.toArray(),
     db.tags.toArray(),
@@ -576,6 +651,7 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
     db.inventoryLogs.toArray(),
     db.shoppingCarts.toArray(),
     db.cartItems.toArray(),
+    db.shelves.toArray(),
   ])
 
   return {
@@ -587,6 +663,7 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
     inventoryLogs,
     shoppingCarts,
     cartItems,
+    shelves,
   }
 }
 
@@ -596,6 +673,7 @@ export async function importLocalData(
 ): Promise<void> {
   if (strategy === 'clear') {
     // Delete all tables in dependency order (children before parents)
+    await db.shelves.clear()
     await db.cartItems.clear()
     await db.shoppingCarts.clear()
     await db.inventoryLogs.clear()
@@ -622,6 +700,19 @@ export async function importLocalData(
     )
     await db.shoppingCarts.bulkAdd(payload.shoppingCarts as ShoppingCart[])
     await db.cartItems.bulkAdd(payload.cartItems as CartItem[])
+    await db.shelves.bulkAdd(
+      ((payload.shelves ?? []) as Shelf[]).map((s) => ({
+        ...s,
+        createdAt:
+          s.createdAt instanceof Date
+            ? s.createdAt
+            : new Date(s.createdAt as unknown as string),
+        updatedAt:
+          s.updatedAt instanceof Date
+            ? s.updatedAt
+            : new Date(s.updatedAt as unknown as string),
+      })),
+    )
     return
   }
 
@@ -656,6 +747,71 @@ export async function importLocalData(
     await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
       allKeys: false,
     })
+    await db.shelves.bulkAdd(
+      ((toCreate.shelves ?? []) as Shelf[]).map((s) => ({
+        ...s,
+        createdAt:
+          s.createdAt instanceof Date
+            ? s.createdAt
+            : new Date(s.createdAt as unknown as string),
+        updatedAt:
+          s.updatedAt instanceof Date
+            ? s.updatedAt
+            : new Date(s.updatedAt as unknown as string),
+      })),
+      { allKeys: false },
+    )
+
+    // For conflicting shelves in "skip" mode: merge newly created item IDs
+    const newItemIds = new Set(
+      (toCreate.items as Array<{ id: string }>).map((i) => i.id),
+    )
+    const payloadShelvesMap = new Map(
+      (
+        (payload.shelves ?? []) as Array<{ id: string; itemIds?: string[] }>
+      ).map((s) => [s.id, s]),
+    )
+    for (const conflictEntry of conflicts.shelves) {
+      const payloadShelf = payloadShelvesMap.get(conflictEntry.id)
+      if (!payloadShelf?.itemIds?.length) continue
+      const addedIds = payloadShelf.itemIds.filter((id) => newItemIds.has(id))
+      if (!addedIds.length) continue
+      const existingShelf = await db.shelves.get(conflictEntry.id)
+      if (!existingShelf) continue
+      const existingItemIds = existingShelf.itemIds ?? []
+      const mergedIds = [...new Set([...existingItemIds, ...addedIds])]
+      await db.shelves.update(conflictEntry.id, { itemIds: mergedIds })
+    }
+
+    // For conflicting recipes in "skip" mode: merge newly added ingredient items
+    const payloadRecipesMap = new Map(
+      (
+        payload.recipes as Array<{
+          id: string
+          items?: Array<{ itemId: string; defaultAmount: number }>
+        }>
+      ).map((r) => [r.id, r]),
+    )
+    for (const conflictEntry of conflicts.recipes) {
+      const payloadRecipe = payloadRecipesMap.get(conflictEntry.id)
+      if (!payloadRecipe?.items?.length) continue
+      const newIngredients = payloadRecipe.items.filter((ri) =>
+        newItemIds.has(ri.itemId),
+      )
+      if (!newIngredients.length) continue
+      const existingRecipe = await db.recipes.get(conflictEntry.id)
+      if (!existingRecipe) continue
+      const existingItemIds = new Set(
+        existingRecipe.items.map((ri) => ri.itemId),
+      )
+      const addedIngredients = newIngredients.filter(
+        (ri) => !existingItemIds.has(ri.itemId),
+      )
+      if (!addedIngredients.length) continue
+      const mergedItems = [...existingRecipe.items, ...addedIngredients]
+      await db.recipes.update(conflictEntry.id, { items: mergedItems })
+    }
+
     return
   }
 
@@ -685,6 +841,20 @@ export async function importLocalData(
   await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
     allKeys: false,
   })
+  await db.shelves.bulkAdd(
+    ((toCreate.shelves ?? []) as Shelf[]).map((s) => ({
+      ...s,
+      createdAt:
+        s.createdAt instanceof Date
+          ? s.createdAt
+          : new Date(s.createdAt as unknown as string),
+      updatedAt:
+        s.updatedAt instanceof Date
+          ? s.updatedAt
+          : new Date(s.updatedAt as unknown as string),
+    })),
+    { allKeys: false },
+  )
 
   await db.items.bulkPut((toUpsert.items as Item[]).map(deserializeItem))
   await db.vendors.bulkPut(toUpsert.vendors as Vendor[])
@@ -702,6 +872,19 @@ export async function importLocalData(
   )
   await db.shoppingCarts.bulkPut(toUpsert.shoppingCarts as ShoppingCart[])
   await db.cartItems.bulkPut(toUpsert.cartItems as CartItem[])
+  await db.shelves.bulkPut(
+    ((toUpsert.shelves ?? []) as Shelf[]).map((s) => ({
+      ...s,
+      createdAt:
+        s.createdAt instanceof Date
+          ? s.createdAt
+          : new Date(s.createdAt as unknown as string),
+      updatedAt:
+        s.updatedAt instanceof Date
+          ? s.updatedAt
+          : new Date(s.updatedAt as unknown as string),
+    })),
+  )
 }
 
 async function fetchCloudExistingData(
@@ -718,6 +901,7 @@ async function fetchCloudExistingData(
     inventoryLogsResult,
     shoppingCartsResult,
     allCartItemsResult,
+    shelvesResult,
   ] = await Promise.all([
     client.query<GetItemsQuery>({ query: GetItemsDocument, fetchPolicy }),
     client.query<GetTagsQuery>({ query: GetTagsDocument, fetchPolicy }),
@@ -736,6 +920,7 @@ async function fetchCloudExistingData(
       query: AllCartItemsDocument,
       fetchPolicy,
     }),
+    client.query<GetShelvesQuery>({ query: GetShelvesDocument, fetchPolicy }),
   ])
 
   return {
@@ -750,6 +935,7 @@ async function fetchCloudExistingData(
       []) as unknown as ShoppingCart[],
     cartItems: (allCartItemsResult.data?.allCartItems ??
       []) as unknown as CartItem[],
+    shelves: (shelvesResult.data?.shelves ?? []) as unknown as Shelf[],
   }
 }
 
@@ -892,6 +1078,21 @@ async function bulkCreate(args: BatchedBulkArgs): Promise<number> {
             variables: {
               cartItems: batch.map((ci) =>
                 toCartItemInput(ci as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
+    {
+      entityType: 'shelves',
+      items: data.shelves ?? [],
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkCreateShelvesDocument,
+            variables: {
+              shelves: batch.map((s) =>
+                toShelfInput(s as Record<string, unknown>),
               ),
             },
           })
@@ -1052,6 +1253,21 @@ async function bulkUpsert(args: BatchedBulkArgs): Promise<number> {
           })
           .then(() => undefined),
     },
+    {
+      entityType: 'shelves',
+      items: data.shelves ?? [],
+      mutate: (batch) =>
+        client
+          .mutate({
+            mutation: BulkUpsertShelvesDocument,
+            variables: {
+              shelves: batch.map((s) =>
+                toShelfInput(s as Record<string, unknown>),
+              ),
+            },
+          })
+          .then(() => undefined),
+    },
   ]
 
   for (const group of entityGroups) {
@@ -1085,7 +1301,8 @@ function computeTotalBatches(data: ExportPayload): number {
     chunk(data.recipes, BATCH_SIZE).length +
     chunk(data.inventoryLogs, BATCH_SIZE).length +
     chunk(data.shoppingCarts, BATCH_SIZE).length +
-    chunk(data.cartItems, BATCH_SIZE).length
+    chunk(data.cartItems, BATCH_SIZE).length +
+    chunk(data.shelves ?? [], BATCH_SIZE).length
   )
 }
 
@@ -1137,6 +1354,79 @@ export async function importCloudData(
         startCompleted: 0,
         totalBatches,
       })
+
+      // For conflicting shelves in "skip" mode: merge newly created item IDs into cloud shelf
+      const newItemIds = new Set(
+        (toCreate.items as Array<{ id: string }>).map((i) => i.id),
+      )
+      const payloadShelvesMap = new Map(
+        (
+          (payload.shelves ?? []) as Array<{ id: string; itemIds?: string[] }>
+        ).map((s) => [s.id, s]),
+      )
+      for (const conflictEntry of conflicts.shelves) {
+        const payloadShelf = payloadShelvesMap.get(conflictEntry.id)
+        if (!payloadShelf?.itemIds?.length) continue
+        const addedIds = payloadShelf.itemIds.filter((id) => newItemIds.has(id))
+        if (!addedIds.length) continue
+        const existingShelf = existing.shelves.find(
+          (s) => s.id === conflictEntry.id,
+        )
+        if (!existingShelf) continue
+        const existingItemIds =
+          (existingShelf.itemIds as string[] | null | undefined) ?? []
+        const mergedIds = [...new Set([...existingItemIds, ...addedIds])]
+        await client.mutate<UpdateShelfMutation>({
+          mutation: UpdateShelfDocument,
+          variables: { id: conflictEntry.id, itemIds: mergedIds },
+        })
+      }
+
+      // For conflicting recipes in "skip" mode: merge newly added ingredient items into cloud recipe
+      const payloadRecipesMap = new Map(
+        (
+          payload.recipes as Array<{
+            id: string
+            items?: Array<{ itemId: string; defaultAmount: number }>
+          }>
+        ).map((r) => [r.id, r]),
+      )
+      for (const conflictEntry of conflicts.recipes) {
+        const payloadRecipe = payloadRecipesMap.get(conflictEntry.id)
+        if (!payloadRecipe?.items?.length) continue
+        const newIngredients = payloadRecipe.items.filter((ri) =>
+          newItemIds.has(ri.itemId),
+        )
+        if (!newIngredients.length) continue
+        const existingRecipe = existing.recipes.find(
+          (r) => r.id === conflictEntry.id,
+        )
+        if (!existingRecipe) continue
+        const existingItemIds = new Set(
+          (
+            (existingRecipe.items as
+              | Array<{ itemId: string }>
+              | null
+              | undefined) ?? []
+          ).map((ri) => ri.itemId),
+        )
+        const addedIngredients = newIngredients.filter(
+          (ri) => !existingItemIds.has(ri.itemId),
+        )
+        if (!addedIngredients.length) continue
+        const mergedItems = [
+          ...((existingRecipe.items as
+            | Array<{ itemId: string; defaultAmount: number }>
+            | null
+            | undefined) ?? []),
+          ...addedIngredients,
+        ]
+        await client.mutate<UpdateRecipeMutation>({
+          mutation: UpdateRecipeDocument,
+          variables: { id: conflictEntry.id, items: mergedItems },
+        })
+      }
+
       await client.resetStore()
       return
     }

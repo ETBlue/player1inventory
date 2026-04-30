@@ -69,6 +69,19 @@ input CartItemInput {
   quantity: Int!
 }
 
+input ShelfInput {
+  id: ID!
+  name: String!
+  type: String!
+  order: Int!
+  sortBy: String
+  sortDir: String
+  filterConfig: FilterConfigInput
+  itemIds: [String!]
+  createdAt: String!
+  updatedAt: String!
+}
+
 extend type Mutation {
   # Bulk create mutations — used for "skip conflicts" strategy
   bulkCreateItems(items: [ItemInput!]!): [Item!]!
@@ -79,6 +92,7 @@ extend type Mutation {
   bulkCreateInventoryLogs(logs: [InventoryLogInput!]!): [InventoryLog!]!
   bulkCreateShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
   bulkCreateCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
+  bulkCreateShelves(shelves: [ShelfInput!]!): [Shelf!]!
 
   # Bulk upsert mutations — used for "replace conflicts" strategy (upserts by entity id)
   bulkUpsertItems(items: [ItemInput!]!): [Item!]!
@@ -89,6 +103,7 @@ extend type Mutation {
   bulkUpsertInventoryLogs(logs: [InventoryLogInput!]!): [InventoryLog!]!
   bulkUpsertShoppingCarts(carts: [ShoppingCartInput!]!): [Cart!]!
   bulkUpsertCartItems(cartItems: [CartItemInput!]!): [CartItem!]!
+  bulkUpsertShelves(shelves: [ShelfInput!]!): [Shelf!]!
 
   # Clear all data — used for "clear & import" strategy
   clearAllData: Boolean!

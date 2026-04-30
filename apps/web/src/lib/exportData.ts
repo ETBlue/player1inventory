@@ -4,6 +4,7 @@ import type {
   AllCartItemsQuery,
   GetItemsQuery,
   GetRecipesQuery,
+  GetShelvesQuery,
   GetTagsQuery,
   GetTagTypesQuery,
   GetVendorsQuery,
@@ -14,6 +15,7 @@ import {
   AllCartItemsDocument,
   GetItemsDocument,
   GetRecipesDocument,
+  GetShelvesDocument,
   GetTagsDocument,
   GetTagTypesDocument,
   GetVendorsDocument,
@@ -25,6 +27,7 @@ import {
   toInventoryLogInput,
   toItemInput,
   toRecipeInput,
+  toShelfInput,
   toShoppingCartInput,
   toTagInput,
   toTagTypeInput,
@@ -42,6 +45,7 @@ export interface ExportPayload {
   inventoryLogs: unknown[]
   shoppingCarts: unknown[]
   cartItems: unknown[]
+  shelves: unknown[]
 }
 
 export function buildExportPayload(
@@ -78,6 +82,9 @@ export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
     cartItems: payload.cartItems.map((ci) =>
       toCartItemInput(ci as Record<string, unknown>),
     ),
+    shelves: payload.shelves.map((s) =>
+      toShelfInput(s as Record<string, unknown>),
+    ),
   }
 }
 
@@ -91,6 +98,7 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     inventoryLogs,
     shoppingCarts,
     cartItems,
+    shelves,
   ] = await Promise.all([
     db.items.toArray(),
     db.tags.toArray(),
@@ -100,6 +108,7 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     db.inventoryLogs.toArray(),
     db.shoppingCarts.where('status').equals('active').toArray(),
     db.cartItems.toArray(),
+    db.shelves.where('type').notEqual('system').toArray(),
   ])
 
   // Only export cartItems belonging to the active carts
@@ -115,6 +124,7 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     inventoryLogs,
     shoppingCarts,
     cartItems: activeCartItems,
+    shelves,
   })
 }
 
@@ -149,6 +159,7 @@ export async function fetchCloudPayload(
     inventoryLogsResult,
     shoppingCartsResult,
     allCartItemsResult,
+    shelvesResult,
   ] = await Promise.all([
     client.query<GetItemsQuery>({ query: GetItemsDocument, fetchPolicy }),
     client.query<GetTagsQuery>({ query: GetTagsDocument, fetchPolicy }),
@@ -170,6 +181,7 @@ export async function fetchCloudPayload(
       query: AllCartItemsDocument,
       fetchPolicy,
     }),
+    client.query<GetShelvesQuery>({ query: GetShelvesDocument, fetchPolicy }),
   ])
 
   // Filter to active carts only — completed carts pile up and history is in inventoryLogs
@@ -184,6 +196,11 @@ export async function fetchCloudPayload(
     activeCartIdSet.has(ci.cartId),
   )
 
+  const allShelves = (shelvesResult.data?.shelves ?? []) as Array<{
+    type: string
+  }>
+  const userShelves = allShelves.filter((s) => s.type !== 'system')
+
   const payload = buildExportPayload({
     items: itemsResult.data?.items ?? [],
     tags: tagsResult.data?.tags ?? [],
@@ -193,6 +210,7 @@ export async function fetchCloudPayload(
     inventoryLogs: inventoryLogsResult.data?.inventoryLogs ?? [],
     shoppingCarts: activeCarts,
     cartItems: activeCartItems,
+    shelves: userShelves,
   })
 
   return sanitiseCloudPayload(payload)

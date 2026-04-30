@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
-import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Tag, TagType, Vendor } from '../generated/graphql.js'
+import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
 import type { CartStatus, ExpirationMode, TagColor, TargetUnit } from '@prisma/client'
 
 // Map a Prisma item (with junction rows) to the GraphQL Item shape
@@ -445,6 +445,54 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       return results
     },
 
+    bulkCreateShelves: async (_, { shelves }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (shelves.length === 0) return []
+      const ids = shelves.map((s) => s.id)
+      const existingIds = new Set(
+        (await prisma.shelf.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((s) => s.id),
+      )
+      const toCreate = shelves.filter((s) => !existingIds.has(s.id))
+      if (toCreate.length > 0) {
+        await prisma.shelf.createMany({
+          data: toCreate.map(({ id, createdAt, updatedAt, filterConfig, itemIds, ...rest }) => ({
+            id,
+            ...rest,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            filterConfig: filterConfig ? (filterConfig as any) : undefined,
+            itemIds: itemIds ?? [],
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+            userId,
+          })),
+          skipDuplicates: true,
+        })
+      }
+      const inserted = await prisma.shelf.findMany({ where: { id: { in: ids } } })
+      return inserted as unknown as Shelf[]
+    },
+
+    bulkUpsertShelves: async (_, { shelves }, ctx) => {
+      const userId = requireAuth(ctx)
+      if (shelves.length === 0) return []
+      await Promise.all(
+        shelves.map(({ id, createdAt, updatedAt, filterConfig, itemIds, ...rest }) => {
+          const data = {
+            ...rest,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            filterConfig: filterConfig ? (filterConfig as any) : undefined,
+            itemIds: itemIds ?? [],
+            createdAt: new Date(createdAt),
+            updatedAt: new Date(updatedAt),
+            userId,
+          }
+          return prisma.shelf.upsert({ where: { id }, create: { id, ...data }, update: data })
+        }),
+      )
+      const inserted = await prisma.shelf.findMany({ where: { id: { in: shelves.map((s) => s.id) } } })
+      return inserted as unknown as Shelf[]
+    },
+
     // -------------------------------------------------------------------------
     // Clear all data — deletes all entities for the authenticated user
     // in dependency order to avoid orphan references
@@ -463,6 +511,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         prisma.tag.deleteMany({ where: { userId } }),
         prisma.tagType.deleteMany({ where: { userId } }),
         prisma.vendor.deleteMany({ where: { userId } }),
+        prisma.shelf.deleteMany({ where: { userId } }),
       ])
       return true
     },

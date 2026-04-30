@@ -40,6 +40,13 @@ export function usePostLoginMigration() {
           localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
           setState('done')
         })
+        .catch(() => {
+          // Import failed — clean up strategy key and dismiss so the user
+          // isn't stuck. MIGRATION_PROMPTED_KEY is intentionally NOT set here
+          // so the user can retry after refreshing.
+          localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+          setState('done')
+        })
       return
     }
 

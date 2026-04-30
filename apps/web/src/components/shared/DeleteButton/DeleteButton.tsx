@@ -54,6 +54,7 @@ export function DeleteButton({
   return (
     <>
       <Button
+        type="button"
         variant={buttonVariant}
         size={buttonSize}
         className={buttonClassName}
