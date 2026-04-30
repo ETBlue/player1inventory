@@ -38,6 +38,8 @@ import {
   type InventoryLogsQuery,
   ShoppingCartsDocument,
   type ShoppingCartsQuery,
+  UpdateRecipeDocument,
+  type UpdateRecipeMutation,
   UpdateShelfDocument,
   type UpdateShelfMutation,
 } from '@/generated/graphql'
@@ -781,6 +783,35 @@ export async function importLocalData(
       await db.shelves.update(conflictEntry.id, { itemIds: mergedIds })
     }
 
+    // For conflicting recipes in "skip" mode: merge newly added ingredient items
+    const payloadRecipesMap = new Map(
+      (
+        payload.recipes as Array<{
+          id: string
+          items?: Array<{ itemId: string; defaultAmount: number }>
+        }>
+      ).map((r) => [r.id, r]),
+    )
+    for (const conflictEntry of conflicts.recipes) {
+      const payloadRecipe = payloadRecipesMap.get(conflictEntry.id)
+      if (!payloadRecipe?.items?.length) continue
+      const newIngredients = payloadRecipe.items.filter((ri) =>
+        newItemIds.has(ri.itemId),
+      )
+      if (!newIngredients.length) continue
+      const existingRecipe = await db.recipes.get(conflictEntry.id)
+      if (!existingRecipe) continue
+      const existingItemIds = new Set(
+        existingRecipe.items.map((ri) => ri.itemId),
+      )
+      const addedIngredients = newIngredients.filter(
+        (ri) => !existingItemIds.has(ri.itemId),
+      )
+      if (!addedIngredients.length) continue
+      const mergedItems = [...existingRecipe.items, ...addedIngredients]
+      await db.recipes.update(conflictEntry.id, { items: mergedItems })
+    }
+
     return
   }
 
@@ -1348,6 +1379,51 @@ export async function importCloudData(
         await client.mutate<UpdateShelfMutation>({
           mutation: UpdateShelfDocument,
           variables: { id: conflictEntry.id, itemIds: mergedIds },
+        })
+      }
+
+      // For conflicting recipes in "skip" mode: merge newly added ingredient items into cloud recipe
+      const payloadRecipesMap = new Map(
+        (
+          payload.recipes as Array<{
+            id: string
+            items?: Array<{ itemId: string; defaultAmount: number }>
+          }>
+        ).map((r) => [r.id, r]),
+      )
+      for (const conflictEntry of conflicts.recipes) {
+        const payloadRecipe = payloadRecipesMap.get(conflictEntry.id)
+        if (!payloadRecipe?.items?.length) continue
+        const newIngredients = payloadRecipe.items.filter((ri) =>
+          newItemIds.has(ri.itemId),
+        )
+        if (!newIngredients.length) continue
+        const existingRecipe = existing.recipes.find(
+          (r) => r.id === conflictEntry.id,
+        )
+        if (!existingRecipe) continue
+        const existingItemIds = new Set(
+          (
+            (existingRecipe.items as
+              | Array<{ itemId: string }>
+              | null
+              | undefined) ?? []
+          ).map((ri) => ri.itemId),
+        )
+        const addedIngredients = newIngredients.filter(
+          (ri) => !existingItemIds.has(ri.itemId),
+        )
+        if (!addedIngredients.length) continue
+        const mergedItems = [
+          ...((existingRecipe.items as
+            | Array<{ itemId: string; defaultAmount: number }>
+            | null
+            | undefined) ?? []),
+          ...addedIngredients,
+        ]
+        await client.mutate<UpdateRecipeMutation>({
+          mutation: UpdateRecipeDocument,
+          variables: { id: conflictEntry.id, items: mergedItems },
         })
       }
 

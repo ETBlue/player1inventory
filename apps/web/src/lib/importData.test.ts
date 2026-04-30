@@ -1156,6 +1156,82 @@ describe('importCloudData — batched cloud import', () => {
     expect(vars.itemIds).toContain('item-old')
     expect(vars.itemIds).toContain('item-new')
   })
+
+  it('merges newly created ingredient items into a conflicting recipe on skip (cloud)', async () => {
+    // Given: cloud has recipe-1 with item-old as its only ingredient
+    const existingRecipe = {
+      id: 'recipe-1',
+      name: 'Smoothie',
+      items: [{ itemId: 'item-old', defaultAmount: 1 }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const client = {
+      mutate: vi.fn().mockResolvedValue({}),
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [
+            {
+              id: 'item-old',
+              name: 'OldItem',
+              tagIds: [],
+              targetUnit: 'package',
+              targetQuantity: 1,
+              refillThreshold: 0,
+              packedQuantity: 0,
+              unpackedQuantity: 0,
+              consumeAmount: 1,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [existingRecipe],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      }),
+    }
+
+    // And: payload has recipe-1 (conflict) with item-old + item-new as ingredients,
+    //      item-new is new (non-conflicting)
+    const payload = emptyPayload({
+      items: [makeItem('item-new', 'NewItem')],
+      recipes: [
+        {
+          id: 'recipe-1',
+          name: 'Smoothie',
+          items: [
+            { itemId: 'item-old', defaultAmount: 1 },
+            { itemId: 'item-new', defaultAmount: 2 },
+          ],
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+        },
+      ],
+    })
+
+    // When importing with skip
+    await importCloudData(payload, 'skip', client as never)
+
+    // Then UpdateRecipe was called with merged items containing both item-old and item-new
+    const mutateCalls = (client.mutate as ReturnType<typeof vi.fn>).mock.calls
+    const updateCall = mutateCalls.find(
+      (call: Array<{ variables?: { id?: string } }>) =>
+        call[0]?.variables?.id === 'recipe-1',
+    )
+    expect(updateCall).toBeDefined()
+    const vars = updateCall[0].variables as {
+      items: Array<{ itemId: string; defaultAmount: number }>
+    }
+    expect(vars.items.map((i) => i.itemId)).toContain('item-old')
+    expect(vars.items.map((i) => i.itemId)).toContain('item-new')
+  })
 })
 
 describe('importLocalData — shelf itemIds merge on skip conflict', () => {
@@ -1236,5 +1312,86 @@ describe('importLocalData — shelf itemIds merge on skip conflict', () => {
     // Then shelf-1 itemIds is still just item-old (no changes)
     const shelf = await db.shelves.get('shelf-1')
     expect(shelf?.itemIds).toEqual(['item-old'])
+  })
+})
+
+describe('importLocalData — recipe items merge on skip conflict', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  it('user can merge newly created ingredient items into a conflicting recipe on skip', async () => {
+    // Given: recipe-1 exists in local DB with item-old as its only ingredient
+    const existingRecipe = {
+      id: 'recipe-1',
+      name: 'Smoothie',
+      items: [{ itemId: 'item-old', defaultAmount: 1 }],
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+    }
+    await db.items.add(makeItem('item-old', 'OldItem'))
+    await db.recipes.add(existingRecipe)
+
+    // And: payload has same recipe-1 (conflict) with item-old + item-new as ingredients,
+    //      and item-new is a new item (not in existing DB)
+    const payload = emptyPayload({
+      items: [makeItem('item-new', 'NewItem')],
+      recipes: [
+        {
+          ...existingRecipe,
+          items: [
+            { itemId: 'item-old', defaultAmount: 1 },
+            { itemId: 'item-new', defaultAmount: 2 },
+          ],
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+        },
+      ],
+    })
+
+    // When importing with skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then item-new is created
+    const items = await db.items.toArray()
+    expect(items.map((i) => i.id)).toContain('item-new')
+
+    // And recipe-1 now contains both item-old AND item-new as ingredients
+    const recipe = await db.recipes.get('recipe-1')
+    const ingredientIds = recipe?.items.map((ri) => ri.itemId) ?? []
+    expect(ingredientIds).toContain('item-old')
+    expect(ingredientIds).toContain('item-new')
+  })
+
+  it('does not modify a conflicting recipe when no newly created items are ingredients', async () => {
+    // Given: recipe-1 exists with item-old as ingredient
+    const existingRecipe = {
+      id: 'recipe-1',
+      name: 'Smoothie',
+      items: [{ itemId: 'item-old', defaultAmount: 1 }],
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+    }
+    await db.items.add(makeItem('item-old', 'OldItem'))
+    await db.recipes.add(existingRecipe)
+
+    // And: payload has same recipe-1 whose items only reference item-old (also conflicting)
+    const payload = emptyPayload({
+      items: [makeItem('item-old', 'OldItem')],
+      recipes: [
+        {
+          ...existingRecipe,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-01'),
+        },
+      ],
+    })
+
+    // When importing with skip
+    await importLocalData(payload, 'skip')
+
+    // Then recipe-1 items is still just item-old (no changes)
+    const recipe = await db.recipes.get('recipe-1')
+    expect(recipe?.items).toHaveLength(1)
+    expect(recipe?.items[0].itemId).toBe('item-old')
   })
 })
