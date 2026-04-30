@@ -12,7 +12,7 @@ Player 1 Inventory uses the **system sans-serif** stack for all UI text. The sys
 
 | Role | Typeface | Token | How to use |
 |------|----------|-------|------------|
-| App name only | Rosario | `--font-rosario` / `font-rosario` Tailwind utility | Apply only to the app name wordmark |
+| App name only | Rosario (variable, 300–700) | `--font-rosario` / `font-rosario` Tailwind utility | Apply only to the app name wordmark |
 | All UI text | System sans-serif | (none — browser default) | No class needed; `body` inherits automatically |
 
 Rosario is loaded via a `<link>` in `apps/web/index.html` and mapped as a Tailwind utility via `@theme`:
@@ -38,6 +38,20 @@ The app uses Tailwind's default type scale. No custom size tokens are defined �
 
 <TypographyScale client:load />
 
+## When to use each step
+
+| Step | Size | Typical use |
+|------|------|-------------|
+| `text-3xl` | 1.875rem | Page headings (h1) |
+| `text-2xl` | 1.5rem | Section headings (h2) |
+| `text-xl` | 1.25rem | Sub-headings, dialog titles (h3) |
+| `text-lg` | 1.125rem | Item card names, list row primaries |
+| `text-base` | 1rem | Body text, descriptions, form labels |
+| `text-sm` | 0.875rem | Secondary metadata, helper text, badge labels |
+| `text-xs` | 0.75rem | Timestamps, fine print, tooltip text |
+
+The scale stops at `text-3xl` — steps above that (`text-4xl` and larger) are not used in the app.
+
 ## Line height
 
 The app's `body` rule sets a base line height:
@@ -58,6 +72,22 @@ Individual components override this through Tailwind utilities (`leading-tight`,
 | 500 | `font-medium` | List item primaries, row labels |
 | 600 | `font-semibold` | Sub-headings, card titles |
 | 700 | `font-bold` | Page headings, dialog titles |
+
+## Pairing size with weight
+
+Each heading size pairs with a canonical weight. These combinations are consistently used across the app:
+
+| Size | Weight | Example context |
+|------|--------|----------------|
+| `text-3xl` | `font-bold` | Page titles |
+| `text-2xl` | `font-bold` | Section titles |
+| `text-xl` | `font-semibold` | Sub-headings, dialog titles |
+| `text-lg` | `font-medium` | Card primaries, list row names |
+| `text-base` | `font-normal` | Body copy, form labels |
+| `text-sm` | `font-normal` | Metadata, helper text |
+| `text-xs` | `font-normal` | Timestamps, fine print |
+
+Mixing size with a heavier weight than listed above creates visual noise. Lighter weights than listed risk insufficient contrast for the size.
 
 ## Name display convention
 
