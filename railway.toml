@@ -1,0 +1,2 @@
+[deploy]
+releaseCommand = "pnpm --filter server exec prisma migrate deploy"
