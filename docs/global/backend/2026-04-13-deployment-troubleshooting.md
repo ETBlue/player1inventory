@@ -109,3 +109,20 @@ DATABASE_URL="<neon-pooled-url>" DIRECT_URL="<neon-direct-url>" pnpm prisma migr
 Both URLs are in the Neon dashboard. The pooled URL contains `-pooler` in the hostname; the direct URL does not.
 
 The connection strings contain embedded credentials (`postgresql://user:password@host/dbname`) so they act as a password — do not commit them to the repo.
+
+---
+
+## 9. `The table 'public.Shelf' does not exist` after adding a new model
+
+**Symptom:** `createShelf` returned a Prisma error — `The table 'public.Shelf' does not exist in the current database`. Triggered by a new migration (`20260420130454_add_shelf_model`) that was never applied to production.
+
+**Cause:** No automated migration step in the Railway deploy pipeline. Each time a new Prisma migration is committed, it must be manually applied to Neon before production can use the new table.
+
+**Fix (one-time):** Ran `prisma migrate deploy` manually (same as issue 8).
+
+**Permanent fix:** Added `railway.toml` at the monorepo root with:
+```toml
+[deploy]
+releaseCommand = "pnpm --filter server exec prisma migrate deploy"
+```
+Railway runs the `releaseCommand` after a successful build but before the new instance goes live. If the migration fails, the deploy is aborted and the old instance keeps serving. This means migrations are now applied automatically on every Railway deploy — no manual step needed for future schema changes.

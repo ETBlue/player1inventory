@@ -688,15 +688,15 @@ grep 'error' /tmp/p1i-web-build.log && echo "FAIL" || echo "OK"
 1. Sign up at [neon.tech](https://neon.tech)
 2. Create project: `player1inventory`, region: `Asia Pacific (Singapore)` or closest to Railway region
 3. Copy the connection string (pooled) → save as `DATABASE_URL`
-4. Run migration from local: `DATABASE_URL="<neon-url>" pnpm prisma migrate deploy`
+4. ~~Run migration from local~~ — migrations now run automatically via Railway `releaseCommand` (see `railway.toml`)
 
 ### Step 4.2 — Railway backend
 
 1. Sign up at [railway.app](https://railway.app)
 2. New project → Deploy from GitHub repo
-3. Root directory: `apps/server`
-4. Build command: `pnpm install && pnpm build`
-5. Start command: `node dist/index.js`
+3. Root directory: (monorepo root — leave empty) — needed so pnpm can resolve workspace packages
+4. Build command: `pnpm install && pnpm codegen && pnpm --filter server build`
+5. Start command: `node apps/server/dist/index.js`
 6. Add env vars:
    - `DATABASE_URL` (Neon connection string)
    - `CLERK_SECRET_KEY`
