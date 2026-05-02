@@ -5,7 +5,7 @@
 ```
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
-  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar, ViewToggle
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagDetailDialog, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: VendorCard, VendorInfoForm
@@ -40,8 +40,6 @@ Reusable across multiple features and pages.
 **`LoadingSpinner`** (`src/components/shared/LoadingSpinner/index.tsx`) — centered animated spinner for page-level loading states. No props. Renders `Loader2` icon (`size-8 animate-spin text-foreground-muted`) inside a `flex min-h-[50vh] items-center justify-center` container. Used in pantry page, item detail, and item log tab.
 
 **`EmptyState`** (`src/components/shared/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
-
-**`ViewToggle`** (`src/components/shared/ViewToggle/index.tsx`) — toggle control for switching between list and grid views. Used on the pantry page and shelves page.
 
 ## Item Components
 
