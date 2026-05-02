@@ -115,6 +115,19 @@
       "title": "Your pantry is empty",
       "description": "Come build your pantry!",
       "createButton": "Create item"
+    },
+    "shelfCard": {
+      "items_one": "{{count}} item",
+      "items_other": "{{count}} items",
+      "lowStock_one": "{{count}} low stock",
+      "lowStock_other": "{{count}} low stock",
+      "outOfStock_one": "{{count}} out of stock",
+      "outOfStock_other": "{{count}} out of stock",
+      "settings": "Shelf settings"
+    },
+    "controlBar": {
+      "expandAll": "Expand All",
+      "collapseAll": "Collapse All"
     }
   },
   "navigation": {

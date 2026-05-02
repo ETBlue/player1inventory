@@ -115,6 +115,19 @@
       "title": "尚未建立物資清單",
       "description": "趕快來打造你的儲藏室吧",
       "createButton": "新增品項"
+    },
+    "shelfCard": {
+      "items_one": "{{count}} 項",
+      "items_other": "{{count}} 項",
+      "lowStock_one": "{{count}} 項偏低",
+      "lowStock_other": "{{count}} 項偏低",
+      "outOfStock_one": "{{count}} 項缺貨",
+      "outOfStock_other": "{{count}} 項缺貨",
+      "settings": "貨架設定"
+    },
+    "controlBar": {
+      "expandAll": "展開全部",
+      "collapseAll": "收合全部"
     }
   },
   "navigation": {
