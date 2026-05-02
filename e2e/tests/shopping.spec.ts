@@ -77,7 +77,8 @@ test('user can see expiration badge updated after checkout without manual refres
     expect(testItem.id).toBeDefined()
 
     // Pantry: item is visible but no expiration badge (no purchase yet → no lastPurchaseDate)
-    await pantry.navigateTo()
+    // Use navigateToExpanded so items in collapsed shelves are visible
+    await pantry.navigateToExpanded()
     await expect(pantry.getItemCard('Test Yogurt')).toBeVisible()
     await expect(page.getByText(/Expires in \d+ days/)).not.toBeVisible()
 
@@ -151,7 +152,8 @@ test('user can see expiration badge updated after checkout without manual refres
     )
 
     // Reload pantry after seeding so React Query fetches fresh data from the populated DB.
-    await pantry.navigateTo()
+    // Use navigateToExpanded so items in collapsed shelves are visible
+    await pantry.navigateToExpanded()
 
     // Item is visible but no expiration badge (packedQuantity=0 → badge hidden)
     await expect(pantry.getItemCard('Test Yogurt')).toBeVisible()
@@ -169,8 +171,8 @@ test('user can see expiration badge updated after checkout without manual refres
   // because the cart is now empty.
   await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
 
-  // After checkout, navigate to pantry WITHOUT refreshing the page
-  await pantry.navigateTo()
+  // After checkout, navigate to pantry (expanded so item cards are visible)
+  await pantry.navigateToExpanded()
 
   // The expiration badge should now show the updated state based on today's purchase.
   // New expiry = today + 7 days → "Expires in 7 days" (within expirationThreshold=30 → warning badge).
@@ -200,8 +202,8 @@ test('user can checkout items from shopping cart', async ({ page }) => {
   // Then: cart is empty — Done button is disabled
   await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
 
-  // And: navigate to pantry and open the item — packed quantity is now 1
-  await pantry.navigateTo()
+  // And: navigate to pantry (expanded) and open the item — packed quantity is now 1
+  await pantry.navigateToExpanded()
   await pantry.getItemCard('Test Milk').click()
   await expect(item.getPackedQuantityInput()).toHaveValue('1')
 })

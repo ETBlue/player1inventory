@@ -101,8 +101,8 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   const recipes = new RecipesPage(page)
   const recipeDetail = new RecipeDetailPage(page)
 
-  // 1. Item in pantry
-  await pantry.navigateTo()
+  // 1. Item in pantry (expand shelves since items land in Unsorted shelf by default)
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Fixture Item')).toBeVisible()
 
   // 2. Tag assigned to item
@@ -132,9 +132,11 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   await shopping.navigateTo()
   await expect(shopping.getItemCard('Fixture Item')).toBeVisible()
 
-  // 7. Shelf exists and contains the fixture item
-  await page.goto('/shelves')
-  await expect(page.getByText('Fixture Shelf')).toBeVisible()
+  // 7. Shelf exists and is visible as a shelf card on the pantry page
+  // (The /shelves route was replaced by the unified pantry view; shelves appear as
+  // collapsible shelf cards. The shelf button contains the shelf name in a <p> element.)
+  await pantry.navigateTo()
+  await expect(pantry.getShelfCard('Fixture Shelf')).toBeVisible()
 }
 
 test('user can export and re-import local data (local → local)', async ({ page }) => {
@@ -236,8 +238,8 @@ test('user does not see epoch date (1970-01-01) after importing item with null d
   await settings.triggerImport(tmpFile)
   await settings.waitForImportDone('local')
 
-  // Then: item card is visible on pantry
-  await pantry.navigateTo()
+  // Then: item card is visible on pantry (expand shelves since item lands in Unsorted)
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('No Expiry Item')).toBeVisible()
 
   // Then: no "1970" text appears anywhere on the page (epoch date regression guard)

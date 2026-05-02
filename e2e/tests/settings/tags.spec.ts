@@ -642,8 +642,8 @@ test.describe('tag item count after item deletion', () => {
     // Cancel so we don't delete the tag
     await tagsPage.cancelDeleteDialog()
 
-    // Then: navigate to the item and delete it
-    await pantry.navigateTo()
+    // Then: navigate to the item (expand shelves first) and delete it
+    await pantry.navigateToExpanded()
     await pantry.getItemCard('Test Banana').click()
     await item.delete()
 

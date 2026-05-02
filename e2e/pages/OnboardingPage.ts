@@ -20,8 +20,9 @@ export class OnboardingPage {
 
   async waitForPantryPage() {
     // After import completes, onboarding auto-navigates to '/'
+    // URL may include '?expanded=...' from pantry route validateSearch defaults
     // (src/routes/onboarding.tsx)
-    await this.page.waitForURL('/', { timeout: 15000 })
+    await this.page.waitForURL((url) => url.pathname === '/', { timeout: 15000 })
   }
 
   async clickStartFromScratch() {

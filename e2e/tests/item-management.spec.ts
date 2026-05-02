@@ -58,8 +58,8 @@ test('user can create an item', async ({ page }) => {
   // save() waits for navigation to /items/:id — verifies the app redirects after create
   await item.save()
 
-  // Then the item appears in the pantry list
-  await pantry.navigateTo()
+  // Then the item appears in the pantry list (expand all since it lands in Unsorted shelf)
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Test Milk')).toBeVisible()
 })
 
@@ -73,8 +73,8 @@ test('user can view item details after navigating from pantry', async ({ page })
   await item.fillName('Detail Item')
   await item.save()
 
-  // When user navigates to pantry and clicks the item card
-  await pantry.navigateTo()
+  // When user navigates to pantry (expanded) and clicks the item card
+  await pantry.navigateToExpanded()
   await pantry.getItemCard('Detail Item').click()
 
   // Then the item detail page loads correctly (not "Item not found")
@@ -93,13 +93,13 @@ test('user can edit an item name', async ({ page }) => {
   await item.save()
 
   // When user navigates back and reopens the item to edit it
-  await pantry.navigateTo()
+  await pantry.navigateToExpanded()
   await pantry.getItemCard('Edit Me').click()
   await item.fillName('Edited Name')
   await item.saveExisting()
 
   // Then the updated name appears in the pantry
-  await pantry.navigateTo()
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Edited Name')).toBeVisible()
   await expect(pantry.getItemCard('Edit Me')).not.toBeVisible()
 })
@@ -164,7 +164,7 @@ test('user can set specific-date expiration when creating an item', async ({ pag
   await item.saveExisting()
 
   // Then the item card in the pantry shows the "Expires on" text for the saved date
-  await pantry.navigateTo()
+  await pantry.navigateToExpanded()
   await expect(page.getByText(/Expires on 2020-01-01/)).toBeVisible()
 })
 
@@ -201,15 +201,15 @@ test('user can delete an item', async ({ page }) => {
   await item.fillName('Delete Me')
   await item.save()
 
-  // Verify it exists in the pantry
-  await pantry.navigateTo()
+  // Verify it exists in the pantry (expand all since items land in Unsorted shelf)
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Delete Me')).toBeVisible()
 
   // When user opens the item and deletes it
   await pantry.getItemCard('Delete Me').click()
   await item.delete()
 
-  // Then the item no longer appears in the pantry
-  await pantry.navigateTo()
+  // Then the item no longer appears in the pantry (expand all to confirm it's truly gone)
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Delete Me')).not.toBeVisible()
 })

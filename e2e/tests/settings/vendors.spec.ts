@@ -188,7 +188,8 @@ test.describe('vendor item count after vendor assignment', () => {
     await vendorsPage.cancelDeleteDialog()
 
     // When: navigate to the item's vendors tab and assign the vendor
-    await pantry.navigateTo()
+    // Use navigateToExpanded so items in collapsed shelves are visible
+    await pantry.navigateToExpanded()
     await pantry.getItemCard('Test Mango').click()
     await item.navigateToTab('vendors')
 
@@ -262,8 +263,8 @@ test.describe('vendor item count after item deletion', () => {
     // Cancel so we don't delete the vendor
     await vendorsPage.cancelDeleteDialog()
 
-    // Then: navigate to the item and delete it
-    await pantry.navigateTo()
+    // Then: navigate to the item (expand shelves first) and delete it
+    await pantry.navigateToExpanded()
     await pantry.getItemCard('Test Carrot').click()
     await item.delete()
 

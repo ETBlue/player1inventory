@@ -198,13 +198,13 @@ test('user can cook a recipe with partial items and multiple servings', async ({
   await cooking.confirmDone()
 
   // Then: navigate to pantry and verify Flour quantity reduced by 2 servings × 2 defaultAmount = 4
-  await pantry.navigateTo()
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Flour')).toBeVisible()
   await pantry.getItemCard('Flour').click()
   await expect(item.getPackedQuantityInput()).toHaveValue('6')
 
   // And: navigate back to pantry and verify Eggs quantity unchanged (was unchecked)
-  await pantry.navigateTo()
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Eggs')).toBeVisible()
   await pantry.getItemCard('Eggs').click()
   await expect(item.getPackedQuantityInput()).toHaveValue('12')

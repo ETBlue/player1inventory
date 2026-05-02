@@ -252,7 +252,8 @@ test('user can navigate to item detail and back with search state preserved', as
 
   // Given items exist including "Milk"
   await seedItems(page, ['Apple', 'Banana', 'Milk', 'Cheese', 'Bread'], { request, baseURL })
-  await pantry.navigateTo()
+  // Use navigateToExpanded so items in collapsed shelves are visible before search is active
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Milk')).toBeVisible()
 
   // When user opens search (aria-label="Toggle search") and types "milk"
@@ -281,7 +282,8 @@ test('user can navigate to item detail and back with sort state preserved', asyn
 
   // Given a few items exist
   await seedItems(page, ['Apple', 'Banana', 'Milk'], { request, baseURL })
-  await pantry.navigateTo()
+  // Use navigateToExpanded so items in collapsed shelves are visible before sorting
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Apple')).toBeVisible()
 
   // When user changes sort to "Name" via the sort dropdown
@@ -297,7 +299,8 @@ test('user can navigate to item detail and back with sort state preserved', asyn
 
   // And clicks back
   await page.getByRole('button', { name: 'Go back' }).click()
-  await page.waitForURL('/')
+  // Wait for pathname to be '/' — URL may include '?expanded=...' from pantry shelf state
+  await page.waitForURL((url) => url.pathname === '/')
 
   // Then sort preference is still "name" in localStorage (persisted by useSortFilter)
   // pantry uses storageKey='pantry', so key is 'pantry-sort-prefs'
@@ -317,7 +320,8 @@ test('user can navigate to item detail and back with scroll position restored', 
     { typeIndex: 0, name: 'Pantry' },
     { typeIndex: 1, name: 'Fridge' },
   ], { request, baseURL, tagTypeIds })
-  await pantry.navigateTo()
+  // Use navigateToExpanded so items in collapsed shelves are visible before scrolling
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
   // And tags are toggled visible (adds tag badges to each item card, increasing card height)
@@ -325,12 +329,22 @@ test('user can navigate to item detail and back with scroll position restored', 
   await page.getByRole('button', { name: 'Toggle tags' }).click()
   await expect(page).toHaveURL(/tags=1/)
 
-  // Wait until the page is actually scrollable (content taller than viewport)
-  await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
+  // Wait until the page is actually scrollable (content taller than the main container)
+  // The app scrolls inside <main id="main-content">, not the document body.
+  await page.waitForFunction(() => {
+    const main = document.getElementById('main-content')
+    return main !== null && main.scrollHeight > main.clientHeight
+  })
 
   // When user scrolls to the bottom so the last item is in the viewport
-  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
-  await page.waitForFunction(() => window.scrollY > 0)
+  await page.evaluate(() => {
+    const main = document.getElementById('main-content')
+    if (main) main.scrollTo({ top: main.scrollHeight, behavior: 'instant' })
+  })
+  await page.waitForFunction(() => {
+    const main = document.getElementById('main-content')
+    return main !== null && main.scrollTop > 0
+  })
 
   // The last heading in the list (lexicographic key order: seed-item-9 / "Item 10" sorts last)
   const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
@@ -339,7 +353,10 @@ test('user can navigate to item detail and back with scroll position restored', 
   await expect(lastItemHeading).toBeInViewport()
 
   // Record the scroll position before navigating
-  const scrollYBefore = await page.evaluate(() => window.scrollY)
+  const scrollYBefore = await page.evaluate(() => {
+    const main = document.getElementById('main-content')
+    return main?.scrollTop ?? 0
+  })
 
   // And navigates to the last item
   await lastItemHeading.click()
@@ -355,7 +372,10 @@ test('user can navigate to item detail and back with scroll position restored', 
   await page.waitForTimeout(400)
 
   // Then scroll position is restored to approximately where it was before navigation
-  const scrollYAfter = await page.evaluate(() => window.scrollY)
+  const scrollYAfter = await page.evaluate(() => {
+    const main = document.getElementById('main-content')
+    return main?.scrollTop ?? 0
+  })
   expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
   expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
 })
@@ -374,7 +394,8 @@ test('user can navigate to item detail and back with scroll position restored wh
     { typeIndex: 1, name: 'Fridge' },
     { typeIndex: 2, name: 'Vegan' },
   ], { request, baseURL, tagTypeIds })
-  await pantry.navigateTo()
+  // Use navigateToExpanded so items in collapsed shelves are visible before scrolling
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
   // When user opens the filter panel (adds a row above the item list)
@@ -392,12 +413,22 @@ test('user can navigate to item detail and back with scroll position restored wh
   await page.getByRole('button', { name: 'Toggle tags' }).click()
   await expect(page).toHaveURL(/tags=1/)
 
-  // Wait until the page is scrollable
-  await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
+  // Wait until the page is scrollable (content taller than the main container)
+  // The app scrolls inside <main id="main-content">, not the document body.
+  await page.waitForFunction(() => {
+    const main = document.getElementById('main-content')
+    return main !== null && main.scrollHeight > main.clientHeight
+  })
 
   // When user scrolls to the bottom so the last item is in the viewport
-  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
-  await page.waitForFunction(() => window.scrollY > 0)
+  await page.evaluate(() => {
+    const main = document.getElementById('main-content')
+    if (main) main.scrollTo({ top: main.scrollHeight, behavior: 'instant' })
+  })
+  await page.waitForFunction(() => {
+    const main = document.getElementById('main-content')
+    return main !== null && main.scrollTop > 0
+  })
 
   // The last heading in the list (lexicographic key order: seed-item-9 / "Item 10" sorts last)
   const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
@@ -406,7 +437,10 @@ test('user can navigate to item detail and back with scroll position restored wh
   await expect(lastItemHeading).toBeInViewport()
 
   // Record the scroll position before navigating
-  const scrollYBefore = await page.evaluate(() => window.scrollY)
+  const scrollYBefore = await page.evaluate(() => {
+    const main = document.getElementById('main-content')
+    return main?.scrollTop ?? 0
+  })
 
   // And navigates to the last item
   await lastItemHeading.click()
@@ -432,7 +466,10 @@ test('user can navigate to item detail and back with scroll position restored wh
   // Bug: restoreScroll() fires before tagTypes/tags load, filter panel and tag badges are
   // not yet rendered, so scroll lands at scrollYBefore - (filterPanelHeight + tagBadgesHeight).
   // Fix: wait for all layout-affecting data before restoring scroll.
-  const scrollYAfter = await page.evaluate(() => window.scrollY)
+  const scrollYAfter = await page.evaluate(() => {
+    const main = document.getElementById('main-content')
+    return main?.scrollTop ?? 0
+  })
   expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
   expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
 })

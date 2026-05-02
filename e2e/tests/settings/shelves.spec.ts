@@ -34,7 +34,7 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-test('user lands on /shelves after deleting a shelf from its settings page', async ({ page }) => {
+test('user lands on /settings/shelves after deleting a shelf from its settings page', async ({ page }) => {
   const shelfId = 'bbbbbbbb-0000-0000-0000-000000000001'
   const now = new Date().toISOString()
 
@@ -66,17 +66,7 @@ test('user lands on /shelves after deleting a shelf from its settings page', asy
     { shelfId, now },
   )
 
-  // When: navigate to /shelves and verify the shelf card is visible
-  await page.goto('/shelves')
-  // ShelfCard renders shelf name in a <p> with capitalize class (src/components/shelf/ShelfCard/ShelfCard.tsx:29)
-  await expect(page.getByText('My Test Shelf')).toBeVisible()
-
-  // When: navigate directly to the shelf detail page
-  await page.goto(`/shelves/${shelfId}`)
-  await page.waitForURL(`/shelves/${shelfId}`)
-
   // When: navigate directly to the shelf settings info tab
-  // (avoids using the link from the detail page which triggers navigation history issues)
   // The info tab is at /settings/shelves/$shelfId/ (with trailing slash)
   await page.goto(`/settings/shelves/${shelfId}/`)
   await page.waitForURL(`/settings/shelves/${shelfId}/`)
@@ -95,13 +85,13 @@ test('user lands on /shelves after deleting a shelf from its settings page', asy
   // Use Promise.all to handle navigation that occurs when deletion succeeds (unmounts the dialog)
   // Pattern from e2e/pages/ItemPage.ts:delete()
   await Promise.all([
-    page.waitForURL(/\/shelves\/?$/),
+    page.waitForURL(/\/settings\/shelves\/?$/),
     page.getByRole('alertdialog').getByRole('button', { name: /delete/i }).click(),
   ])
 
-  // Then: URL becomes /shelves/ (post-delete navigation — src/routes/settings/shelves/$shelfId/index.tsx:201)
+  // Then: URL becomes /settings/shelves (post-delete navigation — src/routes/settings/shelves/$shelfId/index.tsx)
   // (already asserted by waitForURL in Promise.all above)
 
-  // Then: the deleted shelf name is no longer visible
+  // Then: the deleted shelf name is no longer visible in the shelves list
   await expect(page.getByText('My Test Shelf')).not.toBeVisible()
 })

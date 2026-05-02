@@ -76,8 +76,8 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   const recipes = new RecipesPage(page)
   const recipeDetail = new RecipeDetailPage(page)
 
-  // 1. Item in pantry
-  await pantry.navigateTo()
+  // 1. Item in pantry (expand shelves since items land in Unsorted shelf by default)
+  await pantry.navigateToExpanded()
   await expect(pantry.getItemCard('Fixture Item')).toBeVisible()
 
   // 2. Tag assigned to item

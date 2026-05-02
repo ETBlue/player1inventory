@@ -82,7 +82,8 @@ test('user can start from scratch and land on pantry page', async ({ page }) => 
 
   // Then the user is navigated directly to the pantry page
   // (no progress step — onboarding-dismissed flag is set and navigate({ to: '/' }) is called)
-  await expect(page).toHaveURL('/')
+  // URL may include search params from the pantry route's validateSearch (e.g. /?expanded=)
+  await expect(page).toHaveURL(/\/$|\/\?/)
 })
 
 test('user can select template items and complete onboarding', async ({ page }) => {
@@ -119,6 +120,7 @@ test('user can select template items and complete onboarding', async ({ page }) 
 
   // Then the user is automatically redirected to the pantry
   // (no "Get started" step — onboarding auto-navigates on import success)
+  // URL may include '?expanded=...' from pantry route validateSearch defaults
   await onboarding.waitForPantryPage()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL(/\/$|\/\?/)
 })
