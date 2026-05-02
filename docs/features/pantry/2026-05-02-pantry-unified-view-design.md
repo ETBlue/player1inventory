@@ -1,7 +1,7 @@
 # Design: Pantry Unified View
 
 **Date:** 2026-05-02
-**Status:** 🔲 Pending implementation
+**Status:** ✅ Implemented
 **Branch:** `feature/pantry-unified-view`
 **Brainstorming:** [2026-05-02-brainstorming-pantry-unified-view.md](./2026-05-02-brainstorming-pantry-unified-view.md)
 

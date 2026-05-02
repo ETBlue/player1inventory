@@ -28,7 +28,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 |---------|--------|-------|
 | [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done; expand/collapse state in URL done; sort by expiration 🔲 Pending |
 | [items](features/items/) | 🔄 In Progress | Item card, form, filters, create-on-search all done; explicit expirationMode field in progress (`feature/expiration-mode`) |
-| [pantry](features/pantry/) | 🔲 Pending | Unified view (shelf-grouped, expand/collapse, remove `/shelves` routes) — [design](features/pantry/2026-05-02-pantry-unified-view-design.md) — [plan 1: data model](features/pantry/2026-05-02-pantry-unified-view-plan-1-data-model.md) — [plan 2: shelf card](features/pantry/2026-05-02-pantry-unified-view-plan-2-shelf-card.md) — [plan 3: unified page](features/pantry/2026-05-02-pantry-unified-view-plan-3-unified-page.md) |
+| [pantry](features/pantry/) | ✅ Done | Unified view (shelf-grouped, expand/collapse, `/shelves` routes removed) — [design](features/pantry/2026-05-02-pantry-unified-view-design.md) — [plan 1: data model](features/pantry/2026-05-02-pantry-unified-view-plan-1-data-model.md) — [plan 2: shelf card](features/pantry/2026-05-02-pantry-unified-view-plan-2-shelf-card.md) — [plan 3: unified page](features/pantry/2026-05-02-pantry-unified-view-plan-3-unified-page.md) |
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
 | [sign-out-and-migration](features/settings/) | 🔄 In Progress | Sign Out button (cloud mode); Switch button symmetry (offline ↔ cloud); migration wiring (doDisable + usePostLoginMigration); DataModeCard refactor |
 | [data-import-export](features/settings/) | ✅ Implemented | Export (local + cloud), import (local + cloud), conflict dialog with skip/replace/clear strategies, dual-mode, E2E verified |
@@ -40,7 +40,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [inventory-logs](features/inventory-logs/) | ✅ Implemented | Cloud operations done: schema fix, GraphQL queries/mutations, dual-mode hooks, E2E tests |
 | [storybook-coverage](features/storybook-coverage/) | ✅ Implemented | Component stories done; route-level stories + smoke tests done for all 17 routes |
 | [onboarding](features/onboarding/) | 🔄 In Progress | Phase A done: nested tags, InfoForm refactor, dialog improvements. Phase B done: full onboarding flow (template data, 4-step state machine, TemplateItemRow/TemplateVendorRow, inline import progress, auto-navigate to pantry, useOnboardingSetup hook, empty-data redirect, E2E). Phase C (settings reset) pending; template editor (dev tool) 🔲 Pending |
-| [shelf](features/shelf/) | ✅ Done | Shelf view: filter + selection shelves; `/shelves` + `/shelves/$shelfId` + `/settings/shelves`; dual-persistence (local Dexie + cloud GraphQL); sortBy/sortDir removed (Plan 1 of pantry-unified-view) |
+| [shelf](features/shelf/) | ✅ Done | Shelf data model: filter + selection shelves; `/settings/shelves` remains; `/shelves` and `/shelves/$shelfId` view routes removed (merged into pantry unified view); dual-persistence (local Dexie + cloud GraphQL); sortBy/sortDir removed (Plan 1 of pantry-unified-view) |
 
 ---
 

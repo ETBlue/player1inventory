@@ -29,6 +29,43 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 - Tag badges inside tag type dropdowns: unselected tags render with `${color}-tint` variant (light), selected tags render with `${color}` variant (solid)
 - Vendor and recipe dropdowns include a "Manage" link at the bottom (always visible, with Pencil icon) navigating to `/settings/vendors` and `/settings/recipes` respectively
 
+### Pantry Page
+
+Pantry page at `/` (home). Always uses a shelf-grouped layout using `PantryShelfCard` — no view toggle.
+
+**Toolbar:** `ItemListToolbar` with sort, filters, search, tags-toggle, "Add shelf" button, and "Add item" button. No view toggle.
+
+**Layout:**
+1. `ItemListToolbar` (search, sort, filter, tags toggle, "Add shelf", "Add item")
+2. `PantryControlBar` (Expand All / Collapse All)
+3. Sorted user shelves, each rendered as `PantryShelfCard`
+4. "Unsorted" system shelf last
+
+**Expand/collapse URL param (`?expanded`):** Comma-separated shelf IDs. Derived into a `Set<string>` via `useMemo`. Toggle handler merges/removes a shelf ID and navigates with `replace: true`. Expand All sets all IDs; Collapse All sets empty string.
+
+**Item-per-shelf computation:**
+- Filter shelf: items where `matchesFilterConfig(item, shelf.filterConfig, recipes, tags)` is true
+- Selection shelf: items in `shelf.itemIds` order
+- Unsorted (system): items not in any selection shelf AND not matched by any filter shelf
+
+**Search/filter auto-expand:** When `isFiltering` (search or filters active), a `useEffect` computes which shelves have ≥1 matching item and merges those IDs into `?expanded`. Uses `expandedShelfIdsRef` to read current expanded IDs without causing infinite loops.
+
+**Keyword highlighting:** `PantryShelfCard` receives `search` prop and passes `highlightedName` to `ItemCard` when a query is active.
+
+**URL search params** (validated by `validateSearch` on the route):
+- `?expanded` — comma-separated expanded shelf IDs (default: `''` = all collapsed)
+- All `useUrlSearchAndFilters` params (`?q`, `?f_*`, `?f_vendor`, `?f_recipe`, `?filters`, `?tags`)
+- Sort params via `useSortFilter` (localStorage key `pantry-sort-prefs`)
+
+**Files:**
+- `src/routes/index.tsx` — main page
+- `src/routes/index.test.tsx` — integration tests (filter pipeline, tag/vendor/recipe badge states)
+- `src/routes/index.stories.tsx` — Storybook stories
+- `src/components/pantry/PantryShelfCard/` — collapsible shelf card with full `ItemCard` support
+- `src/components/pantry/PantryControlBar/` — Expand All / Collapse All toolbar strip
+
+---
+
 ### Shopping Page
 
 **Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. Persisted in `?vendor` URL param; cleared on checkout or cart abandonment.

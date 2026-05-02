@@ -4,7 +4,7 @@
 **Design doc:** [2026-05-02-pantry-unified-view-design.md](./2026-05-02-pantry-unified-view-design.md)
 **PR scope:** Rewrite pantry route with shelf-grouped layout; remove `/shelves` routes; E2E tests
 **Depends on:** Plan 1 (data model) + Plan 2 (components) merged
-**Status:** 🔲 Pending
+**Status:** ✅ Implemented
 
 ## Context
 
