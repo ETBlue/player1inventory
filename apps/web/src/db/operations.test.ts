@@ -1430,23 +1430,19 @@ describe('shelves', () => {
   })
 
   it('user can create a filter shelf', async () => {
-    // Given shelf data for a filter shelf with top-level sortBy/sortDir
+    // Given shelf data for a filter shelf
     const data = {
       name: 'Low Stock',
       type: 'filter' as const,
       order: 1,
-      sortBy: 'stock' as const,
-      sortDir: 'asc' as const,
     }
 
     // When creating the filter shelf
     const shelf = await createShelf(data)
 
-    // Then shelf is persisted with top-level sortBy/sortDir
+    // Then shelf is persisted with id and type
     expect(shelf.id).toBeDefined()
     expect(shelf.type).toBe('filter')
-    expect(shelf.sortBy).toBe('stock')
-    expect(shelf.sortDir).toBe('asc')
   })
 
   it('user can get a shelf by id', async () => {

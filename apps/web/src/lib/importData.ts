@@ -270,8 +270,6 @@ export function toShelfInput(shelf: Record<string, unknown>) {
     name: shelf.name as string,
     type: shelf.type as string,
     order: shelf.order as number,
-    sortBy: shelf.sortBy as string | undefined,
-    sortDir: shelf.sortDir as string | undefined,
     filterConfig,
     itemIds: shelf.itemIds as string[] | undefined,
     createdAt,

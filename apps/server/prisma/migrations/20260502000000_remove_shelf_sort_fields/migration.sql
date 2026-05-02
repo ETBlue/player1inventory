@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Shelf" DROP COLUMN IF EXISTS "sortBy",
+DROP COLUMN IF EXISTS "sortDir";

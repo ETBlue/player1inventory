@@ -128,4 +128,27 @@ db.version(9).stores({
   shelves: 'id, name, type, order, sortBy, sortDir',
 })
 
+// Version 10: Remove sortBy/sortDir from shelves — replaced by global pantry sort control
+db.version(10)
+  .stores({
+    items: 'id, name, targetUnit, createdAt, updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, occurredAt, createdAt',
+    shoppingCarts: 'id, status, createdAt, completedAt',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+  })
+  .upgrade((tx) => {
+    return tx
+      .table('shelves')
+      .toCollection()
+      .modify((shelf) => {
+        delete (shelf as Record<string, unknown>).sortBy
+        delete (shelf as Record<string, unknown>).sortDir
+      })
+  })
+
 export { db }
