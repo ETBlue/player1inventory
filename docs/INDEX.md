@@ -28,7 +28,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 |---------|--------|-------|
 | [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done; expand/collapse state in URL done; sort by expiration 🔲 Pending |
 | [items](features/items/) | 🔄 In Progress | Item card, form, filters, create-on-search all done; explicit expirationMode field in progress (`feature/expiration-mode`) |
-| [pantry](features/pantry/) | 🔲 Pending | Unified view (shelf-grouped, expand/collapse, remove `/shelves` routes) — [design](features/pantry/2026-05-02-pantry-unified-view-design.md) |
+| [pantry](features/pantry/) | 🔲 Pending | Unified view (shelf-grouped, expand/collapse, remove `/shelves` routes) — [design](features/pantry/2026-05-02-pantry-unified-view-design.md) — [plan 1: data model](features/pantry/2026-05-02-pantry-unified-view-plan-1-data-model.md) — [plan 2: shelf card](features/pantry/2026-05-02-pantry-unified-view-plan-2-shelf-card.md) — [plan 3: unified page](features/pantry/2026-05-02-pantry-unified-view-plan-3-unified-page.md) |
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
 | [sign-out-and-migration](features/settings/) | 🔄 In Progress | Sign Out button (cloud mode); Switch button symmetry (offline ↔ cloud); migration wiring (doDisable + usePostLoginMigration); DataModeCard refactor |
 | [data-import-export](features/settings/) | ✅ Implemented | Export (local + cloud), import (local + cloud), conflict dialog with skip/replace/clear strategies, dual-mode, E2E verified |
