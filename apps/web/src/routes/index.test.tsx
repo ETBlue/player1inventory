@@ -37,7 +37,11 @@ describe('Home page filtering integration', () => {
   })
 
   const renderApp = () => {
-    const history = createMemoryHistory({ initialEntries: ['/'] })
+    // Navigate with ?expanded=unsorted so the Unsorted shelf is pre-expanded.
+    // Items land in the Unsorted shelf by default; without expansion they are not visible.
+    const history = createMemoryHistory({
+      initialEntries: ['/?expanded=unsorted'],
+    })
     const router = createRouter({ routeTree, history })
 
     render(
@@ -741,9 +745,9 @@ describe('Home page filtering integration', () => {
       consumeAmount: 0,
     })
 
-    // When pantry is loaded with no vendor filter and tags visible
+    // When pantry is loaded with no vendor filter, tags visible, and Unsorted shelf expanded
     const history = createMemoryHistory({
-      initialEntries: ['/?tags=1'],
+      initialEntries: ['/?tags=1&expanded=unsorted'],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -855,8 +859,10 @@ describe('Home page filtering integration', () => {
       consumeAmount: 0,
     })
 
-    // When pantry is loaded with no tag filter and tags visible
-    const history = createMemoryHistory({ initialEntries: ['/?tags=1'] })
+    // When pantry is loaded with no tag filter, tags visible, and Unsorted shelf expanded
+    const history = createMemoryHistory({
+      initialEntries: ['/?tags=1&expanded=unsorted'],
+    })
     const router = createRouter({ routeTree, history })
     render(
       <QueryClientProvider client={queryClient}>

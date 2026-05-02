@@ -112,9 +112,10 @@ function WithItemsStory() {
 
   if (!ready) return <div>Loading...</div>
 
+  // Start with the Unsorted shelf expanded so items are visible without interaction
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: ['/?expanded=unsorted'] }),
     context: { queryClient },
   })
 

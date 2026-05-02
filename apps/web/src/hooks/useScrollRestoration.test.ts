@@ -3,16 +3,34 @@ import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useScrollRestoration } from './useScrollRestoration'
 
+// The hook targets <main id="main-content"> when present, falling back to
+// document.documentElement. In this test environment, we insert a main element
+// so the hook targets it directly.
+
 describe('useScrollRestoration', () => {
+  let mainEl: HTMLElement
+
   beforeEach(() => {
     sessionStorage.clear()
     vi.clearAllMocks()
-    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-    Object.defineProperty(window, 'scrollY', {
+
+    // Insert a <main id="main-content"> into the document so the hook can target it
+    mainEl = document.createElement('main')
+    mainEl.id = 'main-content'
+    document.body.appendChild(mainEl)
+
+    // Define scrollTo and scrollTop on the element
+    mainEl.scrollTo = vi.fn()
+    Object.defineProperty(mainEl, 'scrollTop', {
       writable: true,
       configurable: true,
       value: 0,
     })
+  })
+
+  afterEach(() => {
+    // Remove the inserted element to avoid leaking between tests
+    mainEl.remove()
   })
 
   it('restoreScroll scrolls to saved position', () => {
@@ -26,8 +44,8 @@ describe('useScrollRestoration', () => {
       result.current.restoreScroll()
     })
 
-    // Then scrollTo is called with saved position
-    expect(window.scrollTo).toHaveBeenCalledWith({
+    // Then scrollTo is called with saved position on the scroll container
+    expect(mainEl.scrollTo).toHaveBeenCalledWith({
       top: 350,
       behavior: 'instant',
     })
@@ -42,18 +60,21 @@ describe('useScrollRestoration', () => {
     })
 
     // Then scrollTo is NOT called
-    expect(window.scrollTo).not.toHaveBeenCalled()
+    expect(mainEl.scrollTo).not.toHaveBeenCalled()
   })
 
-  it('saves scrollY to sessionStorage on unmount', () => {
+  it('saves scrollTop to sessionStorage on unmount', () => {
     // Given scroll position is at 200
-    Object.defineProperty(window, 'scrollY', { value: 200 })
+    Object.defineProperty(mainEl, 'scrollTop', {
+      value: 200,
+      configurable: true,
+    })
 
     // When hook mounts then unmounts
     const { unmount } = renderHook(() => useScrollRestoration('/?q=milk'))
     unmount()
 
-    // Then scrollY is saved to sessionStorage
+    // Then scrollTop is saved to sessionStorage
     expect(sessionStorage.getItem('scroll-pos:/?q=milk')).toBe('200')
   })
 
@@ -69,7 +90,7 @@ describe('useScrollRestoration', () => {
     })
 
     // Then scrolls to pantry position, not shopping position
-    expect(window.scrollTo).toHaveBeenCalledWith({
+    expect(mainEl.scrollTo).toHaveBeenCalledWith({
       top: 100,
       behavior: 'instant',
     })

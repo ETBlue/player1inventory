@@ -2,7 +2,22 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 /**
- * Saves and restores window.scrollY for a given key.
+ * Returns the app's main scroll container — the <main id="main-content"> element
+ * rendered by Layout.tsx. All item-list pages scroll inside this element (via
+ * overflow-y-auto on the root wrapper inside <main>). Falls back to document.documentElement
+ * so the hook is safe during SSR or in tests that don't mount the full Layout.
+ */
+function getScrollContainer(): HTMLElement {
+  return (
+    (document.getElementById('main-content') as HTMLElement | null) ??
+    document.documentElement
+  )
+}
+
+/**
+ * Saves and restores the scroll position of the app's main scroll container
+ * (`<main id="main-content">`) for a given key.
+ *
  * Key should be the full URL (pathname + search) so different filter states
  * have independent scroll positions.
  *
@@ -13,25 +28,25 @@ import { useCallback, useEffect, useRef } from 'react'
 export function useScrollRestoration(key: string) {
   const storageKey = `scroll-pos:${key}`
 
-  // Capture window.scrollY in the render phase, before React commits DOM mutations.
+  // Capture the container's scrollTop in the render phase, before React commits DOM mutations.
   //
   // When navigation starts, TanStack Router updates useRouterState (which `key` is
   // derived from) immediately — before the old route component unmounts. This
   // triggers a re-render with the new URL's params (e.g. isTagsVisible=false), which
-  // removes content from the DOM and causes the browser to clamp window.scrollY.
-  // The useEffect cleanup fires after this DOM mutation, so window.scrollY is already
+  // removes content from the DOM and causes the browser to clamp scrollTop.
+  // The useEffect cleanup fires after this DOM mutation, so scrollTop is already
   // wrong by then.
   //
-  // Reading window.scrollY here (during render, before commit) captures the correct
+  // Reading scrollTop here (during render, before commit) captures the correct
   // pre-navigation scroll position. The ref is then used in the cleanup instead of
-  // window.scrollY directly.
-  const scrollBeforeCommitRef = useRef(window.scrollY)
-  scrollBeforeCommitRef.current = window.scrollY
+  // reading scrollTop directly.
+  const scrollBeforeCommitRef = useRef(getScrollContainer().scrollTop)
+  scrollBeforeCommitRef.current = getScrollContainer().scrollTop
 
   // Tracks the scroll target of an in-progress restoration so the save-on-unmount
   // cleanup can protect against React StrictMode's simulated unmount firing before
   // the rAF callback. StrictMode cleanup runs synchronously before any rAFs, so
-  // window.scrollY may be clamped (page not yet full height). Saving that clamped
+  // scrollTop may be clamped (page not yet full height). Saving that clamped
   // value would overwrite the correct target. Using max(scrollBeforeCommit, pendingTarget)
   // as a floor preserves the correct value in all cases.
   // The ref is cleared by the rAF so real navigation (after DOM settles) uses
@@ -49,9 +64,10 @@ export function useScrollRestoration(key: string) {
         const y = Number(saved)
         if (!Number.isNaN(y)) {
           pendingRestoreTargetRef.current = y
-          window.scrollTo({ top: y, behavior: 'instant' })
+          const container = getScrollContainer()
+          container.scrollTo({ top: y, behavior: 'instant' })
           requestAnimationFrame(() => {
-            window.scrollTo({ top: y, behavior: 'instant' })
+            container.scrollTo({ top: y, behavior: 'instant' })
             pendingRestoreTargetRef.current = null
           })
         }
@@ -62,9 +78,9 @@ export function useScrollRestoration(key: string) {
   // Save scroll position when component unmounts or when the key changes.
   // Uses max(scrollBeforeCommit, pendingTarget) to handle two scenarios:
   //   1. Navigation away: scrollBeforeCommit has the correct pre-navigation value
-  //      (before DOM reflow removes content and clamps scrollY).
+  //      (before DOM reflow removes content and clamps scrollTop).
   //   2. React StrictMode cleanup: pendingTarget is the restore goal, protecting
-  //      against a clamped scrollY saving over the correct target (because the rAF
+  //      against a clamped scrollTop saving over the correct target (because the rAF
   //      that completes the restoration hasn't fired yet when StrictMode cleanup runs).
   useEffect(() => {
     return () => {
