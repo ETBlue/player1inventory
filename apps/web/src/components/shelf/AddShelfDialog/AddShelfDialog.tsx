@@ -13,13 +13,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { VendorFilterDropdown } from '@/components/vendor/VendorFilterDropdown'
 import { useVendors } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -29,8 +22,6 @@ import type { FilterConfig } from '@/types'
 export interface CreateShelfInput {
   name: string
   type: 'filter' | 'selection'
-  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
-  sortDir?: 'asc' | 'desc'
   filterConfig?: FilterConfig
 }
 
@@ -52,10 +43,6 @@ export function AddShelfDialog({
   >({})
   const [selectedVendorIds, setSelectedVendorIds] = useState<string[]>([])
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState<
-    'name' | 'stock' | 'expiring' | 'lastPurchased'
-  >('name')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const { data: tagTypes = [] } = useTagTypes()
   const { data: tags = [] } = useTags()
@@ -71,8 +58,6 @@ export function AddShelfDialog({
     setTagFilterState({})
     setSelectedVendorIds([])
     setSelectedRecipeIds([])
-    setSortBy('name')
-    setSortDir('asc')
   }
 
   const handleClose = () => {
@@ -89,8 +74,6 @@ export function AddShelfDialog({
     }
 
     if (type === 'filter') {
-      data.sortBy = sortBy
-      data.sortDir = sortDir
       data.filterConfig = {
         ...(Object.values(tagFilterState).flat().length > 0 && {
           tagIds: Object.values(tagFilterState).flat(),
@@ -155,123 +138,78 @@ export function AddShelfDialog({
 
           {/* Filter config — only shown for filter type */}
           {type === 'filter' && (
-            <>
-              {/* Tag and entity filter dropdowns */}
-              <div className="flex flex-wrap items-center gap-1">
-                {tagTypes
-                  .filter((tagType) =>
-                    tags.some((tag) => tag.typeId === tagType.id),
+            <div className="flex flex-wrap items-center gap-1">
+              {tagTypes
+                .filter((tagType) =>
+                  tags.some((tag) => tag.typeId === tagType.id),
+                )
+                .sort((a, b) =>
+                  a.name.localeCompare(b.name, undefined, {
+                    sensitivity: 'base',
+                  }),
+                )
+                .map((tagType) => {
+                  const orderedTypeTags = tagsWithDepth.filter(
+                    (tag) => tag.typeId === tagType.id,
                   )
-                  .sort((a, b) =>
-                    a.name.localeCompare(b.name, undefined, {
-                      sensitivity: 'base',
-                    }),
+                  const selectedTagIds = tagFilterState[tagType.id] ?? []
+                  return (
+                    <TagTypeDropdown
+                      key={tagType.id}
+                      tagType={tagType}
+                      tags={orderedTypeTags}
+                      selectedTagIds={selectedTagIds}
+                      onToggleTag={(tagId) => {
+                        const current = tagFilterState[tagType.id] ?? []
+                        const next = current.includes(tagId)
+                          ? current.filter((id) => id !== tagId)
+                          : [...current, tagId]
+                        setTagFilterState({
+                          ...tagFilterState,
+                          [tagType.id]: next,
+                        })
+                      }}
+                      onClear={() => {
+                        const next = { ...tagFilterState }
+                        delete next[tagType.id]
+                        setTagFilterState(next)
+                      }}
+                    />
                   )
-                  .map((tagType) => {
-                    const orderedTypeTags = tagsWithDepth.filter(
-                      (tag) => tag.typeId === tagType.id,
+                })}
+
+              {vendors && vendors.length > 0 && (
+                <VendorFilterDropdown
+                  vendors={vendors}
+                  selectedIds={selectedVendorIds}
+                  onToggle={(id) =>
+                    setSelectedVendorIds(
+                      selectedVendorIds.includes(id)
+                        ? selectedVendorIds.filter((v) => v !== id)
+                        : [...selectedVendorIds, id],
                     )
-                    const selectedTagIds = tagFilterState[tagType.id] ?? []
-                    return (
-                      <TagTypeDropdown
-                        key={tagType.id}
-                        tagType={tagType}
-                        tags={orderedTypeTags}
-                        selectedTagIds={selectedTagIds}
-                        onToggleTag={(tagId) => {
-                          const current = tagFilterState[tagType.id] ?? []
-                          const next = current.includes(tagId)
-                            ? current.filter((id) => id !== tagId)
-                            : [...current, tagId]
-                          setTagFilterState({
-                            ...tagFilterState,
-                            [tagType.id]: next,
-                          })
-                        }}
-                        onClear={() => {
-                          const next = { ...tagFilterState }
-                          delete next[tagType.id]
-                          setTagFilterState(next)
-                        }}
-                      />
+                  }
+                  onClear={() => setSelectedVendorIds([])}
+                  showManageLink={false}
+                />
+              )}
+
+              {recipes && recipes.length > 0 && (
+                <RecipeFilterDropdown
+                  recipes={recipes}
+                  selectedIds={selectedRecipeIds}
+                  onToggle={(id) =>
+                    setSelectedRecipeIds(
+                      selectedRecipeIds.includes(id)
+                        ? selectedRecipeIds.filter((v) => v !== id)
+                        : [...selectedRecipeIds, id],
                     )
-                  })}
-
-                {vendors && vendors.length > 0 && (
-                  <VendorFilterDropdown
-                    vendors={vendors}
-                    selectedIds={selectedVendorIds}
-                    onToggle={(id) =>
-                      setSelectedVendorIds(
-                        selectedVendorIds.includes(id)
-                          ? selectedVendorIds.filter((v) => v !== id)
-                          : [...selectedVendorIds, id],
-                      )
-                    }
-                    onClear={() => setSelectedVendorIds([])}
-                    showManageLink={false}
-                  />
-                )}
-
-                {recipes && recipes.length > 0 && (
-                  <RecipeFilterDropdown
-                    recipes={recipes}
-                    selectedIds={selectedRecipeIds}
-                    onToggle={(id) =>
-                      setSelectedRecipeIds(
-                        selectedRecipeIds.includes(id)
-                          ? selectedRecipeIds.filter((v) => v !== id)
-                          : [...selectedRecipeIds, id],
-                      )
-                    }
-                    onClear={() => setSelectedRecipeIds([])}
-                    showManageLink={false}
-                  />
-                )}
-              </div>
-
-              {/* Sort by */}
-              <div className="flex gap-3">
-                <div className="flex-1 space-y-2">
-                  <Label htmlFor="sortBy">Sort by</Label>
-                  <Select
-                    value={sortBy}
-                    onValueChange={(v) =>
-                      setSortBy(
-                        v as 'name' | 'stock' | 'expiring' | 'lastPurchased',
-                      )
-                    }
-                  >
-                    <SelectTrigger id="sortBy">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="name">Name</SelectItem>
-                      <SelectItem value="stock">Stock</SelectItem>
-                      <SelectItem value="expiring">Expiring soon</SelectItem>
-                      <SelectItem value="lastPurchased">
-                        Last purchased
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1 space-y-2">
-                  <Label htmlFor="sortDir">Direction</Label>
-                  <Select
-                    value={sortDir}
-                    onValueChange={(v) => setSortDir(v as 'asc' | 'desc')}
-                  >
-                    <SelectTrigger id="sortDir">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="asc">Ascending</SelectItem>
-                      <SelectItem value="desc">Descending</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </>
+                  }
+                  onClear={() => setSelectedRecipeIds([])}
+                  showManageLink={false}
+                />
+              )}
+            </div>
           )}
         </DialogMain>
         <DialogFooter>

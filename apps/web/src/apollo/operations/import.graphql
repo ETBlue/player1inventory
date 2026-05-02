@@ -198,8 +198,6 @@ mutation BulkCreateShelves($shelves: [ShelfInput!]!) {
     name
     type
     order
-    sortBy
-    sortDir
     filterConfig {
       tagIds
       vendorIds
@@ -215,8 +213,6 @@ mutation BulkUpsertShelves($shelves: [ShelfInput!]!) {
     name
     type
     order
-    sortBy
-    sortDir
     filterConfig {
       tagIds
       vendorIds

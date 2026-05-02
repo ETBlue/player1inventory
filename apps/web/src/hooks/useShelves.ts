@@ -126,8 +126,6 @@ export function useCreateShelfMutation() {
           variables: {
             name: data.name,
             type: data.type,
-            ...(data.sortBy !== undefined ? { sortBy: data.sortBy } : {}),
-            ...(data.sortDir !== undefined ? { sortDir: data.sortDir } : {}),
             ...(data.filterConfig
               ? { filterConfig: toGqlFilterConfig(data.filterConfig) }
               : {}),
@@ -144,8 +142,6 @@ export function useCreateShelfMutation() {
           variables: {
             name: data.name,
             type: data.type,
-            ...(data.sortBy !== undefined ? { sortBy: data.sortBy } : {}),
-            ...(data.sortDir !== undefined ? { sortDir: data.sortDir } : {}),
             ...(data.filterConfig
               ? { filterConfig: toGqlFilterConfig(data.filterConfig) }
               : {}),
@@ -191,8 +187,6 @@ export function useUpdateShelfMutation() {
         name?: string
         type?: string
         order?: number
-        sortBy?: string
-        sortDir?: string
         filterConfig?: {
           tagIds?: string[]
           vendorIds?: string[]
@@ -203,8 +197,6 @@ export function useUpdateShelfMutation() {
       if (data.name !== undefined) vars.name = data.name
       if (data.type !== undefined) vars.type = data.type
       if (data.order !== undefined) vars.order = data.order
-      if (data.sortBy !== undefined) vars.sortBy = data.sortBy
-      if (data.sortDir !== undefined) vars.sortDir = data.sortDir
       if (data.filterConfig !== undefined) {
         vars.filterConfig = toGqlFilterConfig(data.filterConfig)
       }

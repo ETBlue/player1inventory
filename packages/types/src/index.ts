@@ -115,8 +115,6 @@ export interface Shelf {
   name: string
   type: 'filter' | 'selection' | 'system'
   order: number
-  sortBy?: 'name' | 'stock' | 'expiring' | 'lastPurchased'
-  sortDir?: 'asc' | 'desc'
   filterConfig?: FilterConfig
   itemIds?: string[]
   createdAt: Date

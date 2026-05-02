@@ -84,7 +84,7 @@ export function ShelfDetailPage() {
   const createItem = useCreateItem()
   const { goBack } = useAppNavigation('/shelves')
 
-  // Sort: non-unsorted shelves use filterConfig (DB); unsorted uses localStorage
+  // Sort: use localStorage-persisted sort for all shelf types
   const {
     sortBy: localSortBy,
     sortDirection: localSortDirection,
@@ -92,16 +92,8 @@ export function ShelfDetailPage() {
     setSortDirection,
   } = useSortFilter('shelf-detail', { defaultSortBy: 'name' })
 
-  const isShelfWithConfig = !isUnsorted && shelf !== undefined
-
-  const sortBy: SortField = isShelfWithConfig
-    ? ((shelf?.sortBy === 'lastPurchased'
-        ? 'purchased'
-        : (shelf?.sortBy ?? 'name')) as SortField)
-    : localSortBy
-  const sortDirection: SortDirection = isShelfWithConfig
-    ? (shelf?.sortDir ?? 'asc')
-    : localSortDirection
+  const sortBy: SortField = localSortBy
+  const sortDirection: SortDirection = localSortDirection
 
   // Search / filter state (URL-backed for back-navigation restoration)
   const {
@@ -246,19 +238,8 @@ export function ShelfDetailPage() {
   // ── Sort handler ─────────────────────────────────────────────────────────
 
   const handleSortChange = (field: SortField, dir: SortDirection) => {
-    if (isShelfWithConfig && shelf) {
-      const rawSortBy = field === 'purchased' ? 'lastPurchased' : field
-      updateShelf.mutate({
-        id: shelf.id,
-        data: {
-          sortBy: rawSortBy as 'name' | 'stock' | 'expiring' | 'lastPurchased',
-          sortDir: dir,
-        },
-      })
-    } else {
-      setSortBy(field)
-      setSortDirection(dir)
-    }
+    setSortBy(field)
+    setSortDirection(dir)
   }
 
   // ── Shelf membership handlers ───────────────────────────────────────────

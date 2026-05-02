@@ -911,8 +911,6 @@ describe('toShelfInput', () => {
       name: 'Proteins',
       type: 'filter',
       order: 1,
-      sortBy: 'stock',
-      sortDir: 'asc',
       filterConfig: {
         __typename: 'FilterConfig',
         tagIds: ['t1'],

@@ -168,8 +168,6 @@ function FilterShelfStory() {
             tagIds: [],
             vendorIds: [],
             recipeIds: [],
-            sortBy: 'name',
-            sortDir: 'asc',
           },
         })
         return `/shelves/${shelf.id}`

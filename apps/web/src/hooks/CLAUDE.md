@@ -23,4 +23,4 @@
 - `useShelfQuery(id)` (`src/hooks/useShelves.ts`) - Returns a single shelf by ID. Dual-mode.
 - `useCreateShelfMutation()` / `useUpdateShelfMutation()` / `useDeleteShelfMutation()` (`src/hooks/useShelves.ts`) - CRUD mutations. Dual-mode.
 - `useReorderShelvesMutation()` / `useReorderShelfItemsMutation()` (`src/hooks/useShelves.ts`) - Reorder mutations. Dual-mode.
-- Note: `sortBy`/`sortDir` are top-level `Shelf` fields (not inside `filterConfig`). `FilterConfig` only holds `tagIds`, `vendorIds`, `recipeIds`.
+- Note: `FilterConfig` only holds `tagIds`, `vendorIds`, `recipeIds`. Sort is handled globally via `useSortFilter`.
