@@ -65,6 +65,7 @@ function NewItemPage() {
       >
         <Link
           to="/"
+          search={{ expanded: '' }}
           aria-label="Go back"
           className="px-3 py-4 hover:bg-background-surface transition-colors"
         >
