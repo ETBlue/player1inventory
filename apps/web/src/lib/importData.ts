@@ -54,6 +54,7 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
+import { deserializeRecipe } from './deserialization'
 import type { ExportPayload } from './exportData'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
@@ -684,7 +685,11 @@ export async function importLocalData(
     // Bulk add all entities in reverse order (parents before children)
     await db.items.bulkAdd((payload.items as Item[]).map(deserializeItem))
     await db.vendors.bulkAdd(payload.vendors as Vendor[])
-    await db.recipes.bulkAdd(payload.recipes as Recipe[])
+    await db.recipes.bulkAdd(
+      (payload.recipes as Recipe[]).map((r) =>
+        deserializeRecipe(r as unknown as Record<string, unknown>),
+      ),
+    )
     await db.tagTypes.bulkAdd(payload.tagTypes as TagType[])
     await db.tags.bulkAdd(payload.tags as Tag[])
     await db.inventoryLogs.bulkAdd(
@@ -724,7 +729,12 @@ export async function importLocalData(
       allKeys: false,
     })
     await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
-    await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
+    await db.recipes.bulkAdd(
+      (toCreate.recipes as Recipe[]).map((r) =>
+        deserializeRecipe(r as unknown as Record<string, unknown>),
+      ),
+      { allKeys: false },
+    )
     await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], {
       allKeys: false,
     })
@@ -820,7 +830,12 @@ export async function importLocalData(
     allKeys: false,
   })
   await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
-  await db.recipes.bulkAdd(toCreate.recipes as Recipe[], { allKeys: false })
+  await db.recipes.bulkAdd(
+    (toCreate.recipes as Recipe[]).map((r) =>
+      deserializeRecipe(r as unknown as Record<string, unknown>),
+    ),
+    { allKeys: false },
+  )
   await db.tagTypes.bulkAdd(toCreate.tagTypes as TagType[], { allKeys: false })
   await db.tags.bulkAdd(toCreate.tags as Tag[], { allKeys: false })
   await db.inventoryLogs.bulkAdd(
@@ -856,7 +871,11 @@ export async function importLocalData(
 
   await db.items.bulkPut((toUpsert.items as Item[]).map(deserializeItem))
   await db.vendors.bulkPut(toUpsert.vendors as Vendor[])
-  await db.recipes.bulkPut(toUpsert.recipes as Recipe[])
+  await db.recipes.bulkPut(
+    (toUpsert.recipes as Recipe[]).map((r) =>
+      deserializeRecipe(r as unknown as Record<string, unknown>),
+    ),
+  )
   await db.tagTypes.bulkPut(toUpsert.tagTypes as TagType[])
   await db.tags.bulkPut(toUpsert.tags as Tag[])
   await db.inventoryLogs.bulkPut(
