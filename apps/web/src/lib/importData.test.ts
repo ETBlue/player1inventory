@@ -648,6 +648,85 @@ describe('importLocalData', () => {
     expect(stored?.occurredAt).toBeInstanceOf(Date)
     expect(stored?.occurredAt?.toISOString()).toBe('2026-03-01T12:00:00.000Z')
   })
+
+  it('user can import recipe with lastCookedAt as ISO string (clear) — stored as Date', async () => {
+    // Given a payload where lastCookedAt is an ISO string (as produced by JSON.parse on a backup)
+    const recipe = {
+      id: 'recipe-cooked',
+      name: 'Soup',
+      items: [],
+      createdAt: '2026-01-01T00:00:00.000Z' as unknown as Date,
+      updatedAt: '2026-01-15T00:00:00.000Z' as unknown as Date,
+      lastCookedAt: '2026-03-10T08:00:00.000Z' as unknown as Date,
+    }
+    const payload = emptyPayload({ recipes: [recipe] })
+
+    // When importing with clear strategy (the simplest path)
+    await importLocalData(payload, 'clear')
+
+    // Then lastCookedAt is stored as a Date instance, not a string
+    const stored = await db.recipes.get('recipe-cooked')
+    expect(stored?.lastCookedAt).toBeInstanceOf(Date)
+    expect((stored?.lastCookedAt as Date).toISOString()).toBe(
+      '2026-03-10T08:00:00.000Z',
+    )
+  })
+
+  it('user can import recipe with lastCookedAt as ISO string (skip) — stored as Date', async () => {
+    // Given a payload where lastCookedAt is an ISO string
+    const recipe = {
+      id: 'recipe-skip',
+      name: 'Stew',
+      items: [],
+      createdAt: '2026-01-01T00:00:00.000Z' as unknown as Date,
+      updatedAt: '2026-01-15T00:00:00.000Z' as unknown as Date,
+      lastCookedAt: '2026-04-05T10:00:00.000Z' as unknown as Date,
+    }
+    const payload = emptyPayload({ recipes: [recipe] })
+
+    // When importing with skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then lastCookedAt is stored as a Date instance
+    const stored = await db.recipes.get('recipe-skip')
+    expect(stored?.lastCookedAt).toBeInstanceOf(Date)
+    expect((stored?.lastCookedAt as Date).toISOString()).toBe(
+      '2026-04-05T10:00:00.000Z',
+    )
+  })
+
+  it('user can import recipe with lastCookedAt as ISO string (replace) — stored as Date', async () => {
+    // Given an existing recipe that will be upserted (replace strategy, conflict by id)
+    const existingRecipe = {
+      id: 'recipe-replace',
+      name: 'Pasta',
+      items: [],
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+    }
+    await db.recipes.add(existingRecipe)
+
+    // And a payload with the same recipe id but lastCookedAt as an ISO string
+    const recipe = {
+      id: 'recipe-replace',
+      name: 'Pasta Updated',
+      items: [],
+      createdAt: '2026-01-01T00:00:00.000Z' as unknown as Date,
+      updatedAt: '2026-02-01T00:00:00.000Z' as unknown as Date,
+      lastCookedAt: '2026-05-01T09:00:00.000Z' as unknown as Date,
+    }
+    const payload = emptyPayload({ recipes: [recipe] })
+
+    // When importing with replace strategy (triggers bulkPut for the conflicting recipe)
+    await importLocalData(payload, 'replace')
+
+    // Then lastCookedAt is stored as a Date instance
+    const stored = await db.recipes.get('recipe-replace')
+    expect(stored?.lastCookedAt).toBeInstanceOf(Date)
+    expect((stored?.lastCookedAt as Date).toISOString()).toBe(
+      '2026-05-01T09:00:00.000Z',
+    )
+  })
 })
 
 describe('cloud import input mappers — strip server-only fields', () => {
