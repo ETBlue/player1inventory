@@ -1,4 +1,4 @@
-import { ChevronRight, SlidersVertical, SquareMousePointer } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Shelf } from '@/types'
@@ -41,35 +41,19 @@ export function ShelfCard({
                   </span>
                 )}
                 {outOfStockCount != null && outOfStockCount > 0 && (
-                  <span className="text-sm text-status-error-foreground">
+                  <Badge variant="error-inverse">
                     {outOfStockCount} out of stock
-                  </span>
+                  </Badge>
                 )}
                 {lowStockCount != null && lowStockCount > 0 && (
-                  <span className="text-sm text-status-warning-foreground">
+                  <Badge variant="warning-inverse">
                     {lowStockCount} low stock
-                  </span>
+                  </Badge>
                 )}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {shelf.type !== 'system' && (
-              <Badge
-                variant="neutral-outline"
-                className="text-xs capitalize shrink-0 gap-1"
-              >
-                {shelf.type === 'filter' && (
-                  <SlidersVertical className="h-3 w-3 text-foreground-muted" />
-                )}
-                {shelf.type === 'selection' && (
-                  <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
-                )}
-                {shelf.type}
-              </Badge>
-            )}
-            <ChevronRight className="h-5 w-5 text-foreground-muted" />
-          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-foreground-muted" />
         </CardContent>
       </button>
     </Card>
