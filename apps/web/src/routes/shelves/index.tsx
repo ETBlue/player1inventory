@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button'
 import { useItems, useShelvesQuery } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
+import { getCurrentQuantity } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { setPantryView } from '@/lib/viewPreference'
-import type { Shelf } from '@/types'
+import type { Item, Shelf } from '@/types'
 
 export const Route = createFileRoute('/shelves/')({
   component: ShelvesPage,
@@ -40,6 +41,26 @@ export function ShelvesPage() {
     navigate({ to: '/shelves/$shelfId', params: { shelfId: 'unsorted' } })
   }
 
+  const getShelfItems = (shelfId: string): Item[] => {
+    if (!items || !shelves) return []
+
+    const shelf = shelves.find((s: Shelf) => s.id === shelfId)
+    if (!shelf) return []
+
+    if (shelf.type === 'selection') {
+      const ids = new Set(shelf.itemIds ?? [])
+      return items.filter((item: Item) => ids.has(item.id))
+    }
+
+    // Filter shelf: items matching filterConfig
+    const { filterConfig } = shelf
+    if (!filterConfig) return items
+
+    return items.filter((item: Item) =>
+      matchesFilterConfig(item, filterConfig, recipes, tags),
+    )
+  }
+
   const getItemCount = (shelfId: string): number => {
     if (!items || !shelves) return 0
 
@@ -59,8 +80,21 @@ export function ShelvesPage() {
     ).length
   }
 
-  const getUnsortedCount = (): number => {
-    if (!items || !shelves) return 0
+  const getOutOfStockCount = (shelfId: string): number => {
+    return getShelfItems(shelfId).filter(
+      (item) => getCurrentQuantity(item) === 0,
+    ).length
+  }
+
+  const getLowStockCount = (shelfId: string): number => {
+    return getShelfItems(shelfId).filter((item) => {
+      const qty = getCurrentQuantity(item)
+      return qty > 0 && qty <= item.refillThreshold
+    }).length
+  }
+
+  const getUnsortedItems = (): Item[] => {
+    if (!items || !shelves) return []
 
     // Items in any selection shelf's itemIds
     const selectionItemIds = new Set<string>()
@@ -83,10 +117,21 @@ export function ShelvesPage() {
     }
 
     return items.filter(
-      (item) =>
+      (item: Item) =>
         !selectionItemIds.has(item.id) && !filterMatchedIds.has(item.id),
-    ).length
+    )
   }
+
+  const getUnsortedCount = (): number => getUnsortedItems().length
+
+  const getUnsortedOutOfStockCount = (): number =>
+    getUnsortedItems().filter((item) => getCurrentQuantity(item) === 0).length
+
+  const getUnsortedLowStockCount = (): number =>
+    getUnsortedItems().filter((item) => {
+      const qty = getCurrentQuantity(item)
+      return qty > 0 && qty <= item.refillThreshold
+    }).length
 
   const isLoading = shelvesLoading || itemsLoading
 
@@ -152,11 +197,15 @@ export function ShelvesPage() {
           shelves={sortedShelves}
           onShelfClick={handleShelfClick}
           getItemCount={getItemCount}
+          getOutOfStockCount={getOutOfStockCount}
+          getLowStockCount={getLowStockCount}
         />
         {/* Unsorted shelf — always last, not draggable */}
         <ShelfCard
           shelf={unsortedShelf}
           itemCount={getUnsortedCount()}
+          outOfStockCount={getUnsortedOutOfStockCount()}
+          lowStockCount={getUnsortedLowStockCount()}
           onClick={handleUnsortedClick}
         />
       </div>

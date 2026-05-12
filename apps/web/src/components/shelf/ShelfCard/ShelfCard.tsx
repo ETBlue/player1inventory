@@ -8,6 +8,8 @@ interface ShelfCardProps {
   itemCount: number
   onClick: () => void
   filterSummary?: string
+  outOfStockCount?: number
+  lowStockCount?: number
 }
 
 export function ShelfCard({
@@ -15,6 +17,8 @@ export function ShelfCard({
   itemCount,
   onClick,
   filterSummary,
+  outOfStockCount,
+  lowStockCount,
 }: ShelfCardProps) {
   return (
     <Card className="flex items-center gap-2">
@@ -27,13 +31,23 @@ export function ShelfCard({
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="flex-1 min-w-0">
               <p className="font-medium capitalize truncate">{shelf.name}</p>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="text-sm text-foreground-muted">
                   {itemCount} {itemCount === 1 ? 'item' : 'items'}
                 </span>
                 {shelf.type === 'filter' && filterSummary && (
                   <span className="text-sm text-foreground-muted truncate">
                     · {filterSummary}
+                  </span>
+                )}
+                {outOfStockCount != null && outOfStockCount > 0 && (
+                  <span className="text-sm text-status-error-foreground">
+                    {outOfStockCount} out of stock
+                  </span>
+                )}
+                {lowStockCount != null && lowStockCount > 0 && (
+                  <span className="text-sm text-status-warning-foreground">
+                    {lowStockCount} low stock
                   </span>
                 )}
               </div>

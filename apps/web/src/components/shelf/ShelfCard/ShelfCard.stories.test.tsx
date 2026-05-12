@@ -3,7 +3,14 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ShelfCard.stories'
 
-const { FilterShelf, SelectionShelf, EmptyShelf } = composeStories(stories)
+const {
+  FilterShelf,
+  SelectionShelf,
+  EmptyShelf,
+  WithOutOfStock,
+  WithLowStock,
+  WithBothStockStatuses,
+} = composeStories(stories)
 
 describe('ShelfCard stories smoke tests', () => {
   it('FilterShelf renders shelf name', () => {
@@ -20,5 +27,21 @@ describe('ShelfCard stories smoke tests', () => {
     render(<EmptyShelf />)
     expect(screen.getByText('snacks')).toBeInTheDocument()
     expect(screen.getByText('0 items')).toBeInTheDocument()
+  })
+
+  it('WithOutOfStock renders out of stock count', () => {
+    render(<WithOutOfStock />)
+    expect(screen.getByText('3 out of stock')).toBeInTheDocument()
+  })
+
+  it('WithLowStock renders low stock count', () => {
+    render(<WithLowStock />)
+    expect(screen.getByText('2 low stock')).toBeInTheDocument()
+  })
+
+  it('WithBothStockStatuses renders both counts', () => {
+    render(<WithBothStockStatuses />)
+    expect(screen.getByText('1 out of stock')).toBeInTheDocument()
+    expect(screen.getByText('4 low stock')).toBeInTheDocument()
   })
 })
