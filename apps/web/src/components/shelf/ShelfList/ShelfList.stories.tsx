@@ -68,3 +68,12 @@ export const EmptyList: Story = {
     shelves: [],
   },
 }
+
+export const WithStockStatus: Story = {
+  args: {
+    shelves: mockShelves,
+    getItemCount: () => 10,
+    getOutOfStockCount: (id: string) => (id === 'shelf-1' ? 2 : 0),
+    getLowStockCount: (id: string) => (id === 'shelf-2' ? 3 : 0),
+  },
+}

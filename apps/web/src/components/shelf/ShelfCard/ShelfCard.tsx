@@ -1,4 +1,4 @@
-import { ChevronRight, SlidersVertical, SquareMousePointer } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Shelf } from '@/types'
@@ -8,6 +8,8 @@ interface ShelfCardProps {
   itemCount: number
   onClick: () => void
   filterSummary?: string
+  outOfStockCount?: number
+  lowStockCount?: number
 }
 
 export function ShelfCard({
@@ -15,6 +17,8 @@ export function ShelfCard({
   itemCount,
   onClick,
   filterSummary,
+  outOfStockCount,
+  lowStockCount,
 }: ShelfCardProps) {
   return (
     <Card className="flex items-center gap-2">
@@ -27,7 +31,7 @@ export function ShelfCard({
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="flex-1 min-w-0">
               <p className="font-medium capitalize truncate">{shelf.name}</p>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="text-sm text-foreground-muted">
                   {itemCount} {itemCount === 1 ? 'item' : 'items'}
                 </span>
@@ -36,26 +40,20 @@ export function ShelfCard({
                     · {filterSummary}
                   </span>
                 )}
+                {outOfStockCount != null && outOfStockCount > 0 && (
+                  <Badge variant="error-inverse">
+                    {outOfStockCount} out of stock
+                  </Badge>
+                )}
+                {lowStockCount != null && lowStockCount > 0 && (
+                  <Badge variant="warning-inverse">
+                    {lowStockCount} low stock
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {shelf.type !== 'system' && (
-              <Badge
-                variant="neutral-outline"
-                className="text-xs capitalize shrink-0 gap-1"
-              >
-                {shelf.type === 'filter' && (
-                  <SlidersVertical className="h-3 w-3 text-foreground-muted" />
-                )}
-                {shelf.type === 'selection' && (
-                  <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
-                )}
-                {shelf.type}
-              </Badge>
-            )}
-            <ChevronRight className="h-5 w-5 text-foreground-muted" />
-          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-foreground-muted" />
         </CardContent>
       </button>
     </Card>

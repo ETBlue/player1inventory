@@ -77,3 +77,46 @@ export const ManyItems: Story = {
     itemCount: 7,
   },
 }
+
+export const WithOutOfStock: Story = {
+  args: {
+    shelf: {
+      ...baseShelf,
+      id: 'shelf-5',
+      name: 'pantry',
+      type: 'filter',
+      order: 4,
+    },
+    itemCount: 10,
+    outOfStockCount: 3,
+  },
+}
+
+export const WithLowStock: Story = {
+  args: {
+    shelf: {
+      ...baseShelf,
+      id: 'shelf-6',
+      name: 'freezer',
+      type: 'filter',
+      order: 5,
+    },
+    itemCount: 8,
+    lowStockCount: 2,
+  },
+}
+
+export const WithBothStockStatuses: Story = {
+  args: {
+    shelf: {
+      ...baseShelf,
+      id: 'shelf-7',
+      name: 'fridge',
+      type: 'selection',
+      order: 6,
+    },
+    itemCount: 12,
+    outOfStockCount: 1,
+    lowStockCount: 4,
+  },
+}
