@@ -7,11 +7,11 @@ src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
   shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar, ViewToggle
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar
-  tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagDetailDialog, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
+  tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: VendorCard, VendorInfoForm
   recipe/         — recipe-specific: CookingControlBar, RecipeCard, RecipeInfoForm
   settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
-  shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog, AddToShelfBlock
+  shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog
   ui/             — shadcn/ui primitives (flat files, not folders)
 ```
 
@@ -73,14 +73,6 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 **`SettingsNavCard`** (`src/components/settings/SettingsNavCard/index.tsx`) — navigation link card for settings list items. Props: `icon: LucideIcon`, `label: string`, `description: string`, `to: string`. Renders a TanStack Router Link wrapping a Card with icon, label, description, and ChevronRight.
 
-## Pantry Components
-
-Components for the unified pantry view (shelf-grouped layout).
-
-**`PantryShelfCard`** (`src/components/pantry/PantryShelfCard/PantryShelfCard.tsx`) — collapsible shelf card. Props: `shelf`, `items` (pre-filtered for this shelf), `isExpanded`, `onToggle`. Shows shelf name + item count + optional low-stock/out-of-stock badges. Settings icon navigates to `/settings/shelves/$shelfId` (hidden for `type === 'system'`). Clicking card body calls `onToggle`; clicking settings icon navigates.
-
-**`PantryControlBar`** (`src/components/pantry/PantryControlBar/PantryControlBar.tsx`) — Expand All / Collapse All toolbar strip. Props: `allShelfIds`, `expandedIds`, `onExpandAll`, `onCollapseAll`. Buttons disabled when already in that state.
-
 ## Shelf Components
 
 Components for the shelf-view feature.
@@ -90,8 +82,6 @@ Components for the shelf-view feature.
 **`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`, `getOutOfStockCount?`, `getLowStockCount?`.
 
 **`AddShelfDialog`** (`src/components/shelf/AddShelfDialog/AddShelfDialog.tsx`) — dialog for creating a new shelf. Exports `AddShelfDialog` and `CreateShelfInput` type.
-
-**`AddToShelfBlock`** (`src/components/shelf/AddToShelfBlock/AddToShelfBlock.tsx`) — compact row for adding items to a shelf during search. Props: `itemName`, `onAdd`, `disabled?`, `label?`. When `disabled`, shows "Matches filter" badge; otherwise shows "Add" button.
 
 ## Dialog Layout Pattern
 
