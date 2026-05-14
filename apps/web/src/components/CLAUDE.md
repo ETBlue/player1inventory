@@ -85,9 +85,9 @@ Components for the unified pantry view (shelf-grouped layout).
 
 Components for the shelf-view feature.
 
-**`ShelfCard`** (`src/components/shelf/ShelfCard/ShelfCard.tsx`) — card row for a shelf in the shelves list. Props: `shelf`, `itemCount`, `onClick`, `filterSummary?`. Shows shelf name, item count, type badge, and chevron.
+**`ShelfCard`** (`src/components/shelf/ShelfCard/ShelfCard.tsx`) — card row for a shelf in the shelves list. Props: `shelf`, `itemCount`, `onClick`, `filterSummary?`, `outOfStockCount?`, `lowStockCount?`. Shows shelf name, item count, optional stock status badges (`error-inverse` for out of stock, `warning-inverse` for low stock), and chevron. No shelf-type badge.
 
-**`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`.
+**`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`, `getOutOfStockCount?`, `getLowStockCount?`.
 
 **`AddShelfDialog`** (`src/components/shelf/AddShelfDialog/AddShelfDialog.tsx`) — dialog for creating a new shelf. Exports `AddShelfDialog` and `CreateShelfInput` type.
 
