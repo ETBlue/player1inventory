@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useItems, useShelvesQuery } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
+import { getCurrentQuantity, isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { setPantryView } from '@/lib/viewPreference'
 import type { Item, Shelf } from '@/types'
@@ -82,14 +82,14 @@ export function ShelvesPage() {
 
   const getOutOfStockCount = (shelfId: string): number => {
     return getShelfItems(shelfId).filter(
-      (item) => getCurrentQuantity(item) === 0,
+      (item) => !isInactive(item) && getCurrentQuantity(item) === 0,
     ).length
   }
 
   const getLowStockCount = (shelfId: string): number => {
     return getShelfItems(shelfId).filter((item) => {
       const qty = getCurrentQuantity(item)
-      return qty > 0 && qty <= item.refillThreshold
+      return !isInactive(item) && qty > 0 && qty <= item.refillThreshold
     }).length
   }
 
@@ -125,12 +125,14 @@ export function ShelvesPage() {
   const getUnsortedCount = (): number => getUnsortedItems().length
 
   const getUnsortedOutOfStockCount = (): number =>
-    getUnsortedItems().filter((item) => getCurrentQuantity(item) === 0).length
+    getUnsortedItems().filter(
+      (item) => !isInactive(item) && getCurrentQuantity(item) === 0,
+    ).length
 
   const getUnsortedLowStockCount = (): number =>
     getUnsortedItems().filter((item) => {
       const qty = getCurrentQuantity(item)
-      return qty > 0 && qty <= item.refillThreshold
+      return !isInactive(item) && qty > 0 && qty <= item.refillThreshold
     }).length
 
   const isLoading = shelvesLoading || itemsLoading
