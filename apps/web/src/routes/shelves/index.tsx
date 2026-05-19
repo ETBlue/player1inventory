@@ -82,14 +82,19 @@ export function ShelvesPage() {
 
   const getOutOfStockCount = (shelfId: string): number => {
     return getShelfItems(shelfId).filter(
-      (item) => !isInactive(item) && getCurrentQuantity(item) === 0,
+      (item) =>
+        !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold,
     ).length
   }
 
   const getLowStockCount = (shelfId: string): number => {
     return getShelfItems(shelfId).filter((item) => {
       const qty = getCurrentQuantity(item)
-      return !isInactive(item) && qty > 0 && qty <= item.refillThreshold
+      return (
+        !isInactive(item) &&
+        item.refillThreshold > 0 &&
+        qty === item.refillThreshold
+      )
     }).length
   }
 
@@ -126,13 +131,18 @@ export function ShelvesPage() {
 
   const getUnsortedOutOfStockCount = (): number =>
     getUnsortedItems().filter(
-      (item) => !isInactive(item) && getCurrentQuantity(item) === 0,
+      (item) =>
+        !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold,
     ).length
 
   const getUnsortedLowStockCount = (): number =>
     getUnsortedItems().filter((item) => {
       const qty = getCurrentQuantity(item)
-      return !isInactive(item) && qty > 0 && qty <= item.refillThreshold
+      return (
+        !isInactive(item) &&
+        item.refillThreshold > 0 &&
+        qty === item.refillThreshold
+      )
     }).length
 
   const isLoading = shelvesLoading || itemsLoading

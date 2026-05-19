@@ -109,18 +109,43 @@ describe('ShelvesPage stock counts', () => {
         expect(screen.getByText('2 out of stock')).toBeInTheDocument()
       })
     })
-  })
 
-  describe('selection shelf low-stock count', () => {
-    it('user can see low-stock count that excludes inactive items', async () => {
-      // Given a selection shelf with one active low-stock item and one inactive low-stock item
+    it('user can see out-of-stock count that includes active items with qty < refillThreshold', async () => {
+      // Given a selection shelf where one item has qty=1 and threshold=3 (renders red, not yellow)
       const shelf = await createShelf({
         name: 'Test Shelf',
         type: 'selection',
         order: 0,
         itemIds: [],
       })
-      const activeItem = await makeActiveItem('Milk', 1, 2) // qty=1 <= refillThreshold=2 → low stock
+      // qty=0, threshold=3 → out of stock (qty < threshold)
+      const item1 = await makeActiveItem('Milk', 0, 3)
+      // qty=1, threshold=3 → also out of stock (qty < threshold), NOT low stock
+      const item2 = await makeActiveItem('Eggs', 1, 3)
+
+      await updateShelf(shelf.id, { itemIds: [item1.id, item2.id] })
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then both items count as out-of-stock (qty < threshold)
+      await waitFor(() => {
+        expect(screen.getByText('2 out of stock')).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('selection shelf low-stock count', () => {
+    it('user can see low-stock count that excludes inactive items', async () => {
+      // Given a selection shelf with one active low-stock item and one inactive item
+      const shelf = await createShelf({
+        name: 'Test Shelf',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      // qty=2, threshold=2 → low stock (qty === threshold > 0, renders yellow)
+      const activeItem = await makeActiveItem('Milk', 2, 2)
       const inactiveItem = await makeInactiveItem('Archived Juice', 0) // inactive (targetQuantity=0)
 
       await updateShelf(shelf.id, { itemIds: [activeItem.id, inactiveItem.id] })
@@ -142,8 +167,9 @@ describe('ShelvesPage stock counts', () => {
         order: 0,
         itemIds: [],
       })
-      const item1 = await makeActiveItem('Milk', 1, 2) // qty=1 <= refillThreshold=2
-      const item2 = await makeActiveItem('Eggs', 1, 2)
+      // qty=2, threshold=2 → low stock (qty === threshold > 0, renders yellow)
+      const item1 = await makeActiveItem('Milk', 2, 2)
+      const item2 = await makeActiveItem('Eggs', 2, 2)
 
       await updateShelf(shelf.id, { itemIds: [item1.id, item2.id] })
 
@@ -153,6 +179,31 @@ describe('ShelvesPage stock counts', () => {
       // Then the low-stock badge shows 2
       await waitFor(() => {
         expect(screen.getByText('2 low stock')).toBeInTheDocument()
+      })
+    })
+
+    it('user can see that items with qty < refillThreshold are counted as out-of-stock, not low-stock', async () => {
+      // Given a selection shelf where one item renders red (qty < threshold) and one renders yellow (qty === threshold)
+      const shelf = await createShelf({
+        name: 'Test Shelf',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      // qty=1, threshold=3 → out of stock (qty < threshold, renders red)
+      const outItem = await makeActiveItem('Milk', 1, 3)
+      // qty=3, threshold=3 → low stock (qty === threshold > 0, renders yellow)
+      const lowItem = await makeActiveItem('Eggs', 3, 3)
+
+      await updateShelf(shelf.id, { itemIds: [outItem.id, lowItem.id] })
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then out-of-stock badge = 1 (only the red item), low-stock badge = 1 (only the yellow item)
+      await waitFor(() => {
+        expect(screen.getByText('1 out of stock')).toBeInTheDocument()
+        expect(screen.getByText('1 low stock')).toBeInTheDocument()
       })
     })
   })
@@ -175,12 +226,32 @@ describe('ShelvesPage stock counts', () => {
         expect(screen.getByText('1 out of stock')).toBeInTheDocument()
       })
     })
+
+    it('user can see unsorted out-of-stock count that includes items with qty < refillThreshold', async () => {
+      // Given no shelves configured (so all items are unsorted)
+      // qty=0, threshold=3 → out of stock
+      const item1 = await makeActiveItem('Milk', 0, 3)
+      // qty=1, threshold=3 → also out of stock (qty < threshold), NOT low stock
+      const item2 = await makeActiveItem('Eggs', 1, 3)
+
+      void item1
+      void item2
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then the out-of-stock badge shows 2 (both items are red)
+      await waitFor(() => {
+        expect(screen.getByText('2 out of stock')).toBeInTheDocument()
+      })
+    })
   })
 
   describe('unsorted shelf low-stock count', () => {
     it('user can see unsorted low-stock count that excludes inactive items', async () => {
       // Given no shelves configured (so all items are unsorted)
-      const activeItem = await makeActiveItem('Milk', 1, 2) // qty=1 <= refillThreshold=2
+      // qty=2, threshold=2 → low stock (qty === threshold > 0, renders yellow)
+      const activeItem = await makeActiveItem('Milk', 2, 2)
       const inactiveItem = await makeInactiveItem('Archived Juice', 0) // inactive
 
       void activeItem
@@ -191,6 +262,26 @@ describe('ShelvesPage stock counts', () => {
 
       // Then the low-stock badge on the Unsorted shelf shows 1 (not 2)
       await waitFor(() => {
+        expect(screen.getByText('1 low stock')).toBeInTheDocument()
+      })
+    })
+
+    it('user can see that unsorted items with qty < refillThreshold count as out-of-stock, not low-stock', async () => {
+      // Given no shelves configured (so all items are unsorted)
+      // qty=1, threshold=3 → out of stock (qty < threshold, renders red)
+      const outItem = await makeActiveItem('Milk', 1, 3)
+      // qty=3, threshold=3 → low stock (qty === threshold > 0, renders yellow)
+      const lowItem = await makeActiveItem('Eggs', 3, 3)
+
+      void outItem
+      void lowItem
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then out-of-stock = 1 (red item only), low-stock = 1 (yellow item only)
+      await waitFor(() => {
+        expect(screen.getByText('1 out of stock')).toBeInTheDocument()
         expect(screen.getByText('1 low stock')).toBeInTheDocument()
       })
     })
