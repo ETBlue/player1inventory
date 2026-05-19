@@ -25,10 +25,10 @@ describe('ShelfCard stories smoke tests', () => {
     expect(screen.getByText('favorites')).toBeInTheDocument()
   })
 
-  it('EmptyShelf renders shelf name with 0 active', () => {
+  it('EmptyShelf renders shelf name with 0 of 0 active', () => {
     render(<EmptyShelf />)
     expect(screen.getByText('snacks')).toBeInTheDocument()
-    expect(screen.getByText('0 active')).toBeInTheDocument()
+    expect(screen.getByText('0 of 0 active')).toBeInTheDocument()
   })
 
   it('WithOutOfStock renders out of stock count', () => {
@@ -47,15 +47,13 @@ describe('ShelfCard stories smoke tests', () => {
     expect(screen.getByText('4 low stock')).toBeInTheDocument()
   })
 
-  it('AllActiveItems renders "N active" without inactive count', () => {
+  it('AllActiveItems renders "X of Z active" when all active', () => {
     render(<AllActiveItems />)
-    expect(screen.getByText('3 active')).toBeInTheDocument()
-    expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+    expect(screen.getByText('5 of 5 active')).toBeInTheDocument()
   })
 
-  it('WithInactiveItems renders "N active" and "M inactive"', () => {
+  it('WithInactiveItems renders "X of Z active" with total including inactive', () => {
     render(<WithInactiveItems />)
-    expect(screen.getByText('3 active')).toBeInTheDocument()
-    expect(screen.getByText('2 inactive')).toBeInTheDocument()
+    expect(screen.getByText('5 of 7 active')).toBeInTheDocument()
   })
 })

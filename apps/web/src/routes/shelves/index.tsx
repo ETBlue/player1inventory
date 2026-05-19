@@ -102,10 +102,6 @@ export function ShelvesPage() {
     return getShelfItems(shelfId).filter((item) => !isInactive(item)).length
   }
 
-  const getInactiveCount = (shelfId: string): number => {
-    return getShelfItems(shelfId).filter((item) => isInactive(item)).length
-  }
-
   const getUnsortedItems = (): Item[] => {
     if (!items || !shelves) return []
 
@@ -155,9 +151,6 @@ export function ShelvesPage() {
 
   const getUnsortedActiveCount = (): number =>
     getUnsortedItems().filter((item) => !isInactive(item)).length
-
-  const getUnsortedInactiveCount = (): number =>
-    getUnsortedItems().filter((item) => isInactive(item)).length
 
   const isLoading = shelvesLoading || itemsLoading
 
@@ -226,7 +219,6 @@ export function ShelvesPage() {
           getOutOfStockCount={getOutOfStockCount}
           getLowStockCount={getLowStockCount}
           getActiveCount={getActiveCount}
-          getInactiveCount={getInactiveCount}
         />
         {/* Unsorted shelf — always last, not draggable */}
         <ShelfCard
@@ -235,7 +227,6 @@ export function ShelvesPage() {
           outOfStockCount={getUnsortedOutOfStockCount()}
           lowStockCount={getUnsortedLowStockCount()}
           activeCount={getUnsortedActiveCount()}
-          inactiveCount={getUnsortedInactiveCount()}
           onClick={handleUnsortedClick}
         />
       </div>

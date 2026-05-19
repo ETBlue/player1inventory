@@ -66,7 +66,7 @@ describe('ShelvesPage stock counts', () => {
     })
 
   describe('selection shelf out-of-stock count', () => {
-    it('user can see out-of-stock count that excludes inactive items', async () => {
+    it('user can see out-of-stock count that excludes inactive', async () => {
       // Given a selection shelf with one active out-of-stock item and one inactive item (qty=0)
       const shelf = await createShelf({
         name: 'Test Shelf',
@@ -88,7 +88,7 @@ describe('ShelvesPage stock counts', () => {
       })
     })
 
-    it('user can see out-of-stock count that still includes active items at zero', async () => {
+    it('user can see out-of-stock count that still includes active at zero', async () => {
       // Given a selection shelf with two active out-of-stock items
       const shelf = await createShelf({
         name: 'Test Shelf',
@@ -110,7 +110,7 @@ describe('ShelvesPage stock counts', () => {
       })
     })
 
-    it('user can see out-of-stock count that includes active items with qty < refillThreshold', async () => {
+    it('user can see out-of-stock count that includes active with qty < refillThreshold', async () => {
       // Given a selection shelf where one item has qty=1 and threshold=3 (renders red, not yellow)
       const shelf = await createShelf({
         name: 'Test Shelf',
@@ -136,7 +136,7 @@ describe('ShelvesPage stock counts', () => {
   })
 
   describe('selection shelf low-stock count', () => {
-    it('user can see low-stock count that excludes inactive items', async () => {
+    it('user can see low-stock count that excludes inactive', async () => {
       // Given a selection shelf with one active low-stock item and one inactive item
       const shelf = await createShelf({
         name: 'Test Shelf',
@@ -209,7 +209,7 @@ describe('ShelvesPage stock counts', () => {
   })
 
   describe('unsorted shelf out-of-stock count', () => {
-    it('user can see unsorted out-of-stock count that excludes inactive items', async () => {
+    it('user can see unsorted out-of-stock count that excludes inactive', async () => {
       // Given no shelves configured (so all items are unsorted)
       const activeItem = await makeActiveItem('Milk', 0) // out of stock
       const inactiveItem = await makeInactiveItem('Archived Juice', 0) // inactive + qty=0
@@ -248,7 +248,7 @@ describe('ShelvesPage stock counts', () => {
   })
 
   describe('unsorted shelf low-stock count', () => {
-    it('user can see unsorted low-stock count that excludes inactive items', async () => {
+    it('user can see unsorted low-stock count that excludes inactive', async () => {
       // Given no shelves configured (so all items are unsorted)
       // qty=2, threshold=2 → low stock (qty === threshold > 0, renders yellow)
       const activeItem = await makeActiveItem('Milk', 2, 2)
@@ -288,8 +288,8 @@ describe('ShelvesPage stock counts', () => {
   })
 
   describe('selection shelf active/inactive count', () => {
-    it('user can see "N active" when all items are active', async () => {
-      // Given a selection shelf with 3 active items (targetQuantity > 0)
+    it('user can see "X of Z active" when all items are active', async () => {
+      // Given a selection shelf with 3 active (targetQuantity > 0)
       const shelf = await createShelf({
         name: 'Test Shelf',
         type: 'selection',
@@ -305,15 +305,14 @@ describe('ShelvesPage stock counts', () => {
       // When the page renders
       renderShelvesPage()
 
-      // Then "3 active" is shown and "inactive" is not shown
+      // Then "3 of 3 active" is shown
       await waitFor(() => {
-        expect(screen.getByText('3 active')).toBeInTheDocument()
-        expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+        expect(screen.getByText('3 of 3 active')).toBeInTheDocument()
       })
     })
 
-    it('user can see "N active · M inactive" when some items are inactive', async () => {
-      // Given a selection shelf with 3 active items and 2 inactive items
+    it('user can see "X of Z active" when some items are inactive', async () => {
+      // Given a selection shelf with 3 active and 2 inactive
       const shelf = await createShelf({
         name: 'Test Shelf',
         type: 'selection',
@@ -333,17 +332,16 @@ describe('ShelvesPage stock counts', () => {
       // When the page renders
       renderShelvesPage()
 
-      // Then "3 active" and "2 inactive" are both shown
+      // Then "3 of 5 active" is shown (3 active out of 5 total)
       await waitFor(() => {
-        expect(screen.getByText('3 active')).toBeInTheDocument()
-        expect(screen.getByText('2 inactive')).toBeInTheDocument()
+        expect(screen.getByText('3 of 5 active')).toBeInTheDocument()
       })
     })
   })
 
   describe('unsorted shelf active/inactive count', () => {
-    it('user can see "N active" for unsorted when all items are active', async () => {
-      // Given no shelves configured (all items unsorted), 2 active items
+    it('user can see "X of Z active" for unsorted when all items are active', async () => {
+      // Given no shelves configured (all items unsorted), 2 active
       const item1 = await makeActiveItem('Milk', 2)
       const item2 = await makeActiveItem('Eggs', 1)
 
@@ -353,14 +351,13 @@ describe('ShelvesPage stock counts', () => {
       // When the page renders
       renderShelvesPage()
 
-      // Then "2 active" is shown and "inactive" is not shown on the Unsorted shelf
+      // Then "2 of 2 active" is shown on the Unsorted shelf
       await waitFor(() => {
-        expect(screen.getByText('2 active')).toBeInTheDocument()
-        expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+        expect(screen.getByText('2 of 2 active')).toBeInTheDocument()
       })
     })
 
-    it('user can see "N active · M inactive" for unsorted when some items are inactive', async () => {
+    it('user can see "X of Z active" for unsorted when some items are inactive', async () => {
       // Given no shelves configured (all items unsorted), 2 active + 1 inactive
       const item1 = await makeActiveItem('Milk', 2)
       const item2 = await makeActiveItem('Eggs', 1)
@@ -373,10 +370,9 @@ describe('ShelvesPage stock counts', () => {
       // When the page renders
       renderShelvesPage()
 
-      // Then "2 active" and "1 inactive" are shown on the Unsorted shelf
+      // Then "2 of 3 active" is shown on the Unsorted shelf (2 active out of 3 total)
       await waitFor(() => {
-        expect(screen.getByText('2 active')).toBeInTheDocument()
-        expect(screen.getByText('1 inactive')).toBeInTheDocument()
+        expect(screen.getByText('2 of 3 active')).toBeInTheDocument()
       })
     })
   })

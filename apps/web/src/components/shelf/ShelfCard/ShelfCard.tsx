@@ -11,7 +11,6 @@ interface ShelfCardProps {
   outOfStockCount?: number
   lowStockCount?: number
   activeCount?: number
-  inactiveCount?: number
 }
 
 export function ShelfCard({
@@ -22,12 +21,9 @@ export function ShelfCard({
   outOfStockCount,
   lowStockCount,
   activeCount,
-  inactiveCount,
 }: ShelfCardProps) {
-  // Derive display counts: prefer activeCount/inactiveCount when provided,
-  // otherwise fall back to itemCount as active with 0 inactive
+  // Derive display counts: prefer activeCount when provided, otherwise fall back to itemCount
   const displayActiveCount = activeCount ?? itemCount
-  const displayInactiveCount = inactiveCount ?? 0
 
   return (
     <Card className="flex items-center gap-2">
@@ -42,15 +38,7 @@ export function ShelfCard({
               <p className="font-medium capitalize truncate">{shelf.name}</p>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="text-sm text-foreground-muted">
-                  <span>{displayActiveCount} active</span>
-                  {displayInactiveCount > 0 && (
-                    <>
-                      <span> · </span>
-                      <span className="text-muted-foreground">
-                        {displayInactiveCount} inactive
-                      </span>
-                    </>
-                  )}
+                  {displayActiveCount} of {itemCount} active
                 </span>
                 {shelf.type === 'filter' && filterSummary && (
                   <span className="text-sm text-foreground-muted truncate">

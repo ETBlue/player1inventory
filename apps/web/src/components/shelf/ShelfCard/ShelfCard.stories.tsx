@@ -130,9 +130,8 @@ export const AllActiveItems: Story = {
       type: 'selection',
       order: 7,
     },
-    itemCount: 3,
-    activeCount: 3,
-    inactiveCount: 0,
+    itemCount: 5,
+    activeCount: 5,
   },
 }
 
@@ -145,8 +144,7 @@ export const WithInactiveItems: Story = {
       type: 'selection',
       order: 8,
     },
-    itemCount: 5,
-    activeCount: 3,
-    inactiveCount: 2,
+    itemCount: 7,
+    activeCount: 5,
   },
 }
