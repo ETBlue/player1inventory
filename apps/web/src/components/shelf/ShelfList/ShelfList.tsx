@@ -8,6 +8,8 @@ interface ShelfListProps {
   getFilterSummary?: (shelf: Shelf) => string | undefined
   getOutOfStockCount?: (shelfId: string) => number
   getLowStockCount?: (shelfId: string) => number
+  getActiveCount?: (shelfId: string) => number
+  getInactiveCount?: (shelfId: string) => number
 }
 
 export function ShelfList({
@@ -17,6 +19,8 @@ export function ShelfList({
   getFilterSummary,
   getOutOfStockCount,
   getLowStockCount,
+  getActiveCount,
+  getInactiveCount,
 }: ShelfListProps) {
   if (shelves.length === 0) return null
 
@@ -35,6 +39,12 @@ export function ShelfList({
               : {})}
             {...(getLowStockCount !== undefined
               ? { lowStockCount: getLowStockCount(shelf.id) }
+              : {})}
+            {...(getActiveCount !== undefined
+              ? { activeCount: getActiveCount(shelf.id) }
+              : {})}
+            {...(getInactiveCount !== undefined
+              ? { inactiveCount: getInactiveCount(shelf.id) }
               : {})}
             onClick={() => onShelfClick(shelf.id)}
           />

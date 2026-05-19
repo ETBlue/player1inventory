@@ -10,6 +10,8 @@ const {
   WithOutOfStock,
   WithLowStock,
   WithBothStockStatuses,
+  AllActiveItems,
+  WithInactiveItems,
 } = composeStories(stories)
 
 describe('ShelfCard stories smoke tests', () => {
@@ -23,10 +25,10 @@ describe('ShelfCard stories smoke tests', () => {
     expect(screen.getByText('favorites')).toBeInTheDocument()
   })
 
-  it('EmptyShelf renders shelf name with 0 items', () => {
+  it('EmptyShelf renders shelf name with 0 active', () => {
     render(<EmptyShelf />)
     expect(screen.getByText('snacks')).toBeInTheDocument()
-    expect(screen.getByText('0 items')).toBeInTheDocument()
+    expect(screen.getByText('0 active')).toBeInTheDocument()
   })
 
   it('WithOutOfStock renders out of stock count', () => {
@@ -43,5 +45,17 @@ describe('ShelfCard stories smoke tests', () => {
     render(<WithBothStockStatuses />)
     expect(screen.getByText('1 out of stock')).toBeInTheDocument()
     expect(screen.getByText('4 low stock')).toBeInTheDocument()
+  })
+
+  it('AllActiveItems renders "N active" without inactive count', () => {
+    render(<AllActiveItems />)
+    expect(screen.getByText('3 active')).toBeInTheDocument()
+    expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+  })
+
+  it('WithInactiveItems renders "N active" and "M inactive"', () => {
+    render(<WithInactiveItems />)
+    expect(screen.getByText('3 active')).toBeInTheDocument()
+    expect(screen.getByText('2 inactive')).toBeInTheDocument()
   })
 })

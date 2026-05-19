@@ -286,4 +286,98 @@ describe('ShelvesPage stock counts', () => {
       })
     })
   })
+
+  describe('selection shelf active/inactive count', () => {
+    it('user can see "N active" when all items are active', async () => {
+      // Given a selection shelf with 3 active items (targetQuantity > 0)
+      const shelf = await createShelf({
+        name: 'Test Shelf',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      const item1 = await makeActiveItem('Milk', 2)
+      const item2 = await makeActiveItem('Eggs', 1)
+      const item3 = await makeActiveItem('Bread', 3)
+
+      await updateShelf(shelf.id, { itemIds: [item1.id, item2.id, item3.id] })
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then "3 active" is shown and "inactive" is not shown
+      await waitFor(() => {
+        expect(screen.getByText('3 active')).toBeInTheDocument()
+        expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+      })
+    })
+
+    it('user can see "N active · M inactive" when some items are inactive', async () => {
+      // Given a selection shelf with 3 active items and 2 inactive items
+      const shelf = await createShelf({
+        name: 'Test Shelf',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      const item1 = await makeActiveItem('Milk', 2)
+      const item2 = await makeActiveItem('Eggs', 1)
+      const item3 = await makeActiveItem('Bread', 3)
+      const item4 = await makeInactiveItem('Archived Juice', 0)
+      const item5 = await makeInactiveItem('Old Cereal', 1)
+
+      await updateShelf(shelf.id, {
+        itemIds: [item1.id, item2.id, item3.id, item4.id, item5.id],
+      })
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then "3 active" and "2 inactive" are both shown
+      await waitFor(() => {
+        expect(screen.getByText('3 active')).toBeInTheDocument()
+        expect(screen.getByText('2 inactive')).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('unsorted shelf active/inactive count', () => {
+    it('user can see "N active" for unsorted when all items are active', async () => {
+      // Given no shelves configured (all items unsorted), 2 active items
+      const item1 = await makeActiveItem('Milk', 2)
+      const item2 = await makeActiveItem('Eggs', 1)
+
+      void item1
+      void item2
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then "2 active" is shown and "inactive" is not shown on the Unsorted shelf
+      await waitFor(() => {
+        expect(screen.getByText('2 active')).toBeInTheDocument()
+        expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+      })
+    })
+
+    it('user can see "N active · M inactive" for unsorted when some items are inactive', async () => {
+      // Given no shelves configured (all items unsorted), 2 active + 1 inactive
+      const item1 = await makeActiveItem('Milk', 2)
+      const item2 = await makeActiveItem('Eggs', 1)
+      const item3 = await makeInactiveItem('Archived Juice', 0)
+
+      void item1
+      void item2
+      void item3
+
+      // When the page renders
+      renderShelvesPage()
+
+      // Then "2 active" and "1 inactive" are shown on the Unsorted shelf
+      await waitFor(() => {
+        expect(screen.getByText('2 active')).toBeInTheDocument()
+        expect(screen.getByText('1 inactive')).toBeInTheDocument()
+      })
+    })
+  })
 })
