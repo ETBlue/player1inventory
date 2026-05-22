@@ -73,21 +73,15 @@ Individual components override this through Tailwind utilities (`leading-tight`,
 | 600 | `font-semibold` | Sub-headings, card titles |
 | 700 | `font-bold` | Page headings, dialog titles |
 
-## Pairing size with weight
+## Uppercase labels
 
-Each heading size pairs with a canonical weight. These combinations are consistently used across the app:
+Form section headers use a distinct small-caps treatment:
 
-| Size | Weight | Example context |
-|------|--------|----------------|
-| `text-3xl` | `font-bold` | Page titles |
-| `text-2xl` | `font-bold` | Section titles |
-| `text-xl` | `font-semibold` | Sub-headings, dialog titles |
-| `text-lg` | `font-medium` | Card primaries, list row names |
-| `text-base` | `font-normal` | Body copy, form labels |
-| `text-sm` | `font-normal` | Metadata, helper text |
-| `text-xs` | `font-normal` | Timestamps, fine print |
+```tsx
+<h2 className="text-sm font-medium uppercase">Quantities</h2>
+```
 
-Mixing size with a heavier weight than listed above creates visual noise. Lighter weights than listed risk insufficient contrast for the size.
+This pattern is intentional — the reduced size, medium weight, and uppercase transform together signal a non-interactive group header that sits above form fields without competing with field labels.
 
 ## Name display convention
 
