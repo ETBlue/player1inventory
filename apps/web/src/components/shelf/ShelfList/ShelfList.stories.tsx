@@ -75,5 +75,28 @@ export const WithStockStatus: Story = {
     getItemCount: () => 10,
     getOutOfStockCount: (id: string) => (id === 'shelf-1' ? 2 : 0),
     getLowStockCount: (id: string) => (id === 'shelf-2' ? 3 : 0),
+    getActiveCount: () => 8,
+  },
+}
+
+export const WithActiveCounts: Story = {
+  args: {
+    shelves: mockShelves,
+    getItemCount: (id: string) => {
+      const counts: Record<string, number> = {
+        'shelf-1': 5,
+        'shelf-2': 3,
+        'shelf-3': 4,
+      }
+      return counts[id] ?? 0
+    },
+    getActiveCount: (id: string) => {
+      const counts: Record<string, number> = {
+        'shelf-1': 5,
+        'shelf-2': 3,
+        'shelf-3': 2,
+      }
+      return counts[id] ?? 0
+    },
   },
 }

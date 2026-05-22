@@ -120,3 +120,31 @@ export const WithBothStockStatuses: Story = {
     lowStockCount: 4,
   },
 }
+
+export const AllActiveItems: Story = {
+  args: {
+    shelf: {
+      ...baseShelf,
+      id: 'shelf-8',
+      name: 'pantry staples',
+      type: 'selection',
+      order: 7,
+    },
+    itemCount: 5,
+    activeCount: 5,
+  },
+}
+
+export const WithInactiveItems: Story = {
+  args: {
+    shelf: {
+      ...baseShelf,
+      id: 'shelf-9',
+      name: 'archived items',
+      type: 'selection',
+      order: 8,
+    },
+    itemCount: 7,
+    activeCount: 5,
+  },
+}
