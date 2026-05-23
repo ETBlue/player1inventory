@@ -70,7 +70,7 @@ function NewItemPage() {
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="text-md font-regular truncate">New Item</h1>
+        <h1 className="text-base font-regular truncate">New Item</h1>
       </header>
 
       {/* Main Content */}
