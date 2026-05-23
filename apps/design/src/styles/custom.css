@@ -22,45 +22,58 @@
 /* ── App name — Rosario only, consistent with GW2 Inventory sister app ── */
 .site-title {
   font-family: var(--font-rosario), sans-serif;
+  color: var(--foreground-default);
 }
 
 /*
-  Map app CSS variables → Starlight CSS variables (shared, both modes).
-  Dark mode token VALUES come from theme.css via [data-theme='dark'] selector.
-  Only --sl-color-white and --sl-color-black need a dark override here
-  because they semantically flip between modes.
+  Map app CSS variables → Starlight CSS variables.
+
+  Cascade strategy:
+  - Starlight's props.css uses :root (dark mode) and :root[data-theme='light'] (light override, specificity 0,2,0,0).
+  - Plain :root overrides lose to :root[data-theme='light'] in light mode.
+  - Fix: use :root[data-theme] — matches any data-theme value (light or dark) at specificity 0,2,0,0.
+    Our CSS loads after Starlight's, so same-specificity cascade order gives us the win.
+  - App token values auto-resolve per mode via theme.css's [data-theme='dark'] overrides.
 */
-:root {
+:root[data-theme] {
   /* Accent colors */
-  --sl-color-accent-low:  var(--importance-primary-accessory);
+  --sl-color-accent-low:  var(--importance-secondary-background);
   --sl-color-accent:      var(--importance-primary-background);
   --sl-color-accent-high: var(--importance-primary-foreground);
-
-  /* Text extremes — light mode defaults */
-  --sl-color-white: var(--foreground-colorless-inverse);
-  --sl-color-black: var(--foreground-emphasized);
+  --sl-color-text-accent: var(--foreground-emphasized);
+  --sl-color-text-invert: var(--foreground-colorless-inverse);
+  --sl-color-white:       var(--foreground-default);
 
   /* Gray scale */
-  --sl-color-gray-1: var(--foreground-emphasized);
-  --sl-color-gray-2: var(--foreground-default);
-  --sl-color-gray-3: var(--foreground-muted);
-  --sl-color-gray-4: var(--accessory-emphasized);
-  --sl-color-gray-5: var(--accessory-default);
-  --sl-color-gray-6: var(--background-elevated);
-  --sl-color-gray-7: var(--background-surface);
+  --sl-color-gray-7: var(--accessory-muted);
+  --sl-color-gray-6: var(--accessory-default);
+  --sl-color-gray-5: var(--accessory-emphasized);
+  --sl-color-gray-4: var(--importance-neutral-accessory);
+  --sl-color-gray-3: var(--importance-neutral-background);
+  --sl-color-gray-2: var(--importance-neutral-foreground);
+  --sl-color-gray-1: var(--foreground-muted);
 
   /* Background */
   --sl-color-bg:             var(--background-base);
-  --sl-color-bg-nav:         var(--background-elevated);
-  --sl-color-bg-sidebar:     var(--background-surface);
-  --sl-color-bg-inline-code: var(--background-elevated);
+  --sl-color-bg-nav:         var(--background-base);
   --sl-color-bg-accent:      var(--importance-primary-accessory);
+  --sl-color-bg-sidebar:     var(--background-base);
 
   /* --sl-font-mono left at Starlight default */
+
+}
+main {
+  background-color: var(--background-elevated);
 }
 
-/* White/black flip for dark mode — everything else resolves correctly via theme.css */
-[data-theme='dark'] {
-  --sl-color-white: var(--foreground-emphasized);
-  --sl-color-black: var(--foreground-colorless-inverse);
+aside {
+  background-color: var(--background-surface);
+}
+
+pre {
+  --code-background: var(--background-base);
+}
+
+code {
+  --sl-color-bg-inline-code: var(--background-base);
 }
