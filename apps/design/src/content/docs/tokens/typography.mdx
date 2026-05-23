@@ -40,17 +40,27 @@ The app uses Tailwind's default type scale. No custom size tokens are defined �
 
 ## When to use each step
 
-| Step | Size | Typical use |
-|------|------|-------------|
-| `text-3xl` | 1.875rem | Page headings (h1) |
-| `text-2xl` | 1.5rem | Section headings (h2) |
-| `text-xl` | 1.25rem | Sub-headings, dialog titles (h3) |
-| `text-lg` | 1.125rem | Item card names, list row primaries |
-| `text-base` | 1rem | Body text, descriptions, form labels |
-| `text-sm` | 0.875rem | Secondary metadata, helper text, badge labels |
-| `text-xs` | 0.75rem | Timestamps, fine print, tooltip text |
+### Heading scale
 
-The scale stops at `text-3xl` — steps above that (`text-4xl` and larger) are not used in the app.
+Use these classes for semantic heading elements (`h1`, `h2`, `h3`). These are prescriptive — follow them when adding new headings:
+
+| Level | Recommended class | Example context |
+|-------|------------------|----------------|
+| `h1` | `text-2xl font-bold` | Page title, welcome screen |
+| `h2` | `text-xl font-semibold` | Section heading, dialog title |
+| `h3` | `text-sm font-medium uppercase` | Form section header, grouped field set |
+
+### Content scale
+
+These reflect actual usage across the app for non-heading UI text:
+
+| Step | Use |
+|------|-----|
+| `text-base` | Body text, form field values |
+| `text-sm` | Labels, metadata, badge text, helper text, button labels |
+| `text-xs` | Timestamps, fine print, tooltip text |
+
+Steps above `text-2xl` and below `text-xs` are not used in the app.
 
 ## Line height
 
