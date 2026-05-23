@@ -37,3 +37,10 @@ export const FilterType: Story = {
 export const SelectionType: Story = {
   name: 'Selection type',
 }
+
+export const Pending: Story = {
+  name: 'Pending (submitting)',
+  args: {
+    isPending: true,
+  },
+}

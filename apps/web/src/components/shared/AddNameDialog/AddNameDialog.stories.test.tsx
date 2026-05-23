@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './AddNameDialog.stories'
 
-const { AddTag, AddVendor, AddRecipe, WithError } = composeStories(stories)
+const { AddTag, AddVendor, AddRecipe, WithError, WithPending } =
+  composeStories(stories)
 
 describe('AddNameDialog stories smoke tests', () => {
   it('AddTag renders without error', () => {
@@ -28,5 +29,10 @@ describe('AddNameDialog stories smoke tests', () => {
   it('WithError renders validation message when name is empty', () => {
     render(<WithError />)
     expect(screen.getByText('This field is required.')).toBeInTheDocument()
+  })
+
+  it('WithPending renders disabled submit button', () => {
+    render(<WithPending />)
+    expect(screen.getByRole('button', { name: 'Add Tag' })).toBeDisabled()
   })
 })

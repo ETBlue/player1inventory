@@ -65,6 +65,7 @@ interface ItemFormProps {
   onDirtyChange?: (isDirty: boolean) => void
   savedAt?: number
   submitLabel?: string
+  isPending?: boolean
 }
 
 export function ItemForm({
@@ -74,6 +75,7 @@ export function ItemForm({
   onDirtyChange,
   savedAt,
   submitLabel = 'Save',
+  isPending = false,
 }: ItemFormProps) {
   const merged = { ...DEFAULT_VALUES, ...initialValues }
 
@@ -223,7 +225,7 @@ export function ItemForm({
     consumeAmountError
   )
   const isSubmitDisabled =
-    hasFieldError || (onDirtyChange !== undefined && !isDirty)
+    hasFieldError || (onDirtyChange !== undefined && !isDirty) || !!isPending
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -659,7 +661,12 @@ export function ItemForm({
       )}
 
       <div className="space-y-2">
-        <Button type="submit" disabled={isSubmitDisabled} className="w-full">
+        <Button
+          type="submit"
+          disabled={isSubmitDisabled}
+          isLoading={!!isPending}
+          className="w-full"
+        >
           {submitLabel}
         </Button>
       </div>

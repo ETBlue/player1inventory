@@ -17,6 +17,7 @@ interface AddNameDialogProps {
   submitLabel: string
   name: string
   placeholder?: string
+  isPending?: boolean
   onNameChange: (name: string) => void
   onAdd: () => void
   onClose: () => void
@@ -28,6 +29,7 @@ export function AddNameDialog({
   submitLabel,
   name,
   placeholder,
+  isPending,
   onNameChange,
   onAdd,
   onClose,
@@ -51,7 +53,9 @@ export function AddNameDialog({
               onChange={(e) => onNameChange(e.target.value)}
               placeholder={placeholder}
               className="capitalize"
-              onKeyDown={(e) => e.key === 'Enter' && !nameError && onAdd()}
+              onKeyDown={(e) =>
+                e.key === 'Enter' && !nameError && !isPending && onAdd()
+              }
               error={nameError}
             />
           </div>
@@ -60,7 +64,11 @@ export function AddNameDialog({
           <Button variant="neutral-outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={onAdd} disabled={!!nameError}>
+          <Button
+            onClick={onAdd}
+            disabled={!!nameError || !!isPending}
+            isLoading={!!isPending}
+          >
             {submitLabel}
           </Button>
         </DialogFooter>

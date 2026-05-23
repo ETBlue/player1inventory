@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -79,6 +80,7 @@ export function DeleteButton({
               onClick={handleConfirm}
               disabled={isDeleting}
             >
+              {isDeleting && <Loader2 className="animate-spin" />}
               {isDeleting
                 ? t('common.deleting')
                 : (confirmLabel ?? t('common.delete'))}

@@ -35,7 +35,7 @@ describe('TagInfoForm stories smoke tests', () => {
 
   it('Saving renders disabled submit button', () => {
     render(<Saving />)
-    expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 
   it('TypeReadonly renders disabled type select', () => {

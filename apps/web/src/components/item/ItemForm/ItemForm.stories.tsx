@@ -93,3 +93,11 @@ export const CreateModeEmptyError: Story = {
     },
   },
 }
+
+export const Saving: Story = {
+  name: 'Saving (isPending)',
+  args: {
+    initialValues: editValues,
+    isPending: true,
+  },
+}

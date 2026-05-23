@@ -198,7 +198,7 @@ export function useCreateItem() {
     },
   })
 
-  const [cloudCreate] = useCreateItemMutation({
+  const [cloudCreate, { loading: cloudCreateLoading }] = useCreateItemMutation({
     refetchQueries: [{ query: GetItemsDocument }],
   })
 
@@ -218,7 +218,7 @@ export function useCreateItem() {
         cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
           (r) => r.data?.createItem,
         ),
-      isPending: false,
+      isPending: cloudCreateLoading,
     }
   }
 
@@ -240,7 +240,7 @@ export function useUpdateItem() {
     },
   })
 
-  const [cloudUpdate] = useUpdateItemMutation({
+  const [cloudUpdate, { loading: cloudUpdateLoading }] = useUpdateItemMutation({
     refetchQueries: [{ query: GetItemsDocument }],
   })
 
@@ -265,7 +265,7 @@ export function useUpdateItem() {
         cloudUpdate({
           variables: { id, input: toUpdateItemInput(updates) },
         }).then((r) => r.data?.updateItem),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 
@@ -285,7 +285,7 @@ export function useDeleteItem() {
     },
   })
 
-  const [cloudDelete] = useDeleteItemMutation()
+  const [cloudDelete, { loading: cloudDeleteLoading }] = useDeleteItemMutation()
 
   if (mode === 'cloud') {
     const buildRefetchQueries = (vendorIds?: string[], tagIds?: string[]) => [
@@ -332,7 +332,7 @@ export function useDeleteItem() {
           variables: { id },
           refetchQueries: buildRefetchQueries(vendorIds, tagIds),
         }).then((r) => r.data?.deleteItem),
-      isPending: false,
+      isPending: cloudDeleteLoading,
     }
   }
 

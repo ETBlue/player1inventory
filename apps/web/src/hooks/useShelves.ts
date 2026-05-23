@@ -112,9 +112,10 @@ export function useCreateShelfMutation() {
     },
   })
 
-  const [cloudCreate] = useCreateShelfMutationGql({
-    refetchQueries: [{ query: GetShelvesDocument }],
-  })
+  const [cloudCreate, { loading: cloudCreateLoading }] =
+    useCreateShelfMutationGql({
+      refetchQueries: [{ query: GetShelvesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -148,7 +149,7 @@ export function useCreateShelfMutation() {
             ...(data.itemIds ? { itemIds: data.itemIds } : {}),
           },
         }).then((r) => r.data?.createShelf),
-      isPending: false,
+      isPending: cloudCreateLoading,
     }
   }
 
@@ -173,9 +174,10 @@ export function useUpdateShelfMutation() {
     },
   })
 
-  const [cloudUpdate] = useUpdateShelfMutationGql({
-    refetchQueries: [{ query: GetShelvesDocument }],
-  })
+  const [cloudUpdate, { loading: cloudUpdateLoading }] =
+    useUpdateShelfMutationGql({
+      refetchQueries: [{ query: GetShelvesDocument }],
+    })
 
   if (mode === 'cloud') {
     const toVars = (
@@ -227,7 +229,7 @@ export function useUpdateShelfMutation() {
         cloudUpdate({ variables: toVars(id, data) }).then(
           (r) => r.data?.updateShelf,
         ),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 
@@ -245,9 +247,10 @@ export function useDeleteShelfMutation() {
     },
   })
 
-  const [cloudDelete] = useDeleteShelfMutationGql({
-    refetchQueries: [{ query: GetShelvesDocument }],
-  })
+  const [cloudDelete, { loading: cloudDeleteLoading }] =
+    useDeleteShelfMutationGql({
+      refetchQueries: [{ query: GetShelvesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -263,7 +266,7 @@ export function useDeleteShelfMutation() {
         ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteShelf),
-      isPending: false,
+      isPending: cloudDeleteLoading,
     }
   }
 
@@ -281,9 +284,10 @@ export function useReorderShelvesMutation() {
     },
   })
 
-  const [cloudReorder] = useReorderShelvesMutationGql({
-    refetchQueries: [{ query: GetShelvesDocument }],
-  })
+  const [cloudReorder, { loading: cloudReorderLoading }] =
+    useReorderShelvesMutationGql({
+      refetchQueries: [{ query: GetShelvesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -301,7 +305,7 @@ export function useReorderShelvesMutation() {
         cloudReorder({ variables: { orderedIds } }).then(
           (r) => r.data?.reorderShelves,
         ),
-      isPending: false,
+      isPending: cloudReorderLoading,
     }
   }
 
@@ -325,9 +329,10 @@ export function useReorderShelfItemsMutation() {
     },
   })
 
-  const [cloudReorderItems] = useReorderShelfItemsMutationGql({
-    refetchQueries: [{ query: GetShelvesDocument }],
-  })
+  const [cloudReorderItems, { loading: cloudReorderItemsLoading }] =
+    useReorderShelfItemsMutationGql({
+      refetchQueries: [{ query: GetShelvesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -354,7 +359,7 @@ export function useReorderShelfItemsMutation() {
         cloudReorderItems({ variables: { shelfId, orderedItemIds } }).then(
           (r) => r.data?.reorderShelfItems,
         ),
-      isPending: false,
+      isPending: cloudReorderItemsLoading,
     }
   }
 

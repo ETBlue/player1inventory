@@ -106,6 +106,7 @@ function RecipesTab() {
         submitLabel={t('items.recipes.newRecipe.submitLabel')}
         name={newRecipeName}
         placeholder={t('items.recipes.newRecipe.placeholder')}
+        isPending={createRecipe.isPending}
         onNameChange={setNewRecipeName}
         onAdd={handleAddRecipe}
         onClose={() => {

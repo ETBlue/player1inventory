@@ -9,6 +9,7 @@ const {
   EditMeasurementMode,
   EditValidationError,
   CreateModeEmptyError,
+  Saving,
 } = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
@@ -35,5 +36,10 @@ describe('ItemForm stories smoke tests', () => {
   it('CreateModeEmptyError shows name validation error', () => {
     render(<CreateModeEmptyError />)
     expect(screen.getByText('Name is required.')).toBeInTheDocument()
+  })
+
+  it('Saving renders disabled submit button', () => {
+    render(<Saving />)
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 })
