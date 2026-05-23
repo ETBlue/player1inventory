@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './AddShelfDialog.stories'
 
-const { FilterType, SelectionType } = composeStories(stories)
+const { FilterType, SelectionType, Pending } = composeStories(stories)
 
 describe('AddShelfDialog stories smoke tests', () => {
   it('FilterType renders dialog title', () => {
@@ -18,5 +18,10 @@ describe('AddShelfDialog stories smoke tests', () => {
     expect(
       screen.getByRole('heading', { name: /create shelf/i }),
     ).toBeInTheDocument()
+  })
+
+  it('Pending renders disabled submit button', () => {
+    render(<Pending />)
+    expect(screen.getByRole('button', { name: /create shelf/i })).toBeDisabled()
   })
 })
