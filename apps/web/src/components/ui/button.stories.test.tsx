@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './button.stories'
 
-const { Default, Variants, Sizes, Disabled } = composeStories(stories)
+const { Default, Variants, Sizes, Disabled, Loading } = composeStories(stories)
 
 describe('Button stories smoke tests', () => {
   it('Default renders without error', () => {
@@ -24,5 +24,10 @@ describe('Button stories smoke tests', () => {
   it('Disabled renders without error', () => {
     render(<Disabled />)
     expect(screen.getByRole('button', { name: 'Disabled' })).toBeInTheDocument()
+  })
+
+  it('Loading renders disabled button with spinner', () => {
+    render(<Loading />)
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 })

@@ -68,3 +68,18 @@ export const AddRecipe: Story = {
     />
   ),
 }
+
+export const WithPending: Story = {
+  render: () => (
+    <AddNameDialog
+      open={true}
+      title="Add Tag"
+      submitLabel="Add Tag"
+      name="Dairy"
+      isPending={true}
+      onNameChange={() => {}}
+      onAdd={() => {}}
+      onClose={() => {}}
+    />
+  ),
+}
