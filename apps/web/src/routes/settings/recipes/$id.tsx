@@ -102,7 +102,7 @@ function RecipeDetailLayoutInner() {
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
           <CookingPot className="h-4 w-4 text-foreground-muted" />
-          <h1 className="text-md font-regular truncate flex-1 capitalize">
+          <h1 className="text-base font-regular truncate flex-1 capitalize">
             {recipe.name}
           </h1>
 

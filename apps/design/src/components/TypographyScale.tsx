@@ -53,7 +53,7 @@ const SCALE_ENTRIES = [
 
 export function TypographyScale() {
   return (
-    <div style={{ fontFamily: "'Rosario', sans-serif" }}>
+    <div>
       {SCALE_ENTRIES.map((entry) => (
         <div
           key={entry.label}

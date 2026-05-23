@@ -324,7 +324,7 @@ export function ShelfDetailPage() {
             <ArrowLeft />
             <span className="hidden lg:inline">Go back</span>
           </Button>
-          <h1 className="text-md font-regular truncate flex-1 capitalize">
+          <h1 className="text-base font-regular truncate flex-1 capitalize">
             {shelfName}
           </h1>
           {isUnsorted && (

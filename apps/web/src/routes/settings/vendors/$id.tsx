@@ -102,7 +102,7 @@ function VendorDetailLayoutInner() {
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
           <Store className="h-4 w-4 text-foreground-muted" />
-          <h1 className="text-md font-regular truncate flex-1">
+          <h1 className="text-base font-regular truncate flex-1">
             {vendor.name}
           </h1>
 

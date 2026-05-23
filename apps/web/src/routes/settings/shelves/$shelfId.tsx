@@ -112,7 +112,7 @@ function ShelfDetailLayoutInner() {
             <ArrowLeft />
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
-          <h1 className="text-md font-regular truncate flex-1 capitalize">
+          <h1 className="text-base font-regular truncate flex-1 capitalize">
             {shelf.name}
           </h1>
           {shelf.type !== 'system' && (

@@ -12,7 +12,7 @@ Player 1 Inventory uses the **system sans-serif** stack for all UI text. The sys
 
 | Role | Typeface | Token | How to use |
 |------|----------|-------|------------|
-| App name only | Rosario | `--font-rosario` / `font-rosario` Tailwind utility | Apply only to the app name wordmark |
+| App name only | Rosario (variable, 300–700) | `--font-rosario` / `font-rosario` Tailwind utility | Apply only to the app name wordmark |
 | All UI text | System sans-serif | (none — browser default) | No class needed; `body` inherits automatically |
 
 Rosario is loaded via a `<link>` in `apps/web/index.html` and mapped as a Tailwind utility via `@theme`:
@@ -38,6 +38,30 @@ The app uses Tailwind's default type scale. No custom size tokens are defined �
 
 <TypographyScale client:load />
 
+## When to use each step
+
+### Heading scale
+
+Use these classes for semantic heading elements (`h1`, `h2`, `h3`). These are prescriptive — follow them when adding new headings:
+
+| Level | Recommended class | Example context |
+|-------|------------------|----------------|
+| `h1` | `text-2xl font-bold` | Page title, welcome screen |
+| `h2` | `text-xl font-semibold` | Section heading, dialog title |
+| `h3` | `text-sm font-medium uppercase` | Form section header, grouped field set |
+
+### Content scale
+
+These reflect actual usage across the app for non-heading UI text:
+
+| Step | Use |
+|------|-----|
+| `text-base` | Body text, form field values |
+| `text-sm` | Labels, metadata, badge text, helper text, button labels |
+| `text-xs` | Timestamps, fine print, tooltip text |
+
+Steps above `text-2xl` and below `text-xs` are not used in the app.
+
 ## Line height
 
 The app's `body` rule sets a base line height:
@@ -48,16 +72,26 @@ body {
 }
 ```
 
-Individual components override this through Tailwind utilities (`leading-tight`, `leading-normal`, `leading-relaxed`) as needed.
+Individual components override this with `leading-tight` as needed (the only leading utility currently in use).
 
 ## Weight conventions
 
 | Weight | Tailwind class | Usage |
 |--------|---------------|-------|
-| 400 | `font-normal` | Body copy, descriptions, metadata |
-| 500 | `font-medium` | List item primaries, row labels |
-| 600 | `font-semibold` | Sub-headings, card titles |
-| 700 | `font-bold` | Page headings, dialog titles |
+| 400 | `font-normal` | Helper text, metadata, supplementary labels |
+| 500 | `font-medium` | Card titles, dropdown items, mid-emphasis UI (buttons, settings labels) |
+| 600 | `font-semibold` | Dialog titles, alert titles, small high-contrast labels |
+| 700 | `font-bold` | Rarely used — reserve for intentionally heavy emphasis |
+
+## Uppercase labels
+
+Form section headers use a distinct small-caps treatment:
+
+```tsx
+<h2 className="text-sm font-medium uppercase">Quantities</h2>
+```
+
+This pattern is intentional — the reduced size, medium weight, and uppercase transform together signal a non-interactive group header that sits above form fields without competing with field labels.
 
 ## Name display convention
 
