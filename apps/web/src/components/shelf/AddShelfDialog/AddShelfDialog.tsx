@@ -29,12 +29,14 @@ interface AddShelfDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSubmit: (data: CreateShelfInput) => void
+  isPending?: boolean
 }
 
 export function AddShelfDialog({
   open,
   onOpenChange,
   onSubmit,
+  isPending,
 }: AddShelfDialogProps) {
   const [name, setName] = useState('')
   const [type, setType] = useState<'filter' | 'selection'>('filter')
@@ -216,7 +218,11 @@ export function AddShelfDialog({
           <Button variant="neutral-outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!!nameError}>
+          <Button
+            onClick={handleSubmit}
+            disabled={!!nameError || !!isPending}
+            isLoading={!!isPending}
+          >
             Create Shelf
           </Button>
         </DialogFooter>

@@ -117,6 +117,7 @@ function ShelfInfoTab() {
         className="mt-2 w-full"
         variant="primary"
         disabled={!!nameError || !isDirty || updateShelf.isPending}
+        isLoading={updateShelf.isPending}
       >
         Save
       </Button>

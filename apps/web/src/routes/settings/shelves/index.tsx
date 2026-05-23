@@ -342,6 +342,7 @@ export function ShelfSettingsPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSubmit={handleAddShelf}
+        isPending={createShelf.isPending}
       />
     </DndContext>
   )
