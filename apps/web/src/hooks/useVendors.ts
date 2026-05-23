@@ -58,9 +58,10 @@ export function useCreateVendor() {
     },
   })
 
-  const [cloudCreate] = useCreateVendorMutation({
-    refetchQueries: [{ query: GetVendorsDocument }],
-  })
+  const [cloudCreate, { loading: cloudCreateLoading }] =
+    useCreateVendorMutation({
+      refetchQueries: [{ query: GetVendorsDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -76,7 +77,7 @@ export function useCreateVendor() {
         ),
       mutateAsync: (name: string) =>
         cloudCreate({ variables: { name } }).then((r) => r.data?.createVendor),
-      isPending: false,
+      isPending: cloudCreateLoading,
     }
   }
 
@@ -100,9 +101,10 @@ export function useUpdateVendor() {
     },
   })
 
-  const [cloudUpdate] = useUpdateVendorMutation({
-    refetchQueries: [{ query: GetVendorsDocument }],
-  })
+  const [cloudUpdate, { loading: cloudUpdateLoading }] =
+    useUpdateVendorMutation({
+      refetchQueries: [{ query: GetVendorsDocument }],
+    })
 
   if (mode === 'cloud') {
     const toVars = (id: string, updates: Partial<Omit<Vendor, 'id'>>) => {
@@ -137,7 +139,7 @@ export function useUpdateVendor() {
         cloudUpdate({ variables: toVars(id, updates) }).then(
           (r) => r.data?.updateVendor,
         ),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 
@@ -156,9 +158,10 @@ export function useDeleteVendor() {
     },
   })
 
-  const [cloudDelete] = useDeleteVendorMutation({
-    refetchQueries: [{ query: GetVendorsDocument }],
-  })
+  const [cloudDelete, { loading: cloudDeleteLoading }] =
+    useDeleteVendorMutation({
+      refetchQueries: [{ query: GetVendorsDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -174,7 +177,7 @@ export function useDeleteVendor() {
         ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteVendor),
-      isPending: false,
+      isPending: cloudDeleteLoading,
     }
   }
 

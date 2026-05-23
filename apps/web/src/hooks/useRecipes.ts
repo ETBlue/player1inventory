@@ -96,9 +96,10 @@ export function useCreateRecipe() {
     },
   })
 
-  const [cloudCreate] = useCreateRecipeMutation({
-    refetchQueries: [{ query: GetRecipesDocument }],
-  })
+  const [cloudCreate, { loading: cloudCreateLoading }] =
+    useCreateRecipeMutation({
+      refetchQueries: [{ query: GetRecipesDocument }],
+    })
 
   if (mode === 'cloud') {
     const toVars = (input: { name: string; items?: RecipeItem[] }) => {
@@ -126,7 +127,7 @@ export function useCreateRecipe() {
         cloudCreate({ variables: toVars(input) }).then(
           (r) => r.data?.createRecipe,
         ),
-      isPending: false,
+      isPending: cloudCreateLoading,
     }
   }
 
@@ -152,7 +153,8 @@ export function useUpdateRecipe() {
     },
   })
 
-  const [cloudUpdate] = useUpdateRecipeMutation({})
+  const [cloudUpdate, { loading: cloudUpdateLoading }] =
+    useUpdateRecipeMutation({})
 
   if (mode === 'cloud') {
     const toVars = (
@@ -208,7 +210,7 @@ export function useUpdateRecipe() {
           ],
           awaitRefetchQueries: true,
         }).then((r) => r.data?.updateRecipe),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 
@@ -226,9 +228,10 @@ export function useDeleteRecipe() {
     },
   })
 
-  const [cloudDelete] = useDeleteRecipeMutation({
-    refetchQueries: [{ query: GetRecipesDocument }],
-  })
+  const [cloudDelete, { loading: cloudDeleteLoading }] =
+    useDeleteRecipeMutation({
+      refetchQueries: [{ query: GetRecipesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -244,7 +247,7 @@ export function useDeleteRecipe() {
         ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteRecipe),
-      isPending: false,
+      isPending: cloudDeleteLoading,
     }
   }
 
@@ -262,9 +265,10 @@ export function useUpdateRecipeLastCookedAt() {
     },
   })
 
-  const [cloudUpdate] = useUpdateRecipeLastCookedAtMutation({
-    refetchQueries: [{ query: GetRecipesDocument }],
-  })
+  const [cloudUpdate, { loading: cloudUpdateLoading }] =
+    useUpdateRecipeLastCookedAtMutation({
+      refetchQueries: [{ query: GetRecipesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -282,7 +286,7 @@ export function useUpdateRecipeLastCookedAt() {
         cloudUpdate({ variables: { id } }).then(
           (r) => r.data?.updateRecipeLastCookedAt,
         ),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 

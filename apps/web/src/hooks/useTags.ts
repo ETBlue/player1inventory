@@ -71,9 +71,10 @@ export function useCreateTagType() {
     },
   })
 
-  const [cloudCreate] = useCreateTagTypeMutation({
-    refetchQueries: [{ query: GetTagTypesDocument }],
-  })
+  const [cloudCreate, { loading: cloudCreateLoading }] =
+    useCreateTagTypeMutation({
+      refetchQueries: [{ query: GetTagTypesDocument }],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -93,7 +94,7 @@ export function useCreateTagType() {
         cloudCreate({
           variables: { name: input.name, color: input.color ?? 'teal' },
         }).then((r) => r.data?.createTagType),
-      isPending: false,
+      isPending: cloudCreateLoading,
     }
   }
 
@@ -112,9 +113,10 @@ export function useUpdateTagType() {
     },
   })
 
-  const [cloudUpdate] = useUpdateTagTypeMutation({
-    refetchQueries: [{ query: GetTagTypesDocument }],
-  })
+  const [cloudUpdate, { loading: cloudUpdateLoading }] =
+    useUpdateTagTypeMutation({
+      refetchQueries: [{ query: GetTagTypesDocument }],
+    })
 
   if (mode === 'cloud') {
     const toVars = (id: string, updates: Partial<TagType>) => {
@@ -144,7 +146,7 @@ export function useUpdateTagType() {
         cloudUpdate({ variables: toVars(id, updates) }).then(
           (r) => r.data?.updateTagType,
         ),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 
@@ -164,12 +166,13 @@ export function useDeleteTagType() {
     },
   })
 
-  const [cloudDelete] = useDeleteTagTypeMutation({
-    refetchQueries: [
-      { query: GetTagTypesDocument },
-      { query: GetTagsDocument },
-    ],
-  })
+  const [cloudDelete, { loading: cloudDeleteLoading }] =
+    useDeleteTagTypeMutation({
+      refetchQueries: [
+        { query: GetTagTypesDocument },
+        { query: GetTagsDocument },
+      ],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -185,7 +188,7 @@ export function useDeleteTagType() {
         ),
       mutateAsync: (id: string) =>
         cloudDelete({ variables: { id } }).then((r) => r.data?.deleteTagType),
-      isPending: false,
+      isPending: cloudDeleteLoading,
     }
   }
 
@@ -275,7 +278,7 @@ export function useCreateTag() {
     },
   })
 
-  const [cloudCreate] = useCreateTagMutation({
+  const [cloudCreate, { loading: cloudCreateLoading }] = useCreateTagMutation({
     refetchQueries: [{ query: GetTagsDocument }],
   })
 
@@ -300,7 +303,7 @@ export function useCreateTag() {
         cloudCreate({ variables: toVars(input) }).then(
           (r) => r.data?.createTag,
         ),
-      isPending: false,
+      isPending: cloudCreateLoading,
     }
   }
 
@@ -319,7 +322,7 @@ export function useUpdateTag() {
     },
   })
 
-  const [cloudUpdate] = useUpdateTagMutation({
+  const [cloudUpdate, { loading: cloudUpdateLoading }] = useUpdateTagMutation({
     refetchQueries: [{ query: GetTagsDocument }],
   })
 
@@ -351,7 +354,7 @@ export function useUpdateTag() {
         cloudUpdate({ variables: toVars(id, updates) }).then(
           (r) => r.data?.updateTag,
         ),
-      isPending: false,
+      isPending: cloudUpdateLoading,
     }
   }
 
@@ -399,7 +402,7 @@ export function useDeleteTag() {
     },
   })
 
-  const [cloudDelete] = useDeleteTagMutation({
+  const [cloudDelete, { loading: cloudDeleteLoading }] = useDeleteTagMutation({
     refetchQueries: [{ query: GetTagsDocument }],
   })
 
@@ -428,7 +431,7 @@ export function useDeleteTag() {
         cloudDelete({ variables: { id, deleteChildren } }).then(
           (r) => r.data?.deleteTag,
         ),
-      isPending: false,
+      isPending: cloudDeleteLoading,
     }
   }
 
