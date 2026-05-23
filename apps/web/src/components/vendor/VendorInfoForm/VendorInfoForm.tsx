@@ -50,6 +50,7 @@ export function VendorInfoForm({
       <Button
         type="submit"
         disabled={!!nameError || !isDirty || !!isPending}
+        isLoading={!!isPending}
         className="w-full"
       >
         {t('common.save')}

@@ -188,6 +188,7 @@ function TagsTab() {
         submitLabel={t('items.tags.newTag.submitLabel')}
         name={newTagName}
         placeholder={t('items.tags.newTag.placeholder')}
+        isPending={createTag.isPending}
         onNameChange={setNewTagName}
         onAdd={handleAddTag}
         onClose={() => setAddTagDialog(null)}

@@ -63,9 +63,10 @@ export function RecipeInfoForm({
       <Button
         type="submit"
         disabled={!!nameError || !isDirty || !!isPending}
+        isLoading={!!isPending}
         className="w-full"
       >
-        {isPending ? t('common.saving') : t('common.save')}
+        {t('common.save')}
       </Button>
     </form>
   )

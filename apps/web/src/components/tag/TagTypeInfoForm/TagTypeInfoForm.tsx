@@ -74,8 +74,9 @@ export function TagTypeInfoForm({
         type="submit"
         className="w-full"
         disabled={!!nameError || !isDirty || !!isPending}
+        isLoading={!!isPending}
       >
-        {isPending ? t('common.saving') : t('common.save')}
+        {t('common.save')}
       </Button>
     </form>
   )

@@ -101,6 +101,7 @@ function VendorsTab() {
         submitLabel={t('items.vendors.newVendor.submitLabel')}
         name={newVendorName}
         placeholder={t('items.vendors.newVendor.placeholder')}
+        isPending={createVendor.isPending}
         onNameChange={setNewVendorName}
         onAdd={handleAddVendor}
         onClose={() => {

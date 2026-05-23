@@ -23,6 +23,6 @@ describe('RecipeInfoForm stories smoke tests', () => {
 
   it('Saving renders disabled saving button', () => {
     render(<Saving />)
-    expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 })

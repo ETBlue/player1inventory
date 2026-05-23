@@ -286,6 +286,7 @@ function ItemDetailTab() {
         onSubmit={handleSubmit}
         onDirtyChange={registerDirtyState}
         savedAt={savedAt}
+        isPending={updateItem.isPending}
       />
 
       <DeleteButton

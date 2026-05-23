@@ -75,7 +75,7 @@ function NewItemPage() {
 
       {/* Main Content */}
       <div className="pt-16 p-4">
-        <ItemForm onSubmit={handleSubmit} />
+        <ItemForm onSubmit={handleSubmit} isPending={createItem.isPending} />
       </div>
     </div>
   )
