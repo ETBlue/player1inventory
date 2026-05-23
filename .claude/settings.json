@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test:e2e *)",
+      "Bash((cd apps/web && pnpm test *)*)",
+      "Bash((cd apps/web && pnpm lint)*)",
+      "Bash((cd apps/web && pnpm check)*)"
+    ]
+  },
   "hooks": {
     "WorktreeCreate": [
       {
