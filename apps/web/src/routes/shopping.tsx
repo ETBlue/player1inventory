@@ -99,6 +99,7 @@ function Shopping() {
   const { vendor: selectedVendorId } = Route.useSearch()
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
+  const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
 
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
 
@@ -181,17 +182,42 @@ function Shopping() {
 
   function handleToggleCart(item: Item) {
     const ci = cartItemMap.get(item.id)
+    const clearPending = () =>
+      setPendingItemIds((prev) => {
+        const s = new Set(prev)
+        s.delete(item.id)
+        return s
+      })
+    setPendingItemIds((prev) => new Set(prev).add(item.id))
     if (ci) {
-      removeFromCart.mutate(ci.id)
+      removeFromCart.mutate(ci.id, {
+        onSuccess: clearPending,
+        onError: clearPending,
+      })
     } else if (cart) {
-      addToCart.mutate({ cartId: cart.id, itemId: item.id, quantity: 1 })
+      addToCart.mutate(
+        { cartId: cart.id, itemId: item.id, quantity: 1 },
+        { onSuccess: clearPending, onError: clearPending },
+      )
+    } else {
+      clearPending()
     }
   }
 
   function handleUpdateCartQuantity(item: Item, qty: number) {
     const ci = cartItemMap.get(item.id)
     if (ci) {
-      updateCartItem.mutate({ cartItemId: ci.id, quantity: qty })
+      const clearPending = () =>
+        setPendingItemIds((prev) => {
+          const s = new Set(prev)
+          s.delete(item.id)
+          return s
+        })
+      setPendingItemIds((prev) => new Set(prev).add(item.id))
+      updateCartItem.mutate(
+        { cartItemId: ci.id, quantity: qty },
+        { onSuccess: clearPending, onError: clearPending },
+      )
     }
   }
 
@@ -208,6 +234,7 @@ function Shopping() {
           showTags={false}
           showTagSummary={false}
           isChecked={!!ci}
+          disabled={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
           onAmountChange={(delta) => {
