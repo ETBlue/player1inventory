@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -63,7 +64,7 @@ export const Route = createFileRoute('/shopping')({
 function Shopping() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { data: items = [], isLoading } = useItems()
+  const { data: items = [], isLoading, isFetching } = useItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -100,6 +101,7 @@ function Shopping() {
   const [showAbandonDialog, setShowAbandonDialog] = useState(false)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  const [isCheckoutRefetching, setIsCheckoutRefetching] = useState(false)
 
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
 
@@ -119,6 +121,12 @@ function Shopping() {
   useEffect(() => {
     if (allDataLoaded) restoreScroll()
   }, [allDataLoaded, restoreScroll])
+
+  useEffect(() => {
+    if (isCheckoutRefetching && !isFetching) {
+      setIsCheckoutRefetching(false)
+    }
+  }, [isCheckoutRefetching, isFetching])
 
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
@@ -331,53 +339,59 @@ function Shopping() {
         <div className="h-px bg-accessory-default" />
       </div>
       <div className="overflow-y-auto [container-type:size]">
-        {/* Cart section */}
-        {cartSectionItems.length > 0 && (
+        {isCheckoutRefetching ? (
+          <LoadingSpinner />
+        ) : (
           <>
-            <div className="space-y-px">
-              {activeCartItems.map((item) => (
-                <div key={item.id} className="bg-background-surface">
-                  {renderItemCard(item)}
+            {/* Cart section */}
+            {cartSectionItems.length > 0 && (
+              <>
+                <div className="space-y-px">
+                  {activeCartItems.map((item) => (
+                    <div key={item.id} className="bg-background-surface">
+                      {renderItemCard(item)}
+                    </div>
+                  ))}
+                  {inactiveCartItems.map((item) => (
+                    <div key={item.id} className="bg-background-surface">
+                      {renderItemCard(item)}
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {inactiveCartItems.map((item) => (
-                <div key={item.id} className="bg-background-surface">
-                  {renderItemCard(item)}
-                </div>
-              ))}
-            </div>
-            <div className="h-px bg-accessory-default" />
-          </>
-        )}
+                <div className="h-px bg-accessory-default" />
+              </>
+            )}
 
-        {/* Pending items section */}
-        {pendingItems.length > 0 && (
-          <div className="space-y-px mb-4">
-            {activePendingItems.map((item) => renderItemCard(item))}
-            {inactivePendingItems.length > 0 && (
-              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-                {t('shopping.inactiveItems', {
-                  count: inactivePendingItems.length,
-                })}
+            {/* Pending items section */}
+            {pendingItems.length > 0 && (
+              <div className="space-y-px mb-4">
+                {activePendingItems.map((item) => renderItemCard(item))}
+                {inactivePendingItems.length > 0 && (
+                  <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+                    {t('shopping.inactiveItems', {
+                      count: inactivePendingItems.length,
+                    })}
+                  </div>
+                )}
+                {inactivePendingItems.map((item) => renderItemCard(item))}
               </div>
             )}
-            {inactivePendingItems.map((item) => renderItemCard(item))}
-          </div>
-        )}
 
-        {/* Empty state */}
-        {displayItems.length === 0 &&
-          (items.length === 0 ? (
-            <EmptyState
-              title={t('shopping.empty.title')}
-              description={t('shopping.empty.description')}
-            />
-          ) : (
-            <EmptyState
-              title={t('shopping.emptyFiltered.title')}
-              description={t('shopping.emptyFiltered.description')}
-            />
-          ))}
+            {/* Empty state */}
+            {displayItems.length === 0 &&
+              (items.length === 0 ? (
+                <EmptyState
+                  title={t('shopping.empty.title')}
+                  description={t('shopping.empty.description')}
+                />
+              ) : (
+                <EmptyState
+                  title={t('shopping.emptyFiltered.title')}
+                  description={t('shopping.emptyFiltered.description')}
+                />
+              ))}
+          </>
+        )}
       </div>
       {/* Abandon Cart Confirmation Dialog */}
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
@@ -465,6 +479,7 @@ function Shopping() {
                     : t('shopping.log.purchased')
                   try {
                     await checkout.mutateAsync({ cartId: cart.id, note })
+                    setIsCheckoutRefetching(true)
                     navigate({
                       to: '/shopping',
                       search: (prev) => ({ ...prev, vendor: '' }),
