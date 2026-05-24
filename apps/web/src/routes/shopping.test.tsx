@@ -161,6 +161,11 @@ describe('Shopping page', () => {
         screen.getByRole('checkbox', { name: /Remove Butter/i }),
       ).toBeChecked()
     })
+
+    // Then the checkbox is not permanently disabled (pendingItemIds cleared on success)
+    expect(
+      screen.getByRole('checkbox', { name: /Remove Butter/i }),
+    ).not.toBeDisabled()
   })
 
   it('user can remove item from cart by unchecking checkbox', async () => {
@@ -202,6 +207,11 @@ describe('Shopping page', () => {
         screen.getByRole('checkbox', { name: /Add Cheese/i }),
       ).not.toBeChecked()
     })
+
+    // Then the checkbox is not permanently disabled (pendingItemIds cleared on success)
+    expect(
+      screen.getByRole('checkbox', { name: /Add Cheese/i }),
+    ).not.toBeDisabled()
   })
 
   it('user can see inactive items always visible in pending section', async () => {
@@ -548,6 +558,34 @@ describe('Shopping page', () => {
       expect(
         screen.getByRole('checkbox', { name: /Remove Milk/i }),
       ).toBeChecked()
+    })
+  })
+
+  it('user can adjust cart item quantity and stepper is not permanently disabled', async () => {
+    // Given an item in the cart with quantity 1
+    const item = await makeItem('Milk', 2)
+    const cart = await getOrCreateActiveCart()
+    await addToCart(cart.id, item.id, 1)
+
+    renderShoppingPage()
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('checkbox', { name: /Remove Milk/i }),
+      ).toBeChecked()
+    })
+
+    // When user clicks the plus button (triggers updateCartItem mutation)
+    await user.click(
+      screen.getByRole('button', { name: /Increase quantity of Milk/i }),
+    )
+
+    // Then the plus button is not permanently disabled (pendingItemIds cleared on success)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Increase quantity of Milk/i }),
+      ).not.toBeDisabled()
     })
   })
 
