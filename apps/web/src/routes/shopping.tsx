@@ -64,7 +64,12 @@ export const Route = createFileRoute('/shopping')({
 function Shopping() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { data: items = [], isLoading, isFetching } = useItems()
+  const {
+    data: items = [],
+    isLoading,
+    isFetching,
+    refetch: refetchItems,
+  } = useItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -121,13 +126,6 @@ function Shopping() {
   useEffect(() => {
     if (allDataLoaded) restoreScroll()
   }, [allDataLoaded, restoreScroll])
-
-  useEffect(() => {
-    if (isCheckoutRefetching && !isFetching) {
-      setIsCheckoutRefetching(false)
-    }
-  }, [isCheckoutRefetching, isFetching])
-
   // Build a lookup map: itemId → cartItem
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
 
@@ -479,7 +477,6 @@ function Shopping() {
                     : t('shopping.log.purchased')
                   try {
                     await checkout.mutateAsync({ cartId: cart.id, note })
-                    setIsCheckoutRefetching(true)
                     navigate({
                       to: '/shopping',
                       search: (prev) => ({ ...prev, vendor: '' }),
@@ -488,6 +485,13 @@ function Shopping() {
                     setShowCheckoutDialog(false)
                   } catch {
                     // mutation failed; dialog stays open so user can retry
+                    return
+                  }
+                  setIsCheckoutRefetching(true)
+                  try {
+                    await refetchItems()
+                  } finally {
+                    setIsCheckoutRefetching(false)
                   }
                 }
               }}
