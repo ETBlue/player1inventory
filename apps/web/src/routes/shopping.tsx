@@ -12,7 +12,6 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -20,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -355,7 +354,14 @@ function Shopping() {
       </div>
       {/* Abandon Cart Confirmation Dialog */}
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={(e) => {
+            if (abandonCart.isPending) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (abandonCart.isPending) e.preventDefault()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('shopping.abandonDialog.title')}
@@ -365,23 +371,30 @@ function Shopping() {
             {t('shopping.abandonDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
-            <AlertDialogAction
-              className={buttonVariants({ variant: 'destructive' })}
-              onClick={() => {
-                if (cart)
-                  abandonCart.mutate(cart.id, {
-                    onSuccess: () =>
-                      navigate({
-                        to: '/shopping',
-                        search: (prev) => ({ ...prev, vendor: '' }),
-                        replace: true,
-                      }),
-                  })
+            <AlertDialogCancel disabled={abandonCart.isPending}>
+              {t('common.back')}
+            </AlertDialogCancel>
+            <Button
+              variant="destructive"
+              isLoading={abandonCart.isPending}
+              onClick={async () => {
+                if (cart) {
+                  try {
+                    await abandonCart.mutateAsync(cart.id)
+                    navigate({
+                      to: '/shopping',
+                      search: (prev) => ({ ...prev, vendor: '' }),
+                      replace: true,
+                    })
+                    setShowAbandonDialog(false)
+                  } catch {
+                    // mutation failed; dialog stays open so user can retry
+                  }
+                }
               }}
             >
               {t('common.confirm')}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -391,7 +404,14 @@ function Shopping() {
         open={showCheckoutDialog}
         onOpenChange={setShowCheckoutDialog}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={(e) => {
+            if (checkout.isPending) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (checkout.isPending) e.preventDefault()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('shopping.checkoutDialog.title')}
@@ -401,9 +421,12 @@ function Shopping() {
             {t('shopping.checkoutDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
+            <AlertDialogCancel disabled={checkout.isPending}>
+              {t('common.back')}
+            </AlertDialogCancel>
+            <Button
+              isLoading={checkout.isPending}
+              onClick={async () => {
                 if (cart) {
                   const selectedVendor = vendors.find(
                     (v) => v.id === selectedVendorId,
@@ -413,22 +436,22 @@ function Shopping() {
                         vendor: selectedVendor.name,
                       })
                     : t('shopping.log.purchased')
-                  checkout.mutate(
-                    { cartId: cart.id, note },
-                    {
-                      onSuccess: () =>
-                        navigate({
-                          to: '/shopping',
-                          search: (prev) => ({ ...prev, vendor: '' }),
-                          replace: true,
-                        }),
-                    },
-                  )
+                  try {
+                    await checkout.mutateAsync({ cartId: cart.id, note })
+                    navigate({
+                      to: '/shopping',
+                      search: (prev) => ({ ...prev, vendor: '' }),
+                      replace: true,
+                    })
+                    setShowCheckoutDialog(false)
+                  } catch {
+                    // mutation failed; dialog stays open so user can retry
+                  }
                 }
               }}
             >
               {t('common.confirm')}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
