@@ -53,6 +53,7 @@ interface ItemListToolbarProps {
   hideRecipeFilter?: boolean
   // When true: hides the Filters toggle button (caller renders filters externally)
   hideFiltersToggle?: boolean
+  isCreating?: boolean
 }
 
 export function ItemListToolbar({
@@ -72,6 +73,7 @@ export function ItemListToolbar({
   hideVendorFilter,
   hideRecipeFilter,
   hideFiltersToggle,
+  isCreating,
 }: ItemListToolbarProps) {
   const { t } = useTranslation()
 
@@ -313,6 +315,7 @@ export function ItemListToolbar({
                     size="sm"
                     onClick={() => onCreateFromSearch(search.trim())}
                     aria-label={t('itemListToolbar.createItem')}
+                    isLoading={!!isCreating}
                   >
                     <Plus />
                     {t('itemListToolbar.create')}

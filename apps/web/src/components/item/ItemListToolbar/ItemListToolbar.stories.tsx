@@ -260,3 +260,14 @@ export const HideRecipeFilter: Story = {
     />
   ),
 }
+
+export const CreateButtonLoading: Story = {
+  render: () => (
+    <Controlled
+      items={mockItems}
+      onCreateFromSearch={() => {}}
+      hasExactMatch={false}
+      isCreating
+    />
+  ),
+}

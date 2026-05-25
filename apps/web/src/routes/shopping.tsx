@@ -331,6 +331,7 @@ function Shopping() {
           }
           onCreateFromSearch={handleCreateFromSearch}
           hasExactMatch={hasExactMatch}
+          isCreating={createItem.isPending}
         />
 
         <div className="h-px bg-accessory-default" />

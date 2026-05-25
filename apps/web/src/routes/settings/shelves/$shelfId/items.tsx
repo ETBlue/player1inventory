@@ -234,6 +234,7 @@ function ShelfItemsTab() {
         recipes={recipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
+        isCreating={createItem.isPending || updateShelf.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />

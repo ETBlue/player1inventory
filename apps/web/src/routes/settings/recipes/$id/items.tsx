@@ -281,6 +281,7 @@ function RecipeItemsTab() {
         recipes={allRecipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
+        isCreating={createItem.isPending || updateRecipe.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
