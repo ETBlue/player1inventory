@@ -13,6 +13,7 @@ const Checkbox = React.forwardRef<
     className={cn(
       `grid place-content-center peer h-4 w-4 shrink-0 rounded-sm 
       border border-foreground-muted 
+      cursor-pointer
       disabled:cursor-not-allowed disabled:opacity-50 
       data-[state=checked]:bg-foreground-muted data-[state=checked]:text-foreground-colorless-inverse`,
       className,
