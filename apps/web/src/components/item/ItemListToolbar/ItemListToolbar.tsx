@@ -315,9 +315,9 @@ export function ItemListToolbar({
                     size="sm"
                     onClick={() => onCreateFromSearch(search.trim())}
                     aria-label={t('itemListToolbar.createItem')}
+                    icon={<Plus />}
                     isLoading={!!isCreating}
                   >
-                    <Plus />
                     {t('itemListToolbar.create')}
                   </Button>
                 )}

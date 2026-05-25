@@ -142,10 +142,7 @@ export const WithAddButton: Story = {
   render: () => (
     <Controlled isTagsToggleEnabled items={mockItems}>
       <Link to="/">
-        <Button>
-          <Plus />
-          Add item
-        </Button>
+        <Button icon={<Plus />}>Add item</Button>
       </Link>
     </Controlled>
   ),
