@@ -3,13 +3,12 @@ import {
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router'
-import { Check, X } from 'lucide-react'
+import { Check, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -336,59 +335,62 @@ function Shopping() {
 
         <div className="h-px bg-accessory-default" />
       </div>
-      <div className="overflow-y-auto [container-type:size]">
-        {isCheckoutRefetching ? (
-          <LoadingSpinner />
-        ) : (
+      <div className="relative overflow-y-auto [container-type:size]">
+        {/* Cart section */}
+        {cartSectionItems.length > 0 && (
           <>
-            {/* Cart section */}
-            {cartSectionItems.length > 0 && (
-              <>
-                <div className="space-y-px">
-                  {activeCartItems.map((item) => (
-                    <div key={item.id} className="bg-background-surface">
-                      {renderItemCard(item)}
-                    </div>
-                  ))}
-                  {inactiveCartItems.map((item) => (
-                    <div key={item.id} className="bg-background-surface">
-                      {renderItemCard(item)}
-                    </div>
-                  ))}
+            <div className="space-y-px">
+              {activeCartItems.map((item) => (
+                <div key={item.id} className="bg-background-surface">
+                  {renderItemCard(item)}
                 </div>
-                <div className="h-px bg-accessory-default" />
-              </>
-            )}
+              ))}
+              {inactiveCartItems.map((item) => (
+                <div key={item.id} className="bg-background-surface">
+                  {renderItemCard(item)}
+                </div>
+              ))}
+            </div>
+            <div className="h-px bg-accessory-default" />
+          </>
+        )}
 
-            {/* Pending items section */}
-            {pendingItems.length > 0 && (
-              <div className="space-y-px mb-4">
-                {activePendingItems.map((item) => renderItemCard(item))}
-                {inactivePendingItems.length > 0 && (
-                  <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-                    {t('shopping.inactiveItems', {
-                      count: inactivePendingItems.length,
-                    })}
-                  </div>
-                )}
-                {inactivePendingItems.map((item) => renderItemCard(item))}
+        {/* Pending items section */}
+        {pendingItems.length > 0 && (
+          <div className="space-y-px mb-4">
+            {activePendingItems.map((item) => renderItemCard(item))}
+            {inactivePendingItems.length > 0 && (
+              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+                {t('shopping.inactiveItems', {
+                  count: inactivePendingItems.length,
+                })}
               </div>
             )}
+            {inactivePendingItems.map((item) => renderItemCard(item))}
+          </div>
+        )}
 
-            {/* Empty state */}
-            {displayItems.length === 0 &&
-              (items.length === 0 ? (
-                <EmptyState
-                  title={t('shopping.empty.title')}
-                  description={t('shopping.empty.description')}
-                />
-              ) : (
-                <EmptyState
-                  title={t('shopping.emptyFiltered.title')}
-                  description={t('shopping.emptyFiltered.description')}
-                />
-              ))}
-          </>
+        {/* Empty state */}
+        {displayItems.length === 0 &&
+          (items.length === 0 ? (
+            <EmptyState
+              title={t('shopping.empty.title')}
+              description={t('shopping.empty.description')}
+            />
+          ) : (
+            <EmptyState
+              title={t('shopping.emptyFiltered.title')}
+              description={t('shopping.emptyFiltered.description')}
+            />
+          ))}
+
+        {/* Semi-transparent overlay while checkout refetches items */}
+        {isCheckoutRefetching && (
+          <div className="absolute inset-0 bg-background-surface/50">
+            <div className="sticky top-0 flex h-[100cqh] items-center justify-center">
+              <Loader2 className="size-8 animate-spin text-foreground-muted" />
+            </div>
+          </div>
         )}
       </div>
       {/* Abandon Cart Confirmation Dialog */}
