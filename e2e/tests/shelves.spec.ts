@@ -78,13 +78,13 @@ test('user sees out-of-stock and low-stock badges on shelf cards', async ({ page
         updatedAt: new Date(now),
       })
 
-      // Low stock: qty = 1, refillThreshold = 2 (qty > 0 && qty <= threshold)
+      // Low stock: qty = 2, refillThreshold = 2 (qty === threshold, per getLowStockCount)
       tx.objectStore('items').put({
         id: lowStockItemId,
         name: 'Eggs',
         tagIds: [],
         vendorIds: [],
-        packedQuantity: 1,
+        packedQuantity: 2,
         unpackedQuantity: 0,
         targetQuantity: 6,
         refillThreshold: 2,
