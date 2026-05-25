@@ -63,12 +63,7 @@ export const Route = createFileRoute('/shopping')({
 function Shopping() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const {
-    data: items = [],
-    isLoading,
-    isFetching,
-    refetch: refetchItems,
-  } = useItems()
+  const { data: items = [], isLoading, refetch: refetchItems } = useItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
