@@ -18,7 +18,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [navigation](global/navigation/) | ✅ Implemented | Context-aware nav, hide-nav-bar, nav counts, RWD mobile+desktop all done |
 | [refactoring](global/refactoring/) | ✅ Implemented | Renamed all component index.tsx files to ComponentName.tsx (refactor/rename-index-tsx) |
 | [testing](global/testing/) | ⚠️ Partial | Playwright + Storybook smoke tests done; Storybook language toolbar done; route-level stories + smoke tests done; items + tags + vendors + recipes + cooking + state-restore E2E (local + cloud) done; shopping cloud E2E done |
-| [ui-polish](global/ui-polish/) | ⚠️ Partial | Dialogs, toolbars, delete flows, component extraction done; RWD improvements done; form validation UX done; empty state consolidation 🔲 Pending |
+| [ui-polish](global/ui-polish/) | ⚠️ Partial | Dialogs, toolbars, delete flows, component extraction done; RWD improvements done; form validation UX done; mutation button loading states done; empty state consolidation 🔲 Pending |
 
 ---
 
