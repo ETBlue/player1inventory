@@ -395,9 +395,6 @@ function Shopping() {
           onEscapeKeyDown={(e) => {
             if (abandonCart.isPending) e.preventDefault()
           }}
-          onInteractOutside={(e) => {
-            if (abandonCart.isPending) e.preventDefault()
-          }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -443,9 +440,6 @@ function Shopping() {
       >
         <AlertDialogContent
           onEscapeKeyDown={(e) => {
-            if (checkout.isPending) e.preventDefault()
-          }}
-          onInteractOutside={(e) => {
             if (checkout.isPending) e.preventDefault()
           }}
         >

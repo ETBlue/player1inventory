@@ -669,9 +669,6 @@ function CookingPage() {
           onEscapeKeyDown={(e) => {
             if (isConfirmingDone) e.preventDefault()
           }}
-          onInteractOutside={(e) => {
-            if (isConfirmingDone) e.preventDefault()
-          }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>
