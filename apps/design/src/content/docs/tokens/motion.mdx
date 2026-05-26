@@ -28,12 +28,7 @@ Used where multiple properties may change simultaneously (e.g. a button that cha
 
 ### `transition-opacity` and `transition-transform`
 
-Used for show/hide and translate animations — fade-ins, slide-ins, and collapsible panel reveals.
-
-```tsx
-<div className="transition-opacity opacity-0 group-hover:opacity-100" />
-<div className="transition-transform -translate-y-1 hover:translate-y-0" />
-```
+Each appears once, inside shadcn/ui base components (`dialog.tsx` close button and `switch.tsx` thumb). These are not patterns to reach for in feature code — use `transition-colors` or `transition-all` instead.
 
 ## Animation utilities
 
