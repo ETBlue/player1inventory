@@ -1,5 +1,12 @@
 import { Link } from '@tanstack/react-router'
-import { CookingPot, Loader2, Minus, Plus, Store, TriangleAlert } from 'lucide-react'
+import {
+  CookingPot,
+  Loader2,
+  Minus,
+  Plus,
+  Store,
+  TriangleAlert,
+} from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
@@ -139,7 +146,9 @@ export function ItemCard({
               onAmountChange?.(-1)
             }}
             aria-label={`Decrease quantity of ${item.name}`}
-            disabled={disabled || isPending || (controlAmount ?? 0) <= minControlAmount}
+            disabled={
+              disabled || isPending || (controlAmount ?? 0) <= minControlAmount
+            }
           >
             {isPending && pendingDirection === -1 ? (
               <Loader2 className="h-4 w-4 animate-spin" />
