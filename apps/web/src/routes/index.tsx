@@ -5,7 +5,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
@@ -51,6 +51,7 @@ function PantryView() {
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
+  const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
 
   const handleCreateFromSearch = async (query: string) => {
     try {
@@ -292,7 +293,9 @@ function PantryView() {
                 activeVendorIds={selectedVendorIds}
                 activeRecipeIds={selectedRecipeIds}
                 activeTagIds={activeTagIds}
+                isPending={pendingItemIds.has(item.id)}
                 onAmountChange={async (delta) => {
+                  setPendingItemIds((prev) => new Set(prev).add(item.id))
                   const updatedItem = { ...item }
                   if (delta > 0) {
                     const purchaseDate = new Date()
@@ -301,24 +304,35 @@ function PantryView() {
                       updatedItem.consumeAmount,
                       purchaseDate,
                     )
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                        ...(updatedItem.dueDate
-                          ? { dueDate: updatedItem.dueDate }
-                          : {}),
-                      },
-                    })
                   } else {
                     consumeItem(updatedItem, updatedItem.consumeAmount)
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                      },
+                  }
+                  try {
+                    if (delta > 0) {
+                      await updateItem.mutateAsync({
+                        id: item.id,
+                        updates: {
+                          packedQuantity: updatedItem.packedQuantity,
+                          unpackedQuantity: updatedItem.unpackedQuantity,
+                          ...(updatedItem.dueDate
+                            ? { dueDate: updatedItem.dueDate }
+                            : {}),
+                        },
+                      })
+                    } else {
+                      await updateItem.mutateAsync({
+                        id: item.id,
+                        updates: {
+                          packedQuantity: updatedItem.packedQuantity,
+                          unpackedQuantity: updatedItem.unpackedQuantity,
+                        },
+                      })
+                    }
+                  } finally {
+                    setPendingItemIds((prev) => {
+                      const next = new Set(prev)
+                      next.delete(item.id)
+                      return next
                     })
                   }
                 }}
@@ -347,7 +361,9 @@ function PantryView() {
                 activeVendorIds={selectedVendorIds}
                 activeRecipeIds={selectedRecipeIds}
                 activeTagIds={activeTagIds}
+                isPending={pendingItemIds.has(item.id)}
                 onAmountChange={async (delta) => {
+                  setPendingItemIds((prev) => new Set(prev).add(item.id))
                   const updatedItem = { ...item }
                   if (delta > 0) {
                     const purchaseDate = new Date()
@@ -356,24 +372,35 @@ function PantryView() {
                       updatedItem.consumeAmount,
                       purchaseDate,
                     )
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                        ...(updatedItem.dueDate
-                          ? { dueDate: updatedItem.dueDate }
-                          : {}),
-                      },
-                    })
                   } else {
                     consumeItem(updatedItem, updatedItem.consumeAmount)
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                      },
+                  }
+                  try {
+                    if (delta > 0) {
+                      await updateItem.mutateAsync({
+                        id: item.id,
+                        updates: {
+                          packedQuantity: updatedItem.packedQuantity,
+                          unpackedQuantity: updatedItem.unpackedQuantity,
+                          ...(updatedItem.dueDate
+                            ? { dueDate: updatedItem.dueDate }
+                            : {}),
+                        },
+                      })
+                    } else {
+                      await updateItem.mutateAsync({
+                        id: item.id,
+                        updates: {
+                          packedQuantity: updatedItem.packedQuantity,
+                          unpackedQuantity: updatedItem.unpackedQuantity,
+                        },
+                      })
+                    }
+                  } finally {
+                    setPendingItemIds((prev) => {
+                      const next = new Set(prev)
+                      next.delete(item.id)
+                      return next
                     })
                   }
                 }}

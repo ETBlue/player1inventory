@@ -55,6 +55,15 @@ export const RecipeAssigned: Story = {
   },
 }
 
+export const RecipeAssignedMinusPending: Story = {
+  name: 'Recipe assignment — minus pending',
+  args: {
+    ...RecipeAssigned.args,
+    isPending: true,
+    disabled: true,
+  },
+}
+
 export const RecipeUnassigned: Story = {
   name: 'Recipe assignment — Unassigned',
   args: {

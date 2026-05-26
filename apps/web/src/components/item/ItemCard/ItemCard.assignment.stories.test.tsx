@@ -3,8 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ItemCard.assignment.stories'
 
-const { TagChecked, TagUnchecked, RecipeAssigned, RecipeUnassigned } =
-  composeStories(stories)
+const {
+  TagChecked,
+  TagUnchecked,
+  RecipeAssigned,
+  RecipeUnassigned,
+  RecipeAssignedMinusPending,
+} = composeStories(stories)
 
 describe('ItemCard assignment stories smoke tests', () => {
   it('TagChecked renders without error', async () => {
@@ -30,6 +35,13 @@ describe('ItemCard assignment stories smoke tests', () => {
 
   it('RecipeUnassigned renders without error', async () => {
     render(<RecipeUnassigned />)
+    await waitFor(() =>
+      expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
+    )
+  })
+
+  it('RecipeAssignedMinusPending renders without error', async () => {
+    render(<RecipeAssignedMinusPending />)
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )

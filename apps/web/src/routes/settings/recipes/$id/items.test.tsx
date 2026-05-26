@@ -4,9 +4,9 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
@@ -683,6 +683,92 @@ describe('Recipe Detail - Items Tab', () => {
       const recipeItem = updated?.items.find((ri) => ri.itemId === item.id)
       expect(recipeItem?.defaultAmount).toBe(0.3)
       expect(recipeItem?.defaultAmount).not.toBe(0.30000000000000004)
+    })
+  })
+
+  it('user sees spinner on minus button while mutation is pending (recipe-assignment mode)', async () => {
+    // Given an item assigned to a recipe
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 2 },
+    ])
+
+    // Spy on the db write to introduce a delay, keeping savingItemIds populated
+    let resolveUpdate!: () => void
+    const originalUpdate = db.recipes.update.bind(db.recipes)
+    const updateSpy = vi.spyOn(db.recipes, 'update').mockImplementationOnce(
+      (key, changes) =>
+        new Promise((resolve) => {
+          resolveUpdate = () =>
+            resolve(originalUpdate(key, changes) as unknown as number)
+        }) as ReturnType<typeof db.recipes.update>,
+    )
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user waits for the minus button then clicks it
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText('Decrease quantity of Noodles'),
+      ).toBeInTheDocument()
+    })
+    const minusBtn = screen.getByLabelText('Decrease quantity of Noodles')
+    await user.click(minusBtn)
+
+    // Then a spinner appears inside the minus button (savingItemIds still has item.id)
+    await waitFor(() => {
+      expect(minusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+    })
+
+    // Cleanup: let the mutation complete and restore the spy
+    resolveUpdate()
+    updateSpy.mockRestore()
+    await act(async () => {
+      await Promise.resolve()
+    })
+  })
+
+  it('user sees spinner on plus button while mutation is pending (recipe-assignment mode)', async () => {
+    // Given an item assigned to a recipe
+    const item = await makeItem('Noodles')
+    const recipe = await makeRecipe('Pasta', [
+      { itemId: item.id, defaultAmount: 1 },
+    ])
+
+    // Spy on the db write to introduce a delay, keeping savingItemIds populated
+    let resolveUpdate!: () => void
+    const originalUpdate = db.recipes.update.bind(db.recipes)
+    const updateSpy = vi.spyOn(db.recipes, 'update').mockImplementationOnce(
+      (key, changes) =>
+        new Promise((resolve) => {
+          resolveUpdate = () =>
+            resolve(originalUpdate(key, changes) as unknown as number)
+        }) as ReturnType<typeof db.recipes.update>,
+    )
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user waits for the plus button then clicks it
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText('Increase quantity of Noodles'),
+      ).toBeInTheDocument()
+    })
+    const plusBtn = screen.getByLabelText('Increase quantity of Noodles')
+    await user.click(plusBtn)
+
+    // Then a spinner appears inside the plus button (savingItemIds still has item.id)
+    await waitFor(() => {
+      expect(plusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+    })
+
+    // Cleanup: let the mutation complete and restore the spy
+    resolveUpdate()
+    updateSpy.mockRestore()
+    await act(async () => {
+      await Promise.resolve()
     })
   })
 })

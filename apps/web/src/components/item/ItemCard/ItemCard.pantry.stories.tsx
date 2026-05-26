@@ -124,3 +124,12 @@ export const WithAmountButtons: Story = {
     onAmountChange: (delta) => console.log('Amount change:', delta),
   },
 }
+
+export const WithAmountButtonsMinusPending: Story = {
+  name: 'With +/- buttons — minus pending',
+  args: {
+    ...WithAmountButtons.args,
+    isPending: true,
+    disabled: true,
+  },
+}
