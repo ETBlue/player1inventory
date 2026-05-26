@@ -1,5 +1,6 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
@@ -1276,5 +1277,160 @@ describe('ItemCard - inactive item progress bar', () => {
     const card = container.firstElementChild
     expect(card).not.toHaveClass('bg-status-error-background-inverse')
     expect(card).not.toHaveClass('bg-status-warning-background-inverse')
+  })
+})
+
+describe('ItemCard - loading states', () => {
+  const mockItem: Item = {
+    id: 'item-apples',
+    name: 'Apples',
+    packageUnit: 'piece',
+    targetUnit: 'package',
+    tagIds: [],
+    targetQuantity: 10,
+    refillThreshold: 2,
+    packedQuantity: 5,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  it('shows spinner on pantry minus button (Consume) while isPending is true', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [isPending, setIsPending] = useState(false)
+      return (
+        <ItemCard
+          item={mockItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="pantry"
+          isPending={isPending}
+          onAmountChange={() => {
+            setIsPending(true)
+          }}
+        />
+      )
+    }
+
+    await renderWithRouter(<Wrapper />)
+
+    const button = screen.getByRole('button', { name: 'Consume Apples' })
+    await user.click(button)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const spinner = button.querySelector('.animate-spin')
+    expect(spinner).toBeDefined()
+    expect(spinner).not.toBeNull()
+  })
+
+  it('shows spinner on pantry plus button (Add) while isPending is true', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [isPending, setIsPending] = useState(false)
+      return (
+        <ItemCard
+          item={mockItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="pantry"
+          isPending={isPending}
+          onAmountChange={() => {
+            setIsPending(true)
+          }}
+        />
+      )
+    }
+
+    await renderWithRouter(<Wrapper />)
+
+    const button = screen.getByRole('button', { name: 'Add Apples' })
+    await user.click(button)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const spinner = button.querySelector('.animate-spin')
+    expect(spinner).toBeDefined()
+    expect(spinner).not.toBeNull()
+  })
+
+  it('shows spinner on shopping overlay minus button (Decrease quantity) while isPending is true', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [isPending, setIsPending] = useState(false)
+      return (
+        <ItemCard
+          item={mockItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked={true}
+          controlAmount={2}
+          onCheckboxToggle={vi.fn()}
+          isPending={isPending}
+          onAmountChange={() => {
+            setIsPending(true)
+          }}
+        />
+      )
+    }
+
+    await renderWithRouter(<Wrapper />)
+
+    const button = screen.getByRole('button', {
+      name: 'Decrease quantity of Apples',
+    })
+    await user.click(button)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const spinner = button.querySelector('.animate-spin')
+    expect(spinner).toBeDefined()
+    expect(spinner).not.toBeNull()
+  })
+
+  it('shows spinner on shopping overlay plus button (Increase quantity) while isPending is true', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [isPending, setIsPending] = useState(false)
+      return (
+        <ItemCard
+          item={mockItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked={true}
+          controlAmount={2}
+          onCheckboxToggle={vi.fn()}
+          isPending={isPending}
+          onAmountChange={() => {
+            setIsPending(true)
+          }}
+        />
+      )
+    }
+
+    await renderWithRouter(<Wrapper />)
+
+    const button = screen.getByRole('button', {
+      name: 'Increase quantity of Apples',
+    })
+    await user.click(button)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const spinner = button.querySelector('.animate-spin')
+    expect(spinner).toBeDefined()
+    expect(spinner).not.toBeNull()
   })
 })
