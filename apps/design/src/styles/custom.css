@@ -37,12 +37,18 @@
 */
 :root[data-theme] {
   /* Accent colors */
-  --sl-color-accent-low:  var(--importance-secondary-background);
-  --sl-color-accent:      var(--importance-primary-background);
-  --sl-color-accent-high: var(--importance-primary-foreground);
+  --sl-color-accent-low:  var(--foreground-muted);
+  --sl-color-accent:      var(--foreground-default);
+  --sl-color-accent-high: var(--foreground-emphasized);
+
   --sl-color-text-accent: var(--foreground-emphasized);
   --sl-color-text-invert: var(--foreground-colorless-inverse);
+
+  --sl-color-hairline:    var(--accessory-muted);
+  --sl-color-hairline-shade: var(--accessory-emphasized);
+
   --sl-color-white:       var(--foreground-default);
+  --sl-color-black:       var(--background-base);
 
   /* Gray scale */
   --sl-color-gray-7: var(--accessory-muted);
