@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { CookingPot, Minus, Plus, Store, TriangleAlert } from 'lucide-react'
+import { CookingPot, Loader2, Minus, Plus, Store, TriangleAlert } from 'lucide-react'
 import type React from 'react'
+import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ interface ItemCardProps {
   minControlAmount?: number // minimum before minus disables (default: 1)
   onAmountChange?: (delta: number) => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
+  isPending?: boolean // shows spinner on the last-clicked +/- button while a mutation is in flight
   vendors?: Vendor[]
   recipes?: Recipe[]
   onVendorClick?: (vendorId: string) => void
@@ -62,6 +64,7 @@ export function ItemCard({
   minControlAmount = 0,
   onAmountChange,
   disabled,
+  isPending = false,
   vendors = [],
   recipes = [],
   onVendorClick,
@@ -101,6 +104,12 @@ export function ItemCard({
     console.warn('ItemCard: controlAmount requires onAmountChange to function.')
   }
 
+  const [pendingDirection, setPendingDirection] = useState<-1 | 1 | null>(null)
+
+  useEffect(() => {
+    if (!isPending) setPendingDirection(null)
+  }, [isPending])
+
   return (
     <Card
       variant={isInactive(item) || status === 'ok' ? 'default' : status}
@@ -126,12 +135,17 @@ export function ItemCard({
             className="rounded-tr-none rounded-br-none"
             onClick={(e) => {
               e.preventDefault()
+              setPendingDirection(-1)
               onAmountChange?.(-1)
             }}
             aria-label={`Decrease quantity of ${item.name}`}
             disabled={disabled || (controlAmount ?? 0) <= minControlAmount}
           >
-            <Minus className="h-4 w-4" />
+            {isPending && pendingDirection === -1 ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Minus className="h-4 w-4" />
+            )}
           </Button>
           <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
             {controlAmount}
@@ -142,12 +156,17 @@ export function ItemCard({
             className="rounded-tl-none rounded-bl-none"
             onClick={(e) => {
               e.preventDefault()
+              setPendingDirection(1)
               onAmountChange?.(1)
             }}
             aria-label={`Increase quantity of ${item.name}`}
             disabled={disabled}
           >
-            <Plus className="h-4 w-4" />
+            {isPending && pendingDirection === 1 ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
           </Button>
           {/* Screen reader announcement for quantity changes */}
           <span className="sr-only" aria-live="polite" aria-atomic="true">
@@ -205,12 +224,17 @@ export function ItemCard({
               size="icon"
               onClick={(e) => {
                 e.preventDefault()
+                setPendingDirection(-1)
                 onAmountChange(-(item.consumeAmount ?? 1))
               }}
               disabled={disabled || currentQuantity <= 0}
               aria-label={`Consume ${item.name}`}
             >
-              <Minus className="h-4 w-4" />
+              {isPending && pendingDirection === -1 ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Minus className="h-4 w-4" />
+              )}
             </Button>
             <Button
               className="-ml-px rounded-tl-none rounded-bl-none"
@@ -218,12 +242,17 @@ export function ItemCard({
               size="icon"
               onClick={(e) => {
                 e.preventDefault()
+                setPendingDirection(1)
                 onAmountChange(1)
               }}
               disabled={disabled}
               aria-label={`Add ${item.name}`}
             >
-              <Plus className="h-4 w-4" />
+              {isPending && pendingDirection === 1 ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
             </Button>
           </div>
         )}
