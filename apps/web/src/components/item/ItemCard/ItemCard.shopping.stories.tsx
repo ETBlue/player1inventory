@@ -48,3 +48,12 @@ export const InCart: Story = {
     onAmountChange: (delta) => console.log('Amount change:', delta),
   },
 }
+
+export const InCartMinusPending: Story = {
+  name: 'In cart — minus pending',
+  args: {
+    ...InCart.args,
+    isPending: true,
+    disabled: true,
+  },
+}

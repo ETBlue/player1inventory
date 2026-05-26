@@ -12,6 +12,7 @@ const {
   ExpiringSoon,
   ExpiringRelative,
   WithAmountButtons,
+  WithAmountButtonsMinusPending,
 } = composeStories(stories)
 
 describe('ItemCard pantry stories smoke tests', () => {
@@ -66,6 +67,13 @@ describe('ItemCard pantry stories smoke tests', () => {
 
   it('WithAmountButtons renders without error', async () => {
     render(<WithAmountButtons />)
+    await waitFor(() =>
+      expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
+    )
+  })
+
+  it('WithAmountButtonsMinusPending renders without error', async () => {
+    render(<WithAmountButtonsMinusPending />)
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )
