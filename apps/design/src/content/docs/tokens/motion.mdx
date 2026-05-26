@@ -28,7 +28,9 @@ Used where multiple properties may change simultaneously (e.g. a button that cha
 
 ### `transition-opacity` and `transition-transform`
 
-Each appears once, inside shadcn/ui base components (`dialog.tsx` close button and `switch.tsx` thumb). These are not patterns to reach for in feature code — use `transition-colors` or `transition-all` instead.
+Each appears once, inside shadcn/ui base components (`dialog.tsx` close button and `switch.tsx` thumb). These are not patterns to reach for in feature code — use `transition-colors` for color-only changes or `transition-all` for everything else.
+
+Prefer `transition-colors` over `transition-all` when possible: `transition-all` watches every animatable property (color, size, shadow, border, transform, etc.), which is more work for the browser compositor even when only one property is changing.
 
 ## Animation utilities
 
