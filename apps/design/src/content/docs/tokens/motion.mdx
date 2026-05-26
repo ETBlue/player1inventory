@@ -2,13 +2,13 @@
 title: Motion
 ---
 
-Player 1 Inventory uses **Tailwind's default transition utilities** — no custom motion tokens are defined. Transitions are applied selectively to interactive elements; the majority of the UI is static.
+Player 1 Inventory uses **Tailwind's default transition and animation utilities** — no custom motion tokens are defined. Motion is applied selectively to interactive elements; the majority of the UI is static.
 
 The design philosophy favors restraint: motion should confirm interactions, not decorate them.
 
 ## Transition patterns
 
-Three transition types appear in the codebase:
+The following transition types appear in the codebase:
 
 ### `transition-colors` — color state changes
 
@@ -34,6 +34,31 @@ Used for show/hide and translate animations — fade-ins, slide-ins, and collaps
 <div className="transition-opacity opacity-0 group-hover:opacity-100" />
 <div className="transition-transform -translate-y-1 hover:translate-y-0" />
 ```
+
+## Animation utilities
+
+Beyond transitions, Tailwind's animation utilities appear in two contexts.
+
+### `animate-spin` — loading states
+
+Used for spinner icons to signal in-progress operations. Applied to a Lucide icon inside a loading button or standalone spinner component.
+
+```tsx
+<Loader2 className="animate-spin" />
+```
+
+Appears in: `LoadingSpinner`, `button.tsx` (loading variant), `DeleteButton`, and several route-level loading states.
+
+### `animate-in` / `animate-out` — component entry and exit
+
+Radix UI components (e.g. Select dropdown) use Tailwind's `animate-in` / `animate-out` utilities combined with variant classes for enter/exit animations:
+
+```tsx
+<div className="animate-in fade-in-0 zoom-in-95 slide-in-from-top-2" />
+<div className="animate-out fade-out-0 zoom-out-95" />
+```
+
+These are applied by shadcn/ui component internals and are not written directly in feature code. The global `prefers-reduced-motion` rule collapses them along with all other animations.
 
 ## Duration
 
@@ -72,5 +97,6 @@ This is a global catch-all — no per-component reduced-motion logic is needed. 
 
 - **Prefer `transition-colors`** over `transition-all` when only color changes — it is more performant and explicit.
 - **Use `duration-300`** for panel-level transitions (collapsibles, drawers). Omit the duration class for hover highlights to get the faster default.
+- **Use `animate-spin`** on a Lucide icon for loading states — do not build custom spinner animations.
 - **Do not add motion for decoration** — transitions should confirm an interaction or reveal a state change, not attract attention.
 - **Do not worry about reduced-motion per-component** — the global CSS rule handles it.
