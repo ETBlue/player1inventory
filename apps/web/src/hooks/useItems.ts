@@ -97,6 +97,7 @@ export function useItems() {
         deserializeItem(i as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
+      isFetching: cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       isError: !!cloud.error,
       refetch: cloud.refetch,
     }
@@ -105,6 +106,7 @@ export function useItems() {
   return {
     data: local.data,
     isLoading: local.isPending ?? false,
+    isFetching: local.isFetching,
     isError: local.isError,
     refetch: local.refetch,
   }

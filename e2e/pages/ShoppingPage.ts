@@ -8,7 +8,9 @@ export class ShoppingPage {
   }
 
   async navigateTo() {
-    await this.page.goto('/shopping')
+    // networkidle ensures initial GraphQL queries (activeCart, items) have resolved
+    // before any interaction, preventing clicks on an uninitialized cart
+    await this.page.goto('/shopping', { waitUntil: 'networkidle' })
   }
 
   getItemCard(name: string): Locator {
@@ -24,6 +26,8 @@ export class ShoppingPage {
 
   async addItemToCart(name: string) {
     await this.getItemCheckbox(name).click()
+    // Wait for the mutation to complete: checkbox flips to "Remove {name}" once item is in cart
+    await this.page.getByLabel(`Remove ${name}`).waitFor({ state: 'visible' })
   }
 
   async clickDone() {

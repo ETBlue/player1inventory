@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowUpFromLine,
   Filter,
+  Loader2,
   Plus,
   Search,
   Settings,
@@ -491,9 +492,14 @@ export function ShelfDetailPage() {
                       variant="primary"
                       size="sm"
                       onClick={() => handleCreateFromSearch(search.trim())}
+                      disabled={createItem.isPending}
                       aria-label="Create item"
                     >
-                      <Plus />
+                      {createItem.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus />
+                      )}
                       Create
                     </Button>
                   )}
@@ -602,8 +608,13 @@ export function ShelfDetailPage() {
                       className="mx-2"
                       aria-label={`Add ${item.name} to shelf`}
                       onClick={() => handleAddToSelectionShelf(item.id)}
+                      disabled={updateShelf.isPending}
                     >
-                      <ArrowUpFromLine />
+                      {updateShelf.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowUpFromLine />
+                      )}
                     </Button>
                   )}
                 </div>

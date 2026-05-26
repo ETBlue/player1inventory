@@ -229,6 +229,7 @@ function PantryView() {
           className="border-b"
           onCreateFromSearch={handleCreateFromSearch}
           hasExactMatch={hasExactMatch}
+          isCreating={createItem.isPending}
           vendors={vendors}
           recipes={recipes}
           leading={

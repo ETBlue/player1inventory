@@ -93,6 +93,7 @@ function CookingPage() {
   >(new Map())
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [isConfirmingDone, setIsConfirmingDone] = useState(false)
 
   const { expiryDates } = useItemSortData(items)
 
@@ -378,7 +379,6 @@ function CookingPage() {
     setSessionServings(new Map())
     setSessionAmounts(new Map())
     setCheckedItemIds(new Map())
-    setShowDoneDialog(false)
   }
 
   const handleConfirmCancel = () => {
@@ -665,7 +665,11 @@ function CookingPage() {
       </div>
       {/* Done Confirmation Dialog */}
       <AlertDialog open={showDoneDialog} onOpenChange={setShowDoneDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={(e) => {
+            if (isConfirmingDone) e.preventDefault()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('cooking.doneDialog.title', {
@@ -689,10 +693,25 @@ function CookingPage() {
             )}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.back')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDone}>
+            <AlertDialogCancel disabled={isConfirmingDone}>
+              {t('common.back')}
+            </AlertDialogCancel>
+            <Button
+              isLoading={isConfirmingDone}
+              onClick={async () => {
+                setIsConfirmingDone(true)
+                try {
+                  await handleConfirmDone()
+                  setShowDoneDialog(false)
+                } catch {
+                  // mutation failed; dialog stays open so user can retry
+                } finally {
+                  setIsConfirmingDone(false)
+                }
+              }}
+            >
               {t('common.confirm')}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

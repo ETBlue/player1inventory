@@ -106,9 +106,10 @@ export function useAddToCart() {
     },
   })
 
-  const [cloudAddToCart] = useAddToCartMutation({
-    refetchQueries: ['CartItems'],
-  })
+  const [cloudAddToCart, { loading: cloudAddToCartLoading }] =
+    useAddToCartMutation({
+      refetchQueries: ['CartItems'],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -127,7 +128,7 @@ export function useAddToCart() {
         itemId: string
         quantity: number
       }) => cloudAddToCart({ variables: vars }).then((r) => r.data?.addToCart),
-      isPending: false,
+      isPending: cloudAddToCartLoading,
     }
   }
 
@@ -151,9 +152,10 @@ export function useUpdateCartItem() {
     },
   })
 
-  const [cloudUpdateCartItem] = useUpdateCartItemMutation({
-    refetchQueries: ['CartItems'],
-  })
+  const [cloudUpdateCartItem, { loading: cloudUpdateCartItemLoading }] =
+    useUpdateCartItemMutation({
+      refetchQueries: ['CartItems'],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -183,7 +185,7 @@ export function useUpdateCartItem() {
         cloudUpdateCartItem({
           variables: { id: cartItemId, quantity },
         }).then((r) => r.data?.updateCartItem),
-      isPending: false,
+      isPending: cloudUpdateCartItemLoading,
     }
   }
 
@@ -201,9 +203,10 @@ export function useRemoveFromCart() {
     },
   })
 
-  const [cloudRemoveFromCart] = useRemoveFromCartMutation({
-    refetchQueries: ['CartItems'],
-  })
+  const [cloudRemoveFromCart, { loading: cloudRemoveFromCartLoading }] =
+    useRemoveFromCartMutation({
+      refetchQueries: ['CartItems'],
+    })
 
   if (mode === 'cloud') {
     return {
@@ -221,7 +224,7 @@ export function useRemoveFromCart() {
         cloudRemoveFromCart({ variables: { id } }).then(
           (r) => r.data?.removeFromCart,
         ),
-      isPending: false,
+      isPending: cloudRemoveFromCartLoading,
     }
   }
 
@@ -245,7 +248,8 @@ export function useCheckout() {
     },
   })
 
-  const [cloudCheckout] = useCheckoutMutation()
+  const [cloudCheckout, { loading: cloudCheckoutLoading }] =
+    useCheckoutMutation()
 
   if (mode === 'cloud') {
     return {
@@ -311,7 +315,7 @@ export function useCheckout() {
         })
         return r.data?.checkout
       },
-      isPending: false,
+      isPending: cloudCheckoutLoading,
     }
   }
 
@@ -329,7 +333,8 @@ export function useAbandonCart() {
     },
   })
 
-  const [cloudAbandonCart] = useAbandonCartMutation()
+  const [cloudAbandonCart, { loading: cloudAbandonCartLoading }] =
+    useAbandonCartMutation()
 
   if (mode === 'cloud') {
     return {
@@ -357,7 +362,7 @@ export function useAbandonCart() {
             { query: CartItemsDocument, variables: { cartId } },
           ],
         }).then((r) => r.data?.abandonCart),
-      isPending: false,
+      isPending: cloudAbandonCartLoading,
     }
   }
 

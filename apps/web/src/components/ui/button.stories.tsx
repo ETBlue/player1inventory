@@ -108,3 +108,18 @@ export const Loading: Story = {
     isLoading: true,
   },
 }
+
+export const WithIcon: Story = {
+  args: {
+    children: 'Create',
+    icon: <PlusIcon />,
+  },
+}
+
+export const WithIconLoading: Story = {
+  args: {
+    children: 'Create',
+    icon: <PlusIcon />,
+    isLoading: true,
+  },
+}
