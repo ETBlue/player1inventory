@@ -1,0 +1,140 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/db'
+import { createItem, createShelf, updateShelf } from '@/db/operations'
+import { routeTree } from '@/routeTree.gen'
+
+describe('ShelfDetailPage - ItemCard loading states', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.shelves.clear()
+    await db.inventoryLogs.clear()
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const makeItem = (name: string, packedQuantity = 2) =>
+    createItem({
+      name,
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+  const renderShelfDetailPage = (shelfId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/shelves/${shelfId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user sees spinner on minus button while mutation is pending (shelf pantry mode)', async () => {
+    // Given a selection shelf with one item
+    const shelf = await createShelf({
+      name: 'Test Shelf',
+      type: 'selection',
+      order: 0,
+      itemIds: [],
+    })
+    const item = await makeItem('Milk')
+    await updateShelf(shelf.id, { itemIds: [item.id] })
+
+    // Spy on the db write to introduce a delay, keeping pendingItemIds populated
+    let resolveUpdate!: () => void
+    const originalUpdate = db.items.update.bind(db.items)
+    const updateSpy = vi.spyOn(db.items, 'update').mockImplementationOnce(
+      (key, changes) =>
+        new Promise((resolve) => {
+          resolveUpdate = () =>
+            resolve(originalUpdate(key, changes) as unknown as number)
+        }) as ReturnType<typeof db.items.update>,
+    )
+
+    renderShelfDetailPage(shelf.id)
+    const user = userEvent.setup()
+
+    // When user waits for the minus button then clicks it
+    await waitFor(() => {
+      expect(screen.getByLabelText('Consume Milk')).toBeInTheDocument()
+    })
+    const minusBtn = screen.getByLabelText('Consume Milk')
+    await user.click(minusBtn)
+
+    // Then a spinner appears inside the minus button (pendingItemIds still has item.id)
+    await waitFor(() => {
+      expect(minusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+    })
+
+    // Cleanup: let the mutation complete and restore the spy
+    resolveUpdate()
+    updateSpy.mockRestore()
+    await act(async () => {
+      await Promise.resolve()
+    })
+  })
+
+  it('user sees spinner on plus button while mutation is pending (shelf pantry mode)', async () => {
+    // Given a selection shelf with one item
+    const shelf = await createShelf({
+      name: 'Test Shelf',
+      type: 'selection',
+      order: 0,
+      itemIds: [],
+    })
+    const item = await makeItem('Milk')
+    await updateShelf(shelf.id, { itemIds: [item.id] })
+
+    // Spy on the db write to introduce a delay, keeping pendingItemIds populated
+    let resolveUpdate!: () => void
+    const originalUpdate = db.items.update.bind(db.items)
+    const updateSpy = vi.spyOn(db.items, 'update').mockImplementationOnce(
+      (key, changes) =>
+        new Promise((resolve) => {
+          resolveUpdate = () =>
+            resolve(originalUpdate(key, changes) as unknown as number)
+        }) as ReturnType<typeof db.items.update>,
+    )
+
+    renderShelfDetailPage(shelf.id)
+    const user = userEvent.setup()
+
+    // When user waits for the plus button then clicks it
+    await waitFor(() => {
+      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
+    })
+    const plusBtn = screen.getByLabelText('Add Milk')
+    await user.click(plusBtn)
+
+    // Then a spinner appears inside the plus button (pendingItemIds still has item.id)
+    await waitFor(() => {
+      expect(plusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+    })
+
+    // Cleanup: let the mutation complete and restore the spy
+    resolveUpdate()
+    updateSpy.mockRestore()
+    await act(async () => {
+      await Promise.resolve()
+    })
+  })
+})
