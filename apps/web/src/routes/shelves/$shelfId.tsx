@@ -111,6 +111,7 @@ export function ShelfDetailPage() {
   } = useUrlSearchAndFilters()
 
   const [searchVisible, setSearchVisible] = useState(() => !!search.trim())
+  const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
 
   const { quantities, expiryDates, purchaseDates } = useItemSortData(allItems)
 
@@ -532,33 +533,44 @@ export function ShelfDetailPage() {
                 vendors={vendorMap.get(item.id) ?? []}
                 recipes={recipeMap.get(item.id) ?? []}
                 showTags={isTagsVisible}
+                disabled={pendingItemIds.has(item.id)}
+                isPending={pendingItemIds.has(item.id)}
                 onAmountChange={async (delta) => {
-                  const updatedItem = { ...item }
-                  if (delta > 0) {
-                    const purchaseDate = new Date()
-                    addItem(
-                      updatedItem,
-                      updatedItem.consumeAmount,
-                      purchaseDate,
-                    )
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                        ...(updatedItem.dueDate
-                          ? { dueDate: updatedItem.dueDate }
-                          : {}),
-                      },
-                    })
-                  } else {
-                    consumeItem(updatedItem, updatedItem.consumeAmount)
-                    await updateItem.mutateAsync({
-                      id: item.id,
-                      updates: {
-                        packedQuantity: updatedItem.packedQuantity,
-                        unpackedQuantity: updatedItem.unpackedQuantity,
-                      },
+                  setPendingItemIds((prev) => new Set(prev).add(item.id))
+                  try {
+                    const updatedItem = { ...item }
+                    if (delta > 0) {
+                      const purchaseDate = new Date()
+                      addItem(
+                        updatedItem,
+                        updatedItem.consumeAmount,
+                        purchaseDate,
+                      )
+                      await updateItem.mutateAsync({
+                        id: item.id,
+                        updates: {
+                          packedQuantity: updatedItem.packedQuantity,
+                          unpackedQuantity: updatedItem.unpackedQuantity,
+                          ...(updatedItem.dueDate
+                            ? { dueDate: updatedItem.dueDate }
+                            : {}),
+                        },
+                      })
+                    } else {
+                      consumeItem(updatedItem, updatedItem.consumeAmount)
+                      await updateItem.mutateAsync({
+                        id: item.id,
+                        updates: {
+                          packedQuantity: updatedItem.packedQuantity,
+                          unpackedQuantity: updatedItem.unpackedQuantity,
+                        },
+                      })
+                    }
+                  } finally {
+                    setPendingItemIds((prev) => {
+                      const next = new Set(prev)
+                      next.delete(item.id)
+                      return next
                     })
                   }
                 }}
