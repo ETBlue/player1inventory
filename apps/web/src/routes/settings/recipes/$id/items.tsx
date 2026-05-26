@@ -343,6 +343,7 @@ function RecipeItemsTab() {
                       handleAdjustDefaultAmount(item.id, delta)
                     }
                     disabled={savingItemIds.has(item.id)}
+                    isPending={savingItemIds.has(item.id)}
                   />
                 </div>
               )
