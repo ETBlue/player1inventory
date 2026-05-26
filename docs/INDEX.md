@@ -27,7 +27,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | Feature | Status | Notes |
 |---------|--------|-------|
 | [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done; expand/collapse state in URL done; sort by expiration 🔲 Pending |
-| [items](features/items/) | 🔄 In Progress | Item card, form, filters, create-on-search all done; explicit expirationMode field in progress (`feature/expiration-mode`) |
+| [items](features/items/) | 🔄 In Progress | Item card, form, filters, create-on-search all done; ItemCard button loading states done (`feature/button-loading-states`); explicit expirationMode field in progress (`feature/expiration-mode`) |
 | [pantry](features/pantry/) | 🔲 Pending | Unified view (shelf-grouped, expand/collapse, remove `/shelves` routes) — [design](features/pantry/2026-05-02-pantry-unified-view-design.md) — [plan 1: data model](features/pantry/2026-05-02-pantry-unified-view-plan-1-data-model.md) — [plan 2: shelf card](features/pantry/2026-05-02-pantry-unified-view-plan-2-shelf-card.md) — [plan 3: unified page](features/pantry/2026-05-02-pantry-unified-view-plan-3-unified-page.md) |
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
 | [sign-out-and-migration](features/settings/) | 🔄 In Progress | Sign Out button (cloud mode); Switch button symmetry (offline ↔ cloud); migration wiring (doDisable + usePostLoginMigration); DataModeCard refactor |
