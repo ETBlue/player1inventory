@@ -235,6 +235,7 @@ function Shopping() {
           showTagSummary={false}
           isChecked={!!ci}
           disabled={pendingItemIds.has(item.id)}
+          isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
           onAmountChange={(delta) => {

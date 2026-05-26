@@ -139,7 +139,7 @@ export function ItemCard({
               onAmountChange?.(-1)
             }}
             aria-label={`Decrease quantity of ${item.name}`}
-            disabled={disabled || (controlAmount ?? 0) <= minControlAmount}
+            disabled={disabled || isPending || (controlAmount ?? 0) <= minControlAmount}
           >
             {isPending && pendingDirection === -1 ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -160,7 +160,7 @@ export function ItemCard({
               onAmountChange?.(1)
             }}
             aria-label={`Increase quantity of ${item.name}`}
-            disabled={disabled}
+            disabled={disabled || isPending}
           >
             {isPending && pendingDirection === 1 ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -227,7 +227,7 @@ export function ItemCard({
                 setPendingDirection(-1)
                 onAmountChange(-(item.consumeAmount ?? 1))
               }}
-              disabled={disabled || currentQuantity <= 0}
+              disabled={disabled || isPending || currentQuantity <= 0}
               aria-label={`Consume ${item.name}`}
             >
               {isPending && pendingDirection === -1 ? (
@@ -245,7 +245,7 @@ export function ItemCard({
                 setPendingDirection(1)
                 onAmountChange(1)
               }}
-              disabled={disabled}
+              disabled={disabled || isPending}
               aria-label={`Add ${item.name}`}
             >
               {isPending && pendingDirection === 1 ? (
