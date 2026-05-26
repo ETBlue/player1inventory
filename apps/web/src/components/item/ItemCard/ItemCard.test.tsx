@@ -1433,4 +1433,78 @@ describe('ItemCard - loading states', () => {
     expect(spinner).toBeDefined()
     expect(spinner).not.toBeNull()
   })
+
+  it('shows spinner on recipe-assignment overlay minus button (Decrease quantity) while isPending is true', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [isPending, setIsPending] = useState(false)
+      return (
+        <ItemCard
+          item={mockItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="recipe-assignment"
+          isChecked={true}
+          controlAmount={2}
+          onCheckboxToggle={vi.fn()}
+          isPending={isPending}
+          onAmountChange={() => {
+            setIsPending(true)
+          }}
+        />
+      )
+    }
+
+    await renderWithRouter(<Wrapper />)
+
+    const button = screen.getByRole('button', {
+      name: 'Decrease quantity of Apples',
+    })
+    await user.click(button)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const spinner = button.querySelector('.animate-spin')
+    expect(spinner).toBeDefined()
+    expect(spinner).not.toBeNull()
+  })
+
+  it('shows spinner on recipe-assignment overlay plus button (Increase quantity) while isPending is true', async () => {
+    const user = userEvent.setup()
+
+    function Wrapper() {
+      const [isPending, setIsPending] = useState(false)
+      return (
+        <ItemCard
+          item={mockItem}
+          tags={[]}
+          tagTypes={[]}
+          mode="recipe-assignment"
+          isChecked={true}
+          controlAmount={2}
+          onCheckboxToggle={vi.fn()}
+          isPending={isPending}
+          onAmountChange={() => {
+            setIsPending(true)
+          }}
+        />
+      )
+    }
+
+    await renderWithRouter(<Wrapper />)
+
+    const button = screen.getByRole('button', {
+      name: 'Increase quantity of Apples',
+    })
+    await user.click(button)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const spinner = button.querySelector('.animate-spin')
+    expect(spinner).toBeDefined()
+    expect(spinner).not.toBeNull()
+  })
 })
