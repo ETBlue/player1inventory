@@ -14,14 +14,14 @@ All color tokens are defined in two blocks inside `apps/web/src/design-tokens/th
 /* Light mode — applied by default */
 :root {
   --background-base: oklch(90% 4% 85);
-  --foreground-default: oklch(35% 8% 85);
+  --foreground-default: oklch(30% 8% 85);
   /* … */
 }
 
 /* Dark mode — overrides when .dark is on <html> */
 .dark,
 [data-theme='dark'] {
-  --background-base: oklch(20% 2% 85);
+  --background-base: oklch(10% 2% 85);
   --foreground-default: oklch(90% 6% 85);
   /* … */
 }
@@ -85,7 +85,7 @@ When adding a new CSS custom property to the token system:
 
 1. **Always define both light and dark values.** Add the property to both the `:root` block and the `.dark, [data-theme='dark']` block in `theme.css`.
 2. **Map to a Tailwind utility** in the `@theme inline` block so components can use `bg-`, `text-`, or `border-` classes.
-3. **Use OKLCH format.** Adjust the L channel for contrast — target L=35–55% in light mode and L=75–85% in dark mode for text tokens; L=90–98% light / L=20–40% dark for background tokens.
+3. **Use OKLCH format.** Adjust the L channel for contrast — target L=35–55% in light mode and L=75–85% in dark mode for text tokens; L=90–98% light / L=10–30% dark for background tokens.
 4. **Test in both modes** before merging.
 
 ```css
