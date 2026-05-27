@@ -2,6 +2,8 @@
 title: Layout
 ---
 
+import { MobileLayouts, DesktopLayouts } from '../../../components/LayoutDiagram'
+
 Player 1 Inventory is a **mobile-first** application. The default (unstyled) layout targets small screens; responsive modifiers (`lg:`) layer on desktop enhancements. No custom layout tokens are defined — all layout is done through Tailwind's default utilities.
 
 ## Mobile-first approach
@@ -119,6 +121,14 @@ Mobile                          Desktop
 ## Page layout patterns
 
 Three patterns appear inside the main content area. All three work the same at both breakpoints — only the outer shell changes.
+
+### Mobile
+
+<MobileLayouts />
+
+### Desktop
+
+<DesktopLayouts />
 
 ### Toolbar + scrollable list
 
