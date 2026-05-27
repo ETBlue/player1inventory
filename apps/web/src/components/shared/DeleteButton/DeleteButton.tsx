@@ -80,7 +80,9 @@ export function DeleteButton({
               onClick={handleConfirm}
               disabled={isDeleting}
             >
-              {isDeleting && <Loader2 className="animate-spin" />}
+              {isDeleting && (
+                <Loader2 className="animate-spin [transform-box:fill-box]" />
+              )}
               {isDeleting
                 ? t('common.deleting')
                 : (confirmLabel ?? t('common.delete'))}
