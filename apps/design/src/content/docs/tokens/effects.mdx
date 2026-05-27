@@ -15,6 +15,7 @@ The app uses **Tailwind's default `rounded-*` utilities** — no custom radius t
 | `rounded-md` | 6px | Slightly softer cards, dialogs, popovers |
 | `rounded-lg` | 8px | Large panels and sheets |
 | `rounded-full` | 9999px | Circular avatars, pill badges, icon buttons |
+| `rounded-none` | 0px | Elements flush inside a connected group (segmented controls, inline button groups) |
 
 `rounded-sm` is the dominant value — it appears on buttons, input fields, and list row containers. It signals interactivity without looking overly rounded.
 
@@ -34,7 +35,7 @@ Three custom shadow tokens are defined in `apps/web/src/design-tokens/shadows.cs
 
 ### When to use each
 
-**`shadow-sm`** — subtle lift for cards and interactive rows on a surface background. Use when the element needs to feel slightly raised but the background-layer hierarchy already carries the primary elevation signal.
+**`shadow-sm`** — the default shadow for all button variants. Every importance and tag button carries `shadow-sm` at rest and steps up to `shadow-md` on hover (`hover:shadow-md`), giving a subtle lift cue that signals interactivity.
 
 **`shadow-md`** — standard elevation for floating elements such as dropdown menus, date pickers, and search suggestion panels. Clearly separates the element from the page.
 
@@ -50,7 +51,7 @@ Three custom shadow tokens are defined in `apps/web/src/design-tokens/shadows.cs
 | Surface | `--background-surface` | `bg-background-surface` | Toolbars, sticky headers, popovers |
 | Elevated | `--background-elevated` | `bg-background-elevated` | Cards, list items, panels |
 
-In light mode the layers step from L=90% → L=95% → L=98% (OKLCH), making elevated surfaces progressively lighter. In dark mode they step from L=20% → L=30% → L=40%, making elevated surfaces progressively lighter against a dark base.
+In light mode the layers step from L=90% → L=95% → L=98% (OKLCH), making elevated surfaces progressively lighter. In dark mode they step from L=10% → L=20% → L=30%, making elevated surfaces progressively lighter against a dark base.
 
 This means a card (`bg-background-elevated`) placed on a page background (`bg-background-base`) reads as elevated **without any shadow at all** — the background color difference does the work. Shadows are then added only when a physical sense of floating is needed (dropdowns, modals).
 
