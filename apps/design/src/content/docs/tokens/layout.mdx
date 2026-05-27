@@ -81,9 +81,48 @@ The app uses `max-w-*` constraints in dialogs, forms, and settings panels — no
 | `max-w-lg` | 512px | Default dialog width (Dialog and AlertDialog base) |
 | `max-w-2xl` | 672px | Settings forms and detail pages |
 
-## Page layout pattern
+## Global shell
 
-The main list views (pantry, shopping, cooking) share a common two-slot page structure:
+The global `Layout` component wraps every page. It uses a two-column grid that adapts at the `lg:` breakpoint:
+
+```tsx
+// Layout.tsx
+<div className="h-dvh bg-background-base grid grid-cols-[auto_1fr]">
+  <div className="overflow-y-auto">
+    <Sidebar />        {/* hidden by default; lg:flex */}
+  </div>
+  <div className="grid grid-rows-[1fr_auto]">
+    <main className="overflow-y-auto [container-type:size]">
+      {children}
+    </main>
+    <Navigation />     {/* bottom bar; lg:hidden */}
+  </div>
+</div>
+```
+
+**Mobile (< 1024px):** the sidebar column collapses (hidden), giving the main content full width. A four-tab bottom navigation bar occupies the `auto` row below.
+
+**Desktop (≥ 1024px):** a `w-56` sidebar fills the `auto` column on the left. The bottom bar is hidden, so the main content fills the full viewport height.
+
+```
+Mobile                          Desktop
+┌──────────────────────┐        ┌────────┬───────────────────┐
+│                      │        │        │                   │
+│   Main content       │        │Sidebar │   Main content    │
+│   (full width)       │        │ w-56   │   (remaining)     │
+│                      │        │        │                   │
+├──────────────────────┤        └────────┴───────────────────┘
+│  Bottom nav (4 tabs) │
+└──────────────────────┘
+```
+
+## Page layout patterns
+
+Three patterns appear inside the main content area. All three work the same at both breakpoints — only the outer shell changes.
+
+### Toolbar + scrollable list
+
+The most common pattern. Used by the main list views (pantry, shopping, cooking) and all settings list pages.
 
 ```
 ┌─────────────────────┐
@@ -95,8 +134,6 @@ The main list views (pantry, shopping, cooking) share a common two-slot page str
 └─────────────────────┘
 ```
 
-Implemented with CSS grid and container queries:
-
 ```tsx
 <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
   <div>{/* Toolbar */}</div>
@@ -106,7 +143,32 @@ Implemented with CSS grid and container queries:
 </div>
 ```
 
-The `h-[100cqh]` constrains the page to the container's query height rather than the full viewport, which avoids conflicts with browser chrome on mobile.
+`h-[100cqh]` sizes the page to the container query height of the Layout's `<main>` — which equals the viewport minus the bottom nav on mobile, and the full viewport height on desktop.
+
+### Fullscreen toolbar + scrollable list
+
+Used by detail pages that hide the sidebar and bottom nav entirely (item detail, shelf detail).
+
+```tsx
+<div className="h-screen grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+Uses `h-screen` rather than `h-[100cqh]` because these pages opt out of the shell entirely — there is no container query parent to measure against.
+
+### Padded form page
+
+Used by detail form pages (item info, tag/vendor/recipe/shelf detail forms). No toolbar slot — padded content that fills at least the container height.
+
+```tsx
+<div className="p-4 bg-background-elevated min-h-[100cqh]">
+  {/* Form content */}
+</div>
+```
 
 ## Rules of thumb
 
