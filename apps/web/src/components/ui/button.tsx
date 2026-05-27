@@ -106,7 +106,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ) : (
           <>
             {isLoading ? (
-              <Loader2 className="animate-spin" />
+              <Loader2 className="animate-spin [transform-box:fill-box]" />
             ) : icon ? (
               icon
             ) : null}
