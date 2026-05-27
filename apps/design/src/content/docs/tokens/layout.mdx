@@ -120,29 +120,13 @@ Mobile                          Desktop
 
 ## Page layout patterns
 
-Three patterns appear inside the main content area. All three work the same at both breakpoints — only the outer shell changes.
+Three patterns are used across the app. The outer shell differs between breakpoints (sidebar vs bottom nav), but the page-level structure is the same.
 
 ### Mobile
 
 <MobileLayouts />
 
-### Desktop
-
-<DesktopLayouts />
-
-### Toolbar + scrollable list
-
-The most common pattern. Used by the main list views (pantry, shopping, cooking) and all settings list pages.
-
-```
-┌─────────────────────┐
-│  Fixed toolbar row  │  auto height
-├─────────────────────┤
-│                     │
-│  Scrollable list    │  1fr (fills remaining height)
-│                     │
-└─────────────────────┘
-```
+**Toolbar + scrollable list** — the most common pattern. Full-width content with a toolbar at the top and a scrollable area below. The bottom nav sits outside the page content in the outer shell.
 
 ```tsx
 <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
@@ -153,11 +137,9 @@ The most common pattern. Used by the main list views (pantry, shopping, cooking)
 </div>
 ```
 
-`h-[100cqh]` sizes the page to the container query height of the Layout's `<main>` — which equals the viewport minus the bottom nav on mobile, and the full viewport height on desktop.
+`h-[100cqh]` sizes to the container query height of Layout's `<main>` — the viewport minus the bottom nav height.
 
-### Fullscreen toolbar + scrollable list
-
-Used by detail pages that hide the sidebar and bottom nav entirely (item detail, shelf detail).
+**Fullscreen toolbar + list** — detail pages that dismiss the bottom nav entirely (item detail, shelf detail). No outer shell chrome; `h-screen` fills the full viewport.
 
 ```tsx
 <div className="h-screen grid grid-rows-[auto_1fr]">
@@ -168,11 +150,41 @@ Used by detail pages that hide the sidebar and bottom nav entirely (item detail,
 </div>
 ```
 
-Uses `h-screen` rather than `h-[100cqh]` because these pages opt out of the shell entirely — there is no container query parent to measure against.
+**Padded form page** — detail form pages (item info, tag/vendor/recipe/shelf forms). No toolbar slot; padded content fills at least the screen height. No outer shell chrome.
 
-### Padded form page
+```tsx
+<div className="p-4 bg-background-elevated min-h-[100cqh]">
+  {/* Form content */}
+</div>
+```
 
-Used by detail form pages (item info, tag/vendor/recipe/shelf detail forms). No toolbar slot — padded content that fills at least the container height.
+### Desktop
+
+<DesktopLayouts />
+
+**Sidebar + toolbar + scrollable list** — same two-slot page structure as mobile, but with the `w-56` sidebar occupying the left column of the outer shell. The bottom nav is hidden. `h-[100cqh]` now fills the full viewport height since there is no bottom nav offset.
+
+```tsx
+<div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+**Fullscreen toolbar + list** — same as mobile: sidebar and bottom nav are both hidden. `h-screen` fills the full viewport.
+
+```tsx
+<div className="h-screen grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+**Padded form page** — same as mobile: no sidebar, no bottom nav, padded content area.
 
 ```tsx
 <div className="p-4 bg-background-elevated min-h-[100cqh]">
