@@ -84,7 +84,7 @@ function TagTypeSection({
               >
                 {tag.name}
                 {isLoading ? (
-                  <Loader2 className="ml-1 h-3 w-3 animate-spin" />
+                  <Loader2 className="ml-1 h-3 w-3 animate-spin [transform-box:fill-box]" />
                 ) : (
                   isSelected && <X className="ml-1 h-3 w-3" />
                 )}
