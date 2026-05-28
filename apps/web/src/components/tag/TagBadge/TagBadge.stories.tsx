@@ -40,6 +40,16 @@ export const WithCountProp: Story = {
   },
 }
 
+export const Loading: Story = {
+  args: {
+    tag: { id: '3', name: 'Organic', typeId: 'type-3' },
+    tagType: { id: 'type-3', name: 'Quality', color: TagColor.green },
+    isLoading: true,
+    count: 7,
+    onClick: () => console.log('Clicked!'),
+  },
+}
+
 export const DifferentColors: Story = {
   render: () => {
     const tagColors = Object.values(TagColor) as TagColor[]

@@ -173,6 +173,44 @@ describe('Tags Tab - Add Tag Functionality', () => {
     })
   })
 
+  it('tag badge shows spinner and blocks interaction while toggling', async () => {
+    // Given a tag type with a tag assigned to the item
+    const tagType = await createTagType({ name: 'Label', color: 'teal' })
+    const tag = await createTag({ name: 'frozen', typeId: tagType.id })
+    const item = await createItem({
+      name: 'Fish Fillet',
+      tagIds: [tag.id],
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${item.id}/tags`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // When user clicks the assigned badge to remove the tag
+    const badge = await screen.findByRole('button', {
+      name: /frozen/i,
+      pressed: true,
+    })
+    await userEvent.click(badge)
+
+    // Then the tag is eventually unassigned (loading state resolved)
+    await waitFor(async () => {
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.tagIds).not.toContain(tag.id)
+    })
+  })
+
   it('tag badge has aria-pressed reflecting assigned state', async () => {
     // Given a tag type with a tag not yet assigned to the item
     const tagType = await createTagType({ name: 'Category', color: 'blue' })

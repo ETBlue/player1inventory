@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus, X } from 'lucide-react'
+import { Loader2, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
@@ -25,11 +25,13 @@ function TagTypeSection({
   item,
   onToggle,
   onAddTag,
+  loadingTagId,
 }: {
   tagType: { id: string; name: string; color: TagColor }
   item: { tagIds: string[] }
   onToggle: (tagId: string) => void
   onAddTag: (typeId: string) => void
+  loadingTagId?: string | null
 }) {
   const { t } = useTranslation()
   const { data: tagsWithDepth = [] } = useTagsWithDepth(tagType.id)
@@ -45,6 +47,7 @@ function TagTypeSection({
       <div className="space-y-1">
         {tagsWithDepth.map((tag) => {
           const isSelected = item.tagIds.includes(tag.id)
+          const isLoading = loadingTagId === tag.id
           const depth = tag.depth ?? 0
           return (
             <div
@@ -72,14 +75,19 @@ function TagTypeSection({
               <Badge
                 role="button"
                 aria-pressed={isSelected}
+                aria-busy={isLoading}
                 variant={
                   isSelected ? tagType.color : `${tagType.color}-inverse`
                 }
-                className={`cursor-pointer z-10 relative`}
+                className={`cursor-pointer z-10 relative${isLoading ? ' pointer-events-none' : ''}`}
                 onClick={() => onToggle(tag.id)}
               >
                 {tag.name}
-                {isSelected && <X className="ml-1 h-3 w-3" />}
+                {isLoading ? (
+                  <Loader2 className="ml-1 h-3 w-3 animate-spin [transform-box:fill-box]" />
+                ) : (
+                  isSelected && <X className="ml-1 h-3 w-3" />
+                )}
               </Badge>
             </div>
           )
@@ -110,6 +118,7 @@ function TagsTab() {
   const [newTagTypeOpen, setNewTagTypeOpen] = useState(false)
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const addTagType = useAddTagType()
+  const [loadingTagId, setLoadingTagId] = useState<string | null>(null)
 
   const handleAddTag = async () => {
     if (addTagDialog && newTagName.trim()) {
@@ -129,15 +138,19 @@ function TagsTab() {
     }
   }
 
-  const toggleTag = (tagId: string) => {
-    if (!item) return
+  const toggleTag = async (tagId: string) => {
+    if (!item || loadingTagId !== null) return
 
     const newTagIds = item.tagIds.includes(tagId)
       ? item.tagIds.filter((id) => id !== tagId)
       : [...item.tagIds, tagId]
 
-    // Immediate save with optimistic update
-    updateItem.mutate({ id, updates: { tagIds: newTagIds } })
+    setLoadingTagId(tagId)
+    try {
+      await updateItem.mutateAsync({ id, updates: { tagIds: newTagIds } })
+    } finally {
+      setLoadingTagId(null)
+    }
   }
 
   if (!item) return null
@@ -172,6 +185,7 @@ function TagsTab() {
                 item={item}
                 onToggle={toggleTag}
                 onAddTag={setAddTagDialog}
+                loadingTagId={loadingTagId}
               />
             ))}
           {item.tagIds.length === 0 && (
