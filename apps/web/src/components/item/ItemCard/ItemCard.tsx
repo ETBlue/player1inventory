@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import {
+  Calculator,
   CookingPot,
   Loader2,
   Minus,
-  Pencil,
   Plus,
   Store,
   TriangleAlert,
@@ -250,7 +250,7 @@ export function ItemCard({
             {isPending ? (
               <Loader2 className="h-4 w-4 animate-spin [transform-box:fill-box]" />
             ) : (
-              <Pencil className="h-4 w-4" />
+              <Calculator className="h-4 w-4" />
             )}
           </Button>
         )}

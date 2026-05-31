@@ -1,6 +1,6 @@
 import {
-  Blocks,
-  BrushCleaning,
+  ArrowLeftToLine,
+  ArrowRightToLine,
   Minus,
   Package,
   PackageOpen,
@@ -90,8 +90,8 @@ export function QuickUpdateDialog({
 
   const quantityLabel =
     localUnpacked > 0
-      ? `${localDisplayPacked} (+${localUnpacked}) / ${item.targetQuantity} ${unitLabel}`
-      : `${localTotal} / ${item.targetQuantity} ${unitLabel}`
+      ? `${localDisplayPacked} (+${localUnpacked}) / ${item.targetQuantity}`
+      : `${localTotal} / ${item.targetQuantity}`
 
   // Unpack: open one package → unpacked. Mirrors item info tab exactly.
   // Unpack disabled: mirrors item info tab (packedQuantity < 1)
@@ -282,9 +282,16 @@ export function QuickUpdateDialog({
                 setLocalPacked(0)
                 setLocalUnpacked(0)
               }}
-              icon={<BrushCleaning />}
+              icon={<ArrowLeftToLine />}
             />
             <div className="space-y-1">
+              <div className="flex gap-1 items-baseline text-xs text-right text-foreground-muted">
+                <span className="flex-1" />
+                <span>{quantityLabel}</span>
+                <span className="px-1 border-1 border-foreground-muted opacity-75">
+                  {unitLabel}
+                </span>
+              </div>
               <ItemProgressBar
                 current={localTotal}
                 target={item.targetQuantity}
@@ -299,7 +306,6 @@ export function QuickUpdateDialog({
                   ? { amountPerPackage: item.amountPerPackage }
                   : {})}
               />
-              <p className="text-xs text-foreground-muted">{quantityLabel}</p>
             </div>
             <Button
               variant="neutral-outline"
@@ -311,7 +317,7 @@ export function QuickUpdateDialog({
                 setLocalPacked(next.packedQuantity)
                 setLocalUnpacked(next.unpackedQuantity)
               }}
-              icon={<Blocks />}
+              icon={<ArrowRightToLine />}
             />
           </div>
         </DialogMain>
