@@ -6,9 +6,10 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createVendor } from '@/db/operations'
+import * as hooksModule from '@/hooks'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Vendors Tab', () => {
@@ -252,6 +253,51 @@ describe('Vendors Tab', () => {
     await waitFor(async () => {
       const updatedItem = await db.items.get(item.id)
       expect(updatedItem?.vendorIds ?? []).not.toContain(vendor.id)
+    })
+  })
+
+  describe('loading state', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('shows spinner on vendor badge while mutation is in flight', async () => {
+      // Given: useUpdateItem is mocked to stay pending indefinitely
+      vi.spyOn(hooksModule, 'useUpdateItem').mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+      })
+
+      await createVendor('Costco')
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the badge is visible and user clicks it
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: 'Costco', pressed: false }),
+        ).toBeInTheDocument()
+      })
+      await user.click(
+        screen.getByRole('button', { name: 'Costco', pressed: false }),
+      )
+
+      // Then a spinner appears on the badge
+      await waitFor(() => {
+        const badge = screen.getByRole('button', { name: /Costco/i })
+        expect(badge.querySelector('.animate-spin')).not.toBeNull()
+      })
     })
   })
 })
