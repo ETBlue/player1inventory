@@ -1,4 +1,4 @@
-import { Minus, PackageOpen, Plus } from 'lucide-react'
+import { Minus, Package, PackageOpen, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
@@ -72,6 +72,34 @@ export function QuickUpdateDialog({
       ? `${localDisplayPacked} (+${localUnpacked}) / ${item.targetQuantity} ${unitLabel}`
       : `${localTotal} / ${item.targetQuantity} ${unitLabel}`
 
+  // Pack: consolidate unpacked → packed (mirrors item info tab logic)
+  const packDisabled =
+    isPending ||
+    (item.targetUnit === 'package'
+      ? localUnpacked < 1
+      : !item.amountPerPackage || localUnpacked < item.amountPerPackage)
+
+  function handlePack() {
+    if (item.targetUnit === 'package') {
+      const packs = Math.floor(localUnpacked)
+      setLocalPacked(localPacked + packs)
+      setLocalUnpacked(Math.round((localUnpacked - packs) * 1000) / 1000)
+    } else if (item.amountPerPackage) {
+      const packs = Math.floor(localUnpacked / item.amountPerPackage)
+      setLocalPacked(localPacked + packs)
+      setLocalUnpacked(
+        Math.round((localUnpacked - packs * item.amountPerPackage) * 1000) /
+          1000,
+      )
+    }
+  }
+
+  // Unpack: open one package → unpacked (mirrors item info tab logic)
+  function handleUnpack() {
+    setLocalPacked(Math.max(0, localPacked - 1))
+    setLocalUnpacked(localUnpacked + (item.amountPerPackage ?? 1))
+  }
+
   async function handleSubmit() {
     setIsPending(true)
     try {
@@ -135,6 +163,17 @@ export function QuickUpdateDialog({
             >
               <Plus className="h-4 w-4" />
             </Button>
+            {item.packageUnit && (
+              <Button
+                type="button"
+                variant="neutral-outline"
+                disabled={localPacked === 0 || isPending}
+                onClick={handleUnpack}
+              >
+                <PackageOpen />
+                Unpack
+              </Button>
+            )}
           </div>
 
           {/* Unpacked row */}
@@ -175,6 +214,17 @@ export function QuickUpdateDialog({
             >
               <Plus className="h-4 w-4" />
             </Button>
+            {item.packageUnit && (
+              <Button
+                type="button"
+                variant="neutral-outline"
+                disabled={packDisabled}
+                onClick={handlePack}
+              >
+                <Package />
+                Pack
+              </Button>
+            )}
           </div>
 
           {/* Quick action buttons */}
@@ -201,20 +251,6 @@ export function QuickUpdateDialog({
             >
               Fill to Full
             </Button>
-            {item.packageUnit && (
-              <Button
-                type="button"
-                variant="neutral-outline"
-                disabled={localPacked === 0 || isPending}
-                onClick={() => {
-                  setLocalPacked((v) => Math.max(0, v - 1))
-                  setLocalUnpacked((v) => v + (item.amountPerPackage ?? 1))
-                }}
-              >
-                <PackageOpen />
-                Unpack
-              </Button>
-            )}
           </div>
 
           {/* Progress bar */}
