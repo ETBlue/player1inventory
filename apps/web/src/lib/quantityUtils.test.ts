@@ -736,13 +736,13 @@ describe('computeUnpack', () => {
 })
 
 describe('computePack', () => {
-  it('package item: consolidates all whole units from unpacked to packed', () => {
+  it('package item: moves exactly 1 unit from unpacked to packed per click', () => {
     const result = computePack(
       { targetUnit: 'package' },
       { packedQuantity: 1, unpackedQuantity: 3.5 },
     )
-    expect(result.packedQuantity).toBe(4)
-    expect(result.unpackedQuantity).toBe(0.5)
+    expect(result.packedQuantity).toBe(2) // only 1 moved, not Math.floor(3.5)=3
+    expect(result.unpackedQuantity).toBe(2.5)
   })
 
   it('package item: no change when unpacked < 1', () => {
@@ -756,8 +756,8 @@ describe('computePack', () => {
       { targetUnit: 'package' },
       { packedQuantity: 0, unpackedQuantity: 2.5 },
     )
-    expect(result.packedQuantity).toBe(2)
-    expect(result.unpackedQuantity).toBe(0.5)
+    expect(result.packedQuantity).toBe(1) // moves 1, not all
+    expect(result.unpackedQuantity).toBe(1.5)
   })
 
   it('measurement item: consolidates whole packages based on amountPerPackage', () => {

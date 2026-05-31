@@ -125,8 +125,9 @@ export function computeUnpack(
 }
 
 /**
- * Computes new quantities after consolidating all whole packages from unpacked → packed.
- * Mirrors the Pack button logic in ItemForm and QuickUpdateDialog.
+ * Computes new quantities after packing one unit (unpacked → packed).
+ * For package-unit items: moves exactly 1 unit.
+ * For measurement items: consolidates all whole packages based on amountPerPackage.
  */
 export function computePack(
   item: { targetUnit: string; amountPerPackage?: number },
@@ -134,12 +135,10 @@ export function computePack(
 ): PackUnpackState {
   const amount = Number(item.amountPerPackage)
   if (item.targetUnit === 'package') {
-    const packs = Math.floor(state.unpackedQuantity)
-    if (packs <= 0) return state
+    if (state.unpackedQuantity < 1) return state
     return {
-      packedQuantity: state.packedQuantity + packs,
-      unpackedQuantity:
-        Math.round((state.unpackedQuantity - packs) * 1000) / 1000,
+      packedQuantity: state.packedQuantity + 1,
+      unpackedQuantity: Math.round((state.unpackedQuantity - 1) * 1000) / 1000,
     }
   }
   if (item.targetUnit === 'measurement' && amount > 0) {
