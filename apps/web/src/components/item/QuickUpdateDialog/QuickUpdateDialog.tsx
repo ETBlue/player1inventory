@@ -231,12 +231,17 @@ export function QuickUpdateDialog({
                 disabled={isPending}
                 onChange={(e) => {
                   const parsed = Number.parseFloat(e.target.value)
-                  setLocalUnpacked(Number.isNaN(parsed) ? 0 : parsed)
+                  setLocalUnpacked(
+                    Number.isNaN(parsed) ? 0 : roundToStep(parsed, step),
+                  )
                 }}
                 onBlur={(e) => {
                   const parsed = Number.parseFloat(e.target.value)
                   setLocalUnpacked(
-                    Math.max(0, Number.isNaN(parsed) ? 0 : parsed),
+                    Math.max(
+                      0,
+                      Number.isNaN(parsed) ? 0 : roundToStep(parsed, step),
+                    ),
                   )
                 }}
               />
@@ -246,7 +251,9 @@ export function QuickUpdateDialog({
                 className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
                 aria-label="Increase unpacked"
                 disabled={isPending}
-                onClick={() => setLocalUnpacked((v) => v + step)}
+                onClick={() =>
+                  setLocalUnpacked((v) => roundToStep(v + step, step))
+                }
                 icon={<Plus className="h-4 w-4" />}
               />
             </div>

@@ -9,8 +9,6 @@ import {
   getPackedTotal,
   getStockStatus,
   isInactive,
-  normalizeUnpacked,
-  packUnpacked,
   roundToStep,
 } from './quantityUtils'
 
@@ -127,82 +125,6 @@ describe('getPackedTotal', () => {
     }
 
     expect(getPackedTotal(item as Item)).toBe(0)
-  })
-})
-
-describe('normalizeUnpacked', () => {
-  it('converts excess unpacked to packed', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
-      packedQuantity: 1,
-      unpackedQuantity: 1.5,
-    }
-
-    normalizeUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(2)
-    expect(item.unpackedQuantity).toBe(0.5)
-  })
-
-  it('handles exact package conversion', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 2,
-    }
-
-    normalizeUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(2)
-    expect(item.unpackedQuantity).toBe(0)
-  })
-
-  it('does nothing when unpacked < amountPerPackage', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
-      packedQuantity: 1,
-      unpackedQuantity: 0.5,
-    }
-
-    normalizeUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(1)
-    expect(item.unpackedQuantity).toBe(0.5)
-  })
-
-  it('does nothing for simple tracking', () => {
-    const item: Partial<Item> = {
-      packageUnit: 'dozen',
-      packedQuantity: 3,
-      unpackedQuantity: 0,
-    }
-
-    normalizeUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(3)
-    expect(item.unpackedQuantity).toBe(0)
-  })
-
-  it('converts excess unpacked in measurement-only mode', () => {
-    const item: Partial<Item> = {
-      targetUnit: 'measurement',
-      measurementUnit: 'g',
-      amountPerPackage: 100,
-      packedQuantity: 2,
-      unpackedQuantity: 250,
-    }
-
-    normalizeUnpacked(item as Item)
-
-    // 250g should convert to 2 full units (200g) with 50g remaining
-    expect(item.packedQuantity).toBe(4)
-    expect(item.unpackedQuantity).toBe(50)
   })
 })
 
@@ -542,65 +464,6 @@ describe('isInactive', () => {
   })
 })
 
-describe('packUnpacked', () => {
-  it('packs complete units in package mode', () => {
-    const item: Partial<Item> = {
-      packedQuantity: 2,
-      unpackedQuantity: 3.7,
-      targetUnit: 'package',
-      packageUnit: 'bottle',
-    }
-
-    packUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(5) // 2 + floor(3.7) = 5
-    expect(item.unpackedQuantity).toBe(0.7) // Remainder
-  })
-
-  it('packs complete packages in measurement mode', () => {
-    const item: Partial<Item> = {
-      packedQuantity: 1,
-      unpackedQuantity: 2500,
-      targetUnit: 'measurement',
-      measurementUnit: 'g',
-      amountPerPackage: 1000,
-    }
-
-    packUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(3) // 1 + floor(2500/1000) = 3
-    expect(item.unpackedQuantity).toBe(500) // Remainder
-  })
-
-  it('does nothing when insufficient unpacked in package mode', () => {
-    const item: Partial<Item> = {
-      packedQuantity: 2,
-      unpackedQuantity: 0.5,
-      targetUnit: 'package',
-    }
-
-    packUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(2) // No change
-    expect(item.unpackedQuantity).toBe(0.5) // No change
-  })
-
-  it('does nothing when no amountPerPackage in measurement mode', () => {
-    const item: Partial<Item> = {
-      packedQuantity: 2,
-      unpackedQuantity: 150,
-      targetUnit: 'measurement',
-      measurementUnit: 'g',
-      amountPerPackage: undefined,
-    }
-
-    packUnpacked(item as Item)
-
-    expect(item.packedQuantity).toBe(2) // No change
-    expect(item.unpackedQuantity).toBe(150) // No change
-  })
-})
-
 describe('getStockStatus', () => {
   it('returns error when quantity is below threshold', () => {
     expect(getStockStatus(1, 3)).toBe('error')
@@ -678,7 +541,7 @@ describe('consumeItem float precision', () => {
 describe('computeUnpack', () => {
   it('package item: moves 1 unit from packed to unpacked', () => {
     const result = computeUnpack(
-      { targetUnit: 'package' },
+      { targetUnit: 'package', consumeAmount: 1 },
       { packedQuantity: 3, unpackedQuantity: 0 },
     )
     expect(result.packedQuantity).toBe(2)
@@ -688,16 +551,17 @@ describe('computeUnpack', () => {
   it('package item with amountPerPackage set: still moves only 1 unit to unpacked, not amountPerPackage', () => {
     // Confirms the bug fix: even with amountPerPackage=6, unpacked gets +1 (not +6) for package targetUnit
     const result = computeUnpack(
-      { targetUnit: 'package', amountPerPackage: 6 },
+      { targetUnit: 'package', amountPerPackage: 6, consumeAmount: 1 },
       { packedQuantity: 3, unpackedQuantity: 0 },
     )
     expect(result.packedQuantity).toBe(2)
     expect(result.unpackedQuantity).toBe(1)
   })
 
-  it('package item: rounds unpacked to 3 decimal places', () => {
+  it('package item: rounds unpacked to consumeAmount precision', () => {
+    // consumeAmount=0.001 preserves 3 decimal places; float drift is prevented
     const result = computeUnpack(
-      { targetUnit: 'package' },
+      { targetUnit: 'package', consumeAmount: 0.001 },
       { packedQuantity: 2, unpackedQuantity: 0.001 },
     )
     expect(result.packedQuantity).toBe(1)
@@ -706,39 +570,47 @@ describe('computeUnpack', () => {
 
   it('measurement item: adds amountPerPackage to unpacked', () => {
     const result = computeUnpack(
-      { targetUnit: 'measurement', amountPerPackage: 500 },
+      { targetUnit: 'measurement', amountPerPackage: 500, consumeAmount: 1 },
       { packedQuantity: 2, unpackedQuantity: 100 },
     )
     expect(result.packedQuantity).toBe(1)
     expect(result.unpackedQuantity).toBe(600)
   })
 
-  it('measurement item: rounds float addition correctly', () => {
+  it('measurement item: rounds float addition to consumeAmount precision', () => {
+    // 0.2 + 1.1 = 1.2999999999999998 in JS; roundToStep snaps to 0.1 step → 1.3
     const result = computeUnpack(
-      { targetUnit: 'measurement', amountPerPackage: 1.1 },
+      { targetUnit: 'measurement', amountPerPackage: 1.1, consumeAmount: 0.1 },
       { packedQuantity: 2, unpackedQuantity: 0.2 },
     )
     expect(result.packedQuantity).toBe(1)
-    expect(result.unpackedQuantity).toBe(1.3) // Math.round((0.2 + 1.1) * 1000) / 1000
+    expect(result.unpackedQuantity).toBe(1.3)
   })
 
   it('returns unchanged state when packed < 1', () => {
     const state = { packedQuantity: 0, unpackedQuantity: 5 }
-    const result = computeUnpack({ targetUnit: 'package' }, state)
+    const result = computeUnpack(
+      { targetUnit: 'package', consumeAmount: 1 },
+      state,
+    )
     expect(result).toBe(state)
   })
 
   it('returns unchanged state when targetUnit is measurement but amountPerPackage is missing', () => {
     const state = { packedQuantity: 3, unpackedQuantity: 0 }
-    const result = computeUnpack({ targetUnit: 'measurement' }, state)
+    const result = computeUnpack(
+      { targetUnit: 'measurement', consumeAmount: 1 },
+      state,
+    )
     expect(result).toBe(state)
   })
 })
 
 describe('computePack', () => {
   it('package item: moves exactly 1 unit from unpacked to packed per click', () => {
+    // consumeAmount:0.5 — result 2.5 stays exact at 0.5 precision
     const result = computePack(
-      { targetUnit: 'package' },
+      { targetUnit: 'package', consumeAmount: 0.5 },
       { packedQuantity: 1, unpackedQuantity: 3.5 },
     )
     expect(result.packedQuantity).toBe(2) // only 1 moved, not Math.floor(3.5)=3
@@ -747,13 +619,17 @@ describe('computePack', () => {
 
   it('package item: no change when unpacked < 1', () => {
     const state = { packedQuantity: 2, unpackedQuantity: 0.7 }
-    const result = computePack({ targetUnit: 'package' }, state)
+    const result = computePack(
+      { targetUnit: 'package', consumeAmount: 1 },
+      state,
+    )
     expect(result).toBe(state)
   })
 
-  it('package item: rounds remaining unpacked to 3 decimal places', () => {
+  it('package item: rounds remaining unpacked to consumeAmount precision', () => {
+    // consumeAmount:0.5 — 2.5 - 1 = 1.5, stays exact at 0.5 step
     const result = computePack(
-      { targetUnit: 'package' },
+      { targetUnit: 'package', consumeAmount: 0.5 },
       { packedQuantity: 0, unpackedQuantity: 2.5 },
     )
     expect(result.packedQuantity).toBe(1) // moves 1, not all
@@ -762,7 +638,7 @@ describe('computePack', () => {
 
   it('measurement item: consolidates whole packages based on amountPerPackage', () => {
     const result = computePack(
-      { targetUnit: 'measurement', amountPerPackage: 500 },
+      { targetUnit: 'measurement', amountPerPackage: 500, consumeAmount: 1 },
       { packedQuantity: 1, unpackedQuantity: 1200 },
     )
     expect(result.packedQuantity).toBe(3) // 1 + floor(1200/500) = 3
@@ -772,7 +648,7 @@ describe('computePack', () => {
   it('measurement item: no change when unpacked < amountPerPackage', () => {
     const state = { packedQuantity: 2, unpackedQuantity: 300 }
     const result = computePack(
-      { targetUnit: 'measurement', amountPerPackage: 500 },
+      { targetUnit: 'measurement', amountPerPackage: 500, consumeAmount: 1 },
       state,
     )
     expect(result).toBe(state)
@@ -780,13 +656,19 @@ describe('computePack', () => {
 
   it('returns unchanged state when unpacked is 0', () => {
     const state = { packedQuantity: 3, unpackedQuantity: 0 }
-    const result = computePack({ targetUnit: 'package' }, state)
+    const result = computePack(
+      { targetUnit: 'package', consumeAmount: 1 },
+      state,
+    )
     expect(result).toBe(state)
   })
 
   it('returns unchanged state when targetUnit is measurement but amountPerPackage is missing', () => {
     const state = { packedQuantity: 2, unpackedQuantity: 1200 }
-    const result = computePack({ targetUnit: 'measurement' }, state)
+    const result = computePack(
+      { targetUnit: 'measurement', consumeAmount: 1 },
+      state,
+    )
     expect(result).toBe(state)
   })
 })

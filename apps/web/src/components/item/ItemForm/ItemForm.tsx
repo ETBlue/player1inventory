@@ -277,6 +277,7 @@ export function ItemForm({
                       const next = computeUnpack(
                         {
                           targetUnit,
+                          consumeAmount,
                           ...(amountPerPackage
                             ? { amountPerPackage: Number(amountPerPackage) }
                             : {}),
@@ -337,6 +338,7 @@ export function ItemForm({
                       const next = computePack(
                         {
                           targetUnit,
+                          consumeAmount,
                           ...(amountPerPackage
                             ? { amountPerPackage: Number(amountPerPackage) }
                             : {}),
