@@ -125,15 +125,23 @@ export function ItemCard({
         isAmountControllable ? 'mr-28' : '',
       )}
     >
-      {onCheckboxToggle && (
-        <Checkbox
-          checked={!!isChecked}
-          onCheckedChange={() => onCheckboxToggle()}
-          disabled={disabled}
-          aria-label={isChecked ? `Remove ${item.name}` : `Add ${item.name}`}
-          className="absolute -ml-10"
-        />
-      )}
+      {onCheckboxToggle &&
+        (isPending ? (
+          <Loader2
+            className="h-4 w-4 animate-spin [transform-box:fill-box] absolute -ml-10"
+            aria-label={
+              isChecked ? `Removing ${item.name}` : `Adding ${item.name}`
+            }
+          />
+        ) : (
+          <Checkbox
+            checked={!!isChecked}
+            onCheckedChange={() => onCheckboxToggle()}
+            disabled={disabled}
+            aria-label={isChecked ? `Remove ${item.name}` : `Add ${item.name}`}
+            className="absolute -ml-10"
+          />
+        ))}
       {isChecked && isAmountControllable && (
         <div className="flex items-stretch absolute -right-26 top-1.5">
           <Button
