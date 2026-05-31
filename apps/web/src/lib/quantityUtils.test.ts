@@ -560,9 +560,9 @@ describe('computeUnpack', () => {
   })
 
   it('package item: rounds unpacked to consumeAmount precision', () => {
-    // consumeAmount=0.001 preserves 3 decimal places; float drift is prevented
+    // consumeAmount=1 (integer); 3-decimal rounding preserves fractional unpacked
     const result = computeUnpack(
-      { targetUnit: 'package', consumeAmount: 0.001 },
+      { targetUnit: 'package', consumeAmount: 1 },
       { packedQuantity: 2, unpackedQuantity: 0.001 },
     )
     expect(result.packedQuantity).toBe(1)
@@ -579,9 +579,9 @@ describe('computeUnpack', () => {
   })
 
   it('measurement item: rounds float addition to consumeAmount precision', () => {
-    // 0.2 + 1.1 = 1.2999999999999998 in JS; roundToStep snaps to 0.1 step → 1.3
+    // 0.2 + 1.1 = 1.2999999999999998 in JS; Math.round(x*1000)/1000 → 1.3
     const result = computeUnpack(
-      { targetUnit: 'measurement', amountPerPackage: 1.1, consumeAmount: 0.1 },
+      { targetUnit: 'measurement', amountPerPackage: 1.1, consumeAmount: 0.25 },
       { packedQuantity: 2, unpackedQuantity: 0.2 },
     )
     expect(result.packedQuantity).toBe(1)
@@ -687,9 +687,9 @@ describe('computePack', () => {
   })
 
   it('package item: rounds remaining unpacked to consumeAmount precision', () => {
-    // consumeAmount:0.5 — 2.5 - 1 = 1.5, stays exact at 0.5 step
+    // consumeAmount:1 (integer) — 2.5 - 1 = 1.5; Math.round(1.5*1000)/1000 = 1.5
     const result = computePack(
-      { targetUnit: 'package', consumeAmount: 0.5 },
+      { targetUnit: 'package', consumeAmount: 1 },
       { packedQuantity: 0, unpackedQuantity: 2.5 },
     )
     expect(result.packedQuantity).toBe(1) // moves 1, not all

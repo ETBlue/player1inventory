@@ -1296,7 +1296,7 @@ describe('ItemCard - loading states', () => {
     updatedAt: new Date(),
   }
 
-  it('shows spinner on pantry minus button (Consume) while isPending is true', async () => {
+  it('shows spinner on pantry calculator button (Update quantity) while isPending is true', async () => {
     const user = userEvent.setup()
 
     function Wrapper() {
@@ -1308,7 +1308,7 @@ describe('ItemCard - loading states', () => {
           tagTypes={[]}
           mode="pantry"
           isPending={isPending}
-          onAmountChange={() => {
+          onQuickUpdate={() => {
             setIsPending(true)
           }}
         />
@@ -1317,39 +1317,9 @@ describe('ItemCard - loading states', () => {
 
     await renderWithRouter(<Wrapper />)
 
-    const button = screen.getByRole('button', { name: 'Consume Apples' })
-    await user.click(button)
-    await act(async () => {
-      await Promise.resolve()
+    const button = screen.getByRole('button', {
+      name: 'Update quantity of Apples',
     })
-
-    const spinner = button.querySelector('.animate-spin')
-    expect(spinner).toBeDefined()
-    expect(spinner).not.toBeNull()
-  })
-
-  it('shows spinner on pantry plus button (Add) while isPending is true', async () => {
-    const user = userEvent.setup()
-
-    function Wrapper() {
-      const [isPending, setIsPending] = useState(false)
-      return (
-        <ItemCard
-          item={mockItem}
-          tags={[]}
-          tagTypes={[]}
-          mode="pantry"
-          isPending={isPending}
-          onAmountChange={() => {
-            setIsPending(true)
-          }}
-        />
-      )
-    }
-
-    await renderWithRouter(<Wrapper />)
-
-    const button = screen.getByRole('button', { name: 'Add Apples' })
     await user.click(button)
     await act(async () => {
       await Promise.resolve()

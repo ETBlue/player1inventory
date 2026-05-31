@@ -68,18 +68,13 @@ export function computeUnpack(
   if (item.targetUnit === 'package') {
     return {
       packedQuantity: state.packedQuantity - 1,
-      unpackedQuantity: roundToStep(
-        state.unpackedQuantity + 1,
-        item.consumeAmount,
-      ),
+      unpackedQuantity: Math.round((state.unpackedQuantity + 1) * 1000) / 1000,
     }
   } else if (item.targetUnit === 'measurement' && amount > 0) {
     return {
       packedQuantity: state.packedQuantity - 1,
-      unpackedQuantity: roundToStep(
-        state.unpackedQuantity + amount,
-        item.consumeAmount,
-      ),
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity + amount) * 1000) / 1000,
     }
   }
   return state
@@ -103,10 +98,7 @@ export function computePack(
     if (state.unpackedQuantity < 1) return state
     return {
       packedQuantity: state.packedQuantity + 1,
-      unpackedQuantity: roundToStep(
-        state.unpackedQuantity - 1,
-        item.consumeAmount,
-      ),
+      unpackedQuantity: Math.round((state.unpackedQuantity - 1) * 1000) / 1000,
     }
   }
   if (item.targetUnit === 'measurement' && amount > 0) {
@@ -114,10 +106,8 @@ export function computePack(
     if (packs <= 0) return state
     return {
       packedQuantity: state.packedQuantity + packs,
-      unpackedQuantity: roundToStep(
-        state.unpackedQuantity - packs * amount,
-        item.consumeAmount,
-      ),
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity - packs * amount) * 1000) / 1000,
     }
   }
   return state
