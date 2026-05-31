@@ -1507,4 +1507,38 @@ describe('ItemCard - loading states', () => {
     expect(spinner).toBeDefined()
     expect(spinner).not.toBeNull()
   })
+
+  it('replaces checkbox with spinner when isPending is true (unchecked item)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked={false}
+        onCheckboxToggle={vi.fn()}
+        isPending={true}
+      />,
+    )
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Adding Apples/i)).toBeInTheDocument()
+  })
+
+  it('replaces checkbox with spinner when isPending is true (checked item)', async () => {
+    await renderWithRouter(
+      <ItemCard
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked={true}
+        onCheckboxToggle={vi.fn()}
+        isPending={true}
+      />,
+    )
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Removing Apples/i)).toBeInTheDocument()
+  })
 })
