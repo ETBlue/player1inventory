@@ -1,4 +1,4 @@
-import { Minus, Plus } from 'lucide-react'
+import { Minus, PackageOpen, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
@@ -203,15 +203,16 @@ export function QuickUpdateDialog({
             </Button>
             {item.packageUnit && (
               <Button
+                type="button"
                 variant="neutral-outline"
-                size="sm"
                 disabled={localPacked === 0 || isPending}
                 onClick={() => {
                   setLocalPacked((v) => Math.max(0, v - 1))
                   setLocalUnpacked((v) => v + (item.amountPerPackage ?? 1))
                 }}
               >
-                Open Package
+                <PackageOpen />
+                Unpack
               </Button>
             )}
           </div>
