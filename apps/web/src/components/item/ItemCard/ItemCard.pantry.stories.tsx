@@ -110,8 +110,8 @@ export const ExpiringRelative: Story = {
   },
 }
 
-export const WithAmountButtons: Story = {
-  name: 'With +/- buttons',
+export const WithQuickUpdate: Story = {
+  name: 'With Quick Update button',
   args: {
     item: {
       ...mockItem,
@@ -121,15 +121,14 @@ export const WithAmountButtons: Story = {
     tags: mockTags,
     tagTypes: mockTagTypes,
     mode: 'pantry',
-    onAmountChange: (delta) => console.log('Amount change:', delta),
+    onQuickUpdate: () => console.log('Quick update clicked'),
   },
 }
 
-export const WithAmountButtonsMinusPending: Story = {
-  name: 'With +/- buttons — minus pending',
+export const WithQuickUpdatePending: Story = {
+  name: 'With Quick Update button — pending',
   args: {
-    ...WithAmountButtons.args,
+    ...WithQuickUpdate.args,
     isPending: true,
-    disabled: true,
   },
 }

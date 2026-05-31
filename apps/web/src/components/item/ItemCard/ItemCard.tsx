@@ -3,6 +3,7 @@ import {
   CookingPot,
   Loader2,
   Minus,
+  Pencil,
   Plus,
   Store,
   TriangleAlert,
@@ -44,6 +45,7 @@ interface ItemCardProps {
   controlAmount?: number // shown in right-side controls (cart qty, recipe amount)
   minControlAmount?: number // minimum before minus disables (default: 1)
   onAmountChange?: (delta: number) => void
+  onQuickUpdate?: () => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
   isPending?: boolean // shows spinner on the last-clicked +/- button while a mutation is in flight
   vendors?: Vendor[]
@@ -70,6 +72,7 @@ export function ItemCard({
   controlAmount,
   minControlAmount = 0,
   onAmountChange,
+  onQuickUpdate,
   disabled,
   isPending = false,
   vendors = [],
@@ -233,45 +236,23 @@ export function ItemCard({
           />
         </Link>
 
-        {onAmountChange && mode === 'pantry' && (
-          <div>
-            <Button
-              className="rounded-tr-none rounded-br-none"
-              variant="neutral-outline"
-              size="icon"
-              onClick={(e) => {
-                e.preventDefault()
-                setPendingDirection(-1)
-                onAmountChange(-(item.consumeAmount ?? 1))
-              }}
-              disabled={disabled || isPending || currentQuantity <= 0}
-              aria-label={`Consume ${item.name}`}
-            >
-              {isPending && pendingDirection === -1 ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Minus className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              className="-ml-px rounded-tl-none rounded-bl-none"
-              variant="neutral-outline"
-              size="icon"
-              onClick={(e) => {
-                e.preventDefault()
-                setPendingDirection(1)
-                onAmountChange(1)
-              }}
-              disabled={disabled || isPending}
-              aria-label={`Add ${item.name}`}
-            >
-              {isPending && pendingDirection === 1 ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
+        {onQuickUpdate && mode === 'pantry' && (
+          <Button
+            variant="neutral-outline"
+            size="icon"
+            onClick={(e) => {
+              e.preventDefault()
+              onQuickUpdate()
+            }}
+            aria-label={`Update quantity of ${item.name}`}
+            disabled={isPending}
+          >
+            {isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin [transform-box:fill-box]" />
+            ) : (
+              <Pencil className="h-4 w-4" />
+            )}
+          </Button>
         )}
       </CardHeader>
       <CardContent className={isInactive(item) ? 'opacity-80' : ''}>
