@@ -1,4 +1,11 @@
-import { Minus, Package, PackageOpen, Plus } from 'lucide-react'
+import {
+  Blocks,
+  BrushCleaning,
+  Minus,
+  Package,
+  PackageOpen,
+  Plus,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
@@ -10,6 +17,7 @@ import {
   DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { getStockStatus, isInactive } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 
@@ -125,151 +133,153 @@ export function QuickUpdateDialog({
         </DialogHeader>
 
         <DialogMain className="space-y-4">
-          {/* Packed row */}
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-[1fr_2fr_auto] items-center gap-2">
+            {/* Packed row */}
             <span className="w-20 text-sm text-foreground-muted shrink-0">
               {packedLabel}
             </span>
-            <Button
-              variant="neutral-outline"
-              size="icon"
-              aria-label="Decrease packed"
-              disabled={localPacked === 0 || isPending}
-              onClick={() => setLocalPacked((v) => Math.max(0, v - 1))}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <input
-              type="number"
-              min="0"
-              className="w-16 text-center border border-accessory-default rounded-sm bg-background-surface px-2 py-1 text-sm disabled:opacity-50"
-              value={localPacked}
-              disabled={isPending}
-              onChange={(e) => {
-                const parsed = Number.parseFloat(e.target.value)
-                setLocalPacked(Number.isNaN(parsed) ? 0 : parsed)
-              }}
-              onBlur={(e) => {
-                const parsed = Number.parseFloat(e.target.value)
-                setLocalPacked(Math.max(0, Number.isNaN(parsed) ? 0 : parsed))
-              }}
-            />
-            <Button
-              variant="neutral-outline"
-              size="icon"
-              aria-label="Increase packed"
-              disabled={isPending}
-              onClick={() => setLocalPacked((v) => v + 1)}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            {item.packageUnit && (
+            <div className="flex items-center gap-0">
               <Button
-                type="button"
                 variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
+                aria-label="Decrease packed"
                 disabled={localPacked === 0 || isPending}
-                onClick={handleUnpack}
-              >
-                <PackageOpen />
-                Unpack
-              </Button>
-            )}
-          </div>
+                onClick={() => setLocalPacked((v) => Math.max(0, v - 1))}
+                icon={<Minus className="h-4 w-4" />}
+              />
+              <Input
+                type="number"
+                min="0"
+                aria-label={packedLabel}
+                className="h-7 rounded-none text-right"
+                value={localPacked}
+                disabled={isPending}
+                onChange={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalPacked(Number.isNaN(parsed) ? 0 : parsed)
+                }}
+                onBlur={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalPacked(Math.max(0, Number.isNaN(parsed) ? 0 : parsed))
+                }}
+              />
+              <Button
+                variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
+                aria-label="Increase packed"
+                disabled={isPending}
+                onClick={() => setLocalPacked((v) => v + 1)}
+                icon={<Plus className="h-4 w-4" />}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="neutral-outline"
+              size="sm"
+              disabled={!item.packageUnit || localPacked === 0 || isPending}
+              onClick={handleUnpack}
+              icon={<PackageOpen />}
+            >
+              Unpack
+            </Button>
 
-          {/* Unpacked row */}
-          <div className="flex items-center gap-2">
+            {/* Unpacked row */}
             <span className="w-20 text-sm text-foreground-muted shrink-0">
               {unpackedLabel}
             </span>
-            <Button
-              variant="neutral-outline"
-              size="icon"
-              aria-label="Decrease unpacked"
-              disabled={localUnpacked === 0 || isPending}
-              onClick={() => setLocalUnpacked((v) => Math.max(0, v - step))}
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <input
-              type="number"
-              min="0"
-              className="w-16 text-center border border-accessory-default rounded-sm bg-background-surface px-2 py-1 text-sm disabled:opacity-50"
-              value={localUnpacked}
-              disabled={isPending}
-              onChange={(e) => {
-                const parsed = Number.parseFloat(e.target.value)
-                setLocalUnpacked(Number.isNaN(parsed) ? 0 : parsed)
-              }}
-              onBlur={(e) => {
-                const parsed = Number.parseFloat(e.target.value)
-                setLocalUnpacked(Math.max(0, Number.isNaN(parsed) ? 0 : parsed))
-              }}
-            />
-            <Button
-              variant="neutral-outline"
-              size="icon"
-              aria-label="Increase unpacked"
-              disabled={isPending}
-              onClick={() => setLocalUnpacked((v) => v + step)}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            {item.packageUnit && (
+            <div className="flex items-center gap-0">
               <Button
-                type="button"
                 variant="neutral-outline"
-                disabled={packDisabled}
-                onClick={handlePack}
-              >
-                <Package />
-                Pack
-              </Button>
-            )}
-          </div>
-
-          {/* Quick action buttons */}
-          <div className="flex gap-2 flex-wrap">
+                size="icon-sm"
+                className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
+                aria-label="Decrease unpacked"
+                disabled={localUnpacked === 0 || isPending}
+                onClick={() => setLocalUnpacked((v) => Math.max(0, v - step))}
+                icon={<Minus className="h-4 w-4" />}
+              />
+              <Input
+                type="number"
+                min="0"
+                aria-label={unpackedLabel}
+                className="h-7 rounded-none text-right"
+                value={localUnpacked}
+                disabled={isPending}
+                onChange={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalUnpacked(Number.isNaN(parsed) ? 0 : parsed)
+                }}
+                onBlur={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalUnpacked(
+                    Math.max(0, Number.isNaN(parsed) ? 0 : parsed),
+                  )
+                }}
+              />
+              <Button
+                variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
+                aria-label="Increase unpacked"
+                disabled={isPending}
+                onClick={() => setLocalUnpacked((v) => v + step)}
+                icon={<Plus className="h-4 w-4" />}
+              />
+            </div>
             <Button
+              type="button"
               variant="neutral-outline"
               size="sm"
+              disabled={!item.packageUnit || packDisabled}
+              onClick={handlePack}
+              icon={<Package />}
+            >
+              Pack
+            </Button>
+          </div>
+
+          {/* Progress bar + clear/fill actions */}
+          <div className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+            <Button
+              variant="neutral-outline"
+              size="icon-sm"
+              aria-label="Clear"
               disabled={isPending}
               onClick={() => {
                 setLocalPacked(0)
                 setLocalUnpacked(0)
               }}
-            >
-              Clear
-            </Button>
+              icon={<BrushCleaning />}
+            />
+            <div className="space-y-1">
+              <ItemProgressBar
+                current={localTotal}
+                target={item.targetQuantity}
+                status={localProgressStatus}
+                targetUnit={item.targetUnit}
+                packed={localDisplayPacked}
+                unpacked={localUnpacked}
+                {...(item.measurementUnit
+                  ? { measurementUnit: item.measurementUnit }
+                  : {})}
+                {...(item.amountPerPackage
+                  ? { amountPerPackage: item.amountPerPackage }
+                  : {})}
+              />
+              <p className="text-xs text-foreground-muted">{quantityLabel}</p>
+            </div>
             <Button
-              variant="neutral"
-              size="sm"
+              variant="neutral-outline"
+              size="icon-sm"
+              aria-label="Fill to Full"
               disabled={isPending}
               onClick={() => {
                 setLocalPacked(item.targetQuantity)
                 setLocalUnpacked(0)
               }}
-            >
-              Fill to Full
-            </Button>
-          </div>
-
-          {/* Progress bar */}
-          <div className="space-y-1">
-            <ItemProgressBar
-              current={localTotal}
-              target={item.targetQuantity}
-              status={localProgressStatus}
-              targetUnit={item.targetUnit}
-              packed={localDisplayPacked}
-              unpacked={localUnpacked}
-              {...(item.measurementUnit
-                ? { measurementUnit: item.measurementUnit }
-                : {})}
-              {...(item.amountPerPackage
-                ? { amountPerPackage: item.amountPerPackage }
-                : {})}
+              icon={<Blocks />}
             />
-            <p className="text-xs text-foreground-muted">{quantityLabel}</p>
           </div>
         </DialogMain>
 
