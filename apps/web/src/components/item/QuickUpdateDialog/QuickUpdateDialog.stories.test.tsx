@@ -24,14 +24,15 @@ describe('QuickUpdateDialog stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
-  it('number inputs have accessible names', () => {
+  it('number inputs have accessible names matching item info tab format', () => {
     render(<Default />)
-    // Default story uses mockItem (packageUnit: 'gallon') — labels come from item units
+    // mockItem: packageUnit='gallon', targetUnit='package'
+    // packed label: "Packed (gallon)", unpacked label: "Unpacked (gallon)"
     expect(
-      screen.getByRole('spinbutton', { name: 'gallon' }),
+      screen.getByRole('spinbutton', { name: 'Packed (gallon)' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('spinbutton', { name: 'Unpacked' }),
+      screen.getByRole('spinbutton', { name: 'Unpacked (gallon)' }),
     ).toBeInTheDocument()
   })
 

@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { getStockStatus, isInactive } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
+import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 interface QuickUpdateDialogProps {
   item: Item
@@ -51,9 +52,14 @@ export function QuickUpdateDialog({
 
   const step = item.consumeAmount ?? 1
 
-  // Row labels
-  const packedLabel = item.packageUnit ?? 'Packed'
-  const unpackedLabel = item.measurementUnit ?? 'Unpacked'
+  // Labels — matches item info tab format exactly
+  const packedUnit = item.packageUnit || DEFAULT_PACKAGE_UNIT
+  const unpackedUnit =
+    item.targetUnit === 'measurement'
+      ? item.measurementUnit
+      : item.packageUnit || DEFAULT_PACKAGE_UNIT
+  const packedAriaLabel = `Packed (${packedUnit})`
+  const unpackedAriaLabel = `Unpacked (${unpackedUnit})`
 
   // Progress display values
   const localDisplayPacked =
@@ -69,7 +75,7 @@ export function QuickUpdateDialog({
   const localStatus = getStockStatus(localTotal, item.refillThreshold)
   const localProgressStatus = isInactive(item) ? 'inactive' : localStatus
 
-  // Text label below bar
+  // Text label below progress bar
   const unitLabel =
     item.targetUnit === 'measurement' && item.measurementUnit
       ? item.measurementUnit
@@ -80,32 +86,45 @@ export function QuickUpdateDialog({
       ? `${localDisplayPacked} (+${localUnpacked}) / ${item.targetQuantity} ${unitLabel}`
       : `${localTotal} / ${item.targetQuantity} ${unitLabel}`
 
-  // Pack: consolidate unpacked → packed (mirrors item info tab logic)
+  // Unpack: open one package → unpacked. Mirrors item info tab exactly.
+  function handleUnpack() {
+    const amount = Number(item.amountPerPackage)
+    if (item.targetUnit === 'package') {
+      setLocalPacked(localPacked - 1)
+      setLocalUnpacked(Math.round((localUnpacked + 1) * 1000) / 1000)
+    } else if (item.targetUnit === 'measurement' && amount > 0) {
+      setLocalPacked(localPacked - 1)
+      setLocalUnpacked(Math.round((localUnpacked + amount) * 1000) / 1000)
+    }
+  }
+
+  // Pack: consolidate unpacked → packed. Mirrors item info tab exactly.
   const packDisabled =
     isPending ||
     (item.targetUnit === 'package'
       ? localUnpacked < 1
-      : !item.amountPerPackage || localUnpacked < item.amountPerPackage)
+      : item.targetUnit === 'measurement'
+        ? !item.amountPerPackage ||
+          localUnpacked < Number(item.amountPerPackage)
+        : true)
 
   function handlePack() {
+    const amount = Number(item.amountPerPackage)
     if (item.targetUnit === 'package') {
       const packs = Math.floor(localUnpacked)
-      setLocalPacked(localPacked + packs)
-      setLocalUnpacked(Math.round((localUnpacked - packs) * 1000) / 1000)
-    } else if (item.amountPerPackage) {
-      const packs = Math.floor(localUnpacked / item.amountPerPackage)
-      setLocalPacked(localPacked + packs)
-      setLocalUnpacked(
-        Math.round((localUnpacked - packs * item.amountPerPackage) * 1000) /
-          1000,
-      )
+      if (packs > 0) {
+        setLocalPacked(localPacked + packs)
+        setLocalUnpacked(Math.round((localUnpacked - packs) * 1000) / 1000)
+      }
+    } else if (item.targetUnit === 'measurement' && amount > 0) {
+      const packs = Math.floor(localUnpacked / amount)
+      if (packs > 0) {
+        setLocalPacked(localPacked + packs)
+        setLocalUnpacked(
+          Math.round((localUnpacked - packs * amount) * 1000) / 1000,
+        )
+      }
     }
-  }
-
-  // Unpack: open one package → unpacked (mirrors item info tab logic)
-  function handleUnpack() {
-    setLocalPacked(Math.max(0, localPacked - 1))
-    setLocalUnpacked(localUnpacked + (item.amountPerPackage ?? 1))
   }
 
   async function handleSubmit() {
@@ -134,9 +153,9 @@ export function QuickUpdateDialog({
 
         <DialogMain className="space-y-4">
           <div className="grid grid-cols-[1fr_2fr_auto] items-center gap-2">
-            {/* Packed row */}
-            <span className="w-20 text-sm text-foreground-muted shrink-0">
-              {packedLabel}
+            {/* Packed row — label format matches item info tab */}
+            <span className="text-sm text-foreground-muted shrink-0">
+              Packed <span className="text-xs font-normal">({packedUnit})</span>
             </span>
             <div className="flex items-center gap-0">
               <Button
@@ -151,7 +170,7 @@ export function QuickUpdateDialog({
               <Input
                 type="number"
                 min="0"
-                aria-label={packedLabel}
+                aria-label={packedAriaLabel}
                 className="h-7 rounded-none text-right"
                 value={localPacked}
                 disabled={isPending}
@@ -174,20 +193,22 @@ export function QuickUpdateDialog({
                 icon={<Plus className="h-4 w-4" />}
               />
             </div>
+            {/* Disabled condition mirrors item info tab: packedQuantity < 1 */}
             <Button
               type="button"
               variant="neutral-outline"
               size="sm"
-              disabled={!item.packageUnit || localPacked === 0 || isPending}
+              disabled={localPacked < 1 || isPending}
               onClick={handleUnpack}
               icon={<PackageOpen />}
             >
               Unpack
             </Button>
 
-            {/* Unpacked row */}
-            <span className="w-20 text-sm text-foreground-muted shrink-0">
-              {unpackedLabel}
+            {/* Unpacked row — label format matches item info tab */}
+            <span className="text-sm text-foreground-muted shrink-0">
+              Unpacked{' '}
+              <span className="text-xs font-normal">({unpackedUnit})</span>
             </span>
             <div className="flex items-center gap-0">
               <Button
@@ -202,7 +223,7 @@ export function QuickUpdateDialog({
               <Input
                 type="number"
                 min="0"
-                aria-label={unpackedLabel}
+                aria-label={unpackedAriaLabel}
                 className="h-7 rounded-none text-right"
                 value={localUnpacked}
                 disabled={isPending}
@@ -227,11 +248,12 @@ export function QuickUpdateDialog({
                 icon={<Plus className="h-4 w-4" />}
               />
             </div>
+            {/* Disabled condition mirrors item info tab exactly */}
             <Button
               type="button"
               variant="neutral-outline"
               size="sm"
-              disabled={!item.packageUnit || packDisabled}
+              disabled={packDisabled}
               onClick={handlePack}
               icon={<Package />}
             >
