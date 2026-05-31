@@ -1,3 +1,4 @@
+import { Minus, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
@@ -108,7 +109,7 @@ export function QuickUpdateDialog({
               disabled={localPacked === 0 || isPending}
               onClick={() => setLocalPacked((v) => Math.max(0, v - step))}
             >
-              −
+              <Minus className="h-4 w-4" />
             </Button>
             <input
               type="number"
@@ -132,7 +133,7 @@ export function QuickUpdateDialog({
               disabled={isPending}
               onClick={() => setLocalPacked((v) => v + step)}
             >
-              +
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
 
@@ -148,7 +149,7 @@ export function QuickUpdateDialog({
               disabled={localUnpacked === 0 || isPending}
               onClick={() => setLocalUnpacked((v) => Math.max(0, v - step))}
             >
-              −
+              <Minus className="h-4 w-4" />
             </Button>
             <input
               type="number"
@@ -172,7 +173,7 @@ export function QuickUpdateDialog({
               disabled={isPending}
               onClick={() => setLocalUnpacked((v) => v + step)}
             >
-              +
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
 
