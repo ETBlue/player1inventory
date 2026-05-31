@@ -135,7 +135,7 @@ export function QuickUpdateDialog({
               size="icon"
               aria-label="Decrease packed"
               disabled={localPacked === 0 || isPending}
-              onClick={() => setLocalPacked((v) => Math.max(0, v - step))}
+              onClick={() => setLocalPacked((v) => Math.max(0, v - 1))}
             >
               <Minus className="h-4 w-4" />
             </Button>
@@ -159,7 +159,7 @@ export function QuickUpdateDialog({
               size="icon"
               aria-label="Increase packed"
               disabled={isPending}
-              onClick={() => setLocalPacked((v) => v + step)}
+              onClick={() => setLocalPacked((v) => v + 1)}
             >
               <Plus className="h-4 w-4" />
             </Button>
