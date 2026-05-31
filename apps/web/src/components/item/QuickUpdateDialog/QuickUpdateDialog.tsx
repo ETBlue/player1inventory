@@ -18,7 +18,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { getStockStatus, isInactive } from '@/lib/quantityUtils'
+import {
+  computePack,
+  computeUnpack,
+  getStockStatus,
+  isInactive,
+} from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
@@ -87,15 +92,16 @@ export function QuickUpdateDialog({
       : `${localTotal} / ${item.targetQuantity} ${unitLabel}`
 
   // Unpack: open one package → unpacked. Mirrors item info tab exactly.
+  // Unpack disabled: mirrors item info tab (packedQuantity < 1)
+  const unpackDisabled = localPacked < 1 || isPending
+
   function handleUnpack() {
-    const amount = Number(item.amountPerPackage)
-    if (item.targetUnit === 'package') {
-      setLocalPacked(localPacked - 1)
-      setLocalUnpacked(Math.round((localUnpacked + 1) * 1000) / 1000)
-    } else if (item.targetUnit === 'measurement' && amount > 0) {
-      setLocalPacked(localPacked - 1)
-      setLocalUnpacked(Math.round((localUnpacked + amount) * 1000) / 1000)
-    }
+    const next = computeUnpack(item, {
+      packedQuantity: localPacked,
+      unpackedQuantity: localUnpacked,
+    })
+    setLocalPacked(next.packedQuantity)
+    setLocalUnpacked(next.unpackedQuantity)
   }
 
   // Pack: consolidate unpacked → packed. Mirrors item info tab exactly.
@@ -109,22 +115,12 @@ export function QuickUpdateDialog({
         : true)
 
   function handlePack() {
-    const amount = Number(item.amountPerPackage)
-    if (item.targetUnit === 'package') {
-      const packs = Math.floor(localUnpacked)
-      if (packs > 0) {
-        setLocalPacked(localPacked + packs)
-        setLocalUnpacked(Math.round((localUnpacked - packs) * 1000) / 1000)
-      }
-    } else if (item.targetUnit === 'measurement' && amount > 0) {
-      const packs = Math.floor(localUnpacked / amount)
-      if (packs > 0) {
-        setLocalPacked(localPacked + packs)
-        setLocalUnpacked(
-          Math.round((localUnpacked - packs * amount) * 1000) / 1000,
-        )
-      }
-    }
+    const next = computePack(item, {
+      packedQuantity: localPacked,
+      unpackedQuantity: localUnpacked,
+    })
+    setLocalPacked(next.packedQuantity)
+    setLocalUnpacked(next.unpackedQuantity)
   }
 
   async function handleSubmit() {
@@ -152,7 +148,7 @@ export function QuickUpdateDialog({
         </DialogHeader>
 
         <DialogMain className="space-y-4">
-          <div className="grid grid-cols-[1fr_2fr_auto] items-center gap-2">
+          <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
             {/* Packed row — label format matches item info tab */}
             <span className="text-sm text-foreground-muted shrink-0">
               Packed <span className="text-xs font-normal">({packedUnit})</span>
@@ -198,7 +194,7 @@ export function QuickUpdateDialog({
               type="button"
               variant="neutral-outline"
               size="sm"
-              disabled={localPacked < 1 || isPending}
+              disabled={unpackDisabled}
               onClick={handleUnpack}
               icon={<PackageOpen />}
             >

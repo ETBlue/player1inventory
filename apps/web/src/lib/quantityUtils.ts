@@ -93,6 +93,67 @@ export function packUnpacked(item: Item): void {
   // If no valid mode or insufficient quantity, do nothing
 }
 
+export interface PackUnpackState {
+  packedQuantity: number
+  unpackedQuantity: number
+}
+
+/**
+ * Computes new quantities after opening one package (packed → unpacked).
+ * Mirrors the Unpack button logic in ItemForm and QuickUpdateDialog.
+ */
+export function computeUnpack(
+  item: { targetUnit: string; amountPerPackage?: number },
+  state: PackUnpackState,
+): PackUnpackState {
+  if (state.packedQuantity < 1) return state // guard: nothing to unpack
+  const amount = Number(item.amountPerPackage)
+  if (item.targetUnit === 'package') {
+    return {
+      packedQuantity: state.packedQuantity - 1,
+      unpackedQuantity: Math.round((state.unpackedQuantity + 1) * 1000) / 1000,
+    }
+  }
+  if (item.targetUnit === 'measurement' && amount > 0) {
+    return {
+      packedQuantity: state.packedQuantity - 1,
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity + amount) * 1000) / 1000,
+    }
+  }
+  return state
+}
+
+/**
+ * Computes new quantities after consolidating all whole packages from unpacked → packed.
+ * Mirrors the Pack button logic in ItemForm and QuickUpdateDialog.
+ */
+export function computePack(
+  item: { targetUnit: string; amountPerPackage?: number },
+  state: PackUnpackState,
+): PackUnpackState {
+  const amount = Number(item.amountPerPackage)
+  if (item.targetUnit === 'package') {
+    const packs = Math.floor(state.unpackedQuantity)
+    if (packs <= 0) return state
+    return {
+      packedQuantity: state.packedQuantity + packs,
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity - packs) * 1000) / 1000,
+    }
+  }
+  if (item.targetUnit === 'measurement' && amount > 0) {
+    const packs = Math.floor(state.unpackedQuantity / amount)
+    if (packs <= 0) return state
+    return {
+      packedQuantity: state.packedQuantity + packs,
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity - packs * amount) * 1000) / 1000,
+    }
+  }
+  return state
+}
+
 export function consumeItem(item: Item, amount: number): void {
   if (
     item.targetUnit === 'measurement' &&
