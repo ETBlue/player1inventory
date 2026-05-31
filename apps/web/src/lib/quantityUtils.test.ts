@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Item } from '@/types'
 import {
   addItem,
+  computeFillToFull,
   computePack,
   computeUnpack,
   consumeItem,
@@ -603,6 +604,65 @@ describe('computeUnpack', () => {
       state,
     )
     expect(result).toBe(state)
+  })
+})
+
+describe('computeFillToFull', () => {
+  it('package item: sets packed = targetQuantity, unpacked = 0', () => {
+    const result = computeFillToFull({
+      targetUnit: 'package',
+      targetQuantity: 5,
+      consumeAmount: 1,
+    })
+    expect(result.packedQuantity).toBe(5)
+    expect(result.unpackedQuantity).toBe(0)
+  })
+
+  it('measurement item: calculates packed in package units, not measurement units', () => {
+    // 2 L ÷ 0.5 L/bottle = 4 bottles
+    const result = computeFillToFull({
+      targetUnit: 'measurement',
+      targetQuantity: 2,
+      amountPerPackage: 0.5,
+      consumeAmount: 0.25,
+    })
+    expect(result.packedQuantity).toBe(4)
+    expect(result.unpackedQuantity).toBe(0)
+  })
+
+  it('measurement item: puts remainder in unpacked when not evenly divisible', () => {
+    // 2.5 L ÷ 1 L/bottle = 2 bottles + 0.5 L remainder
+    const result = computeFillToFull({
+      targetUnit: 'measurement',
+      targetQuantity: 2.5,
+      amountPerPackage: 1,
+      consumeAmount: 0.5,
+    })
+    expect(result.packedQuantity).toBe(2)
+    expect(result.unpackedQuantity).toBe(0.5)
+  })
+
+  it('measurement item without amountPerPackage: falls back to package behavior', () => {
+    const result = computeFillToFull({
+      targetUnit: 'measurement',
+      targetQuantity: 3,
+      consumeAmount: 1,
+    })
+    expect(result.packedQuantity).toBe(3)
+    expect(result.unpackedQuantity).toBe(0)
+  })
+
+  it('measurement item: rounds unpacked remainder to consumeAmount precision', () => {
+    // 1 L ÷ 0.3 L/bottle = floor(3.333…) = 3 bottles, remainder = 1 - 3×0.3 = 0.09999…
+    // roundToStep(0.09999…, 0.1) = 0.1
+    const result = computeFillToFull({
+      targetUnit: 'measurement',
+      targetQuantity: 1,
+      amountPerPackage: 0.3,
+      consumeAmount: 0.1,
+    })
+    expect(result.packedQuantity).toBe(3)
+    expect(result.unpackedQuantity).toBe(0.1)
   })
 })
 

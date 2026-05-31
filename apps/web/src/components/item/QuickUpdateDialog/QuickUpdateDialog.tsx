@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
+  computeFillToFull,
   computePack,
   computeUnpack,
   getStockStatus,
@@ -306,8 +307,9 @@ export function QuickUpdateDialog({
               aria-label="Fill to Full"
               disabled={isPending}
               onClick={() => {
-                setLocalPacked(item.targetQuantity)
-                setLocalUnpacked(0)
+                const next = computeFillToFull(item)
+                setLocalPacked(next.packedQuantity)
+                setLocalUnpacked(next.unpackedQuantity)
               }}
               icon={<Blocks />}
             />

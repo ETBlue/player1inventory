@@ -123,6 +123,34 @@ export function computePack(
   return state
 }
 
+/**
+ * Computes packed/unpacked quantities for "Fill to Full".
+ * For measurement-unit items, converts targetQuantity (in measurement units)
+ * to packages using amountPerPackage, putting any remainder in unpackedQuantity.
+ * For package-unit items (or measurement items lacking amountPerPackage),
+ * sets packed = targetQuantity and unpacked = 0.
+ */
+export function computeFillToFull(item: {
+  targetUnit: string
+  targetQuantity: number
+  amountPerPackage?: number
+  consumeAmount: number
+}): PackUnpackState {
+  if (
+    item.targetUnit === 'measurement' &&
+    item.amountPerPackage &&
+    item.amountPerPackage > 0
+  ) {
+    const packed = Math.floor(item.targetQuantity / item.amountPerPackage)
+    const unpacked = roundToStep(
+      item.targetQuantity - packed * item.amountPerPackage,
+      item.consumeAmount,
+    )
+    return { packedQuantity: packed, unpackedQuantity: unpacked }
+  }
+  return { packedQuantity: item.targetQuantity, unpackedQuantity: 0 }
+}
+
 export function consumeItem(item: Item, amount: number): void {
   if (
     item.targetUnit === 'measurement' &&
