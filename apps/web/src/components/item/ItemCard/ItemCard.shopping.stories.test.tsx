@@ -3,7 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ItemCard.shopping.stories'
 
-const { NotInCart, InCart, InCartMinusPending } = composeStories(stories)
+const { NotInCart, InCart, CheckboxPendingUnchecked, CheckboxPendingChecked } =
+  composeStories(stories)
 
 describe('ItemCard shopping stories smoke tests', () => {
   it('NotInCart renders without error', async () => {
@@ -20,8 +21,15 @@ describe('ItemCard shopping stories smoke tests', () => {
     )
   })
 
-  it('InCartMinusPending renders without error', async () => {
-    render(<InCartMinusPending />)
+  it('CheckboxPendingUnchecked renders spinner without error', async () => {
+    render(<CheckboxPendingUnchecked />)
+    await waitFor(() =>
+      expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
+    )
+  })
+
+  it('CheckboxPendingChecked renders spinner without error', async () => {
+    render(<CheckboxPendingChecked />)
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )
