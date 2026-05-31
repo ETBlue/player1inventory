@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { Loader2, Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -27,6 +27,11 @@ function RecipesTab() {
   const createRecipe = useCreateRecipe()
   const [showDialog, setShowDialog] = useState(false)
   const [newRecipeName, setNewRecipeName] = useState('')
+  const [togglingRecipeId, setTogglingRecipeId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!updateRecipe.isPending) setTogglingRecipeId(null)
+  }, [updateRecipe.isPending])
 
   const toggleRecipe = (recipe: { id: string; items: RecipeItem[] }) => {
     if (!item) return
@@ -36,6 +41,7 @@ function RecipesTab() {
       ? recipe.items.filter((ri) => ri.itemId !== id)
       : [...recipe.items, { itemId: id, defaultAmount: 0 }]
 
+    setTogglingRecipeId(recipe.id)
     updateRecipe.mutate({ id: recipe.id, updates: { items: newItems } })
   }
 
@@ -71,11 +77,15 @@ function RecipesTab() {
               role="button"
               aria-pressed={isAssigned}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className="cursor-pointer capitalize"
+              className={`cursor-pointer capitalize ${updateRecipe.isPending && togglingRecipeId === recipe.id ? 'pointer-events-none' : ''}`}
               onClick={() => toggleRecipe(recipe)}
             >
               {recipe.name}
-              {isAssigned && <X className="ml-1 h-3 w-3" />}
+              {updateRecipe.isPending && togglingRecipeId === recipe.id ? (
+                <Loader2 className="ml-1 h-3 w-3 animate-spin [transform-box:fill-box]" />
+              ) : (
+                isAssigned && <X className="ml-1 h-3 w-3" />
+              )}
             </Badge>
           )
         })}

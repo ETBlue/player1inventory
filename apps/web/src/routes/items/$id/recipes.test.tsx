@@ -315,4 +315,49 @@ describe('Recipes Tab', () => {
       expect(newRecipe?.items.some((ri) => ri.itemId === item.id)).toBe(true)
     })
   })
+
+  describe('loading state', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('shows spinner on recipe badge while mutation is in flight', async () => {
+      // Given: useUpdateRecipe is mocked to stay pending indefinitely
+      vi.spyOn(useRecipesModule, 'useUpdateRecipe').mockReturnValue({
+        mutate: vi.fn(),
+        isPending: true,
+      })
+
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      await createRecipe({ name: 'Pasta Sauce' })
+
+      renderRecipesTab(item.id)
+      const user = userEvent.setup()
+
+      // When the badge is visible and user clicks it
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: 'Pasta Sauce', pressed: false }),
+        ).toBeInTheDocument()
+      })
+      await user.click(
+        screen.getByRole('button', { name: 'Pasta Sauce', pressed: false }),
+      )
+
+      // Then a spinner appears on the badge
+      await waitFor(() => {
+        const badge = screen.getByRole('button', { name: /Pasta Sauce/i })
+        expect(badge.querySelector('.animate-spin')).not.toBeNull()
+      })
+    })
+  })
 })

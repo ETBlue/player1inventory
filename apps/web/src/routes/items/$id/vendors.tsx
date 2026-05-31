@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { Loader2, Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -22,6 +22,11 @@ function VendorsTab() {
   const createVendor = useCreateVendor()
   const [showDialog, setShowDialog] = useState(false)
   const [newVendorName, setNewVendorName] = useState('')
+  const [togglingVendorId, setTogglingVendorId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!updateItem.isPending) setTogglingVendorId(null)
+  }, [updateItem.isPending])
 
   const toggleVendor = (vendorId: string) => {
     if (!item) return
@@ -31,6 +36,7 @@ function VendorsTab() {
       ? currentVendorIds.filter((vid) => vid !== vendorId)
       : [...currentVendorIds, vendorId]
 
+    setTogglingVendorId(vendorId)
     updateItem.mutate({ id, updates: { vendorIds: newVendorIds } })
   }
 
@@ -68,11 +74,15 @@ function VendorsTab() {
               role="button"
               aria-pressed={isAssigned}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className="cursor-pointer normal-case"
+              className={`cursor-pointer normal-case${updateItem.isPending && togglingVendorId === vendor.id ? ' pointer-events-none' : ''}`}
               onClick={() => toggleVendor(vendor.id)}
             >
               {vendor.name}
-              {isAssigned && <X className="ml-1 h-3 w-3" />}
+              {updateItem.isPending && togglingVendorId === vendor.id ? (
+                <Loader2 className="ml-1 h-3 w-3 animate-spin [transform-box:fill-box]" />
+              ) : (
+                isAssigned && <X className="ml-1 h-3 w-3" />
+              )}
             </Badge>
           )
         })}

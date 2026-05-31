@@ -49,11 +49,18 @@ export const InCart: Story = {
   },
 }
 
-export const InCartMinusPending: Story = {
-  name: 'In cart — minus pending',
+export const CheckboxPendingUnchecked: Story = {
+  name: 'Checkbox pending — adding',
+  args: {
+    ...NotInCart.args,
+    isPending: true,
+  },
+}
+
+export const CheckboxPendingChecked: Story = {
+  name: 'Checkbox pending — removing',
   args: {
     ...InCart.args,
     isPending: true,
-    disabled: true,
   },
 }
