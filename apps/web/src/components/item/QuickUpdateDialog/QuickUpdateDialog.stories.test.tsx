@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import * as stories from './QuickUpdateDialog.stories'
 
-const { Default, DualUnit, WithUnpacked } = composeStories(stories)
+const { Default, DualUnit, WithUnpacked, AtZero, FullStock } =
+  composeStories(stories)
 
 // Default story: mockItem — targetUnit:'package', packageUnit:'gallon',
 //   consumeAmount:1, targetQuantity:2, packedQuantity:2, unpackedQuantity:0
@@ -177,5 +178,43 @@ describe('QuickUpdateDialog — Pack button', () => {
     expect(
       screen.getByRole('spinbutton', { name: 'Unpacked (gallon)' }),
     ).toHaveValue(1)
+  })
+})
+
+describe('QuickUpdateDialog — disabled states', () => {
+  it('Clear is disabled when both quantities are already 0', () => {
+    render(<AtZero />)
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeDisabled()
+  })
+
+  it('Clear is enabled when packed > 0', () => {
+    render(<Default />)
+    expect(screen.getByRole('button', { name: 'Clear' })).not.toBeDisabled()
+  })
+
+  it('Fill to Full is disabled when already at full stock', () => {
+    render(<FullStock />)
+    // FullStock: packed=targetQuantity=2, unpacked=0
+    expect(screen.getByRole('button', { name: 'Fill to Full' })).toBeDisabled()
+  })
+
+  it('Fill to Full is enabled when not at full stock', () => {
+    render(<WithUnpacked />)
+    // WithUnpacked: packed=1 < targetQuantity=2
+    expect(
+      screen.getByRole('button', { name: 'Fill to Full' }),
+    ).not.toBeDisabled()
+  })
+
+  it('Update is disabled when amounts are untouched', () => {
+    render(<WithUnpacked />)
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled()
+  })
+
+  it('Update becomes enabled after changing a quantity', async () => {
+    const user = userEvent.setup()
+    render(<WithUnpacked />)
+    await user.click(screen.getByRole('button', { name: 'Increase packed' }))
+    expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled()
   })
 })

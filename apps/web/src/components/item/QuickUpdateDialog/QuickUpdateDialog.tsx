@@ -93,6 +93,15 @@ export function QuickUpdateDialog({
       ? `${localDisplayPacked} (+${localUnpacked}) / ${item.targetQuantity}`
       : `${localTotal} / ${item.targetQuantity}`
 
+  const isAtZero = localPacked === 0 && localUnpacked === 0
+  const fillToFullState = computeFillToFull(item)
+  const isAtFull =
+    localPacked === fillToFullState.packedQuantity &&
+    localUnpacked === fillToFullState.unpackedQuantity
+  const isUntouched =
+    localPacked === item.packedQuantity &&
+    localUnpacked === item.unpackedQuantity
+
   // Unpack: open one package → unpacked. Mirrors item info tab exactly.
   // Unpack disabled: mirrors item info tab (packedQuantity < 1)
   const unpackDisabled = localPacked < 1 || isPending
@@ -277,7 +286,7 @@ export function QuickUpdateDialog({
               variant="neutral-outline"
               size="icon-sm"
               aria-label="Clear"
-              disabled={isPending}
+              disabled={isPending || isAtZero}
               onClick={() => {
                 setLocalPacked(0)
                 setLocalUnpacked(0)
@@ -311,7 +320,7 @@ export function QuickUpdateDialog({
               variant="neutral-outline"
               size="icon-sm"
               aria-label="Fill to Full"
-              disabled={isPending}
+              disabled={isPending || isAtFull}
               onClick={() => {
                 const next = computeFillToFull(item)
                 setLocalPacked(next.packedQuantity)
@@ -332,7 +341,7 @@ export function QuickUpdateDialog({
           </Button>
           <Button
             isLoading={isPending}
-            disabled={isPending}
+            disabled={isPending || isUntouched}
             onClick={handleSubmit}
           >
             Update
