@@ -23,6 +23,7 @@ import {
   computeUnpack,
   getStockStatus,
   isInactive,
+  roundToStep,
 } from '@/lib/quantityUtils'
 import type { Item } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
@@ -213,7 +214,11 @@ export function QuickUpdateDialog({
                 className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
                 aria-label="Decrease unpacked"
                 disabled={localUnpacked === 0 || isPending}
-                onClick={() => setLocalUnpacked((v) => Math.max(0, v - step))}
+                onClick={() =>
+                  setLocalUnpacked((v) =>
+                    Math.max(0, roundToStep(v - step, step)),
+                  )
+                }
                 icon={<Minus className="h-4 w-4" />}
               />
               <Input

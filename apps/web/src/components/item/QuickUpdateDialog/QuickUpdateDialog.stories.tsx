@@ -70,3 +70,15 @@ export const FullStock: Story = {
     isOpen: true,
   },
 }
+
+export const WithUnpacked: Story = {
+  name: 'With Unpacked — Pack Button Enabled',
+  args: {
+    item: {
+      ...mockItem,
+      packedQuantity: 1,
+      unpackedQuantity: 2,
+    },
+    isOpen: true,
+  },
+}
