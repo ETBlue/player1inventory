@@ -219,6 +219,7 @@ export function QuickUpdateDialog({
               <Input
                 type="number"
                 min="0"
+                step={step}
                 aria-label={unpackedAriaLabel}
                 className="h-7 rounded-none text-right"
                 value={localUnpacked}
