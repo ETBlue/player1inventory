@@ -53,9 +53,9 @@ export function ShelfCard({
               <p className="font-medium capitalize truncate">{shelf.name}</p>
               <div className="flex-1" />
               <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
-                {displayPacked}/{displayTarget}
+                {`${displayPacked}/${displayTarget}`}
               </span>
-              <span className="px-1 text-xs text-foreground-muted border border-foreground-muted opacity-75">
+              <span className="px-1 text-xs text-foreground-muted border border-foreground-muted">
                 pack
               </span>
             </div>

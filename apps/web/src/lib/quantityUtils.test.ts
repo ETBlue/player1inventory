@@ -7,6 +7,7 @@ import {
   computeUnpack,
   consumeItem,
   getCurrentQuantity,
+  getItemPackUnits,
   getPackedTotal,
   getStockStatus,
   isInactive,
@@ -730,5 +731,67 @@ describe('computePack', () => {
       state,
     )
     expect(result).toBe(state)
+  })
+})
+
+describe('getItemPackUnits', () => {
+  const base: Item = {
+    id: 'i1',
+    name: 'test',
+    tagIds: [],
+    vendorIds: [],
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    targetQuantity: 6,
+    refillThreshold: 2,
+    consumeAmount: 1,
+    targetUnit: 'package',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  it('returns pack units as-is for package-unit item', () => {
+    const result = getItemPackUnits(base)
+    expect(result).toEqual({ packed: 3, target: 6, refill: 2 })
+  })
+
+  it('converts measurement item to pack units using amountPerPackage', () => {
+    const item: Item = {
+      ...base,
+      targetUnit: 'measurement',
+      amountPerPackage: 500,
+      targetQuantity: 1500,
+      refillThreshold: 500,
+    }
+    const result = getItemPackUnits(item)
+    expect(result).toEqual({ packed: 3, target: 3, refill: 1 })
+  })
+
+  it('returns target 0 and refill 0 for measurement item without amountPerPackage', () => {
+    const item: Item = {
+      ...base,
+      targetUnit: 'measurement',
+      targetQuantity: 10,
+      refillThreshold: 3,
+    }
+    const result = getItemPackUnits(item)
+    expect(result).toEqual({ packed: 3, target: 0, refill: 0 })
+  })
+
+  it('returns target 0 and refill 0 for measurement item with amountPerPackage of 0', () => {
+    const item: Item = {
+      ...base,
+      targetUnit: 'measurement',
+      amountPerPackage: 0,
+      targetQuantity: 10,
+      refillThreshold: 3,
+    }
+    const result = getItemPackUnits(item)
+    expect(result).toEqual({ packed: 3, target: 0, refill: 0 })
+  })
+
+  it('packed reflects packedQuantity regardless of targetUnit', () => {
+    const item: Item = { ...base, packedQuantity: 7 }
+    expect(getItemPackUnits(item).packed).toBe(7)
   })
 })
