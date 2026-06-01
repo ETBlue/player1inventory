@@ -9,6 +9,11 @@ interface ShelfListProps {
   getOutOfStockCount?: (shelfId: string) => number
   getLowStockCount?: (shelfId: string) => number
   getActiveCount?: (shelfId: string) => number
+  getPackTotals?: (shelfId: string) => {
+    totalPacked: number
+    totalTarget: number
+    totalRefill: number
+  }
 }
 
 export function ShelfList({
@@ -19,6 +24,7 @@ export function ShelfList({
   getOutOfStockCount,
   getLowStockCount,
   getActiveCount,
+  getPackTotals,
 }: ShelfListProps) {
   if (shelves.length === 0) return null
 
@@ -40,6 +46,16 @@ export function ShelfList({
               : {})}
             {...(getActiveCount !== undefined
               ? { activeCount: getActiveCount(shelf.id) }
+              : {})}
+            {...(getPackTotals !== undefined
+              ? (() => {
+                  const t = getPackTotals(shelf.id)
+                  return {
+                    totalPackedQuantity: t.totalPacked,
+                    totalTargetInPacks: t.totalTarget,
+                    totalRefillInPacks: t.totalRefill,
+                  }
+                })()
               : {})}
             onClick={() => onShelfClick(shelf.id)}
           />

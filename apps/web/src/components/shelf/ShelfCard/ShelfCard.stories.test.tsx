@@ -56,4 +56,16 @@ describe('ShelfCard stories smoke tests', () => {
     render(<WithInactiveItems />)
     expect(screen.getByText('5 of 7 active')).toBeInTheDocument()
   })
+
+  it('FilterShelf renders progress label with pack unit', () => {
+    render(<FilterShelf />)
+    expect(screen.getByText('3/5')).toBeInTheDocument()
+    expect(screen.getByText('pack')).toBeInTheDocument()
+  })
+
+  it('EmptyShelf renders 0/0 pack label', () => {
+    render(<EmptyShelf />)
+    expect(screen.getByText('0/0')).toBeInTheDocument()
+    expect(screen.getByText('pack')).toBeInTheDocument()
+  })
 })

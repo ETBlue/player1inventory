@@ -36,6 +36,9 @@ export const FilterShelf: Story = {
     },
     itemCount: 5,
     filterSummary: 'Dairy · Costco',
+    totalPackedQuantity: 3,
+    totalTargetInPacks: 5,
+    totalRefillInPacks: 2,
   },
 }
 
@@ -49,6 +52,9 @@ export const SelectionShelf: Story = {
       order: 1,
     },
     itemCount: 3,
+    totalPackedQuantity: 2,
+    totalTargetInPacks: 3,
+    totalRefillInPacks: 1,
   },
 }
 
@@ -62,6 +68,9 @@ export const EmptyShelf: Story = {
       order: 2,
     },
     itemCount: 0,
+    totalPackedQuantity: 0,
+    totalTargetInPacks: 0,
+    totalRefillInPacks: 0,
   },
 }
 
@@ -75,6 +84,9 @@ export const ManyItems: Story = {
       order: 3,
     },
     itemCount: 7,
+    totalPackedQuantity: 5,
+    totalTargetInPacks: 7,
+    totalRefillInPacks: 2,
   },
 }
 
@@ -89,6 +101,9 @@ export const WithOutOfStock: Story = {
     },
     itemCount: 10,
     outOfStockCount: 3,
+    totalPackedQuantity: 2,
+    totalTargetInPacks: 10,
+    totalRefillInPacks: 5,
   },
 }
 
@@ -103,6 +118,9 @@ export const WithLowStock: Story = {
     },
     itemCount: 8,
     lowStockCount: 2,
+    totalPackedQuantity: 3,
+    totalTargetInPacks: 8,
+    totalRefillInPacks: 3,
   },
 }
 
@@ -118,6 +136,9 @@ export const WithBothStockStatuses: Story = {
     itemCount: 12,
     outOfStockCount: 1,
     lowStockCount: 4,
+    totalPackedQuantity: 4,
+    totalTargetInPacks: 12,
+    totalRefillInPacks: 6,
   },
 }
 
@@ -132,6 +153,9 @@ export const AllActiveItems: Story = {
     },
     itemCount: 5,
     activeCount: 5,
+    totalPackedQuantity: 5,
+    totalTargetInPacks: 5,
+    totalRefillInPacks: 1,
   },
 }
 
@@ -146,5 +170,8 @@ export const WithInactiveItems: Story = {
     },
     itemCount: 7,
     activeCount: 5,
+    totalPackedQuantity: 3,
+    totalTargetInPacks: 7,
+    totalRefillInPacks: 2,
   },
 }
