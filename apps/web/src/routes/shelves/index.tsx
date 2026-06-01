@@ -9,7 +9,11 @@ import { Button } from '@/components/ui/button'
 import { useItems, useShelvesQuery } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
-import { getCurrentQuantity, isInactive } from '@/lib/quantityUtils'
+import {
+  getCurrentQuantity,
+  getItemPackUnits,
+  isInactive,
+} from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { setPantryView } from '@/lib/viewPreference'
 import type { Item, Shelf } from '@/types'
@@ -102,6 +106,20 @@ export function ShelvesPage() {
     return getShelfItems(shelfId).filter((item) => !isInactive(item)).length
   }
 
+  const getShelfPackTotals = (shelfId: string) => {
+    return getShelfItems(shelfId).reduce(
+      (acc, item) => {
+        const { packed, target, refill } = getItemPackUnits(item)
+        return {
+          totalPacked: acc.totalPacked + packed,
+          totalTarget: acc.totalTarget + target,
+          totalRefill: acc.totalRefill + refill,
+        }
+      },
+      { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
+    )
+  }
+
   const getUnsortedItems = (): Item[] => {
     if (!items || !shelves) return []
 
@@ -151,6 +169,20 @@ export function ShelvesPage() {
 
   const getUnsortedActiveCount = (): number =>
     getUnsortedItems().filter((item) => !isInactive(item)).length
+
+  const getUnsortedPackTotals = () => {
+    return getUnsortedItems().reduce(
+      (acc, item) => {
+        const { packed, target, refill } = getItemPackUnits(item)
+        return {
+          totalPacked: acc.totalPacked + packed,
+          totalTarget: acc.totalTarget + target,
+          totalRefill: acc.totalRefill + refill,
+        }
+      },
+      { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
+    )
+  }
 
   const isLoading = shelvesLoading || itemsLoading
 
@@ -219,16 +251,25 @@ export function ShelvesPage() {
           getOutOfStockCount={getOutOfStockCount}
           getLowStockCount={getLowStockCount}
           getActiveCount={getActiveCount}
+          getPackTotals={getShelfPackTotals}
         />
         {/* Unsorted shelf — always last, not draggable */}
-        <ShelfCard
-          shelf={unsortedShelf}
-          itemCount={getUnsortedCount()}
-          outOfStockCount={getUnsortedOutOfStockCount()}
-          lowStockCount={getUnsortedLowStockCount()}
-          activeCount={getUnsortedActiveCount()}
-          onClick={handleUnsortedClick}
-        />
+        {(() => {
+          const unsortedPackTotals = getUnsortedPackTotals()
+          return (
+            <ShelfCard
+              shelf={unsortedShelf}
+              itemCount={getUnsortedCount()}
+              outOfStockCount={getUnsortedOutOfStockCount()}
+              lowStockCount={getUnsortedLowStockCount()}
+              activeCount={getUnsortedActiveCount()}
+              onClick={handleUnsortedClick}
+              totalPackedQuantity={unsortedPackTotals.totalPacked}
+              totalTargetInPacks={unsortedPackTotals.totalTarget}
+              totalRefillInPacks={unsortedPackTotals.totalRefill}
+            />
+          )
+        })()}
       </div>
     </div>
   )

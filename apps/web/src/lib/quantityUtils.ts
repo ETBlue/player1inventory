@@ -46,6 +46,29 @@ export function getStockStatus(
   return 'ok'
 }
 
+export function getItemPackUnits(item: Item): {
+  packed: number
+  target: number
+  refill: number
+} {
+  const packed = item.packedQuantity
+  if (item.targetUnit === 'package') {
+    return { packed, target: item.targetQuantity, refill: item.refillThreshold }
+  }
+  if (
+    item.targetUnit === 'measurement' &&
+    item.amountPerPackage &&
+    item.amountPerPackage > 0
+  ) {
+    return {
+      packed,
+      target: item.targetQuantity / item.amountPerPackage,
+      refill: item.refillThreshold / item.amountPerPackage,
+    }
+  }
+  return { packed, target: 0, refill: 0 }
+}
+
 export interface PackUnpackState {
   packedQuantity: number
   unpackedQuantity: number
