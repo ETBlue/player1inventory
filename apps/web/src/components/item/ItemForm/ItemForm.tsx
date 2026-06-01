@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { roundToStep } from '@/lib/quantityUtils'
+import { computePack, computeUnpack, roundToStep } from '@/lib/quantityUtils'
 import type { ExpirationMode } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
@@ -274,18 +274,18 @@ export function ItemForm({
                     variant="neutral-outline"
                     disabled={packedQuantity < 1}
                     onClick={() => {
-                      const amount = Number(amountPerPackage)
-                      if (targetUnit === 'package') {
-                        setPackedQuantity(packedQuantity - 1)
-                        setUnpackedQuantity(
-                          Math.round((unpackedQuantity + 1) * 1000) / 1000,
-                        )
-                      } else if (targetUnit === 'measurement' && amount > 0) {
-                        setPackedQuantity(packedQuantity - 1)
-                        setUnpackedQuantity(
-                          Math.round((unpackedQuantity + amount) * 1000) / 1000,
-                        )
-                      }
+                      const next = computeUnpack(
+                        {
+                          targetUnit,
+                          consumeAmount,
+                          ...(amountPerPackage
+                            ? { amountPerPackage: Number(amountPerPackage) }
+                            : {}),
+                        },
+                        { packedQuantity, unpackedQuantity },
+                      )
+                      setPackedQuantity(next.packedQuantity)
+                      setUnpackedQuantity(next.unpackedQuantity)
                     }}
                   >
                     <PackageOpen />
@@ -335,27 +335,18 @@ export function ItemForm({
                           : true
                     }
                     onClick={() => {
-                      const amount = Number(amountPerPackage)
-                      if (targetUnit === 'package') {
-                        const packs = Math.floor(unpackedQuantity)
-                        if (packs > 0) {
-                          setPackedQuantity(packedQuantity + packs)
-                          setUnpackedQuantity(
-                            Math.round((unpackedQuantity - packs) * 1000) /
-                              1000,
-                          )
-                        }
-                      } else if (targetUnit === 'measurement' && amount > 0) {
-                        const packs = Math.floor(unpackedQuantity / amount)
-                        if (packs > 0) {
-                          setPackedQuantity(packedQuantity + packs)
-                          setUnpackedQuantity(
-                            Math.round(
-                              (unpackedQuantity - packs * amount) * 1000,
-                            ) / 1000,
-                          )
-                        }
-                      }
+                      const next = computePack(
+                        {
+                          targetUnit,
+                          consumeAmount,
+                          ...(amountPerPackage
+                            ? { amountPerPackage: Number(amountPerPackage) }
+                            : {}),
+                        },
+                        { packedQuantity, unpackedQuantity },
+                      )
+                      setPackedQuantity(next.packedQuantity)
+                      setUnpackedQuantity(next.unpackedQuantity)
                     }}
                   >
                     <Package />

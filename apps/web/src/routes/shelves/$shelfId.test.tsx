@@ -48,7 +48,7 @@ describe('ShelfDetailPage - ItemCard loading states', () => {
     )
   }
 
-  it('user sees spinner on minus button while mutation is pending (shelf pantry mode)', async () => {
+  it('user sees spinner on calculator button while mutation is pending (shelf pantry mode)', async () => {
     // Given a selection shelf with one item
     const shelf = await createShelf({
       name: 'Test Shelf',
@@ -73,61 +73,29 @@ describe('ShelfDetailPage - ItemCard loading states', () => {
     renderShelfDetailPage(shelf.id)
     const user = userEvent.setup()
 
-    // When user waits for the minus button then clicks it
+    // When user waits for the calculator button and opens the dialog
     await waitFor(() => {
-      expect(screen.getByLabelText('Consume Milk')).toBeInTheDocument()
+      expect(
+        screen.getByLabelText('Update quantity of Milk'),
+      ).toBeInTheDocument()
     })
-    const minusBtn = screen.getByLabelText('Consume Milk')
-    await user.click(minusBtn)
+    const calcBtn = screen.getByLabelText('Update quantity of Milk')
+    await user.click(calcBtn)
 
-    // Then a spinner appears inside the minus button (pendingItemIds still has item.id)
+    // Then the dialog opens — modify a value to enable Update, then click it
     await waitFor(() => {
-      expect(minusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Increase unpacked' }),
+      ).toBeInTheDocument()
     })
+    await user.click(screen.getByRole('button', { name: 'Increase unpacked' }))
 
-    // Cleanup: let the mutation complete and restore the spy
-    resolveUpdate()
-    updateSpy.mockRestore()
-    await act(async () => {
-      await Promise.resolve()
-    })
-  })
+    const updateBtn = screen.getByRole('button', { name: /^update$/i })
+    await user.click(updateBtn)
 
-  it('user sees spinner on plus button while mutation is pending (shelf pantry mode)', async () => {
-    // Given a selection shelf with one item
-    const shelf = await createShelf({
-      name: 'Test Shelf',
-      type: 'selection',
-      order: 0,
-      itemIds: [],
-    })
-    const item = await makeItem('Milk')
-    await updateShelf(shelf.id, { itemIds: [item.id] })
-
-    // Spy on the db write to introduce a delay, keeping pendingItemIds populated
-    let resolveUpdate!: () => void
-    const originalUpdate = db.items.update.bind(db.items)
-    const updateSpy = vi.spyOn(db.items, 'update').mockImplementationOnce(
-      (key, changes) =>
-        new Promise((resolve) => {
-          resolveUpdate = () =>
-            resolve(originalUpdate(key, changes) as unknown as number)
-        }) as ReturnType<typeof db.items.update>,
-    )
-
-    renderShelfDetailPage(shelf.id)
-    const user = userEvent.setup()
-
-    // When user waits for the plus button then clicks it
+    // Then a spinner appears inside the calculator button (pendingItemIds still has item.id)
     await waitFor(() => {
-      expect(screen.getByLabelText('Add Milk')).toBeInTheDocument()
-    })
-    const plusBtn = screen.getByLabelText('Add Milk')
-    await user.click(plusBtn)
-
-    // Then a spinner appears inside the plus button (pendingItemIds still has item.id)
-    await waitFor(() => {
-      expect(plusBtn.querySelector('.animate-spin')).toBeInTheDocument()
+      expect(calcBtn.querySelector('.animate-spin')).toBeInTheDocument()
     })
 
     // Cleanup: let the mutation complete and restore the spy

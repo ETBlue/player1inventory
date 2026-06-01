@@ -213,3 +213,37 @@ test('user can delete an item', async ({ page }) => {
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Delete Me')).not.toBeVisible()
 })
+
+test('user can quick-update item quantity via dialog', async ({ page }) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given an item with targetQuantity=5 and initial packedQuantity=2
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Olive Oil')
+  await item.fillTargetQuantity('5')
+  await item.save()
+  // Set initial packed quantity on the detail page (packedQuantity only exists on /items/$id)
+  await item.fillPackedQuantity('2')
+  await item.saveExisting()
+
+  // Navigate to pantry
+  await pantry.navigateTo()
+
+  // When user clicks the quick update button on the item card
+  await pantry.clickQuickUpdate('Olive Oil')
+
+  // Then the quick update dialog opens
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Update/i })).toBeVisible()
+
+  // When user fills to full stock (sets packedQuantity = targetQuantity = 5)
+  await page.getByRole('button', { name: 'Fill to Full' }).click()
+
+  // And submits
+  await page.getByRole('button', { name: 'Update' }).click()
+
+  // Then the dialog closes
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+})

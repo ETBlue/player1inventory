@@ -15,6 +15,7 @@ import {
 import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemFilters } from '@/components/item/ItemFilters'
+import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { FilterStatus } from '@/components/shared/FilterStatus'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -44,7 +45,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
@@ -112,6 +113,11 @@ export function ShelfDetailPage() {
 
   const [searchVisible, setSearchVisible] = useState(() => !!search.trim())
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
+    null,
+  )
+  const quickUpdateItem =
+    allItems.find((i) => i.id === quickUpdateItemId) ?? null
 
   const { quantities, expiryDates, purchaseDates } = useItemSortData(allItems)
 
@@ -535,45 +541,7 @@ export function ShelfDetailPage() {
                 showTags={isTagsVisible}
                 disabled={pendingItemIds.has(item.id)}
                 isPending={pendingItemIds.has(item.id)}
-                onAmountChange={async (delta) => {
-                  setPendingItemIds((prev) => new Set(prev).add(item.id))
-                  try {
-                    const updatedItem = { ...item }
-                    if (delta > 0) {
-                      const purchaseDate = new Date()
-                      addItem(
-                        updatedItem,
-                        updatedItem.consumeAmount,
-                        purchaseDate,
-                      )
-                      await updateItem.mutateAsync({
-                        id: item.id,
-                        updates: {
-                          packedQuantity: updatedItem.packedQuantity,
-                          unpackedQuantity: updatedItem.unpackedQuantity,
-                          ...(updatedItem.dueDate
-                            ? { dueDate: updatedItem.dueDate }
-                            : {}),
-                        },
-                      })
-                    } else {
-                      consumeItem(updatedItem, updatedItem.consumeAmount)
-                      await updateItem.mutateAsync({
-                        id: item.id,
-                        updates: {
-                          packedQuantity: updatedItem.packedQuantity,
-                          unpackedQuantity: updatedItem.unpackedQuantity,
-                        },
-                      })
-                    }
-                  } finally {
-                    setPendingItemIds((prev) => {
-                      const next = new Set(prev)
-                      next.delete(item.id)
-                      return next
-                    })
-                  }
-                }}
+                onQuickUpdate={() => setQuickUpdateItemId(item.id)}
               />
             )
 
@@ -649,6 +617,29 @@ export function ShelfDetailPage() {
           )}
         </div>
       </div>
+      {quickUpdateItem && (
+        <QuickUpdateDialog
+          item={quickUpdateItem}
+          isOpen={true}
+          onClose={() => setQuickUpdateItemId(null)}
+          onSubmit={async ({ packedQuantity, unpackedQuantity }) => {
+            setPendingItemIds((prev) => new Set(prev).add(quickUpdateItem.id))
+            try {
+              await updateItem.mutateAsync({
+                id: quickUpdateItem.id,
+                updates: { packedQuantity, unpackedQuantity },
+              })
+              setQuickUpdateItemId(null)
+            } finally {
+              setPendingItemIds((prev) => {
+                const next = new Set(prev)
+                next.delete(quickUpdateItem.id)
+                return next
+              })
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

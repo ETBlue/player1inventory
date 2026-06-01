@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
@@ -25,7 +26,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { addItem, consumeItem, isInactive } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import { getStoredPantryView, setPantryView } from '@/lib/viewPreference'
 import type { Recipe, Vendor } from '@/types'
@@ -52,6 +53,10 @@ function PantryView() {
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
+    null,
+  )
+  const quickUpdateItem = items.find((i) => i.id === quickUpdateItemId) ?? null
 
   const handleCreateFromSearch = async (query: string) => {
     try {
@@ -294,48 +299,7 @@ function PantryView() {
                 activeRecipeIds={selectedRecipeIds}
                 activeTagIds={activeTagIds}
                 isPending={pendingItemIds.has(item.id)}
-                onAmountChange={async (delta) => {
-                  setPendingItemIds((prev) => new Set(prev).add(item.id))
-                  const updatedItem = { ...item }
-                  if (delta > 0) {
-                    const purchaseDate = new Date()
-                    addItem(
-                      updatedItem,
-                      updatedItem.consumeAmount,
-                      purchaseDate,
-                    )
-                  } else {
-                    consumeItem(updatedItem, updatedItem.consumeAmount)
-                  }
-                  try {
-                    if (delta > 0) {
-                      await updateItem.mutateAsync({
-                        id: item.id,
-                        updates: {
-                          packedQuantity: updatedItem.packedQuantity,
-                          unpackedQuantity: updatedItem.unpackedQuantity,
-                          ...(updatedItem.dueDate
-                            ? { dueDate: updatedItem.dueDate }
-                            : {}),
-                        },
-                      })
-                    } else {
-                      await updateItem.mutateAsync({
-                        id: item.id,
-                        updates: {
-                          packedQuantity: updatedItem.packedQuantity,
-                          unpackedQuantity: updatedItem.unpackedQuantity,
-                        },
-                      })
-                    }
-                  } finally {
-                    setPendingItemIds((prev) => {
-                      const next = new Set(prev)
-                      next.delete(item.id)
-                      return next
-                    })
-                  }
-                }}
+                onQuickUpdate={() => setQuickUpdateItemId(item.id)}
                 onTagClick={handleTagClick}
                 onVendorClick={handleVendorClick}
                 onRecipeClick={handleRecipeClick}
@@ -362,54 +326,36 @@ function PantryView() {
                 activeRecipeIds={selectedRecipeIds}
                 activeTagIds={activeTagIds}
                 isPending={pendingItemIds.has(item.id)}
-                onAmountChange={async (delta) => {
-                  setPendingItemIds((prev) => new Set(prev).add(item.id))
-                  const updatedItem = { ...item }
-                  if (delta > 0) {
-                    const purchaseDate = new Date()
-                    addItem(
-                      updatedItem,
-                      updatedItem.consumeAmount,
-                      purchaseDate,
-                    )
-                  } else {
-                    consumeItem(updatedItem, updatedItem.consumeAmount)
-                  }
-                  try {
-                    if (delta > 0) {
-                      await updateItem.mutateAsync({
-                        id: item.id,
-                        updates: {
-                          packedQuantity: updatedItem.packedQuantity,
-                          unpackedQuantity: updatedItem.unpackedQuantity,
-                          ...(updatedItem.dueDate
-                            ? { dueDate: updatedItem.dueDate }
-                            : {}),
-                        },
-                      })
-                    } else {
-                      await updateItem.mutateAsync({
-                        id: item.id,
-                        updates: {
-                          packedQuantity: updatedItem.packedQuantity,
-                          unpackedQuantity: updatedItem.unpackedQuantity,
-                        },
-                      })
-                    }
-                  } finally {
-                    setPendingItemIds((prev) => {
-                      const next = new Set(prev)
-                      next.delete(item.id)
-                      return next
-                    })
-                  }
-                }}
+                onQuickUpdate={() => setQuickUpdateItemId(item.id)}
                 onTagClick={handleTagClick}
                 onVendorClick={handleVendorClick}
                 onRecipeClick={handleRecipeClick}
               />
             ))}
           </div>
+        )}
+        {quickUpdateItem && (
+          <QuickUpdateDialog
+            item={quickUpdateItem}
+            isOpen={true}
+            onClose={() => setQuickUpdateItemId(null)}
+            onSubmit={async ({ packedQuantity, unpackedQuantity }) => {
+              setPendingItemIds((prev) => new Set(prev).add(quickUpdateItem.id))
+              try {
+                await updateItem.mutateAsync({
+                  id: quickUpdateItem.id,
+                  updates: { packedQuantity, unpackedQuantity },
+                })
+                setQuickUpdateItemId(null)
+              } finally {
+                setPendingItemIds((prev) => {
+                  const next = new Set(prev)
+                  next.delete(quickUpdateItem.id)
+                  return next
+                })
+              }
+            }}
+          />
         )}
       </div>
     </div>

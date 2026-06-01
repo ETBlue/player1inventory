@@ -11,8 +11,8 @@ const {
   StatusError,
   ExpiringSoon,
   ExpiringRelative,
-  WithAmountButtons,
-  WithAmountButtonsMinusPending,
+  WithQuickUpdate,
+  WithQuickUpdatePending,
 } = composeStories(stories)
 
 describe('ItemCard pantry stories smoke tests', () => {
@@ -65,15 +65,17 @@ describe('ItemCard pantry stories smoke tests', () => {
     )
   })
 
-  it('WithAmountButtons renders without error', async () => {
-    render(<WithAmountButtons />)
+  it('renders the quick update button', async () => {
+    render(<WithQuickUpdate />)
     await waitFor(() =>
-      expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
+      expect(
+        screen.getByRole('button', { name: /update quantity/i }),
+      ).toBeInTheDocument(),
     )
   })
 
-  it('WithAmountButtonsMinusPending renders without error', async () => {
-    render(<WithAmountButtonsMinusPending />)
+  it('WithQuickUpdatePending renders without error', async () => {
+    render(<WithQuickUpdatePending />)
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )

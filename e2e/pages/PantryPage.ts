@@ -20,6 +20,12 @@ export class PantryPage {
     await this.page.getByRole('searchbox').fill(name)
   }
 
+  async clickQuickUpdate(itemName: string) {
+    // Quick update button: aria-label="Update quantity of {name}", mode='pantry' in ItemCard
+    // (src/.worktrees/.../ItemCard/ItemCard.tsx — onQuickUpdate prop renders Pencil icon button)
+    await this.page.getByRole('button', { name: `Update quantity of ${itemName}` }).click()
+  }
+
   getItemCard(name: string): Locator {
     // ItemCard renders as a <div> (via Card component, src/components/ui/card.tsx)
     // The item name is in an <h3> with capitalize CSS (src/components/item/ItemCard/index.tsx:192)

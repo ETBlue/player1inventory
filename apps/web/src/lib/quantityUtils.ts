@@ -46,51 +46,99 @@ export function getStockStatus(
   return 'ok'
 }
 
-export function normalizeUnpacked(item: Item): void {
-  if (
-    item.targetUnit === 'measurement' &&
-    item.measurementUnit &&
-    item.amountPerPackage
-  ) {
-    // When tracking in measurement: normalize when unpacked >= amountPerPackage
-    while (item.unpackedQuantity >= item.amountPerPackage) {
-      item.packedQuantity += 1
-      item.unpackedQuantity -= item.amountPerPackage
-    }
-  } else {
-    // When tracking in packages: normalize when unpacked >= 1
-    while (item.unpackedQuantity >= 1) {
-      item.packedQuantity += 1
-      item.unpackedQuantity -= 1
-    }
-  }
+export interface PackUnpackState {
+  packedQuantity: number
+  unpackedQuantity: number
 }
 
-export function packUnpacked(item: Item): void {
-  if (
-    item.targetUnit === 'measurement' &&
-    item.measurementUnit &&
-    item.amountPerPackage
-  ) {
-    // Measurement mode: pack complete packages based on amountPerPackage
-    const packages = Math.floor(item.unpackedQuantity / item.amountPerPackage)
-    if (packages > 0) {
-      item.packedQuantity += packages
-      item.unpackedQuantity =
-        Math.round(
-          (item.unpackedQuantity - packages * item.amountPerPackage) * 1000,
-        ) / 1000
+/**
+ * Computes new quantities after opening one package (packed → unpacked).
+ * Mirrors the Unpack button logic in ItemForm and QuickUpdateDialog.
+ */
+export function computeUnpack(
+  item: {
+    targetUnit: string
+    amountPerPackage?: number
+    consumeAmount: number
+  },
+  state: PackUnpackState,
+): PackUnpackState {
+  if (state.packedQuantity < 1) return state // guard: nothing to unpack
+  const amount = Number(item.amountPerPackage)
+  if (item.targetUnit === 'package') {
+    return {
+      packedQuantity: state.packedQuantity - 1,
+      unpackedQuantity: Math.round((state.unpackedQuantity + 1) * 1000) / 1000,
     }
-  } else if (item.targetUnit === 'package') {
-    // Package mode: pack complete units (floor of unpacked)
-    const packages = Math.floor(item.unpackedQuantity)
-    if (packages > 0) {
-      item.packedQuantity += packages
-      item.unpackedQuantity =
-        Math.round((item.unpackedQuantity - packages) * 1000) / 1000
+  } else if (item.targetUnit === 'measurement' && amount > 0) {
+    return {
+      packedQuantity: state.packedQuantity - 1,
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity + amount) * 1000) / 1000,
     }
   }
-  // If no valid mode or insufficient quantity, do nothing
+  return state
+}
+
+/**
+ * Computes new quantities after packing one unit (unpacked → packed).
+ * For package-unit items: moves exactly 1 unit.
+ * For measurement items: consolidates all whole packages based on amountPerPackage.
+ */
+export function computePack(
+  item: {
+    targetUnit: string
+    amountPerPackage?: number
+    consumeAmount: number
+  },
+  state: PackUnpackState,
+): PackUnpackState {
+  const amount = Number(item.amountPerPackage)
+  if (item.targetUnit === 'package') {
+    if (state.unpackedQuantity < 1) return state
+    return {
+      packedQuantity: state.packedQuantity + 1,
+      unpackedQuantity: Math.round((state.unpackedQuantity - 1) * 1000) / 1000,
+    }
+  }
+  if (item.targetUnit === 'measurement' && amount > 0) {
+    const packs = Math.floor(state.unpackedQuantity / amount)
+    if (packs <= 0) return state
+    return {
+      packedQuantity: state.packedQuantity + packs,
+      unpackedQuantity:
+        Math.round((state.unpackedQuantity - packs * amount) * 1000) / 1000,
+    }
+  }
+  return state
+}
+
+/**
+ * Computes packed/unpacked quantities for "Fill to Full".
+ * For measurement-unit items, converts targetQuantity (in measurement units)
+ * to packages using amountPerPackage, putting any remainder in unpackedQuantity.
+ * For package-unit items (or measurement items lacking amountPerPackage),
+ * sets packed = targetQuantity and unpacked = 0.
+ */
+export function computeFillToFull(item: {
+  targetUnit: string
+  targetQuantity: number
+  amountPerPackage?: number
+  consumeAmount: number
+}): PackUnpackState {
+  if (
+    item.targetUnit === 'measurement' &&
+    item.amountPerPackage &&
+    item.amountPerPackage > 0
+  ) {
+    const packed = Math.floor(item.targetQuantity / item.amountPerPackage)
+    const unpacked = roundToStep(
+      item.targetQuantity - packed * item.amountPerPackage,
+      item.consumeAmount,
+    )
+    return { packedQuantity: packed, unpackedQuantity: unpacked }
+  }
+  return { packedQuantity: item.targetQuantity, unpackedQuantity: 0 }
 }
 
 export function consumeItem(item: Item, amount: number): void {

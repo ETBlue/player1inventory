@@ -563,83 +563,6 @@ describe('Home page filtering integration', () => {
     expect(screen.queryByText(/showing.*items/i)).not.toBeInTheDocument()
   })
 
-  it('consume button does not create inventory log', async () => {
-    const user = userEvent.setup()
-
-    // Given an item with quantity 5
-    const item = await createItem({
-      name: 'Test Item',
-      targetQuantity: 10,
-      refillThreshold: 2,
-      packedQuantity: 5,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    renderApp()
-
-    await waitFor(() => {
-      expect(screen.getByText('Test Item')).toBeInTheDocument()
-    })
-
-    // When user clicks consume button
-    const consumeButton = screen.getByLabelText('Consume Test Item')
-    await user.click(consumeButton)
-
-    // Then no inventory log is created
-    await waitFor(async () => {
-      const logs = await db.inventoryLogs
-        .where('itemId')
-        .equals(item.id)
-        .toArray()
-      expect(logs).toHaveLength(0)
-    })
-
-    // And item quantity is updated
-    const updatedItem = await db.items.get(item.id)
-    expect(updatedItem?.packedQuantity).toBe(4)
-  })
-
-  it('add button does not create inventory log', async () => {
-    const user = userEvent.setup()
-
-    // Given an item with quantity 5
-    const item = await createItem({
-      name: 'Test Item',
-      targetQuantity: 10,
-      refillThreshold: 2,
-      packedQuantity: 5,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    renderApp()
-
-    await waitFor(() => {
-      expect(screen.getByText('Test Item')).toBeInTheDocument()
-    })
-
-    // When user clicks add button
-    const addButton = screen.getByLabelText('Add Test Item')
-    await user.click(addButton)
-
-    // Then no inventory log is created
-    await waitFor(async () => {
-      const logs = await db.inventoryLogs
-        .where('itemId')
-        .equals(item.id)
-        .toArray()
-      expect(logs).toHaveLength(0)
-    })
-
-    // And item quantity is updated (added to unpacked, not normalized)
-    const updatedItem = await db.items.get(item.id)
-    expect(updatedItem?.packedQuantity).toBe(5)
-    expect(updatedItem?.unpackedQuantity).toBe(1)
-  })
-
   it('user can search all items even when vendor filter is active', async () => {
     // Given two items and a vendor
     const vendor = await createVendor('Costco')
@@ -868,46 +791,6 @@ describe('Home page filtering integration', () => {
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
       expect(badge.className).toContain('bg-tag-blue-background-inverse')
-    })
-  })
-
-  it('+ button adds to unpacked without normalizing', async () => {
-    const user = userEvent.setup()
-
-    // Given an item with packed quantity 2, unpacked quantity 0
-    const item = await createItem({
-      name: 'Cookies',
-      packedQuantity: 2,
-      unpackedQuantity: 0,
-      targetUnit: 'package',
-      packageUnit: 'pack',
-      targetQuantity: 10,
-      refillThreshold: 2,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    renderApp()
-
-    await waitFor(() => {
-      expect(screen.getByText('Cookies')).toBeInTheDocument()
-    })
-
-    const addButton = screen.getByLabelText('Add Cookies')
-
-    // When user clicks + button twice (waiting for first mutation to commit before second click)
-    await user.click(addButton)
-    await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.unpackedQuantity).toBe(1)
-    })
-    await user.click(addButton)
-
-    // Then packed quantity stays unchanged and unpacked adds up
-    await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.packedQuantity).toBe(2) // Should NOT change
-      expect(updated?.unpackedQuantity).toBe(2) // Should add 1 + 1 = 2
     })
   })
 })

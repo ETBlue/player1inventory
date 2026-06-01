@@ -6,7 +6,7 @@
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
   shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar, ViewToggle
-  item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar
+  item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, QuickUpdateDialog
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: VendorCard, VendorInfoForm
   recipe/         — recipe-specific: CookingControlBar, RecipeCard, RecipeInfoForm
@@ -48,6 +48,8 @@ Reusable across multiple features and pages.
 **`ItemListToolbar`** (`src/components/item/ItemListToolbar/index.tsx`) — unified toolbar for all item list pages (pantry, shopping, tag/vendor/recipe items tabs). Wraps `<Toolbar>` (Row 1) with filter, tags-toggle, sort dropdown, sort-direction, and search buttons; plus collapsible Row 2 (search), Row 3 (`ItemFilters`), Row 4 (`FilterStatus`). Search/filter/UI-visibility state is stored in URL params via `useUrlSearchAndFilters`. Sort preferences are managed by `useSortFilter` (localStorage). Accepts `leading` (left slot), `children` (right slot), `isTagsToggleEnabled`, `onSearchSubmit` (called when Enter pressed with no exact match), `onCreateFromSearch` (same trigger — shows a Create button; pass `hasExactMatch` so the toolbar knows when to suppress it). Escape clears the search value but keeps the input row open.
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
+
+**`QuickUpdateDialog`** (`src/components/item/QuickUpdateDialog/index.ts`) — pantry-page dialog for bulk-editing a single item's packed/unpacked quantities in one submit. Triggered by the calculator icon button on each `ItemCard` in pantry mode. Provides +/− steppers, manual inputs, Pack/Unpack buttons (mirrors item info tab logic via `computePack`/`computeUnpack`), Clear, and Fill to Full actions, with a live progress bar preview. Submits a single mutation with the final `{ packedQuantity, unpackedQuantity }` — never touches `dueDate`. Pack/Unpack/Fill-to-Full logic lives in pure functions in `quantityUtils.ts` (`computePack`, `computeUnpack`, `computeFillToFull`).
 
 ## Recipe Components
 
