@@ -60,6 +60,55 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
         include: { items: true },
       }) as unknown as Promise<Recipe>
     },
+    consumeRecipes: async (_, { input }, ctx) => {
+      const userId = requireAuth(ctx)
+      const { occurredAt, recipeIds, items } = input
+      const occurredAtDate = new Date(occurredAt)
+
+      const itemResults: Array<{ itemId: string; success: boolean; error?: string }> = []
+
+      for (const item of items) {
+        try {
+          await prisma.item.updateMany({
+            where: { id: item.itemId, userId },
+            data: {
+              packedQuantity: item.packedQuantity,
+              unpackedQuantity: item.unpackedQuantity,
+              updatedAt: occurredAtDate,
+            },
+          })
+          await prisma.inventoryLog.create({
+            data: {
+              itemId: item.itemId,
+              delta: item.delta,
+              quantity: item.quantity,
+              occurredAt: occurredAtDate,
+              userId,
+              ...(item.note ? { note: item.note } : {}),
+            },
+          })
+          itemResults.push({ itemId: item.itemId, success: true })
+        } catch (err) {
+          itemResults.push({ itemId: item.itemId, success: false, error: String(err) })
+        }
+      }
+
+      for (const recipeId of recipeIds) {
+        try {
+          await prisma.recipe.updateMany({
+            where: { id: recipeId, userId },
+            data: { lastCookedAt: new Date() },
+          })
+        } catch {
+          // best-effort — ignore
+        }
+      }
+
+      return {
+        itemResults,
+        allSucceeded: itemResults.every((r) => r.success),
+      }
+    },
     deleteRecipe: async (_, { id }, ctx) => {
       const userId = requireAuth(ctx)
       const existing = await prisma.recipe.findFirst({ where: { id, userId } })

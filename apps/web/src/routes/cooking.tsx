@@ -18,15 +18,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  useAddInventoryLog,
-  useItems,
-  useTags,
-  useTagTypes,
-  useUpdateItem,
-} from '@/hooks'
+import { useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
-import { useRecipes, useUpdateRecipeLastCookedAt } from '@/hooks/useRecipes'
+import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
 import {
   consumeItem,
   getCurrentQuantity,
@@ -68,9 +62,7 @@ function CookingPage() {
   const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
-  const updateItem = useUpdateItem()
-  const addInventoryLog = useAddInventoryLog()
-  const updateRecipeLastCookedAt = useUpdateRecipeLastCookedAt()
+  const consumeRecipes = useConsumeRecipes()
   // tags and tagTypes are passed to ItemCard for API consistency;
   // tag badges are suppressed in cooking mode by ItemCard itself
   const { data: tags = [] } = useTags()
@@ -337,43 +329,39 @@ function CookingPage() {
       }
     }
 
-    for (const [itemId, totalAmount] of totalByItemId) {
-      const item = items.find((i) => i.id === itemId)
-      if (!item) continue
-
-      const updatedItem = { ...item }
-      consumeItem(updatedItem, totalAmount)
-
-      await updateItem.mutateAsync({
-        id: itemId,
-        updates: {
-          packedQuantity: updatedItem.packedQuantity,
-          unpackedQuantity: updatedItem.unpackedQuantity,
-        },
-      })
-
-      const recipeNames = recipeNamesByItemId.get(itemId) ?? []
-      const note =
-        recipeNames.length > 0
-          ? t('cooking.log.consumedVia', { recipes: recipeNames.join(', ') })
-          : t('cooking.log.consumedViaRecipe')
-
-      await addInventoryLog.mutateAsync({
-        itemId,
-        delta: -totalAmount,
-        quantity: getPackedTotal(updatedItem), // post-consumption packed total
-        occurredAt: now,
-        note,
-      })
-    }
-
-    // Record lastCookedAt for each recipe that had items checked
     const cookedRecipeIds = [...checkedItemIds.entries()]
       .filter(([, itemSet]) => itemSet.size > 0)
       .map(([recipeId]) => recipeId)
-    await Promise.all(
-      cookedRecipeIds.map((id) => updateRecipeLastCookedAt.mutateAsync(id)),
+
+    const itemInputs = Array.from(totalByItemId.entries()).flatMap(
+      ([itemId, totalAmount]) => {
+        const item = items.find((i) => i.id === itemId)
+        if (!item) return []
+        const updatedItem = { ...item }
+        consumeItem(updatedItem, totalAmount)
+        const recipeNames = recipeNamesByItemId.get(itemId) ?? []
+        const note =
+          recipeNames.length > 0
+            ? t('cooking.log.consumedVia', { recipes: recipeNames.join(', ') })
+            : t('cooking.log.consumedViaRecipe')
+        return [
+          {
+            itemId,
+            packedQuantity: updatedItem.packedQuantity,
+            unpackedQuantity: updatedItem.unpackedQuantity,
+            delta: -totalAmount,
+            quantity: getPackedTotal(updatedItem),
+            note,
+          },
+        ]
+      },
     )
+
+    await consumeRecipes.mutateAsync({
+      occurredAt: now,
+      recipeIds: cookedRecipeIds,
+      items: itemInputs,
+    })
 
     // Reset session state (expand/collapse is preserved)
     setSessionServings(new Map())

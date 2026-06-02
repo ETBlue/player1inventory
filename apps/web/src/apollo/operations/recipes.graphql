@@ -58,3 +58,14 @@ mutation UpdateRecipeLastCookedAt($id: ID!) {
 mutation DeleteRecipe($id: ID!) {
   deleteRecipe(id: $id)
 }
+
+mutation ConsumeRecipes($input: ConsumeRecipesInput!) {
+  consumeRecipes(input: $input) {
+    itemResults {
+      itemId
+      success
+      error
+    }
+    allSucceeded
+  }
+}

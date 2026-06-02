@@ -8,6 +8,32 @@ input RecipeItemInput {
   defaultAmount: Float!
 }
 
+input ConsumeRecipesItemInput {
+  itemId: ID!
+  packedQuantity: Float!
+  unpackedQuantity: Float!
+  delta: Float!
+  quantity: Float!
+  note: String
+}
+
+input ConsumeRecipesInput {
+  occurredAt: String!
+  recipeIds: [ID!]!
+  items: [ConsumeRecipesItemInput!]!
+}
+
+type ConsumeRecipesItemResult {
+  itemId: ID!
+  success: Boolean!
+  error: String
+}
+
+type ConsumeRecipesResult {
+  itemResults: [ConsumeRecipesItemResult!]!
+  allSucceeded: Boolean!
+}
+
 type Recipe {
   id: ID!
   name: String!
@@ -27,4 +53,5 @@ extend type Mutation {
   updateRecipe(id: ID!, name: String, items: [RecipeItemInput!]): Recipe!
   updateRecipeLastCookedAt(id: ID!): Recipe!
   deleteRecipe(id: ID!): Boolean!
+  consumeRecipes(input: ConsumeRecipesInput!): ConsumeRecipesResult!
 }

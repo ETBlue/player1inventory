@@ -200,6 +200,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useConsumeRecipesMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useItemCountByRecipeQuery: () => ({
       data: undefined,
       loading: false,
