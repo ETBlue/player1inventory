@@ -151,4 +151,17 @@ db.version(10)
       })
   })
 
+// Version 11: Add logKey/logParams to inventoryLogs for dynamic i18n — no upgrade needed (optional fields)
+db.version(11).stores({
+  items: 'id, name, targetUnit, createdAt, updatedAt',
+  tags: 'id, typeId, parentId, createdAt',
+  tagTypes: 'id, name',
+  inventoryLogs: 'id, itemId, occurredAt, createdAt',
+  shoppingCarts: 'id, status, createdAt, completedAt',
+  cartItems: 'id, cartId, itemId',
+  vendors: 'id, name',
+  recipes: 'id, name, lastCookedAt',
+  shelves: 'id, name, type, order',
+})
+
 export { db }

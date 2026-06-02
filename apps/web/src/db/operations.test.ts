@@ -665,7 +665,7 @@ describe('ShoppingCart operations', () => {
     expect(updatedItem?.packedQuantity).toBe(8)
   })
 
-  it('checkout stores "purchased" note on logs when no note provided', async () => {
+  it('checkout stores no note when no logDescriptor provided', async () => {
     // Given an item in cart
     const item = await createItem({
       name: 'Milk',
@@ -680,15 +680,16 @@ describe('ShoppingCart operations', () => {
     const cart = await getOrCreateActiveCart()
     await addToCart(cart.id, item.id, 2)
 
-    // When checkout with no note
+    // When checkout with no logDescriptor
     await checkout(cart.id)
 
-    // Then log has "purchased" note
+    // Then log has no note and no logKey
     const logs = await getItemLogs(item.id)
-    expect(logs[0].note).toBe('purchased')
+    expect(logs[0].logKey).toBeUndefined()
+    expect(logs[0].note).toBeUndefined()
   })
 
-  it('checkout stores custom note on logs when note is provided', async () => {
+  it('checkout stores logKey and logParams on logs when logDescriptor provided', async () => {
     // Given an item in cart
     const item = await createItem({
       name: 'Milk',
@@ -703,12 +704,17 @@ describe('ShoppingCart operations', () => {
     const cart = await getOrCreateActiveCart()
     await addToCart(cart.id, item.id, 2)
 
-    // When checkout with a vendor note
-    await checkout(cart.id, 'purchased at Costco')
+    // When checkout with a logDescriptor
+    await checkout(cart.id, {
+      logKey: 'shopping.log.purchasedAt',
+      logParams: { vendor: 'Costco' },
+    })
 
-    // Then log has the vendor note
+    // Then log has the logKey and logParams but no note
     const logs = await getItemLogs(item.id)
-    expect(logs[0].note).toBe('purchased at Costco')
+    expect(logs[0].logKey).toBe('shopping.log.purchasedAt')
+    expect(logs[0].logParams?.vendor).toBe('Costco')
+    expect(logs[0].note).toBeUndefined()
   })
 
   it('checkout skips inventory update for cartItems with quantity=0 (pinned)', async () => {

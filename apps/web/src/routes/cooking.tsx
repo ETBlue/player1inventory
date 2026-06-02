@@ -340,10 +340,15 @@ function CookingPage() {
         const updatedItem = { ...item }
         consumeItem(updatedItem, totalAmount)
         const recipeNames = recipeNamesByItemId.get(itemId) ?? []
-        const note =
+        const logKey =
           recipeNames.length > 0
-            ? t('cooking.log.consumedVia', { recipes: recipeNames.join(', ') })
-            : t('cooking.log.consumedViaRecipe')
+            ? 'cooking.log.consumedVia'
+            : 'cooking.log.consumedViaRecipe'
+        const logParams =
+          recipeNames.length > 0
+            ? { recipes: recipeNames.join(', ') }
+            : undefined
+        const note = logParams ? t(logKey, logParams) : t(logKey)
         return [
           {
             itemId,
@@ -352,6 +357,8 @@ function CookingPage() {
             delta: -totalAmount,
             quantity: getPackedTotal(updatedItem),
             note,
+            logKey,
+            ...(logParams ? { logParams } : {}),
           },
         ]
       },
