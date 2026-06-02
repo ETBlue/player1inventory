@@ -463,13 +463,20 @@ function Shopping() {
                   const selectedVendor = vendors.find(
                     (v) => v.id === selectedVendorId,
                   )
-                  const note = selectedVendor
-                    ? t('shopping.log.purchasedAt', {
-                        vendor: selectedVendor.name,
-                      })
-                    : t('shopping.log.purchased')
+                  const logKey = selectedVendor
+                    ? 'shopping.log.purchasedAt'
+                    : 'shopping.log.purchased'
+                  const logParams = selectedVendor
+                    ? { vendor: selectedVendor.name }
+                    : undefined
+                  const note = logParams ? t(logKey, logParams) : t(logKey)
                   try {
-                    await checkout.mutateAsync({ cartId: cart.id, note })
+                    await checkout.mutateAsync({
+                      cartId: cart.id,
+                      note,
+                      logKey,
+                      ...(logParams ? { logParams } : {}),
+                    })
                     navigate({
                       to: '/shopping',
                       search: (prev) => ({ ...prev, vendor: '' }),

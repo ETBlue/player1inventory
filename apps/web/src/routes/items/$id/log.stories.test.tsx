@@ -3,8 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './log.stories'
 
-const { Empty, WithPurchaseLogs, WithConsumptionLogs, MixedLogs } =
-  composeStories(stories)
+const {
+  Empty,
+  WithPurchaseLogs,
+  WithConsumptionLogs,
+  MixedLogs,
+  WithI18nKeyLogs,
+} = composeStories(stories)
 
 describe('Item log stories smoke tests', () => {
   it('Empty shows "No history yet." after setup', async () => {
@@ -36,5 +41,13 @@ describe('Item log stories smoke tests', () => {
       expect(screen.getByText('Bought at market')).toBeInTheDocument(),
     )
     expect(screen.getByText('Scrambled eggs')).toBeInTheDocument()
+  })
+
+  it('WithI18nKeyLogs shows translated descriptions for logKey entries', async () => {
+    render(<WithI18nKeyLogs />)
+    await waitFor(() =>
+      expect(screen.getByText('purchased at Costco')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('consumed via Pasta Bolognese')).toBeInTheDocument()
   })
 })

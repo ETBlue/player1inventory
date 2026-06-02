@@ -40,8 +40,14 @@ function ItemHistory() {
                     {log.delta} → {log.quantity}{' '}
                     {item?.packageUnit ?? DEFAULT_PACKAGE_UNIT}
                   </p>
-                  {log.note && (
-                    <p className="text-sm text-foreground-muted">{log.note}</p>
+                  {(log.logKey || log.note) && (
+                    <p className="text-sm text-foreground-muted">
+                      {log.logKey
+                        ? log.logParams
+                          ? t(log.logKey, log.logParams)
+                          : t(log.logKey)
+                        : log.note}
+                    </p>
                   )}
                 </div>
                 <div className="text-right text-sm text-foreground-muted">

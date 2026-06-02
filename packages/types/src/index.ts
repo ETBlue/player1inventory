@@ -66,6 +66,8 @@ export interface InventoryLog {
   delta: number
   quantity: number
   note?: string
+  logKey?: string
+  logParams?: Record<string, string>
   occurredAt: Date
   createdAt: Date
 }

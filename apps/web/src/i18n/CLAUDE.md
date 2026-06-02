@@ -66,3 +66,20 @@ const { t } = useTranslation()
 **Page-by-page string extraction:** Translated pages so far: settings main page (title, theme, tags/vendors/recipes nav cards, language selector); settings tags pages (tags list, tag detail layout, tag info tab, tag items tab); settings vendors pages (vendor list, vendor detail layout, vendor info tab, VendorCard, VendorInfoForm); settings recipes pages (recipe list, recipe detail layout, recipe info tab, RecipeCard, RecipeInfoForm); shopping page (toolbar, vendor filter, dialogs, log notes); cooking page (toolbar, recipe cards, dialogs, log notes) + CookingControlBar (sort labels, aria-labels, search placeholder); shared item components: ItemListToolbar (sort, direction, tags/filters/search controls, search input, create button), ItemFilters (vendors/recipes/edit-tags buttons, clear and manage actions), TagTypeDropdown (clear action); item detail tabs ($id.tsx layout, $id/index.tsx stock tab, $id/tags.tsx, $id/vendors.tsx, $id/recipes.tsx, $id/log.tsx). All other pages still use hardcoded English strings — they will be migrated page-by-page in follow-up PRs. Missing keys fall back to English automatically.
 
 **Common i18n keys:** `common.*` covers `cancel`, `delete`, `deleting`, `nameLabel`, `save`, `saving`, `discard`, `goBack`, `unsavedTitle`, `unsavedDescription`, `done`, `back`, `confirm`, `add`, `edit`, `clear`, `manage`, `asc`, `desc`, `search`, `tags`, `filters` — reuse these instead of adding entity-specific duplicates.
+
+**Dynamic inventory log descriptions (`logKey`/`logParams` pattern):**
+
+Inventory log entries store a translation key + params instead of a pre-translated string, so descriptions re-render in the current language regardless of when the log was created.
+
+- `InventoryLog.logKey?: string` — i18n key, e.g. `'shopping.log.purchasedAt'`
+- `InventoryLog.logParams?: Record<string, string>` — interpolation params, e.g. `{ vendor: 'Costco' }`
+
+**Write:** Pass `logKey`/`logParams` to `addInventoryLog()` / `checkout()` / `consumeRecipesBatch()` instead of a translated `note`. For the cloud path (GraphQL), also pass `note` (pre-translated) as GraphQL only has the `note` field.
+
+**Read:** In `items/$id/log.tsx`, resolve the description as:
+```ts
+log.logKey ? t(log.logKey, log.logParams) : log.note
+```
+Legacy entries (pre-deploy) with only `note` continue to display their stored string.
+
+**Applies to:** shopping checkout (`shopping.log.purchasedAt`, `shopping.log.purchased`) and cooking consumption (`cooking.log.consumedVia`, `cooking.log.consumedViaRecipe`).

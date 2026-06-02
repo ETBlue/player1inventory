@@ -304,6 +304,74 @@ function MixedLogsStory() {
   )
 }
 
+function WithI18nKeyLogsStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Orange Juice',
+        tagIds: [],
+        packageUnit: 'bottle',
+        targetUnit: 'package',
+        targetQuantity: 6,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      await addInventoryLog({
+        itemId: item.id,
+        delta: 3,
+        quantity: 3,
+        occurredAt: new Date('2026-06-01T09:00:00'),
+        logKey: 'shopping.log.purchasedAt',
+        logParams: { vendor: 'Costco' },
+      })
+
+      await addInventoryLog({
+        itemId: item.id,
+        delta: -1,
+        quantity: 2,
+        occurredAt: new Date('2026-06-03T18:00:00'),
+        logKey: 'cooking.log.consumedVia',
+        logParams: { recipes: 'Pasta Bolognese' },
+      })
+
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/log`] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Empty: Story = {
   render: () => <EmptyStory />,
 }
@@ -318,4 +386,8 @@ export const WithConsumptionLogs: Story = {
 
 export const MixedLogs: Story = {
   render: () => <MixedLogsStory />,
+}
+
+export const WithI18nKeyLogs: Story = {
+  render: () => <WithI18nKeyLogsStory />,
 }

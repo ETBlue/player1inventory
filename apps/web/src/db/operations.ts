@@ -85,6 +85,8 @@ type CreateLogInput = {
   quantity: number // final total in package units — provided by caller, not derived from log history
   occurredAt: Date
   note?: string
+  logKey?: string
+  logParams?: Record<string, string>
 }
 
 export async function addInventoryLog(
@@ -101,6 +103,8 @@ export async function addInventoryLog(
     createdAt: now,
   }
   if (input.note) log.note = input.note
+  if (input.logKey) log.logKey = input.logKey
+  if (input.logParams) log.logParams = input.logParams
 
   await db.inventoryLogs.add(log)
   return log
@@ -299,7 +303,7 @@ export async function getCartItems(cartId: string): Promise<CartItem[]> {
 
 export async function checkout(
   cartId: string,
-  note = 'purchased',
+  logDescriptor?: { logKey?: string; logParams?: Record<string, string> },
 ): Promise<void> {
   const cartItems = await getCartItems(cartId)
   const now = new Date()
@@ -321,13 +325,16 @@ export async function checkout(
       updatedAt: now,
     })
 
-    // 2. Then log with explicit final quantity and note
+    // 2. Then log with explicit final quantity and log descriptor
     await addInventoryLog({
       itemId: cartItem.itemId,
       delta: cartItem.quantity,
       quantity: finalQuantity,
       occurredAt: now,
-      note,
+      ...(logDescriptor?.logKey ? { logKey: logDescriptor.logKey } : {}),
+      ...(logDescriptor?.logParams
+        ? { logParams: logDescriptor.logParams }
+        : {}),
     })
   }
 
@@ -516,6 +523,8 @@ type ConsumeRecipesBatchInput = {
     delta: number
     quantity: number
     note?: string
+    logKey?: string
+    logParams?: Record<string, string>
   }>
 }
 
@@ -540,6 +549,8 @@ export async function consumeRecipesBatch(
           occurredAt: input.occurredAt,
           createdAt: input.occurredAt,
           ...(item.note ? { note: item.note } : {}),
+          ...(item.logKey ? { logKey: item.logKey } : {}),
+          ...(item.logParams ? { logParams: item.logParams } : {}),
         })
       }
       for (const recipeId of input.recipeIds) {

@@ -311,6 +311,8 @@ export function useConsumeRecipes() {
         delta: number
         quantity: number
         note?: string
+        logKey?: string
+        logParams?: Record<string, string>
       }>
     }) => {
       if (mode === 'cloud') {

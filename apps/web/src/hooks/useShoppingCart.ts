@@ -239,8 +239,20 @@ export function useCheckout() {
   const client = useApolloClient()
 
   const localMutation = useMutation({
-    mutationFn: ({ cartId, note }: { cartId: string; note?: string }) =>
-      checkout(cartId, note),
+    mutationFn: ({
+      cartId,
+      logKey,
+      logParams,
+    }: {
+      cartId: string
+      note?: string
+      logKey?: string
+      logParams?: Record<string, string>
+    }) =>
+      checkout(cartId, {
+        ...(logKey ? { logKey } : {}),
+        ...(logParams ? { logParams } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cart'] })
       queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'all' })
@@ -254,7 +266,17 @@ export function useCheckout() {
   if (mode === 'cloud') {
     return {
       mutate: (
-        { cartId, note }: { cartId: string; note?: string },
+        {
+          cartId,
+          note,
+          logKey: _logKey,
+          logParams: _logParams,
+        }: {
+          cartId: string
+          note?: string
+          logKey?: string
+          logParams?: Record<string, string>
+        },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
         cloudCheckout({
@@ -288,9 +310,13 @@ export function useCheckout() {
       mutateAsync: async ({
         cartId,
         note,
+        logKey: _logKey,
+        logParams: _logParams,
       }: {
         cartId: string
         note?: string
+        logKey?: string
+        logParams?: Record<string, string>
       }) => {
         const r = await cloudCheckout({
           variables: { cartId, ...(note ? { note } : {}) },
