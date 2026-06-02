@@ -126,11 +126,11 @@ Three patterns are used across the app. The outer shell differs between breakpoi
 
 <MobileLayouts />
 
-**Toolbar + scrollable list** — the most common pattern. Full-width content with a toolbar at the top and a scrollable area below. The bottom nav sits outside the page content in the outer shell.
+**Toolbar + list + bottom nav** — level 1 pages (pantry, shopping, cooking, settings). The toolbar shows a page title and an optional action button. The bottom nav sits outside the page content in the outer shell.
 
 ```tsx
 <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
-  <div>{/* Toolbar */}</div>
+  <div>{/* Toolbar: title + optional action button */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}
   </div>
@@ -139,18 +139,18 @@ Three patterns are used across the app. The outer shell differs between breakpoi
 
 `h-[100cqh]` sizes to the container query height of Layout's `<main>` — the viewport minus the bottom nav height.
 
-**Fullscreen toolbar + list** — detail pages that dismiss the bottom nav entirely (item detail, shelf detail). No outer shell chrome; `h-screen` fills the full viewport.
+**Toolbar + list** — level 2+ pages (item detail, shelf detail). The toolbar requires a back button. The bottom nav is hidden; `h-screen` fills the full viewport.
 
 ```tsx
 <div className="h-screen grid grid-rows-[auto_1fr]">
-  <div>{/* Toolbar */}</div>
+  <div>{/* Toolbar: back button + title */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}
   </div>
 </div>
 ```
 
-**Padded form page** — detail form pages (item info, tag/vendor/recipe/shelf forms). No toolbar slot; padded content fills at least the screen height. No outer shell chrome.
+**Toolbar + form** — entity configuration pages (item info, tag, vendor, recipe, shelf forms). The toolbar requires a back button and is provided by the parent route. Form content fills at least the screen height.
 
 ```tsx
 <div className="p-4 bg-background-elevated min-h-[100cqh]">
@@ -162,29 +162,29 @@ Three patterns are used across the app. The outer shell differs between breakpoi
 
 <DesktopLayouts />
 
-**Sidebar + toolbar + scrollable list** — same two-slot page structure as mobile, but with the `w-56` sidebar occupying the left column of the outer shell. The bottom nav is hidden. `h-[100cqh]` now fills the full viewport height since there is no bottom nav offset.
+**Sidebar + toolbar + list** — level 1 pages with the `w-56` sidebar in the left column. No bottom nav; `h-[100cqh]` fills the full viewport height since there is no bottom nav offset.
 
 ```tsx
 <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
-  <div>{/* Toolbar */}</div>
+  <div>{/* Toolbar: title + optional action button */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}
   </div>
 </div>
 ```
 
-**Fullscreen toolbar + list** — same as mobile: sidebar and bottom nav are both hidden. `h-screen` fills the full viewport.
+**Toolbar + list** — same as mobile: no sidebar, no bottom nav. The toolbar requires a back button. `h-screen` fills the full viewport.
 
 ```tsx
 <div className="h-screen grid grid-rows-[auto_1fr]">
-  <div>{/* Toolbar */}</div>
+  <div>{/* Toolbar: back button + title */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}
   </div>
 </div>
 ```
 
-**Padded form page** — same as mobile: no sidebar, no bottom nav, padded content area.
+**Toolbar + form** — same as mobile: no sidebar, no bottom nav. Back button toolbar from the parent route; padded form content in the child route.
 
 ```tsx
 <div className="p-4 bg-background-elevated min-h-[100cqh]">

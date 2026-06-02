@@ -5,11 +5,12 @@ const t = {
   surface: 'var(--background-surface)',
   elevated: 'var(--background-elevated)',
   border: 'var(--accessory-muted)',
-  fg: 'var(--foreground-default)',
-  fgMuted: 'var(--foreground-muted)',
+  fg: 'var(--accessory-emphasized)',
+  fgMuted: 'var(--accessory-default)',
 }
 
-function Toolbar() {
+function Toolbar(props: {level?: number}) {
+  const {level = 1} = props
   return (
     <div
       style={{
@@ -23,9 +24,9 @@ function Toolbar() {
         flexShrink: 0,
       }}
     >
-      <div style={{ width: 12, height: 12, background: t.fgMuted, borderRadius: 2 }} />
-      <div style={{ flex: 1, height: 7, background: t.border, borderRadius: 2 }} />
-      <div style={{ width: 12, height: 12, background: t.fgMuted, borderRadius: 2 }} />
+      {level > 1 && <div style={{ width: 12, height: 12, background: t.fgMuted, borderRadius: 2, margin: 0 }} />}
+      <div style={{ flex: 1, height: 8, background: t.fgMuted, borderRadius: 2, margin: 0 }} />
+      {level == 1 && <div style={{ width: 12, height: 12, background: t.fgMuted, borderRadius: 2, margin: 0 }} />}
     </div>
   )
 }
@@ -36,16 +37,16 @@ function ListRows({ count = 5 }: { count?: number }) {
       style={{
         flex: 1,
         overflow: 'hidden',
-        padding: 4,
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: 1,
+        margin: 0,
       }}
     >
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          style={{ height: 18, background: t.elevated, borderRadius: 2, flexShrink: 0 }}
+          style={{ height: 18, background: t.elevated, borderRadius: 2, flexShrink: 0,margin: 0 }}
         />
       ))}
     </div>
@@ -61,6 +62,7 @@ function BottomNav() {
         borderTop: `1px solid ${t.border}`,
         display: 'grid',
         gridTemplateColumns: 'repeat(4, 1fr)',
+        alignItems: 'stretch',
         flexShrink: 0,
       }}
     >
@@ -72,23 +74,24 @@ function BottomNav() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 2,
+            gap: '4px',
+            margin: 0
           }}
         >
           <div
             style={{
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               background: i === 0 ? t.fg : t.fgMuted,
-              borderRadius: 2,
+              borderRadius: 2
             }}
           />
           <div
             style={{
-              width: 18,
-              height: 3,
+              width: 16,
+              height: 4,
               background: i === 0 ? t.fg : t.fgMuted,
-              borderRadius: 1,
+              borderRadius: 1,margin: 0
             }}
           />
         </div>
@@ -160,19 +163,19 @@ function FormFields() {
         padding: 8,
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
+        gap: 2,
         background: t.elevated,
+        margin: 0
       }}
     >
       {[0, 1, 2].map(i => (
-        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '0.1rem 0' }}>
           <div
             style={{
               height: 5,
               width: '50%',
               background: t.fgMuted,
               borderRadius: 1,
-              opacity: 0.5,
             }}
           />
           <div
@@ -181,10 +184,13 @@ function FormFields() {
               background: t.base,
               borderRadius: 2,
               border: `1px solid ${t.border}`,
+              margin: 0
             }}
           />
         </div>
       ))}
+      <div style={{flex: 1, margin: 0}} />
+      <div style={{ height: 12, background: t.fgMuted, borderRadius: 2, margin: 0 }} />
     </div>
   )
 }
@@ -236,7 +242,7 @@ function DiagramCard({
 export function MobileLayouts() {
   return (
     <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '16px 0' }}>
-      <DiagramCard label="Toolbar + scrollable list" width={120} height={200}>
+      <DiagramCard label="Toolbar + list + bottom nav" width={120} height={200}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Toolbar />
           <ListRows count={5} />
@@ -244,12 +250,13 @@ export function MobileLayouts() {
         <BottomNav />
       </DiagramCard>
 
-      <DiagramCard label="Fullscreen toolbar + list" width={120} height={200}>
-        <Toolbar />
+      <DiagramCard label="Toolbar + list" width={120} height={200}>
+        <Toolbar level={2} />
         <ListRows count={7} />
       </DiagramCard>
 
-      <DiagramCard label="Padded form page" width={120} height={200}>
+      <DiagramCard label="Toolbar + form" width={120} height={200}>
+        <Toolbar level={2} />
         <FormFields />
       </DiagramCard>
     </div>
@@ -259,7 +266,7 @@ export function MobileLayouts() {
 export function DesktopLayouts() {
   return (
     <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '16px 0' }}>
-      <DiagramCard label="Sidebar + toolbar + scrollable list" width={260} height={160}>
+      <DiagramCard label="Sidebar + toolbar + list" width={260} height={160}>
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           <SidebarNav />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -269,12 +276,13 @@ export function DesktopLayouts() {
         </div>
       </DiagramCard>
 
-      <DiagramCard label="Fullscreen toolbar + list" width={260} height={160}>
-        <Toolbar />
+      <DiagramCard label="Toolbar + list" width={260} height={160}>
+        <Toolbar level={2} />
         <ListRows count={4} />
       </DiagramCard>
 
-      <DiagramCard label="Padded form page" width={260} height={160}>
+      <DiagramCard label="Toolbar + form" width={260} height={160}>
+        <Toolbar level={2} />
         <FormFields />
       </DiagramCard>
     </div>
