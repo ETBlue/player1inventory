@@ -279,6 +279,7 @@ function TagItemsTab() {
                     activeRecipeIds={selectedRecipeIds}
                     isChecked={isAssigned(item.tagIds)}
                     onCheckboxToggle={() => handleToggle(item.id, item.tagIds)}
+                    isPending={savingItemIds.has(item.id)}
                     disabled={savingItemIds.has(item.id)}
                   />
                 </div>
