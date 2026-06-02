@@ -128,6 +128,7 @@ function SidebarNav() {
             alignItems: 'center',
             gap: 3,
             padding: '0 3px',
+              margin: 0
           }}
         >
           <div
@@ -137,6 +138,7 @@ function SidebarNav() {
               background: i === 0 ? t.fg : t.fgMuted,
               borderRadius: 1,
               flexShrink: 0,
+              margin: 0
             }}
           />
           <div
@@ -146,6 +148,7 @@ function SidebarNav() {
               background: i === 0 ? t.fg : t.fgMuted,
               borderRadius: 1,
               opacity: i === 0 ? 1 : 0.4,
+              margin: 0
             }}
           />
         </div>
@@ -269,7 +272,7 @@ export function DesktopLayouts() {
       <DiagramCard label="Sidebar + toolbar + list" width={260} height={160}>
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           <SidebarNav />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', margin: 0 }}>
             <Toolbar />
             <ListRows count={4} />
           </div>
