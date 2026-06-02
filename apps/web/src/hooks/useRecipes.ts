@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  consumeRecipesBatch,
   createRecipe,
   deleteRecipe,
   getItemCountByRecipe,
@@ -11,6 +12,7 @@ import {
 import {
   GetRecipeDocument,
   GetRecipesDocument,
+  useConsumeRecipesMutation,
   useCreateRecipeMutation,
   useDeleteRecipeMutation,
   useGetRecipeQuery,
@@ -291,6 +293,51 @@ export function useUpdateRecipeLastCookedAt() {
   }
 
   return localMutation
+}
+
+export function useConsumeRecipes() {
+  const queryClient = useQueryClient()
+  const { mode } = useDataMode()
+  const [cloudConsumeRecipes] = useConsumeRecipesMutation()
+
+  return useMutation({
+    mutationFn: async (input: {
+      occurredAt: Date
+      recipeIds: string[]
+      items: Array<{
+        itemId: string
+        packedQuantity: number
+        unpackedQuantity: number
+        delta: number
+        quantity: number
+        note?: string
+      }>
+    }) => {
+      if (mode === 'cloud') {
+        return cloudConsumeRecipes({
+          variables: {
+            input: {
+              occurredAt: input.occurredAt.toISOString(),
+              recipeIds: input.recipeIds,
+              items: input.items.map((item) => ({
+                itemId: item.itemId,
+                packedQuantity: item.packedQuantity,
+                unpackedQuantity: item.unpackedQuantity,
+                delta: item.delta,
+                quantity: item.quantity,
+                ...(item.note !== undefined ? { note: item.note } : {}),
+              })),
+            },
+          },
+        })
+      }
+      return consumeRecipesBatch(input)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['recipes'] })
+    },
+  })
 }
 
 export function useItemCountByRecipe(recipeId: string) {

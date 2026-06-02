@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
@@ -1491,6 +1491,56 @@ describe('Use (Cooking) Page', () => {
       const updated = await getRecipe(recipe.id)
       expect(updated?.lastCookedAt).toBeDefined()
     })
+  })
+
+  it('user can confirm cooking done and batch mutation is called once', async () => {
+    // Given two recipes each with a unique item
+    const flour = await makeItem('Flour', 1, 5)
+    const egg = await makeItem('Egg', 1, 10)
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: flour.id, defaultAmount: 2 }],
+    })
+    await createRecipe({
+      name: 'Omelette',
+      items: [{ itemId: egg.id, defaultAmount: 3 }],
+    })
+
+    // Spy on consumeRecipesBatch to verify it is called exactly once
+    const spy = vi.spyOn(await import('@/db/operations'), 'consumeRecipesBatch')
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When user checks both recipes and confirms Done
+    await waitFor(() => {
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument()
+    })
+    await user.click(screen.getByLabelText('Pasta'))
+    await user.click(screen.getByLabelText('Omelette'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /done/i })).not.toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /confirm/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then consumeRecipesBatch was called exactly once (not per-item)
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledTimes(1)
+    })
+
+    // And the single call includes both items
+    const callArg = spy.mock.calls[0][0]
+    expect(callArg.items).toHaveLength(2)
+    expect(callArg.recipeIds).toHaveLength(2)
+
+    spy.mockRestore()
   })
 
   it('user can sort recipes by item count descending', async () => {

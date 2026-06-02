@@ -506,6 +506,49 @@ export async function deleteRecipe(id: string): Promise<void> {
   await db.recipes.delete(id)
 }
 
+type ConsumeRecipesBatchInput = {
+  occurredAt: Date
+  recipeIds: string[]
+  items: Array<{
+    itemId: string
+    packedQuantity: number
+    unpackedQuantity: number
+    delta: number
+    quantity: number
+    note?: string
+  }>
+}
+
+export async function consumeRecipesBatch(
+  input: ConsumeRecipesBatchInput,
+): Promise<void> {
+  await db.transaction(
+    'rw',
+    [db.items, db.inventoryLogs, db.recipes],
+    async () => {
+      for (const item of input.items) {
+        await db.items.update(item.itemId, {
+          packedQuantity: item.packedQuantity,
+          unpackedQuantity: item.unpackedQuantity,
+          updatedAt: input.occurredAt,
+        })
+        await db.inventoryLogs.add({
+          id: crypto.randomUUID(),
+          itemId: item.itemId,
+          delta: item.delta,
+          quantity: item.quantity,
+          occurredAt: input.occurredAt,
+          createdAt: input.occurredAt,
+          ...(item.note ? { note: item.note } : {}),
+        })
+      }
+      for (const recipeId of input.recipeIds) {
+        await db.recipes.update(recipeId, { lastCookedAt: input.occurredAt })
+      }
+    },
+  )
+}
+
 export async function getItemCountByRecipe(recipeId: string): Promise<number> {
   const recipe = await db.recipes.get(recipeId)
   return recipe?.items.length ?? 0
