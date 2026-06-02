@@ -42,8 +42,8 @@ mutation RemoveFromCart($id: ID!) {
   removeFromCart(id: $id)
 }
 
-mutation Checkout($cartId: ID!, $note: String) {
-  checkout(cartId: $cartId, note: $note) {
+mutation Checkout($cartId: ID!, $note: String, $logKey: String, $logParams: JSON) {
+  checkout(cartId: $cartId, note: $note, logKey: $logKey, logParams: $logParams) {
     id
     status
     completedAt

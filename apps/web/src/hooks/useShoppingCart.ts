@@ -269,8 +269,8 @@ export function useCheckout() {
         {
           cartId,
           note,
-          logKey: _logKey,
-          logParams: _logParams,
+          logKey,
+          logParams,
         }: {
           cartId: string
           note?: string
@@ -280,7 +280,12 @@ export function useCheckout() {
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
         cloudCheckout({
-          variables: { cartId, ...(note ? { note } : {}) },
+          variables: {
+            cartId,
+            ...(note ? { note } : {}),
+            ...(logKey ? { logKey } : {}),
+            ...(logParams ? { logParams } : {}),
+          },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
@@ -310,8 +315,8 @@ export function useCheckout() {
       mutateAsync: async ({
         cartId,
         note,
-        logKey: _logKey,
-        logParams: _logParams,
+        logKey,
+        logParams,
       }: {
         cartId: string
         note?: string
@@ -319,7 +324,12 @@ export function useCheckout() {
         logParams?: Record<string, string>
       }) => {
         const r = await cloudCheckout({
-          variables: { cartId, ...(note ? { note } : {}) },
+          variables: {
+            cartId,
+            ...(note ? { note } : {}),
+            ...(logKey ? { logKey } : {}),
+            ...(logParams ? { logParams } : {}),
+          },
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },

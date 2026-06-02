@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
-import type { CartStatus, ExpirationMode, TagColor, TargetUnit } from '@prisma/client'
+import type { CartStatus, ExpirationMode, Prisma, TagColor, TargetUnit } from '@prisma/client'
 
 // Map a Prisma item (with junction rows) to the GraphQL Item shape
 function itemToGraphQL(item: {
@@ -199,7 +199,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (logs.length === 0) return []
       const results: InventoryLog[] = []
       for (const log of logs) {
-        const { id, occurredAt, note, ...rest } = log
+        const { id, occurredAt, note, logParams, ...rest } = log
         const existing = await prisma.inventoryLog.findUnique({ where: { id } })
         if (existing) continue
         const itemExists = await prisma.item.findUnique({ where: { id: (rest as { itemId: string }).itemId }, select: { id: true } })
@@ -211,6 +211,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             occurredAt: new Date(occurredAt),
             note: note ?? undefined,
             userId,
+            ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
           },
         })
         results.push(created as unknown as InventoryLog)
@@ -389,12 +390,13 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (logs.length === 0) return []
       const results: InventoryLog[] = []
       for (const log of logs) {
-        const { id, occurredAt, note, ...rest } = log
+        const { id, occurredAt, note, logParams, ...rest } = log
         const data = {
           ...rest,
           occurredAt: new Date(occurredAt),
           note: note ?? undefined,
           userId,
+          ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
         }
         const upserted = await prisma.inventoryLog.upsert({
           where: { id },

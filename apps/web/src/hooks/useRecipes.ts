@@ -328,6 +328,10 @@ export function useConsumeRecipes() {
                 delta: item.delta,
                 quantity: item.quantity,
                 ...(item.note !== undefined ? { note: item.note } : {}),
+                ...(item.logKey !== undefined ? { logKey: item.logKey } : {}),
+                ...(item.logParams !== undefined
+                  ? { logParams: item.logParams }
+                  : {}),
               })),
             },
           },

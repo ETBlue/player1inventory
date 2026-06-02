@@ -6,6 +6,8 @@ query ItemLogs($itemId: ID!) {
     quantity
     occurredAt
     note
+    logKey
+    logParams
   }
 }
 
@@ -26,6 +28,8 @@ mutation AddInventoryLog(
   $quantity: Float!
   $occurredAt: String!
   $note: String
+  $logKey: String
+  $logParams: JSON
 ) {
   addInventoryLog(
     itemId: $itemId
@@ -33,6 +37,8 @@ mutation AddInventoryLog(
     quantity: $quantity
     occurredAt: $occurredAt
     note: $note
+    logKey: $logKey
+    logParams: $logParams
   ) {
     id
     itemId
@@ -40,5 +46,7 @@ mutation AddInventoryLog(
     quantity
     occurredAt
     note
+    logKey
+    logParams
   }
 }
