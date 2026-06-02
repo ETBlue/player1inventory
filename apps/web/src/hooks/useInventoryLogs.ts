@@ -38,6 +38,10 @@ export function useItemLogs(itemId: string) {
         createdAt: new Date(log.occurredAt),
         // note is null|undefined from GraphQL — omit if falsy to satisfy exactOptionalPropertyTypes
         ...(log.note ? { note: log.note } : {}),
+        ...(log.logKey ? { logKey: log.logKey } : {}),
+        ...(log.logParams
+          ? { logParams: log.logParams as Record<string, string> }
+          : {}),
       }),
     )
     return {
@@ -67,6 +71,8 @@ export function useAddInventoryLog() {
       quantity: number
       occurredAt: Date
       note?: string
+      logKey?: string
+      logParams?: Record<string, string>
     }) => {
       if (isCloud) {
         await cloudMutate({
@@ -76,6 +82,10 @@ export function useAddInventoryLog() {
             quantity: input.quantity,
             occurredAt: input.occurredAt.toISOString(),
             ...(input.note !== undefined ? { note: input.note } : {}),
+            ...(input.logKey !== undefined ? { logKey: input.logKey } : {}),
+            ...(input.logParams !== undefined
+              ? { logParams: input.logParams }
+              : {}),
           },
         })
         return

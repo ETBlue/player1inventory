@@ -5,6 +5,8 @@ type InventoryLog {
   quantity: Float!
   occurredAt: String!
   note: String
+  logKey: String
+  logParams: JSON
 }
 
 type LastPurchaseDateResult {
@@ -26,5 +28,7 @@ extend type Mutation {
     quantity: Float!
     occurredAt: String!
     note: String
+    logKey: String
+    logParams: JSON
   ): InventoryLog!
 }

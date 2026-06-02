@@ -15,6 +15,8 @@ input ConsumeRecipesItemInput {
   delta: Float!
   quantity: Float!
   note: String
+  logKey: String
+  logParams: JSON
 }
 
 input ConsumeRecipesInput {

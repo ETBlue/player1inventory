@@ -8,6 +8,9 @@ const config: CodegenConfig = {
       config: {
         contextType: '../context.js#Context',
         useIndexSignature: true,
+        scalars: {
+          JSON: 'Record<string, unknown>',
+        },
       },
     },
     'apps/web/src/generated/graphql.ts': {
@@ -25,6 +28,9 @@ const config: CodegenConfig = {
         withResultType: false,
         withMutationOptionsType: false,
         withMutationFn: false,
+        scalars: {
+          JSON: 'Record<string, unknown>',
+        },
       },
     },
   },

@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
@@ -85,6 +86,8 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
               occurredAt: occurredAtDate,
               userId,
               ...(item.note ? { note: item.note } : {}),
+              ...(item.logKey ? { logKey: item.logKey } : {}),
+              ...(item.logParams ? { logParams: item.logParams as Prisma.InputJsonValue } : {}),
             },
           })
           itemResults.push({ itemId: item.itemId, success: true })

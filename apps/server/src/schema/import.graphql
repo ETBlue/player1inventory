@@ -53,6 +53,8 @@ input InventoryLogInput {
   quantity: Float!
   occurredAt: String!
   note: String
+  logKey: String
+  logParams: JSON
 }
 
 input ShoppingCartInput {

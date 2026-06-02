@@ -1,6 +1,15 @@
+import { GraphQLScalarType } from 'graphql'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
+
+export const JSONScalar = new GraphQLScalarType({
+  name: 'JSON',
+  serialize: (value) => value,
+  parseValue: (value) => value,
+  parseLiteral: () => null,
+})
 
 export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'InventoryLog'> = {
   Query: {
@@ -41,7 +50,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   },
 
   Mutation: {
-    addInventoryLog: async (_, { itemId, delta, quantity, occurredAt, note }, ctx) => {
+    addInventoryLog: async (_, { itemId, delta, quantity, occurredAt, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
       return prisma.inventoryLog.create({
         data: {
@@ -51,6 +60,8 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
           occurredAt: new Date(occurredAt),
           userId,
           ...(note ? { note } : {}),
+          ...(logKey ? { logKey } : {}),
+          ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
         },
       }) as unknown as Promise<InventoryLog>
     },

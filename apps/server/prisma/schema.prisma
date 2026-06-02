@@ -192,6 +192,8 @@ model InventoryLog {
   occurredAt DateTime
   userId     String
   note       String?
+  logKey     String?
+  logParams  Json?
 
   item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 

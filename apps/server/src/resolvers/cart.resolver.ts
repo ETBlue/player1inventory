@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
@@ -71,7 +72,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
       return true
     },
 
-    checkout: async (_, { cartId, note }, ctx) => {
+    checkout: async (_, { cartId, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
       const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
       const pinnedItems = cartItems.filter(ci => ci.quantity === 0)
@@ -93,6 +94,8 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
             occurredAt: now,
             userId,
             ...(note ? { note } : {}),
+            ...(logKey ? { logKey } : {}),
+            ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
           },
         })
       }
