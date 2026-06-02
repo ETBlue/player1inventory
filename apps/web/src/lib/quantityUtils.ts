@@ -51,8 +51,9 @@ export function getItemPackUnits(item: Item): {
   target: number
   refill: number
 } {
-  const packed = item.packedQuantity
   if (item.targetUnit === 'package') {
+    // In package mode, one unpack removes 1 packed and adds 1 unpacked — both are in package units
+    const packed = item.packedQuantity + item.unpackedQuantity
     return { packed, target: item.targetQuantity, refill: item.refillThreshold }
   }
   if (
@@ -60,12 +61,16 @@ export function getItemPackUnits(item: Item): {
     item.amountPerPackage &&
     item.amountPerPackage > 0
   ) {
+    const packed =
+      item.packedQuantity + item.unpackedQuantity / item.amountPerPackage
     return {
       packed,
       target: item.targetQuantity / item.amountPerPackage,
       refill: item.refillThreshold / item.amountPerPackage,
     }
   }
+  // Fallback: no targetUnit or amountPerPackage = 0
+  const packed = item.packedQuantity + item.unpackedQuantity
   return { packed, target: 0, refill: 0 }
 }
 

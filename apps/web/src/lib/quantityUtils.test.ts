@@ -790,8 +790,33 @@ describe('getItemPackUnits', () => {
     expect(result).toEqual({ packed: 3, target: 0, refill: 0 })
   })
 
-  it('packed reflects packedQuantity regardless of targetUnit', () => {
+  it('packed reflects total of packedQuantity and unpackedQuantity', () => {
     const item: Item = { ...base, packedQuantity: 7 }
     expect(getItemPackUnits(item).packed).toBe(7)
+  })
+
+  it('package mode: packed includes unpackedQuantity as pack units', () => {
+    // In package mode, 1 unpack removes 1 packed and adds 1 unpacked — both are in package units
+    const item: Item = {
+      ...base,
+      packedQuantity: 3,
+      unpackedQuantity: 2,
+      targetUnit: 'package',
+    }
+    expect(getItemPackUnits(item).packed).toBe(5)
+  })
+
+  it('measurement mode: packed converts unpackedQuantity to pack units via amountPerPackage', () => {
+    const item: Item = {
+      ...base,
+      targetUnit: 'measurement',
+      amountPerPackage: 500,
+      targetQuantity: 1500,
+      refillThreshold: 500,
+      packedQuantity: 3,
+      unpackedQuantity: 250,
+    }
+    // packed = 3 + 250 / 500 = 3.5
+    expect(getItemPackUnits(item).packed).toBe(3.5)
   })
 })
