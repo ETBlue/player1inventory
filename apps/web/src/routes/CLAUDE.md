@@ -135,7 +135,7 @@ Row 2:            [N items, M selected, × S]
 **State** (in `CookingControlBar`):
 - `searchVisible: boolean` — whether the search input row is visible; initialized from `!!q`
 
-**`lastCookedAt`:** When Done is confirmed, `lastCookedAt` is recorded on each Recipe that had at least one item checked, via `useUpdateRecipeLastCookedAt`. This timestamp drives the `recent` sort order.
+**`lastCookedAt`:** When Done is confirmed, `lastCookedAt` is recorded on each Recipe that had at least one item checked. This timestamp drives the `recent` sort order.
 
 **Files:**
 - `src/routes/cooking.tsx` — main page
