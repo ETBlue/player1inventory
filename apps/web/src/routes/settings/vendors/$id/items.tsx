@@ -280,6 +280,7 @@ function VendorItemsTab() {
                     onCheckboxToggle={() =>
                       handleToggle(item.id, item.vendorIds)
                     }
+                    isPending={savingItemIds.has(item.id)}
                     disabled={savingItemIds.has(item.id)}
                   />
                 </div>
