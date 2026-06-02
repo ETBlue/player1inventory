@@ -2,6 +2,8 @@
 title: Layout
 ---
 
+import { MobileLayouts, DesktopLayouts } from '../../../components/LayoutDiagram'
+
 Player 1 Inventory is a **mobile-first** application. The default (unstyled) layout targets small screens; responsive modifiers (`lg:`) layer on desktop enhancements. No custom layout tokens are defined — all layout is done through Tailwind's default utilities.
 
 ## Mobile-first approach
@@ -77,39 +79,118 @@ The app uses `max-w-*` constraints in dialogs, forms, and settings panels — no
 
 | Class | Width | Where used |
 |-------|-------|-----------|
-| `max-w-sm` | 384px | Narrow confirmation dialogs |
-| `max-w-md` | 448px | Standard form dialogs |
-| `max-w-lg` | 512px | Wider dialogs |
-| `max-w-2xl` | 672px | Settings pages, onboarding panels |
+| `max-w-sm` | 384px | Onboarding panels and narrow content sections |
+| `max-w-lg` | 512px | Default dialog width (Dialog and AlertDialog base) |
+| `max-w-2xl` | 672px | Settings forms and detail pages |
 
-The `container` utility (with Tailwind's default breakpoint-responsive max-widths) appears in component-level centering contexts.
+## Global shell
 
-## Page layout pattern
+The global `Layout` component wraps every page. It uses a two-column grid that adapts at the `lg:` breakpoint:
 
-The main list views (pantry, shopping, cooking) share a common two-slot page structure:
+```tsx
+// Layout.tsx
+<div className="h-dvh bg-background-base grid grid-cols-[auto_1fr]">
+  <div className="overflow-y-auto">
+    <Sidebar />        {/* hidden by default; lg:flex */}
+  </div>
+  <div className="grid grid-rows-[1fr_auto]">
+    <main className="overflow-y-auto [container-type:size]">
+      {children}
+    </main>
+    <Navigation />     {/* bottom bar; lg:hidden */}
+  </div>
+</div>
+```
+
+**Mobile (< 1024px):** the sidebar column collapses (hidden), giving the main content full width. A four-tab bottom navigation bar occupies the `auto` row below.
+
+**Desktop (≥ 1024px):** a `w-56` sidebar fills the `auto` column on the left. The bottom bar is hidden, so the main content fills the full viewport height.
 
 ```
-┌─────────────────────┐
-│  Fixed toolbar row  │  auto height
-├─────────────────────┤
-│                     │
-│  Scrollable list    │  1fr (fills remaining height)
-│                     │
-└─────────────────────┘
+Mobile                          Desktop
+┌──────────────────────┐        ┌────────┬───────────────────┐
+│                      │        │        │                   │
+│   Main content       │        │Sidebar │   Main content    │
+│   (full width)       │        │ w-56   │   (remaining)     │
+│                      │        │        │                   │
+├──────────────────────┤        └────────┴───────────────────┘
+│  Bottom nav (4 tabs) │
+└──────────────────────┘
 ```
 
-Implemented with CSS grid and container queries:
+## Page layout patterns
+
+Three patterns are used across the app. The outer shell differs between breakpoints (sidebar vs bottom nav), but the page-level structure is the same.
+
+### Mobile
+
+<MobileLayouts />
+
+**Toolbar + list + bottom nav** — level 1 pages (pantry, shopping, cooking, settings). The toolbar shows a page title and an optional action button. The bottom nav sits outside the page content in the outer shell.
 
 ```tsx
 <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
-  <div>{/* Toolbar */}</div>
+  <div>{/* Toolbar: title + optional action button */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}
   </div>
 </div>
 ```
 
-The `h-[100cqh]` constrains the page to the container's query height rather than the full viewport, which avoids conflicts with browser chrome on mobile.
+`h-[100cqh]` sizes to the container query height of Layout's `<main>` — the viewport minus the bottom nav height.
+
+**Toolbar + list** — level 2+ pages (item detail, shelf detail). The toolbar requires a back button. The bottom nav is hidden; `h-screen` fills the full viewport.
+
+```tsx
+<div className="h-screen grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar: back button + title */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+**Toolbar + form** — entity configuration pages (item info, tag, vendor, recipe, shelf forms). The toolbar requires a back button and is provided by the parent route. Form content fills at least the screen height.
+
+```tsx
+<div className="p-4 bg-background-elevated min-h-[100cqh]">
+  {/* Form content */}
+</div>
+```
+
+### Desktop
+
+<DesktopLayouts />
+
+**Sidebar + toolbar + list** — level 1 pages with the `w-56` sidebar in the left column. No bottom nav; `h-[100cqh]` fills the full viewport height since there is no bottom nav offset.
+
+```tsx
+<div className="h-[100cqh] grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar: title + optional action button */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+**Toolbar + list** — same as mobile: no sidebar, no bottom nav. The toolbar requires a back button. `h-screen` fills the full viewport.
+
+```tsx
+<div className="h-screen grid grid-rows-[auto_1fr]">
+  <div>{/* Toolbar: back button + title */}</div>
+  <div className="overflow-y-auto [container-type:size]">
+    {/* Scrollable content */}
+  </div>
+</div>
+```
+
+**Toolbar + form** — same as mobile: no sidebar, no bottom nav. Back button toolbar from the parent route; padded form content in the child route.
+
+```tsx
+<div className="p-4 bg-background-elevated min-h-[100cqh]">
+  {/* Form content */}
+</div>
+```
 
 ## Rules of thumb
 
