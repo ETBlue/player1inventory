@@ -3,16 +3,17 @@
 Item detail pages use a tabbed layout with three sections:
 
 **1. Stock Status (default tab, `/items/$id`)**
-- Quantity fields for packed and unpacked stock
-- Unpacked quantity field always enabled (supports fractional packages)
-- Expiration date field (date value, not mode/threshold)
+- Packed and unpacked quantity fields with Pack/Unpack buttons
+- Target quantity and refill threshold
+- Consumption amount settings
+- **Advanced Stock Status** subsection (always visible within Stock Status):
+  - Measurement tracking toggle (Track in measurement switch)
+  - Measurement unit and amount per package fields
+  - Expiration mode select (none / specific date / days from purchase) and threshold
 - Save button disabled when no changes made
 
 **2. Item Info (same route, `/items/$id`)**
-- Item name and package unit configuration
-- Target quantity and refill threshold
-- Consumption amount settings
-- Expiration mode (specific date or days from purchase) and warning threshold
+- Item name and package unit only
 
 **3. Tags (`/items/$id/tags`)**
 - Tag assignment interface with uppercase text styling for tag type names
@@ -75,7 +76,7 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 **Files:**
 - `src/components/item/ItemForm/index.tsx` - Shared form component used by both edit and new item routes
 - `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
-- `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with all sections)
+- `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with `sections={['stock', 'info']}`)
 - `src/routes/items/$id/tags.tsx` - Tags tab implementation
 - `src/routes/items/$id/vendors.tsx` - Vendors tab implementation
 - `src/routes/items/$id/vendors.test.tsx` - Vendors tab tests
@@ -83,7 +84,7 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id/recipes.test.tsx` - Recipes tab tests
 - `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
-- `src/routes/items/new.tsx` - New item form (uses ItemForm with info + advanced sections)
+- `src/routes/items/new.tsx` - New item form (uses ItemForm default `sections={['info']}` — Name and Package Unit only)
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
 
 ### Manual Quantity Input
