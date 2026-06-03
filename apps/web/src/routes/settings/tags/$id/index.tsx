@@ -117,15 +117,16 @@ function TagInfoTab() {
 
         {hasChildren ? (
           <>
-            <Button
-              type="button"
-              variant="destructive-ghost"
-              className="w-full"
-              onClick={handleDeletePress}
-            >
-              {t('common.delete')}
-            </Button>
-
+            <div className="max-w-2xl mx-auto">
+              <Button
+                type="button"
+                variant="destructive-ghost"
+                className="w-full"
+                onClick={handleDeletePress}
+              >
+                {t('common.delete')}
+              </Button>
+            </div>
             <AlertDialog
               open={parentDeleteOpen}
               onOpenChange={(open) => {
@@ -163,20 +164,22 @@ function TagInfoTab() {
             </AlertDialog>
           </>
         ) : (
-          <DeleteButton
-            trigger={t('common.delete')}
-            dialogTitle={t('settings.tags.tag.deleteTitle')}
-            buttonClassName="w-full"
-            dialogDescription={
-              affectedItemCount > 0
-                ? t('settings.tags.tag.deleteWithItems', {
-                    name: tag.name,
-                    count: affectedItemCount,
-                  })
-                : t('settings.tags.tag.deleteNoItems', { name: tag.name })
-            }
-            onDelete={handleDeleteNoChildren}
-          />
+          <div className="max-w-2xl mx-auto">
+            <DeleteButton
+              trigger={t('common.delete')}
+              dialogTitle={t('settings.tags.tag.deleteTitle')}
+              buttonClassName="w-full"
+              dialogDescription={
+                affectedItemCount > 0
+                  ? t('settings.tags.tag.deleteWithItems', {
+                      name: tag.name,
+                      count: affectedItemCount,
+                    })
+                  : t('settings.tags.tag.deleteNoItems', { name: tag.name })
+              }
+              onDelete={handleDeleteNoChildren}
+            />
+          </div>
         )}
       </div>
     </div>

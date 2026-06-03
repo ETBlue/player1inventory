@@ -45,20 +45,22 @@ function RecipeInfoTab() {
           isPending={updateRecipe.isPending}
           onDirtyChange={registerDirtyState}
         />
-        <DeleteButton
-          trigger={t('common.delete')}
-          buttonClassName="w-full mt-4"
-          dialogTitle={t('settings.recipes.deleteTitle')}
-          dialogDescription={
-            recipe.items.length > 0
-              ? t('settings.recipes.deleteWithItems', {
-                  name: recipe.name,
-                  count: recipe.items.length,
-                })
-              : t('settings.recipes.deleteNoItems', { name: recipe.name })
-          }
-          onDelete={handleDelete}
-        />
+        <div className="max-w-2xl mx-auto">
+          <DeleteButton
+            trigger={t('common.delete')}
+            buttonClassName="w-full mt-4"
+            dialogTitle={t('settings.recipes.deleteTitle')}
+            dialogDescription={
+              recipe.items.length > 0
+                ? t('settings.recipes.deleteWithItems', {
+                    name: recipe.name,
+                    count: recipe.items.length,
+                  })
+                : t('settings.recipes.deleteNoItems', { name: recipe.name })
+            }
+            onDelete={handleDelete}
+          />
+        </div>
       </div>
     </div>
   )
