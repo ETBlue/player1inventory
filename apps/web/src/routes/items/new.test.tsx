@@ -36,161 +36,52 @@ describe('New item page', () => {
     )
   }
 
-  it('user can toggle measurement switch even without measurement unit', async () => {
-    const user = userEvent.setup()
-
-    // Given the new item page with no fields filled
-    renderNewItemPage()
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole('switch', { name: /track in measurement/i }),
-      ).toBeInTheDocument()
-    })
-
-    // When measurement unit is empty (default)
-    const measurementUnitInput = screen.getByLabelText(
-      /measurement unit/i,
-    ) as HTMLInputElement
-    expect(measurementUnitInput.value).toBe('')
-
-    // Then the switch is enabled (not disabled)
-    const trackSwitch = screen.getByRole('switch', {
-      name: /track in measurement/i,
-    })
-    expect(trackSwitch).not.toBeDisabled()
-
-    // And user can toggle it on
-    await user.click(trackSwitch)
-    expect(trackSwitch).toHaveAttribute('data-state', 'checked')
-  })
-
-  it('user can create item with days-from-purchase expiration and it persists', async () => {
+  it('user can create a new item by entering a name', async () => {
     const user = userEvent.setup()
 
     // Given the new item page
     renderNewItemPage()
     await waitFor(() => screen.getByLabelText(/name/i))
 
-    // When user fills in the name
+    // When user enters a name and submits
     await user.type(screen.getByLabelText(/name/i), 'Milk')
-
-    // And selects "Days from Purchase" expiration mode
-    window.HTMLElement.prototype.hasPointerCapture ??= () => false
-    window.HTMLElement.prototype.scrollIntoView ??= () => {}
-    await user.click(
-      screen.getByRole('combobox', { name: /calculate expiration/i }),
-    )
-    await user.click(
-      screen.getByRole('option', { name: /days from purchase/i }),
-    )
-
-    // And enters 30 days (the input now appears in the info section)
-    await waitFor(() => screen.getByLabelText(/expires in/i))
-    await user.clear(screen.getByLabelText(/expires in/i))
-    await user.type(screen.getByLabelText(/expires in/i), '30')
-
-    // And submits
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the item is saved with estimatedDueDays = 30
+    // Then the item is saved
     await waitFor(async () => {
       const items = await db.items.toArray()
       expect(items).toHaveLength(1)
-      expect(items[0].estimatedDueDays).toBe(30)
+      expect(items[0].name).toBe('Milk')
     })
   })
 
-  it('user cannot save item when consumeAmount is 0', async () => {
-    const user = userEvent.setup()
-
-    // Given the new item page
+  it('save button is disabled when name is empty', async () => {
+    // Given the new item page with no fields filled
     renderNewItemPage()
     await waitFor(() => screen.getByLabelText(/name/i))
-
-    // When user fills in the name but sets consumeAmount to 0
-    await user.type(screen.getByLabelText(/name/i), 'Milk')
-    const consumeInput = screen.getByLabelText(
-      /amount per consume/i,
-    ) as HTMLInputElement
-    await user.clear(consumeInput)
-    await user.type(consumeInput, '0')
-
-    // Then the save button is disabled
-    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
-  })
-
-  it('user can save item when consumeAmount is 0.01', async () => {
-    const user = userEvent.setup()
-
-    // Given the new item page
-    renderNewItemPage()
-    await waitFor(() => screen.getByLabelText(/name/i))
-
-    // When user fills in name and sets consumeAmount to 0.01
-    await user.type(screen.getByLabelText(/name/i), 'Salt')
-    const consumeInput = screen.getByLabelText(
-      /amount per consume/i,
-    ) as HTMLInputElement
-    await user.clear(consumeInput)
-    await user.type(consumeInput, '0.01')
-
-    // Then the save button is enabled
-    expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
-  })
-
-  it('save button is disabled and validation message shown when measurement mode requires missing fields', async () => {
-    const user = userEvent.setup()
-
-    // Given the new item page
-    renderNewItemPage()
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole('switch', { name: /track in measurement/i }),
-      ).toBeInTheDocument()
-    })
-
-    // Fill in the required name
-    await user.type(screen.getByLabelText(/name/i), 'Test Item')
-
-    // When user enables measurement tracking without filling measurement fields
-    const trackSwitch = screen.getByRole('switch', {
-      name: /track in measurement/i,
-    })
-    await user.click(trackSwitch)
 
     // Then save button is disabled
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
-    })
-
-    // And field-level errors show both fields required
-    expect(
-      screen.getByText(/measurement unit is required/i),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/amount per package is required/i),
-    ).toBeInTheDocument()
-
-    // When user fills in measurement unit only
-    await user.type(screen.getByLabelText(/measurement unit/i), 'g')
-
-    // Then measurement unit error disappears, amount per package error remains
-    await waitFor(() => {
-      expect(
-        screen.getByText(/amount per package is required/i),
-      ).toBeInTheDocument()
-    })
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
 
-    // When user fills in amount per package too
-    await user.type(screen.getByLabelText(/amount per package/i), '500')
+  it('new item page shows only name and package unit fields', async () => {
+    // Given the new item page
+    renderNewItemPage()
+    await waitFor(() => screen.getByLabelText(/name/i))
 
-    // Then save button becomes enabled and no validation message
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
-    })
-    expect(screen.queryByText(/required/i)).not.toBeInTheDocument()
+    // Then name and package unit are shown
+    expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
+
+    // And measurement/expiration/stock fields are NOT shown (edit-only)
+    expect(
+      screen.queryByRole('switch', { name: /track in measurement/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('combobox', { name: /calculate expiration/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText(/amount per consume/i),
+    ).not.toBeInTheDocument()
   })
 })
