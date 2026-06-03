@@ -186,7 +186,7 @@ export class ItemPage {
 
   async fillExpirationDueDate(date: string) {
     // "Expires on" date input: id="expirationDueDate", type="date"
-    // In the Item Info section — visible on both /items/new and /items/$id.
+    // In the Advanced Stock Status section — visible on the item detail page /items/$id.
     // Only rendered when expirationMode === 'date' (Specific Date).
     // (src/components/item/ItemForm/index.tsx:486-513)
     await this.page.locator('#expirationDueDate').fill(date)
@@ -194,7 +194,7 @@ export class ItemPage {
 
   async fillEstimatedDueDays(days: string) {
     // "Expires in (days)" input: id="expirationDueDays", type="number"
-    // In the Item Info section — visible on both new item and detail pages.
+    // In the Advanced Stock Status section — visible on the item detail page /items/$id.
     // Shown when expirationMode === 'days' (src/components/item/ItemForm/index.tsx:488-503)
     await this.page.locator('#expirationDueDays').fill(days)
   }

@@ -4,19 +4,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { ItemForm } from '.'
 
 describe('ItemForm — create mode (no onDirtyChange)', () => {
-  it('renders Item Info and Advanced Configuration sections by default', () => {
+  it('renders only Item Info section by default', () => {
     // Given an ItemForm in create mode with default sections
     render(<ItemForm onSubmit={vi.fn()} />)
 
-    // Then Item Info and Advanced Configuration sections are shown
+    // Then Item Info section is shown and Stock Status is not
     expect(screen.getByText('Item Info')).toBeInTheDocument()
-    expect(screen.getByText('Advanced Configuration')).toBeInTheDocument()
     expect(screen.queryByText('Stock Status')).not.toBeInTheDocument()
   })
 
   it('does not render Stock Status section unless sections prop includes stock', () => {
     // Given an ItemForm with sections explicitly excluding stock
-    render(<ItemForm onSubmit={vi.fn()} sections={['info', 'advanced']} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['info']} />)
 
     // Then Stock Status section is not shown
     expect(screen.queryByText('Stock Status')).not.toBeInTheDocument()
@@ -57,7 +56,7 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
   it('submit button disabled when measurement mode but missing units', async () => {
     // Given an ItemForm in create mode
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
 
     // When user enables measurement tracking without filling in units
     const switchEl = screen.getByRole('switch', {
@@ -72,7 +71,7 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
   it('shows validation message when measurement mode is on but units are missing', async () => {
     // Given an ItemForm in create mode with measurement tracking enabled
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
     const switchEl = screen.getByRole('switch', {
       name: /track in measurement/i,
     })
@@ -107,7 +106,7 @@ describe('ItemForm — validation errors on page load', () => {
   it('shows measurement unit error when tracking is on but unit is empty', async () => {
     // Given an ItemForm with measurement tracking enabled but no unit
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
     await user.click(
       screen.getByRole('switch', { name: /track in measurement/i }),
     )
@@ -121,7 +120,7 @@ describe('ItemForm — validation errors on page load', () => {
   it('shows amount per package error when tracking is on but amount is empty', async () => {
     // Given an ItemForm with measurement tracking enabled but no amount
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
     await user.click(
       screen.getByRole('switch', { name: /track in measurement/i }),
     )
@@ -135,7 +134,7 @@ describe('ItemForm — validation errors on page load', () => {
   it('shows consume amount error when consume amount is 0', async () => {
     // Given an ItemForm with consume amount set to 0
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
     const consumeInput = screen.getByLabelText(/amount per consume/i)
     await user.clear(consumeInput)
     await user.type(consumeInput, '0')
@@ -147,7 +146,7 @@ describe('ItemForm — validation errors on page load', () => {
   it('does not show the old single validation message below the submit button', async () => {
     // Given an ItemForm with measurement tracking on but no units
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
     await user.click(
       screen.getByRole('switch', { name: /track in measurement/i }),
     )
@@ -165,7 +164,7 @@ describe('ItemForm — expirationMode select', () => {
   it('shows No expiration, Specific Date, and Days from Purchase options', async () => {
     // Given an ItemForm in create mode
     const user = userEvent.setup()
-    render(<ItemForm onSubmit={vi.fn()} />)
+    render(<ItemForm onSubmit={vi.fn()} sections={['stock', 'info']} />)
 
     // When user opens the expiration mode select
     await user.click(
@@ -213,7 +212,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     render(
       <ItemForm
         initialValues={editInitialValues}
-        sections={['stock', 'info', 'advanced']}
+        sections={['stock', 'info']}
         onSubmit={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
@@ -228,7 +227,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     render(
       <ItemForm
         initialValues={editInitialValues}
-        sections={['stock', 'info', 'advanced']}
+        sections={['stock', 'info']}
         onSubmit={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
@@ -244,7 +243,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     render(
       <ItemForm
         initialValues={editInitialValues}
-        sections={['stock', 'info', 'advanced']}
+        sections={['stock', 'info']}
         onSubmit={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
@@ -266,7 +265,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     render(
       <ItemForm
         initialValues={editInitialValues}
-        sections={['stock', 'info', 'advanced']}
+        sections={['stock', 'info']}
         onSubmit={vi.fn()}
         onDirtyChange={handleDirtyChange}
       />,
@@ -286,7 +285,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     render(
       <ItemForm
         initialValues={editInitialValues}
-        sections={['stock', 'info', 'advanced']}
+        sections={['stock', 'info']}
         onSubmit={vi.fn()}
         onDirtyChange={vi.fn()}
       />,

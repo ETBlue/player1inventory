@@ -50,21 +50,22 @@ function VendorInfoTab() {
           isPending={updateVendor.isPending}
           onDirtyChange={registerDirtyState}
         />
-
-        <DeleteButton
-          trigger={t('common.delete')}
-          dialogTitle={t('settings.vendors.deleteTitle')}
-          buttonClassName="mt-4 w-full"
-          dialogDescription={
-            affectedItemCount > 0
-              ? t('settings.vendors.deleteWithItems', {
-                  name: vendor.name,
-                  count: affectedItemCount,
-                })
-              : t('settings.vendors.deleteNoItems', { name: vendor.name })
-          }
-          onDelete={handleDelete}
-        />
+        <div className="max-w-2xl mx-auto">
+          <DeleteButton
+            trigger={t('common.delete')}
+            dialogTitle={t('settings.vendors.deleteTitle')}
+            buttonClassName="mt-4 w-full"
+            dialogDescription={
+              affectedItemCount > 0
+                ? t('settings.vendors.deleteWithItems', {
+                    name: vendor.name,
+                    count: affectedItemCount,
+                  })
+                : t('settings.vendors.deleteNoItems', { name: vendor.name })
+            }
+            onDelete={handleDelete}
+          />
+        </div>
       </div>
     </div>
   )

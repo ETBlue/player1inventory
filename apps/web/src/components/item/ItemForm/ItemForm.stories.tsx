@@ -55,7 +55,7 @@ export const EditMode: Story = {
   name: 'Edit Mode (all sections)',
   args: {
     initialValues: editValues,
-    sections: ['stock', 'info', 'advanced'],
+    sections: ['stock', 'info'],
   },
 }
 
@@ -63,7 +63,7 @@ export const EditMeasurementMode: Story = {
   name: 'Edit Mode (measurement tracking)',
   args: {
     initialValues: measurementValues,
-    sections: ['stock', 'info', 'advanced'],
+    sections: ['stock', 'info'],
   },
 }
 
@@ -77,7 +77,7 @@ export const EditValidationError: Story = {
       amountPerPackage: '',
       name: 'Soy Milk',
     },
-    sections: ['stock', 'info', 'advanced'],
+    sections: ['stock', 'info'],
   },
 }
 
@@ -87,9 +87,6 @@ export const CreateModeEmptyError: Story = {
     onDirtyChange: undefined,
     initialValues: {
       name: '',
-      targetUnit: 'measurement',
-      measurementUnit: '',
-      amountPerPackage: '',
     },
   },
 }

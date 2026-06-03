@@ -60,7 +60,7 @@ const DEFAULT_VALUES: ItemFormValues = {
 
 interface ItemFormProps {
   initialValues?: Partial<ItemFormValues>
-  sections?: ('stock' | 'info' | 'advanced')[]
+  sections?: ('stock' | 'info')[]
   onSubmit: (values: ItemFormValues) => void
   onDirtyChange?: (isDirty: boolean) => void
   savedAt?: number
@@ -70,7 +70,7 @@ interface ItemFormProps {
 
 export function ItemForm({
   initialValues,
-  sections = ['info', 'advanced'],
+  sections = ['info'],
   onSubmit,
   onDirtyChange,
   savedAt,
@@ -235,7 +235,6 @@ export function ItemForm({
 
   const showStock = sections.includes('stock')
   const showInfo = sections.includes('info')
-  const showAdvanced = sections.includes('advanced')
 
   return (
     <form
@@ -243,125 +242,6 @@ export function ItemForm({
       className="space-y-4 max-w-2xl mx-auto"
       noValidate
     >
-      {showStock && (
-        <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-            <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">Stock Status</h2>
-            <div className="h-px bg-accessory-emphasized" />
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Label htmlFor="packedQuantity">
-                  Packed{' '}
-                  <span className="text-xs font-normal">
-                    ({packageUnit || DEFAULT_PACKAGE_UNIT})
-                  </span>
-                </Label>
-                <div className="grid grid-cols-[auto_8rem] gap-2">
-                  <Input
-                    id="packedQuantity"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={packedQuantity}
-                    onChange={(e) => setPackedQuantity(Number(e.target.value))}
-                  />
-                  <Button
-                    type="button"
-                    variant="neutral-outline"
-                    disabled={packedQuantity < 1}
-                    onClick={() => {
-                      const next = computeUnpack(
-                        {
-                          targetUnit,
-                          consumeAmount,
-                          ...(amountPerPackage
-                            ? { amountPerPackage: Number(amountPerPackage) }
-                            : {}),
-                        },
-                        { packedQuantity, unpackedQuantity },
-                      )
-                      setPackedQuantity(next.packedQuantity)
-                      setUnpackedQuantity(next.unpackedQuantity)
-                    }}
-                  >
-                    <PackageOpen />
-                    Unpack
-                  </Button>
-                </div>
-                <p className="text-xs text-foreground-muted">
-                  Number of whole packages in stock
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Label htmlFor="unpackedQuantity">
-                  Unpacked{' '}
-                  <span className="text-xs font-normal">
-                    (
-                    {targetUnit === 'measurement'
-                      ? measurementUnit
-                      : packageUnit || DEFAULT_PACKAGE_UNIT}
-                    )
-                  </span>
-                </Label>
-                <div className="grid grid-cols-[auto_8rem] gap-2">
-                  <Input
-                    id="unpackedQuantity"
-                    type="number"
-                    min={0}
-                    step={consumeAmount || 1}
-                    value={unpackedQuantity}
-                    onChange={(e) =>
-                      setUnpackedQuantity(
-                        roundToStep(Number(e.target.value), consumeAmount || 1),
-                      )
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="neutral-outline"
-                    disabled={
-                      targetUnit === 'package'
-                        ? unpackedQuantity < 1
-                        : targetUnit === 'measurement'
-                          ? !amountPerPackage ||
-                            unpackedQuantity < Number(amountPerPackage)
-                          : true
-                    }
-                    onClick={() => {
-                      const next = computePack(
-                        {
-                          targetUnit,
-                          consumeAmount,
-                          ...(amountPerPackage
-                            ? { amountPerPackage: Number(amountPerPackage) }
-                            : {}),
-                        },
-                        { packedQuantity, unpackedQuantity },
-                      )
-                      setPackedQuantity(next.packedQuantity)
-                      setUnpackedQuantity(next.unpackedQuantity)
-                    }}
-                  >
-                    <Package />
-                    Pack
-                  </Button>
-                </div>
-                <p className="text-xs text-foreground-muted">
-                  Loose amount from opened package(s)
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showInfo && (
         <div className="space-y-2">
           <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
@@ -391,6 +271,119 @@ export function ItemForm({
               placeholder="default: pack"
               onChange={(e) => setPackageUnit(e.target.value)}
             />
+          </div>
+        </div>
+      )}
+
+      {showStock && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+            <div className="h-px bg-accessory-emphasized" />
+            <h2 className="text-sm font-medium uppercase">Stock Status</h2>
+            <div className="h-px bg-accessory-emphasized" />
+          </div>
+
+          <div>
+            <Label htmlFor="packedQuantity">
+              Packed{' '}
+              <span className="text-xs font-normal">
+                ({packageUnit || DEFAULT_PACKAGE_UNIT})
+              </span>
+            </Label>
+            <div className="grid grid-cols-[auto_8rem] gap-2">
+              <Input
+                id="packedQuantity"
+                type="number"
+                min={0}
+                step={1}
+                value={packedQuantity}
+                onChange={(e) => setPackedQuantity(Number(e.target.value))}
+              />
+              <Button
+                type="button"
+                variant="neutral-outline"
+                disabled={packedQuantity < 1}
+                onClick={() => {
+                  const next = computeUnpack(
+                    {
+                      targetUnit,
+                      consumeAmount,
+                      ...(amountPerPackage
+                        ? { amountPerPackage: Number(amountPerPackage) }
+                        : {}),
+                    },
+                    { packedQuantity, unpackedQuantity },
+                  )
+                  setPackedQuantity(next.packedQuantity)
+                  setUnpackedQuantity(next.unpackedQuantity)
+                }}
+              >
+                <PackageOpen />
+                Unpack
+              </Button>
+            </div>
+            <p className="text-xs text-foreground-muted">
+              Number of whole packages in stock
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="unpackedQuantity">
+              Unpacked{' '}
+              <span className="text-xs font-normal">
+                (
+                {targetUnit === 'measurement'
+                  ? measurementUnit
+                  : packageUnit || DEFAULT_PACKAGE_UNIT}
+                )
+              </span>
+            </Label>
+            <div className="grid grid-cols-[auto_8rem] gap-2">
+              <Input
+                id="unpackedQuantity"
+                type="number"
+                min={0}
+                step={consumeAmount || 1}
+                value={unpackedQuantity}
+                onChange={(e) =>
+                  setUnpackedQuantity(
+                    roundToStep(Number(e.target.value), consumeAmount || 1),
+                  )
+                }
+              />
+              <Button
+                type="button"
+                variant="neutral-outline"
+                disabled={
+                  targetUnit === 'package'
+                    ? unpackedQuantity < 1
+                    : targetUnit === 'measurement'
+                      ? !amountPerPackage ||
+                        unpackedQuantity < Number(amountPerPackage)
+                      : true
+                }
+                onClick={() => {
+                  const next = computePack(
+                    {
+                      targetUnit,
+                      consumeAmount,
+                      ...(amountPerPackage
+                        ? { amountPerPackage: Number(amountPerPackage) }
+                        : {}),
+                    },
+                    { packedQuantity, unpackedQuantity },
+                  )
+                  setPackedQuantity(next.packedQuantity)
+                  setUnpackedQuantity(next.unpackedQuantity)
+                }}
+              >
+                <Package />
+                Pack
+              </Button>
+            </div>
+            <p className="text-xs text-foreground-muted">
+              Loose amount from opened package(s)
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -443,7 +436,7 @@ export function ItemForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <Label htmlFor="consumeAmount">
                 Amount per Consume{' '}
@@ -468,6 +461,82 @@ export function ItemForm({
               <p className="text-xs text-foreground-muted">
                 Amount added/removed per +/- button click. Must be greater than
                 0.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+            <div className="h-px bg-accessory-emphasized" />
+            <h2 className="text-sm font-medium uppercase">
+              Advanced Stock Status
+            </h2>
+            <div className="h-px bg-accessory-emphasized" />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="targetUnit"
+                checked={targetUnit === 'measurement'}
+                onCheckedChange={handleTargetUnitChange}
+              />
+              <Label htmlFor="targetUnit" className="cursor-pointer">
+                Track in measurement{' '}
+                <span className="text-xs font-normal">
+                  ({measurementUnit || '?'})
+                </span>
+              </Label>
+            </div>
+            <p className="text-xs text-foreground-muted">
+              Turn on to enable precise measurement tracking
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="measurementUnit">Measurement Unit</Label>
+              <Input
+                id="measurementUnit"
+                value={measurementUnit}
+                onChange={(e) => setMeasurementUnit(e.target.value)}
+                disabled={targetUnit !== 'measurement'}
+                error={
+                  targetUnit === 'measurement'
+                    ? measurementUnitError
+                    : undefined
+                }
+              />
+              <p className="text-xs text-foreground-muted">
+                Precise unit like g / lb / ml
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="amountPerPackage">
+                Amount per Package
+                {measurementUnit && (
+                  <span className="text-xs font-normal">
+                    {' '}
+                    ({measurementUnit})
+                  </span>
+                )}
+              </Label>
+              <Input
+                id="amountPerPackage"
+                type="number"
+                step="1"
+                min={1}
+                value={amountPerPackage}
+                onChange={(e) => setAmountPerPackage(e.target.value)}
+                disabled={targetUnit !== 'measurement'}
+                error={
+                  targetUnit === 'measurement'
+                    ? amountPerPackageError
+                    : undefined
+                }
+              />
+              <p className="text-xs text-foreground-muted">
+                How many {measurementUnit || '?'} per pack
               </p>
             </div>
           </div>
@@ -568,86 +637,6 @@ export function ItemForm({
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {showAdvanced && (
-        <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-            <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">
-              Advanced Configuration
-            </h2>
-            <div className="h-px bg-accessory-emphasized" />
-          </div>
-
-          <div>
-            <div className="flex items-center gap-3">
-              <Switch
-                id="targetUnit"
-                checked={targetUnit === 'measurement'}
-                onCheckedChange={handleTargetUnitChange}
-              />
-              <Label htmlFor="targetUnit" className="cursor-pointer">
-                Track in measurement{' '}
-                <span className="text-xs font-normal">
-                  ({measurementUnit || '?'})
-                </span>
-              </Label>
-            </div>
-            <p className="text-xs text-foreground-muted">
-              Turn on to enable precise measurement tracking
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="measurementUnit">Measurement Unit</Label>
-              <Input
-                id="measurementUnit"
-                value={measurementUnit}
-                onChange={(e) => setMeasurementUnit(e.target.value)}
-                disabled={targetUnit !== 'measurement'}
-                error={
-                  targetUnit === 'measurement'
-                    ? measurementUnitError
-                    : undefined
-                }
-              />
-              <p className="text-xs text-foreground-muted">
-                Precise unit like g / lb / ml
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="amountPerPackage">
-                Amount per Package
-                {measurementUnit && (
-                  <span className="text-xs font-normal">
-                    {' '}
-                    ({measurementUnit})
-                  </span>
-                )}
-              </Label>
-              <Input
-                id="amountPerPackage"
-                type="number"
-                step="1"
-                min={1}
-                value={amountPerPackage}
-                onChange={(e) => setAmountPerPackage(e.target.value)}
-                disabled={targetUnit !== 'measurement'}
-                error={
-                  targetUnit === 'measurement'
-                    ? amountPerPackageError
-                    : undefined
-                }
-              />
-              <p className="text-xs text-foreground-muted">
-                How many {measurementUnit || '?'} per pack
-              </p>
-            </div>
-          </div>
         </div>
       )}
 

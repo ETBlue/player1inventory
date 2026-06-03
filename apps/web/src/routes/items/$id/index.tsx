@@ -279,25 +279,27 @@ function ItemDetailTab() {
   }
 
   return (
-    <div className="p-4 bg-background-elevated min-h-[100cqh]">
+    <div className="p-4 pb-16 bg-background-elevated min-h-[100cqh]">
       <ItemForm
         initialValues={formValues}
-        sections={['stock', 'info', 'advanced']}
+        sections={['stock', 'info']}
         onSubmit={handleSubmit}
         onDirtyChange={registerDirtyState}
         savedAt={savedAt}
         isPending={updateItem.isPending}
       />
 
-      <DeleteButton
-        trigger="Delete"
-        buttonClassName="w-full max-w-2xl mt-4"
-        dialogTitle={t('items.detail.deleteDialog.title')}
-        dialogDescription={t('items.detail.deleteDialog.description', {
-          name: item.name,
-        })}
-        onDelete={handleDelete}
-      />
+      <div className="max-w-2xl mx-auto">
+        <DeleteButton
+          trigger="Delete"
+          buttonClassName="w-full max-w-2xl mt-4"
+          dialogTitle={t('items.detail.deleteDialog.title')}
+          dialogDescription={t('items.detail.deleteDialog.description', {
+            name: item.name,
+          })}
+          onDelete={handleDelete}
+        />
+      </div>
 
       <AlertDialog
         open={!!pendingAdjustments}
