@@ -5,18 +5,11 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import {
-  ArrowLeft,
-  CookingPot,
-  History,
-  Settings2,
-  Store,
-  Tags,
-} from 'lucide-react'
+import { CookingPot, History, Settings2, Store, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
 import { useItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { ItemLayoutProvider, useItemLayout } from '@/hooks/useItemLayout'
@@ -100,24 +92,10 @@ function ItemLayoutInner() {
 
   return (
     <>
-      <div className="h-screen grid grid-rows-[auto_1fr]">
-        {/* Fixed Top Bar */}
-        <Toolbar className="w-[100cqw] py-0">
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={handleBackClick}
-            aria-label={t('common.goBack')}
-          >
-            <ArrowLeft />
-            <span className="hidden lg:inline">{t('common.goBack')}</span>
-          </Button>
-          <h1 className="text-base font-regular truncate flex-1 capitalize">
-            {item.name}
-          </h1>
-
-          {/* Tabs */}
+      <LayoutInnerPages
+        title={item.name}
+        onBack={handleBackClick}
+        toolbarEnd={
           <div className="flex items-center">
             <Link
               to="/items/$id"
@@ -181,13 +159,10 @@ function ItemLayoutInner() {
               <History className="h-4 w-4" />
             </Link>
           </div>
-        </Toolbar>
-
-        {/* Main Content with padding to clear fixed bar */}
-        <div className="overflow-y-auto [container-type:size]">
-          <Outlet />
-        </div>
-      </div>
+        }
+      >
+        <Outlet key={router.state.location.pathname} />
+      </LayoutInnerPages>
 
       {/* Discard Confirmation Dialog */}
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
