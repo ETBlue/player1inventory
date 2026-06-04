@@ -5,7 +5,7 @@
 ```
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
-  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LoadingSpinner, Toolbar, ViewToggle
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LayoutInnerPages, LoadingSpinner, Toolbar, ViewToggle
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, QuickUpdateDialog
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: VendorCard, VendorInfoForm
@@ -32,6 +32,8 @@ One-time structural components that appear once in the app shell.
 ## Shared Components
 
 Reusable across multiple features and pages.
+
+**`LayoutInnerPages`** (`src/components/shared/LayoutInnerPages/index.ts`) — shared layout for all level 2+ pages (entity detail + new-entity pages). Provides a fixed top bar (back button with `goBack()` default, optional `icon`, `title`, optional `toolbarEnd`) and a scrollable `children` area. Props: `title: ReactNode`, `icon?: ReactNode`, `onBack?: () => void`, `toolbarEnd?: ReactNode`, `children: ReactNode`.
 
 **`Toolbar`** (`src/components/shared/Toolbar/index.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
 
