@@ -242,20 +242,33 @@ export async function getTagCountByType(typeId: string): Promise<number> {
 }
 
 // ShoppingCart operations
-export async function getOrCreateActiveCart(): Promise<ShoppingCart> {
+export async function getOrCreateActiveCart(
+  vendorId: string | null = null,
+): Promise<ShoppingCart> {
   const existing = await db.shoppingCarts
     .where('status')
     .equals('active')
+    .filter((c) => (c.vendorId ?? null) === vendorId)
     .first()
   if (existing) return existing
 
   const cart: ShoppingCart = {
     id: crypto.randomUUID(),
+    vendorId,
+    lastVisitedAt: null,
     status: 'active',
     createdAt: new Date(),
   }
   await db.shoppingCarts.add(cart)
   return cart
+}
+
+export async function getAllActiveCarts(): Promise<ShoppingCart[]> {
+  return db.shoppingCarts.where('status').equals('active').toArray()
+}
+
+export async function updateCartLastVisited(cartId: string): Promise<void> {
+  await db.shoppingCarts.update(cartId, { lastVisitedAt: new Date() })
 }
 
 export async function addToCart(
@@ -345,9 +358,10 @@ export async function checkout(
 
   await db.cartItems.where('cartId').equals(cartId).delete()
 
-  // Move pinned items to the new active cart
+  // Move pinned items to the new active cart for the same vendor
   if (pinnedItems.length > 0) {
-    const newCart = await getOrCreateActiveCart()
+    const completedCart = await db.shoppingCarts.get(cartId)
+    const newCart = await getOrCreateActiveCart(completedCart?.vendorId ?? null)
     for (const pinned of pinnedItems) {
       await db.cartItems.add({
         id: crypto.randomUUID(),

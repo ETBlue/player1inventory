@@ -164,4 +164,27 @@ db.version(11).stores({
   shelves: 'id, name, type, order',
 })
 
+// Version 12: Add vendorId and lastVisitedAt to shoppingCarts for vendor-based cart support
+db.version(12)
+  .stores({
+    items: 'id, name, targetUnit, createdAt, updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, occurredAt, createdAt',
+    shoppingCarts: 'id, status, vendorId, createdAt, completedAt',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('shoppingCarts')
+      .toCollection()
+      .modify((cart) => {
+        cart.vendorId = null
+        cart.lastVisitedAt = null
+      }),
+  )
+
 export { db }

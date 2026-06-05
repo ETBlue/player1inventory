@@ -18,6 +18,7 @@ import {
   deleteTag,
   deleteTagType,
   deleteVendor,
+  getAllActiveCarts,
   getAllItems,
   getAllTags,
   getAllTagTypes,
@@ -800,6 +801,105 @@ describe('ShoppingCart operations', () => {
     expect(newCartItems.find((ci) => ci.itemId === buyItem.id)).toBeUndefined()
   })
 
+  it('user can create a "no vendor" cart', async () => {
+    // When creating a cart with null vendorId
+    const cart = await getOrCreateActiveCart(null)
+
+    // Then cart has vendorId null
+    expect(cart.vendorId).toBeNull()
+    expect(cart.status).toBe('active')
+  })
+
+  it('user can create a vendor-specific cart', async () => {
+    // Given a vendor ID
+    const vendorId = 'vendor-123'
+
+    // When creating a cart for that vendor
+    const cart = await getOrCreateActiveCart(vendorId)
+
+    // Then cart has that vendorId
+    expect(cart.vendorId).toBe(vendorId)
+  })
+
+  it('user can have two independent active carts for different vendors', async () => {
+    // When creating carts for two different vendors
+    const cartA = await getOrCreateActiveCart('vendor-a')
+    const cartB = await getOrCreateActiveCart('vendor-b')
+
+    // Then they are separate carts
+    expect(cartA.id).not.toBe(cartB.id)
+    expect(cartA.vendorId).toBe('vendor-a')
+    expect(cartB.vendorId).toBe('vendor-b')
+  })
+
+  it('user gets the same cart when calling getOrCreateActiveCart twice with the same vendorId', async () => {
+    // When calling twice with same vendorId
+    const cart1 = await getOrCreateActiveCart('vendor-x')
+    const cart2 = await getOrCreateActiveCart('vendor-x')
+
+    // Then it returns the same cart
+    expect(cart1.id).toBe(cart2.id)
+  })
+
+  it('user can get all active carts', async () => {
+    // Given two active carts for different vendors
+    await getOrCreateActiveCart('vendor-a')
+    await getOrCreateActiveCart('vendor-b')
+
+    // When getting all active carts
+    const carts = await getAllActiveCarts()
+
+    // Then both carts are returned
+    expect(carts.length).toBeGreaterThanOrEqual(2)
+    expect(carts.every((c) => c.status === 'active')).toBe(true)
+  })
+
+  it('user checkout moves pinned items to same-vendor new cart', async () => {
+    // Given a vendor cart with one buying item and one pinned item
+    const vendorId = 'vendor-123'
+    const cart = await getOrCreateActiveCart(vendorId)
+    const item1 = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const item2 = await createItem({
+      name: 'Eggs',
+      tagIds: [],
+      targetQuantity: 1,
+      refillThreshold: 1,
+      targetUnit: 'package',
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(cart.id, item1.id, 2) // buying item
+    await addToCart(cart.id, item2.id, 1) // will be pinned
+    const cartItems = await getCartItems(cart.id)
+    const item2CartItem = cartItems.find((ci) => ci.itemId === item2.id)
+    if (item2CartItem) await updateCartItem(item2CartItem.id, 0) // pin it (qty=0)
+
+    // When checking out
+    await checkout(cart.id, {
+      logKey: 'shopping.log.purchasedAt',
+      logParams: { vendor: vendorId },
+    })
+
+    // Then the pinned item moves to a new cart for the SAME vendor
+    const newCart = await getOrCreateActiveCart(vendorId)
+    expect(newCart.id).not.toBe(cart.id) // a new cart was created
+    expect(newCart.vendorId).toBe(vendorId) // same vendor
+
+    const newCartItems = await getCartItems(newCart.id)
+    expect(newCartItems.some((ci) => ci.itemId === item2.id)).toBe(true) // pinned item is there
+    expect(newCartItems.some((ci) => ci.itemId === item1.id)).toBe(false) // bought item is gone
+  })
+
   it('abandons cart without creating logs', async () => {
     const item = await createItem({
       name: 'Milk',
@@ -1083,6 +1183,8 @@ describe('Item cascade operations', () => {
     })
     const cart = await db.shoppingCarts.add({
       id: crypto.randomUUID(),
+      vendorId: null,
+      lastVisitedAt: null,
       status: 'active',
       createdAt: new Date(),
     })
@@ -1170,11 +1272,15 @@ describe('Count helpers for item relations', () => {
     })
     const cart1 = await db.shoppingCarts.add({
       id: crypto.randomUUID(),
+      vendorId: null,
+      lastVisitedAt: null,
       status: 'active',
       createdAt: new Date(),
     })
     const cart2 = await db.shoppingCarts.add({
       id: crypto.randomUUID(),
+      vendorId: null,
+      lastVisitedAt: null,
       status: 'active',
       createdAt: new Date(),
     })

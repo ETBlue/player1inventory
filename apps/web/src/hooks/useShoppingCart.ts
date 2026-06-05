@@ -31,7 +31,7 @@ export function useActiveCart() {
 
   const local = useQuery({
     queryKey: ['cart', 'active'],
-    queryFn: getOrCreateActiveCart,
+    queryFn: () => getOrCreateActiveCart(null),
     enabled: !isCloud,
   })
 
