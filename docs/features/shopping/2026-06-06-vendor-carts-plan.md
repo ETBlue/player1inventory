@@ -485,10 +485,308 @@ pnpm test:e2e --grep "shopping|a11y"
 
 ---
 
+## Phase 7 — Cloud Mode (GraphQL + Prisma)
+
+Phases 1–6 leave cloud-mode hooks on a graceful fallback (single cart, no vendor separation). This phase replaces those fallbacks with full vendor-cart support in cloud mode.
+
+> **Prerequisite:** Phases 1–6 complete and merged. Run on top of the same branch.
+
+### Step 7.1 — Prisma schema
+
+File: `apps/server/prisma/schema.prisma`
+
+Add `vendorId` and `lastVisitedAt` to the `Cart` model, and update the index:
+
+```prisma
+model Cart {
+  id            String     @id @default(cuid())
+  status        CartStatus
+  userId        String
+  familyId      String?
+  vendorId      String?        // NEW: null = "No vendor" cart
+  lastVisitedAt DateTime?      // NEW: for last-visited sort on root page
+  completedAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  items CartItem[]
+
+  @@index([userId, status])
+  @@index([userId, status, vendorId])   // NEW: vendor-scoped active cart lookup
+}
+```
+
+No `@relation` to Vendor — `vendorId` is stored as a plain string. Vendor deletion cascade is handled at the application level (same pattern as `item.vendorIds`).
+
+Generate and apply migration:
+```bash
+(cd apps/server && npx prisma migrate dev --name add-vendor-cart-fields)
+```
+
+### Step 7.2 — GraphQL schema
+
+File: `apps/server/src/schema/cart.graphql`
+
+Add two fields to `Cart`, two new queries, and one new mutation:
+
+```graphql
+type Cart {
+  id: ID!
+  status: String!
+  vendorId: ID            # NEW
+  lastVisitedAt: String   # NEW
+  createdAt: String!
+  completedAt: String
+}
+
+extend type Query {
+  activeCart: Cart!
+  vendorCart(vendorId: ID): Cart!    # NEW — gets or creates the active cart for a specific vendor (null = no-vendor)
+  allActiveCarts: [Cart!]!           # NEW — all active carts for the current user
+  cartItems(cartId: ID!): [CartItem!]!
+  cartItemCountByItem(itemId: ID!): Int!
+  shoppingCarts: [Cart!]!
+  allCartItems: [CartItem!]!
+}
+
+extend type Mutation {
+  addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
+  updateCartItem(id: ID!, quantity: Int!): CartItem!
+  removeFromCart(id: ID!): Boolean!
+  checkout(cartId: ID!, note: String, logKey: String, logParams: JSON): Cart!
+  abandonCart(cartId: ID!): Cart!
+  updateCartLastVisited(cartId: ID!): Cart!   # NEW
+}
+```
+
+### Step 7.3 — Cart resolver
+
+File: `apps/server/src/resolvers/cart.resolver.ts`
+
+**a. Add `vendorCart` query:**
+```ts
+vendorCart: async (_, { vendorId = null }, ctx) => {
+  const userId = requireAuth(ctx)
+  const vId = vendorId ?? null
+  let cart = await prisma.cart.findFirst({
+    where: { userId, status: 'active', vendorId: vId },
+  })
+  if (!cart) {
+    cart = await prisma.cart.create({
+      data: { userId, status: 'active', vendorId: vId },
+    })
+  }
+  return cart as unknown as Cart
+},
+```
+
+**b. Add `allActiveCarts` query:**
+```ts
+allActiveCarts: async (_, __, ctx) => {
+  const userId = requireAuth(ctx)
+  return prisma.cart.findMany({
+    where: { userId, status: 'active' },
+    orderBy: [{ lastVisitedAt: 'desc' }, { createdAt: 'asc' }],
+  }) as unknown as Promise<Cart[]>
+},
+```
+
+**c. Add `updateCartLastVisited` mutation:**
+```ts
+updateCartLastVisited: async (_, { cartId }, ctx) => {
+  const userId = requireAuth(ctx)
+  const cart = await prisma.cart.update({
+    where: { id: cartId },
+    data: { lastVisitedAt: new Date() },
+  })
+  if (!cart || cart.userId !== userId) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
+  return cart as unknown as Cart
+},
+```
+
+**d. Update `checkout` — pinned items go to the same vendor's new cart:**
+```ts
+// Replace the existing pinned-items block:
+if (pinnedItems.length > 0) {
+  const completedCart = await prisma.cart.findUnique({ where: { id: cartId } })
+  const vId = completedCart?.vendorId ?? null
+  let newCart = await prisma.cart.findFirst({ where: { userId, status: 'active', vendorId: vId } })
+  if (!newCart) newCart = await prisma.cart.create({ data: { userId, status: 'active', vendorId: vId } })
+  for (const ci of pinnedItems) {
+    await prisma.cartItem.create({ data: { cartId: newCart.id, itemId: ci.itemId, quantity: 0, userId } })
+  }
+}
+```
+
+**e. Add `Cart` field resolvers for the two new fields:**
+```ts
+Cart: {
+  createdAt: (cart) => { /* existing */ },
+  completedAt: (cart) => { /* existing */ },
+  vendorId: (cart) => (cart as unknown as { vendorId?: string | null }).vendorId ?? null,
+  lastVisitedAt: (cart) => {
+    const lv = (cart as unknown as { lastVisitedAt?: Date | null }).lastVisitedAt
+    return lv ? lv.toISOString() : null
+  },
+},
+```
+
+### Step 7.4 — Import/export schema + resolver
+
+**a.** File: `apps/server/src/schema/import.graphql`
+
+Add `vendorId` and `lastVisitedAt` to `ShoppingCartInput`:
+```graphql
+input ShoppingCartInput {
+  id: ID!
+  status: String!
+  vendorId: ID         # NEW
+  lastVisitedAt: String  # NEW
+  createdAt: String!
+  completedAt: String
+}
+```
+
+**b.** File: `apps/server/src/resolvers/import.resolver.ts`
+
+Update `bulkCreateShoppingCarts` and `bulkUpsertShoppingCarts` to pass `vendorId` and `lastVisitedAt` through to Prisma — both are optional fields, so existing import payloads (without them) continue to work without changes.
+
+### Step 7.5 — Code generation
+
+```bash
+(cd apps/web && pnpm codegen)
+```
+
+This regenerates `apps/web/src/generated/graphql.ts` from the updated schema + operations. Verify that `Cart` now includes `vendorId` and `lastVisitedAt` fields.
+
+### Step 7.6 — Update frontend GraphQL operations
+
+File: `apps/web/src/apollo/operations/shopping.graphql`
+
+Add `vendorId` and `lastVisitedAt` to the `ActiveCart` query selection, and add two new queries plus one new mutation:
+
+```graphql
+query ActiveCart {
+  activeCart {
+    id
+    status
+    vendorId
+    lastVisitedAt
+    createdAt
+    completedAt
+  }
+}
+
+# NEW
+query VendorCart($vendorId: ID) {
+  vendorCart(vendorId: $vendorId) {
+    id
+    status
+    vendorId
+    lastVisitedAt
+    createdAt
+    completedAt
+  }
+}
+
+# NEW
+query AllActiveCarts {
+  allActiveCarts {
+    id
+    status
+    vendorId
+    lastVisitedAt
+    createdAt
+    completedAt
+  }
+}
+
+# NEW
+mutation UpdateCartLastVisited($cartId: ID!) {
+  updateCartLastVisited(cartId: $cartId) {
+    id
+    lastVisitedAt
+  }
+}
+
+# ... existing operations unchanged
+```
+
+Then re-run codegen again after adding the operations:
+```bash
+(cd apps/web && pnpm codegen)
+```
+
+### Step 7.7 — Update deserialization
+
+File: `apps/web/src/lib/deserialization.ts`
+
+```ts
+export function deserializeCart(raw: Record<string, unknown>): ShoppingCart {
+  return {
+    ...raw,
+    createdAt: new Date(raw.createdAt as string),
+    completedAt: raw.completedAt ? new Date(raw.completedAt as string) : undefined,
+    lastVisitedAt: raw.lastVisitedAt ? new Date(raw.lastVisitedAt as string) : null,  // NEW
+  } as ShoppingCart
+}
+```
+
+### Step 7.8 — Update hooks to use cloud queries
+
+File: `apps/web/src/hooks/useShoppingCart.ts`
+
+Replace the cloud fallbacks in the three new hooks with real Apollo queries:
+
+**`useVendorCart(vendorId)`** — replace `useActiveCartQuery` fallback with `useVendorCartQuery`:
+```ts
+const cloud = useVendorCartQuery({
+  variables: { vendorId: vendorId },
+  skip: !isCloud,
+})
+// deserialize: cloud.data?.vendorCart ? deserializeCart(...) : undefined
+```
+
+**`useAllActiveCarts()`** — replace wrapped-single-cart fallback with `useAllActiveCartsQuery`:
+```ts
+const cloud = useAllActiveCartsQuery({ skip: !isCloud })
+// data: cloud.data?.allActiveCarts?.map(deserializeCart) ?? []
+```
+
+**`useUpdateCartLastVisited()`** — add cloud branch:
+```ts
+const [cloudUpdate] = useUpdateCartLastVisitedMutation()
+if (mode === 'cloud') {
+  return {
+    mutate: (cartId: string) => cloudUpdate({ variables: { cartId } }),
+    isPending: false,
+  }
+}
+return localMutation
+```
+
+### Step 7.9 — Cloud E2E tests
+
+Add a `test.describe('cloud mode vendor carts')` block in `e2e/tests/shopping.spec.ts` guarded by `test.skip(!process.env.TEST_CLOUD_MODE, ...)`, covering:
+- `'user can see vendor cart cards (cloud mode)'`
+- `'user can checkout from vendor cart in cloud mode'`
+
+**Verification gate after Phase 7:**
+```bash
+(cd apps/server && npx prisma migrate dev --name add-vendor-cart-fields)
+(cd apps/web && pnpm codegen)
+(cd apps/web && pnpm lint)
+(cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
+(cd apps/web && pnpm test -- --run)
+pnpm test:e2e --grep "shopping|a11y"
+```
+
+---
+
 ## Out of Scope
 
-- Cloud mode (GraphQL) multi-vendor cart support — requires backend schema changes; tracked as a follow-up
-- Import/export data format changes for the new `vendorId` field on carts (low impact, carts are ephemeral)
+- Import/export data format changes for the new `vendorId` field on carts (low impact, carts are ephemeral; existing payloads import fine since both fields are optional)
 
 ---
 
@@ -500,7 +798,7 @@ pnpm test:e2e --grep "shopping|a11y"
 | `apps/web/src/db/index.ts` | Add Dexie version 12 |
 | `apps/web/src/db/operations.ts` | Update `getOrCreateActiveCart`, add `getAllActiveCarts`, `updateCartLastVisited`, update `checkout` |
 | `apps/web/src/db/operations.test.ts` | Add tests for new operations |
-| `apps/web/src/hooks/useShoppingCart.ts` | Add `useVendorCart`, `useAllActiveCarts`, `useUpdateCartLastVisited` |
+| `apps/web/src/hooks/useShoppingCart.ts` | Add `useVendorCart`, `useAllActiveCarts`, `useUpdateCartLastVisited` (cloud fallbacks in Phases 1–6; replaced in Phase 7) |
 | `apps/web/src/hooks/index.ts` | Export new hooks |
 | `apps/web/src/components/shopping/VendorCartCard/VendorCartCard.tsx` | New component |
 | `apps/web/src/components/shopping/VendorCartCard/index.ts` | Barrel |
@@ -522,6 +820,13 @@ pnpm test:e2e --grep "shopping|a11y"
 | `apps/web/src/i18n/locales/tw.json` | Add new shopping keys (Chinese) |
 | `apps/web/src/routes/CLAUDE.md` | Update Shopping Page section |
 | `e2e/tests/shopping.spec.ts` | Update and add E2E tests |
+| `apps/server/prisma/schema.prisma` | Add `vendorId`, `lastVisitedAt` to Cart + new index *(Phase 7)* |
+| `apps/server/src/schema/cart.graphql` | Add fields + `vendorCart`, `allActiveCarts`, `updateCartLastVisited` *(Phase 7)* |
+| `apps/server/src/schema/import.graphql` | Add `vendorId`, `lastVisitedAt` to `ShoppingCartInput` *(Phase 7)* |
+| `apps/server/src/resolvers/cart.resolver.ts` | Add resolvers, update checkout pinned-item logic *(Phase 7)* |
+| `apps/server/src/resolvers/import.resolver.ts` | Pass new fields through bulk ops *(Phase 7)* |
+| `apps/web/src/apollo/operations/shopping.graphql` | Add `VendorCart`, `AllActiveCarts`, `UpdateCartLastVisited` *(Phase 7)* |
+| `apps/web/src/lib/deserialization.ts` | Handle `lastVisitedAt` in `deserializeCart` *(Phase 7)* |
 
 ---
 
