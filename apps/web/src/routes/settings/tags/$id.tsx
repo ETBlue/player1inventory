@@ -5,9 +5,10 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ArrowLeft, ListTodo, Settings2, Tags } from 'lucide-react'
+import { ListTodo, Settings2, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { TagLayoutProvider, useTagLayout } from '@/hooks/useTagLayout'
 import { useTags } from '@/hooks/useTags'
@@ -85,29 +85,12 @@ function TagDetailLayoutInner() {
 
   return (
     <>
-      <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
-        {/* Fixed Top Bar */}
-        <header
-          className={`px-3 flex items-center gap-2 w-[100cqw]
-          bg-background-surface border-b-2 border-accessory-default`}
-        >
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={handleBackClick}
-            aria-label={t('common.goBack')}
-          >
-            <ArrowLeft />
-            <span className="hidden lg:inline">{t('common.goBack')}</span>
-          </Button>
-          <Tags className="h-4 w-4 text-foreground-muted" />
-          <h1 className="text-base font-regular truncate flex-1 capitalize">
-            {tag.name}
-          </h1>
-
+      <LayoutInnerPages
+        title={tag.name}
+        icon={<Tags className="h-4 w-4 text-foreground-muted" />}
+        onBack={handleBackClick}
+        toolbarEnd={
           <div className="flex items-center">
-            {/* Tabs */}
             <Link
               to="/settings/tags/$id"
               params={{ id }}
@@ -130,13 +113,10 @@ function TagDetailLayoutInner() {
               <ListTodo className="h-4 w-4" />
             </Link>
           </div>
-        </header>
-
-        {/* Main Content with padding to clear fixed bar */}
-        <div className="overflow-y-auto [container-type:size]">
-          <Outlet key={router.state.location.pathname} />
-        </div>
-      </div>
+        }
+      >
+        <Outlet key={router.state.location.pathname} />
+      </LayoutInnerPages>
 
       {/* Discard Confirmation Dialog */}
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
