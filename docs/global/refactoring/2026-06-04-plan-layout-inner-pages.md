@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-04
 **Branch:** `refactor/layout-inner-pages`
-**Status:** ✅ Implemented
+**Status:** ⚠️ Partial — item pages migrated; tags/vendors/recipes/shelves deferred to follow-up PR
 
 ## Goal
 
