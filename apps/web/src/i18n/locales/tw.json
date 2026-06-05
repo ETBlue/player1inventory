@@ -137,6 +137,7 @@
     "settings": "設定"
   },
   "items": {
+    "newButton": "新增品項",
     "tags": {
       "empty": {
         "title": "尚未建立標籤系統",
