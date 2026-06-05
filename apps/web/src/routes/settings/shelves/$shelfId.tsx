@@ -6,7 +6,6 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import {
-  ArrowLeft,
   Filter,
   ListTodo,
   Settings2,
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +26,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { ShelfLayoutProvider, useShelfLayout } from '@/hooks/useShelfLayout'
 import { useShelfQuery } from '@/hooks/useShelves'
@@ -96,89 +95,73 @@ function ShelfDetailLayoutInner() {
 
   return (
     <>
-      <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
-        {/* Fixed Top Bar */}
-        <header
-          className={`px-3 flex items-center gap-2 w-[100cqw]
-          bg-background-surface border-b-2 border-accessory-default`}
-        >
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={handleBackClick}
-            aria-label={t('common.goBack')}
-          >
-            <ArrowLeft />
-            <span className="hidden lg:inline">{t('common.goBack')}</span>
-          </Button>
-          <h1 className="text-base font-regular truncate flex-1 capitalize">
-            {shelf.name}
-          </h1>
-          {shelf.type !== 'system' && (
-            <Badge
-              variant="neutral-outline"
-              className="text-xs capitalize shrink-0 gap-1"
-            >
+      <LayoutInnerPages
+        title={shelf.name}
+        onBack={handleBackClick}
+        toolbarEnd={
+          <>
+            {shelf.type !== 'system' && (
+              <Badge
+                variant="neutral-outline"
+                className="text-xs capitalize shrink-0 gap-1"
+              >
+                {shelf.type === 'filter' && (
+                  <SlidersVertical className="h-3 w-3 text-foreground-muted" />
+                )}
+                {shelf.type === 'selection' && (
+                  <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
+                )}
+                {shelf.type}
+              </Badge>
+            )}
+            <div className="flex items-center -my-2">
+              <Link
+                to="/settings/shelves/$shelfId"
+                params={{ shelfId }}
+                activeOptions={{ exact: true }}
+                aria-label="Shelf info tab"
+                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+                activeProps={{ className: 'border-foreground-muted' }}
+                onClick={(e) =>
+                  handleTabClick(e, `/settings/shelves/${shelfId}`)
+                }
+              >
+                <Settings2 className="h-4 w-4" />
+              </Link>
               {shelf.type === 'filter' && (
-                <SlidersVertical className="h-3 w-3 text-foreground-muted" />
+                <Link
+                  to="/settings/shelves/$shelfId/filters"
+                  params={{ shelfId }}
+                  aria-label="Shelf filters tab"
+                  className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+                  activeProps={{ className: 'border-foreground-muted' }}
+                  onClick={(e) =>
+                    handleTabClick(e, `/settings/shelves/${shelfId}/filters`)
+                  }
+                >
+                  <Filter className="h-4 w-4" />
+                </Link>
               )}
               {shelf.type === 'selection' && (
-                <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
+                <Link
+                  to="/settings/shelves/$shelfId/items"
+                  params={{ shelfId }}
+                  aria-label="Shelf items tab"
+                  className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+                  activeProps={{ className: 'border-foreground-muted' }}
+                  onClick={(e) =>
+                    handleTabClick(e, `/settings/shelves/${shelfId}/items`)
+                  }
+                >
+                  <ListTodo className="h-4 w-4" />
+                </Link>
               )}
-              {shelf.type}
-            </Badge>
-          )}
-
-          {/* Tabs */}
-          <div className="flex items-center">
-            <Link
-              to="/settings/shelves/$shelfId"
-              params={{ shelfId }}
-              activeOptions={{ exact: true }}
-              aria-label="Shelf info tab"
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-              activeProps={{ className: 'border-foreground-muted' }}
-              onClick={(e) => handleTabClick(e, `/settings/shelves/${shelfId}`)}
-            >
-              <Settings2 className="h-4 w-4" />
-            </Link>
-            {shelf.type === 'filter' && (
-              <Link
-                to="/settings/shelves/$shelfId/filters"
-                params={{ shelfId }}
-                aria-label="Shelf filters tab"
-                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-                activeProps={{ className: 'border-foreground-muted' }}
-                onClick={(e) =>
-                  handleTabClick(e, `/settings/shelves/${shelfId}/filters`)
-                }
-              >
-                <Filter className="h-4 w-4" />
-              </Link>
-            )}
-            {shelf.type === 'selection' && (
-              <Link
-                to="/settings/shelves/$shelfId/items"
-                params={{ shelfId }}
-                aria-label="Shelf items tab"
-                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-                activeProps={{ className: 'border-foreground-muted' }}
-                onClick={(e) =>
-                  handleTabClick(e, `/settings/shelves/${shelfId}/items`)
-                }
-              >
-                <ListTodo className="h-4 w-4" />
-              </Link>
-            )}
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <div className="overflow-y-auto [container-type:size]">
-          <Outlet key={router.state.location.pathname} />
-        </div>
-      </div>
+            </div>
+          </>
+        }
+      >
+        <Outlet key={router.state.location.pathname} />
+      </LayoutInnerPages>
 
       {/* Discard Confirmation Dialog */}
       <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
