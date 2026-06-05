@@ -42,6 +42,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [storybook-coverage](features/storybook-coverage/) | ✅ Implemented | Component stories done; route-level stories + smoke tests done for all 17 routes |
 | [onboarding](features/onboarding/) | 🔄 In Progress | Phase A done: nested tags, InfoForm refactor, dialog improvements. Phase B done: full onboarding flow (template data, 4-step state machine, TemplateItemRow/TemplateVendorRow, inline import progress, auto-navigate to pantry, useOnboardingSetup hook, empty-data redirect, E2E). Phase C (settings reset) pending; template editor (dev tool) 🔲 Pending |
 | [shelf](features/shelf/) | ✅ Done | Shelf view: filter + selection shelves; `/shelves` + `/shelves/$shelfId` + `/settings/shelves`; dual-persistence (local Dexie + cloud GraphQL); sortBy/sortDir removed (Plan 1 of pantry-unified-view) |
+| [new-entity-dialogs](features/new-entity-dialogs/) | 🔲 Pending | Replace /items/new, /settings/vendors/new, /settings/recipes/new pages with dialogs — [brainstorming](features/new-entity-dialogs/2026-06-06-brainstorming-new-entity-dialogs.md) — [plan](features/new-entity-dialogs/2026-06-06-plan-new-entity-dialogs.md) |
 
 ---
 
