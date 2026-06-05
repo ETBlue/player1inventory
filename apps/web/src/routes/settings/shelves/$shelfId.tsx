@@ -114,7 +114,7 @@ function ShelfDetailLayoutInner() {
                 {shelf.type}
               </Badge>
             )}
-            <div className="flex items-center">
+            <div className="flex items-center -my-2">
               <Link
                 to="/settings/shelves/$shelfId"
                 params={{ shelfId }}

@@ -90,7 +90,7 @@ function TagDetailLayoutInner() {
         icon={<Tags className="h-4 w-4 text-foreground-muted" />}
         onBack={handleBackClick}
         toolbarEnd={
-          <div className="flex items-center">
+          <div className="flex items-center -my-2">
             <Link
               to="/settings/tags/$id"
               params={{ id }}
