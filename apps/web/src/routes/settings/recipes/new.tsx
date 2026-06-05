@@ -1,10 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { RecipeInfoForm } from '@/components/recipe/RecipeInfoForm'
-import { Toolbar } from '@/components/shared/Toolbar'
-import { Button } from '@/components/ui/button'
-import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import { useCreateRecipe } from '@/hooks/useRecipes'
 
 export const Route = createFileRoute('/settings/recipes/new')({
@@ -17,7 +14,6 @@ export const Route = createFileRoute('/settings/recipes/new')({
 function NewRecipePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { goBack } = useAppNavigation('/settings/recipes/')
   const createRecipe = useCreateRecipe()
   const { name: prefillName = '' } = Route.useSearch()
 
@@ -40,19 +36,7 @@ function NewRecipePage() {
   }
 
   return (
-    <div>
-      <Toolbar>
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          className="lg:w-auto lg:mr-3"
-          onClick={goBack}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden lg:inline">{t('common.goBack')}</span>
-        </Button>
-        <h1>{t('settings.recipes.newButton')}</h1>
-      </Toolbar>
+    <LayoutInnerPages title={t('settings.recipes.newButton')}>
       <div className="p-4">
         <div className="max-w-2xl mx-auto">
           <RecipeInfoForm
@@ -63,6 +47,6 @@ function NewRecipePage() {
           />
         </div>
       </div>
-    </div>
+    </LayoutInnerPages>
   )
 }
