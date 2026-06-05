@@ -96,7 +96,7 @@ function ItemLayoutInner() {
         title={item.name}
         onBack={handleBackClick}
         toolbarEnd={
-          <div className="flex items-center">
+          <div className="flex items-center -my-2">
             <Link
               to="/items/$id"
               params={{ id }}

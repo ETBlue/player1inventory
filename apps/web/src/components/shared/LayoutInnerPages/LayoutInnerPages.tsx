@@ -25,7 +25,7 @@ export function LayoutInnerPages({
 
   return (
     <div className="h-screen grid grid-rows-[auto_1fr]">
-      <Toolbar className="w-[100cqw] py-0">
+      <Toolbar className="w-[100cqw]">
         <Button
           variant="neutral-ghost"
           size="icon"
