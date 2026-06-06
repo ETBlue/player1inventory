@@ -45,6 +45,7 @@ vi.mock('@/hooks/useVendors', () => ({
   useVendors: vi.fn(),
   useDeleteVendor: vi.fn(),
   useItemCountByVendor: vi.fn(),
+  useCreateVendor: vi.fn(),
 }))
 
 // Mock useVendorItemCounts hook
@@ -57,9 +58,8 @@ vi.mock('@/hooks/useAppNavigation', () => ({
   useAppNavigation: vi.fn(),
 }))
 
-const { useVendors, useDeleteVendor, useItemCountByVendor } = await import(
-  '@/hooks/useVendors'
-)
+const { useVendors, useDeleteVendor, useItemCountByVendor, useCreateVendor } =
+  await import('@/hooks/useVendors')
 
 const { useVendorItemCounts } = await import('@/hooks/useVendorItemCounts')
 
@@ -87,6 +87,10 @@ const setupMocks = (
   vi.mocked(useItemCountByVendor).mockReturnValue({
     data: 0,
   } as ReturnType<typeof useItemCountByVendor>)
+  vi.mocked(useCreateVendor).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({ id: 'new-id', name: 'Test' }),
+    isPending: false,
+  } as unknown as ReturnType<typeof useCreateVendor>)
   vi.mocked(useAppNavigation).mockReturnValue({ goBack })
   return { mutate, goBack }
 }
@@ -125,7 +129,7 @@ describe('Vendor Settings Page', () => {
     ).toBeInTheDocument()
   })
 
-  it('user can navigate to new vendor page when clicking New Vendor', async () => {
+  it('user can open the new vendor dialog when clicking New Vendor', async () => {
     // Given the vendors page
     renderPage()
     const user = userEvent.setup()
@@ -133,8 +137,11 @@ describe('Vendor Settings Page', () => {
     // When user clicks "New Vendor"
     await user.click(screen.getByRole('button', { name: /new vendor/i }))
 
-    // Then navigate is called to go to new vendor page
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings/vendors/new' })
+    // Then the dialog opens (no navigation to /settings/vendors/new)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(mockNavigate).not.toHaveBeenCalledWith({
+      to: '/settings/vendors/new',
+    })
   })
 
   it('user can delete a vendor with confirmation', async () => {

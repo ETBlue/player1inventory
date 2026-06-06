@@ -9,6 +9,8 @@ export const Route = createFileRoute('/settings/vendors/new')({
 })
 
 function NewVendorPage() {
+  // Fallback route — users do not reach this page through normal app navigation.
+  // New vendors are created via NewVendorDialog. This route exists for direct URL access only.
   const { t } = useTranslation()
   const navigate = useNavigate()
   const createVendor = useCreateVendor()
