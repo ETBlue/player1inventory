@@ -16,6 +16,7 @@ import { Route as CookingRouteImport } from './routes/cooking'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShoppingIndexRouteImport } from './routes/shopping.index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as ShoppingVendorIdRouteImport } from './routes/shopping.$vendorId'
 import { Route as SettingsVendorsRouteImport } from './routes/settings/vendors'
 import { Route as SettingsTagsRouteImport } from './routes/settings/tags'
 import { Route as SettingsShelvesRouteImport } from './routes/settings/shelves'
@@ -78,6 +79,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ShoppingVendorIdRoute = ShoppingVendorIdRouteImport.update({
+  id: '/$vendorId',
+  path: '/$vendorId',
+  getParentRoute: () => ShoppingRoute,
 } as any)
 const SettingsVendorsRoute = SettingsVendorsRouteImport.update({
   id: '/settings/vendors',
@@ -229,6 +235,7 @@ export interface FileRoutesByFullPath {
   '/settings/shelves': typeof SettingsShelvesRouteWithChildren
   '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
+  '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings/': typeof SettingsIndexRoute
   '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
@@ -259,6 +266,7 @@ export interface FileRoutesByTo {
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
+  '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings': typeof SettingsIndexRoute
   '/shopping': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/settings/shelves': typeof SettingsShelvesRouteWithChildren
   '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
+  '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings/': typeof SettingsIndexRoute
   '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
@@ -330,6 +339,7 @@ export interface FileRouteTypes {
     | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/shopping/$vendorId'
     | '/settings/'
     | '/shopping/'
     | '/items/$id/log'
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/cooking'
     | '/onboarding'
     | '/sign-in'
+    | '/shopping/$vendorId'
     | '/settings'
     | '/shopping'
     | '/items/$id/log'
@@ -392,6 +403,7 @@ export interface FileRouteTypes {
     | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/shopping/$vendorId'
     | '/settings/'
     | '/shopping/'
     | '/items/$id/log'
@@ -482,6 +494,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/shopping/$vendorId': {
+      id: '/shopping/$vendorId'
+      path: '/$vendorId'
+      fullPath: '/shopping/$vendorId'
+      preLoaderRoute: typeof ShoppingVendorIdRouteImport
+      parentRoute: typeof ShoppingRoute
     }
     '/settings/vendors': {
       id: '/settings/vendors'
@@ -676,10 +695,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface ShoppingRouteChildren {
+  ShoppingVendorIdRoute: typeof ShoppingVendorIdRoute
   ShoppingIndexRoute: typeof ShoppingIndexRoute
 }
 
 const ShoppingRouteChildren: ShoppingRouteChildren = {
+  ShoppingVendorIdRoute: ShoppingVendorIdRoute,
   ShoppingIndexRoute: ShoppingIndexRoute,
 }
 
