@@ -29,7 +29,7 @@ describe('Cooking stories smoke tests', () => {
   it('Default empty state shows create recipe button', async () => {
     render(<Default />)
     expect(
-      await screen.findByRole('link', { name: /create recipe/i }),
+      await screen.findByRole('button', { name: /create recipe/i }),
     ).toBeInTheDocument()
   })
 

@@ -12,6 +12,8 @@ export const Route = createFileRoute('/settings/recipes/new')({
 })
 
 function NewRecipePage() {
+  // Fallback route — users do not reach this page through normal app navigation.
+  // New recipes are created via NewRecipeDialog. This route exists for direct URL access only.
   const { t } = useTranslation()
   const navigate = useNavigate()
   const createRecipe = useCreateRecipe()
