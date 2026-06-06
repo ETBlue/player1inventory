@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-06
 **Branch:** `feature/new-entity-dialogs`
-**Status:** 🔲 Pending
+**Status:** ✅ Implemented
 
 ## Goal
 
