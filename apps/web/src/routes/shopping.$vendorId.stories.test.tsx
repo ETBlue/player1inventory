@@ -8,7 +8,7 @@ const { Default, WithCartItems, WithNoVendorCart } = composeStories(stories)
 describe('ShoppingVendorCart page stories smoke tests', () => {
   it('Default renders vendor name or back button', async () => {
     render(<Default />)
-    const backButton = await screen.findByRole('button', { name: /nevermind/i })
+    const backButton = await screen.findByRole('button', { name: /go back/i })
     expect(backButton).toBeInTheDocument()
   })
 

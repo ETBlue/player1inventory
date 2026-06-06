@@ -3,7 +3,7 @@ import {
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router'
-import { Check, ChevronLeft, Loader2, X } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
@@ -247,8 +247,10 @@ function VendorCart() {
       <div>
         <Toolbar>
           <Button
+            size="icon"
             variant="neutral-ghost"
-            className="-mx-1"
+            className="-mx-1 lg:w-auto lg:px-3"
+            aria-label={t('common.goBack')}
             onClick={() =>
               navigate({
                 to: '/shopping',
@@ -256,35 +258,41 @@ function VendorCart() {
               })
             }
           >
-            <ChevronLeft />
-            {t('common.back')}
+            <ArrowLeft />
+            <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
-          <div className="flex-1" />
           <span
-            className={vendor ? 'normal-case font-semibold' : 'font-semibold'}
+            aria-live="polite"
+            aria-atomic="true"
+            className={vendor ? 'normal-case' : ''}
           >
             {vendor?.name ?? t('shopping.noVendor')}
           </span>
-        </Toolbar>
-
-        <Toolbar className="flex-wrap">
+          <div className="flex-1" />
           <span aria-live="polite" aria-atomic="true">
             {t('shopping.toolbar.cartCount', { count: cartTotal })}
           </span>
-          <div className="flex-1" />
           {cartItems.length > 0 && (
             <Button
+              size="icon"
               variant="destructive-ghost"
+              className="lg:w-auto lg:px-3"
               onClick={() => setShowAbandonDialog(true)}
+              icon={<X />}
+              aria-label={t('common.cancel')}
             >
-              <X /> {t('common.cancel')}
+              <span className="hidden lg:inline">{t('common.cancel')}</span>
             </Button>
           )}
           <Button
+            size="icon"
+            className="lg:w-auto lg:px-3"
             disabled={!cartItems.some((ci) => ci.quantity > 0)}
             onClick={() => setShowCheckoutDialog(true)}
+            icon={<Check />}
+            aria-label={t('common.done')}
           >
-            <Check /> {t('common.done')}
+            <span className="hidden lg:inline">{t('common.done')}</span>
           </Button>
         </Toolbar>
 
