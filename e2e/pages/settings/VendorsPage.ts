@@ -35,13 +35,15 @@ export class VendorsPage {
   }
 
   async fillVendorName(name: string) {
-    // Name input on the new vendor page (src/components/vendor/VendorNameForm/index.tsx)
+    // Name input in NewVendorDialog: label "Name" linked to id="new-vendor-name"
+    // (src/components/vendor/NewVendorDialog/NewVendorDialog.tsx)
     await this.page.getByLabel('Name').fill(name)
   }
 
   async clickSave() {
-    // Save button in VendorNameForm (src/components/vendor/VendorNameForm/index.tsx)
-    await this.page.getByRole('button', { name: 'Save' }).click()
+    // Submit button in NewVendorDialog renders as <Button>New Vendor</Button>
+    // (src/components/vendor/NewVendorDialog/NewVendorDialog.tsx)
+    await this.page.getByRole('button', { name: 'New Vendor' }).click()
   }
 
   async cancelDeleteDialog() {

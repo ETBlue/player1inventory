@@ -216,9 +216,10 @@ test('user can quick-update item quantity via dialog', async ({ page }) => {
   await pantry.navigateTo()
   await pantry.clickAddItem()
   await item.fillName('Olive Oil')
-  await item.fillTargetQuantity('5')
   await item.save()
-  // Set initial packed quantity on the detail page (packedQuantity only exists on /items/$id)
+  // Set targetQuantity and initial packedQuantity on the detail page (/items/$id)
+  // These fields do not exist in the NewItemDialog — only on the detail form.
+  await item.fillTargetQuantity('5')
   await item.fillPackedQuantity('2')
   await item.saveExisting()
 

@@ -403,19 +403,6 @@ async function seedRecipe(page: import('@playwright/test').Page): Promise<string
 }
 
 test.describe('detail page a11y', () => {
-  // Item new page (/items/new)
-  test('user can view item new page without accessibility violations', async ({ page }) => {
-    // Given the user navigates to the new item page
-    await page.goto('/items/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Item detail page (/items/:id)
   test('user can view item detail page without accessibility violations', async ({ page, baseURL }) => {
     // Given a seeded item
@@ -487,19 +474,6 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendor new (/settings/vendors/new)
-  test('user can view settings vendor new page without accessibility violations', async ({ page }) => {
-    // Given the user navigates to the new vendor page
-    await page.goto('/settings/vendors/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Settings > Vendor detail (/settings/vendors/:id)
   test('user can view settings vendor detail page without accessibility violations', async ({ page }) => {
     // Given a seeded vendor
@@ -508,19 +482,6 @@ test.describe('detail page a11y', () => {
     // When the user navigates to the vendor detail page (trailing slash required for TanStack Router index child)
     await page.goto(`/settings/vendors/${vendorId}/`)
     await page.waitForLoadState('networkidle')
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
-  // Settings > Recipe new (/settings/recipes/new)
-  test('user can view settings recipe new page without accessibility violations', async ({ page }) => {
-    // Given the user navigates to the new recipe page
-    await page.goto('/settings/recipes/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
     await injectAxe(page)
 
     // Then there should be no violations
@@ -794,19 +755,6 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item new page (/items/new) in dark mode
-  test('user can view item new page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the new item page with dark mode enabled
-    await page.goto('/items/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Item detail page (/items/:id) in dark mode
   test('user can view item detail page without accessibility violations in dark mode', async ({ page, baseURL }) => {
     // Given a seeded item
@@ -878,19 +826,6 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendor new (/settings/vendors/new) in dark mode
-  test('user can view settings vendor new page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the new vendor page with dark mode enabled
-    await page.goto('/settings/vendors/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Settings > Vendor detail (/settings/vendors/:id) in dark mode
   test('user can view settings vendor detail page without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded vendor
@@ -899,19 +834,6 @@ test.describe('dark mode a11y', () => {
     // When the user navigates to the vendor detail page (trailing slash required for TanStack Router index child)
     await page.goto(`/settings/vendors/${vendorId}/`)
     await page.waitForLoadState('networkidle')
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
-  // Settings > Recipe new (/settings/recipes/new) in dark mode
-  test('user can view settings recipe new page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the new recipe page with dark mode enabled
-    await page.goto('/settings/recipes/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
     await injectAxe(page)
 
     // Then there should be no violations
