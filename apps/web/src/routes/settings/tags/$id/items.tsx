@@ -3,8 +3,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
+import { useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -32,7 +33,6 @@ function TagItemsTab() {
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const updateItem = useUpdateItem()
-  const createItem = useCreateItem()
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
 
@@ -59,6 +59,8 @@ function TagItemsTab() {
   }, [isLoading, restoreScroll])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
+  const [newItemDialogOpen, setNewItemDialogOpen] = useState(false)
+  const [newItemInitialName, setNewItemInitialName] = useState('')
 
   const tagMap = useMemo(
     () => Object.fromEntries(tags.map((t) => [t.id, t])),
@@ -193,24 +195,16 @@ function TagItemsTab() {
   ]
   const filteredItems = [...assignedItems, ...unassignedItems]
 
-  const handleCreateFromSearch = async () => {
-    const trimmed = search.trim()
-    if (!trimmed) return
-    try {
-      await createItem.mutateAsync({
-        name: trimmed,
-        tagIds: [tagId],
-        vendorIds: [],
-        targetUnit: 'package',
-        targetQuantity: 0,
-        refillThreshold: 0,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 0,
-      })
-    } catch {
-      // input stays populated for retry
-    }
+  const handleCreateFromSearch = (name: string) => {
+    setNewItemInitialName(name)
+    setNewItemDialogOpen(true)
+  }
+
+  const handleNewItemSuccess = async (item: import('@/types').Item) => {
+    await updateItem.mutateAsync({
+      id: item.id,
+      updates: { tagIds: [...(item.tagIds ?? []), tagId] },
+    })
   }
 
   return (
@@ -227,7 +221,6 @@ function TagItemsTab() {
         recipes={recipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
-        isCreating={createItem.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -297,6 +290,12 @@ function TagItemsTab() {
             {t('settings.tags.items.emptyFiltered')}
           </p>
         )}
+      <NewItemDialog
+        open={newItemDialogOpen}
+        onOpenChange={setNewItemDialogOpen}
+        initialName={newItemInitialName}
+        onSuccess={handleNewItemSuccess}
+      />
     </div>
   )
 }

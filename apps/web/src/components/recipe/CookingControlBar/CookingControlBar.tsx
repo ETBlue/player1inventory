@@ -25,12 +25,14 @@ interface CookingControlBarProps {
   allExpanded: boolean
   onExpandAll: () => void
   onCollapseAll: () => void
+  onCreateRecipe?: (name: string) => void
 }
 
 export function CookingControlBar({
   allExpanded,
   onExpandAll,
   onCollapseAll,
+  onCreateRecipe,
 }: CookingControlBarProps) {
   const { t } = useTranslation()
   const { sort, dir, q } = Route.useSearch()
@@ -190,10 +192,7 @@ export function CookingControlBar({
                 // Escape clears query but keeps row open (per design)
               }
               if (e.key === 'Enter' && q.trim() && !hasExactTitleMatch) {
-                navigate({
-                  to: '/settings/recipes/new',
-                  search: { name: q.trim() },
-                })
+                onCreateRecipe?.(q.trim())
               }
             }}
             className="h-auto flex-1 border-none bg-transparent py-2 text-sm shadow-none"
@@ -214,12 +213,7 @@ export function CookingControlBar({
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() =>
-                    navigate({
-                      to: '/settings/recipes/new',
-                      search: { name: q.trim() },
-                    })
-                  }
+                  onClick={() => onCreateRecipe?.(q.trim())}
                 >
                   <Plus /> Create
                 </Button>

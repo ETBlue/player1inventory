@@ -1,9 +1,10 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
+import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -86,6 +87,8 @@ function CookingPage() {
   const [showDoneDialog, setShowDoneDialog] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [isConfirmingDone, setIsConfirmingDone] = useState(false)
+  const [newRecipeDialogOpen, setNewRecipeDialogOpen] = useState(false)
+  const [newRecipeInitialName, setNewRecipeInitialName] = useState('')
 
   const { expiryDates } = useItemSortData(items)
 
@@ -447,6 +450,10 @@ function CookingPage() {
               replace: true,
             })
           }
+          onCreateRecipe={(name) => {
+            setNewRecipeInitialName(name)
+            setNewRecipeDialogOpen(true)
+          }}
         />
         <div className="h-px bg-accessory-default" />
       </div>
@@ -457,11 +464,13 @@ function CookingPage() {
               <p>{t('cooking.empty.title')}</p>
               <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
             </div>
-            <Button asChild size="lg" className="px-8">
-              <Link to="/settings/recipes/new" search={{ name: '' }}>
-                <Plus />
-                {t('cooking.empty.createButton')}
-              </Link>
+            <Button
+              size="lg"
+              className="px-8"
+              onClick={() => setNewRecipeDialogOpen(true)}
+            >
+              <Plus />
+              {t('cooking.empty.createButton')}
             </Button>
           </div>
         ) : (
@@ -730,6 +739,11 @@ function CookingPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <NewRecipeDialog
+        open={newRecipeDialogOpen}
+        onOpenChange={setNewRecipeDialogOpen}
+        initialName={newRecipeInitialName}
+      />
     </div>
   )
 }

@@ -6,10 +6,10 @@
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
   shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LayoutInnerPages, LoadingSpinner, Toolbar, ViewToggle
-  item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, QuickUpdateDialog
+  item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, NewItemDialog, QuickUpdateDialog
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
-  vendor/         — vendor-specific: VendorCard, VendorInfoForm
-  recipe/         — recipe-specific: CookingControlBar, RecipeCard, RecipeInfoForm
+  vendor/         — vendor-specific: NewVendorDialog, VendorCard, VendorInfoForm
+  recipe/         — recipe-specific: CookingControlBar, NewRecipeDialog, RecipeCard, RecipeInfoForm
   settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
   shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog
   ui/             — shadcn/ui primitives (flat files, not folders)
@@ -51,11 +51,19 @@ Reusable across multiple features and pages.
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
+**`NewItemDialog`** (`src/components/item/NewItemDialog/index.ts`) — dialog for creating a new item. Fields: name (required, `capitalize` class, autoFocus) and package unit (optional). Props: `open`, `onOpenChange`, `initialName?` (pre-fill from search term), `onSuccess?(item)`. On success without `onSuccess`, navigates to the item detail page. Used by: pantry page, tag/vendor/recipe items tabs.
+
 **`QuickUpdateDialog`** (`src/components/item/QuickUpdateDialog/index.ts`) — pantry-page dialog for bulk-editing a single item's packed/unpacked quantities in one submit. Triggered by the calculator icon button on each `ItemCard` in pantry mode. Provides +/− steppers, manual inputs, Pack/Unpack buttons (mirrors item info tab logic via `computePack`/`computeUnpack`), Clear, and Fill to Full actions, with a live progress bar preview. Submits a single mutation with the final `{ packedQuantity, unpackedQuantity }` — never touches `dueDate`. Pack/Unpack/Fill-to-Full logic lives in pure functions in `quantityUtils.ts` (`computePack`, `computeUnpack`, `computeFillToFull`).
+
+## Vendor Components
+
+**`NewVendorDialog`** (`src/components/vendor/NewVendorDialog/index.ts`) — dialog for creating a new vendor (name only). Props: `open`, `onOpenChange`, `onSuccess?(vendor)`. On success without `onSuccess`, navigates to the vendor detail page. Used by: vendor list page.
 
 ## Recipe Components
 
-**`CookingControlBar`** (`src/components/recipe/CookingControlBar/index.tsx`) — second-row toolbar for the cooking page. Props: `allExpanded`, `onExpandAll`, `onCollapseAll`. Reads/writes `?sort` (`name|recent|count`), `?dir` (`asc|desc`), `?q` directly via `Route.useSearch()` and `useNavigate()`. Row 1: sort Select, direction button, expand/collapse button, spacer, search toggle. Row 2 (conditional): search input with Create/Clear buttons. `searchVisible` is local state initialized from `!!q`.
+**`NewRecipeDialog`** (`src/components/recipe/NewRecipeDialog/index.ts`) — dialog for creating a new recipe (name only). Props: `open`, `onOpenChange`, `initialName?` (pre-fill from search term), `onSuccess?(recipe)`. On success without `onSuccess`, navigates to the recipe detail page. Syncs `initialName` via `useEffect` so callers can update it before re-opening. Used by: recipe list page, cooking page.
+
+**`CookingControlBar`** (`src/components/recipe/CookingControlBar/index.tsx`) — second-row toolbar for the cooking page. Props: `allExpanded`, `onExpandAll`, `onCollapseAll`, `onCreateRecipe?(name)`. Reads/writes `?sort` (`name|recent|count`), `?dir` (`asc|desc`), `?q` directly via `Route.useSearch()` and `useNavigate()`. Row 1: sort Select, direction button, expand/collapse button, spacer, search toggle. Row 2 (conditional): search input with Create/Clear buttons. When Create is triggered (button click or Enter with no exact match), calls `onCreateRecipe?.(q.trim())`. `searchVisible` is local state initialized from `!!q`.
 
 ## Settings Cards
 

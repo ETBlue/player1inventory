@@ -1,14 +1,11 @@
-import {
-  createFileRoute,
-  useNavigate,
-  useRouterState,
-} from '@tanstack/react-router'
+import { createFileRoute, useRouterState } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
+import { NewVendorDialog } from '@/components/vendor/NewVendorDialog'
 import { VendorCard } from '@/components/vendor/VendorCard'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -21,7 +18,7 @@ export const Route = createFileRoute('/settings/vendors/')({
 
 function VendorSettings() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
   const { goBack } = useAppNavigation('/settings')
   const { data: vendors = [], isLoading } = useVendors()
   const deleteVendor = useDeleteVendor()
@@ -55,7 +52,7 @@ function VendorSettings() {
           </Button>
           <h1>{t('settings.vendors.label')}</h1>
         </div>
-        <Button onClick={() => navigate({ to: '/settings/vendors/new' })}>
+        <Button onClick={() => setOpen(true)}>
           <Plus className="h-4 w-4" />
           {t('settings.vendors.newButton')}
         </Button>
@@ -78,6 +75,7 @@ function VendorSettings() {
           ))
         )}
       </div>
+      <NewVendorDialog open={open} onOpenChange={setOpen} />
     </div>
   )
 }

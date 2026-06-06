@@ -1,6 +1,5 @@
 import {
   createFileRoute,
-  Link,
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router'
@@ -9,11 +8,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
-import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
+import { useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -51,29 +51,17 @@ function PantryView() {
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const updateItem = useUpdateItem()
-  const createItem = useCreateItem()
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
   )
   const quickUpdateItem = items.find((i) => i.id === quickUpdateItemId) ?? null
+  const [newItemOpen, setNewItemOpen] = useState(false)
+  const [newItemInitialName, setNewItemInitialName] = useState('')
 
-  const handleCreateFromSearch = async (query: string) => {
-    try {
-      await createItem.mutateAsync({
-        name: query,
-        tagIds: [],
-        vendorIds: [],
-        targetUnit: 'package',
-        targetQuantity: 0,
-        refillThreshold: 0,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 0,
-      })
-    } catch {
-      // input stays populated for retry
-    }
+  const handleCreateFromSearch = (query: string) => {
+    setNewItemInitialName(query)
+    setNewItemOpen(true)
   }
 
   // Sort prefs from localStorage (pantry defaults to 'expiring')
@@ -235,7 +223,6 @@ function PantryView() {
           className="border-b"
           onCreateFromSearch={handleCreateFromSearch}
           hasExactMatch={hasExactMatch}
-          isCreating={createItem.isPending}
           vendors={vendors}
           recipes={recipes}
           leading={
@@ -250,16 +237,15 @@ function PantryView() {
             />
           }
         >
-          <Link to="/items/new">
-            <Button
-              size="icon"
-              className="lg:w-auto lg:px-3"
-              aria-label="Add item"
-            >
-              <Plus />
-              <span className="hidden lg:inline">Add</span>
-            </Button>
-          </Link>
+          <Button
+            size="icon"
+            className="lg:w-auto lg:px-3"
+            aria-label="Add item"
+            onClick={() => setNewItemOpen(true)}
+          >
+            <Plus />
+            <span className="hidden lg:inline">Add</span>
+          </Button>
         </ItemListToolbar>
         <div className="h-px bg-accessory-default" />
       </div>
@@ -270,11 +256,13 @@ function PantryView() {
               <p>{t('pantry.empty.title')}</p>
               <p className="text-sm mt-1">{t('pantry.empty.description')}</p>
             </div>
-            <Button asChild size="lg" className="px-8">
-              <Link to="/items/new">
-                <Plus />
-                {t('pantry.empty.createButton')}
-              </Link>
+            <Button
+              size="lg"
+              className="px-8"
+              onClick={() => setNewItemOpen(true)}
+            >
+              <Plus />
+              {t('pantry.empty.createButton')}
             </Button>
           </div>
         ) : sortedItems.length === 0 ? (
@@ -358,6 +346,11 @@ function PantryView() {
           />
         )}
       </div>
+      <NewItemDialog
+        open={newItemOpen}
+        onOpenChange={setNewItemOpen}
+        initialName={newItemInitialName}
+      />
     </div>
   )
 }

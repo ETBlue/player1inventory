@@ -3,8 +3,9 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
+import { useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -30,7 +31,6 @@ function RecipeItemsTab() {
   const { data: items = [], isLoading } = useItems()
   const { data: recipe } = useRecipe(recipeId)
   const updateRecipe = useUpdateRecipe()
-  const createItem = useCreateItem()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -64,6 +64,8 @@ function RecipeItemsTab() {
   }, [allRecipes])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
+  const [newItemDialogOpen, setNewItemDialogOpen] = useState(false)
+  const [newItemInitialName, setNewItemInitialName] = useState('')
 
   const recipeItems = recipe?.items ?? []
 
@@ -182,34 +184,20 @@ function RecipeItemsTab() {
     })
   }
 
-  const handleCreateFromSearch = async () => {
-    const trimmed = search.trim()
-    if (!trimmed) return
-    try {
-      const newItem = await createItem.mutateAsync({
-        name: trimmed,
-        vendorIds: [],
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 0,
-        refillThreshold: 0,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 0,
-      })
-      // Immediately add the new item to the recipe
-      if (!newItem) return
-      const newRecipeItems = [
-        ...recipeItems,
-        { itemId: newItem.id, defaultAmount: newItem.consumeAmount },
-      ]
-      await updateRecipe.mutateAsync({
-        id: recipeId,
-        updates: { items: newRecipeItems },
-      })
-    } catch {
-      // input stays populated for retry
-    }
+  const handleCreateFromSearch = (name: string) => {
+    setNewItemInitialName(name)
+    setNewItemDialogOpen(true)
+  }
+
+  const handleNewItemSuccess = async (item: import('@/types').Item) => {
+    const newRecipeItems = [
+      ...recipeItems,
+      { itemId: item.id, defaultAmount: item.consumeAmount },
+    ]
+    await updateRecipe.mutateAsync({
+      id: recipeId,
+      updates: { items: newRecipeItems },
+    })
   }
 
   const handleToggle = async (itemId: string, consumeAmount: number) => {
@@ -281,7 +269,7 @@ function RecipeItemsTab() {
         recipes={allRecipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
-        isCreating={createItem.isPending || updateRecipe.isPending}
+        isCreating={updateRecipe.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -360,6 +348,12 @@ function RecipeItemsTab() {
             No items match the current filters.
           </p>
         )}
+      <NewItemDialog
+        open={newItemDialogOpen}
+        onOpenChange={setNewItemDialogOpen}
+        initialName={newItemInitialName}
+        onSuccess={handleNewItemSuccess}
+      />
     </div>
   )
 }

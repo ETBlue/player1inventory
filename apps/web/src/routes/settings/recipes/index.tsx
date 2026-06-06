@@ -1,6 +1,8 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
 import { RecipeCard } from '@/components/recipe/RecipeCard'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -14,7 +16,7 @@ export const Route = createFileRoute('/settings/recipes/')({
 
 function RecipeSettings() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
   const { goBack } = useAppNavigation('/settings')
   const { data: recipes = [] } = useRecipes()
   const deleteRecipe = useDeleteRecipe()
@@ -38,11 +40,7 @@ function RecipeSettings() {
           </Button>
           <h1>{t('settings.recipes.label')}</h1>
         </div>
-        <Button
-          onClick={() =>
-            navigate({ to: '/settings/recipes/new', search: { name: '' } })
-          }
-        >
+        <Button onClick={() => setOpen(true)}>
           <Plus className="h-4 w-4" />
           {t('settings.recipes.newButton')}
         </Button>
@@ -65,6 +63,7 @@ function RecipeSettings() {
           ))
         )}
       </div>
+      <NewRecipeDialog open={open} onOpenChange={setOpen} />
     </div>
   )
 }
