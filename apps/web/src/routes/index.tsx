@@ -39,9 +39,9 @@ function PantryView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  // Redirect to /shelves only if the user has explicitly stored a 'shelf' preference
+  // Redirect to /shelves only if the user has explicitly stored a 'group' preference
   useEffect(() => {
-    if (getStoredPantryView() === 'shelf') {
+    if (getStoredPantryView() === 'group') {
       navigate({ to: '/shelves' })
     }
   }, [navigate])
@@ -229,8 +229,8 @@ function PantryView() {
             <ViewToggle
               current="list"
               onChange={(view) => {
-                if (view === 'shelf') {
-                  setPantryView('shelf')
+                if (view === 'group') {
+                  setPantryView('group')
                   navigate({ to: '/shelves' })
                 }
               }}

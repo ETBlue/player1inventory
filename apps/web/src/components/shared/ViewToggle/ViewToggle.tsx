@@ -21,12 +21,12 @@ export function ViewToggle({ current, onChange }: ViewToggleProps) {
         <List />
       </Button>
       <Button
-        variant={current === 'shelf' ? 'neutral' : 'neutral-ghost'}
+        variant={current === 'group' ? 'neutral' : 'neutral-ghost'}
         size="icon"
-        aria-label="Shelf view"
-        aria-pressed={current === 'shelf'}
+        aria-label="Group view"
+        aria-pressed={current === 'group'}
         className="rounded-none border-0"
-        onClick={() => onChange('shelf')}
+        onClick={() => onChange('group')}
       >
         <LayoutGrid />
       </Button>

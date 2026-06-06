@@ -30,7 +30,7 @@ export function ShelvesPage() {
   const { data: recipes = [] } = useRecipes()
   const { data: tags = [] } = useTags()
 
-  const handleViewChange = (view: 'list' | 'shelf') => {
+  const handleViewChange = (view: 'list' | 'group') => {
     if (view === 'list') {
       setPantryView('list')
       navigate({ to: '/' })
@@ -191,7 +191,7 @@ export function ShelvesPage() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
-            <ViewToggle current="shelf" onChange={handleViewChange} />
+            <ViewToggle current="group" onChange={handleViewChange} />
             <div className="flex-1" />
             <Button
               size="icon"
@@ -228,7 +228,7 @@ export function ShelvesPage() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
-          <ViewToggle current="shelf" onChange={handleViewChange} />
+          <ViewToggle current="group" onChange={handleViewChange} />
           <div className="flex-1" />
           <Button
             size="icon"

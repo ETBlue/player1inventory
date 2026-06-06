@@ -21,8 +21,8 @@ export const ListActive: Story = {
   },
 }
 
-export const ShelfActive: Story = {
+export const GroupActive: Story = {
   args: {
-    current: 'shelf',
+    current: 'group',
   },
 }
