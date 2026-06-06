@@ -1,7 +1,7 @@
 import { composeStories } from '@storybook/react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import * as stories from './shopping.$vendorId.stories'
+import * as stories from './$vendorId.stories'
 
 const { Default, WithCartItems, WithNoVendorCart } = composeStories(stories)
 
