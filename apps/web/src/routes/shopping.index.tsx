@@ -1,15 +1,16 @@
 import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { VendorCartCard } from '@/components/shopping/VendorCartCard'
+import { Button } from '@/components/ui/button'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { getCartItems } from '@/db/operations'
 import {
   useAllActiveCarts,
@@ -24,13 +25,14 @@ export const Route = createFileRoute('/shopping/')({
     sort: ['alpha', 'count'].includes(s.sort as string)
       ? (s.sort as 'alpha' | 'count')
       : 'recent',
+    dir: s.dir === 'asc' ? 'asc' : 'desc',
   }),
 })
 
 function ShoppingIndex() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { sort } = Route.useSearch()
+  const { sort, dir } = Route.useSearch()
 
   const { data: allCarts = [] } = useAllActiveCarts()
   const { data: vendors = [] } = useVendors()
@@ -65,17 +67,20 @@ function ShoppingIndex() {
   const noVendorCount = items.filter((i) => !(i.vendorIds ?? []).length).length
 
   const sortedVendors = [...vendors].sort((a, b) => {
-    if (sort === 'alpha') return a.name.localeCompare(b.name)
-    if (sort === 'count') {
-      return (
+    let cmp = 0
+    if (sort === 'alpha') {
+      cmp = a.name.localeCompare(b.name)
+    } else if (sort === 'count') {
+      cmp =
         (vendorItemCounts.get(b.id) ?? 0) - (vendorItemCounts.get(a.id) ?? 0)
-      )
+    } else {
+      const cartA = cartForVendor(a.id)
+      const cartB = cartForVendor(b.id)
+      const aTime = cartA?.lastVisitedAt?.getTime() ?? 0
+      const bTime = cartB?.lastVisitedAt?.getTime() ?? 0
+      cmp = bTime - aTime
     }
-    const cartA = cartForVendor(a.id)
-    const cartB = cartForVendor(b.id)
-    const aTime = cartA?.lastVisitedAt?.getTime() ?? 0
-    const bTime = cartB?.lastVisitedAt?.getTime() ?? 0
-    return bTime - aTime
+    return dir === 'asc' ? -cmp : cmp
   })
 
   return (
@@ -83,31 +88,67 @@ function ShoppingIndex() {
       <Toolbar>
         <span className="font-semibold">{t('shopping.title')}</span>
         <div className="flex-1" />
-        <Select
-          value={sort}
-          onValueChange={(v) =>
-            navigate({
-              to: '/shopping',
-              search: { sort: v as 'alpha' | 'count' | 'recent' },
-              replace: true,
-            })
-          }
-        >
-          <SelectTrigger className="w-auto bg-transparent border-none">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="recent">
-              {t('shopping.cartList.sort.recent')}
-            </SelectItem>
-            <SelectItem value="alpha">
-              {t('shopping.cartList.sort.alpha')}
-            </SelectItem>
-            <SelectItem value="count">
-              {t('shopping.cartList.sort.count')}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="neutral-ghost" className="px-2 font-normal">
+                {t(`shopping.cartList.sort.${sort}`)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                className={sort === 'recent' ? 'bg-background-elevated' : ''}
+                onClick={() =>
+                  navigate({
+                    to: '/shopping',
+                    search: { sort: 'recent', dir },
+                    replace: true,
+                  })
+                }
+              >
+                {t('shopping.cartList.sort.recent')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={sort === 'alpha' ? 'bg-background-elevated' : ''}
+                onClick={() =>
+                  navigate({
+                    to: '/shopping',
+                    search: { sort: 'alpha', dir },
+                    replace: true,
+                  })
+                }
+              >
+                {t('shopping.cartList.sort.alpha')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className={sort === 'count' ? 'bg-background-elevated' : ''}
+                onClick={() =>
+                  navigate({
+                    to: '/shopping',
+                    search: { sort: 'count', dir },
+                    replace: true,
+                  })
+                }
+              >
+                {t('shopping.cartList.sort.count')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            size="icon"
+            variant="neutral-ghost"
+            aria-label={dir === 'asc' ? t('common.asc') : t('common.desc')}
+            onClick={() =>
+              navigate({
+                to: '/shopping',
+                search: { sort, dir: dir === 'asc' ? 'desc' : 'asc' },
+                replace: true,
+              })
+            }
+          >
+            {dir === 'asc' ? <ArrowUp /> : <ArrowDown />}
+          </Button>
+        </div>
       </Toolbar>
       <div className="overflow-y-auto divide-y divide-accessory-default">
         {sortedVendors.map((vendor) => {

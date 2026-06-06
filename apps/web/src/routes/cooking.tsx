@@ -183,7 +183,7 @@ function CookingPage() {
         to: '/cooking',
         search: (prev) => ({
           sort: (prev.sort ?? 'recent') as 'name' | 'recent' | 'count',
-          dir: prev.dir ?? 'asc',
+          dir: (prev.dir ?? 'asc') as 'asc' | 'desc',
           q: prev.q ?? '',
           expanded: [...newSet].join(','),
         }),
@@ -204,7 +204,7 @@ function CookingPage() {
       to: '/cooking',
       search: (prev) => ({
         sort: (prev.sort ?? 'recent') as 'name' | 'recent' | 'count',
-        dir: prev.dir ?? 'asc',
+        dir: (prev.dir ?? 'asc') as 'asc' | 'desc',
         q: prev.q ?? '',
         expanded: [...newSet].join(','),
       }),
@@ -431,7 +431,7 @@ function CookingPage() {
               to: '/cooking',
               search: (prev) => ({
                 sort: (prev.sort ?? 'recent') as 'name' | 'recent' | 'count',
-                dir: prev.dir ?? 'asc',
+                dir: (prev.dir ?? 'asc') as 'asc' | 'desc',
                 q: prev.q ?? '',
                 expanded: recipes.map((r) => r.id).join(','),
               }),
@@ -443,7 +443,7 @@ function CookingPage() {
               to: '/cooking',
               search: (prev) => ({
                 sort: (prev.sort ?? 'recent') as 'name' | 'recent' | 'count',
-                dir: prev.dir ?? 'asc',
+                dir: (prev.dir ?? 'asc') as 'asc' | 'desc',
                 q: prev.q ?? '',
                 expanded: '',
               }),

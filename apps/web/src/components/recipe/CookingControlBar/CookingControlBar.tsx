@@ -65,7 +65,7 @@ export function CookingControlBar({
           | 'name'
           | 'recent'
           | 'count',
-        dir: updates.dir ?? prev.dir ?? 'asc',
+        dir: (updates.dir ?? prev.dir ?? 'asc') as 'asc' | 'desc',
         q: updates.q ?? prev.q ?? '',
         expanded: prev.expanded ?? '',
       }),
