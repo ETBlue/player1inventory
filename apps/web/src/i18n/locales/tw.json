@@ -30,6 +30,21 @@
     "filters": "篩選條件"
   },
   "shopping": {
+    "title": "購物",
+    "noVendor": "未指定廠商",
+    "cartList": {
+      "sort": {
+        "recent": "最近造訪",
+        "alpha": "A–Z",
+        "count": "品項最多"
+      }
+    },
+    "cartCard": {
+      "packsChecked_one": "已勾選 {{count}} 包",
+      "packsChecked_other": "已勾選 {{count}} 包",
+      "available_one": "{{count}} 件可選購",
+      "available_other": "{{count}} 件可選購"
+    },
     "toolbar": {
       "cartCount_one": "拿了 {{count}} 件",
       "cartCount_other": "拿了 {{count}} 件"

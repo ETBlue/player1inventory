@@ -30,6 +30,21 @@
     "filters": "Filters"
   },
   "shopping": {
+    "title": "Shopping",
+    "noVendor": "No vendor",
+    "cartList": {
+      "sort": {
+        "recent": "Last visited",
+        "alpha": "A–Z",
+        "count": "Most items"
+      }
+    },
+    "cartCard": {
+      "packsChecked_one": "{{count}} pack checked",
+      "packsChecked_other": "{{count}} packs checked",
+      "available_one": "{{count}} item available",
+      "available_other": "{{count}} items available"
+    },
     "toolbar": {
       "cartCount_one": "{{count}} pack in cart",
       "cartCount_other": "{{count}} packs in cart"
