@@ -75,48 +75,63 @@ grep 'TS6385' /tmp/p1i-build.log && echo "FAIL" || echo "OK"
 
 ---
 
-## Phase 2 — VendorCard & RecipeCard
+## Phase 2 — GroupCard (unified card component)
 
-### Step 2.1 — Create `VendorCard` component
+### Step 2.1 — Create `GroupCard` component
 
 Files to create:
-- `apps/web/src/components/vendor/VendorCard/VendorCard.tsx`
-- `apps/web/src/components/vendor/VendorCard/index.ts`
+- `apps/web/src/components/shared/GroupCard/GroupCard.tsx`
+- `apps/web/src/components/shared/GroupCard/index.ts`
 
-Visual: identical to `ShelfCard` but without `filterSummary`. Use same 3-row layout:
-- Row 1: vendor name (normal-case, since vendor names preserve casing) + `{packed}/{target} pack` label
-- Row 2: `ItemProgressBar`
-- Row 3: active count badge, out-of-stock badge, low-stock badge, ChevronRight
+This single component replaces `ShelfCard`, `VendorCard`, and `RecipeCard`. Read `ShelfCard.tsx` first to copy the exact 3-row visual layout.
 
 Props:
 ```ts
-interface VendorCardProps {
-  vendor: Vendor
+interface GroupCardProps {
+  name: string
+  icon?: React.ReactNode       // optional icon left of the name (pass a LucideIcon element)
   itemCount: number
   onClick: () => void
+  filterSummary?: string        // optional label in row 3 (shelf filter shelves only)
   outOfStockCount?: number
   lowStockCount?: number
   activeCount?: number
   totalPackedQuantity?: number
   totalTargetInPacks?: number
   totalRefillInPacks?: number
+  nameClassName?: string        // defaults to 'capitalize'; pass 'normal-case' for vendors
 }
 ```
 
-Stories: Default, OutOfStock, LowStock, Empty.
-Smoke test: assert vendor name is rendered.
+Layout (copy from ShelfCard):
+- Row 1: `{icon} name` + `{packed}/{target} pack` (right-aligned)
+- Row 2: `ItemProgressBar`
+- Row 3: active count badge, `filterSummary` (if set), out-of-stock badge, low-stock badge + `ChevronRight`
 
-### Step 2.2 — Create `RecipeCard` component
+Stories:
+- `Default` — shelf-style: `icon=<LayoutGrid />`, name "Pantry", counts
+- `VendorStyle` — `icon=<Store />`, `nameClassName="normal-case"`, vendor name "iHerb"
+- `RecipeStyle` — `icon=<ChefHat />`, recipe name "Pasta"
+- `WithFilterSummary` — shelf filter card with `filterSummary="Expires this week"`
+- `OutOfStock` — with `outOfStockCount={2}`
+- `LowStock` — with `lowStockCount={1}`
+- `Unsorted` — no icon, name "Unsorted"
 
-Files to create:
-- `apps/web/src/components/recipe/RecipeCard/RecipeCard.tsx`
-- `apps/web/src/components/recipe/RecipeCard/index.ts`
+Smoke test: assert the name is visible.
 
-Visual: identical to VendorCard but with recipe name in `capitalize` class (recipe names follow title-case convention).
+### Step 2.2 — Replace ShelfCard with GroupCard
 
-Props: same shape as VendorCard but with `recipe: Recipe` instead of `vendor: Vendor`.
+File: `apps/web/src/components/shelf/ShelfCard/ShelfCard.tsx`
 
-Stories + smoke tests (same pattern as VendorCard).
+Replace the component body so it calls `GroupCard` internally, passing:
+- `name={shelf.name}`
+- `icon={<LayoutGrid size={16} />}`
+- `filterSummary={...}` (shelf filter summary)
+- all metric props forwarded
+
+This keeps `ShelfCard` as a thin domain wrapper so existing call sites in `ShelfList` don't need to change yet. The props interface of `ShelfCard` stays as-is.
+
+Update `ShelfCard.stories.tsx` to reflect the icon now appears in the card.
 
 ### Step 2.3 — Verification gate (same 5 commands as Phase 1)
 
@@ -236,8 +251,31 @@ const getVendorPackTotals = (vendorId: string) => {
 ```
 
 Render:
-- `vendors.map(v => <VendorCard vendor={v} ... onClick={() => navigate({search: {groupBy: 'vendor', id: v.id}})} />)`
-- Unsorted card below (if unsorted items exist)
+```tsx
+{vendors.map(v => (
+  <GroupCard
+    key={v.id}
+    name={v.name}
+    nameClassName="normal-case"
+    icon={<Store size={16} />}
+    itemCount={getItemCount(v.id)}
+    outOfStockCount={getOutOfStockCount(v.id)}
+    lowStockCount={getLowStockCount(v.id)}
+    activeCount={getActiveCount(v.id)}
+    {...getVendorPackTotals(v.id)}
+    onClick={() => navigate({ to: '/', search: { groupBy: 'vendor', id: v.id } })}
+  />
+))}
+{/* Unsorted card — shown if any items have no vendorIds */}
+{unsortedVendorItems.length > 0 && (
+  <GroupCard
+    name={t('Unsorted')}
+    itemCount={unsortedVendorItems.length}
+    {...getVendorPackTotals('unsorted')}
+    onClick={() => navigate({ to: '/', search: { groupBy: 'vendor', id: 'unsorted' } })}
+  />
+)}
+```
 
 ### Step 4.3 — Implement `RecipeGroupView`
 
@@ -260,7 +298,27 @@ const getRecipeItems = (recipeId: string): Item[] =>
       })()
 ```
 
-Render: same pattern as VendorGroupView.
+Render (same pattern as VendorGroupView, with recipe icon and capitalize names):
+```tsx
+{recipes.map(r => (
+  <GroupCard
+    key={r.id}
+    name={r.name}
+    icon={<ChefHat size={16} />}
+    itemCount={getItemCount(r.id)}
+    {...getRecipePackTotals(r.id)}
+    onClick={() => navigate({ to: '/', search: { groupBy: 'recipe', id: r.id } })}
+  />
+))}
+{unsortedRecipeItems.length > 0 && (
+  <GroupCard
+    name={t('Unsorted')}
+    itemCount={unsortedRecipeItems.length}
+    {...getRecipePackTotals('unsorted')}
+    onClick={() => navigate({ to: '/', search: { groupBy: 'recipe', id: 'unsorted' } })}
+  />
+)}
+```
 
 ### Step 4.4 — Verification gate
 
@@ -417,7 +475,7 @@ Update pantry row:
 
 Split into logical commits:
 1. `feat(pantry): add viewPreference groupBy storage and GroupByToggle component`
-2. `feat(pantry): add VendorCard and RecipeCard group cards`
+2. `feat(pantry): add GroupCard unified card component, refactor ShelfCard to use it`
 3. `feat(pantry): migrate shelf views to root route with ?groupBy search params`
 4. `feat(pantry): add vendor and recipe group/detail views`
 5. `chore(shelves): delete /shelves route files`
@@ -430,8 +488,9 @@ Split into logical commits:
 
 - [ ] ViewToggle shows group view at `/?groupBy=shelf` (default)
 - [ ] GroupByToggle switches between shelf/vendor/recipe, persists in localStorage
-- [ ] Vendor group view shows VendorCard for each vendor with pack totals, stock badges
-- [ ] Recipe group view shows RecipeCard for each recipe with pack totals, stock badges
+- [ ] GroupCard renders icon to the left of the name; ShelfCard uses it internally
+- [ ] Vendor group view shows GroupCard (Store icon, normal-case name) for each vendor
+- [ ] Recipe group view shows GroupCard (ChefHat icon, capitalize name) for each recipe
 - [ ] Unsorted card shown for vendor and recipe group views
 - [ ] Clicking a vendor/recipe card opens detail view at `/?groupBy=X&id=Y`
 - [ ] Detail view has full toolbar (sort, search, tags, back, settings)

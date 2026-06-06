@@ -102,45 +102,52 @@ groupBy=X, id=Y                  →  <GroupDetailView groupBy={X} id={Y}>
 
 ## Group View Cards
 
-### ShelfCard (unchanged)
-No changes to ShelfCard or ShelfList. They continue to render in the shelf group view.
+### GroupCard (unified)
 
-### VendorCard
-Same visual as ShelfCard. Props:
+ShelfCard, VendorCard, and RecipeCard are merged into a single `GroupCard` component. The existing `ShelfCard` is replaced by `GroupCard`; `ShelfList` is updated to use `GroupCard` internally.
+
+Location: `apps/web/src/components/shared/GroupCard/`
+
+Props:
 ```ts
-interface VendorCardProps {
-  vendor: Vendor
+interface GroupCardProps {
+  name: string
+  icon?: React.ReactNode       // optional icon shown to the left of the name
   itemCount: number
   onClick: () => void
+  filterSummary?: string        // optional label below the name (shelf filter shelves only)
   outOfStockCount?: number
   lowStockCount?: number
   activeCount?: number
   totalPackedQuantity?: number
   totalTargetInPacks?: number
+  totalRefillInPacks?: number
+  nameClassName?: string        // defaults to 'capitalize'; pass 'normal-case' for vendor names
 }
 ```
-No `filterSummary` (vendors have no filter config).
 
-### RecipeCard
-Same visual as ShelfCard. Props:
-```ts
-interface RecipeCardProps {
-  recipe: Recipe
-  itemCount: number
-  onClick: () => void
-  outOfStockCount?: number
-  lowStockCount?: number
-  activeCount?: number
-  totalPackedQuantity?: number
-  totalTargetInPacks?: number
-}
-```
+**Card layout (3 rows):**
+- Row 1: `[icon?] name` (with `nameClassName`) + `{packed}/{target} pack` label (right-aligned)
+- Row 2: `ItemProgressBar`
+- Row 3: active count badge, `filterSummary` (if set), out-of-stock badge, low-stock badge + ChevronRight
+
+**Icon usage by caller:**
+- Shelf group view: `icon={<LayoutGrid size={16} />}`
+- Vendor group view: `icon={<Store size={16} />}`
+- Recipe group view: `icon={<ChefHat size={16} />}`
+- Unsorted card (any group type): `icon` omitted (no icon)
+
+**Name casing by caller:**
+- Shelf and recipe names: omit `nameClassName` (defaults to `capitalize`)
+- Vendor names: pass `nameClassName="normal-case"` (preserves intentional casing like "iHerb", "7-Eleven")
 
 ### Unsorted Card
-For vendor/recipe group views, an "Unsorted" card is shown below the list (same pattern as the shelf view's unsorted card):
+For all group types, an "Unsorted" card is shown below the main list (same pattern as the shelf view's existing unsorted card):
+- Shelf unsorted: items not in any selection shelf and not matching any filter shelf (existing logic)
 - Vendor unsorted: items with no `vendorIds` or `vendorIds.length === 0`
 - Recipe unsorted: items not referenced in any recipe's `items` array
 - Clicking Unsorted → `/?groupBy=$type&id=unsorted`
+- Rendered as `<GroupCard name="Unsorted" icon={undefined} ... />`
 
 ---
 
@@ -203,17 +210,16 @@ getGroupPackTotals(groupItems): { totalPacked, totalTarget, totalRefill }
 - `apps/web/src/routes/shelves/index.stories.test.tsx` (if exists)
 
 ### New Components
-- `apps/web/src/components/vendor/VendorCard/VendorCard.tsx` + `index.ts`
-- `apps/web/src/components/vendor/VendorCard/VendorCard.stories.tsx`
-- `apps/web/src/components/vendor/VendorCard/VendorCard.stories.test.tsx`
-- `apps/web/src/components/recipe/RecipeCard/RecipeCard.tsx` + `index.ts`
-- `apps/web/src/components/recipe/RecipeCard/RecipeCard.stories.tsx`
-- `apps/web/src/components/recipe/RecipeCard/RecipeCard.stories.test.tsx`
+- `apps/web/src/components/shared/GroupCard/GroupCard.tsx` + `index.ts`
+- `apps/web/src/components/shared/GroupCard/GroupCard.stories.tsx`
+- `apps/web/src/components/shared/GroupCard/GroupCard.stories.test.tsx`
 - `apps/web/src/components/shared/GroupByToggle/GroupByToggle.tsx` + `index.ts`
 - `apps/web/src/components/shared/GroupByToggle/GroupByToggle.stories.tsx`
 - `apps/web/src/components/shared/GroupByToggle/GroupByToggle.stories.test.tsx`
 
 ### Modified
+- `apps/web/src/components/shelf/ShelfCard/ShelfCard.tsx` → replaced by `GroupCard` (delete file or convert to re-export)
+- `apps/web/src/components/shelf/ShelfList/ShelfList.tsx` → updated to render `GroupCard` instead of `ShelfCard`
 - `apps/web/src/routes/index.tsx` — add search params, dispatch to group/detail views, migrate shelf group + detail view logic
 - `apps/web/src/lib/viewPreference.ts` — update stored value `'shelf'` → `'group'`; add `getStoredGroupBy`/`setStoredGroupBy`
 - `apps/web/src/components/shared/ViewToggle/ViewToggle.tsx` — navigate to `/?groupBy=<lastGroupBy>` instead of `/shelves`
