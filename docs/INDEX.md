@@ -28,7 +28,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 |---------|--------|-------|
 | [cooking](features/cooking/) | ✅ Implemented | Core + toolbar + search + sort + E2E (local + cloud) done; expand/collapse state in URL done; sort by expiration 🔲 Pending |
 | [items](features/items/) | 🔄 In Progress | Item card, form, filters, create-on-search all done; ItemCard button loading states done (`feature/button-loading-states`); explicit expirationMode field in progress (`feature/expiration-mode`) |
-| [pantry](features/pantry/) | 🔄 In Progress | Group-by vendor/recipe: toolbar toggle, VendorCard/RecipeCard, detail views, collapse `/shelves` into root route URL params — [design](features/pantry/2026-06-06-pantry-group-by-design.md) — [plan](features/pantry/2026-06-06-pantry-group-by-plan.md) — (supersedes unified-view plan from 2026-05-02) |
+| [pantry](features/pantry/) | ✅ Implemented | Group-by shelf/vendor/recipe with `?groupBy` URL params; `GroupCard` unified card; `/shelves` routes removed — [design](features/pantry/2026-06-06-pantry-group-by-design.md) — [plan](features/pantry/2026-06-06-pantry-group-by-plan.md) |
 | [quick-update-dialog](features/pantry/) | ✅ Done | Replace +/- buttons in pantry ItemCard with single icon that opens bulk-edit dialog — [design](features/pantry/2026-05-31-quick-update-dialog-design.md) — [plan](features/pantry/2026-05-31-quick-update-dialog-plan.md) |
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
 | [sign-out-and-migration](features/settings/) | 🔄 In Progress | Sign Out button (cloud mode); Switch button symmetry (offline ↔ cloud); migration wiring (doDisable + usePostLoginMigration); DataModeCard refactor |

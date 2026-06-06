@@ -1,7 +1,7 @@
 # Design: Pantry Group-By (Vendor / Recipe)
 
 **Date:** 2026-06-06
-**Status:** 🔲 Pending implementation
+**Status:** ✅ Implemented
 **Branch:** `worktree-feature-pantry-group-by`
 **Brainstorming:** [2026-06-06-brainstorming-pantry-group-by.md](./2026-06-06-brainstorming-pantry-group-by.md)
 **Plan:** [2026-06-06-pantry-group-by-plan.md](./2026-06-06-pantry-group-by-plan.md)
