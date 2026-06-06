@@ -133,7 +133,7 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   await expect(shopping.getItemCard('Fixture Item')).toBeVisible()
 
   // 7. Shelf exists and contains the fixture item
-  await page.goto('/shelves')
+  await page.goto('/?groupBy=shelf')
   await expect(page.getByText('Fixture Shelf')).toBeVisible()
 }
 

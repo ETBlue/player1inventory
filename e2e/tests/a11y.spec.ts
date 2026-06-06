@@ -148,10 +148,10 @@ test('user can view settings recipes list without accessibility violations', asy
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Shelves page (/shelves)
+// Shelves group-by view (/?groupBy=shelf)
 test('user can view shelves page without accessibility violations', async ({ page }) => {
-  // Given the user navigates to the shelves page
-  await page.goto('/shelves')
+  // Given the user navigates to the pantry page in shelf group-by mode
+  await page.goto('/?groupBy=shelf')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
@@ -456,13 +456,13 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Shelf detail page (/shelves/:id)
+  // Shelf detail view (/?groupBy=shelf&id=:shelfId)
   test('user can view shelf detail page without accessibility violations', async ({ page }) => {
     // Given a seeded shelf
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf detail page
-    await page.goto(`/shelves/${shelfId}`)
+    // When the user navigates to the shelf detail view
+    await page.goto(`/?groupBy=shelf&id=${shelfId}`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -585,10 +585,10 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Shelves page (/shelves) in dark mode
+  // Shelves group-by view (/?groupBy=shelf) in dark mode
   test('user can view shelves page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the shelves page with dark mode enabled
-    await page.goto('/shelves')
+    // Given the user navigates to the pantry page in shelf group-by mode with dark mode enabled
+    await page.goto('/?groupBy=shelf')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -762,13 +762,13 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Shelf detail page (/shelves/:id) in dark mode
+  // Shelf detail view (/?groupBy=shelf&id=:shelfId) in dark mode
   test('user can view shelf detail page without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded shelf with dark mode enabled
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf detail page
-    await page.goto(`/shelves/${shelfId}`)
+    // When the user navigates to the shelf detail view
+    await page.goto(`/?groupBy=shelf&id=${shelfId}`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -844,8 +844,8 @@ test.describe('mobile viewport a11y', () => {
   })
 
   test('user can view shelves page without accessibility violations on mobile', async ({ page }) => {
-    // Given the user navigates to the shelves page on a mobile viewport
-    await page.goto('/shelves')
+    // Given the user navigates to the pantry page in shelf group-by mode on a mobile viewport
+    await page.goto('/?groupBy=shelf')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -871,8 +871,8 @@ test.describe('mobile viewport a11y', () => {
     // Given a seeded shelf on a mobile viewport
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf detail page
-    await page.goto(`/shelves/${shelfId}`)
+    // When the user navigates to the shelf detail view
+    await page.goto(`/?groupBy=shelf&id=${shelfId}`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 

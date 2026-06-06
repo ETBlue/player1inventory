@@ -118,8 +118,8 @@ test('user sees out-of-stock and low-stock badges on shelf cards', async ({ page
     { shelfId, outOfStockItemId, lowStockItemId, okItemId, now },
   )
 
-  // When: navigate to the shelves page
-  await page.goto('/shelves')
+  // When: navigate to the shelves group-by view
+  await page.goto('/?groupBy=shelf')
 
   // Then: the shelf card shows stock status badges
   // ShelfCard renders error-inverse badge for out-of-stock, warning-inverse for low stock
@@ -196,8 +196,8 @@ test('user sees packed progress label on shelf card', async ({ page }) => {
     { shelfId, itemAId, itemBId, now },
   )
 
-  // When: navigate to the shelves page
-  await page.goto('/shelves')
+  // When: navigate to the shelves group-by view
+  await page.goto('/?groupBy=shelf')
 
   // Then: the shelf card shows packed totals (5 packed / 9 target) and "pack" unit
   const fruitShelfCard = page.getByRole('button', { name: /Fruit Shelf/ })

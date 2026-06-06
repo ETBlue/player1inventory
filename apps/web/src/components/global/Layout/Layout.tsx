@@ -17,8 +17,7 @@ export function Layout({ children }: LayoutProps) {
     location.pathname.startsWith('/settings/tags') ||
     location.pathname.startsWith('/settings/vendors') ||
     location.pathname.startsWith('/settings/recipes') ||
-    location.pathname.startsWith('/settings/shelves') ||
-    location.pathname.startsWith('/shelves/')
+    location.pathname.startsWith('/settings/shelves')
 
   return (
     <div className="h-dvh bg-background-base grid grid-cols-[auto_1fr]">
