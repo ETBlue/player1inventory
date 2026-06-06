@@ -224,11 +224,15 @@ describe('Recipe Detail - Items Tab', () => {
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
-    // Then the new item appears in the list checked (assigned to the recipe)
+    // Then the NewItemDialog opens pre-filled with "Butter"
     await waitFor(() => {
-      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
+    // When user submits the dialog
+    await user.click(screen.getByRole('button', { name: /new item/i }))
+
+    // Then the item is created and added to the recipe
     await waitFor(async () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
@@ -304,10 +308,23 @@ describe('Recipe Detail - Items Tab', () => {
     })
     await user.click(screen.getByRole('button', { name: /create item/i }))
 
-    // Then Butter appears in the list checked and the search input is NOT cleared
+    // Then the NewItemDialog opens
     await waitFor(() => {
-      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
-      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('Butter')
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    // When user submits the dialog
+    await user.click(screen.getByRole('button', { name: /new item/i }))
+
+    // Then Butter is created and added to the recipe
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const butter = items.find((i) => i.name === 'Butter')
+      expect(butter).toBeDefined()
+      const updatedRecipe = await db.recipes.get(recipe.id)
+      expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
+        true,
+      )
     })
   })
 

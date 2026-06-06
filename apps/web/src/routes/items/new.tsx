@@ -44,6 +44,8 @@ function buildCreateData(
 }
 
 function NewItemPage() {
+  // Fallback route — users do not reach this page through normal app navigation.
+  // New items are created via NewItemDialog. This route exists for direct URL access only.
   const { t } = useTranslation()
   const navigate = useNavigate()
   const createItem = useCreateItem()

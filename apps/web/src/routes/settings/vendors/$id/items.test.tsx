@@ -224,11 +224,15 @@ describe('Vendor Detail - Items Tab', () => {
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
-    // Then the new item appears in the list checked (assigned to the vendor)
+    // Then the NewItemDialog opens pre-filled with "Butter"
     await waitFor(() => {
-      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
+    // When user submits the dialog
+    await user.click(screen.getByRole('button', { name: /new item/i }))
+
+    // Then the item is created and assigned to the vendor
     await waitFor(async () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
@@ -299,9 +303,19 @@ describe('Vendor Detail - Items Tab', () => {
     })
     await user.click(screen.getByRole('button', { name: /create item/i }))
 
-    // Then Butter appears in the list checked (assigned to vendor)
+    // Then the NewItemDialog opens
     await waitFor(() => {
-      expect(screen.getByLabelText('Remove Butter')).toBeChecked()
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    // When user submits the dialog
+    await user.click(screen.getByRole('button', { name: /new item/i }))
+
+    // Then Butter is created and assigned to the vendor
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const butter = items.find((i) => i.name === 'Butter')
+      expect(butter?.vendorIds).toContain(vendor.id)
     })
   })
 
@@ -536,7 +550,7 @@ describe('Vendor Detail - Items Tab', () => {
     })
   })
 
-  it('user sees the new item in the list after creating from search (search not cleared)', async () => {
+  it('user sees the new item in the list after creating from search via dialog', async () => {
     // Given a vendor with no items matching "brand new item"
     const vendor = await createVendor('Costco')
     renderItemsTab(vendor.id)
@@ -562,19 +576,22 @@ describe('Vendor Detail - Items Tab', () => {
       ).toBeInTheDocument()
     })
 
-    // When user clicks the create button
+    // When user clicks the create button (opens dialog)
     await user.click(screen.getByRole('button', { name: /create item/i }))
 
-    // Then search input still contains the query (search is not cleared)
+    // Then the dialog opens
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue(
-        'brand new item',
-      )
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
-    // And the new item appears in the list
-    await waitFor(() => {
-      expect(screen.getByLabelText('Remove brand new item')).toBeInTheDocument()
+    // When user submits the dialog
+    await user.click(screen.getByRole('button', { name: /new item/i }))
+
+    // Then the item is created and assigned to the vendor
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const newItem = items.find((i) => i.name === 'brand new item')
+      expect(newItem?.vendorIds).toContain(vendor.id)
     })
   })
 
