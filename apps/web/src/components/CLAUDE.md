@@ -5,7 +5,8 @@
 ```
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
-  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, LayoutInnerPages, LoadingSpinner, Toolbar, ViewToggle
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, GroupByToggle, GroupCard, LayoutInnerPages, LoadingSpinner, Toolbar, ViewToggle
+  pantry/         — pantry group-by views: PantryListView, ShelfGroupView, ShelfDetailView, VendorGroupView, VendorDetailView, RecipeGroupView, RecipeDetailView
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, NewItemDialog, QuickUpdateDialog
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: NewVendorDialog, VendorCard, VendorInfoForm
@@ -43,7 +44,29 @@ Reusable across multiple features and pages.
 
 **`EmptyState`** (`src/components/shared/EmptyState/index.tsx`) — centered empty state message used across all list/tab pages. Props: `title: string`, `description: string`, `className?: string`. Renders `text-center py-12 text-foreground-muted` with title on first line and smaller description below. Used in cooking page, settings recipes/vendors lists, detail items tabs, and item detail tags tab.
 
-**`ViewToggle`** (`src/components/shared/ViewToggle/index.tsx`) — toggle control for switching between list and grid views. Used on the pantry page and shelves page.
+**`ViewToggle`** (`src/components/shared/ViewToggle/index.tsx`) — toggle control for switching between list and group views. Used on the pantry page toolbar; clicking "group" navigates to `/?groupBy=<stored>` and clicking "list" navigates to `/`.
+
+**`GroupByToggle`** (`src/components/shared/GroupByToggle/index.tsx`) — segmented button group for switching between shelf, vendor, and recipe groupings on the pantry group views. Props: `current: PantryGroupBy`, `onChange: (groupBy: PantryGroupBy) => void`. Renders three icon buttons (LayoutGrid / Store / ChefHat) with `aria-pressed` for the active selection. Used in all three group-view toolbars (`ShelfGroupView`, `VendorGroupView`, `RecipeGroupView`).
+
+**`GroupCard`** (`src/components/shared/GroupCard/index.tsx`) — clickable card row representing one group (shelf, vendor, or recipe) in a group-by list. Shows the group name, item count, stock status badges (out-of-stock / low-stock / active), and an `ItemProgressBar` for packed totals across all items in the group. Props: `name`, `icon?`, `itemCount`, `onClick`, `outOfStockCount?`, `lowStockCount?`, `activeCount?`, `totalPackedQuantity?`, `totalTargetInPacks?`, `totalRefillInPacks?`, `nameClassName?` (defaults to `'capitalize'`; pass `'normal-case'` for vendor names).
+
+## Pantry Components
+
+View components rendered by the pantry home page (`/`) depending on the `?groupBy` and `?id` URL params. Each component is self-contained — it owns its own data fetching via hooks and toolbar controls.
+
+**`PantryListView`** (`src/components/pantry/PantryListView.tsx`) — flat scrollable item list for the pantry page with no group-by param. Renders the full `ItemListToolbar` (sort, filter, search, add button) and lists all items with active/inactive separation. Includes `QuickUpdateDialog` and `NewItemDialog`.
+
+**`ShelfGroupView`** (`src/components/pantry/ShelfGroupView.tsx`) — group-by-shelf overview showing one `GroupCard` per shelf. Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/shelves`. Clicking a group card navigates to `/?groupBy=shelf&id=<shelfId>`.
+
+**`ShelfDetailView`** (`src/components/pantry/ShelfDetailView.tsx`) — item list scoped to one shelf (`?id=<shelfId>`). Shows items filtered by the shelf's tag rules. Toolbar has a back button (returns to `/?groupBy=shelf`) plus sort, search, and tags controls.
+
+**`VendorGroupView`** (`src/components/pantry/VendorGroupView.tsx`) — group-by-vendor overview showing one `GroupCard` per vendor (plus an "Unsorted" card for items with no vendor). Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/vendors`. Vendor `GroupCard` uses `nameClassName="normal-case"` to preserve intentional vendor casing.
+
+**`VendorDetailView`** (`src/components/pantry/VendorDetailView.tsx`) — item list scoped to one vendor (`?id=<vendorId>` or `'unsorted'`). Toolbar has a back button (returns to `/?groupBy=vendor`) plus sort and search controls.
+
+**`RecipeGroupView`** (`src/components/pantry/RecipeGroupView.tsx`) — group-by-recipe overview showing one `GroupCard` per recipe (plus an "Unsorted" card for items not in any recipe). Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/recipes`.
+
+**`RecipeDetailView`** (`src/components/pantry/RecipeDetailView.tsx`) — item list scoped to one recipe (`?id=<recipeId>` or `'unsorted'`). Toolbar has a back button (returns to `/?groupBy=recipe`) plus sort and search controls.
 
 ## Item Components
 

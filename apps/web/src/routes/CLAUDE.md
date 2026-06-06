@@ -1,3 +1,47 @@
+### Pantry Page (`/`)
+
+The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.
+
+**URL search params** (validated by `validateSearch` on the route):
+- `?groupBy` — `'shelf'` | `'vendor'` | `'recipe'` — switches to group view; absent = flat list view
+- `?id` — entity ID for drill-down detail within a group view (e.g. `/?groupBy=shelf&id=<shelfId>`)
+
+**View selection logic (in `index.tsx`):**
+```
+groupBy absent → PantryListView   (flat scrollable item list)
+groupBy=shelf, id absent  → ShelfGroupView    (list of shelf group cards)
+groupBy=shelf, id present → ShelfDetailView   (items on one shelf)
+groupBy=vendor, id absent  → VendorGroupView   (list of vendor group cards)
+groupBy=vendor, id present → VendorDetailView  (items for one vendor)
+groupBy=recipe, id absent  → RecipeGroupView   (list of recipe group cards)
+groupBy=recipe, id present → RecipeDetailView  (items in one recipe)
+```
+
+**View preference persistence** (`src/lib/viewPreference.ts`):
+- `pantryView` key in localStorage — `'list'` | `'group'`; remembered across sessions
+- `pantryGroupBy` key in localStorage — `'shelf'` | `'vendor'` | `'recipe'`; last used group-by
+- When switching from list → group: reads `getStoredGroupBy()` to restore last group-by
+- When switching group-by: writes `setStoredGroupBy(g)` before navigating
+
+**Toolbar controls (group views):**
+- `ViewToggle` — switches between list and group views
+- `GroupByToggle` — switches between shelf / vendor / recipe groupings (three icon buttons)
+- "Manage" button — links to `/settings/shelves`, `/settings/vendors`, or `/settings/recipes` depending on current group-by
+
+**Components** (`src/components/pantry/`):
+- `PantryListView` — flat item list with full toolbar (sort, filter, search, add)
+- `ShelfGroupView` / `ShelfDetailView` — shelf-based grouping
+- `VendorGroupView` / `VendorDetailView` — vendor-based grouping
+- `RecipeGroupView` / `RecipeDetailView` — recipe-based grouping
+
+**Files:**
+- `src/routes/index.tsx` — route with `validateSearch` and view-switching logic
+- `src/components/pantry/PantryListView.tsx` — flat list view
+- `src/components/pantry/ShelfGroupView.tsx`, `ShelfDetailView.tsx`
+- `src/components/pantry/VendorGroupView.tsx`, `VendorDetailView.tsx`
+- `src/components/pantry/RecipeGroupView.tsx`, `RecipeDetailView.tsx`
+- `src/lib/viewPreference.ts` — localStorage helpers for view/group-by persistence
+
 ### Item List Filter Pipeline
 
 All item list pages (pantry, shopping, tag/vendor/recipe items tabs) use a two-branch filter pipeline. Search and filters are mutually exclusive — they never combine:
