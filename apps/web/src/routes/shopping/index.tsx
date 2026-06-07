@@ -14,10 +14,12 @@ import {
 import { getCartItems } from '@/db/operations'
 import {
   useAllActiveCarts,
+  useCartItems,
   useItems,
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
 
 export const Route = createFileRoute('/shopping/')({
   component: ShoppingIndex,
@@ -34,20 +36,34 @@ function ShoppingIndex() {
   const navigate = useNavigate()
   const { sort, dir } = Route.useSearch()
 
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
   const { data: allCarts = [] } = useAllActiveCarts()
   const { data: vendors = [] } = useVendors()
   const { data: items = [] } = useItems()
   const vendorItemCounts = useVendorItemCounts()
 
+  // Local mode: fan-out one TanStack Query per cart (reads from Dexie)
   const cartItemResults = useQueries({
     queries: allCarts.map((cart) => ({
       queryKey: ['cart', cart.id, 'items'],
       queryFn: () => getCartItems(cart.id),
+      enabled: !isCloud,
     })),
   })
 
+  // Cloud mode: use the dual-mode useCartItems hook for the single active cart.
+  // useAllActiveCarts falls back to one cart in cloud mode; getCartItems reads
+  // from Dexie (empty in cloud), so we need the Apollo-backed hook instead.
+  const { data: cloudCartItems = [] } = useCartItems(
+    isCloud ? allCarts[0]?.id : undefined,
+  )
+
   const cartItemsMap = new Map(
-    allCarts.map((cart, i) => [cart.id, cartItemResults[i]?.data ?? []]),
+    isCloud
+      ? allCarts.map((cart) => [cart.id, cloudCartItems])
+      : allCarts.map((cart, i) => [cart.id, cartItemResults[i]?.data ?? []]),
   )
 
   function cartForVendor(vendorId: string | null) {
