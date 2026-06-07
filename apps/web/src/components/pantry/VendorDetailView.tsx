@@ -126,6 +126,12 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
       <div>
         <ItemListToolbar
           className="border-b-1"
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          isTagsToggleEnabled={true}
+          hideFiltersToggle={true}
+          items={inScopeItems}
           leading={
             <>
               <Button
@@ -140,17 +146,9 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
-              <h1 className="text-base font-regular truncate flex-1 normal-case">
-                {title}
-              </h1>
+              <h1 className="text-base font-regular truncate">{title}</h1>
             </>
           }
-          sortBy={sortBy}
-          sortDirection={sortDirection}
-          onSortChange={handleSortChange}
-          isTagsToggleEnabled={true}
-          hideFiltersToggle={true}
-          items={inScopeItems}
         >
           {!isUnsorted && (
             <Link

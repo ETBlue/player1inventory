@@ -146,6 +146,12 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
       <div>
         <ItemListToolbar
           className="border-b-1"
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          isTagsToggleEnabled={true}
+          hideFiltersToggle={true}
+          items={inScopeItems}
           leading={
             <>
               <Button
@@ -160,17 +166,11 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
-              <h1 className="text-base font-regular truncate flex-1 capitalize">
+              <h1 className="text-base font-regular truncate capitalize">
                 {title}
               </h1>
             </>
           }
-          sortBy={sortBy}
-          sortDirection={sortDirection}
-          onSortChange={handleSortChange}
-          isTagsToggleEnabled={true}
-          hideFiltersToggle={true}
-          items={inScopeItems}
         >
           {!isUnsorted && (
             <Link

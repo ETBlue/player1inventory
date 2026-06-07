@@ -248,6 +248,17 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
       <div>
         <ItemListToolbar
           className="border-b-1"
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          isTagsToggleEnabled={true}
+          hideFiltersToggle={!isUnsorted}
+          items={inShelfItems}
+          vendors={vendors}
+          recipes={recipes}
+          onCreateFromSearch={handleCreateFromSearch}
+          hasExactMatch={hasExactMatch}
+          isCreating={createItem.isPending}
           leading={
             <>
               <Button
@@ -262,23 +273,11 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
-              <h1 className="text-base font-regular truncate flex-1 capitalize">
+              <h1 className="text-base font-regular truncate capitalize">
                 {shelfName}
               </h1>
             </>
           }
-          sortBy={sortBy}
-          sortDirection={sortDirection}
-          onSortChange={handleSortChange}
-          showSort={isUnsorted}
-          isTagsToggleEnabled={true}
-          hideFiltersToggle={!isUnsorted}
-          items={inShelfItems}
-          vendors={vendors}
-          recipes={recipes}
-          onCreateFromSearch={handleCreateFromSearch}
-          hasExactMatch={hasExactMatch}
-          isCreating={createItem.isPending}
         >
           {!isUnsorted && (
             <Link
