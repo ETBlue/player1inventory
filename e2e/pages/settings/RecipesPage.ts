@@ -18,13 +18,15 @@ export class RecipesPage {
   }
 
   async fillRecipeName(name: string) {
-    // Name input: label htmlFor="recipe-name" (src/components/recipe/RecipeNameForm/index.tsx:29)
+    // Name input in NewRecipeDialog: label "Name" linked to id="new-recipe-name"
+    // (src/components/recipe/NewRecipeDialog/NewRecipeDialog.tsx)
     await this.page.getByLabel('Name').fill(name)
   }
 
   async clickSave() {
-    // Save button in RecipeNameForm (src/components/recipe/RecipeNameForm/index.tsx:38)
-    await this.page.getByRole('button', { name: 'Save' }).click()
+    // Submit button in NewRecipeDialog renders as <Button>New Recipe</Button>
+    // (src/components/recipe/NewRecipeDialog/NewRecipeDialog.tsx)
+    await this.page.getByRole('button', { name: 'New Recipe' }).click()
   }
 
   getRecipeCard(name: string): Locator {

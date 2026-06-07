@@ -11,7 +11,7 @@ function SignInPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (isSignedIn) navigate({ to: '/' })
+    if (isSignedIn) navigate({ to: '/', search: {} })
   }, [isSignedIn, navigate])
 
   if (isSignedIn) return null

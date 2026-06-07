@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronDown, CookingPot, Pencil, X } from 'lucide-react'
+import { ChefHat, ChevronDown, Pencil, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,7 +39,7 @@ export function RecipeFilterDropdown({
           size="xs"
           className="gap-1"
         >
-          <CookingPot />
+          <ChefHat />
           {t('settings.recipes.label')}
           {selectedIds.length > 0 && (
             <span className="text-xs font-semibold">{selectedIds.length}</span>

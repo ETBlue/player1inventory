@@ -1,34 +1,12 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  ArrowUpFromLine,
-  Filter,
-  Loader2,
-  Plus,
-  Search,
-  Settings,
-  Tags,
-  X,
-} from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, ArrowUpFromLine, Loader2, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
-import { ItemFilters } from '@/components/item/ItemFilters'
+import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
-import { FilterStatus } from '@/components/shared/FilterStatus'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
-import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
@@ -50,26 +28,14 @@ import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
 
-export const Route = createFileRoute('/shelves/$shelfId')({
-  component: ShelfDetailPage,
-})
-
-// ── Sort labels ────────────────────────────────────────────────────────────
-
-const sortLabels: Record<string, string> = {
-  name: 'Name',
-  stock: 'Stock',
-  expiring: 'Expiring',
-  purchased: 'Last purchased',
+interface ShelfDetailViewProps {
+  shelfId: string
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────
-
-export function ShelfDetailPage() {
-  const { shelfId } = Route.useParams()
+export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
+  const navigate = useNavigate()
   const isUnsorted = shelfId === 'unsorted'
 
-  // Data
   const { data: allItems = [], isLoading: isItemsLoading } = useItems()
   const { data: allShelves = [], isLoading: isShelvesLoading } =
     useShelvesQuery()
@@ -84,9 +50,7 @@ export function ShelfDetailPage() {
   const updateShelf = useUpdateShelfMutation()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
-  const { goBack } = useAppNavigation('/shelves')
 
-  // Sort: use localStorage-persisted sort for all shelf types
   const {
     sortBy: localSortBy,
     sortDirection: localSortDirection,
@@ -97,21 +61,14 @@ export function ShelfDetailPage() {
   const sortBy: SortField = localSortBy
   const sortDirection: SortDirection = localSortDirection
 
-  // Search / filter state (URL-backed for back-navigation restoration)
   const {
     search,
-    setSearch,
     isTagsVisible,
-    setIsTagsVisible,
-    isFiltersVisible,
-    setIsFiltersVisible,
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
-    clearAllFilters,
   } = useUrlSearchAndFilters()
 
-  const [searchVisible, setSearchVisible] = useState(() => !!search.trim())
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
@@ -121,11 +78,8 @@ export function ShelfDetailPage() {
 
   const { quantities, expiryDates, purchaseDates } = useItemSortData(allItems)
 
-  // ── Compute in-shelf items ──────────────────────────────────────────────
-
   const inShelfItems = useMemo((): Item[] => {
     if (isUnsorted) {
-      // Compute items claimed by selection shelves
       const selectionShelfItemIds = new Set<string>()
       for (const s of allShelves) {
         if (s.type === 'selection') {
@@ -134,7 +88,6 @@ export function ShelfDetailPage() {
           }
         }
       }
-      // Compute items matched by filter shelves
       const filterMatchedItemIds = new Set<string>()
       for (const s of allShelves) {
         if (s.type === 'filter' && s.filterConfig) {
@@ -162,15 +115,12 @@ export function ShelfDetailPage() {
       )
     }
 
-    // Selection shelf: items in shelf.itemIds order
     const itemMap = new Map(allItems.map((i) => [i.id, i]))
     return (shelf.itemIds ?? []).flatMap((id) => {
       const item = itemMap.get(id)
       return item ? [item] : []
     })
   }, [isUnsorted, shelf, allItems, allShelves, recipes, tags])
-
-  // ── Sort in-shelf items ─────────────────────────────────────────────────
 
   const sortedInShelfItems = useMemo((): Item[] => {
     return sortItems(
@@ -189,8 +139,6 @@ export function ShelfDetailPage() {
     expiryDates,
     purchaseDates,
   ])
-
-  // ── Search ─────────────────────────────────────────────────────────────
 
   const trimmedSearch = search.trim()
 
@@ -235,22 +183,10 @@ export function ShelfDetailPage() {
     )
   }, [allItems, inShelfItemIds, trimmedSearch])
 
-  const hasActiveFilters = useMemo(
-    () =>
-      Object.values(filterState).some((ids) => ids.length > 0) ||
-      selectedVendorIds.length > 0 ||
-      selectedRecipeIds.length > 0,
-    [filterState, selectedVendorIds, selectedRecipeIds],
-  )
-
-  // ── Sort handler ─────────────────────────────────────────────────────────
-
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     setSortBy(field)
     setSortDirection(dir)
   }
-
-  // ── Shelf membership handlers ───────────────────────────────────────────
 
   const handleAddToSelectionShelf = (itemId: string) => {
     if (!shelf || shelf.type !== 'selection') return
@@ -261,8 +197,6 @@ export function ShelfDetailPage() {
       data: { itemIds: [...currentIds, itemId] },
     })
   }
-
-  // ── Create from search ──────────────────────────────────────────────────
 
   const handleCreateFromSearch = async (query: string) => {
     const newItem = await createItem.mutateAsync({
@@ -285,8 +219,6 @@ export function ShelfDetailPage() {
     }
   }
 
-  // ── Loading state ───────────────────────────────────────────────────────
-
   const isLoading =
     isItemsLoading || isShelvesLoading || (!isUnsorted && isShelfLoading)
 
@@ -294,11 +226,7 @@ export function ShelfDetailPage() {
     return <LoadingSpinner />
   }
 
-  // ── Determine shelf display name ─────────────────────────────────────────
-
   const shelfName = isUnsorted ? 'Unsorted' : (shelf?.name ?? 'Shelf')
-
-  // ── Vendor / recipe maps for ItemCard ────────────────────────────────────
 
   const vendorMap = new Map(
     allItems.map((item) => [
@@ -315,115 +243,42 @@ export function ShelfDetailPage() {
     }
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
-
   return (
     <div className="h-screen grid grid-rows-[auto_1fr]">
-      {/* Fixed top section: top bar + filter dropdowns + sort/search toolbar */}
       <div>
-        <Toolbar className="border-b-1">
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={goBack}
-            aria-label="Go back"
-          >
-            <ArrowLeft />
-            <span className="hidden lg:inline">Go back</span>
-          </Button>
-          <h1 className="text-base font-regular truncate flex-1 capitalize">
-            {shelfName}
-          </h1>
-          {isUnsorted && (
-            <div className="flex items-center">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="default"
-                    variant="neutral-ghost"
-                    aria-label="Sort by"
-                    className="px-2 font-normal"
-                  >
-                    {sortLabels[sortBy]}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {(['expiring', 'name', 'stock', 'purchased'] as const).map(
-                    (field) => (
-                      <DropdownMenuItem
-                        key={field}
-                        className={
-                          sortBy === field ? 'bg-background-elevated' : ''
-                        }
-                        onClick={() => handleSortChange(field, sortDirection)}
-                      >
-                        {sortLabels[field]}
-                      </DropdownMenuItem>
-                    ),
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+        <ItemListToolbar
+          className="border-b-1"
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          isTagsToggleEnabled={true}
+          hideFiltersToggle={!isUnsorted}
+          items={inShelfItems}
+          vendors={vendors}
+          recipes={recipes}
+          onCreateFromSearch={handleCreateFromSearch}
+          hasExactMatch={hasExactMatch}
+          isCreating={createItem.isPending}
+          leading={
+            <>
               <Button
-                size="icon"
                 variant="neutral-ghost"
+                size="icon"
+                className="lg:w-auto lg:mr-3"
                 onClick={() =>
-                  handleSortChange(
-                    sortBy,
-                    sortDirection === 'asc' ? 'desc' : 'asc',
-                  )
+                  navigate({ to: '/', search: { groupBy: 'shelf' } })
                 }
-                aria-label="Toggle sort direction"
-                className="lg:w-auto lg:px-3"
+                aria-label="Go back"
               >
-                {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
-                <span className="hidden lg:inline">
-                  {sortDirection === 'asc' ? 'Asc' : 'Desc'}
-                </span>
+                <ArrowLeft />
+                <span className="hidden lg:inline">Go back</span>
               </Button>
-            </div>
-          )}
-          <Button
-            size="icon"
-            variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => setIsTagsVisible(!isTagsVisible)}
-            aria-label="Toggle tags"
-            className="lg:w-auto lg:px-3"
-          >
-            <Tags />
-            <span className="hidden lg:inline">Tags</span>
-          </Button>
-          {isUnsorted && (
-            <Button
-              size="icon"
-              variant={
-                isFiltersVisible || hasActiveFilters
-                  ? 'neutral'
-                  : 'neutral-ghost'
-              }
-              onClick={() => setIsFiltersVisible(!isFiltersVisible)}
-              aria-label="Toggle filters"
-              className="lg:w-auto lg:px-3"
-            >
-              <Filter />
-              <span className="hidden lg:inline">Filters</span>
-            </Button>
-          )}
-          <Button
-            size="icon"
-            variant={searchVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => {
-              if (searchVisible) {
-                setSearch('')
-              }
-              setSearchVisible((v) => !v)
-            }}
-            aria-label="Toggle search"
-            className="lg:w-auto lg:px-3"
-          >
-            <Search />
-            <span className="hidden lg:inline">Search</span>
-          </Button>
+              <h1 className="text-base font-regular truncate capitalize">
+                {shelfName}
+              </h1>
+            </>
+          }
+        >
           {!isUnsorted && (
             <Link
               to="/settings/shelves/$shelfId"
@@ -440,88 +295,12 @@ export function ShelfDetailPage() {
               </Button>
             </Link>
           )}
-        </Toolbar>
-
-        {/* Filter panel — unsorted only */}
-        {isUnsorted && (isFiltersVisible || hasActiveFilters) && (
-          <>
-            <div className="h-px bg-accessory-default" />
-            <ItemFilters
-              items={inShelfItems}
-              disabled={!!trimmedSearch}
-              vendors={vendors}
-              recipes={recipes}
-            />
-            <FilterStatus
-              filteredCount={displayedInShelfItems.length}
-              totalCount={inShelfItems.length}
-              hasActiveFilters={hasActiveFilters}
-              onClearAll={clearAllFilters}
-              disabled={!!trimmedSearch}
-            />
-          </>
-        )}
-
-        {/* Search input row */}
-        {searchVisible && (
-          <>
-            <div className="h-px bg-accessory-default" />
-            <div className="flex items-center gap-2 px-3">
-              <Input
-                placeholder="Search…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    setSearch('')
-                    setSearchVisible(false)
-                  }
-                }}
-                className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-                autoFocus
-              />
-              {search && (
-                <>
-                  <Button
-                    size="icon"
-                    variant="neutral-ghost"
-                    className="h-6 w-6 shrink-0"
-                    onClick={() => {
-                      setSearch('')
-                      setSearchVisible(false)
-                    }}
-                    aria-label="Clear search"
-                  >
-                    <X />
-                  </Button>
-                  {!hasExactMatch && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleCreateFromSearch(search.trim())}
-                      disabled={createItem.isPending}
-                      aria-label="Create item"
-                    >
-                      {createItem.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Plus />
-                      )}
-                      Create
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        )}
+        </ItemListToolbar>
       </div>
 
-      {/* Scrollable item list */}
       <div className="overflow-y-auto">
         <div className="h-px bg-accessory-default" />
         <div className="flex flex-col gap-px">
-          {/* In-shelf items: active first, inactive at the bottom */}
           {(() => {
             const activeDisplayed = displayedInShelfItems.filter(
               (item) => !isInactive(item),
@@ -559,7 +338,6 @@ export function ShelfDetailPage() {
             )
           })()}
 
-          {/* Items not in this shelf — shown when searching */}
           {trimmedSearch && outsideShelfSearchMatches.length > 0 && (
             <div className="space-y-px">
               <div className="h-px bg-accessory-default" />
@@ -602,7 +380,6 @@ export function ShelfDetailPage() {
             </div>
           )}
 
-          {/* Empty state */}
           {!trimmedSearch && sortedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>

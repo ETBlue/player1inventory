@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { CookingPot, Trash2 } from 'lucide-react'
+import { ChefHat, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,7 +17,7 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
     <Card className="py-1">
       <CardContent className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <CookingPot className="h-4 w-4 text-foreground-muted" />
+          <ChefHat className="h-4 w-4 text-foreground-muted" />
           <Link
             to="/settings/recipes/$id"
             params={{ id: recipe.id }}

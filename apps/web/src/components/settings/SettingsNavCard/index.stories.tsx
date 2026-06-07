@@ -5,7 +5,7 @@ import {
   createRouter,
   getRouterContext,
 } from '@tanstack/react-router'
-import { CookingPot, Store, Tags } from 'lucide-react'
+import { ChefHat, Store, Tags } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { routeTree } from '@/routeTree.gen'
@@ -77,7 +77,7 @@ export const VendorsLink: Story = {
 
 export const RecipesLink: Story = {
   args: {
-    icon: CookingPot,
+    icon: ChefHat,
     label: 'Recipes',
     description: 'Manage your recipes',
     to: '/settings/recipes',
@@ -100,7 +100,7 @@ export const AllLinks: Story = {
         to="/settings/vendors"
       />
       <SettingsNavCard
-        icon={CookingPot}
+        icon={ChefHat}
         label="Recipes"
         description="Manage your recipes"
         to="/settings/recipes"

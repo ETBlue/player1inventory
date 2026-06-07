@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ViewToggle.stories'
 
-const { ListActive, ShelfActive } = composeStories(stories)
+const { ListActive, GroupActive } = composeStories(stories)
 
 describe('ViewToggle stories smoke tests', () => {
   it('ListActive renders with list view button pressed', () => {
@@ -13,10 +13,10 @@ describe('ViewToggle stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
-  it('ShelfActive renders with shelf view button pressed', () => {
-    render(<ShelfActive />)
+  it('GroupActive renders with group view button pressed', () => {
+    render(<GroupActive />)
     expect(
-      screen.getByRole('button', { name: 'Shelf view' }),
+      screen.getByRole('button', { name: 'Group view' }),
     ).toBeInTheDocument()
   })
 })

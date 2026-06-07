@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { CookingPot, ShelvingUnit, Store, Tags } from 'lucide-react'
+import { ChefHat, ShelvingUnit, Store, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DataModeCard } from '@/components/settings/DataModeCard'
 import { ExportCard } from '@/components/settings/ExportCard'
@@ -36,10 +36,10 @@ function Settings() {
         <ExportCard />
         <ImportCard />
         <SettingsNavCard
-          icon={Tags}
-          label={t('settings.tags.label')}
-          description={t('settings.tags.description')}
-          to="/settings/tags"
+          icon={ShelvingUnit}
+          label={t('settings.shelves.label')}
+          description={t('settings.shelves.description')}
+          to="/settings/shelves"
         />
         <SettingsNavCard
           icon={Store}
@@ -48,16 +48,16 @@ function Settings() {
           to="/settings/vendors"
         />
         <SettingsNavCard
-          icon={CookingPot}
+          icon={ChefHat}
           label={t('settings.recipes.label')}
           description={t('settings.recipes.description')}
           to="/settings/recipes"
         />
         <SettingsNavCard
-          icon={ShelvingUnit}
-          label={t('settings.shelves.label')}
-          description={t('settings.shelves.description')}
-          to="/settings/shelves"
+          icon={Tags}
+          label={t('settings.tags.label')}
+          description={t('settings.tags.description')}
+          to="/settings/tags"
         />
       </div>
     </div>

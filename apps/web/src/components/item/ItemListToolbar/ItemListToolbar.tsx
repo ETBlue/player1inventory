@@ -54,6 +54,10 @@ interface ItemListToolbarProps {
   // When true: hides the Filters toggle button (caller renders filters externally)
   hideFiltersToggle?: boolean
   isCreating?: boolean
+  // When false: hides the entire sort section (dropdown + direction button). Default: true.
+  showSort?: boolean
+  // When false: hides the search toggle button and the collapsible search input row. Default: true.
+  showSearch?: boolean
 }
 
 export function ItemListToolbar({
@@ -74,6 +78,8 @@ export function ItemListToolbar({
   hideRecipeFilter,
   hideFiltersToggle,
   isCreating,
+  showSort = true,
+  showSearch = true,
 }: ItemListToolbarProps) {
   const { t } = useTranslation()
 
@@ -144,121 +150,132 @@ export function ItemListToolbar({
   return (
     <>
       {/* Row 1: always visible toolbar */}
-      <Toolbar {...(className !== undefined ? { className } : {})}>
-        {leading}
+      <Toolbar
+        className={`grid grid-cols-[1fr_auto_auto] gap-2 ${className !== undefined ? className : ''}`}
+      >
+        {leading && (
+          <div className="flex items-center overflow-hidden gap-2">
+            {leading}
+          </div>
+        )}
 
-        <div className="flex items-center">
-          <span className="hidden lg:inline text-sm text-foreground-muted">
-            {t('itemListToolbar.sortBy')}
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+        <div className="flex items-center gap-2">
+          {showSort && (
+            <div className="flex items-center ml-2">
+              <span className="hidden lg:inline text-sm text-foreground-muted">
+                {t('itemListToolbar.sortBy')}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="default"
+                    variant="neutral-ghost"
+                    aria-label={t('itemListToolbar.sortByCriteria')}
+                    className="px-0 font-normal"
+                  >
+                    {sortLabels[sortBy]}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem
+                    className={
+                      sortBy === 'expiring' ? 'bg-background-elevated' : ''
+                    }
+                    onClick={() => handleCriteriaChange('expiring')}
+                  >
+                    {t('itemListToolbar.sortExpiringSoon')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={
+                      sortBy === 'name' ? 'bg-background-elevated' : ''
+                    }
+                    onClick={() => handleCriteriaChange('name')}
+                  >
+                    {t('itemListToolbar.sortName')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={
+                      sortBy === 'stock' ? 'bg-background-elevated' : ''
+                    }
+                    onClick={() => handleCriteriaChange('stock')}
+                  >
+                    {t('itemListToolbar.sortStock')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className={
+                      sortBy === 'purchased' ? 'bg-background-elevated' : ''
+                    }
+                    onClick={() => handleCriteriaChange('purchased')}
+                  >
+                    {t('itemListToolbar.sortLastPurchased')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button
-                size="default"
+                size="icon"
                 variant="neutral-ghost"
-                aria-label={t('itemListToolbar.sortByCriteria')}
-                className="px-2 font-normal"
+                onClick={handleDirectionToggle}
+                aria-label={t('itemListToolbar.toggleSortDirection')}
+                className="lg:w-auto lg:px-3"
               >
-                {sortLabels[sortBy]}
+                {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
+                <span className="hidden lg:inline">
+                  {sortDirection === 'asc' ? t('common.asc') : t('common.desc')}
+                </span>
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem
-                className={
-                  sortBy === 'expiring' ? 'bg-background-elevated' : ''
-                }
-                onClick={() => handleCriteriaChange('expiring')}
-              >
-                {t('itemListToolbar.sortExpiringSoon')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={sortBy === 'name' ? 'bg-background-elevated' : ''}
-                onClick={() => handleCriteriaChange('name')}
-              >
-                {t('itemListToolbar.sortName')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={sortBy === 'stock' ? 'bg-background-elevated' : ''}
-                onClick={() => handleCriteriaChange('stock')}
-              >
-                {t('itemListToolbar.sortStock')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className={
-                  sortBy === 'purchased' ? 'bg-background-elevated' : ''
-                }
-                onClick={() => handleCriteriaChange('purchased')}
-              >
-                {t('itemListToolbar.sortLastPurchased')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </div>
+          )}
 
-          <Button
-            size="icon"
-            variant="neutral-ghost"
-            onClick={handleDirectionToggle}
-            aria-label={t('itemListToolbar.toggleSortDirection')}
-            className="lg:w-auto lg:px-3"
-          >
-            {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
-            <span className="hidden lg:inline">
-              {sortDirection === 'asc' ? t('common.asc') : t('common.desc')}
-            </span>
-          </Button>
+          {isTagsToggleEnabled && (
+            <Button
+              size="icon"
+              variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
+              onClick={() => setIsTagsVisible(!isTagsVisible)}
+              aria-label={t('itemListToolbar.toggleTags')}
+              className="lg:w-auto lg:px-3"
+            >
+              <Tags />
+              <span className="hidden lg:inline">{t('common.tags')}</span>
+            </Button>
+          )}
+
+          {!hideFiltersToggle && (
+            <Button
+              size="icon"
+              variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
+              onClick={() => setIsFiltersVisible(!isFiltersVisible)}
+              aria-label={t('itemListToolbar.toggleFilters')}
+              className="lg:w-auto lg:px-3"
+            >
+              <Filter />
+              <span className="hidden lg:inline">{t('common.filters')}</span>
+            </Button>
+          )}
+
+          {showSearch && (
+            <Button
+              size="icon"
+              variant={searchVisible ? 'neutral' : 'neutral-ghost'}
+              onClick={() => {
+                if (searchVisible) {
+                  setSearch('')
+                }
+                setSearchVisible((v) => !v)
+              }}
+              aria-label={t('itemListToolbar.toggleSearch')}
+              className="lg:w-auto lg:px-3"
+            >
+              <Search />
+              <span className="hidden lg:inline">{t('common.search')}</span>
+            </Button>
+          )}
         </div>
 
-        {isTagsToggleEnabled && (
-          <Button
-            size="icon"
-            variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => setIsTagsVisible(!isTagsVisible)}
-            aria-label={t('itemListToolbar.toggleTags')}
-            className="lg:w-auto lg:px-3"
-          >
-            <Tags />
-            <span className="hidden lg:inline">{t('common.tags')}</span>
-          </Button>
-        )}
-
-        {!hideFiltersToggle && (
-          <Button
-            size="icon"
-            variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => setIsFiltersVisible(!isFiltersVisible)}
-            aria-label={t('itemListToolbar.toggleFilters')}
-            className="lg:w-auto lg:px-3"
-          >
-            <Filter />
-            <span className="hidden lg:inline">{t('common.filters')}</span>
-          </Button>
-        )}
-
-        <Button
-          size="icon"
-          variant={searchVisible ? 'neutral' : 'neutral-ghost'}
-          onClick={() => {
-            if (searchVisible) {
-              setSearch('')
-            }
-            setSearchVisible((v) => !v)
-          }}
-          aria-label={t('itemListToolbar.toggleSearch')}
-          className="lg:w-auto lg:px-3"
-        >
-          <Search />
-          <span className="hidden lg:inline">{t('common.search')}</span>
-        </Button>
-
-        {children && (
-          <>
-            <span className="flex-1" />
-            {children}
-          </>
-        )}
+        {children && <div className="flex items-center gap-2">{children}</div>}
       </Toolbar>
 
-      {/* Row 3: filters — disabled while searching */}
+      {/* Row 2: filters — disabled while searching */}
       {isFiltersVisible && (
         <>
           <div className="h-px bg-accessory-default" />
@@ -273,7 +290,7 @@ export function ItemListToolbar({
         </>
       )}
 
-      {/* Row 4: filter status — grey out while searching */}
+      {/* Row 3: filter status — grey out while searching */}
       {(isFiltersVisible || hasActiveFilters) && (
         <FilterStatus
           filteredCount={filteredCount}
@@ -284,8 +301,8 @@ export function ItemListToolbar({
         />
       )}
 
-      {/* Row 2: search input */}
-      {searchVisible && (
+      {/* Row 4: search input */}
+      {showSearch && searchVisible && (
         <>
           <div className="h-px bg-accessory-default" />
 

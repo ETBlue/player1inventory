@@ -148,13 +148,98 @@ test('user can view settings recipes list without accessibility violations', asy
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
-// Shelves page (/shelves)
+// Shelves group-by view (/?groupBy=shelf)
 test('user can view shelves page without accessibility violations', async ({ page }) => {
-  // Given the user navigates to the shelves page
-  await page.goto('/shelves')
+  // Given the user navigates to the pantry page in shelf group-by mode
+  await page.goto('/?groupBy=shelf')
   await page.waitForLoadState('networkidle')
 
   // When axe scans the page for accessibility violations
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
+// Vendor group-by view (/?groupBy=vendor)
+test('user can view vendor group-by page without accessibility violations', async ({ page }) => {
+  // Given a seeded vendor with an item linked to it
+  const vendorId = await seedVendor(page)
+  await page.evaluate(async (vId) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const id = crypto.randomUUID()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('items', 'readwrite')
+      tx.objectStore('items').add({
+        id,
+        name: 'vendor item',
+        tagIds: [],
+        vendorIds: [vId],
+        recipeIds: [],
+        targetQuantity: 1,
+        refillThreshold: 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }, vendorId)
+
+  // When the user navigates to the vendor group-by view
+  await page.goto('/?groupBy=vendor')
+  await page.waitForLoadState('networkidle')
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
+// Recipe group-by view (/?groupBy=recipe)
+test('user can view recipe group-by page without accessibility violations', async ({ page }) => {
+  // Given a seeded recipe with an item linked to it
+  const recipeId = await seedRecipe(page)
+  await page.evaluate(async (rId) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const itemId = crypto.randomUUID()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(['items', 'recipes'], 'readwrite')
+      tx.objectStore('items').add({
+        id: itemId,
+        name: 'recipe item',
+        tagIds: [],
+        vendorIds: [],
+        recipeIds: [rId],
+        targetQuantity: 1,
+        refillThreshold: 0,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      const recipeStore = tx.objectStore('recipes')
+      const getReq = recipeStore.get(rId)
+      getReq.onsuccess = () => {
+        const recipe = getReq.result
+        recipe.items = [{ itemId, defaultAmount: 1, consumeAmount: 1 }]
+        recipeStore.put(recipe)
+      }
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  }, recipeId)
+
+  // When the user navigates to the recipe group-by view
+  await page.goto('/?groupBy=recipe')
+  await page.waitForLoadState('networkidle')
   await injectAxe(page)
 
   // Then there should be no violations
@@ -318,19 +403,6 @@ async function seedRecipe(page: import('@playwright/test').Page): Promise<string
 }
 
 test.describe('detail page a11y', () => {
-  // Item new page (/items/new)
-  test('user can view item new page without accessibility violations', async ({ page }) => {
-    // Given the user navigates to the new item page
-    await page.goto('/items/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Item detail page (/items/:id)
   test('user can view item detail page without accessibility violations', async ({ page, baseURL }) => {
     // Given a seeded item
@@ -402,19 +474,6 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendor new (/settings/vendors/new)
-  test('user can view settings vendor new page without accessibility violations', async ({ page }) => {
-    // Given the user navigates to the new vendor page
-    await page.goto('/settings/vendors/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Settings > Vendor detail (/settings/vendors/:id)
   test('user can view settings vendor detail page without accessibility violations', async ({ page }) => {
     // Given a seeded vendor
@@ -423,19 +482,6 @@ test.describe('detail page a11y', () => {
     // When the user navigates to the vendor detail page (trailing slash required for TanStack Router index child)
     await page.goto(`/settings/vendors/${vendorId}/`)
     await page.waitForLoadState('networkidle')
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
-  // Settings > Recipe new (/settings/recipes/new)
-  test('user can view settings recipe new page without accessibility violations', async ({ page }) => {
-    // Given the user navigates to the new recipe page
-    await page.goto('/settings/recipes/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
     await injectAxe(page)
 
     // Then there should be no violations
@@ -456,13 +502,13 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Shelf detail page (/shelves/:id)
+  // Shelf detail view (/?groupBy=shelf&id=:shelfId)
   test('user can view shelf detail page without accessibility violations', async ({ page }) => {
     // Given a seeded shelf
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf detail page
-    await page.goto(`/shelves/${shelfId}`)
+    // When the user navigates to the shelf detail view
+    await page.goto(`/?groupBy=shelf&id=${shelfId}`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -585,13 +631,98 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Shelves page (/shelves) in dark mode
+  // Shelves group-by view (/?groupBy=shelf) in dark mode
   test('user can view shelves page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the shelves page with dark mode enabled
-    await page.goto('/shelves')
+    // Given the user navigates to the pantry page in shelf group-by mode with dark mode enabled
+    await page.goto('/?groupBy=shelf')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Vendor group-by view (/?groupBy=vendor) in dark mode
+  test('user can view vendor group-by page without accessibility violations in dark mode', async ({ page }) => {
+    // Given a seeded vendor with an item linked to it (dark mode enabled)
+    const vendorId = await seedVendor(page)
+    await page.evaluate(async (vId) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      const id = crypto.randomUUID()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('items', 'readwrite')
+        tx.objectStore('items').add({
+          id,
+          name: 'vendor item',
+          tagIds: [],
+          vendorIds: [vId],
+          recipeIds: [],
+          targetQuantity: 1,
+          refillThreshold: 0,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    }, vendorId)
+
+    // When the user navigates to the vendor group-by view
+    await page.goto('/?groupBy=vendor')
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Recipe group-by view (/?groupBy=recipe) in dark mode
+  test('user can view recipe group-by page without accessibility violations in dark mode', async ({ page }) => {
+    // Given a seeded recipe with an item linked to it (dark mode enabled)
+    const recipeId = await seedRecipe(page)
+    await page.evaluate(async (rId) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      const itemId = crypto.randomUUID()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(['items', 'recipes'], 'readwrite')
+        tx.objectStore('items').add({
+          id: itemId,
+          name: 'recipe item',
+          tagIds: [],
+          vendorIds: [],
+          recipeIds: [rId],
+          targetQuantity: 1,
+          refillThreshold: 0,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        const recipeStore = tx.objectStore('recipes')
+        const getReq = recipeStore.get(rId)
+        getReq.onsuccess = () => {
+          const recipe = getReq.result
+          recipe.items = [{ itemId, defaultAmount: 1, consumeAmount: 1 }]
+          recipeStore.put(recipe)
+        }
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    }, recipeId)
+
+    // When the user navigates to the recipe group-by view
+    await page.goto('/?groupBy=recipe')
+    await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
     // Then there should be no violations
@@ -615,19 +746,6 @@ test.describe('dark mode a11y', () => {
   test('user can view onboarding page without accessibility violations in dark mode', async ({ page }) => {
     // Given the user navigates directly to the onboarding page with dark mode enabled
     await page.goto('/onboarding')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
-  // Item new page (/items/new) in dark mode
-  test('user can view item new page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the new item page with dark mode enabled
-    await page.goto('/items/new')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -708,19 +826,6 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Settings > Vendor new (/settings/vendors/new) in dark mode
-  test('user can view settings vendor new page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the new vendor page with dark mode enabled
-    await page.goto('/settings/vendors/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
   // Settings > Vendor detail (/settings/vendors/:id) in dark mode
   test('user can view settings vendor detail page without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded vendor
@@ -729,19 +834,6 @@ test.describe('dark mode a11y', () => {
     // When the user navigates to the vendor detail page (trailing slash required for TanStack Router index child)
     await page.goto(`/settings/vendors/${vendorId}/`)
     await page.waitForLoadState('networkidle')
-    await injectAxe(page)
-
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
-  })
-
-  // Settings > Recipe new (/settings/recipes/new) in dark mode
-  test('user can view settings recipe new page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the new recipe page with dark mode enabled
-    await page.goto('/settings/recipes/new')
-    await page.waitForLoadState('networkidle')
-
-    // When axe scans the page for accessibility violations
     await injectAxe(page)
 
     // Then there should be no violations
@@ -762,13 +854,13 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Shelf detail page (/shelves/:id) in dark mode
+  // Shelf detail view (/?groupBy=shelf&id=:shelfId) in dark mode
   test('user can view shelf detail page without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded shelf with dark mode enabled
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf detail page
-    await page.goto(`/shelves/${shelfId}`)
+    // When the user navigates to the shelf detail view
+    await page.goto(`/?groupBy=shelf&id=${shelfId}`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -844,8 +936,8 @@ test.describe('mobile viewport a11y', () => {
   })
 
   test('user can view shelves page without accessibility violations on mobile', async ({ page }) => {
-    // Given the user navigates to the shelves page on a mobile viewport
-    await page.goto('/shelves')
+    // Given the user navigates to the pantry page in shelf group-by mode on a mobile viewport
+    await page.goto('/?groupBy=shelf')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
@@ -871,8 +963,8 @@ test.describe('mobile viewport a11y', () => {
     // Given a seeded shelf on a mobile viewport
     const shelfId = await seedShelf(page)
 
-    // When the user navigates to the shelf detail page
-    await page.goto(`/shelves/${shelfId}`)
+    // When the user navigates to the shelf detail view
+    await page.goto(`/?groupBy=shelf&id=${shelfId}`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 

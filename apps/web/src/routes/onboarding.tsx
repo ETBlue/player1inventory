@@ -42,7 +42,7 @@ function OnboardingPage() {
   useEffect(() => {
     if (setupMutation.isSuccess) {
       localStorage.setItem('onboarding-dismissed', 'true')
-      navigate({ to: '/' })
+      navigate({ to: '/', search: {} })
     }
   }, [setupMutation.isSuccess, navigate])
 
@@ -53,7 +53,7 @@ function OnboardingPage() {
           onChooseTemplate={() => handleNavigate({ type: 'template-overview' })}
           onStartFromScratch={() => {
             localStorage.setItem('onboarding-dismissed', 'true')
-            navigate({ to: '/' })
+            navigate({ to: '/', search: {} })
           }}
         />
       )}

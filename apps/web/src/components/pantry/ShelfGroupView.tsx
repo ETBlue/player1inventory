@@ -1,9 +1,10 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { Settings, Settings2 } from 'lucide-react'
+import { GroupByToggle } from '@/components/shared/GroupByToggle'
+import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
-import { ShelfCard } from '@/components/shelf/ShelfCard'
 import { ShelfList } from '@/components/shelf/ShelfList'
 import { Button } from '@/components/ui/button'
 import { useItems, useShelvesQuery } from '@/hooks'
@@ -15,14 +16,10 @@ import {
   isInactive,
 } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
-import { setPantryView } from '@/lib/viewPreference'
+import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { Item, Shelf } from '@/types'
 
-export const Route = createFileRoute('/shelves/')({
-  component: ShelvesPage,
-})
-
-export function ShelvesPage() {
+export function ShelfGroupView() {
   const navigate = useNavigate()
 
   const { data: shelves, isLoading: shelvesLoading } = useShelvesQuery()
@@ -30,19 +27,12 @@ export function ShelvesPage() {
   const { data: recipes = [] } = useRecipes()
   const { data: tags = [] } = useTags()
 
-  const handleViewChange = (view: 'list' | 'shelf') => {
-    if (view === 'list') {
-      setPantryView('list')
-      navigate({ to: '/' })
-    }
-  }
-
   const handleShelfClick = (shelfId: string) => {
-    navigate({ to: '/shelves/$shelfId', params: { shelfId } })
+    navigate({ to: '/', search: { groupBy: 'shelf', id: shelfId } })
   }
 
   const handleUnsortedClick = () => {
-    navigate({ to: '/shelves/$shelfId', params: { shelfId: 'unsorted' } })
+    navigate({ to: '/', search: { groupBy: 'shelf', id: 'unsorted' } })
   }
 
   const getShelfItems = (shelfId: string): Item[] => {
@@ -56,7 +46,6 @@ export function ShelvesPage() {
       return items.filter((item: Item) => ids.has(item.id))
     }
 
-    // Filter shelf: items matching filterConfig
     const { filterConfig } = shelf
     if (!filterConfig) return items
 
@@ -75,7 +64,6 @@ export function ShelvesPage() {
       return shelf.itemIds?.length ?? 0
     }
 
-    // Filter shelf: count items matching filterConfig
     const { filterConfig } = shelf
     if (!filterConfig) return items.length
 
@@ -123,7 +111,6 @@ export function ShelvesPage() {
   const getUnsortedItems = (): Item[] => {
     if (!items || !shelves) return []
 
-    // Items in any selection shelf's itemIds
     const selectionItemIds = new Set<string>()
     for (const shelf of shelves) {
       if (shelf.type === 'selection' && shelf.itemIds) {
@@ -131,7 +118,6 @@ export function ShelvesPage() {
       }
     }
 
-    // Items matched by any filter shelf
     const filterMatchedIds = new Set<string>()
     for (const shelf of shelves) {
       if (shelf.type === 'filter' && shelf.filterConfig) {
@@ -191,7 +177,8 @@ export function ShelvesPage() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
-            <ViewToggle current="shelf" onChange={handleViewChange} />
+            <ViewToggle current="group" onChange={() => {}} />
+            <GroupByToggle current="shelf" onChange={() => {}} />
             <div className="flex-1" />
             <Button
               size="icon"
@@ -214,21 +201,26 @@ export function ShelvesPage() {
 
   const sortedShelves = [...(shelves ?? [])].sort((a, b) => a.order - b.order)
 
-  // Unsorted shelf (hardcoded, system-managed)
-  const unsortedShelf: Shelf = {
-    id: 'unsorted',
-    name: 'Unsorted',
-    type: 'system',
-    order: Number.MAX_SAFE_INTEGER,
-    createdAt: new Date(0),
-    updatedAt: new Date(0),
-  }
-
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
-          <ViewToggle current="shelf" onChange={handleViewChange} />
+          <ViewToggle
+            current="group"
+            onChange={(view) => {
+              if (view === 'list') {
+                setPantryView('list')
+                navigate({ to: '/', search: {} })
+              }
+            }}
+          />
+          <GroupByToggle
+            current="shelf"
+            onChange={(g) => {
+              setStoredGroupBy(g)
+              navigate({ to: '/', search: { groupBy: g } })
+            }}
+          />
           <div className="flex-1" />
           <Button
             size="icon"
@@ -253,12 +245,11 @@ export function ShelvesPage() {
           getActiveCount={getActiveCount}
           getPackTotals={getShelfPackTotals}
         />
-        {/* Unsorted shelf — always last, not draggable */}
         {(() => {
           const unsortedPackTotals = getUnsortedPackTotals()
           return (
-            <ShelfCard
-              shelf={unsortedShelf}
+            <GroupCard
+              name="Not in shelf"
               itemCount={getUnsortedCount()}
               outOfStockCount={getUnsortedOutOfStockCount()}
               lowStockCount={getUnsortedLowStockCount()}

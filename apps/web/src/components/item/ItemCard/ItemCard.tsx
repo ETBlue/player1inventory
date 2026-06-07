@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import {
   Calculator,
-  CookingPot,
+  ChefHat,
   Loader2,
   Minus,
   Plus,
@@ -423,7 +423,7 @@ export function ItemCard({
                     }
                   }}
                 >
-                  <CookingPot className="h-3 w-3" />
+                  <ChefHat className="h-3 w-3" />
                   {recipe.name}
                 </Badge>
               )

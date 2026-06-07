@@ -13,15 +13,15 @@ export class ItemPage {
   }
 
   async save() {
-    // Submit button renders as <Button type="submit">Save</Button>
-    // (src/components/item/ItemForm/index.tsx:577)
-    // After save on /items/new, the app navigates to /items/$id —
+    // Submit button in NewItemDialog renders as <Button>New Item</Button>
+    // (src/components/item/NewItemDialog/NewItemDialog.tsx)
+    // After clicking "New Item" in the dialog, the app navigates to /items/$id —
     // wait for that navigation so callers can rely on the item being persisted.
-    // The regex excludes /items/new so waitForURL only resolves after save navigates
-    // to a real item detail page (e.g. /items/abc123).
+    // The regex excludes /items/new so waitForURL only resolves after the dialog
+    // navigates to a real item detail page (e.g. /items/abc123).
     await Promise.all([
       this.page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
-      this.page.getByRole('button', { name: /save/i }).click(),
+      this.page.getByRole('button', { name: /new item/i }).click(),
     ])
   }
 

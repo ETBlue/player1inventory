@@ -13,7 +13,9 @@ function buildSearchString(params: URLSearchParams): string {
 
 export function useUrlSearchAndFilters() {
   const router = useRouter()
-  const locationSearch = useRouterState({ select: (s) => s.location.search })
+  const locationSearch = useRouterState({
+    select: (s) => s.location.searchStr ?? '',
+  })
 
   const params = useMemo(
     () => new URLSearchParams(locationSearch),

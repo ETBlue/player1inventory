@@ -194,14 +194,12 @@ test('user can create a recipe', async ({ page }) => {
   // Given: recipes list is empty
   await recipes.navigateTo()
 
-  // When: user clicks "New Recipe", fills name, and saves
+  // When: user clicks "New Recipe" (opens dialog), fills name, and submits
   await recipes.clickNewRecipe()
-  // URL becomes /settings/recipes/new?name= (query param from validateSearch)
-  await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
   await recipes.fillRecipeName('Pancakes')
   await recipes.clickSave()
 
-  // Wait for redirect to the detail page after save
+  // Wait for navigation to the detail page after dialog submit
   await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
 
   // Then: navigate back to list to verify the recipe appears
@@ -216,7 +214,6 @@ test('user can delete a recipe', async ({ page, baseURL }) => {
     // Cloud: create via UI (data goes to MongoDB)
     await recipes.navigateTo()
     await recipes.clickNewRecipe()
-    await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
     await recipes.fillRecipeName('Pancakes')
     await recipes.clickSave()
     await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
@@ -265,7 +262,6 @@ test('user can assign and unassign an item on Items tab', async ({ page, baseURL
 
     await recipes.navigateTo()
     await recipes.clickNewRecipe()
-    await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
     await recipes.fillRecipeName('Pancakes')
     await recipes.clickSave()
     await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
@@ -387,7 +383,6 @@ test('user can edit recipe name on Info tab', async ({ page, baseURL }) => {
     const recipes = new RecipesPage(page)
     await recipes.navigateTo()
     await recipes.clickNewRecipe()
-    await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
     await recipes.fillRecipeName('Pancakes')
     await recipes.clickSave()
     await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')
@@ -430,7 +425,6 @@ test.describe('recipe item count after item assignment', () => {
 
       await recipes.navigateTo()
       await recipes.clickNewRecipe()
-      await page.waitForURL((url) => url.pathname === '/settings/recipes/new')
       await recipes.fillRecipeName('Pancakes')
       await recipes.clickSave()
       await page.waitForURL((url) => url.pathname.startsWith('/settings/recipes/') && url.pathname !== '/settings/recipes/new')

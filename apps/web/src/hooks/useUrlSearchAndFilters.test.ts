@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 describe('useUrlSearchAndFilters', () => {
   let mockHistoryReplace: ReturnType<typeof vi.fn>
   let mockRouterState: {
-    location: { search: string; pathname: string }
+    location: { search: string; searchStr: string; pathname: string }
   }
 
   beforeEach(async () => {
@@ -22,7 +22,13 @@ describe('useUrlSearchAndFilters', () => {
 
     mockHistoryReplace = vi.fn()
     mockRouterState = {
-      location: { search: '', pathname: '/' },
+      location: {
+        search: '',
+        get searchStr() {
+          return this.search
+        },
+        pathname: '/',
+      },
     }
 
     const { useRouter, useRouterState } = await import('@tanstack/react-router')

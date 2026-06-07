@@ -8,7 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createItem } from '@/db/operations'
+import {
+  createItem,
+  createRecipe,
+  createShelf,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -127,10 +132,358 @@ function WithItemsStory() {
   )
 }
 
+function ShelfGroupViewStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      await createShelf({
+        name: 'dairy',
+        type: 'selection',
+        order: 0,
+        itemIds: [item.id],
+      })
+
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/?groupBy=shelf'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function VendorGroupViewStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const vendor = await createVendor('Costco')
+
+      await createItem({
+        name: 'Eggs',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/?groupBy=vendor'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function RecipeGroupViewStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Pasta',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      await createRecipe({
+        name: 'Pasta Carbonara',
+        items: [{ itemId: item.id, defaultAmount: 1 }],
+      })
+
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/?groupBy=recipe'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function ShelfDetailViewStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [shelfId, setShelfId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [item.id],
+      })
+
+      setShelfId(shelf.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !shelfId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=shelf&id=${shelfId}`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function VendorDetailViewStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [vendorId, setVendorId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const vendor = await createVendor('Costco')
+
+      await createItem({
+        name: 'Eggs',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      setVendorId(vendor.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !vendorId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=vendor&id=${vendorId}`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function RecipeDetailViewStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [recipeId, setRecipeId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Pasta',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      const recipe = await createRecipe({
+        name: 'Pasta Carbonara',
+        items: [{ itemId: item.id, defaultAmount: 1 }],
+      })
+
+      setRecipeId(recipe.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !recipeId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=recipe&id=${recipeId}`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <DefaultStory />,
 }
 
 export const WithItems: Story = {
   render: () => <WithItemsStory />,
+}
+
+export const ShelfGroupView: Story = {
+  render: () => <ShelfGroupViewStory />,
+}
+
+export const VendorGroupView: Story = {
+  render: () => <VendorGroupViewStory />,
+}
+
+export const RecipeGroupView: Story = {
+  render: () => <RecipeGroupViewStory />,
+}
+
+export const ShelfDetailView: Story = {
+  render: () => <ShelfDetailViewStory />,
+}
+
+export const VendorDetailView: Story = {
+  render: () => <VendorDetailViewStory />,
+}
+
+export const RecipeDetailView: Story = {
+  render: () => <RecipeDetailViewStory />,
 }

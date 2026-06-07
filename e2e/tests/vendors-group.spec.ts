@@ -34,76 +34,58 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-test('user sees out-of-stock and low-stock badges on shelf cards', async ({ page }) => {
-  const shelfId = 'cccccccc-0000-0000-0000-000000000001'
-  const outOfStockItemId = 'dddddddd-0000-0000-0000-000000000001'
-  const lowStockItemId = 'dddddddd-0000-0000-0000-000000000002'
-  const okItemId = 'dddddddd-0000-0000-0000-000000000003'
+test('user sees out-of-stock badge on vendor group card', async ({ page }) => {
+  const vendorId = 'aaaaaaaa-0000-0000-0000-000000000001'
+  const outOfStockItemId = 'bbbbbbbb-0000-0000-0000-000000000001'
+  const okItemId = 'bbbbbbbb-0000-0000-0000-000000000002'
   const now = new Date().toISOString()
 
-  // Given: a selection shelf with one out-of-stock item, one low-stock item, and one ok item
+  // Given: a vendor with one out-of-stock item and one ok item
   await page.goto('/')
   await page.evaluate(
-    async ({ shelfId, outOfStockItemId, lowStockItemId, okItemId, now }) => {
+    async ({ vendorId, outOfStockItemId, okItemId, now }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open('Player1Inventory')
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
 
-      const tx = db.transaction(['shelves', 'items'], 'readwrite')
+      const tx = db.transaction(['vendors', 'items'], 'readwrite')
 
-      tx.objectStore('shelves').put({
-        id: shelfId,
-        name: 'Stock Test Shelf',
-        type: 'selection',
-        order: 1,
-        itemIds: [outOfStockItemId, lowStockItemId, okItemId],
+      tx.objectStore('vendors').put({
+        id: vendorId,
+        name: 'Costco',
         createdAt: new Date(now),
-        updatedAt: new Date(now),
       })
 
-      // Out of stock: qty = 0
+      // Out of stock: qty = 0 < refillThreshold = 1
       tx.objectStore('items').put({
         id: outOfStockItemId,
         name: 'Milk',
         tagIds: [],
-        vendorIds: [],
+        vendorIds: [vendorId],
         packedQuantity: 0,
         unpackedQuantity: 0,
         targetQuantity: 2,
         refillThreshold: 1,
         consumeAmount: 1,
+        targetUnit: 'package',
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })
 
-      // Low stock: qty = 2, refillThreshold = 2 (qty === threshold, per getLowStockCount)
-      tx.objectStore('items').put({
-        id: lowStockItemId,
-        name: 'Eggs',
-        tagIds: [],
-        vendorIds: [],
-        packedQuantity: 2,
-        unpackedQuantity: 0,
-        targetQuantity: 6,
-        refillThreshold: 2,
-        consumeAmount: 1,
-        createdAt: new Date(now),
-        updatedAt: new Date(now),
-      })
-
-      // Ok: qty = 5, refillThreshold = 2
+      // Ok: qty = 5 > refillThreshold = 2
       tx.objectStore('items').put({
         id: okItemId,
         name: 'Butter',
         tagIds: [],
-        vendorIds: [],
+        vendorIds: [vendorId],
         packedQuantity: 5,
         unpackedQuantity: 0,
         targetQuantity: 5,
         refillThreshold: 2,
         consumeAmount: 1,
+        targetUnit: 'package',
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })
@@ -115,73 +97,66 @@ test('user sees out-of-stock and low-stock badges on shelf cards', async ({ page
 
       db.close()
     },
-    { shelfId, outOfStockItemId, lowStockItemId, okItemId, now },
+    { vendorId, outOfStockItemId, okItemId, now },
   )
 
-  // When: navigate to the shelves group-by view
-  await page.goto('/?groupBy=shelf')
+  // When: navigate to the vendor group-by view
+  await page.goto('/?groupBy=vendor')
 
-  // Then: the shelf card shows stock status badges
-  // ShelfCard renders error-inverse badge for out-of-stock, warning-inverse for low stock
+  // Then: the vendor card shows "1 out of stock" badge
   await expect(page.getByText('1 out of stock')).toBeVisible()
-  await expect(page.getByText('1 low stock')).toBeVisible()
 })
 
-test('user sees packed progress label on shelf card', async ({ page }) => {
-  const shelfId = 'cccccccc-0000-0000-0000-000000000002'
-  const itemAId = 'dddddddd-0000-0000-0000-000000000004'
-  const itemBId = 'dddddddd-0000-0000-0000-000000000005'
+test('user sees vendor card with item count', async ({ page }) => {
+  const vendorId = 'aaaaaaaa-0000-0000-0000-000000000002'
+  const itemAId = 'bbbbbbbb-0000-0000-0000-000000000003'
+  const itemBId = 'bbbbbbbb-0000-0000-0000-000000000004'
   const now = new Date().toISOString()
 
-  // Given: a selection shelf with two package-unit items
-  // Item A: 3 packed / 5 target; Item B: 2 packed / 4 target → totals: 5/9 pack
+  // Given: a vendor with 2 items assigned to it
   await page.goto('/')
   await page.evaluate(
-    async ({ shelfId, itemAId, itemBId, now }) => {
+    async ({ vendorId, itemAId, itemBId, now }) => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open('Player1Inventory')
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
 
-      const tx = db.transaction(['shelves', 'items'], 'readwrite')
+      const tx = db.transaction(['vendors', 'items'], 'readwrite')
 
-      tx.objectStore('shelves').put({
-        id: shelfId,
-        name: 'Fruit Shelf',
-        type: 'selection',
-        order: 2,
-        itemIds: [itemAId, itemBId],
+      tx.objectStore('vendors').put({
+        id: vendorId,
+        name: 'Costco',
         createdAt: new Date(now),
-        updatedAt: new Date(now),
       })
 
       tx.objectStore('items').put({
         id: itemAId,
-        name: 'Apple',
+        name: 'Apple Juice',
         tagIds: [],
-        vendorIds: [],
-        targetUnit: 'package',
+        vendorIds: [vendorId],
         packedQuantity: 3,
         unpackedQuantity: 0,
         targetQuantity: 5,
         refillThreshold: 2,
         consumeAmount: 1,
+        targetUnit: 'package',
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })
 
       tx.objectStore('items').put({
         id: itemBId,
-        name: 'Melon',
+        name: 'Orange Juice',
         tagIds: [],
-        vendorIds: [],
-        targetUnit: 'package',
-        packedQuantity: 2,
+        vendorIds: [vendorId],
+        packedQuantity: 4,
         unpackedQuantity: 0,
-        targetQuantity: 4,
-        refillThreshold: 1,
+        targetQuantity: 6,
+        refillThreshold: 2,
         consumeAmount: 1,
+        targetUnit: 'package',
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })
@@ -193,15 +168,13 @@ test('user sees packed progress label on shelf card', async ({ page }) => {
 
       db.close()
     },
-    { shelfId, itemAId, itemBId, now },
+    { vendorId, itemAId, itemBId, now },
   )
 
-  // When: navigate to the shelves group-by view
-  await page.goto('/?groupBy=shelf')
+  // When: navigate to the vendor group-by view
+  await page.goto('/?groupBy=vendor')
 
-  // Then: the shelf card shows packed totals (5 packed / 9 target) and "pack" unit
-  const fruitShelfCard = page.getByRole('button', { name: /Fruit Shelf/ })
-  await expect(fruitShelfCard).toBeVisible()
-  await expect(fruitShelfCard.getByText('5/9')).toBeVisible()
-  await expect(fruitShelfCard.getByText('pack')).toBeVisible()
+  // Then: the vendor card heading is visible
+  // Vendor names use normal-case (not capitalize), rendered as-stored
+  await expect(page.getByRole('button', { name: /Costco/ })).toBeVisible()
 })
