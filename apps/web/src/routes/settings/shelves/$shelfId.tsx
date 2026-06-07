@@ -9,6 +9,7 @@ import {
   Filter,
   ListTodo,
   Settings2,
+  ShelvingUnit,
   SlidersVertical,
   SquareMousePointer,
 } from 'lucide-react'
@@ -97,6 +98,7 @@ function ShelfDetailLayoutInner() {
     <>
       <LayoutInnerPages
         title={shelf.name}
+        icon={<ShelvingUnit className="h-4 w-4 text-foreground-muted" />}
         onBack={handleBackClick}
         toolbarEnd={
           <>
