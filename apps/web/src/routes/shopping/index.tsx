@@ -41,7 +41,7 @@ function ShoppingIndex() {
 
   const cartItemResults = useQueries({
     queries: allCarts.map((cart) => ({
-      queryKey: ['cartItems', cart.id],
+      queryKey: ['cart', cart.id, 'items'],
       queryFn: () => getCartItems(cart.id),
     })),
   })
