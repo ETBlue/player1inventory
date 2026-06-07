@@ -1,10 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Settings, Settings2 } from 'lucide-react'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
+import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
-import { ShelfCard } from '@/components/shelf/ShelfCard'
 import { ShelfList } from '@/components/shelf/ShelfList'
 import { Button } from '@/components/ui/button'
 import { useItems, useShelvesQuery } from '@/hooks'
@@ -201,15 +201,6 @@ export function ShelfGroupView() {
 
   const sortedShelves = [...(shelves ?? [])].sort((a, b) => a.order - b.order)
 
-  const unsortedShelf: Shelf = {
-    id: 'unsorted',
-    name: 'Unsorted',
-    type: 'system',
-    order: Number.MAX_SAFE_INTEGER,
-    createdAt: new Date(0),
-    updatedAt: new Date(0),
-  }
-
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
@@ -257,8 +248,8 @@ export function ShelfGroupView() {
         {(() => {
           const unsortedPackTotals = getUnsortedPackTotals()
           return (
-            <ShelfCard
-              shelf={unsortedShelf}
+            <GroupCard
+              name="Not in shelf"
               itemCount={getUnsortedCount()}
               outOfStockCount={getUnsortedOutOfStockCount()}
               lowStockCount={getUnsortedLowStockCount()}

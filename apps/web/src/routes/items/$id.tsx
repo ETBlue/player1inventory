@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { CookingPot, History, Settings2, Store, Tags } from 'lucide-react'
+import { ChefHat, History, Settings2, Store, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -144,7 +144,7 @@ function ItemLayoutInner() {
               }}
               onClick={(e) => handleTabClick(e, `/items/${id}/recipes`)}
             >
-              <CookingPot className="h-4 w-4" />
+              <ChefHat className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/log"

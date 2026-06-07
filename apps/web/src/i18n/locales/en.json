@@ -218,10 +218,10 @@
   "itemListToolbar": {
     "sortBy": "Sort by",
     "sortByCriteria": "Sort by criteria",
-    "sortExpiringSoon": "Expiring soon",
+    "sortExpiringSoon": "Expiring",
     "sortName": "Name",
     "sortStock": "Stock",
-    "sortLastPurchased": "Last purchased",
+    "sortLastPurchased": "Purchased",
     "toggleSortDirection": "Toggle sort direction",
     "toggleTags": "Toggle tags",
     "toggleFilters": "Toggle filters",

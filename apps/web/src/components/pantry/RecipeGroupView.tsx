@@ -154,7 +154,7 @@ export function RecipeGroupView() {
             const totals = getPackTotals('unsorted')
             return (
               <GroupCard
-                name="Unsorted"
+                name="Not added to recipe"
                 itemCount={unsortedItems.length}
                 outOfStockCount={getOutOfStockCount('unsorted')}
                 lowStockCount={getLowStockCount('unsorted')}

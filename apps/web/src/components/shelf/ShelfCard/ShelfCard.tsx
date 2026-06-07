@@ -1,4 +1,4 @@
-import { LayoutGrid } from 'lucide-react'
+import { ShelvingUnit } from 'lucide-react'
 import { GroupCard } from '@/components/shared/GroupCard'
 import type { Shelf } from '@/types'
 
@@ -30,7 +30,7 @@ export function ShelfCard({
   return (
     <GroupCard
       name={shelf.name}
-      icon={<LayoutGrid size={16} />}
+      icon={<ShelvingUnit size={16} />}
       itemCount={itemCount}
       onClick={onClick}
       {...(shelf.type === 'filter' && filterSummary !== undefined

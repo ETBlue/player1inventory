@@ -1,4 +1,4 @@
-import { ChefHat, LayoutGrid, Store } from 'lucide-react'
+import { ChefHat, ShelvingUnit, Store } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { PantryGroupBy } from '@/lib/viewPreference'
 
@@ -17,9 +17,8 @@ export function GroupByToggle({ current, onChange }: GroupByToggleProps) {
         aria-pressed={current === 'shelf'}
         className="rounded-none border-0"
         onClick={() => onChange('shelf')}
-      >
-        <LayoutGrid />
-      </Button>
+        icon={<ShelvingUnit />}
+      ></Button>
       <Button
         variant={current === 'vendor' ? 'neutral' : 'neutral-ghost'}
         size="icon"
@@ -27,9 +26,8 @@ export function GroupByToggle({ current, onChange }: GroupByToggleProps) {
         aria-pressed={current === 'vendor'}
         className="rounded-none border-0"
         onClick={() => onChange('vendor')}
-      >
-        <Store />
-      </Button>
+        icon={<Store />}
+      ></Button>
       <Button
         variant={current === 'recipe' ? 'neutral' : 'neutral-ghost'}
         size="icon"

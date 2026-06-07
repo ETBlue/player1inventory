@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { CookingPot, ListTodo, Settings2 } from 'lucide-react'
+import { ChefHat, ListTodo, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -87,7 +87,7 @@ function RecipeDetailLayoutInner() {
     <>
       <LayoutInnerPages
         title={recipe.name}
-        icon={<CookingPot className="h-4 w-4 text-foreground-muted" />}
+        icon={<ChefHat className="h-4 w-4 text-foreground-muted" />}
         onBack={handleBackClick}
         toolbarEnd={
           <div className="flex items-center -my-2">

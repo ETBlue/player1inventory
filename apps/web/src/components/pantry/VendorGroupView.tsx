@@ -146,7 +146,7 @@ export function VendorGroupView() {
             const totals = getPackTotals('unsorted')
             return (
               <GroupCard
-                name="Unsorted"
+                name="No vendor"
                 itemCount={unsortedItems.length}
                 outOfStockCount={getOutOfStockCount('unsorted')}
                 lowStockCount={getLowStockCount('unsorted')}

@@ -45,6 +45,11 @@ export function GroupCard({
 
   return (
     <Card className="flex items-center gap-2">
+      {icon && (
+        <span className="inline-flex items-center shrink-0 text-foreground-muted">
+          {icon}
+        </span>
+      )}
       <button
         type="button"
         className="flex-1 flex items-center justify-between gap-2 min-w-0 text-left cursor-pointer"
@@ -57,11 +62,6 @@ export function GroupCard({
               <p
                 className={`font-medium truncate flex items-center gap-1 ${nameClassName}`}
               >
-                {icon && (
-                  <span className="inline-flex items-center shrink-0">
-                    {icon}
-                  </span>
-                )}
                 {name}
               </p>
               <div className="flex-1" />
