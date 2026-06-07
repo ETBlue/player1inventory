@@ -86,8 +86,6 @@ function ShoppingIndex() {
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
-        <span className="font-semibold">{t('shopping.title')}</span>
-        <div className="flex-1" />
         <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

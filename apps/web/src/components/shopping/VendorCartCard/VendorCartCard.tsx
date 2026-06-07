@@ -1,3 +1,5 @@
+import { Store } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -19,6 +21,7 @@ export function VendorCartCard({
   availableCount,
   onClick,
 }: VendorCartCardProps) {
+  const { t } = useTranslation()
   return (
     <Card>
       <button
@@ -27,6 +30,7 @@ export function VendorCartCard({
         onClick={onClick}
       >
         <CardContent className="flex items-center justify-between gap-2">
+          <Store className="h-4 w-4 text-foreground-muted mr-2" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p
@@ -39,12 +43,17 @@ export function VendorCartCard({
               </p>
               {totalQuantity > 0 && (
                 <Badge variant="primary" className="shrink-0">
-                  {totalQuantity} packs ✓
+                  {t('shopping.cartCard.packsChecked', {
+                    count: totalQuantity,
+                  })}
                 </Badge>
               )}
             </div>
             <p className="text-sm text-foreground-muted">
-              {checkedCount} of {availableCount} items available
+              {t('shopping.cartCard.inCart', {
+                checked: checkedCount,
+                total: availableCount,
+              })}
             </p>
           </div>
         </CardContent>

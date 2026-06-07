@@ -42,8 +42,7 @@
     "cartCard": {
       "packsChecked_one": "已勾選 {{count}} 包",
       "packsChecked_other": "已勾選 {{count}} 包",
-      "available_one": "{{count}} 件可選購",
-      "available_other": "{{count}} 件可選購"
+      "inCart": "{{total}} 件中有 {{checked}} 件在購物車"
     },
     "toolbar": {
       "cartCount_one": "拿了 {{count}} 件",
