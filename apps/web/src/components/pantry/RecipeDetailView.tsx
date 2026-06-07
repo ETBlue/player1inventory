@@ -1,26 +1,11 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  Search,
-  Settings,
-  Tags,
-  X,
-} from 'lucide-react'
+import { ArrowLeft, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
+import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -31,13 +16,6 @@ import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
-
-const sortLabels: Record<string, string> = {
-  name: 'Name',
-  stock: 'Stock',
-  expiring: 'Expiring',
-  purchased: 'Last purchased',
-}
 
 interface RecipeDetailViewProps {
   recipeId: string
@@ -65,10 +43,8 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const sortBy: SortField = localSortBy
   const sortDirection: SortDirection = localSortDirection
 
-  const { search, setSearch, isTagsVisible, setIsTagsVisible } =
-    useUrlSearchAndFilters()
+  const { search, isTagsVisible } = useUrlSearchAndFilters()
 
-  const [searchVisible, setSearchVisible] = useState(() => !!search.trim())
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
@@ -168,91 +144,34 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   return (
     <div className="h-screen grid grid-rows-[auto_1fr]">
       <div>
-        <Toolbar className="border-b-1">
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={() => navigate({ to: '/', search: { groupBy: 'recipe' } })}
-            aria-label="Go back"
-          >
-            <ArrowLeft />
-            <span className="hidden lg:inline">Go back</span>
-          </Button>
-          <h1 className="text-base font-regular truncate flex-1 capitalize">
-            {title}
-          </h1>
-          <div className="flex items-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="default"
-                  variant="neutral-ghost"
-                  aria-label="Sort by"
-                  className="px-2 font-normal"
-                >
-                  {sortLabels[sortBy]}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {(['expiring', 'name', 'stock', 'purchased'] as const).map(
-                  (field) => (
-                    <DropdownMenuItem
-                      key={field}
-                      className={
-                        sortBy === field ? 'bg-background-elevated' : ''
-                      }
-                      onClick={() => handleSortChange(field, sortDirection)}
-                    >
-                      {sortLabels[field]}
-                    </DropdownMenuItem>
-                  ),
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              size="icon"
-              variant="neutral-ghost"
-              onClick={() =>
-                handleSortChange(
-                  sortBy,
-                  sortDirection === 'asc' ? 'desc' : 'asc',
-                )
-              }
-              aria-label="Toggle sort direction"
-              className="lg:w-auto lg:px-3"
-            >
-              {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
-              <span className="hidden lg:inline">
-                {sortDirection === 'asc' ? 'Asc' : 'Desc'}
-              </span>
-            </Button>
-          </div>
-          <Button
-            size="icon"
-            variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => setIsTagsVisible(!isTagsVisible)}
-            aria-label="Toggle tags"
-            className="lg:w-auto lg:px-3"
-          >
-            <Tags />
-            <span className="hidden lg:inline">Tags</span>
-          </Button>
-          <Button
-            size="icon"
-            variant={searchVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => {
-              if (searchVisible) {
-                setSearch('')
-              }
-              setSearchVisible((v) => !v)
-            }}
-            aria-label="Toggle search"
-            className="lg:w-auto lg:px-3"
-          >
-            <Search />
-            <span className="hidden lg:inline">Search</span>
-          </Button>
+        <ItemListToolbar
+          className="border-b-1"
+          leading={
+            <>
+              <Button
+                variant="neutral-ghost"
+                size="icon"
+                className="lg:w-auto lg:mr-3"
+                onClick={() =>
+                  navigate({ to: '/', search: { groupBy: 'recipe' } })
+                }
+                aria-label="Go back"
+              >
+                <ArrowLeft />
+                <span className="hidden lg:inline">Go back</span>
+              </Button>
+              <h1 className="text-base font-regular truncate flex-1 capitalize">
+                {title}
+              </h1>
+            </>
+          }
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          isTagsToggleEnabled={true}
+          hideFiltersToggle={true}
+          items={inScopeItems}
+        >
           {!isUnsorted && (
             <Link
               to="/settings/recipes/$id"
@@ -269,42 +188,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
               </Button>
             </Link>
           )}
-        </Toolbar>
-
-        {searchVisible && (
-          <>
-            <div className="h-px bg-accessory-default" />
-            <div className="flex items-center gap-2 px-3">
-              <Input
-                placeholder="Search…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    setSearch('')
-                    setSearchVisible(false)
-                  }
-                }}
-                className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-                autoFocus
-              />
-              {search && (
-                <Button
-                  size="icon"
-                  variant="neutral-ghost"
-                  className="h-6 w-6 shrink-0"
-                  onClick={() => {
-                    setSearch('')
-                    setSearchVisible(false)
-                  }}
-                  aria-label="Clear search"
-                >
-                  <X />
-                </Button>
-              )}
-            </div>
-          </>
-        )}
+        </ItemListToolbar>
       </div>
 
       <div className="overflow-y-auto">

@@ -1,32 +1,11 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  ArrowUpFromLine,
-  Filter,
-  Loader2,
-  Plus,
-  Search,
-  Settings,
-  Tags,
-  X,
-} from 'lucide-react'
+import { ArrowLeft, ArrowUpFromLine, Loader2, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ItemCard } from '@/components/item/ItemCard'
-import { ItemFilters } from '@/components/item/ItemFilters'
+import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
-import { FilterStatus } from '@/components/shared/FilterStatus'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -48,13 +27,6 @@ import { isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { Item } from '@/types'
-
-const sortLabels: Record<string, string> = {
-  name: 'Name',
-  stock: 'Stock',
-  expiring: 'Expiring',
-  purchased: 'Last purchased',
-}
 
 interface ShelfDetailViewProps {
   shelfId: string
@@ -91,18 +63,12 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
   const {
     search,
-    setSearch,
     isTagsVisible,
-    setIsTagsVisible,
-    isFiltersVisible,
-    setIsFiltersVisible,
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
-    clearAllFilters,
   } = useUrlSearchAndFilters()
 
-  const [searchVisible, setSearchVisible] = useState(() => !!search.trim())
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
@@ -217,14 +183,6 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     )
   }, [allItems, inShelfItemIds, trimmedSearch])
 
-  const hasActiveFilters = useMemo(
-    () =>
-      Object.values(filterState).some((ids) => ids.length > 0) ||
-      selectedVendorIds.length > 0 ||
-      selectedRecipeIds.length > 0,
-    [filterState, selectedVendorIds, selectedRecipeIds],
-  )
-
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     setSortBy(field)
     setSortDirection(dir)
@@ -288,109 +246,40 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   return (
     <div className="h-screen grid grid-rows-[auto_1fr]">
       <div>
-        <Toolbar className="border-b-1">
-          <Button
-            variant="neutral-ghost"
-            size="icon"
-            className="lg:w-auto lg:mr-3"
-            onClick={() => navigate({ to: '/', search: { groupBy: 'shelf' } })}
-            aria-label="Go back"
-          >
-            <ArrowLeft />
-            <span className="hidden lg:inline">Go back</span>
-          </Button>
-          <h1 className="text-base font-regular truncate flex-1 capitalize">
-            {shelfName}
-          </h1>
-          {isUnsorted && (
-            <div className="flex items-center">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="default"
-                    variant="neutral-ghost"
-                    aria-label="Sort by"
-                    className="px-2 font-normal"
-                  >
-                    {sortLabels[sortBy]}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {(['expiring', 'name', 'stock', 'purchased'] as const).map(
-                    (field) => (
-                      <DropdownMenuItem
-                        key={field}
-                        className={
-                          sortBy === field ? 'bg-background-elevated' : ''
-                        }
-                        onClick={() => handleSortChange(field, sortDirection)}
-                      >
-                        {sortLabels[field]}
-                      </DropdownMenuItem>
-                    ),
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+        <ItemListToolbar
+          className="border-b-1"
+          leading={
+            <>
               <Button
-                size="icon"
                 variant="neutral-ghost"
+                size="icon"
+                className="lg:w-auto lg:mr-3"
                 onClick={() =>
-                  handleSortChange(
-                    sortBy,
-                    sortDirection === 'asc' ? 'desc' : 'asc',
-                  )
+                  navigate({ to: '/', search: { groupBy: 'shelf' } })
                 }
-                aria-label="Toggle sort direction"
-                className="lg:w-auto lg:px-3"
+                aria-label="Go back"
               >
-                {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
-                <span className="hidden lg:inline">
-                  {sortDirection === 'asc' ? 'Asc' : 'Desc'}
-                </span>
+                <ArrowLeft />
+                <span className="hidden lg:inline">Go back</span>
               </Button>
-            </div>
-          )}
-          <Button
-            size="icon"
-            variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => setIsTagsVisible(!isTagsVisible)}
-            aria-label="Toggle tags"
-            className="lg:w-auto lg:px-3"
-          >
-            <Tags />
-            <span className="hidden lg:inline">Tags</span>
-          </Button>
-          {isUnsorted && (
-            <Button
-              size="icon"
-              variant={
-                isFiltersVisible || hasActiveFilters
-                  ? 'neutral'
-                  : 'neutral-ghost'
-              }
-              onClick={() => setIsFiltersVisible(!isFiltersVisible)}
-              aria-label="Toggle filters"
-              className="lg:w-auto lg:px-3"
-            >
-              <Filter />
-              <span className="hidden lg:inline">Filters</span>
-            </Button>
-          )}
-          <Button
-            size="icon"
-            variant={searchVisible ? 'neutral' : 'neutral-ghost'}
-            onClick={() => {
-              if (searchVisible) {
-                setSearch('')
-              }
-              setSearchVisible((v) => !v)
-            }}
-            aria-label="Toggle search"
-            className="lg:w-auto lg:px-3"
-          >
-            <Search />
-            <span className="hidden lg:inline">Search</span>
-          </Button>
+              <h1 className="text-base font-regular truncate flex-1 capitalize">
+                {shelfName}
+              </h1>
+            </>
+          }
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          onSortChange={handleSortChange}
+          showSort={isUnsorted}
+          isTagsToggleEnabled={true}
+          hideFiltersToggle={!isUnsorted}
+          items={inShelfItems}
+          vendors={vendors}
+          recipes={recipes}
+          onCreateFromSearch={handleCreateFromSearch}
+          hasExactMatch={hasExactMatch}
+          isCreating={createItem.isPending}
+        >
           {!isUnsorted && (
             <Link
               to="/settings/shelves/$shelfId"
@@ -407,79 +296,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               </Button>
             </Link>
           )}
-        </Toolbar>
-
-        {isUnsorted && (isFiltersVisible || hasActiveFilters) && (
-          <>
-            <div className="h-px bg-accessory-default" />
-            <ItemFilters
-              items={inShelfItems}
-              disabled={!!trimmedSearch}
-              vendors={vendors}
-              recipes={recipes}
-            />
-            <FilterStatus
-              filteredCount={displayedInShelfItems.length}
-              totalCount={inShelfItems.length}
-              hasActiveFilters={hasActiveFilters}
-              onClearAll={clearAllFilters}
-              disabled={!!trimmedSearch}
-            />
-          </>
-        )}
-
-        {searchVisible && (
-          <>
-            <div className="h-px bg-accessory-default" />
-            <div className="flex items-center gap-2 px-3">
-              <Input
-                placeholder="Search…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    setSearch('')
-                    setSearchVisible(false)
-                  }
-                }}
-                className="border-none shadow-none bg-transparent h-auto py-2 text-sm"
-                autoFocus
-              />
-              {search && (
-                <>
-                  <Button
-                    size="icon"
-                    variant="neutral-ghost"
-                    className="h-6 w-6 shrink-0"
-                    onClick={() => {
-                      setSearch('')
-                      setSearchVisible(false)
-                    }}
-                    aria-label="Clear search"
-                  >
-                    <X />
-                  </Button>
-                  {!hasExactMatch && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleCreateFromSearch(search.trim())}
-                      disabled={createItem.isPending}
-                      aria-label="Create item"
-                    >
-                      {createItem.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Plus />
-                      )}
-                      Create
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        )}
+        </ItemListToolbar>
       </div>
 
       <div className="overflow-y-auto">
