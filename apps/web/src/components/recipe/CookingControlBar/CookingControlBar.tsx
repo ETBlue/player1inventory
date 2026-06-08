@@ -61,8 +61,11 @@ export function CookingControlBar({
     navigate({
       to: '/cooking',
       search: (prev) => ({
-        sort: updates.sort ?? prev.sort ?? 'recent',
-        dir: updates.dir ?? prev.dir ?? 'asc',
+        sort: (updates.sort ?? prev.sort ?? 'recent') as
+          | 'name'
+          | 'recent'
+          | 'count',
+        dir: (updates.dir ?? prev.dir ?? 'asc') as 'asc' | 'desc',
         q: updates.q ?? prev.q ?? '',
         expanded: prev.expanded ?? '',
       }),

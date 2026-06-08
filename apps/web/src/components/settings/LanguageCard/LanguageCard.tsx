@@ -1,6 +1,12 @@
 import { Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -16,22 +22,21 @@ export function LanguageCard() {
   const { t } = useTranslation()
 
   return (
-    <Card>
-      <CardContent className="px-3 pb-1 space-y-2">
-        <div className="flex items-center gap-3">
-          <Globe className="h-5 w-5 text-foreground-muted" />
-          <div>
-            <p className="font-medium">{t('settings.language.label')}</p>
-            <p className="text-sm text-foreground-muted">
-              {preference === 'auto'
-                ? t('settings.language.autoDetected', {
-                    language: t(`settings.language.languages.${language}`),
-                  })
-                : t('settings.language.description')}
-            </p>
-          </div>
+    <Card className="space-y-2 px-4">
+      <CardHeader className="flex items-center gap-4">
+        <Globe className="h-5 w-5 text-foreground-muted shrink-0" />
+        <div>
+          <CardTitle>{t('settings.language.label')}</CardTitle>
+          <CardDescription>
+            {preference === 'auto'
+              ? t('settings.language.autoDetected', {
+                  language: t(`settings.language.languages.${language}`),
+                })
+              : t('settings.language.description')}
+          </CardDescription>
         </div>
-
+      </CardHeader>
+      <CardContent className="ml-9">
         <Select
           value={preference}
           onValueChange={(val) => setPreference(val as LanguagePreference)}

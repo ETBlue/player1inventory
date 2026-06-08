@@ -14,7 +14,9 @@ import { Route as ShoppingRouteImport } from './routes/shopping'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as CookingRouteImport } from './routes/cooking'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ShoppingIndexRouteImport } from './routes/shopping/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as ShoppingVendorIdRouteImport } from './routes/shopping/$vendorId'
 import { Route as SettingsVendorsRouteImport } from './routes/settings/vendors'
 import { Route as SettingsTagsRouteImport } from './routes/settings/tags'
 import { Route as SettingsShelvesRouteImport } from './routes/settings/shelves'
@@ -68,10 +70,20 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShoppingIndexRoute = ShoppingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ShoppingRoute,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ShoppingVendorIdRoute = ShoppingVendorIdRouteImport.update({
+  id: '/$vendorId',
+  path: '/$vendorId',
+  getParentRoute: () => ShoppingRoute,
 } as any)
 const SettingsVendorsRoute = SettingsVendorsRouteImport.update({
   id: '/settings/vendors',
@@ -216,14 +228,16 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
-  '/shopping': typeof ShoppingRoute
+  '/shopping': typeof ShoppingRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/settings/recipes': typeof SettingsRecipesRouteWithChildren
   '/settings/shelves': typeof SettingsShelvesRouteWithChildren
   '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
+  '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings/': typeof SettingsIndexRoute
+  '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
@@ -251,9 +265,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
-  '/shopping': typeof ShoppingRoute
   '/sign-in': typeof SignInRoute
+  '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings': typeof SettingsIndexRoute
+  '/shopping': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
@@ -278,14 +293,16 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
-  '/shopping': typeof ShoppingRoute
+  '/shopping': typeof ShoppingRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/settings/recipes': typeof SettingsRecipesRouteWithChildren
   '/settings/shelves': typeof SettingsShelvesRouteWithChildren
   '/settings/tags': typeof SettingsTagsRouteWithChildren
   '/settings/vendors': typeof SettingsVendorsRouteWithChildren
+  '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings/': typeof SettingsIndexRoute
+  '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
@@ -322,7 +339,9 @@ export interface FileRouteTypes {
     | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/shopping/$vendorId'
     | '/settings/'
+    | '/shopping/'
     | '/items/$id/log'
     | '/items/$id/recipes'
     | '/items/$id/tags'
@@ -350,9 +369,10 @@ export interface FileRouteTypes {
     | '/'
     | '/cooking'
     | '/onboarding'
-    | '/shopping'
     | '/sign-in'
+    | '/shopping/$vendorId'
     | '/settings'
+    | '/shopping'
     | '/items/$id/log'
     | '/items/$id/recipes'
     | '/items/$id/tags'
@@ -383,7 +403,9 @@ export interface FileRouteTypes {
     | '/settings/shelves'
     | '/settings/tags'
     | '/settings/vendors'
+    | '/shopping/$vendorId'
     | '/settings/'
+    | '/shopping/'
     | '/items/$id/log'
     | '/items/$id/recipes'
     | '/items/$id/tags'
@@ -412,7 +434,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CookingRoute: typeof CookingRoute
   OnboardingRoute: typeof OnboardingRoute
-  ShoppingRoute: typeof ShoppingRoute
+  ShoppingRoute: typeof ShoppingRouteWithChildren
   SignInRoute: typeof SignInRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   SettingsRecipesRoute: typeof SettingsRecipesRouteWithChildren
@@ -459,12 +481,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/shopping/': {
+      id: '/shopping/'
+      path: '/'
+      fullPath: '/shopping/'
+      preLoaderRoute: typeof ShoppingIndexRouteImport
+      parentRoute: typeof ShoppingRoute
+    }
     '/settings/': {
       id: '/settings/'
       path: '/settings'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/shopping/$vendorId': {
+      id: '/shopping/$vendorId'
+      path: '/$vendorId'
+      fullPath: '/shopping/$vendorId'
+      preLoaderRoute: typeof ShoppingVendorIdRouteImport
+      parentRoute: typeof ShoppingRoute
     }
     '/settings/vendors': {
       id: '/settings/vendors'
@@ -658,6 +694,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ShoppingRouteChildren {
+  ShoppingVendorIdRoute: typeof ShoppingVendorIdRoute
+  ShoppingIndexRoute: typeof ShoppingIndexRoute
+}
+
+const ShoppingRouteChildren: ShoppingRouteChildren = {
+  ShoppingVendorIdRoute: ShoppingVendorIdRoute,
+  ShoppingIndexRoute: ShoppingIndexRoute,
+}
+
+const ShoppingRouteWithChildren = ShoppingRoute._addFileChildren(
+  ShoppingRouteChildren,
+)
+
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
   ItemsIdRecipesRoute: typeof ItemsIdRecipesRoute
@@ -795,7 +845,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CookingRoute: CookingRoute,
   OnboardingRoute: OnboardingRoute,
-  ShoppingRoute: ShoppingRoute,
+  ShoppingRoute: ShoppingRouteWithChildren,
   SignInRoute: SignInRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
   SettingsRecipesRoute: SettingsRecipesRouteWithChildren,

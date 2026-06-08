@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
-import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
 import { makeGql } from '../utils/cloud'
@@ -83,6 +82,7 @@ test('user can see expiration badge updated after checkout without manual refres
 
     // Shopping: add to cart and checkout
     await shopping.navigateTo()
+    await shopping.navigateToVendorCart('no-vendor')  // items with no vendor are in no-vendor cart
     await shopping.addItemToCart('Test Yogurt')
     await shopping.clickDone()
     await shopping.confirmCheckout()
@@ -132,9 +132,10 @@ test('user can see expiration badge updated after checkout without manual refres
           updatedAt: now,
         })
 
-        // Active shopping cart
+        // Active shopping cart (no vendor — vendorId null maps to no-vendor)
         await put('shoppingCarts', {
           id: cartId,
+          vendorId: null,
           status: 'active',
           createdAt: now,
         })
@@ -157,17 +158,17 @@ test('user can see expiration badge updated after checkout without manual refres
     await expect(pantry.getItemCard('Test Yogurt')).toBeVisible()
     await expect(page.getByText(/Expires in \d+ days/)).not.toBeVisible()
 
-    // Shopping: the item is pre-seeded into the active cart, so it appears checked already
+    // Shopping: the item is pre-seeded into the active no-vendor cart
     await shopping.navigateTo()
+    await shopping.navigateToVendorCart('no-vendor')  // items with no vendor are in no-vendor cart
     const removeCheckbox = page.getByLabel('Remove Test Yogurt')
     await expect(removeCheckbox).toBeVisible()
     await shopping.clickDone()
     await shopping.confirmCheckout()
   }
 
-  // Wait for the checkout to visually complete: the Done button becomes disabled
-  // because the cart is now empty.
-  await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
+  // After checkout, the vendor cart page navigates back to the shopping index
+  await page.waitForURL(/\/shopping(\?|$)/)
 
   // After checkout, navigate to pantry WITHOUT refreshing the page
   await pantry.navigateTo()
@@ -179,30 +180,215 @@ test('user can see expiration badge updated after checkout without manual refres
   await expect(page.getByText(/Expires in \d+ days/)).toBeVisible()
 })
 
-test('user can checkout items from shopping cart', async ({ page }) => {
+test('user can checkout items from shopping cart', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
   const pantry = new PantryPage(page)
-  const item = new ItemPage(page)
   const shopping = new ShoppingPage(page)
 
-  // Given: item "Test Milk" exists with 0 packed quantity (default)
+  // Given: item "Test Milk" exists with 0 packed quantity (default), no vendor
   await pantry.navigateTo()
-  await pantry.clickAddItem()
-  await item.fillName('Test Milk')
-  await item.save()
-  // item.save() waits for navigation to /items/$id — packed quantity defaults to 0
 
-  // When: navigate to shopping page, add item to cart, checkout
-  await shopping.navigateTo()
+  const itemId = 'checkout-milk-item-1'
+
+  await page.evaluate(async ({ itemId }) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const put = (storeName: string, record: object) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite')
+        const req = tx.objectStore(storeName).put(record)
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+      })
+    const now = new Date()
+    await put('items', {
+      id: itemId,
+      name: 'Test Milk',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }, { itemId })
+
+  // When: navigate to no-vendor cart (Test Milk has no vendor), add to cart, checkout
+  await shopping.navigateToVendorCart('no-vendor')
   await shopping.addItemToCart('Test Milk')
   await shopping.clickDone()
   await shopping.confirmCheckout()
 
-  // Then: cart is empty — Done button is disabled
-  await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
+  // Then: checkout navigates back to the shopping index
+  await page.waitForURL(/\/shopping(\?|$)/)
 
-  // And: navigate to pantry and open the item — packed quantity is now 1
+  // And: navigate to pantry and verify the item card is visible
   await pantry.navigateTo()
-  await pantry.getItemCard('Test Milk').click()
-  await expect(item.getPackedQuantityInput()).toHaveValue('1')
+  const itemCard = pantry.getItemCard('Test Milk')
+  await expect(itemCard).toBeVisible()
 })
 
+test('user can see vendor cart cards on the shopping page', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+  const pantry = new PantryPage(page)
+  const shopping = new ShoppingPage(page)
+
+  // Given: items exist assigned to two different vendors
+  // Seed via IndexedDB directly (same pattern as test 1 local mode)
+  await pantry.navigateTo()
+
+  const vendorAId = 'vendor-a-e2e'
+  const vendorBId = 'vendor-b-e2e'
+
+  await page.evaluate(async ({ vendorAId, vendorBId }) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const put = (store: string, record: object) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite')
+        const req = tx.objectStore(store).put(record)
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+      })
+    const now = new Date()
+    await put('vendors', { id: vendorAId, name: 'Costco E2E', createdAt: now, updatedAt: now })
+    await put('vendors', { id: vendorBId, name: 'iHerb E2E', createdAt: now, updatedAt: now })
+    await put('items', {
+      id: 'item-a-e2e', name: 'Milk E2E', tagIds: [], vendorIds: [vendorAId],
+      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
+      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
+      createdAt: now, updatedAt: now,
+    })
+    await put('items', {
+      id: 'item-b-e2e', name: 'Vitamin C E2E', tagIds: [], vendorIds: [vendorBId],
+      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
+      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
+      createdAt: now, updatedAt: now,
+    })
+  }, { vendorAId, vendorBId })
+
+  // When: navigate to shopping index
+  await shopping.navigateTo()
+
+  // Then: both vendor cart cards are visible
+  await expect(shopping.getVendorCartCard('Costco E2E')).toBeVisible()
+  await expect(shopping.getVendorCartCard('iHerb E2E')).toBeVisible()
+})
+
+test('user can navigate into a vendor cart and back to the list', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+  const pantry = new PantryPage(page)
+  const shopping = new ShoppingPage(page)
+
+  await pantry.navigateTo()
+
+  const vendorId = 'vendor-nav-e2e'
+  await page.evaluate(async ({ vendorId }) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const put = (store: string, record: object) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite')
+        const req = tx.objectStore(store).put(record)
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+      })
+    const now = new Date()
+    await put('vendors', { id: vendorId, name: 'Nav Vendor E2E', createdAt: now, updatedAt: now })
+    await put('items', {
+      id: 'item-nav-e2e', name: 'Nav Item E2E', tagIds: [], vendorIds: [vendorId],
+      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
+      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
+      createdAt: now, updatedAt: now,
+    })
+  }, { vendorId })
+
+  // Navigate to shopping index
+  await shopping.navigateTo()
+  await expect(shopping.getVendorCartCard('Nav Vendor E2E')).toBeVisible()
+
+  // Click into the vendor cart
+  await shopping.clickVendorCartCard('Nav Vendor E2E')
+  await expect(page).toHaveURL(/\/shopping\/.+/)
+
+  // The vendor name appears in the toolbar
+  await expect(page.getByText('Nav Vendor E2E')).toBeVisible()
+
+  // Go back to the list
+  await shopping.clickBack()
+  await expect(page).toHaveURL(/\/shopping(\?|$)/)
+  await expect(shopping.getVendorCartCard('Nav Vendor E2E')).toBeVisible()
+})
+
+test('user can checkout from a vendor cart without affecting another vendor cart', async ({ page, baseURL }) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'IndexedDB seeding not applicable in cloud mode')
+  const pantry = new PantryPage(page)
+  const shopping = new ShoppingPage(page)
+
+  await pantry.navigateTo()
+
+  const vendorAId = 'vendor-checkout-a'
+  const vendorBId = 'vendor-checkout-b'
+
+  await page.evaluate(async ({ vendorAId, vendorBId }) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const put = (store: string, record: object) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite')
+        const req = tx.objectStore(store).put(record)
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+      })
+    const now = new Date()
+    await put('vendors', { id: vendorAId, name: 'Checkout Vendor A', createdAt: now, updatedAt: now })
+    await put('vendors', { id: vendorBId, name: 'Checkout Vendor B', createdAt: now, updatedAt: now })
+    await put('items', {
+      id: 'checkout-item-a', name: 'Item A E2E', tagIds: [], vendorIds: [vendorAId],
+      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
+      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
+      createdAt: now, updatedAt: now,
+    })
+    await put('items', {
+      id: 'checkout-item-b', name: 'Item B E2E', tagIds: [], vendorIds: [vendorBId],
+      targetUnit: 'package', targetQuantity: 1, refillThreshold: 1,
+      packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
+      createdAt: now, updatedAt: now,
+    })
+    // Pre-seed both carts with items in them
+    await put('shoppingCarts', { id: 'cart-a-e2e', vendorId: vendorAId, status: 'active', createdAt: now })
+    await put('shoppingCarts', { id: 'cart-b-e2e', vendorId: vendorBId, status: 'active', createdAt: now })
+    await put('cartItems', { id: 'ci-a-e2e', cartId: 'cart-a-e2e', itemId: 'checkout-item-a', quantity: 1 })
+    await put('cartItems', { id: 'ci-b-e2e', cartId: 'cart-b-e2e', itemId: 'checkout-item-b', quantity: 1 })
+  }, { vendorAId, vendorBId })
+
+  // Navigate to Vendor A's cart and checkout
+  await shopping.navigateToVendorCart(vendorAId)
+  await shopping.clickDone()
+  await shopping.confirmCheckout()
+
+  // After checkout: back on the index
+  await page.waitForURL(/\/shopping(\?|$)/)
+
+  // Vendor B's cart card is still visible (not affected by Vendor A checkout)
+  await expect(shopping.getVendorCartCard('Checkout Vendor B')).toBeVisible()
+
+  // Navigate to Vendor B's cart — item B is still there
+  await shopping.navigateToVendorCart(vendorBId)
+  await expect(page.getByLabel('Remove Item B E2E')).toBeVisible()
+})

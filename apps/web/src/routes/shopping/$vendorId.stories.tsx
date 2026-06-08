@@ -8,12 +8,17 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { addToCart, createItem, getOrCreateActiveCart } from '@/db/operations'
+import {
+  addToCart,
+  createItem,
+  createVendor,
+  getOrCreateActiveCart,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Pages/Shopping',
+  title: 'Pages/ShoppingVendorCart',
   parameters: {
     layout: 'fullscreen',
   },
@@ -22,7 +27,13 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function ShoppingStory() {
+function VendorCartStory({
+  setup,
+  vendorId,
+}: {
+  setup: () => Promise<void>
+  vendorId: string
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -35,16 +46,57 @@ function ShoppingStory() {
     async function init() {
       await db.delete()
       await db.open()
+      await setup()
       setReady(true)
     }
     init()
-  }, [])
+  }, [setup])
 
   if (!ready) return <div>Loading...</div>
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/shopping'] }),
+    history: createMemoryHistory({
+      initialEntries: [`/shopping/${vendorId}`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function DefaultStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [vendorId, setVendorId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+      const vendor = await createVendor('Costco')
+      setVendorId(vendor.id)
+    }
+    setup()
+  }, [])
+
+  if (!vendorId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/shopping/${vendorId}`],
+    }),
     context: { queryClient },
   })
 
@@ -64,16 +116,18 @@ function WithCartItemsStory() {
         defaultOptions: { queries: { retry: false } },
       }),
   )
-  const [ready, setReady] = useState(false)
+  const [vendorId, setVendorId] = useState<string | null>(null)
 
   useEffect(() => {
     async function setup() {
       await db.delete()
       await db.open()
+      const vendor = await createVendor('Costco')
 
       const milk = await createItem({
         name: 'Milk',
         tagIds: [],
+        vendorIds: [vendor.id],
         targetUnit: 'package',
         targetQuantity: 4,
         refillThreshold: 2,
@@ -85,6 +139,7 @@ function WithCartItemsStory() {
       const eggs = await createItem({
         name: 'Eggs',
         tagIds: [],
+        vendorIds: [vendor.id],
         targetUnit: 'package',
         targetQuantity: 2,
         refillThreshold: 1,
@@ -93,32 +148,22 @@ function WithCartItemsStory() {
         consumeAmount: 1,
       })
 
-      const bread = await createItem({
-        name: 'Bread',
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 2,
-        refillThreshold: 1,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      const cart = await getOrCreateActiveCart()
+      const cart = await getOrCreateActiveCart(vendor.id)
       await addToCart(cart.id, milk.id, 2)
       await addToCart(cart.id, eggs.id, 1)
-      await addToCart(cart.id, bread.id, 3)
 
-      setReady(true)
+      setVendorId(vendor.id)
     }
     setup()
   }, [])
 
-  if (!ready) return <div>Loading...</div>
+  if (!vendorId) return <div>Loading...</div>
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/shopping'] }),
+    history: createMemoryHistory({
+      initialEntries: [`/shopping/${vendorId}`],
+    }),
     context: { queryClient },
   })
 
@@ -131,65 +176,34 @@ function WithCartItemsStory() {
   )
 }
 
-function WithPinnedItemStory() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-  )
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    async function setup() {
-      await db.delete()
-      await db.open()
-
-      const butter = await createItem({
-        name: 'Butter',
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 3,
-        refillThreshold: 1,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      const cart = await getOrCreateActiveCart()
-      // Add with quantity 0 — this is a "pinned" item
-      await addToCart(cart.id, butter.id, 0)
-
-      setReady(true)
-    }
-    setup()
-  }, [])
-
-  if (!ready) return <div>Loading...</div>
-
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({ initialEntries: ['/shopping'] }),
-    context: { queryClient },
-  })
-
+function WithNoVendorCartStory() {
   return (
-    <ApolloProvider client={noopApolloClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ApolloProvider>
+    <VendorCartStory
+      vendorId="no-vendor"
+      setup={async () => {
+        await createItem({
+          name: 'Unassigned Item',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 1,
+          refillThreshold: 1,
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+      }}
+    />
   )
 }
 
 export const Default: Story = {
-  render: () => <ShoppingStory />,
+  render: () => <DefaultStory />,
 }
 
 export const WithCartItems: Story = {
   render: () => <WithCartItemsStory />,
 }
 
-export const WithPinnedItem: Story = {
-  render: () => <WithPinnedItemStory />,
+export const WithNoVendorCart: Story = {
+  render: () => <WithNoVendorCartStory />,
 }

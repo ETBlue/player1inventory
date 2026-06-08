@@ -14,7 +14,7 @@ describe('ShelfList stories smoke tests', () => {
 
   it('WithStockStatus renders stock badges', () => {
     render(<WithStockStatus />)
-    expect(screen.getByText('2 out of stock')).toBeInTheDocument()
+    expect(screen.getByText('2 empty')).toBeInTheDocument()
     expect(screen.getByText('3 low stock')).toBeInTheDocument()
   })
 })

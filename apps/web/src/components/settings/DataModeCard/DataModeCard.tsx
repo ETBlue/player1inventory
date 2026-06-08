@@ -14,7 +14,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { useMyFamilyGroupQuery } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
 import {
@@ -32,69 +38,18 @@ type SignOutFlow = 'idle' | 'askOffline' | 'askMigrate' | 'migrating'
 type EnableFlow = 'idle' | 'confirm' | 'copyAsk' | 'strategyAsk'
 
 // Inner component that calls useUser() — only rendered when not in E2E mode
-function CloudModeSectionWithUser({
-  onSignOut,
-  onSwitch,
-}: {
-  onSignOut: () => void
-  onSwitch: () => void
-}) {
-  const { user } = useUser()
+function CloudModeSectionWithUser() {
   const { t } = useTranslation()
+  const { user } = useUser()
   const email = user?.primaryEmailAddress?.emailAddress
 
-  return (
-    <>
-      <Cloud className="h-5 w-5 text-foreground-muted" />
-      <div className="flex-1">
-        <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm text-foreground-muted break-all">
-            {t('settings.dataMode.cloud.signedInAs', { email })}
-          </p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-2">
-        <Button variant="neutral-outline" onClick={onSwitch}>
-          {t('settings.dataMode.cloud.switchButton')}
-        </Button>
-        <Button variant="neutral-outline" onClick={onSignOut}>
-          {t('settings.dataMode.cloud.signOutButton')}
-        </Button>
-      </div>
-    </>
-  )
+  return <>{t('settings.dataMode.cloud.signedInAs', { email })}</>
 }
 
 // E2E shim — no Clerk context needed
-function CloudModeSectionE2E({
-  onSignOut,
-  onSwitch,
-}: {
-  onSignOut: () => void
-  onSwitch: () => void
-}) {
+function CloudModeSectionE2E() {
   const { t } = useTranslation()
-
-  return (
-    <>
-      <Cloud className="h-5 w-5 text-foreground-muted" />
-      <div className="flex-1">
-        <p className="font-medium">{t('settings.dataMode.cloud.title')}</p>
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm text-foreground-muted break-all">
-            {t('settings.dataMode.cloud.signedInAs', { email: undefined })}
-          </p>
-          <Button variant="neutral-ghost" size="sm" onClick={onSignOut}>
-            {t('settings.dataMode.cloud.signOutButton')}
-          </Button>
-        </div>
-      </div>
-      <Button variant="neutral-outline" onClick={onSwitch}>
-        {t('settings.dataMode.cloud.switchButton')}
-      </Button>
-    </>
-  )
+  return <>{t('settings.dataMode.cloud.signedInAs', { email: undefined })}</>
 }
 
 // ─── CloudModeSection ─────────────────────────────────────────────────────────
@@ -143,19 +98,20 @@ function CloudModeSection() {
     // If not switching: auth guard in __root.tsx detects !isSignedIn → redirects to /sign-in
   }
 
-  const cloudSectionProps = {
-    onSignOut: () => setSignOutFlow('askOffline'),
-    onSwitch: () => setSwitchFlow(isInFamilyGroup ? 'familyWarn' : 'copy'),
-  }
-
   return (
     <>
-      {import.meta.env.VITE_E2E_TEST_USER_ID ? (
-        // TODO: remove e2e specific code
-        <CloudModeSectionE2E {...cloudSectionProps} />
-      ) : (
-        <CloudModeSectionWithUser {...cloudSectionProps} />
-      )}
+      <Button
+        variant="neutral-outline"
+        onClick={() => setSwitchFlow(isInFamilyGroup ? 'familyWarn' : 'copy')}
+      >
+        {t('settings.dataMode.cloud.switchButton')}
+      </Button>
+      <Button
+        variant="neutral-outline"
+        onClick={() => setSignOutFlow('askOffline')}
+      >
+        {t('settings.dataMode.cloud.signOutButton')}
+      </Button>
 
       {/* ── Switch flow dialogs ─────────────────────────────────────────── */}
 
@@ -308,26 +264,46 @@ export function DataModeCard() {
 
   return (
     <>
-      <Card>
-        <CardContent className="px-3 flex items-center gap-3">
+      <Card className="space-y-2 px-4">
+        <CardHeader className="flex items-center gap-4">
           {mode === 'local' && (
             <>
-              <Database className="h-5 w-5 text-foreground-muted" />
-              <div className="flex-1">
-                <p className="font-medium">
-                  {t('settings.dataMode.local.title')}
-                </p>
-                <p className="text-sm text-foreground-muted">
+              <Database className="h-5 w-5 text-foreground-muted shrink-0" />
+              <div>
+                <CardTitle>{t('settings.dataMode.local.title')}</CardTitle>
+                <CardDescription>
                   {t('settings.dataMode.local.description')}
-                </p>
+                </CardDescription>
               </div>
-              <Button
-                variant="neutral-outline"
-                onClick={() => setEnableFlow('confirm')}
-              >
-                {t('settings.dataMode.local.enableButton')}
-              </Button>
             </>
+          )}
+          {mode === 'cloud' && (
+            <>
+              <Cloud className="h-5 w-5 text-foreground-muted shrink-0" />
+              <div>
+                <CardTitle>{t('settings.dataMode.cloud.title')}</CardTitle>
+                <CardDescription className="break-all">
+                  {import.meta.env.VITE_E2E_TEST_USER_ID ? (
+                    // TODO: remove e2e specific code
+                    <CloudModeSectionE2E />
+                  ) : (
+                    <CloudModeSectionWithUser />
+                  )}
+                </CardDescription>
+              </div>
+            </>
+          )}
+        </CardHeader>
+        <CardContent
+          className={`ml-9 grid ${mode === 'cloud' ? 'grid-cols-2' : 'grid-cols-1'} items-center gap-3`}
+        >
+          {mode === 'local' && (
+            <Button
+              variant="neutral-outline"
+              onClick={() => setEnableFlow('confirm')}
+            >
+              {t('settings.dataMode.local.enableButton')}
+            </Button>
           )}
           {mode === 'cloud' && <CloudModeSection />}
         </CardContent>

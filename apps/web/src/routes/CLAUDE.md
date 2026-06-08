@@ -75,31 +75,71 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 
 ### Shopping Page
 
-**Vendor filter:** Select dropdown in toolbar showing item counts per vendor (e.g. "Costco (12)"). Single-select, pre-scopes the filter branch only (not search). Disabled and greyed out while search is active. Persisted in `?vendor` URL param; cleared on checkout or cart abandonment.
+Two-level route structure (mirrors `items/` pattern):
+- `shopping.tsx` — thin layout, renders `<Outlet />`
+- `shopping/index.tsx` — vendor cart list (root `/shopping` page)
+- `shopping/$vendorId.tsx` — per-vendor cart page (`/shopping/:vendorId`)
 
-**Tag/recipe filter:** `Filters` toggle button (`Filter` icon) in `ItemListToolbar` shows/hides an `ItemFilters` row below the toolbar. Applied in the filter branch only. Filter state persists to URL params (and is carried over to other item list pages via sessionStorage key `item-list-search-prefs`).
+**`'no-vendor'` sentinel:** The URL segment `no-vendor` maps to `vendorId: null` in the database. Items with no vendors assigned appear exclusively in the no-vendor cart.
 
-**`ItemCard` in shopping mode:**
-- `showTags={false}` hides tags, vendors, and recipe badges
-- `showExpiration={false}` hides expiration (irrelevant at purchase time)
-- `showTagSummary={false}` hides the "N tags · N vendors · N recipes" count summary
+---
 
-**Pinned items:** Users can reduce a cart item's quantity to 0 to "pin" it. Pinned items:
-- Remain in the cart section (still checked) but don't contribute to the purchase count
-- Do NOT update inventory or create logs on checkout
-- Are automatically moved to the new active cart after checkout, so they appear ready for the next trip
-- Are removed if the cart is abandoned (intentional — abandoning clears everything)
+#### Root page: `/shopping` (vendor cart list)
 
-**Done button:** Disabled when `!cartItems.some(ci => ci.quantity > 0)` — i.e. when no item is actually being purchased (all pinned or cart empty).
+Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownMenu + direction toggle in the top toolbar.
 
-**Checkout (`src/db/operations.ts`):** Separates `pinnedItems` (qty=0) from `buyingItems` (qty>0). Only processes `buyingItems` in the inventory loop. After marking the cart completed and deleting all cartItems, re-adds pinned items to the new active cart via `getOrCreateActiveCart()`.
+**Sort options** (persisted in `?sort` + `?dir` URL params):
+- `'recent'` (default desc): sorted by `cart.lastVisitedAt` descending — nulls last
+- `'alpha'`: alphabetical by vendor name
+- `'count'`: total available items descending
 
-**URL search params** (validated by `validateSearch` on the route):
-- `?vendor` — selected vendor ID (default: `''` = All vendors)
+**"No vendor" card:** Shown only when at least one item has no vendors assigned. Always renders last regardless of sort order.
+
+**Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorItemCounts()` + `useVendors()` + `useItems()`.
 
 **Files:**
-- `src/routes/shopping.tsx` — main page with both vendor and tag filter controls
-- `src/routes/shopping.test.tsx` — integration tests (tag filtering + existing shopping behavior)
+- `src/routes/shopping.tsx` — layout (4 lines)
+- `src/routes/shopping/index.tsx` — vendor cart list page
+- `src/routes/shopping/index.test.tsx` — integration tests
+
+---
+
+#### Vendor cart page: `/shopping/$vendorId`
+
+Vendor-scoped cart with three-toolbar layout.
+
+**Toolbar layout:**
+
+Row 1 (single combined toolbar):
+```
+[← Go back]  [Vendor name]  [flex-1]  [N packs in cart]  [✕ Cancel]  [✓ Done]
+```
+- Back button: icon-only on mobile, "Go back" text on desktop (`hidden lg:inline`), aria-label `common.goBack`
+- Vendor name: `normal-case` class for vendor names (preserves casing like "iHerb"); plain for "No vendor"
+- Cancel: icon-only on mobile, "Cancel" text on desktop — visible only when `cartItems.length > 0`
+- Done: icon-only on mobile, "Done" text on desktop — disabled when no item has `quantity > 0`
+
+Row 2 (ItemListToolbar):
+- Same filter/sort/search as other item list pages
+- No vendor `leading` prop — items are already scoped to this vendor
+
+**Item scoping:**
+- Normal vendor: `items.filter(i => (i.vendorIds ?? []).includes(cartVendorId))`
+- No-vendor: `items.filter(i => !(i.vendorIds ?? []).length)`
+
+**Cart:** `useVendorCart(cartVendorId)` — creates the cart on first visit if it doesn't exist.
+
+**`lastVisitedAt`:** Stamped via `useUpdateCartLastVisited().mutate(cart.id)` on mount (inside `useEffect` keyed on `cart?.id`). Drives the `'recent'` sort order on the root page.
+
+**Pinned items:** Same behavior as before — quantity 0, stay in cart after checkout, move to the same vendor's new cart.
+
+**Checkout:** `logKey` is always `'shopping.log.purchasedAt'`; `logParams` is `{ vendor: vendor?.name ?? t('shopping.noVendor') }`. After checkout → navigate to `/shopping`.
+
+**Abandon:** After abandoning → navigate to `/shopping`.
+
+**Files:**
+- `src/routes/shopping/$vendorId.tsx` — vendor cart page
+- `src/routes/shopping/$vendorId.test.tsx` — integration tests
 
 ### Cooking Page
 

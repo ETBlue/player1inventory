@@ -132,7 +132,7 @@ export function RecipeGroupView() {
             <GroupCard
               key={recipe.id}
               name={recipe.name}
-              icon={<ChefHat size={16} />}
+              icon={<ChefHat className="h-4 w-4 text-foreground-muted" />}
               itemCount={getItemCount(recipe.id)}
               outOfStockCount={getOutOfStockCount(recipe.id)}
               lowStockCount={getLowStockCount(recipe.id)}

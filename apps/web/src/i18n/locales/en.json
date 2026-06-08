@@ -30,6 +30,20 @@
     "filters": "Filters"
   },
   "shopping": {
+    "title": "Shopping",
+    "noVendor": "No vendor",
+    "cartList": {
+      "sort": {
+        "recent": "Last visited",
+        "alpha": "A–Z",
+        "count": "Most items"
+      }
+    },
+    "cartCard": {
+      "packsChecked_one": " ({{count}} pack)",
+      "packsChecked_other": " ({{count}} packs)",
+      "inCart": "{{checked}} / {{total}} items in cart"
+    },
     "toolbar": {
       "cartCount_one": "{{count}} pack in cart",
       "cartCount_other": "{{count}} packs in cart"
@@ -299,8 +313,8 @@
         "title": "No vendors yet",
         "description": "Create your first vendor to get started!"
       },
-      "itemCount_one": "· 1 item",
-      "itemCount_other": "· {{count}} items",
+      "itemCount_one": "1 item",
+      "itemCount_other": "{{count}} items",
       "deleteAriaLabel": "Delete \"{{name}}\"",
       "deleteTitle": "Delete Vendor?",
       "deleteWithItems_one": "\"{{name}}\" will be removed from 1 item.",
@@ -326,8 +340,8 @@
         "title": "No recipes yet",
         "description": "Create your first recipe to get started!"
       },
-      "itemCount_one": "· 1 item",
-      "itemCount_other": "· {{count}} items",
+      "itemCount_one": "1 item",
+      "itemCount_other": "{{count}} items",
       "deleteAriaLabel": "Delete \"{{name}}\"",
       "deleteTitle": "Delete Recipe?",
       "deleteWithItems_one": "\"{{name}}\" will be deleted. It contains 1 item. Your inventory will not be affected.",

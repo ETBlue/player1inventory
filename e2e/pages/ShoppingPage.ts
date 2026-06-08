@@ -13,6 +13,29 @@ export class ShoppingPage {
     await this.page.goto('/shopping', { waitUntil: 'networkidle' })
   }
 
+  async navigateToVendorCart(vendorId: string) {
+    // Navigate directly to a vendor's cart page
+    // vendorId: use 'no-vendor' for items with no vendor assigned
+    await this.page.goto(`/shopping/${vendorId}`, { waitUntil: 'networkidle' })
+  }
+
+  getVendorCartCard(vendorName: string): Locator {
+    // VendorCartCard renders vendor name as a button
+    // (src/routes/shopping/index.tsx: VendorCartCard onClick triggers navigation)
+    return this.page.getByRole('button', { name: vendorName })
+  }
+
+  async clickVendorCartCard(vendorName: string) {
+    await this.getVendorCartCard(vendorName).click()
+    await this.page.waitForURL(/\/shopping\/.+/)
+  }
+
+  async clickBack() {
+    // Back button on vendor cart page: aria-label="Go back"
+    await this.page.getByRole('button', { name: 'Go back' }).click()
+    await this.page.waitForURL(/\/shopping(\?|$)/)
+  }
+
   getItemCard(name: string): Locator {
     // ItemCard renders item name as <h3> (same pattern as PantryPage)
     return this.page.getByRole('heading', { name, level: 3 })
@@ -32,7 +55,7 @@ export class ShoppingPage {
 
   async clickDone() {
     // Toolbar "Done" button — visible when cart has items
-    // Text: "Done" with Check icon (src/routes/shopping.tsx)
+    // Text: "Done" with Check icon (src/routes/shopping/$vendorId.tsx)
     await this.page.getByRole('button', { name: 'Done' }).click()
   }
 

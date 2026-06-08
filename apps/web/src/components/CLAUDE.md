@@ -12,7 +12,7 @@ src/components/
   vendor/         — vendor-specific: NewVendorDialog, VendorCard, VendorInfoForm
   recipe/         — recipe-specific: CookingControlBar, NewRecipeDialog, RecipeCard, RecipeInfoForm
   settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
-  shelf/          — shelf-specific: ShelfCard, ShelfList, AddShelfDialog
+  shelf/          — shelf-specific: ShelfList, AddShelfDialog
   ui/             — shadcn/ui primitives (flat files, not folders)
 ```
 
@@ -108,11 +108,13 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 **`SettingsNavCard`** (`src/components/settings/SettingsNavCard/index.tsx`) — navigation link card for settings list items. Props: `icon: LucideIcon`, `label: string`, `description: string`, `to: string`. Renders a TanStack Router Link wrapping a Card with icon, label, description, and ChevronRight.
 
+## Shopping Components
+
+**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + cart description), `ChevronRight`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support.
+
 ## Shelf Components
 
 Components for the shelf-view feature.
-
-**`ShelfCard`** (`src/components/shelf/ShelfCard/ShelfCard.tsx`) — card row for a shelf in the shelves list. Props: `shelf`, `itemCount`, `onClick`, `filterSummary?`, `outOfStockCount?`, `lowStockCount?`, `activeCount?`, `totalPackedQuantity?`, `totalTargetInPacks?`, `totalRefillInPacks?`. Three-row layout matching ItemCard: Row 1 (shelf name + `{packed}/{target} pack` label), Row 2 (`ItemProgressBar` for packed totals across all items, always in pack units), Row 3 (active count, filter summary, stock badges). Progress status: `'inactive'` when `totalTargetInPacks === 0`, otherwise derived from `getStockStatus(totalPackedQuantity, totalRefillInPacks)`.
 
 **`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`, `getOutOfStockCount?`, `getLowStockCount?`, `getActiveCount?`, `getPackTotals?` (returns `{ totalPacked, totalTarget, totalRefill }` per shelf ID).
 

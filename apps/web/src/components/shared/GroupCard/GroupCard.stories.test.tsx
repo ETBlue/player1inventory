@@ -34,9 +34,9 @@ describe('GroupCard stories smoke tests', () => {
     expect(screen.getByText(/Expires this week/)).toBeInTheDocument()
   })
 
-  it('OutOfStock renders out of stock badge', () => {
+  it('OutOfStock renders empty badge', () => {
     render(<OutOfStock />)
-    expect(screen.getByText(/out of stock/)).toBeInTheDocument()
+    expect(screen.getByText(/empty/)).toBeInTheDocument()
   })
 
   it('LowStock renders low stock badge', () => {

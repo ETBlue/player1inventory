@@ -16,6 +16,11 @@
 - `useAddInventoryLog()` (`src/hooks/useInventoryLogs.ts`) - Mutation hook to add an inventory log entry. Dual-mode: local calls `addInventoryLog`; cloud calls `useAddInventoryLogMutation` (Apollo).
 - `useConsumeRecipes()` (`src/hooks/useRecipes.ts`) - Batch mutation hook for cooking done. Sends all item quantity updates, inventory logs, and recipe `lastCookedAt` stamps in a single call. Dual-mode: local uses `consumeRecipesBatch` (Dexie transaction); cloud calls `useConsumeRecipesMutation` (Apollo). Used exclusively by the cooking page `handleConfirmDone`.
 
+**Shopping:**
+- `useVendorCart(vendorId: string | null)` (`src/hooks/useShoppingCart.ts`) - Gets or creates the active cart for a specific vendor (null = "No vendor" cart). Local: TanStack Query keyed `['cart', 'vendor', vendorId]`. Cloud fallback: single active cart.
+- `useAllActiveCarts()` (`src/hooks/useShoppingCart.ts`) - Returns all active carts (one per vendor). Local: TanStack Query keyed `['cart', 'all-active']`. Cloud fallback: single cart wrapped in array.
+- `useUpdateCartLastVisited()` (`src/hooks/useShoppingCart.ts`) - Mutation that stamps `lastVisitedAt` on a cart and invalidates `['cart', 'all-active']`. Used on mount in the vendor cart page to drive "last visited" sort order.
+
 **Cloud / Auth:**
 - `usePostLoginMigration()` (`src/hooks/usePostLoginMigration.ts`) - Cloud mode only. Detects when a signed-in user has local IndexedDB items and has not been prompted before (localStorage `migration-prompted` key). Exposes `state: MigrationState`, `dismiss()`, and `importData(conflictResolution)`. `importData` calls `fetchLocalPayload()` then `importCloudData()` to migrate local data to cloud. Used by `PostLoginMigrationDialog`.
 

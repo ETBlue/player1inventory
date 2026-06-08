@@ -4,10 +4,12 @@ import {
   abandonCart,
   addToCart,
   checkout,
+  getAllActiveCarts,
   getCartItems,
   getOrCreateActiveCart,
   removeFromCart,
   updateCartItem,
+  updateCartLastVisited,
 } from '@/db/operations'
 import {
   ActiveCartDocument,
@@ -31,7 +33,7 @@ export function useActiveCart() {
 
   const local = useQuery({
     queryKey: ['cart', 'active'],
-    queryFn: getOrCreateActiveCart,
+    queryFn: () => getOrCreateActiveCart(null),
     enabled: !isCloud,
   })
 
@@ -403,4 +405,73 @@ export function useAbandonCart() {
   }
 
   return localMutation
+}
+
+export function useVendorCart(vendorId: string | null) {
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
+    queryKey: ['cart', 'vendor', vendorId],
+    queryFn: () => getOrCreateActiveCart(vendorId),
+    enabled: !isCloud,
+  })
+
+  const cloud = useActiveCartQuery({ skip: !isCloud })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.activeCart
+        ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
+        : undefined,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
+}
+
+export function useAllActiveCarts() {
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  const local = useQuery({
+    queryKey: ['cart', 'all-active'],
+    queryFn: getAllActiveCarts,
+    enabled: !isCloud,
+  })
+
+  const cloud = useActiveCartQuery({ skip: !isCloud })
+
+  if (isCloud) {
+    const cart = cloud.data?.activeCart
+      ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
+      : undefined
+    return {
+      data: cart ? [cart] : [],
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data ?? [],
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
+}
+
+export function useUpdateCartLastVisited() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateCartLastVisited,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cart', 'all-active'] })
+    },
+  })
 }
