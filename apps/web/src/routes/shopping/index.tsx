@@ -74,9 +74,19 @@ function ShoppingIndex() {
     const cart = cartForVendor(vendorId)
     if (!cart) return { checkedCount: 0, totalQuantity: 0 }
     const cartItems = cartItemsMap.get(cart.id) ?? []
+    // Scope to items that belong to this vendor — matches what the cart page shows.
+    // Without this, a cart with items spanning multiple vendors (e.g. imported from a
+    // pre-vendor-carts backup) would show inflated counts on the no-vendor card.
+    const scoped = cartItems.filter((ci) => {
+      const item = items.find((i) => i.id === ci.itemId)
+      if (!item) return false
+      return vendorId === null
+        ? !(item.vendorIds ?? []).length
+        : (item.vendorIds ?? []).includes(vendorId)
+    })
     return {
-      checkedCount: cartItems.filter((ci) => ci.quantity > 0).length,
-      totalQuantity: cartItems.reduce((sum, ci) => sum + ci.quantity, 0),
+      checkedCount: scoped.filter((ci) => ci.quantity > 0).length,
+      totalQuantity: scoped.reduce((sum, ci) => sum + ci.quantity, 0),
     }
   }
 

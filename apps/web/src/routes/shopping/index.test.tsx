@@ -113,6 +113,48 @@ describe('Shopping index page', () => {
     expect(noVendorTexts).toHaveLength(0)
   })
 
+  it('user can see no-vendor card counts only items with no vendor (regression: imported backup cart)', async () => {
+    // Reproduces the bug where a backup imported before vendor-carts existed creates a
+    // single no-vendor cart containing items that belong to vendors. The no-vendor card
+    // should only count items that actually have no vendor, matching what the cart page shows.
+
+    // Given a vendor + two items: one assigned to Costco, one with no vendor
+    const vendor = await createVendor('Costco')
+    const milkWithVendor = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const centrumNoVendor = await createItem({
+      name: 'Centrum',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // Both items added to the no-vendor cart (simulating a pre-vendor-carts backup import)
+    const noVendorCart = await getOrCreateActiveCart(null)
+    await addToCart(noVendorCart.id, milkWithVendor.id, 3) // vendor-assigned item, qty > 0
+    await addToCart(noVendorCart.id, centrumNoVendor.id, 1) // no-vendor item, qty > 0
+
+    renderShoppingIndex()
+
+    // Then the no-vendor card shows "1 / 1 items in cart" (only Centrum counts)
+    // NOT "2 / 1 items in cart" which was the bug
+    expect(await screen.findByText(/1 \/ 1 items in cart/)).toBeInTheDocument()
+    expect(screen.queryByText(/2 \/ 1 items in cart/)).not.toBeInTheDocument()
+  })
+
   it('user can see cart with checked items reflected in vendor card', async () => {
     // Given a vendor with an item in its cart
     const vendor = await createVendor('Costco')

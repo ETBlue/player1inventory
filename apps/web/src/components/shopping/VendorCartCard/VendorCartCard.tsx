@@ -1,6 +1,5 @@
 import { ChevronRight, Store } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardDescription,
@@ -36,19 +35,16 @@ export function VendorCartCard({
       <CardHeader>
         <CardTitle className={cn(isNoVendor ? 'normal-case' : 'capitalize')}>
           {vendorName}
-          {totalQuantity > 0 && (
-            <Badge variant="primary" className="shrink-0">
-              {t('shopping.cartCard.packsChecked', {
-                count: totalQuantity,
-              })}
-            </Badge>
-          )}
         </CardTitle>
         <CardDescription>
           {t('shopping.cartCard.inCart', {
             checked: checkedCount,
             total: availableCount,
           })}
+          {totalQuantity > 0 &&
+            t('shopping.cartCard.packsChecked', {
+              count: totalQuantity,
+            })}
         </CardDescription>
       </CardHeader>
       <ChevronRight className="h-4 w-4" />
