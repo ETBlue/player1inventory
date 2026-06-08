@@ -40,9 +40,9 @@
       }
     },
     "cartCard": {
-      "packsChecked_one": "拿了 {{count}} 包",
-      "packsChecked_other": "拿了 {{count}} 包",
-      "inCart": "{{total}} 件中有 {{checked}} 件在購物車"
+      "packsChecked_one": " (共 {{count}} 件)",
+      "packsChecked_other": " (共 {{count}} 件)",
+      "inCart": "{{total}} / {{checked}} 個品項在購物車"
     },
     "toolbar": {
       "cartCount_one": "拿了 {{count}} 件",

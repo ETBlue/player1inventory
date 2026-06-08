@@ -28,8 +28,16 @@ export function VendorCartCard({
   const { t } = useTranslation()
   return (
     <Card
+      role="button"
+      tabIndex={0}
       className="cursor-pointer grid grid-cols-[auto_1fr_auto] items-center gap-4"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
     >
       <Store className="h-4 w-4 text-foreground-muted" />
       <CardHeader>

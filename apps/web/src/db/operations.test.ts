@@ -44,6 +44,7 @@ import {
   reorderShelves,
   seedDefaultData,
   updateCartItem,
+  updateCartLastVisited,
   updateItem,
   updateRecipe,
   updateRecipeLastCookedAt,
@@ -898,6 +899,19 @@ describe('ShoppingCart operations', () => {
     const newCartItems = await getCartItems(newCart.id)
     expect(newCartItems.some((ci) => ci.itemId === item2.id)).toBe(true) // pinned item is there
     expect(newCartItems.some((ci) => ci.itemId === item1.id)).toBe(false) // bought item is gone
+  })
+
+  it('updateCartLastVisited stamps lastVisitedAt on the cart', async () => {
+    // Given an active cart
+    const cart = await getOrCreateActiveCart(null)
+    expect(cart.lastVisitedAt).toBeNull()
+
+    // When lastVisitedAt is updated
+    await updateCartLastVisited(cart.id)
+
+    // Then the cart has a non-null lastVisitedAt
+    const updated = await db.shoppingCarts.get(cart.id)
+    expect(updated?.lastVisitedAt).toBeInstanceOf(Date)
   })
 
   it('abandons cart without creating logs', async () => {

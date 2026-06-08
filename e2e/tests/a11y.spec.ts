@@ -83,6 +83,20 @@ test('user can view shopping page without accessibility violations', async ({ pa
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
+// Shopping > Vendor cart page (/shopping/:vendorId)
+test('user can view vendor cart page without accessibility violations', async ({ page }) => {
+  // Given a seeded vendor
+  const vendorId = await seedVendor(page)
+
+  // Navigate to the vendor's cart page
+  await page.goto(`/shopping/${vendorId}`)
+  await page.waitForLoadState('networkidle')
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
 // Cooking page (/cooking)
 test('user can view cooking page without accessibility violations', async ({ page }) => {
   // Given the user navigates to the cooking page
@@ -560,6 +574,20 @@ test.describe('dark mode a11y', () => {
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Shopping > Vendor cart page (/shopping/:vendorId) in dark mode
+  test('user can view vendor cart page without accessibility violations in dark mode', async ({ page }) => {
+    // Given a seeded vendor (dark mode enabled)
+    const vendorId = await seedVendor(page)
+
+    // Navigate to the vendor's cart page
+    await page.goto(`/shopping/${vendorId}`)
+    await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
     // Then there should be no violations
