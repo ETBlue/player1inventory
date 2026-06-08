@@ -47,9 +47,6 @@ import type { Item } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
   component: VendorCart,
-  validateSearch: (search: Record<string, unknown>) => ({
-    vendor: typeof search.vendor === 'string' ? search.vendor : '',
-  }),
 })
 
 function VendorCart() {
@@ -173,7 +170,15 @@ function VendorCart() {
   const activePendingItems = pendingItems.filter((item) => !isInactive(item))
   const inactivePendingItems = pendingItems.filter((item) => isInactive(item))
 
-  const cartTotal = cartItems.reduce((sum, ci) => sum + ci.quantity, 0)
+  const cartTotal = cartItems
+    .filter((ci) => {
+      const item = items.find((i) => i.id === ci.itemId)
+      if (!item) return false
+      return cartVendorId === null
+        ? !(item.vendorIds ?? []).length
+        : (item.vendorIds ?? []).includes(cartVendorId)
+    })
+    .reduce((sum, ci) => sum + ci.quantity, 0)
 
   function handleToggleCart(item: Item) {
     const ci = cartItemMap.get(item.id)

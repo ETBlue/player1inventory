@@ -165,6 +165,61 @@ describe('Vendor cart page', () => {
     )
   })
 
+  it('cart total in toolbar counts only vendor-scoped items (regression: imported backup cart)', async () => {
+    // Reproduces the bug where a no-vendor cart imported from a pre-vendor-carts backup
+    // contains items belonging to vendors. The toolbar "N packs in cart" should only count
+    // items that belong to this vendor (no-vendor = items with no vendors), not all cart items.
+
+    // Given: a no-vendor cart containing both a vendor-assigned item and a no-vendor item
+    const vendor = await createVendor('Costco')
+    const milkWithVendor = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const centrumNoVendor = await createItem({
+      name: 'Centrum',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const noVendorCart = await getOrCreateActiveCart(null)
+    await addToCart(noVendorCart.id, milkWithVendor.id, 10) // vendor-assigned, qty 10
+    await addToCart(noVendorCart.id, centrumNoVendor.id, 5) // no-vendor item, qty 5
+
+    // When user navigates to the no-vendor cart
+    renderVendorCart('no-vendor')
+
+    // Then the toolbar shows only the no-vendor item's quantity (5), not 15
+    expect(await screen.findByText(/5 packs in cart/i)).toBeInTheDocument()
+    expect(screen.queryByText(/15 packs in cart/i)).not.toBeInTheDocument()
+  })
+
+  it('vendor cart URL does not include legacy ?vendor= search param', async () => {
+    // The validateSearch on this route used to carry over a legacy ?vendor= param from the
+    // old single-cart shopping page. It was never used and auto-serialized to ?vendor= in the URL.
+
+    // Given a vendor cart page is rendered
+    const vendor = await createVendor('Costco')
+    renderVendorCart(vendor.id)
+
+    // When the page loads
+    await screen.findByText('Costco')
+
+    // Then the URL does not contain ?vendor=
+    expect(window.location.search).not.toContain('vendor=')
+  })
+
   it('user can abandon the vendor cart', async () => {
     // Given a vendor with an item in the cart
     const vendor = await createVendor('Costco')
