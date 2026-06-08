@@ -1,4 +1,5 @@
-import { ShelfCard } from '@/components/shelf/ShelfCard'
+import { ShelvingUnit } from 'lucide-react'
+import { GroupCard } from '@/components/shared/GroupCard'
 import type { Shelf } from '@/types'
 
 interface ShelfListProps {
@@ -33,9 +34,10 @@ export function ShelfList({
       {shelves.map((shelf) => {
         const summary = getFilterSummary ? getFilterSummary(shelf) : undefined
         return (
-          <ShelfCard
+          <GroupCard
             key={shelf.id}
-            shelf={shelf}
+            name={shelf.name}
+            icon={<ShelvingUnit className="h-4 w-4 text-foreground-muted" />}
             itemCount={getItemCount(shelf.id)}
             {...(summary !== undefined ? { filterSummary: summary } : {})}
             {...(getOutOfStockCount !== undefined
