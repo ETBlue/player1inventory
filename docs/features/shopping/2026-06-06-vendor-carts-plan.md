@@ -832,4 +832,4 @@ pnpm test:e2e --grep "shopping|a11y"
 
 ## Status
 
-🔲 Pending — implementation not started
+✅ Phases 1–6 complete (local mode) · Phase 7 (cloud mode) deferred
