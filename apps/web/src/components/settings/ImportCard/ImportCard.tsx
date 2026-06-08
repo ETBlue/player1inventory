@@ -5,7 +5,13 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { ExportPayload } from '@/lib/exportData'
 import {
@@ -208,79 +214,80 @@ export function ImportCard() {
         onChange={handleFileChange}
       />
 
-      <Card>
-        <CardContent className="px-3 flex items-center gap-3">
-          <Upload className="h-5 w-5 text-foreground-muted" />
-          <div className="flex-1">
-            <p className="font-medium">{t('settings.import.label')}</p>
-            <p className="text-sm text-foreground-muted">
+      <Card className="space-y-2 px-4">
+        <CardHeader className="flex items-center gap-4">
+          <Upload className="h-5 w-5 text-foreground-muted shrink-0" />
+          <div>
+            <CardTitle>{t('settings.import.label')}</CardTitle>
+            <CardDescription>
               {t('settings.import.description')}
-            </p>
-
-            {isImporting && (
-              <div className="mt-2 space-y-2">
-                <p className="text-sm text-foreground-muted">
-                  {t('settings.import.importing', {
-                    entity: importStatus.progress.currentEntity
-                      ? t(
-                          `settings.import.entities.${importStatus.progress.currentEntity}`,
-                        )
-                      : '…',
-                  })}
-                </p>
-                <div className="w-full bg-background-elevated rounded-full h-2">
-                  <div
-                    className="bg-importance-primary-background h-2 rounded-full transition-all"
-                    style={{
-                      width: `${
-                        importStatus.progress.totalBatches > 0
-                          ? (
-                              importStatus.progress.completedBatches /
-                                importStatus.progress.totalBatches
-                            ) * 100
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-                <p className="text-xs text-foreground-muted">
-                  {t('settings.import.batchProgress', {
-                    completed: importStatus.progress.completedBatches,
-                    total: importStatus.progress.totalBatches,
-                  })}
-                </p>
-              </div>
-            )}
-
-            {importStatus.phase === 'error' && (
-              <div className="mt-2 space-y-2">
-                <p className="text-sm text-importance-destructive-foreground">
-                  {t('settings.import.importError', {
-                    entity: importStatus.errorEntity,
-                  })}
-                </p>
-                <Button
-                  variant="neutral-outline"
-                  size="sm"
-                  onClick={() =>
-                    handleCloudImport(
-                      importStatus.session.strategy,
-                      undefined,
-                      importStatus.session,
-                    )
-                  }
-                >
-                  {t('settings.import.retry')}
-                </Button>
-              </div>
-            )}
-
-            {importStatus.phase === 'done' && (
-              <p className="mt-2 text-sm text-status-ok-foreground">
-                {t('settings.import.importDone')}
-              </p>
-            )}
+            </CardDescription>
           </div>
+        </CardHeader>
+        <CardContent className="ml-9 grid grid-cols-1 gap-3">
+          {isImporting && (
+            <div className="space-y-1">
+              <p className="text-xs text-foreground-muted">
+                {t('settings.import.importing', {
+                  entity: importStatus.progress.currentEntity
+                    ? t(
+                        `settings.import.entities.${importStatus.progress.currentEntity}`,
+                      )
+                    : '…',
+                })}
+              </p>
+              <div className="w-full bg-background-elevated rounded-full h-2">
+                <div
+                  className="bg-importance-primary-background h-2 rounded-full transition-all"
+                  style={{
+                    width: `${
+                      importStatus.progress.totalBatches > 0
+                        ? (
+                            importStatus.progress.completedBatches /
+                              importStatus.progress.totalBatches
+                          ) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-foreground-muted">
+                {t('settings.import.batchProgress', {
+                  completed: importStatus.progress.completedBatches,
+                  total: importStatus.progress.totalBatches,
+                })}
+              </p>
+            </div>
+          )}
+
+          {importStatus.phase === 'error' && (
+            <div className="space-y-1">
+              <p className="text-xs text-importance-destructive-foreground">
+                {t('settings.import.importError', {
+                  entity: importStatus.errorEntity,
+                })}
+              </p>
+              <Button
+                variant="neutral-outline"
+                size="sm"
+                onClick={() =>
+                  handleCloudImport(
+                    importStatus.session.strategy,
+                    undefined,
+                    importStatus.session,
+                  )
+                }
+              >
+                {t('settings.import.retry')}
+              </Button>
+            </div>
+          )}
+
+          {importStatus.phase === 'done' && (
+            <p className="text-xs text-status-ok-foreground">
+              {t('settings.import.importDone')}
+            </p>
+          )}
 
           {(isIdle || isImporting) && (
             <Button

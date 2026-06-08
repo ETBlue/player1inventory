@@ -25,15 +25,15 @@ describe('ShelfCard stories smoke tests', () => {
     expect(screen.getByText('favorites')).toBeInTheDocument()
   })
 
-  it('EmptyShelf renders shelf name with 0 of 0 active', () => {
+  it('EmptyShelf renders shelf name with 0 / 0 active', () => {
     render(<EmptyShelf />)
     expect(screen.getByText('snacks')).toBeInTheDocument()
-    expect(screen.getByText('0 of 0 active')).toBeInTheDocument()
+    expect(screen.getByText('0 / 0 active')).toBeInTheDocument()
   })
 
-  it('WithOutOfStock renders out of stock count', () => {
+  it('WithOutOfStock renders empty count', () => {
     render(<WithOutOfStock />)
-    expect(screen.getByText('3 out of stock')).toBeInTheDocument()
+    expect(screen.getByText('3 empty')).toBeInTheDocument()
   })
 
   it('WithLowStock renders low stock count', () => {
@@ -43,18 +43,18 @@ describe('ShelfCard stories smoke tests', () => {
 
   it('WithBothStockStatuses renders both counts', () => {
     render(<WithBothStockStatuses />)
-    expect(screen.getByText('1 out of stock')).toBeInTheDocument()
+    expect(screen.getByText('1 empty')).toBeInTheDocument()
     expect(screen.getByText('4 low stock')).toBeInTheDocument()
   })
 
-  it('AllActiveItems renders "X of Z active" when all active', () => {
+  it('AllActiveItems renders "X / Z active" when all active', () => {
     render(<AllActiveItems />)
-    expect(screen.getByText('5 of 5 active')).toBeInTheDocument()
+    expect(screen.getByText('5 / 5 active')).toBeInTheDocument()
   })
 
-  it('WithInactiveItems renders "X of Z active" with total including inactive', () => {
+  it('WithInactiveItems renders "X / Z active" with total including inactive', () => {
     render(<WithInactiveItems />)
-    expect(screen.getByText('5 of 7 active')).toBeInTheDocument()
+    expect(screen.getByText('5 / 7 active')).toBeInTheDocument()
   })
 
   it('FilterShelf renders progress label with pack unit', () => {

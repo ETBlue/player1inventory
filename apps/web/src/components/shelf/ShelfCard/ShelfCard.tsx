@@ -15,6 +15,7 @@ interface ShelfCardProps {
   totalRefillInPacks?: number
 }
 
+// TODO for AI agent: remove this component as it's a redundant thin layer of GroupCard
 export function ShelfCard({
   shelf,
   itemCount,
@@ -30,7 +31,7 @@ export function ShelfCard({
   return (
     <GroupCard
       name={shelf.name}
-      icon={<ShelvingUnit size={16} />}
+      icon={<ShelvingUnit className="h-4 w-4 text-foreground-muted" />}
       itemCount={itemCount}
       onClick={onClick}
       {...(shelf.type === 'filter' && filterSummary !== undefined

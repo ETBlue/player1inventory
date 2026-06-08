@@ -124,7 +124,7 @@ export function VendorGroupView() {
               key={vendor.id}
               name={vendor.name}
               nameClassName="normal-case"
-              icon={<Store size={16} />}
+              icon={<Store className="h-4 w-4 text-foreground-muted" />}
               itemCount={getItemCount(vendor.id)}
               outOfStockCount={getOutOfStockCount(vendor.id)}
               lowStockCount={getLowStockCount(vendor.id)}

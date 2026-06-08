@@ -13,7 +13,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   useCreateFamilyGroupMutation,
   useDisbandFamilyGroupMutation,
@@ -77,57 +83,59 @@ export function FamilyGroupCard() {
   }
 
   return (
-    <Card>
-      <CardContent className="px-3 space-y-2">
-        <div className="flex items-center gap-3">
-          <Users className="h-5 w-5 text-foreground-muted" />
-          <div className="flex-1">
-            <p className="font-medium">
-              {group
-                ? t('settings.familyGroup.titleWithName', {
-                    name: group.name,
-                  })
-                : t('settings.familyGroup.title')}
-            </p>
-            {group ? (
-              <div className="flex items-center gap-2 text-sm text-foreground-muted">
-                <span>
-                  {t('settings.familyGroup.groupCode', { code: group.code })}
-                </span>
-                <Button
-                  variant="neutral-ghost"
-                  size="sm"
-                  className="h-auto px-1 py-0 text-xs"
-                  onClick={copyCode}
-                >
-                  {t('settings.familyGroup.copyCode')}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-foreground-muted">
-                {t('settings.familyGroup.description')}
-              </p>
-            )}
-          </div>
-          {group && isOwner && (
-            <Button
-              variant="neutral-outline"
-              onClick={() => setDialog('disband')}
-            >
-              {t('settings.familyGroup.disbandButton')}
-            </Button>
-          )}
-          {group && !isOwner && (
-            <Button
-              variant="neutral-outline"
-              onClick={() => setDialog('leave')}
-            >
-              {t('settings.familyGroup.leaveButton')}
-            </Button>
+    <Card className="space-y-2 px-4">
+      <CardHeader className="flex items-center gap-4">
+        <Users className="h-5 w-5 text-foreground-muted shrink-0" />
+        <div>
+          <CardTitle>
+            {group
+              ? t('settings.familyGroup.titleWithName', {
+                  name: group.name,
+                })
+              : t('settings.familyGroup.title')}
+          </CardTitle>
+          {group ? (
+            <CardDescription>
+              {t('settings.familyGroup.groupCode', { code: group.code })}
+            </CardDescription>
+          ) : (
+            <CardDescription>
+              {t('settings.familyGroup.description')}
+            </CardDescription>
           )}
         </div>
+      </CardHeader>
+      <CardContent className="ml-9 grid grid-cols-2 items-center gap-3">
+        {group && (
+          <>
+            {' '}
+            <Button
+              variant="neutral-ghost"
+              size="sm"
+              className="h-auto px-1 py-0 text-xs"
+              onClick={copyCode}
+            >
+              {t('settings.familyGroup.copyCode')}
+            </Button>
+            {isOwner ? (
+              <Button
+                variant="neutral-outline"
+                onClick={() => setDialog('disband')}
+              >
+                {t('settings.familyGroup.disbandButton')}
+              </Button>
+            ) : (
+              <Button
+                variant="neutral-outline"
+                onClick={() => setDialog('leave')}
+              >
+                {t('settings.familyGroup.leaveButton')}
+              </Button>
+            )}
+          </>
+        )}
         {!group && (
-          <div className="grid grid-cols-2 gap-2">
+          <>
             <Button
               variant="neutral-outline"
               onClick={() => setDialog('create')}
@@ -137,7 +145,7 @@ export function FamilyGroupCard() {
             <Button variant="neutral-outline" onClick={() => setDialog('join')}>
               {t('settings.familyGroup.joinButton')}
             </Button>
-          </div>
+          </>
         )}
       </CardContent>
 

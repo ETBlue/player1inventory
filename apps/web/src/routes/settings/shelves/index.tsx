@@ -35,9 +35,8 @@ import {
   AddShelfDialog,
   type CreateShelfInput,
 } from '@/components/shelf/AddShelfDialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardDescription, CardTitle } from '@/components/ui/card'
 import { useItems } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -86,18 +85,19 @@ function SortableShelfRow({
 
   return (
     <div ref={setNodeRef} style={style}>
-      <Card className="py-1">
-        <CardContent className="flex items-center gap-2">
-          {/* Left side: drag handle + icon + name + count */}
-          <button
-            type="button"
-            className="cursor-grab active:cursor-grabbing text-foreground-muted hover:text-foreground shrink-0"
-            aria-label={`Drag to reorder ${shelf.name}`}
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+      <Card className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 py-1">
+        {/* Left side: drag handle + icon + name + count */}
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing text-foreground-muted hover:text-foreground"
+          aria-label={`Drag to reorder ${shelf.name}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+
+        <CardTitle className="truncate">
           <Link
             to="/settings/shelves/$shelfId"
             params={{ shelfId: shelf.id }}
@@ -105,36 +105,26 @@ function SortableShelfRow({
           >
             {shelf.name}
           </Link>
-          <span className="text-sm text-foreground-muted shrink-0">
-            · {itemCount} {itemCount === 1 ? 'item' : 'items'}
-          </span>
-          <div className="flex-1" />
-
-          {shelf.type !== 'system' && (
-            <Badge
-              variant="neutral-outline"
-              className="text-xs capitalize shrink-0 gap-1"
-            >
-              {shelf.type === 'filter' && (
-                <SlidersVertical className="h-3 w-3 text-foreground-muted" />
-              )}
-              {shelf.type === 'selection' && (
-                <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
-              )}
-              {shelf.type}
-            </Badge>
+        </CardTitle>
+        <CardDescription className="flex items-center gap-1">
+          {shelf.type === 'filter' && (
+            <SlidersVertical className="h-3 w-3 text-foreground-muted" />
           )}
-          {/* Right side: delete */}
-          <DeleteButton
-            trigger={<Trash2 className="h-4 w-4" />}
-            buttonVariant="destructive-ghost"
-            buttonSize="icon"
-            buttonAriaLabel={`Delete ${shelf.name}`}
-            dialogTitle={`Delete "${shelf.name}"?`}
-            dialogDescription="Items will move to Unsorted."
-            onDelete={onDelete}
-          />
-        </CardContent>
+          {shelf.type === 'selection' && (
+            <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
+          )}
+          {itemCount} {itemCount === 1 ? 'item' : 'items'}
+        </CardDescription>
+        {/* Right side: delete */}
+        <DeleteButton
+          trigger={<Trash2 className="h-4 w-4" />}
+          buttonVariant="destructive-ghost"
+          buttonSize="icon"
+          buttonAriaLabel={`Delete ${shelf.name}`}
+          dialogTitle={`Delete "${shelf.name}"?`}
+          dialogDescription="Items will move to Unsorted."
+          onDelete={onDelete}
+        />
       </Card>
     </div>
   )
@@ -310,17 +300,13 @@ export function ShelfSettingsPage() {
 
           {/* Virtual Unsorted row — always last, non-draggable, non-deletable */}
           {hasUnsorted && (
-            <Card className="py-0">
-              <CardContent className="h-10 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-foreground-muted" />
-                <span className="font-medium capitalize truncate">
-                  Unsorted
-                </span>
-                <span className="text-sm text-foreground-muted shrink-0">
-                  {getUnsortedCount()}{' '}
-                  {getUnsortedCount() === 1 ? 'item' : 'items'}
-                </span>
-              </CardContent>
+            <Card className="grid grid-cols-[auto_1fr_auto] items-center gap-4 h-10 px-4 py-0">
+              <Lock className="h-4 w-4 text-foreground-muted" />
+              <CardTitle>Unsorted</CardTitle>
+              <CardDescription>
+                {getUnsortedCount()}{' '}
+                {getUnsortedCount() === 1 ? 'item' : 'items'}
+              </CardDescription>
             </Card>
           )}
         </div>

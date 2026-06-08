@@ -257,19 +257,24 @@ function VendorCart() {
                 search: { sort: 'recent', dir: 'desc' },
               })
             }
+            icon={<ArrowLeft />}
           >
-            <ArrowLeft />
             <span className="hidden lg:inline">{t('common.goBack')}</span>
           </Button>
           <span
             aria-live="polite"
             aria-atomic="true"
-            className={vendor ? 'normal-case' : ''}
+            className={
+              vendor ? 'normal-case flex-1 truncate' : 'flex-1 truncate'
+            }
           >
             {vendor?.name ?? t('shopping.noVendor')}
           </span>
-          <div className="flex-1" />
-          <span aria-live="polite" aria-atomic="true">
+          <span
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-sm whitespace-nowrap"
+          >
             {t('shopping.toolbar.cartCount', { count: cartTotal })}
           </span>
           {cartItems.length > 0 && (

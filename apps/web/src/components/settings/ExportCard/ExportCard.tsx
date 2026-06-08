@@ -3,7 +3,13 @@ import { Download } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { useDataMode } from '@/hooks/useDataMode'
 import { exportAllData, exportCloudData } from '@/lib/exportData'
 
@@ -27,15 +33,15 @@ export function ExportCard() {
   }
 
   return (
-    <Card>
-      <CardContent className="px-3 flex items-center gap-3">
-        <Download className="h-5 w-5 text-foreground-muted" />
-        <div className="flex-1">
-          <p className="font-medium">{t('settings.export.label')}</p>
-          <p className="text-sm text-foreground-muted">
-            {t('settings.export.description')}
-          </p>
+    <Card className="space-y-2 px-4">
+      <CardHeader className="flex items-center gap-4">
+        <Download className="h-5 w-5 text-foreground-muted shrink-0" />
+        <div>
+          <CardTitle>{t('settings.export.label')}</CardTitle>
+          <CardDescription>{t('settings.export.description')}</CardDescription>
         </div>
+      </CardHeader>
+      <CardContent className="ml-9 grid grid-cols-1">
         <Button
           variant="neutral-outline"
           onClick={handleExport}

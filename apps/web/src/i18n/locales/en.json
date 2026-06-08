@@ -40,9 +40,9 @@
       }
     },
     "cartCard": {
-      "packsChecked_one": "{{count}} pack checked",
-      "packsChecked_other": "{{count}} packs checked",
-      "inCart": "{{checked}} of {{total}} items in cart"
+      "packsChecked_one": "{{count}} pack in cart",
+      "packsChecked_other": "{{count}} packs in cart",
+      "inCart": "{{checked}} / {{total}} items in cart"
     },
     "toolbar": {
       "cartCount_one": "{{count}} pack in cart",
@@ -313,8 +313,8 @@
         "title": "No vendors yet",
         "description": "Create your first vendor to get started!"
       },
-      "itemCount_one": "· 1 item",
-      "itemCount_other": "· {{count}} items",
+      "itemCount_one": "1 item",
+      "itemCount_other": "{{count}} items",
       "deleteAriaLabel": "Delete \"{{name}}\"",
       "deleteTitle": "Delete Vendor?",
       "deleteWithItems_one": "\"{{name}}\" will be removed from 1 item.",
@@ -340,8 +340,8 @@
         "title": "No recipes yet",
         "description": "Create your first recipe to get started!"
       },
-      "itemCount_one": "· 1 item",
-      "itemCount_other": "· {{count}} items",
+      "itemCount_one": "1 item",
+      "itemCount_other": "{{count}} items",
       "deleteAriaLabel": "Delete \"{{name}}\"",
       "deleteTitle": "Delete Recipe?",
       "deleteWithItems_one": "\"{{name}}\" will be deleted. It contains 1 item. Your inventory will not be affected.",

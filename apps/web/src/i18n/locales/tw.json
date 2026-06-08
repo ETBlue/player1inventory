@@ -40,8 +40,8 @@
       }
     },
     "cartCard": {
-      "packsChecked_one": "已勾選 {{count}} 包",
-      "packsChecked_other": "已勾選 {{count}} 包",
+      "packsChecked_one": "拿了 {{count}} 包",
+      "packsChecked_other": "拿了 {{count}} 包",
       "inCart": "{{total}} 件中有 {{checked}} 件在購物車"
     },
     "toolbar": {
@@ -311,8 +311,8 @@
         "title": "尚未建立供應商",
         "description": "趕快來創造第一個供應商吧"
       },
-      "itemCount_one": "· 1 個品項",
-      "itemCount_other": "· {{count}} 個品項",
+      "itemCount_one": "1 個品項",
+      "itemCount_other": "{{count}} 個品項",
       "deleteAriaLabel": "刪除「{{name}}」",
       "deleteTitle": "刪除供應商？",
       "deleteWithItems_other": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
@@ -337,8 +337,8 @@
         "title": "尚未建立食譜",
         "description": "趕快來創造第一份食譜吧"
       },
-      "itemCount_one": "· 1 個品項",
-      "itemCount_other": "· {{count}} 個品項",
+      "itemCount_one": "1 個品項",
+      "itemCount_other": "{{count}} 個品項",
       "deleteAriaLabel": "刪除「{{name}}」",
       "deleteTitle": "刪除食譜？",
       "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
