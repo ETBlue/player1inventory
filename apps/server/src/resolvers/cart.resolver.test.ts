@@ -68,19 +68,14 @@ const now = new Date('2024-01-01T00:00:00.000Z')
 
 function makeCart(overrides: Partial<{
   id: string
-  status: string
   userId: string
-  createdAt: Date
-  completedAt: Date | null
+  lastPurchasedAt: Date | null
 }> = {}) {
   return {
-    id: overrides.id ?? 'cart_1',
-    status: overrides.status ?? 'active',
+    id: overrides.id ?? 'no-vendor',
     userId: overrides.userId ?? 'user_test123',
     familyId: null,
-    createdAt: overrides.createdAt ?? now,
-    updatedAt: now,
-    completedAt: overrides.completedAt ?? null,
+    lastPurchasedAt: overrides.lastPurchasedAt ?? null,
   }
 }
 
@@ -93,7 +88,7 @@ function makeCartItem(overrides: Partial<{
 }> = {}) {
   return {
     id: overrides.id ?? 'cartitem_1',
-    cartId: overrides.cartId ?? 'cart_1',
+    cartId: overrides.cartId ?? 'no-vendor',
     itemId: overrides.itemId ?? 'item_1',
     quantity: overrides.quantity ?? 1,
     userId: overrides.userId ?? 'user_test123',
@@ -121,38 +116,115 @@ async function execOp(query: string, variables?: Record<string, unknown>, contex
 // ─── activeCart ──────────────────────────────────────────────────────────────
 
 describe('activeCart', () => {
-  it('user can get existing active cart', async () => {
-    // Given an active cart already exists
+  it('user can get existing no-vendor cart', async () => {
+    // Given a no-vendor cart already exists
     const cart = makeCart()
-    mockPrisma.cart.findFirst.mockResolvedValue(cart)
+    mockPrisma.cart.findUnique.mockResolvedValue(cart)
 
     // When querying activeCart
-    const result = await execOp(`query { activeCart { id status createdAt } }`)
+    const result = await execOp(`query { activeCart { id lastPurchasedAt } }`)
 
     // Then the existing cart is returned
     expect(result?.errors).toBeUndefined()
-    const found = result?.data?.activeCart as { id: string; status: string; createdAt: string }
-    expect(found.status).toBe('active')
-    expect(found.id).toBe('cart_1')
+    const found = result?.data?.activeCart as { id: string; lastPurchasedAt: string | null }
+    expect(found.id).toBe('no-vendor')
+    expect(found.lastPurchasedAt).toBeNull()
     expect(mockPrisma.cart.create).not.toHaveBeenCalled()
   })
 
-  it('user gets a new active cart created if none exists', async () => {
-    // Given no active cart exists
-    mockPrisma.cart.findFirst.mockResolvedValue(null)
+  it('user gets a new no-vendor cart created if none exists', async () => {
+    // Given no cart exists for 'no-vendor'
+    mockPrisma.cart.findUnique.mockResolvedValue(null)
     const newCart = makeCart()
     mockPrisma.cart.create.mockResolvedValue(newCart)
 
     // When querying activeCart
-    const result = await execOp(`query { activeCart { id status createdAt } }`)
+    const result = await execOp(`query { activeCart { id lastPurchasedAt } }`)
 
-    // Then a new active cart is created and returned
+    // Then a new cart is created and returned
     expect(result?.errors).toBeUndefined()
-    const found = result?.data?.activeCart as { id: string; status: string; createdAt: string }
-    expect(found.status).toBe('active')
+    const found = result?.data?.activeCart as { id: string; lastPurchasedAt: string | null }
     expect(found.id).toBeDefined()
-    expect(found.createdAt).toBeDefined()
     expect(mockPrisma.cart.create).toHaveBeenCalledOnce()
+    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'no-vendor', userId: 'user_test123' } })
+  })
+})
+
+// ─── vendorCart ──────────────────────────────────────────────────────────────
+
+describe('vendorCart', () => {
+  it('user can get existing vendor cart by vendor ID', async () => {
+    // Given a cart with vendor ID exists
+    const cart = makeCart({ id: 'vendor_1' })
+    mockPrisma.cart.findUnique.mockResolvedValue(cart)
+
+    // When querying vendorCart
+    const result = await execOp(
+      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id lastPurchasedAt } }`,
+      { vendorId: 'vendor_1' },
+    )
+
+    // Then the cart is returned
+    expect(result?.errors).toBeUndefined()
+    const found = result?.data?.vendorCart as { id: string; lastPurchasedAt: string | null }
+    expect(found.id).toBe('vendor_1')
+    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
+  })
+
+  it('user gets a new vendor cart created if none exists for that vendor', async () => {
+    // Given no cart exists for vendor_2
+    mockPrisma.cart.findUnique.mockResolvedValue(null)
+    const newCart = makeCart({ id: 'vendor_2' })
+    mockPrisma.cart.create.mockResolvedValue(newCart)
+
+    // When querying vendorCart
+    const result = await execOp(
+      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
+      { vendorId: 'vendor_2' },
+    )
+
+    // Then a new cart is created
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'vendor_2', userId: 'user_test123' } })
+  })
+
+  it('null vendorId falls back to no-vendor cart', async () => {
+    // Given a no-vendor cart exists
+    const cart = makeCart({ id: 'no-vendor' })
+    mockPrisma.cart.findUnique.mockResolvedValue(cart)
+
+    // When querying vendorCart with null vendorId
+    const result = await execOp(
+      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
+      { vendorId: null },
+    )
+
+    // Then the no-vendor cart is returned
+    expect(result?.errors).toBeUndefined()
+    const found = result?.data?.vendorCart as { id: string }
+    expect(found.id).toBe('no-vendor')
+  })
+})
+
+// ─── allCarts ────────────────────────────────────────────────────────────────
+
+describe('allCarts', () => {
+  it('user can get all their carts', async () => {
+    // Given two carts exist for the user
+    const carts = [makeCart({ id: 'no-vendor' }), makeCart({ id: 'vendor_1' })]
+    mockPrisma.cart.findMany.mockResolvedValue(carts)
+
+    // When querying allCarts
+    const result = await execOp(`query { allCarts { id lastPurchasedAt } }`)
+
+    // Then both carts are returned
+    expect(result?.errors).toBeUndefined()
+    const found = result?.data?.allCarts as { id: string }[]
+    expect(found).toHaveLength(2)
+    expect(mockPrisma.cart.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user_test123' },
+      orderBy: [{ id: 'asc' }],
+    })
   })
 })
 
@@ -170,7 +242,7 @@ describe('addToCart', () => {
       `mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
         addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id cartId itemId quantity }
       }`,
-      { cartId: 'cart_1', itemId: 'item_milk', quantity: 2 },
+      { cartId: 'no-vendor', itemId: 'item_milk', quantity: 2 },
     )
 
     // Then the cart item is created
@@ -193,7 +265,7 @@ describe('addToCart', () => {
       `mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {
         addToCart(cartId: $cartId, itemId: $itemId, quantity: $quantity) { id quantity }
       }`,
-      { cartId: 'cart_1', itemId: 'item_milk', quantity: 3 },
+      { cartId: 'no-vendor', itemId: 'item_milk', quantity: 3 },
     )
 
     // Then the quantity is incremented to 5
@@ -333,22 +405,20 @@ describe('checkout', () => {
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
     mockPrisma.item.update.mockResolvedValue({ packedQuantity: 3, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
-    const completedCart = makeCart({ status: 'completed', completedAt: new Date() })
-    mockPrisma.cart.update.mockResolvedValue(completedCart)
+    const updatedCart = makeCart({ lastPurchasedAt: now })
+    mockPrisma.cart.update.mockResolvedValue(updatedCart)
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
-    mockPrisma.cart.findUnique.mockResolvedValue(completedCart)
 
     // When checking out
     const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id status completedAt } }`,
-      { cartId: 'cart_1' },
+      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id lastPurchasedAt } }`,
+      { cartId: 'no-vendor' },
     )
 
-    // Then the cart is marked completed
+    // Then the cart's lastPurchasedAt is set
     expect(result?.errors).toBeUndefined()
-    const updatedCart = result?.data?.checkout as { id: string; status: string; completedAt: string }
-    expect(updatedCart.status).toBe('completed')
-    expect(updatedCart.completedAt).toBeDefined()
+    const checkedOut = result?.data?.checkout as { id: string; lastPurchasedAt: string }
+    expect(checkedOut.lastPurchasedAt).toBeDefined()
 
     // And item's packedQuantity was incremented
     expect(mockPrisma.item.update).toHaveBeenCalledWith(
@@ -359,83 +429,81 @@ describe('checkout', () => {
     expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
   })
 
-  it('user can checkout — pinned items (qty === 0) are moved to a new active cart', async () => {
+  it('user can checkout — pinned items (qty === 0) stay in the permanent cart', async () => {
     // Given a cart with a buying item and a pinned item
     const buyItem = makeCartItem({ id: 'ci_buy', itemId: 'item_milk', quantity: 2 })
     const pinnedItem = makeCartItem({ id: 'ci_pin', itemId: 'item_eggs', quantity: 0 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem, pinnedItem])
     mockPrisma.item.update.mockResolvedValue({ packedQuantity: 2, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
-    const completedCart = makeCart({ status: 'completed', completedAt: new Date() })
-    mockPrisma.cart.update.mockResolvedValue(completedCart)
-    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 2 })
-    // No existing active cart found — a new one is created
-    mockPrisma.cart.findFirst.mockResolvedValue(null)
-    const newCart = makeCart({ id: 'cart_new', status: 'active' })
-    mockPrisma.cart.create.mockResolvedValue(newCart)
-    mockPrisma.cartItem.create.mockResolvedValue({})
-    mockPrisma.cart.findUnique.mockResolvedValue(completedCart)
+    const updatedCart = makeCart({ lastPurchasedAt: now })
+    mockPrisma.cart.update.mockResolvedValue(updatedCart)
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
 
     // When checking out
     const result = await execOp(
-      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id status } }`,
-      { cartId: 'cart_1' },
+      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id lastPurchasedAt } }`,
+      { cartId: 'no-vendor' },
     )
 
-    // Then a new active cart is created and pinned item is moved
+    // Then no new cart is created (permanent cart model — pinned items just stay)
     expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { userId: 'user_test123', status: 'active' } })
-    expect(mockPrisma.cartItem.create).toHaveBeenCalledWith({
-      data: { cartId: 'cart_new', itemId: 'item_eggs', quantity: 0, userId: 'user_test123' },
+    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
+
+    // And only buying items (qty > 0) are deleted
+    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({
+      where: { cartId: 'no-vendor', userId: 'user_test123', quantity: { gt: 0 } },
     })
   })
 
-  it('user can checkout — old cart items are deleted after checkout', async () => {
+  it('user can checkout — only buying items are deleted, pinned items remain', async () => {
     // Given a cart with a buying item
     const buyItem = makeCartItem({ quantity: 1 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
     mockPrisma.item.update.mockResolvedValue({ packedQuantity: 1, unpackedQuantity: 0 })
     mockPrisma.inventoryLog.create.mockResolvedValue({})
-    const completedCart = makeCart({ status: 'completed', completedAt: new Date() })
-    mockPrisma.cart.update.mockResolvedValue(completedCart)
+    const updatedCart = makeCart({ lastPurchasedAt: now })
+    mockPrisma.cart.update.mockResolvedValue(updatedCart)
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
-    mockPrisma.cart.findUnique.mockResolvedValue(completedCart)
 
     // When checking out
     await execOp(
       `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
-      { cartId: 'cart_1' },
+      { cartId: 'no-vendor' },
     )
 
-    // Then all original cart items are removed
-    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'cart_1', userId: 'user_test123' } })
+    // Then only items with qty > 0 are removed
+    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({
+      where: { cartId: 'no-vendor', userId: 'user_test123', quantity: { gt: 0 } },
+    })
   })
 })
 
 // ─── abandonCart ─────────────────────────────────────────────────────────────
 
 describe('abandonCart', () => {
-  it('user can abandon a cart — cart status becomes abandoned and items are deleted', async () => {
+  it('user can abandon a cart — all items are deleted, cart is returned as-is', async () => {
     // Given a cart exists for this user
     const cart = makeCart()
     mockPrisma.cart.findFirst.mockResolvedValue(cart)
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 2 })
-    const abandonedCart = makeCart({ status: 'abandoned' })
-    mockPrisma.cart.update.mockResolvedValue(abandonedCart)
 
     // When abandoning the cart
     const result = await execOp(
-      `mutation AbandonCart($cartId: ID!) { abandonCart(cartId: $cartId) { id status } }`,
-      { cartId: 'cart_1' },
+      `mutation AbandonCart($cartId: ID!) { abandonCart(cartId: $cartId) { id } }`,
+      { cartId: 'no-vendor' },
     )
 
-    // Then the cart is marked as abandoned
+    // Then the cart is returned (no status change — permanent cart model)
     expect(result?.errors).toBeUndefined()
-    const abandoned = result?.data?.abandonCart as { id: string; status: string }
-    expect(abandoned.status).toBe('abandoned')
+    const abandoned = result?.data?.abandonCart as { id: string }
+    expect(abandoned.id).toBe('no-vendor')
 
-    // And all cart items are deleted
-    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'cart_1', userId: 'user_test123' } })
+    // And all cart items are deleted (including pinned)
+    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'no-vendor', userId: 'user_test123' } })
+
+    // And cart itself is NOT deleted (permanent)
+    expect(mockPrisma.cart.delete).not.toHaveBeenCalled()
   })
 })
 
@@ -449,14 +517,14 @@ describe('cross-user isolation', () => {
     // When user B queries cart items
     const result = await execOp(
       `query CartItems($cartId: ID!) { cartItems(cartId: $cartId) { id } }`,
-      { cartId: 'cart_1' },
+      { cartId: 'no-vendor' },
       { userId: 'user_B' },
     )
 
     // Then no items are returned
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.cartItems).toHaveLength(0)
-    expect(mockPrisma.cartItem.findMany).toHaveBeenCalledWith({ where: { cartId: 'cart_1', userId: 'user_B' } })
+    expect(mockPrisma.cartItem.findMany).toHaveBeenCalledWith({ where: { cartId: 'no-vendor', userId: 'user_B' } })
   })
 
   it('user cannot remove another user\'s cart item', async () => {
@@ -482,30 +550,12 @@ describe('cross-user isolation', () => {
     // When user B tries to abandon it
     const result = await execOp(
       `mutation AbandonCart($cartId: ID!) { abandonCart(cartId: $cartId) { id } }`,
-      { cartId: 'cart_1' },
+      { cartId: 'no-vendor' },
       { userId: 'user_B' },
     )
 
     // Then an error is returned
     expect(result?.errors).toBeDefined()
     expect(result?.errors![0].message).toContain('Cart not found')
-  })
-})
-
-// ─── Legacy null fields ───────────────────────────────────────────────────────
-
-describe('legacy null fields', () => {
-  it('shoppingCarts returns epoch string for records where createdAt is null', async () => {
-    // Given a cart with null createdAt (legacy record)
-    const legacyCart = { ...makeCart({ status: 'completed' }), createdAt: null }
-    mockPrisma.cart.findMany.mockResolvedValue([legacyCart])
-
-    // When querying shoppingCarts
-    const result = await execOp(`query { shoppingCarts { id status createdAt } }`)
-
-    // Then createdAt is the epoch string, not null (GraphQL non-nullable String! contract upheld)
-    expect(result?.errors).toBeUndefined()
-    const carts = result?.data?.shoppingCarts as { id: string; status: string; createdAt: string }[]
-    expect(carts[0].createdAt).toBe(new Date(0).toISOString())
   })
 })

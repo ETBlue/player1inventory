@@ -184,16 +184,17 @@ export async function fetchCloudPayload(
     client.query<GetShelvesQuery>({ query: GetShelvesDocument, fetchPolicy }),
   ])
 
-  // Filter to active carts only — completed carts pile up and history is in inventoryLogs
-  const allShoppingCarts = (shoppingCartsResult.data?.shoppingCarts ??
-    []) as Array<{ id: string; status: string }>
-  const activeCarts = allShoppingCarts.filter((c) => c.status === 'active')
-  const activeCartIdSet = new Set(activeCarts.map((c) => c.id))
+  // Permanent carts — all carts are active (no status, no filtering needed)
+  const allShoppingCarts = (shoppingCartsResult.data?.allCarts ?? []) as Array<{
+    id: string
+    lastPurchasedAt?: string | null
+  }>
+  const allCartIdSet = new Set(allShoppingCarts.map((c) => c.id))
   const allCartItems = (allCartItemsResult.data?.allCartItems ?? []) as Array<{
     cartId: string
   }>
-  const activeCartItems = allCartItems.filter((ci) =>
-    activeCartIdSet.has(ci.cartId),
+  const exportCartItems = allCartItems.filter((ci) =>
+    allCartIdSet.has(ci.cartId),
   )
 
   const allShelves = (shelvesResult.data?.shelves ?? []) as Array<{
@@ -208,8 +209,8 @@ export async function fetchCloudPayload(
     vendors: vendorsResult.data?.vendors ?? [],
     recipes: recipesResult.data?.recipes ?? [],
     inventoryLogs: inventoryLogsResult.data?.inventoryLogs ?? [],
-    shoppingCarts: activeCarts,
-    cartItems: activeCartItems,
+    shoppingCarts: allShoppingCarts,
+    cartItems: exportCartItems,
     shelves: userShelves,
   })
 

@@ -1,8 +1,6 @@
 type Cart {
   id: ID!
-  status: String!
-  createdAt: String!
-  completedAt: String
+  lastPurchasedAt: String
 }
 
 type CartItem {
@@ -14,9 +12,10 @@ type CartItem {
 
 extend type Query {
   activeCart: Cart!
+  vendorCart(vendorId: ID): Cart!
+  allCarts: [Cart!]!
   cartItems(cartId: ID!): [CartItem!]!
   cartItemCountByItem(itemId: ID!): Int!
-  shoppingCarts: [Cart!]!
   allCartItems: [CartItem!]!
 }
 

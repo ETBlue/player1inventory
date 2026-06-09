@@ -19,12 +19,6 @@ enum ExpirationMode {
   days_from_purchase
 }
 
-enum CartStatus {
-  active
-  completed
-  abandoned
-}
-
 enum TagColor {
   red
   orange
@@ -157,17 +151,14 @@ model RecipeItem {
 }
 
 model Cart {
-  id          String     @id @default(cuid())
-  status      CartStatus
-  userId      String
-  familyId    String?
-  completedAt DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id              String    @id
+  userId          String
+  familyId        String?
+  lastPurchasedAt DateTime?
 
   items CartItem[]
 
-  @@index([userId, status])
+  @@index([userId])
 }
 
 model CartItem {

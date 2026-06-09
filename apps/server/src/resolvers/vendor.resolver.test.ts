@@ -14,6 +14,13 @@ vi.mock('../lib/prisma.js', () => ({
       update: vi.fn(),
       delete: vi.fn(),
     },
+    cart: {
+      upsert: vi.fn(),
+      delete: vi.fn(),
+    },
+    cartItem: {
+      deleteMany: vi.fn(),
+    },
   },
 }))
 
@@ -25,6 +32,13 @@ const mockPrisma = prisma as unknown as {
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
+  }
+  cart: {
+    upsert: ReturnType<typeof vi.fn>
+    delete: ReturnType<typeof vi.fn>
+  }
+  cartItem: {
+    deleteMany: ReturnType<typeof vi.fn>
   }
 }
 
@@ -53,6 +67,8 @@ describe('Vendor resolvers', () => {
     // Given prisma.vendor.create resolves with a new vendor
     const newVendor = { id: 'v_1', name: 'Costco', userId: 'user_test123', familyId: null }
     mockPrisma.vendor.create.mockResolvedValue(newVendor)
+    // createVendor also upserts a permanent cart with the vendor ID
+    mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', userId: 'user_test123', lastPurchasedAt: null })
 
     // When creating a vendor
     const result = await execOp(
@@ -69,6 +85,12 @@ describe('Vendor resolvers', () => {
     expect(vendor.id).toBeDefined()
     expect(mockPrisma.vendor.create).toHaveBeenCalledWith({
       data: { name: 'Costco', userId: 'user_test123' },
+    })
+    // And a permanent cart is created/ensured for the new vendor
+    expect(mockPrisma.cart.upsert).toHaveBeenCalledWith({
+      where: { id: 'v_1' },
+      create: { id: 'v_1', userId: 'user_test123' },
+      update: {},
     })
   })
 
@@ -123,7 +145,9 @@ describe('Vendor resolvers', () => {
   })
 
   it('user can delete a vendor', async () => {
-    // Given Prisma delete succeeds (ItemVendor rows cascade automatically)
+    // Given Prisma operations succeed (ItemVendor rows cascade automatically)
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
+    mockPrisma.cart.delete.mockResolvedValue({ id: 'v_1' })
     mockPrisma.vendor.delete.mockResolvedValue({ id: 'v_1' })
 
     // When deleting a vendor
@@ -134,6 +158,7 @@ describe('Vendor resolvers', () => {
 
     // Then true is returned
     expect(result?.data?.deleteVendor).toBe(true)
+    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'v_1' } })
     expect(mockPrisma.vendor.delete).toHaveBeenCalledWith({ where: { id: 'v_1' } })
   })
 

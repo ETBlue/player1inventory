@@ -4,15 +4,33 @@ import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
-export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'CartItem'> = {
+export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
     activeCart: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
-      let cart = await prisma.cart.findFirst({ where: { userId, status: 'active' } })
+      let cart = await prisma.cart.findUnique({ where: { id: 'no-vendor' } })
       if (!cart) {
-        cart = await prisma.cart.create({ data: { userId, status: 'active' } })
+        cart = await prisma.cart.create({ data: { id: 'no-vendor', userId } })
       }
       return cart as unknown as Cart
+    },
+
+    vendorCart: async (_, { vendorId = null }, ctx) => {
+      const userId = requireAuth(ctx)
+      const cartId = vendorId ?? 'no-vendor'
+      let cart = await prisma.cart.findUnique({ where: { id: cartId } })
+      if (!cart) {
+        cart = await prisma.cart.create({ data: { id: cartId, userId } })
+      }
+      return cart as unknown as Cart
+    },
+
+    allCarts: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      return prisma.cart.findMany({
+        where: { userId },
+        orderBy: [{ id: 'asc' }],
+      }) as unknown as Promise<Cart[]>
     },
 
     cartItems: async (_, { cartId }, ctx) => {
@@ -23,14 +41,6 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
     cartItemCountByItem: async (_, { itemId }, ctx) => {
       const userId = requireAuth(ctx)
       return prisma.cartItem.count({ where: { itemId, userId } })
-    },
-
-    shoppingCarts: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
-      return prisma.cart.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'asc' },
-      }) as unknown as Promise<Cart[]>
     },
 
     allCartItems: async (_, __, ctx) => {
@@ -75,8 +85,8 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
     checkout: async (_, { cartId, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
       const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
-      const pinnedItems = cartItems.filter(ci => ci.quantity === 0)
       const buyingItems = cartItems.filter(ci => ci.quantity > 0)
+      // Pinned items (quantity === 0) stay in the permanent cart — no migration needed
 
       const now = new Date()
       for (const ci of buyingItems) {
@@ -100,23 +110,15 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
         })
       }
 
-      await prisma.cart.update({
+      // Update lastPurchasedAt and delete only active items
+      const updatedCart = await prisma.cart.update({
         where: { id: cartId },
-        data: { status: 'completed', completedAt: now },
+        data: { lastPurchasedAt: now },
       })
-      await prisma.cartItem.deleteMany({ where: { cartId, userId } })
+      await prisma.cartItem.deleteMany({
+        where: { cartId, userId, quantity: { gt: 0 } },
+      })
 
-      // Move pinned items to the new active cart
-      if (pinnedItems.length > 0) {
-        let newCart = await prisma.cart.findFirst({ where: { userId, status: 'active' } })
-        if (!newCart) newCart = await prisma.cart.create({ data: { userId, status: 'active' } })
-        for (const ci of pinnedItems) {
-          await prisma.cartItem.create({ data: { cartId: newCart.id, itemId: ci.itemId, quantity: 0, userId } })
-        }
-      }
-
-      const updatedCart = await prisma.cart.findUnique({ where: { id: cartId } })
-      if (!updatedCart) throw new GraphQLError('Cart not found after checkout', { extensions: { code: 'NOT_FOUND' } })
       return updatedCart as unknown as Cart
     },
 
@@ -124,27 +126,9 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart' | 'Car
       const userId = requireAuth(ctx)
       const existing = await prisma.cart.findFirst({ where: { id: cartId, userId } })
       if (!existing) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
+      // Delete ALL items (including pinned)
       await prisma.cartItem.deleteMany({ where: { cartId, userId } })
-      const cart = await prisma.cart.update({
-        where: { id: cartId },
-        data: { status: 'abandoned' },
-      })
-      return cart as unknown as Cart
+      return existing as unknown as Cart
     },
   },
-
-  Cart: {
-    // Legacy MongoDB documents may have null for date fields — fallback to epoch string
-    // to satisfy the non-nullable String! contract in the GraphQL schema.
-    createdAt: (cart) => {
-      const d = (cart as unknown as { createdAt: Date | null }).createdAt
-      return d != null ? d.toISOString() : new Date(0).toISOString()
-    },
-    completedAt: (cart) => {
-      const c = cart as unknown as { completedAt?: Date | null }
-      return c.completedAt ? c.completedAt.toISOString() : null
-    },
-  },
-
-  CartItem: {},
 }

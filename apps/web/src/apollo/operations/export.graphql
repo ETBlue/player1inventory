@@ -10,11 +10,9 @@ query InventoryLogs {
 }
 
 query ShoppingCarts {
-  shoppingCarts {
+  allCarts {
     id
-    status
-    createdAt
-    completedAt
+    lastPurchasedAt
   }
 }
 

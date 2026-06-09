@@ -80,9 +80,7 @@ mutation BulkCreateInventoryLogs($logs: [InventoryLogInput!]!) {
 mutation BulkCreateShoppingCarts($carts: [ShoppingCartInput!]!) {
   bulkCreateShoppingCarts(carts: $carts) {
     id
-    status
-    createdAt
-    completedAt
+    lastPurchasedAt
   }
 }
 
@@ -177,9 +175,7 @@ mutation BulkUpsertInventoryLogs($logs: [InventoryLogInput!]!) {
 mutation BulkUpsertShoppingCarts($carts: [ShoppingCartInput!]!) {
   bulkUpsertShoppingCarts(carts: $carts) {
     id
-    status
-    createdAt
-    completedAt
+    lastPurchasedAt
   }
 }
 
