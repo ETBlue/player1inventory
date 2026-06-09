@@ -3,7 +3,13 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useActiveCart, useAddToCart, useCheckout } from './useShoppingCart'
+import {
+  useActiveCart,
+  useAddToCart,
+  useCheckout,
+  useRemoveFromCart,
+  useUpdateCartItem,
+} from './useShoppingCart'
 
 vi.mock('@/db/operations', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/db/operations')>()
@@ -26,6 +32,12 @@ const mockUseActiveCartQuery = vi.fn()
 const mockAddToCartFn = vi
   .fn()
   .mockResolvedValue({ data: { addToCart: { id: 'ci-1' } } })
+const mockRemoveFromCartFn = vi
+  .fn()
+  .mockResolvedValue({ data: { removeFromCart: true } })
+const mockUpdateCartItemFn = vi
+  .fn()
+  .mockResolvedValue({ data: { updateCartItem: { id: 'ci-1' } } })
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -38,14 +50,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       error: undefined,
     }),
     useAddToCartMutation: () => [mockAddToCartFn, { loading: false }],
-    useUpdateCartItemMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
-    useRemoveFromCartMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
+    useUpdateCartItemMutation: () => [mockUpdateCartItemFn, { loading: false }],
+    useRemoveFromCartMutation: () => [mockRemoveFromCartFn, { loading: false }],
     useCheckoutMutation: () => [mockCloudCheckout, {}],
     useAbandonCartMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
@@ -226,6 +232,70 @@ describe('useAddToCart (cloud mode)', () => {
     // shopping index is unmounted — DocumentNode-based refetches always fire.
     expect(mockAddToCartFn).toHaveBeenCalled()
     const callArgs = mockAddToCartFn.mock.calls[0][0]
+    const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
+    const docNames = refetchQueries
+      .filter(
+        (
+          rq,
+        ): rq is {
+          query: { definitions: Array<{ name?: { value: string } }> }
+        } => typeof rq === 'object' && rq !== null && 'query' in rq,
+      )
+      .map((rq) => rq.query.definitions[0]?.name?.value)
+    expect(docNames).toContain('AllCartItems')
+    expect(docNames).toContain('AllCarts')
+  })
+})
+
+describe('useRemoveFromCart (cloud mode)', () => {
+  it('user can remove from cart — refetches AllCartItems and AllCarts as DocumentNodes so stale shopping index cache is always refreshed even when unmounted', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+
+    // When useRemoveFromCart fires the mutation
+    const { result } = renderHook(() => useRemoveFromCart(), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('ci-1')
+    })
+
+    // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
+    expect(mockRemoveFromCartFn).toHaveBeenCalled()
+    const callArgs = mockRemoveFromCartFn.mock.calls[0][0]
+    const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
+    const docNames = refetchQueries
+      .filter(
+        (
+          rq,
+        ): rq is {
+          query: { definitions: Array<{ name?: { value: string } }> }
+        } => typeof rq === 'object' && rq !== null && 'query' in rq,
+      )
+      .map((rq) => rq.query.definitions[0]?.name?.value)
+    expect(docNames).toContain('AllCartItems')
+    expect(docNames).toContain('AllCarts')
+  })
+})
+
+describe('useUpdateCartItem (cloud mode)', () => {
+  it('user can update cart item — refetches AllCartItems and AllCarts as DocumentNodes so stale shopping index cache is always refreshed even when unmounted', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+
+    // When useUpdateCartItem fires the mutation
+    const { result } = renderHook(() => useUpdateCartItem(), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ cartItemId: 'ci-1', quantity: 2 })
+    })
+
+    // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
+    expect(mockUpdateCartItemFn).toHaveBeenCalled()
+    const callArgs = mockUpdateCartItemFn.mock.calls[0][0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(

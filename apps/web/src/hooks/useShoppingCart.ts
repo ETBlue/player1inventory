@@ -172,9 +172,7 @@ export function useUpdateCartItem() {
   })
 
   const [cloudUpdateCartItem, { loading: cloudUpdateCartItemLoading }] =
-    useUpdateCartItemMutation({
-      refetchQueries: ['CartItems'],
-    })
+    useUpdateCartItemMutation()
 
   if (mode === 'cloud') {
     return {
@@ -188,7 +186,14 @@ export function useUpdateCartItem() {
         },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudUpdateCartItem({ variables: { id: cartItemId, quantity } }).then(
+        cloudUpdateCartItem({
+          variables: { id: cartItemId, quantity },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -203,6 +208,11 @@ export function useUpdateCartItem() {
       }) =>
         cloudUpdateCartItem({
           variables: { id: cartItemId, quantity },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
         }).then((r) => r.data?.updateCartItem),
       isPending: cloudUpdateCartItemLoading,
     }
@@ -223,9 +233,7 @@ export function useRemoveFromCart() {
   })
 
   const [cloudRemoveFromCart, { loading: cloudRemoveFromCartLoading }] =
-    useRemoveFromCartMutation({
-      refetchQueries: ['CartItems'],
-    })
+    useRemoveFromCartMutation()
 
   if (mode === 'cloud') {
     return {
@@ -233,16 +241,28 @@ export function useRemoveFromCart() {
         id: string,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudRemoveFromCart({ variables: { id } }).then(
+        cloudRemoveFromCart({
+          variables: { id },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
       mutateAsync: (id: string) =>
-        cloudRemoveFromCart({ variables: { id } }).then(
-          (r) => r.data?.removeFromCart,
-        ),
+        cloudRemoveFromCart({
+          variables: { id },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then((r) => r.data?.removeFromCart),
       isPending: cloudRemoveFromCartLoading,
     }
   }
