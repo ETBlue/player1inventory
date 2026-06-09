@@ -91,14 +91,14 @@ test('user can see expiration badge updated after checkout without manual refres
     await pantry.navigateTo()
 
     const itemId = 'expiry-test-item-1'
-    const cartId = 'expiry-test-cart-1'
     const cartItemId = 'expiry-test-cart-item-1'
+    // Permanent cart: ID = 'no-vendor' (the no-vendor permanent cart)
 
-    // Seed item (packedQuantity=0, no inventory logs) + active cart entry so the item
-    // appears pre-checked in the shopping cart and can be checked out immediately.
+    // Seed item (packedQuantity=0, no inventory logs) + permanent no-vendor cart entry
+    // so the item appears pre-checked in the shopping cart and can be checked out immediately.
     // No prior purchase history → no estimatedDueDate → badge is hidden before checkout.
     await page.evaluate(
-      async ({ itemId, cartId, cartItemId }) => {
+      async ({ itemId, cartItemId }) => {
         const db = await new Promise<IDBDatabase>((resolve, reject) => {
           const req = indexedDB.open('Player1Inventory')
           req.onsuccess = () => resolve(req.result)
@@ -132,23 +132,18 @@ test('user can see expiration badge updated after checkout without manual refres
           updatedAt: now,
         })
 
-        // Active shopping cart (no vendor — vendorId null maps to no-vendor)
-        await put('shoppingCarts', {
-          id: cartId,
-          vendorId: null,
-          status: 'active',
-          createdAt: now,
-        })
+        // Permanent no-vendor cart (cart ID = 'no-vendor')
+        await put('shoppingCarts', { id: 'no-vendor' })
 
-        // Cart item linking the item to the cart with quantity 1
+        // Cart item linking the item to the no-vendor permanent cart
         await put('cartItems', {
           id: cartItemId,
-          cartId,
+          cartId: 'no-vendor',
           itemId,
           quantity: 1,
         })
       },
-      { itemId, cartId, cartItemId },
+      { itemId, cartItemId },
     )
 
     // Reload pantry after seeding so React Query fetches fresh data from the populated DB.
@@ -370,11 +365,11 @@ test('user can checkout from a vendor cart without affecting another vendor cart
       packedQuantity: 0, unpackedQuantity: 0, consumeAmount: 1,
       createdAt: now, updatedAt: now,
     })
-    // Pre-seed both carts with items in them
-    await put('shoppingCarts', { id: 'cart-a-e2e', vendorId: vendorAId, status: 'active', createdAt: now })
-    await put('shoppingCarts', { id: 'cart-b-e2e', vendorId: vendorBId, status: 'active', createdAt: now })
-    await put('cartItems', { id: 'ci-a-e2e', cartId: 'cart-a-e2e', itemId: 'checkout-item-a', quantity: 1 })
-    await put('cartItems', { id: 'ci-b-e2e', cartId: 'cart-b-e2e', itemId: 'checkout-item-b', quantity: 1 })
+    // Pre-seed permanent vendor carts (cart ID = vendor ID) with items
+    await put('shoppingCarts', { id: vendorAId })
+    await put('shoppingCarts', { id: vendorBId })
+    await put('cartItems', { id: 'ci-a-e2e', cartId: vendorAId, itemId: 'checkout-item-a', quantity: 1 })
+    await put('cartItems', { id: 'ci-b-e2e', cartId: vendorBId, itemId: 'checkout-item-b', quantity: 1 })
   }, { vendorAId, vendorBId })
 
   // Navigate to Vendor A's cart and checkout
@@ -391,4 +386,56 @@ test('user can checkout from a vendor cart without affecting another vendor cart
   // Navigate to Vendor B's cart — item B is still there
   await shopping.navigateToVendorCart(vendorBId)
   await expect(page.getByLabel('Remove Item B E2E')).toBeVisible()
+})
+
+test.describe('cloud mode vendor carts', () => {
+  test('user can see vendor cart cards (cloud mode)', async ({ page, request, baseURL }) => {
+    test.skip(!process.env.TEST_CLOUD_MODE, 'cloud mode only')
+    const shopping = new ShoppingPage(page)
+    const gql = makeGql(request)
+
+    const { createVendor: vendorA } = await gql<{ createVendor: { id: string } }>(
+      `mutation CreateVendor($name: String!) { createVendor(name: $name) { id } }`,
+      { name: 'Cloud Vendor A' },
+    )
+    const { createVendor: vendorB } = await gql<{ createVendor: { id: string } }>(
+      `mutation CreateVendor($name: String!) { createVendor(name: $name) { id } }`,
+      { name: 'Cloud Vendor B' },
+    )
+    await gql(
+      `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+      { input: { name: 'Cloud Item A', vendorIds: [vendorA.id], targetQuantity: 1, refillThreshold: 1 } },
+    )
+    await gql(
+      `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+      { input: { name: 'Cloud Item B', vendorIds: [vendorB.id], targetQuantity: 1, refillThreshold: 1 } },
+    )
+
+    await shopping.navigateTo()
+
+    await expect(shopping.getVendorCartCard('Cloud Vendor A')).toBeVisible()
+    await expect(shopping.getVendorCartCard('Cloud Vendor B')).toBeVisible()
+  })
+
+  test('user can checkout from vendor cart in cloud mode', async ({ page, request, baseURL }) => {
+    test.skip(!process.env.TEST_CLOUD_MODE, 'cloud mode only')
+    const shopping = new ShoppingPage(page)
+    const gql = makeGql(request)
+
+    const { createVendor: vendor } = await gql<{ createVendor: { id: string } }>(
+      `mutation CreateVendor($name: String!) { createVendor(name: $name) { id } }`,
+      { name: 'Cloud Checkout Vendor' },
+    )
+    await gql(
+      `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+      { input: { name: 'Cloud Checkout Item', vendorIds: [vendor.id], targetQuantity: 1, refillThreshold: 1 } },
+    )
+
+    await shopping.navigateToVendorCart(vendor.id)
+    await shopping.addItemToCart('Cloud Checkout Item')
+    await shopping.clickDone()
+    await shopping.confirmCheckout()
+
+    await page.waitForURL(/\/shopping(\?|$)/)
+  })
 })
