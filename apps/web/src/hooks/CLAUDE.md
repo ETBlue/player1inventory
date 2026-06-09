@@ -19,7 +19,7 @@
 **Shopping:**
 - `useVendorCart(vendorId: string | null)` (`src/hooks/useShoppingCart.ts`) - Gets or creates the active cart for a specific vendor (null = "No vendor" cart). Local: TanStack Query keyed `['cart', 'vendor', vendorId]`. Cloud fallback: single active cart.
 - `useAllActiveCarts()` (`src/hooks/useShoppingCart.ts`) - Returns all active carts (one per vendor). Local: TanStack Query keyed `['cart', 'all-active']`. Cloud fallback: single cart wrapped in array.
-- `useUpdateCartLastVisited()` (`src/hooks/useShoppingCart.ts`) - Mutation that stamps `lastVisitedAt` on a cart and invalidates `['cart', 'all-active']`. Used on mount in the vendor cart page to drive "last visited" sort order.
+- `useLastPurchasedByVendor()` (`src/hooks/useShoppingCart.ts`) - Returns a `Map<vendorId, Date | null>` of the most recent `completedAt` per vendor, derived from completed carts. Local mode only (cloud returns empty map; server-side sort deferred). Query key `['cart', 'last-purchased-by-vendor']`. Drives the `'recent'` sort on the shopping index.
 
 **Cloud / Auth:**
 - `usePostLoginMigration()` (`src/hooks/usePostLoginMigration.ts`) - Cloud mode only. Detects when a signed-in user has local IndexedDB items and has not been prompted before (localStorage `migration-prompted` key). Exposes `state: MigrationState`, `dismiss()`, and `importData(conflictResolution)`. `importData` calls `fetchLocalPayload()` then `importCloudData()` to migrate local data to cloud. Used by `PostLoginMigrationDialog`.
