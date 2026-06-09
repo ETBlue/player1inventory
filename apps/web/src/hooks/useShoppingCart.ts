@@ -13,6 +13,8 @@ import {
 } from '@/db/operations'
 import {
   ActiveCartDocument,
+  AllCartItemsDocument,
+  AllCartsDocument,
   CartItemsDocument,
   GetItemsDocument,
   useAbandonCartMutation,
@@ -111,9 +113,7 @@ export function useAddToCart() {
   })
 
   const [cloudAddToCart, { loading: cloudAddToCartLoading }] =
-    useAddToCartMutation({
-      refetchQueries: ['CartItems', 'AllCartItems', 'AllCarts'],
-    })
+    useAddToCartMutation()
 
   if (mode === 'cloud') {
     return {
@@ -121,7 +121,14 @@ export function useAddToCart() {
         vars: { cartId: string; itemId: string; quantity: number },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudAddToCart({ variables: vars }).then(
+        cloudAddToCart({
+          variables: vars,
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -131,7 +138,15 @@ export function useAddToCart() {
         cartId: string
         itemId: string
         quantity: number
-      }) => cloudAddToCart({ variables: vars }).then((r) => r.data?.addToCart),
+      }) =>
+        cloudAddToCart({
+          variables: vars,
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then((r) => r.data?.addToCart),
       isPending: cloudAddToCartLoading,
     }
   }

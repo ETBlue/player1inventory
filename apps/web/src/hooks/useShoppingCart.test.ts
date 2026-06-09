@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useActiveCart, useCheckout } from './useShoppingCart'
+import { useActiveCart, useAddToCart, useCheckout } from './useShoppingCart'
 
 vi.mock('@/db/operations', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/db/operations')>()
@@ -23,6 +23,9 @@ const mockCloudCheckout = vi.fn().mockResolvedValue({
   data: { checkout: { id: 'cart-1', status: 'completed' } },
 })
 const mockUseActiveCartQuery = vi.fn()
+const mockAddToCartFn = vi
+  .fn()
+  .mockResolvedValue({ data: { addToCart: { id: 'ci-1' } } })
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -34,10 +37,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
-    useAddToCartMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
+    useAddToCartMutation: () => [mockAddToCartFn, { loading: false }],
     useUpdateCartItemMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
@@ -200,5 +200,43 @@ describe('useCheckout (local mode) — refetches lastPurchase for inactive queri
     expect(
       queryClient.getQueryData(['items', 'item-1', 'lastPurchase']),
     ).toEqual(freshPurchaseDate)
+  })
+})
+
+describe('useAddToCart (cloud mode)', () => {
+  it('user can add to cart — refetches AllCartItems and AllCarts as DocumentNodes so stale shopping index cache is always refreshed even when unmounted', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+
+    // When useAddToCart fires the mutation
+    const { result } = renderHook(() => useAddToCart(), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        cartId: 'c-1',
+        itemId: 'i-1',
+        quantity: 1,
+      })
+    })
+
+    // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
+    // (not strings). String-based refetchQueries are silently skipped when the
+    // shopping index is unmounted — DocumentNode-based refetches always fire.
+    expect(mockAddToCartFn).toHaveBeenCalled()
+    const callArgs = mockAddToCartFn.mock.calls[0][0]
+    const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
+    const docNames = refetchQueries
+      .filter(
+        (
+          rq,
+        ): rq is {
+          query: { definitions: Array<{ name?: { value: string } }> }
+        } => typeof rq === 'object' && rq !== null && 'query' in rq,
+      )
+      .map((rq) => rq.query.definitions[0]?.name?.value)
+    expect(docNames).toContain('AllCartItems')
+    expect(docNames).toContain('AllCarts')
   })
 })
