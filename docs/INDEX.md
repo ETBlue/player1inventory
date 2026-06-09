@@ -33,7 +33,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | [settings](features/settings/) | ⚠️ Partial | Cascade deletion done; data import/export (both modes) done; settings-refactor pending |
 | [sign-out-and-migration](features/settings/) | 🔄 In Progress | Sign Out button (cloud mode); Switch button symmetry (offline ↔ cloud); migration wiring (doDisable + usePostLoginMigration); DataModeCard refactor |
 | [data-import-export](features/settings/) | ✅ Implemented | Export (local + cloud), import (local + cloud), conflict dialog with skip/replace/clear strategies, dual-mode, E2E verified |
-| [shopping](features/shopping/) | ⚠️ Partial | Vendor carts (local mode) done — [design](features/shopping/2026-06-05-vendor-carts-design.md) — [plan](features/shopping/2026-06-06-vendor-carts-plan.md); Phase 7 (cloud multi-vendor) deferred |
+| [shopping](features/shopping/) | ✅ Implemented | Permanent 1:1 vendor-cart model — local + cloud — [brainstorm](features/shopping/2026-06-09-brainstorming-permanent-vendor-carts.md) — [plan](features/shopping/2026-06-09-permanent-vendor-carts-plan.md) — [original design](features/shopping/2026-06-05-vendor-carts-design.md) |
 | [tags](features/tags/) | ✅ Implemented | CRUD, filtering, colors, E2E done |
 | [vendors](features/vendors/) | ✅ Implemented | CRUD, assignment, dual-mode hooks, cloud backend + E2E done |
 | [recipes](features/recipes/) | ✅ Implemented | Cloud backend migration: model, schema, resolver, dual-mode hooks, E2E (local + cloud) done |
