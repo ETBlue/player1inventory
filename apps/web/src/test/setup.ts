@@ -239,6 +239,21 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useVendorCartQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useAllCartsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useAllCartItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useItemLogsQuery: () => ({
       data: undefined,
       loading: false,

@@ -10,12 +10,7 @@ vi.mock('@/db/operations', async (importOriginal) => {
   return {
     ...original,
     checkout: vi.fn().mockResolvedValue(undefined),
-    getOrCreateActiveCart: vi.fn().mockResolvedValue({
-      id: 'cart-1',
-      status: 'active',
-      createdAt: new Date(),
-      completedAt: null,
-    }),
+    getCart: vi.fn().mockResolvedValue({ id: 'cart-1' }),
     getCartItems: vi.fn().mockResolvedValue([]),
     addToCart: vi.fn().mockResolvedValue(undefined),
     updateCartItem: vi.fn().mockResolvedValue(undefined),
@@ -77,38 +72,29 @@ afterEach(() => {
 // ─── useActiveCart ────────────────────────────────────────────────────────────
 
 describe('useActiveCart (cloud mode)', () => {
-  it('deserializes ISO date strings to Date objects in cloud mode', async () => {
-    // Given cloud mode and Apollo returns a cart with ISO date strings
+  it('deserializes ISO lastPurchasedAt string to Date in cloud mode', async () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseActiveCartQuery.mockReturnValue({
       data: {
         activeCart: {
-          id: 'cart-1',
-          status: 'active',
-          userId: 'u1',
-          createdAt: '2026-01-15T10:00:00.000Z',
-          completedAt: '2026-01-16T10:00:00.000Z',
+          id: 'vendor-1',
+          lastPurchasedAt: '2026-01-15T10:00:00.000Z',
         },
       },
       loading: false,
       error: undefined,
     })
 
-    // When the hook is called
     const { result } = renderHook(() => useActiveCart(), {
       wrapper: createWrapper(),
     })
 
-    // Then date fields are Date instances, not strings
     await waitFor(() => expect(result.current.data).toBeDefined())
-    const cart = result.current.data as
-      | { createdAt: unknown; completedAt: unknown }
-      | undefined
-    expect(cart?.createdAt).toBeInstanceOf(Date)
-    expect((cart?.createdAt as Date).getTime()).toBe(
+    const cart = result.current.data as { lastPurchasedAt: unknown } | undefined
+    expect(cart?.lastPurchasedAt).toBeInstanceOf(Date)
+    expect((cart?.lastPurchasedAt as Date).getTime()).toBe(
       new Date('2026-01-15T10:00:00.000Z').getTime(),
     )
-    expect(cart?.completedAt).toBeInstanceOf(Date)
   })
 })
 
@@ -140,10 +126,14 @@ describe('useCheckout (cloud mode)', () => {
 
     // More specifically: GetItemsDocument must be included (not just Cart-related docs)
     const callArgs = mockCloudCheckout.mock.calls[0][0]
-    const queriedDocs = callArgs.refetchQueries.map(
-      (rq: { query: { definitions: Array<{ name?: { value: string } }> } }) =>
-        rq.query.definitions[0]?.name?.value,
-    )
+    const queriedDocs = callArgs.refetchQueries
+      .filter(
+        (rq: unknown) => typeof rq === 'object' && rq !== null && 'query' in rq,
+      )
+      .map(
+        (rq: { query: { definitions: Array<{ name?: { value: string } }> } }) =>
+          rq.query.definitions[0]?.name?.value,
+      )
     expect(queriedDocs).toContain('GetItems')
   })
 })

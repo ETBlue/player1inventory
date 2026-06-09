@@ -4,12 +4,12 @@ import {
   abandonCart,
   addToCart,
   checkout,
-  getAllActiveCarts,
+  getAllCarts,
+  getCart,
   getCartItems,
-  getOrCreateActiveCart,
+  getLastPurchasedByVendor,
   removeFromCart,
   updateCartItem,
-  updateCartLastVisited,
 } from '@/db/operations'
 import {
   ActiveCartDocument,
@@ -18,10 +18,12 @@ import {
   useAbandonCartMutation,
   useActiveCartQuery,
   useAddToCartMutation,
+  useAllCartsQuery,
   useCartItemsQuery,
   useCheckoutMutation,
   useRemoveFromCartMutation,
   useUpdateCartItemMutation,
+  useVendorCartQuery,
 } from '@/generated/graphql'
 import { deserializeCart } from '@/lib/deserialization'
 import type { CartItem } from '@/types'
@@ -33,7 +35,7 @@ export function useActiveCart() {
 
   const local = useQuery({
     queryKey: ['cart', 'active'],
-    queryFn: () => getOrCreateActiveCart(null),
+    queryFn: () => getCart(null),
     enabled: !isCloud,
   })
 
@@ -110,7 +112,7 @@ export function useAddToCart() {
 
   const [cloudAddToCart, { loading: cloudAddToCartLoading }] =
     useAddToCartMutation({
-      refetchQueries: ['CartItems'],
+      refetchQueries: ['CartItems', 'AllCartItems', 'AllCarts'],
     })
 
   if (mode === 'cloud') {
@@ -292,6 +294,8 @@ export function useCheckout() {
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
+            'VendorCart',
+            'AllCarts',
           ],
         }).then(
           async () => {
@@ -336,6 +340,8 @@ export function useCheckout() {
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
+            'VendorCart',
+            'AllCarts',
           ],
         })
         client.cache.evict({
@@ -385,6 +391,8 @@ export function useAbandonCart() {
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
+            'VendorCart',
+            'AllCarts',
           ],
         }).then(
           () => options?.onSuccess?.(),
@@ -398,6 +406,8 @@ export function useAbandonCart() {
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
+            'VendorCart',
+            'AllCarts',
           ],
         }).then((r) => r.data?.abandonCart),
       isPending: cloudAbandonCartLoading,
@@ -413,16 +423,20 @@ export function useVendorCart(vendorId: string | null) {
 
   const local = useQuery({
     queryKey: ['cart', 'vendor', vendorId],
-    queryFn: () => getOrCreateActiveCart(vendorId),
+    queryFn: () => getCart(vendorId),
     enabled: !isCloud,
   })
 
-  const cloud = useActiveCartQuery({ skip: !isCloud })
+  const cloud = useVendorCartQuery({
+    variables: { vendorId: vendorId },
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
-      data: cloud.data?.activeCart
-        ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
+      data: cloud.data?.vendorCart
+        ? deserializeCart(cloud.data.vendorCart as Record<string, unknown>)
         : undefined,
       isLoading: cloud.loading,
       isError: !!cloud.error,
@@ -442,18 +456,18 @@ export function useAllActiveCarts() {
 
   const local = useQuery({
     queryKey: ['cart', 'all-active'],
-    queryFn: getAllActiveCarts,
+    queryFn: getAllCarts,
     enabled: !isCloud,
   })
 
-  const cloud = useActiveCartQuery({ skip: !isCloud })
+  const cloud = useAllCartsQuery({ skip: !isCloud })
 
   if (isCloud) {
-    const cart = cloud.data?.activeCart
-      ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
-      : undefined
     return {
-      data: cart ? [cart] : [],
+      data:
+        cloud.data?.allCarts?.map((c) =>
+          deserializeCart(c as Record<string, unknown>),
+        ) ?? [],
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }
@@ -466,12 +480,13 @@ export function useAllActiveCarts() {
   }
 }
 
-export function useUpdateCartLastVisited() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: updateCartLastVisited,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cart', 'all-active'] })
-    },
+export function useLastPurchasedByVendor() {
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  return useQuery({
+    queryKey: ['cart', 'last-purchased-by-vendor'],
+    queryFn: getLastPurchasedByVendor,
+    enabled: !isCloud,
   })
 }

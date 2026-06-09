@@ -34,7 +34,7 @@
     "noVendor": "未指定廠商",
     "cartList": {
       "sort": {
-        "recent": "最近造訪",
+        "recent": "最近購買",
         "alpha": "A–Z",
         "count": "品項最多"
       }

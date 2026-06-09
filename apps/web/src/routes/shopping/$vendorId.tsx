@@ -31,7 +31,6 @@ import {
   useTags,
   useTagTypes,
   useUpdateCartItem,
-  useUpdateCartLastVisited,
   useVendorCart,
   useVendors,
 } from '@/hooks'
@@ -60,14 +59,13 @@ function VendorCart() {
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
-  const { data: cart } = useVendorCart(cartVendorId)
+  const { data: cart, isLoading: isCartLoading } = useVendorCart(cartVendorId)
   const { data: cartItems = [] } = useCartItems(cart?.id)
   const addToCart = useAddToCart()
   const updateCartItem = useUpdateCartItem()
   const removeFromCart = useRemoveFromCart()
   const checkout = useCheckout()
   const abandonCart = useAbandonCart()
-  const updateCartLastVisited = useUpdateCartLastVisited()
 
   const vendor = vendors.find((v) => v.id === cartVendorId)
 
@@ -111,12 +109,6 @@ function VendorCart() {
   useEffect(() => {
     if (allDataLoaded) restoreScroll()
   }, [allDataLoaded, restoreScroll])
-
-  useEffect(() => {
-    if (cart?.id) {
-      updateCartLastVisited.mutate(cart.id)
-    }
-  }, [cart?.id, updateCartLastVisited])
 
   const cartItemMap = new Map(cartItems.map((ci) => [ci.itemId, ci]))
 
@@ -234,7 +226,7 @@ function VendorCart() {
           showTags={false}
           showTagSummary={false}
           isChecked={!!ci}
-          disabled={pendingItemIds.has(item.id)}
+          disabled={pendingItemIds.has(item.id) || !cart}
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
@@ -283,27 +275,31 @@ function VendorCart() {
             {t('shopping.toolbar.cartCount', { count: cartTotal })}
           </span>
           {cartItems.length > 0 && (
-            <Button
-              size="icon"
-              variant="destructive-ghost"
-              className="lg:w-auto lg:px-3"
-              onClick={() => setShowAbandonDialog(true)}
-              icon={<X />}
-              aria-label={t('common.cancel')}
-            >
-              <span className="hidden lg:inline">{t('common.cancel')}</span>
-            </Button>
+            <>
+              <Button
+                size="icon"
+                variant="destructive-ghost"
+                className="lg:w-auto lg:px-3"
+                onClick={() => setShowAbandonDialog(true)}
+                icon={<X />}
+                aria-label={t('common.cancel')}
+              >
+                <span className="hidden lg:inline">{t('common.cancel')}</span>
+              </Button>
+              <Button
+                size="icon"
+                className="lg:w-auto lg:px-3"
+                disabled={
+                  isCartLoading || !cartItems.some((ci) => ci.quantity > 0)
+                }
+                onClick={() => setShowCheckoutDialog(true)}
+                icon={<Check />}
+                aria-label={t('common.done')}
+              >
+                <span className="hidden lg:inline">{t('common.done')}</span>
+              </Button>
+            </>
           )}
-          <Button
-            size="icon"
-            className="lg:w-auto lg:px-3"
-            disabled={!cartItems.some((ci) => ci.quantity > 0)}
-            onClick={() => setShowCheckoutDialog(true)}
-            icon={<Check />}
-            aria-label={t('common.done')}
-          >
-            <span className="hidden lg:inline">{t('common.done')}</span>
-          </Button>
         </Toolbar>
 
         <ItemListToolbar

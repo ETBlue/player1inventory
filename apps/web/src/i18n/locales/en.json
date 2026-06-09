@@ -34,7 +34,7 @@
     "noVendor": "No vendor",
     "cartList": {
       "sort": {
-        "recent": "Last visited",
+        "recent": "Last purchased",
         "alpha": "A–Z",
         "count": "Most items"
       }
@@ -45,8 +45,8 @@
       "inCart": "{{checked}} / {{total}} items in cart"
     },
     "toolbar": {
-      "cartCount_one": "{{count}} pack in cart",
-      "cartCount_other": "{{count}} packs in cart"
+      "cartCount_one": "{{count}} pack",
+      "cartCount_other": "{{count}} packs"
     },
     "vendorFilter": {
       "allVendors": "All vendors",

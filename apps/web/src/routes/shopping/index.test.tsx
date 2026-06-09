@@ -4,15 +4,11 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import {
-  addToCart,
-  createItem,
-  createVendor,
-  getOrCreateActiveCart,
-} from '@/db/operations'
+import { addToCart, createItem, createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Shopping index page', () => {
@@ -143,9 +139,9 @@ describe('Shopping index page', () => {
     })
 
     // Both items added to the no-vendor cart (simulating a pre-vendor-carts backup import)
-    const noVendorCart = await getOrCreateActiveCart(null)
-    await addToCart(noVendorCart.id, milkWithVendor.id, 3) // vendor-assigned item, qty > 0
-    await addToCart(noVendorCart.id, centrumNoVendor.id, 1) // no-vendor item, qty > 0
+    await db.shoppingCarts.put({ id: 'no-vendor' })
+    await addToCart('no-vendor', milkWithVendor.id, 3) // vendor-assigned item, qty > 0
+    await addToCart('no-vendor', centrumNoVendor.id, 1) // no-vendor item, qty > 0
 
     renderShoppingIndex()
 
@@ -169,12 +165,131 @@ describe('Shopping index page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart = await getOrCreateActiveCart(vendor.id)
-    await addToCart(cart.id, item.id, 2)
+    await addToCart(vendor.id, item.id, 2)
 
     renderShoppingIndex()
 
     // Then Costco vendor card is visible
     expect(await screen.findByText(/costco/i)).toBeInTheDocument()
+  })
+
+  it('last purchased sort orders vendor cards by most recently completed cart', async () => {
+    // Given two vendors: Costco and iHerb
+    const costco = await createVendor('Costco')
+    const iherb = await createVendor('iHerb')
+
+    // Costco: older lastPurchasedAt; iHerb: newer lastPurchasedAt
+    const olderDate = new Date('2025-01-01T00:00:00Z')
+    const newerDate = new Date('2025-06-01T00:00:00Z')
+    await db.shoppingCarts.update(costco.id, { lastPurchasedAt: olderDate })
+    await db.shoppingCarts.update(iherb.id, { lastPurchasedAt: newerDate })
+
+    // Render shopping index with ?sort=recent
+    const history = createMemoryHistory({
+      initialEntries: ['/shopping?sort=recent&dir=desc'],
+    })
+    const router = createRouter({
+      routeTree,
+      history,
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Assert iHerb appears before Costco (more recently purchased)
+    const iherbEl = await screen.findByText(/iherb/i)
+    const costcoEl = await screen.findByText(/costco/i)
+    expect(iherbEl.compareDocumentPosition(costcoEl)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('vendor card shows updated item count after user adds item in vendor cart and returns to shopping page (regression)', async () => {
+    // Given: a vendor with one item, no active cart yet
+    const vendor = await createVendor('PX Mart')
+    await createItem({
+      name: 'Pineapple Cake',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // Mount the full app starting at /shopping (uses the full routeTree + shared queryClient)
+    const history = createMemoryHistory({ initialEntries: ['/shopping'] })
+    const router = createRouter({
+      routeTree,
+      history,
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // 1. Vendor card appears — no items in cart yet
+    expect(await screen.findByText(/px mart/i)).toBeInTheDocument()
+
+    // 2. Navigate to the vendor cart
+    history.push(`/shopping/${vendor.id}`)
+
+    // 3. Wait for the vendor cart page to appear
+    expect(await screen.findByText(/pineapple cake/i)).toBeInTheDocument()
+
+    // 4. Add item to cart — wait for cart to resolve (checkbox disabled until cart loads)
+    const checkbox = screen.getByRole('checkbox', { name: /pineapple cake/i })
+    await waitFor(() => expect(checkbox).not.toBeDisabled())
+    await userEvent.click(checkbox)
+    expect(await screen.findByText(/1 pack/i)).toBeInTheDocument()
+
+    // 5. Navigate back to shopping index
+    history.push('/shopping')
+
+    // 6. Vendor card must now show updated count — this is the regression assertion
+    await waitFor(
+      () => {
+        expect(screen.getByText(/1 \/ 1 items in cart/)).toBeInTheDocument()
+      },
+      { timeout: 3000 },
+    )
+  })
+
+  it('vendor card counts only items in its own cart, not items from the null-vendor cart (regression)', async () => {
+    // Reproduces the bug where a null-vendor cart (from a pre-vendor-carts backup import)
+    // contains a vendor-assigned item. The vendor card should show 0 checked items —
+    // only the vendor's own cart items count toward the vendor card stats.
+
+    // Given: a Costco vendor with one item, and a no-vendor cart that also contains that item
+    const vendor = await createVendor('Costco')
+    const milk = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    // Null-vendor cart (simulates imported backup with 7 packs)
+    await db.shoppingCarts.put({ id: 'no-vendor' })
+    await addToCart('no-vendor', milk.id, 7)
+
+    renderShoppingIndex()
+
+    // Then the Costco vendor card shows 0 checked (no Costco cart exists with items)
+    // NOT "1 / 1 items in cart (7 packs)" — those belong to the null-vendor cart
+    expect(await screen.findByText(/costco/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 \/ 1 items in cart/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/7 packs/i)).not.toBeInTheDocument()
   })
 })

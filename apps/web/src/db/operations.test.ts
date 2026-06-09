@@ -18,10 +18,11 @@ import {
   deleteTag,
   deleteTagType,
   deleteVendor,
-  getAllActiveCarts,
+  getAllCarts,
   getAllItems,
   getAllTags,
   getAllTagTypes,
+  getCart,
   getCartItemCountByItem,
   getCartItems,
   getCurrentQuantity,
@@ -31,7 +32,7 @@ import {
   getItemCountByVendor,
   getItemLogs,
   getLastPurchaseDate,
-  getOrCreateActiveCart,
+  getLastPurchasedByVendor,
   getRecipe,
   getRecipes,
   getShelf,
@@ -44,7 +45,6 @@ import {
   reorderShelves,
   seedDefaultData,
   updateCartItem,
-  updateCartLastVisited,
   updateItem,
   updateRecipe,
   updateRecipeLastCookedAt,
@@ -532,27 +532,50 @@ describe('Tag cascade operations', () => {
 
 describe('ShoppingCart operations', () => {
   beforeEach(async () => {
-    await db.items.clear()
-    await db.inventoryLogs.clear()
+    await db.vendors.clear()
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
+    await db.items.clear()
+    await db.inventoryLogs.clear()
   })
 
-  it('creates an active cart if none exists', async () => {
-    const cart = await getOrCreateActiveCart()
+  it('getCart returns the permanent cart for a vendor', async () => {
+    // Given a vendor (createVendor also creates the cart)
+    const vendor = await createVendor('Test Vendor')
 
-    expect(cart.id).toBeDefined()
-    expect(cart.status).toBe('active')
+    // When getting the cart for that vendor
+    const cart = await getCart(vendor.id)
+
+    // Then the cart exists with the vendor's id
+    expect(cart).toBeDefined()
+    expect(cart?.id).toBe(vendor.id)
   })
 
-  it('reuses existing active cart', async () => {
-    const cart1 = await getOrCreateActiveCart()
-    const cart2 = await getOrCreateActiveCart()
+  it('getCart returns the no-vendor cart', async () => {
+    // Given a no-vendor cart exists
+    await db.shoppingCarts.put({ id: 'no-vendor' })
 
-    expect(cart1.id).toBe(cart2.id)
+    // When getting the cart with null vendorId
+    const cart = await getCart(null)
+
+    // Then the no-vendor cart is returned
+    expect(cart).toBeDefined()
+    expect(cart?.id).toBe('no-vendor')
   })
 
-  it('adds item to cart', async () => {
+  it('createVendor creates a permanent cart with same id', async () => {
+    // When creating a vendor
+    const vendor = await createVendor('Costco')
+
+    // Then a cart with the same id is created
+    const cart = await db.shoppingCarts.get(vendor.id)
+    expect(cart).toBeDefined()
+    expect(cart?.id).toBe(vendor.id)
+  })
+
+  it('deleteVendor deletes the vendor cart and its items', async () => {
+    // Given a vendor with a cart and cart items
+    const vendor = await createVendor('Costco')
     const item = await createItem({
       name: 'Milk',
       packageUnit: 'gallon',
@@ -564,14 +587,48 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart = await getOrCreateActiveCart()
+    await addToCart(vendor.id, item.id, 2)
 
-    const cartItem = await addToCart(cart.id, item.id, 2)
+    // When deleting the vendor
+    await deleteVendor(vendor.id)
 
+    // Then the vendor cart is gone
+    const cart = await db.shoppingCarts.get(vendor.id)
+    expect(cart).toBeUndefined()
+
+    // And the cart items are gone
+    const cartItems = await db.cartItems
+      .where('cartId')
+      .equals(vendor.id)
+      .toArray()
+    expect(cartItems).toHaveLength(0)
+  })
+
+  it('adds item to cart', async () => {
+    // Given a vendor and its permanent cart
+    const vendor = await createVendor('Test Vendor')
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // When adding an item to the cart
+    const cartItem = await addToCart(vendor.id, item.id, 2)
+
+    // Then the cart item is created with the correct quantity
     expect(cartItem.quantity).toBe(2)
   })
 
   it('updates cart item quantity', async () => {
+    // Given a vendor cart with an item
+    const vendor = await createVendor('Test Vendor')
     const item = await createItem({
       name: 'Milk',
       packageUnit: 'gallon',
@@ -583,16 +640,19 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart = await getOrCreateActiveCart()
-    const cartItem = await addToCart(cart.id, item.id, 2)
+    const cartItem = await addToCart(vendor.id, item.id, 2)
 
+    // When updating the quantity
     await updateCartItem(cartItem.id, 5)
 
-    const items = await getCartItems(cart.id)
+    // Then the quantity is updated
+    const items = await getCartItems(vendor.id)
     expect(items[0]?.quantity).toBe(5)
   })
 
-  it('checks out cart and creates inventory logs', async () => {
+  it('checkout creates inventory logs for bought items', async () => {
+    // Given a vendor cart with a bought item
+    const vendor = await createVendor('Test Vendor')
     const item = await createItem({
       name: 'Milk',
       packageUnit: 'gallon',
@@ -604,20 +664,224 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 3)
+    await addToCart(vendor.id, item.id, 3)
 
-    await checkout(cart.id)
+    // When checking out
+    await checkout(vendor.id)
 
+    // Then inventory logs are created
     const quantity = await getCurrentQuantity(item.id)
     expect(quantity).toBe(3)
+  })
 
-    const updatedCart = await db.shoppingCarts.get(cart.id)
-    expect(updatedCart?.status).toBe('completed')
+  it('checkout sets lastPurchasedAt on the cart', async () => {
+    // Given a vendor cart with an item
+    const vendor = await createVendor('Test Vendor')
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(vendor.id, item.id, 1)
+    const before = new Date()
+
+    // When checking out
+    await checkout(vendor.id)
+
+    // Then the cart has lastPurchasedAt set
+    const cart = await db.shoppingCarts.get(vendor.id)
+    expect(cart?.lastPurchasedAt).toBeDefined()
+    expect(cart?.lastPurchasedAt?.getTime()).toBeGreaterThanOrEqual(
+      before.getTime(),
+    )
+  })
+
+  it('checkout clears only active items (quantity > 0)', async () => {
+    // Given a vendor cart with one active item and one pinned item
+    const vendor = await createVendor('Test Vendor')
+    const activeItem = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const pinnedItem = await createItem({
+      name: 'Eggs',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(vendor.id, activeItem.id, 2)
+    await addToCart(vendor.id, pinnedItem.id, 1)
+    const cartItems = await getCartItems(vendor.id)
+    const pinnedCartItem = cartItems.find((ci) => ci.itemId === pinnedItem.id)
+    if (pinnedCartItem) await updateCartItem(pinnedCartItem.id, 0)
+
+    // When checking out
+    await checkout(vendor.id)
+
+    // Then only the active item is removed (the pinned stays)
+    const remainingItems = await getCartItems(vendor.id)
+    expect(remainingItems).toHaveLength(1)
+    expect(remainingItems[0].itemId).toBe(pinnedItem.id)
+    expect(remainingItems[0].quantity).toBe(0)
+  })
+
+  it('checkout keeps pinned items (quantity === 0) in same cart', async () => {
+    // Given a vendor cart with a pinned item (quantity=0)
+    const vendor = await createVendor('Test Vendor')
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(vendor.id, item.id, 1)
+    const cartItems = await getCartItems(vendor.id)
+    await updateCartItem(cartItems[0].id, 0)
+
+    // When checking out
+    await checkout(vendor.id)
+
+    // Then the pinned item remains in the same permanent cart
+    const remainingItems = await getCartItems(vendor.id)
+    expect(remainingItems).toHaveLength(1)
+    expect(remainingItems[0].itemId).toBe(item.id)
+    expect(remainingItems[0].quantity).toBe(0)
+
+    // And the item's packedQuantity is unchanged
+    const updatedItem = await getItem(item.id)
+    expect(updatedItem?.packedQuantity).toBe(2)
+  })
+
+  it('checkout stores logKey and logParams on logs when logDescriptor provided', async () => {
+    // Given a vendor cart with an item
+    const vendor = await createVendor('Test Vendor')
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await addToCart(vendor.id, item.id, 2)
+
+    // When checkout with a logDescriptor
+    await checkout(vendor.id, {
+      logKey: 'shopping.log.purchasedAt',
+      logParams: { vendor: 'Costco' },
+    })
+
+    // Then log has the logKey and logParams but no note
+    const logs = await getItemLogs(item.id)
+    expect(logs[0].logKey).toBe('shopping.log.purchasedAt')
+    expect(logs[0].logParams?.vendor).toBe('Costco')
+    expect(logs[0].note).toBeUndefined()
+  })
+
+  it('abandonCart clears all items including pinned', async () => {
+    // Given a vendor cart with one active and one pinned item
+    const vendor = await createVendor('Test Vendor')
+    const item1 = await createItem({
+      name: 'Milk',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const item2 = await createItem({
+      name: 'Eggs',
+      packageUnit: 'dozen',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(vendor.id, item1.id, 3)
+    await addToCart(vendor.id, item2.id, 1)
+    const cartItems = await getCartItems(vendor.id)
+    const item2CartItem = cartItems.find((ci) => ci.itemId === item2.id)
+    if (item2CartItem) await updateCartItem(item2CartItem.id, 0)
+
+    // When abandoning the cart
+    await abandonCart(vendor.id)
+
+    // Then all items including pinned are removed
+    const remaining = await getCartItems(vendor.id)
+    expect(remaining).toHaveLength(0)
+
+    // And no inventory logs were created
+    const quantity = await getCurrentQuantity(item1.id)
+    expect(quantity).toBe(0)
+  })
+
+  it('getAllCarts returns all permanent carts', async () => {
+    // Given two vendor carts and a no-vendor cart
+    const vendor1 = await createVendor('Costco')
+    const vendor2 = await createVendor('Trader Joes')
+    await db.shoppingCarts.put({ id: 'no-vendor' })
+
+    // When getting all carts
+    const carts = await getAllCarts()
+
+    // Then all three carts are returned
+    expect(carts.length).toBeGreaterThanOrEqual(3)
+    const ids = carts.map((c) => c.id)
+    expect(ids).toContain(vendor1.id)
+    expect(ids).toContain(vendor2.id)
+    expect(ids).toContain('no-vendor')
+  })
+
+  it('getLastPurchasedByVendor returns lastPurchasedAt from each cart', async () => {
+    // Given two vendor carts with known lastPurchasedAt values
+    const vendor1 = await createVendor('Costco')
+    const vendor2 = await createVendor('Trader Joes')
+    await db.shoppingCarts.put({ id: 'no-vendor' })
+    const date1 = new Date('2026-05-01')
+    const date2 = new Date('2026-04-15')
+    await db.shoppingCarts.update(vendor1.id, { lastPurchasedAt: date1 })
+    await db.shoppingCarts.update(vendor2.id, { lastPurchasedAt: date2 })
+
+    // When getting lastPurchasedByVendor
+    const result = await getLastPurchasedByVendor()
+
+    // Then each vendor id maps to its cart's lastPurchasedAt
+    expect(result.get(vendor1.id)?.getTime()).toBe(date1.getTime())
+    expect(result.get(vendor2.id)?.getTime()).toBe(date2.getTime())
+    // And the no-vendor cart maps to null (no lastPurchasedAt)
+    expect(result.get(null)).toBeNull()
   })
 
   it('log quantity reflects item packed state at time of checkout', async () => {
     // Given an item with pre-existing packedQuantity (simulating manual adjustment)
+    const vendor = await createVendor('Test Vendor')
     const item = await createItem({
       name: 'Milk',
       packageUnit: 'gallon',
@@ -629,11 +893,10 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 3)
+    await addToCart(vendor.id, item.id, 3)
 
     // When checkout is called
-    await checkout(cart.id)
+    await checkout(vendor.id)
 
     // Then the log quantity reflects total after purchase (existing + bought)
     const logs = await getItemLogs(item.id)
@@ -644,6 +907,7 @@ describe('ShoppingCart operations', () => {
 
   it('checkout increments packedQuantity of each item', async () => {
     // Given an item with known packedQuantity
+    const vendor = await createVendor('Test Vendor')
     const item = await createItem({
       name: 'Milk',
       packageUnit: 'gallon',
@@ -656,292 +920,22 @@ describe('ShoppingCart operations', () => {
       consumeAmount: 1,
     })
     // And a cart with that item and a quantity
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 3)
+    await addToCart(vendor.id, item.id, 3)
 
     // When checkout is called
-    await checkout(cart.id)
+    await checkout(vendor.id)
 
     // Then item.packedQuantity should increase by the cart quantity
     const updatedItem = await getItem(item.id)
     expect(updatedItem?.packedQuantity).toBe(8)
-  })
-
-  it('checkout stores no note when no logDescriptor provided', async () => {
-    // Given an item in cart
-    const item = await createItem({
-      name: 'Milk',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 2)
-
-    // When checkout with no logDescriptor
-    await checkout(cart.id)
-
-    // Then log has no note and no logKey
-    const logs = await getItemLogs(item.id)
-    expect(logs[0].logKey).toBeUndefined()
-    expect(logs[0].note).toBeUndefined()
-  })
-
-  it('checkout stores logKey and logParams on logs when logDescriptor provided', async () => {
-    // Given an item in cart
-    const item = await createItem({
-      name: 'Milk',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 2)
-
-    // When checkout with a logDescriptor
-    await checkout(cart.id, {
-      logKey: 'shopping.log.purchasedAt',
-      logParams: { vendor: 'Costco' },
-    })
-
-    // Then log has the logKey and logParams but no note
-    const logs = await getItemLogs(item.id)
-    expect(logs[0].logKey).toBe('shopping.log.purchasedAt')
-    expect(logs[0].logParams?.vendor).toBe('Costco')
-    expect(logs[0].note).toBeUndefined()
-  })
-
-  it('checkout skips inventory update for cartItems with quantity=0 (pinned)', async () => {
-    // Given an item with known packedQuantity
-    const item = await createItem({
-      name: 'Milk',
-      targetUnit: 'package',
-      targetQuantity: 4,
-      refillThreshold: 1,
-      packedQuantity: 2,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    // And a cart with a pinned item (quantity=0)
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 1)
-    const cartItems = await getCartItems(cart.id)
-    await updateCartItem(cartItems[0].id, 0)
-
-    // When checkout is called
-    await checkout(cart.id)
-
-    // Then item.packedQuantity is unchanged (pinned item not consumed)
-    const updated = await getItem(item.id)
-    expect(updated?.packedQuantity).toBe(2)
-
-    // And no inventory log was created for the pinned item
-    const logs = await db.inventoryLogs
-      .filter((l) => l.itemId === item.id)
-      .toArray()
-    expect(logs).toHaveLength(0)
-  })
-
-  it('checkout keeps pinned items in new active cart', async () => {
-    // Given a pinned item (qty=0) and a buying item (qty=2)
-    const pinnedItem = await createItem({
-      name: 'Eggs',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 0,
-      packedQuantity: 1,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-    const buyItem = await createItem({
-      name: 'Butter',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, pinnedItem.id, 1)
-    const cartItems = await getCartItems(cart.id)
-    await updateCartItem(cartItems[0].id, 0)
-    await addToCart(cart.id, buyItem.id, 2)
-
-    // When checkout is called
-    await checkout(cart.id)
-
-    // Then old cart is completed
-    const oldCart = await db.shoppingCarts.get(cart.id)
-    expect(oldCart?.status).toBe('completed')
-
-    // And a new active cart can be retrieved (old cart is completed)
-    const newCart = await getOrCreateActiveCart()
-    expect(newCart.id).not.toBe(cart.id)
-
-    // And the pinned item is in the new cart with quantity=0
-    const newCartItems = await getCartItems(newCart.id)
-    expect(newCartItems).toHaveLength(1)
-    expect(newCartItems[0].itemId).toBe(pinnedItem.id)
-    expect(newCartItems[0].quantity).toBe(0)
-
-    // And the buying item is NOT in the new cart
-    expect(newCartItems.find((ci) => ci.itemId === buyItem.id)).toBeUndefined()
-  })
-
-  it('user can create a "no vendor" cart', async () => {
-    // When creating a cart with null vendorId
-    const cart = await getOrCreateActiveCart(null)
-
-    // Then cart has vendorId null
-    expect(cart.vendorId).toBeNull()
-    expect(cart.status).toBe('active')
-  })
-
-  it('user can create a vendor-specific cart', async () => {
-    // Given a vendor ID
-    const vendorId = 'vendor-123'
-
-    // When creating a cart for that vendor
-    const cart = await getOrCreateActiveCart(vendorId)
-
-    // Then cart has that vendorId
-    expect(cart.vendorId).toBe(vendorId)
-  })
-
-  it('user can have two independent active carts for different vendors', async () => {
-    // When creating carts for two different vendors
-    const cartA = await getOrCreateActiveCart('vendor-a')
-    const cartB = await getOrCreateActiveCart('vendor-b')
-
-    // Then they are separate carts
-    expect(cartA.id).not.toBe(cartB.id)
-    expect(cartA.vendorId).toBe('vendor-a')
-    expect(cartB.vendorId).toBe('vendor-b')
-  })
-
-  it('user gets the same cart when calling getOrCreateActiveCart twice with the same vendorId', async () => {
-    // When calling twice with same vendorId
-    const cart1 = await getOrCreateActiveCart('vendor-x')
-    const cart2 = await getOrCreateActiveCart('vendor-x')
-
-    // Then it returns the same cart
-    expect(cart1.id).toBe(cart2.id)
-  })
-
-  it('user can get all active carts', async () => {
-    // Given two active carts for different vendors
-    await getOrCreateActiveCart('vendor-a')
-    await getOrCreateActiveCart('vendor-b')
-
-    // When getting all active carts
-    const carts = await getAllActiveCarts()
-
-    // Then both carts are returned
-    expect(carts.length).toBeGreaterThanOrEqual(2)
-    expect(carts.every((c) => c.status === 'active')).toBe(true)
-  })
-
-  it('user checkout moves pinned items to same-vendor new cart', async () => {
-    // Given a vendor cart with one buying item and one pinned item
-    const vendorId = 'vendor-123'
-    const cart = await getOrCreateActiveCart(vendorId)
-    const item1 = await createItem({
-      name: 'Milk',
-      tagIds: [],
-      targetQuantity: 2,
-      refillThreshold: 1,
-      targetUnit: 'package',
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    })
-    const item2 = await createItem({
-      name: 'Eggs',
-      tagIds: [],
-      targetQuantity: 1,
-      refillThreshold: 1,
-      targetUnit: 'package',
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    })
-    await addToCart(cart.id, item1.id, 2) // buying item
-    await addToCart(cart.id, item2.id, 1) // will be pinned
-    const cartItems = await getCartItems(cart.id)
-    const item2CartItem = cartItems.find((ci) => ci.itemId === item2.id)
-    if (item2CartItem) await updateCartItem(item2CartItem.id, 0) // pin it (qty=0)
-
-    // When checking out
-    await checkout(cart.id, {
-      logKey: 'shopping.log.purchasedAt',
-      logParams: { vendor: vendorId },
-    })
-
-    // Then the pinned item moves to a new cart for the SAME vendor
-    const newCart = await getOrCreateActiveCart(vendorId)
-    expect(newCart.id).not.toBe(cart.id) // a new cart was created
-    expect(newCart.vendorId).toBe(vendorId) // same vendor
-
-    const newCartItems = await getCartItems(newCart.id)
-    expect(newCartItems.some((ci) => ci.itemId === item2.id)).toBe(true) // pinned item is there
-    expect(newCartItems.some((ci) => ci.itemId === item1.id)).toBe(false) // bought item is gone
-  })
-
-  it('updateCartLastVisited stamps lastVisitedAt on the cart', async () => {
-    // Given an active cart
-    const cart = await getOrCreateActiveCart(null)
-    expect(cart.lastVisitedAt).toBeNull()
-
-    // When lastVisitedAt is updated
-    await updateCartLastVisited(cart.id)
-
-    // Then the cart has a non-null lastVisitedAt
-    const updated = await db.shoppingCarts.get(cart.id)
-    expect(updated?.lastVisitedAt).toBeInstanceOf(Date)
-  })
-
-  it('abandons cart without creating logs', async () => {
-    const item = await createItem({
-      name: 'Milk',
-      packageUnit: 'gallon',
-      targetUnit: 'package',
-      tagIds: [],
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    })
-    const cart = await getOrCreateActiveCart()
-    await addToCart(cart.id, item.id, 3)
-
-    await abandonCart(cart.id)
-
-    const quantity = await getCurrentQuantity(item.id)
-    expect(quantity).toBe(0)
-
-    const updatedCart = await db.shoppingCarts.get(cart.id)
-    expect(updatedCart?.status).toBe('abandoned')
   })
 })
 
 describe('Vendor operations', () => {
   beforeEach(async () => {
     await db.vendors.clear()
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
     await db.items.clear()
   })
 
@@ -1059,6 +1053,7 @@ describe('Vendor operations', () => {
 describe('getItemCountByVendor', () => {
   beforeEach(async () => {
     await db.vendors.clear()
+    await db.shoppingCarts.clear()
     await db.items.clear()
   })
 
@@ -1195,16 +1190,11 @@ describe('Item cascade operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart = await db.shoppingCarts.add({
-      id: crypto.randomUUID(),
-      vendorId: null,
-      lastVisitedAt: null,
-      status: 'active',
-      createdAt: new Date(),
-    })
+    const cartId = crypto.randomUUID()
+    await db.shoppingCarts.put({ id: cartId })
     await db.cartItems.add({
       id: crypto.randomUUID(),
-      cartId: cart,
+      cartId,
       itemId: item.id,
       quantity: 3,
     })
@@ -1284,29 +1274,19 @@ describe('Count helpers for item relations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cart1 = await db.shoppingCarts.add({
-      id: crypto.randomUUID(),
-      vendorId: null,
-      lastVisitedAt: null,
-      status: 'active',
-      createdAt: new Date(),
-    })
-    const cart2 = await db.shoppingCarts.add({
-      id: crypto.randomUUID(),
-      vendorId: null,
-      lastVisitedAt: null,
-      status: 'active',
-      createdAt: new Date(),
-    })
+    const cartId1 = crypto.randomUUID()
+    const cartId2 = crypto.randomUUID()
+    await db.shoppingCarts.put({ id: cartId1 })
+    await db.shoppingCarts.put({ id: cartId2 })
     await db.cartItems.add({
       id: crypto.randomUUID(),
-      cartId: cart1,
+      cartId: cartId1,
       itemId: item.id,
       quantity: 3,
     })
     await db.cartItems.add({
       id: crypto.randomUUID(),
-      cartId: cart2,
+      cartId: cartId2,
       itemId: item.id,
       quantity: 1,
     })

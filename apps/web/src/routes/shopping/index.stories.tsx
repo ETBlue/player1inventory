@@ -8,12 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import {
-  addToCart,
-  createItem,
-  createVendor,
-  getOrCreateActiveCart,
-} from '@/db/operations'
+import { addToCart, createItem, createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -158,12 +153,10 @@ function WithVendorCartsStory() {
           consumeAmount: 1,
         })
 
-        const costcoCart = await getOrCreateActiveCart(costco.id)
-        await addToCart(costcoCart.id, milk.id, 2)
-        await addToCart(costcoCart.id, eggs.id, 1)
+        await addToCart(costco.id, milk.id, 2)
+        await addToCart(costco.id, eggs.id, 1)
 
-        const iherbCart = await getOrCreateActiveCart(iherb.id)
-        await addToCart(iherbCart.id, vitaminC.id, 3)
+        await addToCart(iherb.id, vitaminC.id, 3)
       }}
     />
   )

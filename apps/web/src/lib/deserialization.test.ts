@@ -197,35 +197,16 @@ describe('deserializeShelf', () => {
 })
 
 describe('deserializeCart', () => {
-  it('converts createdAt ISO string to Date', () => {
-    const raw = {
-      id: '1',
-      status: 'active',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    }
+  it('converts lastPurchasedAt ISO string to Date', () => {
+    const raw = { id: 'vendor-1', lastPurchasedAt: '2026-01-01T00:00:00.000Z' }
     const result = deserializeCart(raw)
-    expect(result.createdAt).toBeInstanceOf(Date)
+    expect(result.lastPurchasedAt).toBeInstanceOf(Date)
+    expect(result.lastPurchasedAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
   })
 
-  it('converts completedAt when present', () => {
-    const raw = {
-      id: '1',
-      status: 'completed',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      completedAt: '2026-02-01T00:00:00.000Z',
-    }
+  it('leaves lastPurchasedAt undefined when absent', () => {
+    const raw = { id: 'vendor-1' }
     const result = deserializeCart(raw)
-    expect(result.completedAt).toBeInstanceOf(Date)
-    expect(result.completedAt).toEqual(new Date('2026-02-01T00:00:00.000Z'))
-  })
-
-  it('leaves completedAt undefined when absent', () => {
-    const raw = {
-      id: '1',
-      status: 'active',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    }
-    const result = deserializeCart(raw)
-    expect(result.completedAt).toBeUndefined()
+    expect(result.lastPurchasedAt).toBeUndefined()
   })
 })

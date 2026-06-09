@@ -73,12 +73,8 @@ export interface InventoryLog {
 }
 
 export interface ShoppingCart {
-  id: string
-  vendorId: string | null
-  lastVisitedAt: Date | null
-  status: 'active' | 'completed' | 'abandoned'
-  createdAt: Date
-  completedAt?: Date
+  id: string           // = vendorId, or 'no-vendor' for null-vendor cart
+  lastPurchasedAt?: Date
 }
 
 export interface CartItem {

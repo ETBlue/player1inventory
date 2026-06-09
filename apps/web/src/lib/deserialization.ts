@@ -58,13 +58,12 @@ export function deserializeShelf(raw: Record<string, unknown>): Shelf {
   } as Shelf
 }
 
-// GraphQL returns createdAt/completedAt as ISO strings; convert to Date.
+// GraphQL returns lastPurchasedAt as ISO string; convert to Date.
 export function deserializeCart(raw: Record<string, unknown>): ShoppingCart {
   return {
     ...raw,
-    createdAt: new Date(raw.createdAt as string),
-    completedAt: raw.completedAt
-      ? new Date(raw.completedAt as string)
+    lastPurchasedAt: raw.lastPurchasedAt
+      ? new Date(raw.lastPurchasedAt as string)
       : undefined,
   } as ShoppingCart
 }
