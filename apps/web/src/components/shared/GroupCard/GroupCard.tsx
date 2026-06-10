@@ -79,32 +79,30 @@ export function GroupCard({
             <span className="text-xs text-foreground-muted">
               {displayActiveCount} / {itemCount} active
             </span>
-            {(
-              [
-                outOfStockCount != null && outOfStockCount > 0
-                  ? {
-                      key: 'out-of-stock',
-                      className: 'text-status-error-foreground text-xs',
-                      label: `${outOfStockCount} empty`,
-                    }
-                  : null,
-                lowStockCount != null && lowStockCount > 0
-                  ? {
-                      key: 'low-stock',
-                      className: 'text-status-warning-foreground text-xs',
-                      label: `${lowStockCount} low stock`,
-                    }
-                  : null,
-                filterSummary
-                  ? {
-                      key: 'filter-summary',
-                      className: 'text-xs text-foreground-muted truncate',
-                      label: filterSummary,
-                    }
-                  : null,
-              ] as const
-            )
-              .filter(Boolean)
+            {[
+              outOfStockCount != null && outOfStockCount > 0
+                ? {
+                    key: 'out-of-stock',
+                    className: 'text-status-error-foreground text-xs',
+                    label: `${outOfStockCount} empty`,
+                  }
+                : null,
+              lowStockCount != null && lowStockCount > 0
+                ? {
+                    key: 'low-stock',
+                    className: 'text-status-warning-foreground text-xs',
+                    label: `${lowStockCount} low stock`,
+                  }
+                : null,
+              filterSummary
+                ? {
+                    key: 'filter-summary',
+                    className: 'text-xs text-foreground-muted truncate',
+                    label: filterSummary,
+                  }
+                : null,
+            ]
+              .filter((item): item is NonNullable<typeof item> => item !== null)
               .map((item) => (
                 <span key={item.key} className="flex items-center gap-x-1">
                   · <span className={item.className}>{item.label}</span>
