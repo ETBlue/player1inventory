@@ -4,5 +4,9 @@ export interface UnitInlineProps {
 }
 
 export function UnitInline({ unit, placeholder = 'pack' }: UnitInlineProps) {
-  return <span className="text-xs font-normal">({unit ?? placeholder})</span>
+  return (
+    <span className="text-xs font-normal text-foreground-muted">
+      ({unit ?? placeholder})
+    </span>
+  )
 }
