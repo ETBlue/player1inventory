@@ -128,6 +128,12 @@ Exported from `@/components/ui/card`.
 
 **`CardMetadata`** — same as `CardDescription` but renders `text-xs text-foreground-muted`. Use for compact supplementary data: item counts, badge-style metadata, secondary stats. Exported from `@/components/ui/card`.
 
+## Unit Display Components
+
+**`UnitBadge`** (`src/components/shared/UnitBadge/`) — bordered pill for unit labels in card and dialog contexts. Props: `unit?: string | undefined` (defaults to `"pack"`). Style: `px-1 text-xs text-foreground-muted border border-foreground-muted`. Used in ItemCard, GroupCard, QuickUpdateDialog. Note: `opacity-75` was audited and removed — it failed WCAG AA (small text contrast ~2.97:1 against card background).
+
+**`UnitInline`** (`src/components/shared/UnitInline/`) — inline `(unit)` text for form labels. Props: `unit?: string | undefined`, `placeholder?: string` (default `"pack"`). Renders `(unit ?? placeholder)` with parentheses included. Pass `placeholder="?"` for measurement-unit labels where the unit may be unset — the `?` signals an unresolved setting to the user. Used in ItemForm.
+
 ## Dialog Layout Pattern
 
 shadcn/ui `Dialog` uses a three-zone layout: `DialogHeader` → `DialogMain` → `DialogFooter`.

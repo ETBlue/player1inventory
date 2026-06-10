@@ -3,7 +3,7 @@
 **Date:** 2026-06-10
 **Branch:** refactor/unit-badge
 **Brainstorming:** [2026-06-10-brainstorming-unit-badge.md](2026-06-10-brainstorming-unit-badge.md)
-**Status:** 🔲 Pending
+**Status:** ✅ Implemented
 
 ---
 
