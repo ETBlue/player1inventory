@@ -41,7 +41,7 @@ const SCALE_ENTRIES = [
     label: 'text-xs / 0.75rem',
     style: { fontSize: '0.75rem', lineHeight: '1rem', fontWeight: 400 },
     sample: '3 / 8 active · 2 low stock · dairy',
-    usage: 'Badges, fine print, card descriptions (many components override to text-xs), secondary metadata',
+    usage: 'CardMetadata, badges, fine print, secondary stats and counts',
   },
 ]
 
