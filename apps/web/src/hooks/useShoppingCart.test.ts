@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  useAbandonCart,
   useActiveCart,
   useAddToCart,
   useCheckout,
@@ -28,6 +29,9 @@ vi.mock('@/db/operations', async (importOriginal) => {
 const mockCloudCheckout = vi.fn().mockResolvedValue({
   data: { checkout: { id: 'cart-1', status: 'completed' } },
 })
+const mockAbandonCartFn = vi
+  .fn()
+  .mockResolvedValue({ data: { abandonCart: { id: 'cart-1' } } })
 const mockUseActiveCartQuery = vi.fn()
 const mockAddToCartFn = vi
   .fn()
@@ -53,10 +57,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useUpdateCartItemMutation: () => [mockUpdateCartItemFn, { loading: false }],
     useRemoveFromCartMutation: () => [mockRemoveFromCartFn, { loading: false }],
     useCheckoutMutation: () => [mockCloudCheckout, {}],
-    useAbandonCartMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
+    useAbandonCartMutation: () => [mockAbandonCartFn, { loading: false }],
   }
 })
 
@@ -296,6 +297,70 @@ describe('useUpdateCartItem (cloud mode)', () => {
     // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
     expect(mockUpdateCartItemFn).toHaveBeenCalled()
     const callArgs = mockUpdateCartItemFn.mock.calls[0][0]
+    const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
+    const docNames = refetchQueries
+      .filter(
+        (
+          rq,
+        ): rq is {
+          query: { definitions: Array<{ name?: { value: string } }> }
+        } => typeof rq === 'object' && rq !== null && 'query' in rq,
+      )
+      .map((rq) => rq.query.definitions[0]?.name?.value)
+    expect(docNames).toContain('AllCartItems')
+    expect(docNames).toContain('AllCarts')
+  })
+})
+
+describe('useCheckout (cloud mode) — AllCartItems and AllCarts refetch strategy', () => {
+  it('user can checkout — refetches AllCartItems and AllCarts as DocumentNodes so stale shopping index cache is always refreshed even when unmounted', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+
+    // When checkout is called
+    const { result } = renderHook(() => useCheckout(), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ cartId: 'cart-123' })
+    })
+
+    // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
+    expect(mockCloudCheckout).toHaveBeenCalled()
+    const callArgs = mockCloudCheckout.mock.calls[0][0]
+    const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
+    const docNames = refetchQueries
+      .filter(
+        (
+          rq,
+        ): rq is {
+          query: { definitions: Array<{ name?: { value: string } }> }
+        } => typeof rq === 'object' && rq !== null && 'query' in rq,
+      )
+      .map((rq) => rq.query.definitions[0]?.name?.value)
+    expect(docNames).toContain('AllCartItems')
+    expect(docNames).toContain('AllCarts')
+  })
+})
+
+describe('useAbandonCart (cloud mode)', () => {
+  it('user can abandon cart — refetches AllCartItems and AllCarts as DocumentNodes so stale shopping index cache is always refreshed even when unmounted', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+
+    // When abandonCart is called
+    const { result } = renderHook(() => useAbandonCart(), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('cart-123')
+    })
+
+    // Then the mutation call must include AllCartItems and AllCarts as DocumentNodes
+    expect(mockAbandonCartFn).toHaveBeenCalled()
+    const callArgs = mockAbandonCartFn.mock.calls[0][0]
     const refetchQueries: unknown[] = callArgs?.refetchQueries ?? []
     const docNames = refetchQueries
       .filter(

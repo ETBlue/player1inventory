@@ -330,7 +330,8 @@ export function useCheckout() {
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
             'VendorCart',
-            'AllCarts',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         }).then(
           async () => {
@@ -376,7 +377,8 @@ export function useCheckout() {
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
             'VendorCart',
-            'AllCarts',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         })
         client.cache.evict({
@@ -427,7 +429,8 @@ export function useAbandonCart() {
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             'VendorCart',
-            'AllCarts',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         }).then(
           () => options?.onSuccess?.(),
@@ -442,7 +445,8 @@ export function useAbandonCart() {
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             'VendorCart',
-            'AllCarts',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         }).then((r) => r.data?.abandonCart),
       isPending: cloudAbandonCartLoading,
