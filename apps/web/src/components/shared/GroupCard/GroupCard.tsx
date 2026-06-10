@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import type React from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
+import { UnitBadge } from '@/components/shared/UnitBadge'
 import {
   Card,
   CardContent,
@@ -61,9 +62,7 @@ export function GroupCard({
               {name}
             </CardTitle>
             <CardMetadata>{`${displayPacked}/${displayTarget}`}</CardMetadata>
-            <span className="px-1 text-xs text-foreground-muted border border-foreground-muted">
-              pack
-            </span>
+            <UnitBadge />
           </div>
           {/* Row 2: progress bar */}
           <ItemProgressBar

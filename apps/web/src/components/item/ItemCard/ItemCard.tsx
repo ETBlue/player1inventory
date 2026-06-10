@@ -11,6 +11,7 @@ import {
 import type React from 'react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
+import { UnitBadge } from '@/components/shared/UnitBadge'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -216,9 +217,7 @@ export function ItemCard({
                 ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
                 : `${currentQuantity}/${item.targetQuantity}`}
             </span>
-            <span className="px-1 text-xs text-foreground-muted border-1 border-foreground-muted opacity-75">
-              {unitLabel}
-            </span>
+            <UnitBadge unit={unitLabel} />
           </CardTitle>
           <ItemProgressBar
             current={currentQuantity}
