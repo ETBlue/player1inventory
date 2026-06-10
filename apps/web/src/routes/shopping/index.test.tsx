@@ -145,10 +145,10 @@ describe('Shopping index page', () => {
 
     renderShoppingIndex()
 
-    // Then the no-vendor card shows "1 item • 1 in cart" (only Centrum counts)
-    // NOT "1 item • 2 in cart" which was the bug
-    expect(await screen.findByText(/1 item • 1 in cart/)).toBeInTheDocument()
-    expect(screen.queryByText(/1 item • 2 in cart/)).not.toBeInTheDocument()
+    // Then the no-vendor card shows "1 item · 1 in cart" (only Centrum counts)
+    // NOT "1 item · 2 in cart" which was the bug
+    expect(await screen.findByText(/1 item · 1 in cart/)).toBeInTheDocument()
+    expect(screen.queryByText(/1 item · 2 in cart/)).not.toBeInTheDocument()
   })
 
   it('user can see cart with checked items reflected in vendor card', async () => {
@@ -256,7 +256,7 @@ describe('Shopping index page', () => {
     // 6. Vendor card must now show updated count — this is the regression assertion
     await waitFor(
       () => {
-        expect(screen.getByText(/1 item • 1 in cart/)).toBeInTheDocument()
+        expect(screen.getByText(/1 item · 1 in cart/)).toBeInTheDocument()
       },
       { timeout: 3000 },
     )
@@ -287,9 +287,9 @@ describe('Shopping index page', () => {
     renderShoppingIndex()
 
     // Then the Costco vendor card shows 0 checked (no Costco cart exists with items)
-    // NOT "1 item • 1 in cart (7 packs)" — those belong to the null-vendor cart
+    // NOT "1 item · 1 in cart (7 packs)" — those belong to the null-vendor cart
     expect(await screen.findByText(/costco/i)).toBeInTheDocument()
-    expect(screen.queryByText(/1 item • 1 in cart/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/1 item · 1 in cart/)).not.toBeInTheDocument()
     expect(screen.queryByText(/7 packs/i)).not.toBeInTheDocument()
   })
 })

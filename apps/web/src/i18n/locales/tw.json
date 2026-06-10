@@ -42,8 +42,9 @@
     "cartCard": {
       "packsChecked_one": "共 {{count}} 件",
       "packsChecked_other": "共 {{count}} 件",
-      "inCart_one": "{{count}} 個品項 • {{checked}} 採購中",
-      "inCart_other": "{{count}} 個品項 • {{checked}} 採購中"
+      "inVendor_one": "{{count}} 個品項",
+      "inVendor_other": "{{count}} 個品項",
+      "inCart": "{{count}} 採購中"
     },
     "toolbar": {
       "cartCount_one": "共 {{count}} 件",

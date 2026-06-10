@@ -42,8 +42,9 @@
     "cartCard": {
       "packsChecked_one": "{{count}} pack",
       "packsChecked_other": "{{count}} packs",
-      "inCart_one": "{{count}} item • {{checked}} in cart",
-      "inCart_other": "{{count}} items • {{checked}} in cart"
+      "inVendor_one": "{{count}} item",
+      "inVendor_other": "{{count}} items",
+      "inCart": "{{count}} in cart"
     },
     "toolbar": {
       "cartCount_one": "{{count}} pack",

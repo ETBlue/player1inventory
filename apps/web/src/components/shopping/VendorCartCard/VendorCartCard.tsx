@@ -45,11 +45,19 @@ export function VendorCartCard({
         <CardTitle className={cn(isNoVendor ? 'normal-case' : 'capitalize')}>
           {vendorName}
         </CardTitle>
-        <CardDescription>
-          {t('shopping.cartCard.inCart', {
-            checked: checkedCount,
-            count: availableCount,
-          })}
+        <CardDescription className="text-xs">
+          {[
+            t('shopping.cartCard.inVendor', {
+              count: availableCount,
+            }),
+            checkedCount > 0
+              ? t('shopping.cartCard.inCart', {
+                  count: checkedCount,
+                })
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </CardDescription>
       </CardHeader>
       <div className="flex items-center gap-2">
