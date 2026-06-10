@@ -176,11 +176,13 @@ After each implementation phase (each numbered step in an implementation plan), 
 
 ```bash
 (cd apps/web && pnpm lint)
-(cd apps/web && pnpm build) 2>&1 | tee /tmp/p1i-build.log
+pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc)
 (cd apps/web && pnpm build-storybook)
 (cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
 ```
+
+**Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
 **Final phase only** — after all steps are complete, also run related E2E tests:
 
@@ -192,6 +194,7 @@ Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, 
 
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
+- The root `pnpm build` must pass its `tsc` type-check for **both** `apps/web` and `apps/server` — a clean `pnpm test` / `pnpm check` / `pnpm build-storybook` is **not** a substitute and does not catch type errors
 - After `pnpm build`, run `grep 'TS6385' /tmp/p1i-build.log` to check for `@deprecated` warnings — any match is a failure even if the build exit code is 0
 - All four commands must pass and `grep` must return no matches before moving on
 - E2E failures on the final phase are a hard stop — fix before finishing the branch; the branch must not be pushed until all E2E tests pass
