@@ -34,13 +34,13 @@ const SCALE_ENTRIES = [
   {
     label: 'text-sm / 0.875rem · font-normal',
     style: { fontSize: '0.875rem', lineHeight: '1.25rem', fontWeight: 400 },
-    sample: '3 / 8 items · 2 low stock',
+    sample: 'Your data is stored on this device',
     usage: 'Card descriptions (default), body text, dropdown items, navigation labels',
   },
   {
     label: 'text-xs / 0.75rem',
     style: { fontSize: '0.75rem', lineHeight: '1rem', fontWeight: 400 },
-    sample: 'dairy · fridge · expires in 5 days',
+    sample: '3 / 8 active · 2 low stock · dairy',
     usage: 'Badges, fine print, card descriptions (many components override to text-xs), secondary metadata',
   },
 ]
