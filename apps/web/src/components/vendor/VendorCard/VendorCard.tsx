@@ -27,7 +27,7 @@ export function VendorCard({ vendor, itemCount, onDelete }: VendorCardProps) {
         </Link>
       </CardTitle>
       {itemCount !== undefined && (
-        <CardDescription>
+        <CardDescription className="text-xs">
           {t('settings.vendors.itemCount', { count: itemCount })}
         </CardDescription>
       )}

@@ -26,7 +26,7 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
         </Link>
       </CardTitle>
       {itemCount !== undefined && (
-        <CardDescription>
+        <CardDescription className="text-xs">
           {t('settings.recipes.itemCount', { count: itemCount })}
         </CardDescription>
       )}

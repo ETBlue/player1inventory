@@ -106,14 +106,14 @@ function SortableShelfRow({
             {shelf.name}
           </Link>
         </CardTitle>
-        <CardDescription className="flex items-center gap-1">
+        <CardDescription className="flex items-center gap-1 text-xs">
           {shelf.type === 'filter' && (
             <SlidersVertical className="h-3 w-3 text-foreground-muted" />
           )}
           {shelf.type === 'selection' && (
             <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
           )}
-          {itemCount} {itemCount === 1 ? 'item' : 'items'}
+          {itemCount} {itemCount <= 1 ? 'item' : 'items'}
         </CardDescription>
         {/* Right side: delete */}
         <DeleteButton
@@ -303,7 +303,7 @@ export function ShelfSettingsPage() {
             <Card className="grid grid-cols-[auto_1fr_auto] items-center gap-4 h-10 px-4 py-0">
               <Lock className="h-4 w-4 text-foreground-muted" />
               <CardTitle>Unsorted</CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs">
                 {getUnsortedCount()}{' '}
                 {getUnsortedCount() === 1 ? 'item' : 'items'}
               </CardDescription>
