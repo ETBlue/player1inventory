@@ -36,7 +36,7 @@ import {
   type CreateShelfInput,
 } from '@/components/shelf/AddShelfDialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardDescription, CardTitle } from '@/components/ui/card'
+import { Card, CardMetadata, CardTitle } from '@/components/ui/card'
 import { useItems } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -106,7 +106,7 @@ function SortableShelfRow({
             {shelf.name}
           </Link>
         </CardTitle>
-        <CardDescription className="flex items-center gap-1 text-xs">
+        <CardMetadata className="flex items-center gap-1">
           {shelf.type === 'filter' && (
             <SlidersVertical className="h-3 w-3 text-foreground-muted" />
           )}
@@ -114,7 +114,7 @@ function SortableShelfRow({
             <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
           )}
           {itemCount} {itemCount <= 1 ? 'item' : 'items'}
-        </CardDescription>
+        </CardMetadata>
         {/* Right side: delete */}
         <DeleteButton
           trigger={<Trash2 className="h-4 w-4" />}
@@ -303,10 +303,10 @@ export function ShelfSettingsPage() {
             <Card className="grid grid-cols-[auto_1fr_auto] items-center gap-4 h-10 px-4 py-0">
               <Lock className="h-4 w-4 text-foreground-muted" />
               <CardTitle>Unsorted</CardTitle>
-              <CardDescription className="text-xs">
+              <CardMetadata>
                 {getUnsortedCount()}{' '}
                 {getUnsortedCount() === 1 ? 'item' : 'items'}
-              </CardDescription>
+              </CardMetadata>
             </Card>
           )}
         </div>

@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
-  CardDescription,
+  CardMetadata,
   CardTitle,
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -587,12 +587,12 @@ function CookingPage() {
                         )}
 
                         {/* Row 2: subtitle */}
-                        <CardDescription className="mx-6 text-xs">
+                        <CardMetadata className="mx-6">
                           {t('cooking.recipe.itemCount', {
                             count: checkedCount,
                             total: totalItemCount,
                           })}
-                        </CardDescription>
+                        </CardMetadata>
                       </CardContent>
                     </Card>
                   </div>

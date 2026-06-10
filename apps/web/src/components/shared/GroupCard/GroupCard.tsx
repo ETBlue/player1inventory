@@ -4,7 +4,7 @@ import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import {
   Card,
   CardContent,
-  CardDescription,
+  CardMetadata,
   CardTitle,
 } from '@/components/ui/card'
 import { getStockStatus } from '@/lib/quantityUtils'
@@ -60,9 +60,7 @@ export function GroupCard({
             <CardTitle className={`flex-1 truncate ${nameClassName}`}>
               {name}
             </CardTitle>
-            <CardDescription className="text-xs">
-              {`${displayPacked}/${displayTarget}`}
-            </CardDescription>
+            <CardMetadata>{`${displayPacked}/${displayTarget}`}</CardMetadata>
             <span className="px-1 text-xs text-foreground-muted border border-foreground-muted">
               pack
             </span>

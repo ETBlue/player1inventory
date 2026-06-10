@@ -6,6 +6,7 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
+  CardMetadata,
   CardTitle,
 } from './card'
 
@@ -48,6 +49,17 @@ export const HeaderOnly: Story = {
       <CardHeader>
         <CardTitle>Header Only</CardTitle>
         <CardDescription>No content or footer.</CardDescription>
+      </CardHeader>
+    </Card>
+  ),
+}
+
+export const WithMetadata: Story = {
+  render: () => (
+    <Card className="max-w-xs">
+      <CardHeader>
+        <CardTitle>Costco</CardTitle>
+        <CardMetadata>12 items · 3 low stock</CardMetadata>
       </CardHeader>
     </Card>
   ),

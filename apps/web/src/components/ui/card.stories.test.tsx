@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './card.stories'
 
-const { Default, Simple, HeaderOnly, WithDescenders, Variants } =
+const { Default, Simple, HeaderOnly, WithDescenders, Variants, WithMetadata } =
   composeStories(stories)
 
 describe('Card stories smoke tests', () => {
@@ -32,5 +32,10 @@ describe('Card stories smoke tests', () => {
   it('Variants renders without error', () => {
     render(<Variants />)
     expect(screen.getByText('Default Card')).toBeInTheDocument()
+  })
+
+  it('WithMetadata renders metadata text', () => {
+    render(<WithMetadata />)
+    expect(screen.getByText(/low stock/)).toBeInTheDocument()
   })
 })

@@ -120,6 +120,14 @@ Components for the shelf-view feature.
 
 **`AddShelfDialog`** (`src/components/shelf/AddShelfDialog/AddShelfDialog.tsx`) — dialog for creating a new shelf. Exports `AddShelfDialog` and `CreateShelfInput` type.
 
+## Card Primitives
+
+Exported from `@/components/ui/card`.
+
+**`CardDescription`** — supplementary text rendered as `text-sm text-foreground-muted`. Use for secondary labels and short descriptive copy.
+
+**`CardMetadata`** — same as `CardDescription` but renders `text-xs text-foreground-muted`. Use for compact supplementary data: item counts, badge-style metadata, secondary stats. Exported from `@/components/ui/card`.
+
 ## Dialog Layout Pattern
 
 shadcn/ui `Dialog` uses a three-zone layout: `DialogHeader` → `DialogMain` → `DialogFooter`.

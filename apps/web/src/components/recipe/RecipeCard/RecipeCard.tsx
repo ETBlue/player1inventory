@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { ChefHat, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
-import { Card, CardDescription, CardTitle } from '@/components/ui/card'
+import { Card, CardMetadata, CardTitle } from '@/components/ui/card'
 import type { Recipe } from '@/types'
 
 interface RecipeCardProps {
@@ -26,9 +26,9 @@ export function RecipeCard({ recipe, itemCount, onDelete }: RecipeCardProps) {
         </Link>
       </CardTitle>
       {itemCount !== undefined && (
-        <CardDescription className="text-xs">
+        <CardMetadata>
           {t('settings.recipes.itemCount', { count: itemCount })}
-        </CardDescription>
+        </CardMetadata>
       )}
       <DeleteButton
         trigger={<Trash2 className="h-4 w-4" />}
