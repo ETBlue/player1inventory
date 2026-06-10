@@ -40,13 +40,14 @@
       }
     },
     "cartCard": {
-      "packsChecked_one": " (共 {{count}} 件)",
-      "packsChecked_other": " (共 {{count}} 件)",
-      "inCart": "{{total}} / {{checked}} 個品項在購物車"
+      "packsChecked_one": "共 {{count}} 件",
+      "packsChecked_other": "共 {{count}} 件",
+      "inCart_one": "{{count}} 個品項 • {{checked}} 採購中",
+      "inCart_other": "{{count}} 個品項 • {{checked}} 採購中"
     },
     "toolbar": {
-      "cartCount_one": "拿了 {{count}} 件",
-      "cartCount_other": "拿了 {{count}} 件"
+      "cartCount_one": "共 {{count}} 件",
+      "cartCount_other": "共 {{count}} 件"
     },
     "vendorFilter": {
       "allVendors": "所有供應商",

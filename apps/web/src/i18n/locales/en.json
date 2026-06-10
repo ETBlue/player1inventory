@@ -40,9 +40,10 @@
       }
     },
     "cartCard": {
-      "packsChecked_one": " ({{count}} pack)",
-      "packsChecked_other": " ({{count}} packs)",
-      "inCart": "{{checked}} / {{total}} items in cart"
+      "packsChecked_one": "{{count}} pack",
+      "packsChecked_other": "{{count}} packs",
+      "inCart_one": "{{count}} item • {{checked}} in cart",
+      "inCart_other": "{{count}} items • {{checked}} in cart"
     },
     "toolbar": {
       "cartCount_one": "{{count}} pack",

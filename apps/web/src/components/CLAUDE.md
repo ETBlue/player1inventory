@@ -110,7 +110,7 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 ## Shopping Components
 
-**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + cart description), `ChevronRight`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support.
+**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + item count description), trailing flex row (optional packs `Badge` + `ChevronRight`). The packs `Badge` (`neutral-outline` variant) is shown only when `totalQuantity > 0`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support.
 
 ## Shelf Components
 
