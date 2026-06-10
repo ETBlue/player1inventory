@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
+import { UnitBadge } from '@/components/shared/UnitBadge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -297,9 +298,7 @@ export function QuickUpdateDialog({
               <div className="flex gap-1 items-baseline text-xs text-right text-foreground-muted">
                 <span className="flex-1" />
                 <span>{quantityLabel}</span>
-                <span className="px-1 border-1 border-foreground-muted opacity-75">
-                  {unitLabel}
-                </span>
+                <UnitBadge unit={unitLabel} />
               </div>
               <ItemProgressBar
                 current={localTotal}

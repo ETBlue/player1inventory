@@ -1,6 +1,6 @@
-interface UnitInlineProps {
-  unit?: string
-  placeholder?: string
+export interface UnitInlineProps {
+  unit?: string | undefined
+  placeholder?: string | undefined
 }
 
 export function UnitInline({ unit, placeholder = 'pack' }: UnitInlineProps) {

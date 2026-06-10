@@ -1,5 +1,5 @@
-interface UnitBadgeProps {
-  unit?: string
+export interface UnitBadgeProps {
+  unit?: string | undefined
 }
 
 export function UnitBadge({ unit = 'pack' }: UnitBadgeProps) {

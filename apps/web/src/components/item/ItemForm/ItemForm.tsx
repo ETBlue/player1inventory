@@ -6,6 +6,7 @@ import {
   PackageOpen,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { UnitInline } from '@/components/shared/UnitInline'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,7 +20,6 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { computePack, computeUnpack, roundToStep } from '@/lib/quantityUtils'
 import type { ExpirationMode } from '@/types'
-import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 export type ItemFormValues = {
   // Stock fields (used when sections includes 'stock')
@@ -285,10 +285,7 @@ export function ItemForm({
 
           <div>
             <Label htmlFor="packedQuantity">
-              Packed{' '}
-              <span className="text-xs font-normal">
-                ({packageUnit || DEFAULT_PACKAGE_UNIT})
-              </span>
+              Packed <UnitInline unit={packageUnit || undefined} />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
               <Input
@@ -330,13 +327,13 @@ export function ItemForm({
           <div>
             <Label htmlFor="unpackedQuantity">
               Unpacked{' '}
-              <span className="text-xs font-normal">
-                (
-                {targetUnit === 'measurement'
-                  ? measurementUnit
-                  : packageUnit || DEFAULT_PACKAGE_UNIT}
-                )
-              </span>
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
               <Input
@@ -390,13 +387,13 @@ export function ItemForm({
             <div>
               <Label htmlFor="targetQuantity">
                 Target Quantity{' '}
-                <span className="text-xs font-normal">
-                  (
-                  {targetUnit === 'measurement'
-                    ? measurementUnit
-                    : packageUnit || DEFAULT_PACKAGE_UNIT}
-                  )
-                </span>
+                <UnitInline
+                  unit={
+                    targetUnit === 'measurement'
+                      ? measurementUnit || undefined
+                      : packageUnit || undefined
+                  }
+                />
               </Label>
               <Input
                 id="targetQuantity"
@@ -414,13 +411,13 @@ export function ItemForm({
             <div>
               <Label htmlFor="refillThreshold">
                 Refill When Below{' '}
-                <span className="text-xs font-normal">
-                  (
-                  {targetUnit === 'measurement'
-                    ? measurementUnit
-                    : packageUnit || DEFAULT_PACKAGE_UNIT}
-                  )
-                </span>
+                <UnitInline
+                  unit={
+                    targetUnit === 'measurement'
+                      ? measurementUnit || undefined
+                      : packageUnit || undefined
+                  }
+                />
               </Label>
               <Input
                 id="refillThreshold"
@@ -440,13 +437,13 @@ export function ItemForm({
             <div>
               <Label htmlFor="consumeAmount">
                 Amount per Consume{' '}
-                <span className="text-xs font-normal">
-                  (
-                  {targetUnit === 'measurement'
-                    ? measurementUnit
-                    : packageUnit || DEFAULT_PACKAGE_UNIT}
-                  )
-                </span>
+                <UnitInline
+                  unit={
+                    targetUnit === 'measurement'
+                      ? measurementUnit || undefined
+                      : packageUnit || undefined
+                  }
+                />
               </Label>
               <Input
                 id="consumeAmount"
@@ -482,9 +479,10 @@ export function ItemForm({
               />
               <Label htmlFor="targetUnit" className="cursor-pointer">
                 Track in measurement{' '}
-                <span className="text-xs font-normal">
-                  ({measurementUnit || '?'})
-                </span>
+                <UnitInline
+                  unit={measurementUnit || undefined}
+                  placeholder="?"
+                />
               </Label>
             </div>
             <p className="text-xs text-foreground-muted">
