@@ -1,7 +1,22 @@
 import { composeStories } from '@storybook/react'
 import { render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as stories from './index.stories'
+
+// Freeze fetchLocalPayload on a never-resolving promise so the 'auto-importing'
+// state stays mounted long enough to assert. Without this, the hook's async
+// chain (fetchLocalPayload → importCloudData → 'done') settles in a single tick
+// — fetchLocalPayload rejects against the empty test DB and the .catch jumps the
+// hook straight to 'done', closing the progress dialog before findByText can
+// observe it. Idle returns early (migration-prompted set) and Prompting calls
+// getAllItems (not fetchLocalPayload), so neither is affected.
+vi.mock('@/lib/exportData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/exportData')>()
+  return {
+    ...actual,
+    fetchLocalPayload: vi.fn(() => new Promise(() => {})),
+  }
+})
 
 const { Idle, Prompting, AutoImporting } = composeStories(stories)
 

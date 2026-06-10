@@ -34,37 +34,61 @@ All other text inherits the system sans-serif from `body` — no utility class n
 
 ## Type scale
 
-The app uses Tailwind's default type scale. No custom size tokens are defined — the built-in `text-xs` through `text-3xl` utilities cover all current needs.
+The app uses Tailwind's default type scale. No custom size tokens are defined.
 
 <TypographyScale client:load />
+
+The app deliberately uses a compact scale. The largest size in regular UI is `text-base` (page titles); most content sits at `text-sm` and `text-xs`. Sizes above `text-base` appear only in the onboarding flow (`/onboarding`).
 
 ## When to use each step
 
 ### Heading scale
 
-Use these classes for semantic heading elements (`h1`, `h2`, `h3`). These are prescriptive — follow them when adding new headings:
+| Level | Class | Example context |
+|-------|-------|----------------|
+| `h1` | `text-base font-regular` | Page title in `LayoutInnerPages`, pantry detail view headers |
+| `h2` | `text-sm font-medium uppercase` | Form section headers (e.g. "Quantities", "Advanced") |
+| Onboarding only | `text-xl` / `text-2xl` | Welcome screen — isolated to `/onboarding`, not part of main app hierarchy |
 
-| Level | Recommended class | Example context |
-|-------|------------------|----------------|
-| `h1` | `text-2xl font-bold` | Page title, welcome screen |
-| `h2` | `text-xl font-semibold` | Section heading, dialog title |
-| `h3` | `text-sm font-medium uppercase` | Form section header, grouped field set |
+`h3` elements are rare in the app. `CardTitle` (the most common card heading element) renders as `text-sm font-medium leading-tight` by default.
 
 ### Content scale
 
 These reflect actual usage across the app for non-heading UI text:
 
-| Step | Use |
-|------|-----|
-| `text-base` | Body text, form field values |
-| `text-sm` | Labels, metadata, badge text, helper text, button labels |
-| `text-xs` | Timestamps, fine print, tooltip text |
+| Size | Class | Use |
+|------|-------|-----|
+| `text-base` | 16 px | Button large (`lg`), page title |
+| `text-sm` | 14 px | Default body text, card content, form labels, button default, dropdown items, navigation labels, card descriptions (default) |
+| `text-xs` | 12 px | Badges, fine print, helper text, secondary metadata, card descriptions (many components override `CardDescription` to `text-xs`), group card counts |
 
-Steps above `text-2xl` and below `text-xs` are not used in the app.
+Sizes below `text-xs` and above `text-base` are not used in the main app.
+
+## Component typography defaults
+
+| Component | Default class | Notes |
+|-----------|--------------|-------|
+| `CardTitle` | `text-sm font-medium leading-tight` | Primary content heading |
+| `CardDescription` | `text-sm text-foreground-muted` | Secondary labels and short descriptive copy |
+| `CardMetadata` | `text-xs text-foreground-muted` | Compact supplementary data — item counts, stats, badge-style info |
+| `Button` (default size) | `text-sm font-medium` | |
+| `Button` (lg size) | `text-base font-medium` | |
+| `Button` (xs / sm size) | `text-xs font-medium` | |
+| `Badge` | `text-xs capitalize` | No weight override — inherits `font-normal` |
+| `Label` | `text-sm font-normal leading-none` | Form field labels |
+
+## Weight conventions
+
+| Weight | Tailwind class | Usage |
+|--------|---------------|-------|
+| 400 | `font-regular` / `font-normal` | Page titles (`h1`), body text — `font-regular` is used in the codebase as an alias for the normal weight |
+| 500 | `font-medium` | Card titles, button labels, section headings, form labels, all button sizes |
+| 600 | `font-semibold` | Dialog titles, alert titles, dropdown menu items |
+| 700 | `font-bold` | Not used in production UI — reserved for future intentionally heavy emphasis |
 
 ## Line height
 
-The app's `body` rule sets a base line height:
+The app's `body` rule sets a compact base line height:
 
 ```css
 body {
@@ -72,16 +96,7 @@ body {
 }
 ```
 
-Individual components override this with `leading-tight` as needed (the only leading utility currently in use).
-
-## Weight conventions
-
-| Weight | Tailwind class | Usage |
-|--------|---------------|-------|
-| 400 | `font-normal` | Helper text, metadata, supplementary labels |
-| 500 | `font-medium` | Card titles, dropdown items, mid-emphasis UI (buttons, settings labels) |
-| 600 | `font-semibold` | Dialog titles, alert titles, small high-contrast labels |
-| 700 | `font-bold` | Rarely used — reserve for intentionally heavy emphasis |
+Individual components override this with `leading-tight` as needed — `CardTitle` uses it by default.
 
 ## Uppercase labels
 

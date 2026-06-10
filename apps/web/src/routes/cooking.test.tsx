@@ -1180,14 +1180,14 @@ describe('Use (Cooking) Page', () => {
         expect(
           screen.getByText(
             (_content, element) =>
-              element?.tagName === 'BUTTON' &&
+              element?.tagName === 'A' &&
               element.textContent === 'Pasta Dinner',
           ),
         ).toBeInTheDocument()
         expect(
           screen.queryByText(
             (_content, element) =>
-              element?.tagName === 'BUTTON' &&
+              element?.tagName === 'A' &&
               element.textContent === 'Tomato Salad',
           ),
         ).not.toBeInTheDocument()
@@ -1225,7 +1225,7 @@ describe('Use (Cooking) Page', () => {
         expect(
           screen.getByText(
             (_content, element) =>
-              (element?.tagName === 'H3' || element?.tagName === 'BUTTON') &&
+              (element?.tagName === 'H3' || element?.tagName === 'A') &&
               element.textContent === 'Tomato',
           ),
         ).toBeInTheDocument()
@@ -1386,7 +1386,7 @@ describe('Use (Cooking) Page', () => {
     // Then recipes appear by last cooked descending (Apple Tart before Zucchini Soup)
     await waitFor(() => {
       const recipeNames = screen
-        .getAllByRole('button')
+        .getAllByRole('link')
         .map((el) => el.textContent?.trim())
         .filter((t) => t === 'Apple Tart' || t === 'Zucchini Soup')
       expect(recipeNames[0]).toBe('Apple Tart')
@@ -1571,7 +1571,7 @@ describe('Use (Cooking) Page', () => {
     // Then Omelette (2 items) appears before Toast (0 items)
     await waitFor(() => {
       const buttons = screen
-        .getAllByRole('button')
+        .getAllByRole('link')
         .filter(
           (el) =>
             el.textContent?.trim() === 'Omelette' ||
@@ -1605,7 +1605,7 @@ describe('Use (Cooking) Page', () => {
     // Then Beta (recently cooked) appears before Alpha (never cooked)
     await waitFor(() => {
       const buttons = screen
-        .getAllByRole('button')
+        .getAllByRole('link')
         .filter(
           (el) =>
             el.textContent?.trim() === 'Alpha' ||

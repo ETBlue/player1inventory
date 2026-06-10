@@ -8,12 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import {
-  addToCart,
-  createItem,
-  createVendor,
-  getOrCreateActiveCart,
-} from '@/db/operations'
+import { addToCart, createItem, createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -148,9 +143,8 @@ function WithCartItemsStory() {
         consumeAmount: 1,
       })
 
-      const cart = await getOrCreateActiveCart(vendor.id)
-      await addToCart(cart.id, milk.id, 2)
-      await addToCart(cart.id, eggs.id, 1)
+      await addToCart(vendor.id, milk.id, 2)
+      await addToCart(vendor.id, eggs.id, 1)
 
       setVendorId(vendor.id)
     }
@@ -181,6 +175,7 @@ function WithNoVendorCartStory() {
     <VendorCartStory
       vendorId="no-vendor"
       setup={async () => {
+        await db.shoppingCarts.put({ id: 'no-vendor' })
         await createItem({
           name: 'Unassigned Item',
           tagIds: [],

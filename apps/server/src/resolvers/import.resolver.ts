@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
-import type { CartStatus, ExpirationMode, Prisma, TagColor, TargetUnit } from '@prisma/client'
+import type { ExpirationMode, Prisma, TagColor, TargetUnit } from '@prisma/client'
 
 // Map a Prisma item (with junction rows) to the GraphQL Item shape
 function itemToGraphQL(item: {
@@ -224,15 +224,13 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (carts.length === 0) return []
       const results: Cart[] = []
       for (const cart of carts) {
-        const { id, status, createdAt, completedAt } = cart
+        const { id, lastPurchasedAt } = cart
         const existing = await prisma.cart.findUnique({ where: { id } })
         if (existing) continue
         const created = await prisma.cart.create({
           data: {
             id,
-            status: status as CartStatus,
-            createdAt: new Date(createdAt),
-            completedAt: completedAt ? new Date(completedAt) : undefined,
+            lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
             userId,
           },
         })
@@ -413,11 +411,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       if (carts.length === 0) return []
       const results: Cart[] = []
       for (const cart of carts) {
-        const { id, status, createdAt, completedAt } = cart
+        const { id, lastPurchasedAt } = cart
         const data = {
-          status: status as CartStatus,
-          createdAt: new Date(createdAt),
-          completedAt: completedAt ? new Date(completedAt) : undefined,
+          lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
           userId,
         }
         const upserted = await prisma.cart.upsert({

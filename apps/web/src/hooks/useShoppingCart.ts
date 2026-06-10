@@ -4,24 +4,28 @@ import {
   abandonCart,
   addToCart,
   checkout,
-  getAllActiveCarts,
+  getAllCarts,
+  getCart,
   getCartItems,
-  getOrCreateActiveCart,
+  getLastPurchasedByVendor,
   removeFromCart,
   updateCartItem,
-  updateCartLastVisited,
 } from '@/db/operations'
 import {
   ActiveCartDocument,
+  AllCartItemsDocument,
+  AllCartsDocument,
   CartItemsDocument,
   GetItemsDocument,
   useAbandonCartMutation,
   useActiveCartQuery,
   useAddToCartMutation,
+  useAllCartsQuery,
   useCartItemsQuery,
   useCheckoutMutation,
   useRemoveFromCartMutation,
   useUpdateCartItemMutation,
+  useVendorCartQuery,
 } from '@/generated/graphql'
 import { deserializeCart } from '@/lib/deserialization'
 import type { CartItem } from '@/types'
@@ -33,7 +37,7 @@ export function useActiveCart() {
 
   const local = useQuery({
     queryKey: ['cart', 'active'],
-    queryFn: () => getOrCreateActiveCart(null),
+    queryFn: () => getCart(null),
     enabled: !isCloud,
   })
 
@@ -109,9 +113,7 @@ export function useAddToCart() {
   })
 
   const [cloudAddToCart, { loading: cloudAddToCartLoading }] =
-    useAddToCartMutation({
-      refetchQueries: ['CartItems'],
-    })
+    useAddToCartMutation()
 
   if (mode === 'cloud') {
     return {
@@ -119,7 +121,14 @@ export function useAddToCart() {
         vars: { cartId: string; itemId: string; quantity: number },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudAddToCart({ variables: vars }).then(
+        cloudAddToCart({
+          variables: vars,
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -129,7 +138,15 @@ export function useAddToCart() {
         cartId: string
         itemId: string
         quantity: number
-      }) => cloudAddToCart({ variables: vars }).then((r) => r.data?.addToCart),
+      }) =>
+        cloudAddToCart({
+          variables: vars,
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then((r) => r.data?.addToCart),
       isPending: cloudAddToCartLoading,
     }
   }
@@ -155,9 +172,7 @@ export function useUpdateCartItem() {
   })
 
   const [cloudUpdateCartItem, { loading: cloudUpdateCartItemLoading }] =
-    useUpdateCartItemMutation({
-      refetchQueries: ['CartItems'],
-    })
+    useUpdateCartItemMutation()
 
   if (mode === 'cloud') {
     return {
@@ -171,7 +186,14 @@ export function useUpdateCartItem() {
         },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudUpdateCartItem({ variables: { id: cartItemId, quantity } }).then(
+        cloudUpdateCartItem({
+          variables: { id: cartItemId, quantity },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -186,6 +208,11 @@ export function useUpdateCartItem() {
       }) =>
         cloudUpdateCartItem({
           variables: { id: cartItemId, quantity },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
         }).then((r) => r.data?.updateCartItem),
       isPending: cloudUpdateCartItemLoading,
     }
@@ -206,9 +233,7 @@ export function useRemoveFromCart() {
   })
 
   const [cloudRemoveFromCart, { loading: cloudRemoveFromCartLoading }] =
-    useRemoveFromCartMutation({
-      refetchQueries: ['CartItems'],
-    })
+    useRemoveFromCartMutation()
 
   if (mode === 'cloud') {
     return {
@@ -216,16 +241,28 @@ export function useRemoveFromCart() {
         id: string,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudRemoveFromCart({ variables: { id } }).then(
+        cloudRemoveFromCart({
+          variables: { id },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
       mutateAsync: (id: string) =>
-        cloudRemoveFromCart({ variables: { id } }).then(
-          (r) => r.data?.removeFromCart,
-        ),
+        cloudRemoveFromCart({
+          variables: { id },
+          refetchQueries: [
+            'CartItems',
+            { query: AllCartItemsDocument },
+            { query: AllCartsDocument },
+          ],
+        }).then((r) => r.data?.removeFromCart),
       isPending: cloudRemoveFromCartLoading,
     }
   }
@@ -292,6 +329,9 @@ export function useCheckout() {
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
+            'VendorCart',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         }).then(
           async () => {
@@ -336,6 +376,9 @@ export function useCheckout() {
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
+            'VendorCart',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         })
         client.cache.evict({
@@ -385,6 +428,9 @@ export function useAbandonCart() {
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
+            'VendorCart',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         }).then(
           () => options?.onSuccess?.(),
@@ -398,6 +444,9 @@ export function useAbandonCart() {
           refetchQueries: [
             { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
+            'VendorCart',
+            { query: AllCartsDocument },
+            { query: AllCartItemsDocument },
           ],
         }).then((r) => r.data?.abandonCart),
       isPending: cloudAbandonCartLoading,
@@ -413,16 +462,20 @@ export function useVendorCart(vendorId: string | null) {
 
   const local = useQuery({
     queryKey: ['cart', 'vendor', vendorId],
-    queryFn: () => getOrCreateActiveCart(vendorId),
+    queryFn: () => getCart(vendorId),
     enabled: !isCloud,
   })
 
-  const cloud = useActiveCartQuery({ skip: !isCloud })
+  const cloud = useVendorCartQuery({
+    variables: { vendorId: vendorId },
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
-      data: cloud.data?.activeCart
-        ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
+      data: cloud.data?.vendorCart
+        ? deserializeCart(cloud.data.vendorCart as Record<string, unknown>)
         : undefined,
       isLoading: cloud.loading,
       isError: !!cloud.error,
@@ -442,18 +495,18 @@ export function useAllActiveCarts() {
 
   const local = useQuery({
     queryKey: ['cart', 'all-active'],
-    queryFn: getAllActiveCarts,
+    queryFn: getAllCarts,
     enabled: !isCloud,
   })
 
-  const cloud = useActiveCartQuery({ skip: !isCloud })
+  const cloud = useAllCartsQuery({ skip: !isCloud })
 
   if (isCloud) {
-    const cart = cloud.data?.activeCart
-      ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
-      : undefined
     return {
-      data: cart ? [cart] : [],
+      data:
+        cloud.data?.allCarts?.map((c) =>
+          deserializeCart(c as Record<string, unknown>),
+        ) ?? [],
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }
@@ -466,12 +519,13 @@ export function useAllActiveCarts() {
   }
 }
 
-export function useUpdateCartLastVisited() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: updateCartLastVisited,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cart', 'all-active'] })
-    },
+export function useLastPurchasedByVendor() {
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+
+  return useQuery({
+    queryKey: ['cart', 'last-purchased-by-vendor'],
+    queryFn: getLastPurchasedByVendor,
+    enabled: !isCloud,
   })
 }

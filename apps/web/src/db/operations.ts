@@ -242,33 +242,27 @@ export async function getTagCountByType(typeId: string): Promise<number> {
 }
 
 // ShoppingCart operations
-export async function getOrCreateActiveCart(
+export async function getCart(
   vendorId: string | null = null,
-): Promise<ShoppingCart> {
-  const existing = await db.shoppingCarts
-    .where('status')
-    .equals('active')
-    .filter((c) => (c.vendorId ?? null) === vendorId)
-    .first()
-  if (existing) return existing
+): Promise<ShoppingCart | undefined> {
+  const cartId = vendorId ?? 'no-vendor'
+  return db.shoppingCarts.get(cartId)
+}
 
-  const cart: ShoppingCart = {
-    id: crypto.randomUUID(),
-    vendorId,
-    lastVisitedAt: null,
-    status: 'active',
-    createdAt: new Date(),
+export async function getAllCarts(): Promise<ShoppingCart[]> {
+  return db.shoppingCarts.toArray()
+}
+
+export async function getLastPurchasedByVendor(): Promise<
+  Map<string | null, Date | null>
+> {
+  const carts = await db.shoppingCarts.toArray()
+  const result = new Map<string | null, Date | null>()
+  for (const cart of carts) {
+    const vendorId = cart.id === 'no-vendor' ? null : cart.id
+    result.set(vendorId, cart.lastPurchasedAt ?? null)
   }
-  await db.shoppingCarts.add(cart)
-  return cart
-}
-
-export async function getAllActiveCarts(): Promise<ShoppingCart[]> {
-  return db.shoppingCarts.where('status').equals('active').toArray()
-}
-
-export async function updateCartLastVisited(cartId: string): Promise<void> {
-  await db.shoppingCarts.update(cartId, { lastVisitedAt: new Date() })
+  return result
 }
 
 export async function addToCart(
@@ -320,25 +314,16 @@ export async function checkout(
 ): Promise<void> {
   const cartItems = await getCartItems(cartId)
   const now = new Date()
-
-  // Separate pinned (quantity=0) from items being purchased
-  const pinnedItems = cartItems.filter((ci) => ci.quantity === 0)
   const buyingItems = cartItems.filter((ci) => ci.quantity > 0)
 
   for (const cartItem of buyingItems) {
     const item = await db.items.get(cartItem.itemId)
     if (!item) continue
-
-    // Compute final quantity BEFORE mutating anything
     const finalQuantity = getPackedTotal(item) + cartItem.quantity
-
-    // 1. Update item first (log records state after the operation)
     await db.items.update(cartItem.itemId, {
       packedQuantity: item.packedQuantity + cartItem.quantity,
       updatedAt: now,
     })
-
-    // 2. Then log with explicit final quantity and log descriptor
     await addInventoryLog({
       itemId: cartItem.itemId,
       delta: cartItem.quantity,
@@ -351,31 +336,33 @@ export async function checkout(
     })
   }
 
-  await db.shoppingCarts.update(cartId, {
-    status: 'completed',
-    completedAt: now,
-  })
-
-  await db.cartItems.where('cartId').equals(cartId).delete()
-
-  // Move pinned items to the new active cart for the same vendor
-  if (pinnedItems.length > 0) {
-    const completedCart = await db.shoppingCarts.get(cartId)
-    const newCart = await getOrCreateActiveCart(completedCart?.vendorId ?? null)
-    for (const pinned of pinnedItems) {
-      await db.cartItems.add({
-        id: crypto.randomUUID(),
-        cartId: newCart.id,
-        itemId: pinned.itemId,
-        quantity: 0,
-      })
-    }
-  }
+  await db.shoppingCarts.update(cartId, { lastPurchasedAt: now })
+  await db.cartItems
+    .where('cartId')
+    .equals(cartId)
+    .filter((ci) => ci.quantity > 0)
+    .delete()
 }
 
 export async function abandonCart(cartId: string): Promise<void> {
-  await db.shoppingCarts.update(cartId, { status: 'abandoned' })
   await db.cartItems.where('cartId').equals(cartId).delete()
+}
+
+export async function bootstrapCarts(): Promise<void> {
+  const vendors = await db.vendors.toArray()
+  const existingCarts = new Set(
+    (await db.shoppingCarts.toArray()).map((c) => c.id),
+  )
+
+  if (!existingCarts.has('no-vendor')) {
+    await db.shoppingCarts.put({ id: 'no-vendor' })
+  }
+
+  for (const vendor of vendors) {
+    if (!existingCarts.has(vendor.id)) {
+      await db.shoppingCarts.put({ id: vendor.id })
+    }
+  }
 }
 
 // Migration helper: move color from Tags to TagTypes
@@ -462,6 +449,7 @@ export async function createVendor(name: string): Promise<Vendor> {
     createdAt: new Date(),
   }
   await db.vendors.add(vendor)
+  await db.shoppingCarts.put({ id: vendor.id })
   return vendor
 }
 
@@ -483,6 +471,8 @@ export async function deleteVendor(id: string): Promise<void> {
       updatedAt: now,
     })
   }
+  await db.cartItems.where('cartId').equals(id).delete()
+  await db.shoppingCarts.delete(id)
   await db.vendors.delete(id)
 }
 

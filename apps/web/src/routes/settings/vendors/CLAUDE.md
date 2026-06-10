@@ -6,6 +6,8 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Operations** (`src/db/operations.ts`): `getVendors`, `createVendor`, `updateVendor(id, updates: Partial<Omit<Vendor, 'id'>>)`, `deleteVendor`, `getItemCountByVendor`
 
+**Cart lifecycle side effect:** `createVendor` also creates a permanent shopping cart with `id = vendor.id`. `deleteVendor` also deletes that cart and all its cart items. This enforces the 1:1 vendor↔cart invariant. In cloud mode, the same logic runs in the server's `vendor.resolver.ts`.
+
 **Hooks** (`src/hooks/useVendors.ts`): `useVendors`, `useCreateVendor`, `useUpdateVendor` (takes `{ id, updates }`), `useDeleteVendor`, `useItemCountByVendor` — all dual-mode (local: TanStack Query + Dexie; cloud: Apollo GraphQL)
 
 **Routes**: `src/routes/settings/vendors/index.tsx` — vendor list; `src/routes/settings/vendors/new.tsx` — create new vendor, redirects to detail page after save

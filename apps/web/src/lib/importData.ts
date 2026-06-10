@@ -948,7 +948,7 @@ async function fetchCloudExistingData(
     recipes: (recipesResult.data?.recipes ?? []) as unknown as Recipe[],
     inventoryLogs: (inventoryLogsResult.data?.inventoryLogs ??
       []) as unknown as InventoryLog[],
-    shoppingCarts: (shoppingCartsResult.data?.shoppingCarts ??
+    shoppingCarts: (shoppingCartsResult.data?.allCarts ??
       []) as unknown as ShoppingCart[],
     cartItems: (allCartItemsResult.data?.allCartItems ??
       []) as unknown as CartItem[],

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,7 +17,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardMetadata,
+  CardTitle,
+} from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -525,23 +530,21 @@ function CookingPage() {
                             aria-label={recipe.name}
                           />
                           {/* Name: navigates to recipe detail */}
-                          <button
-                            type="button"
-                            className="flex-1 text-left font-medium capitalize hover:underline truncate"
-                            onClick={() =>
-                              navigate({
-                                to: '/settings/recipes/$id',
-                                params: { id: recipe.id },
-                              })
-                            }
-                          >
-                            {highlight(recipe.name, q)}
-                          </button>
+                          <CardTitle className="truncate flex-1">
+                            <Link
+                              to="/settings/recipes/$id"
+                              params={{ id: recipe.id }}
+                              className="font-medium hover:underline capitalize"
+                            >
+                              {highlight(recipe.name, q)}
+                            </Link>
+                          </CardTitle>
                           {/* Chevron: toggles expand/collapse */}
-                          <button
-                            type="button"
+                          <Button
+                            size="icon-sm"
+                            variant="neutral-ghost"
+                            className="shrink-0 -m-2"
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
-                            className="shrink-0 text-foreground-muted hover:text-foreground"
                             onClick={() => handleToggleExpand(recipe.id)}
                           >
                             {isExpanded ? (
@@ -549,7 +552,7 @@ function CookingPage() {
                             ) : (
                               <ChevronLeft className="h-4 w-4" />
                             )}
-                          </button>
+                          </Button>
                         </div>
                         {/* Serving stepper — always reserved, empty when no items checked */}
                         {recipeCheckState !== false && (
@@ -584,12 +587,12 @@ function CookingPage() {
                         )}
 
                         {/* Row 2: subtitle */}
-                        <div className="mx-6 text-sm text-foreground-muted">
+                        <CardMetadata className="mx-6">
                           {t('cooking.recipe.itemCount', {
                             count: checkedCount,
                             total: totalItemCount,
                           })}
-                        </div>
+                        </CardMetadata>
                       </CardContent>
                     </Card>
                   </div>

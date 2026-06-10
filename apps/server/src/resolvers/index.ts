@@ -36,8 +36,6 @@ const resolversObject: Resolvers = {
   },
   Recipe: recipeResolvers.Recipe,
   FamilyGroup: familyGroupResolvers.FamilyGroup,
-  Cart: cartResolvers.Cart,
-  CartItem: cartResolvers.CartItem,
   InventoryLog: inventoryLogResolvers.InventoryLog,
 }
 

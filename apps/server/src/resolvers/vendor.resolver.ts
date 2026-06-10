@@ -13,7 +13,14 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Mutation: {
     createVendor: async (_, { name }, ctx) => {
       const userId = requireAuth(ctx)
-      return prisma.vendor.create({ data: { name, userId } }) as unknown as Promise<Vendor>
+      const vendor = await prisma.vendor.create({ data: { name, userId } })
+      // Create permanent cart with same ID
+      await prisma.cart.upsert({
+        where: { id: vendor.id },
+        create: { id: vendor.id, userId },
+        update: {},
+      })
+      return vendor as unknown as Vendor
     },
     updateVendor: async (_, { id, name }, ctx) => {
       requireAuth(ctx)
@@ -29,6 +36,9 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       requireAuth(ctx)
       // ItemVendor rows cascade automatically (onDelete: Cascade on ItemVendor.vendor)
       try {
+        // Delete cart items then cart before deleting vendor
+        await prisma.cartItem.deleteMany({ where: { cartId: id } })
+        await prisma.cart.delete({ where: { id } }).catch(() => {}) // cart may not exist
         await prisma.vendor.delete({ where: { id } })
         return true
       } catch {

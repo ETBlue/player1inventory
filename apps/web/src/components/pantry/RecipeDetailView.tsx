@@ -106,7 +106,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     return <LoadingSpinner />
   }
 
-  const title = isUnsorted ? 'Unsorted' : (recipe?.name ?? 'Recipe')
+  const title = isUnsorted ? 'Not added to recipe' : (recipe?.name ?? 'Recipe')
 
   const vendorMap = new Map(
     allItems.map((item) => [

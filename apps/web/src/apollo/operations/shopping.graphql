@@ -1,14 +1,35 @@
 query ActiveCart {
   activeCart {
     id
-    status
-    createdAt
-    completedAt
+    lastPurchasedAt
+  }
+}
+
+query VendorCart($vendorId: ID) {
+  vendorCart(vendorId: $vendorId) {
+    id
+    lastPurchasedAt
+  }
+}
+
+query AllCarts {
+  allCarts {
+    id
+    lastPurchasedAt
   }
 }
 
 query CartItems($cartId: ID!) {
   cartItems(cartId: $cartId) {
+    id
+    cartId
+    itemId
+    quantity
+  }
+}
+
+query AllCartItems {
+  allCartItems {
     id
     cartId
     itemId
@@ -45,14 +66,12 @@ mutation RemoveFromCart($id: ID!) {
 mutation Checkout($cartId: ID!, $note: String, $logKey: String, $logParams: JSON) {
   checkout(cartId: $cartId, note: $note, logKey: $logKey, logParams: $logParams) {
     id
-    status
-    completedAt
+    lastPurchasedAt
   }
 }
 
 mutation AbandonCart($cartId: ID!) {
   abandonCart(cartId: $cartId) {
     id
-    status
   }
 }

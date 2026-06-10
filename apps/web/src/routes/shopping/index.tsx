@@ -12,10 +12,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { getCartItems } from '@/db/operations'
+import { useAllCartItemsQuery } from '@/generated/graphql'
 import {
   useAllActiveCarts,
-  useCartItems,
   useItems,
+  useLastPurchasedByVendor,
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
@@ -43,6 +44,7 @@ function ShoppingIndex() {
   const { data: vendors = [] } = useVendors()
   const { data: items = [] } = useItems()
   const vendorItemCounts = useVendorItemCounts()
+  const { data: lastPurchasedByVendor } = useLastPurchasedByVendor()
 
   // Local mode: fan-out one TanStack Query per cart (reads from Dexie)
   const cartItemResults = useQueries({
@@ -53,21 +55,34 @@ function ShoppingIndex() {
     })),
   })
 
-  // Cloud mode: use the dual-mode useCartItems hook for the single active cart.
-  // useAllActiveCarts falls back to one cart in cloud mode; getCartItems reads
-  // from Dexie (empty in cloud), so we need the Apollo-backed hook instead.
-  const { data: cloudCartItems = [] } = useCartItems(
-    isCloud ? allCarts[0]?.id : undefined,
-  )
+  // Cloud mode: fetch all cart items in one Apollo query, then group by cartId.
+  // Using allCartItems (vs. per-cart cartItems) avoids an N+1 fan-out and ensures
+  // every vendor card reflects its own cart, not the first cart's items.
+  const { data: allCartItemsData } = useAllCartItemsQuery({ skip: !isCloud })
+  const cloudCartItemsGrouped = new Map<
+    string,
+    { id: string; cartId: string; itemId: string; quantity: number }[]
+  >()
+  if (isCloud && allCartItemsData?.allCartItems) {
+    for (const ci of allCartItemsData.allCartItems) {
+      const group = cloudCartItemsGrouped.get(ci.cartId) ?? []
+      group.push(ci)
+      cloudCartItemsGrouped.set(ci.cartId, group)
+    }
+  }
 
   const cartItemsMap = new Map(
     isCloud
-      ? allCarts.map((cart) => [cart.id, cloudCartItems])
+      ? allCarts.map((cart) => [
+          cart.id,
+          cloudCartItemsGrouped.get(cart.id) ?? [],
+        ])
       : allCarts.map((cart, i) => [cart.id, cartItemResults[i]?.data ?? []]),
   )
 
   function cartForVendor(vendorId: string | null) {
-    return allCarts.find((c) => (c.vendorId ?? null) === (vendorId ?? null))
+    const cartId = vendorId ?? 'no-vendor'
+    return allCarts.find((c) => c.id === cartId)
   }
 
   function statsForVendor(vendorId: string | null) {
@@ -100,10 +115,8 @@ function ShoppingIndex() {
       cmp =
         (vendorItemCounts.get(b.id) ?? 0) - (vendorItemCounts.get(a.id) ?? 0)
     } else {
-      const cartA = cartForVendor(a.id)
-      const cartB = cartForVendor(b.id)
-      const aTime = cartA?.lastVisitedAt?.getTime() ?? 0
-      const bTime = cartB?.lastVisitedAt?.getTime() ?? 0
+      const aTime = lastPurchasedByVendor?.get(a.id)?.getTime() ?? 0
+      const bTime = lastPurchasedByVendor?.get(b.id)?.getTime() ?? 0
       cmp = bTime - aTime
     }
     return dir === 'asc' ? -cmp : cmp
@@ -186,7 +199,7 @@ function ShoppingIndex() {
               availableCount={vendorItemCounts.get(vendor.id) ?? 0}
               onClick={() =>
                 navigate(
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
                   {
                     to: '/shopping/$vendorId',
                     params: { vendorId: vendor.id },
@@ -209,7 +222,7 @@ function ShoppingIndex() {
                 availableCount={noVendorCount}
                 onClick={() =>
                   navigate(
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
                     {
                       to: '/shopping/$vendorId',
                       params: { vendorId: 'no-vendor' },

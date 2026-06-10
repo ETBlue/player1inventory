@@ -89,7 +89,7 @@ Two-level route structure (mirrors `items/` pattern):
 Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownMenu + direction toggle in the top toolbar.
 
 **Sort options** (persisted in `?sort` + `?dir` URL params):
-- `'recent'` (default desc): sorted by `cart.lastVisitedAt` descending — nulls last
+- `'recent'` (default desc): sorted by most recent `completedAt` across all completed carts per vendor, via `useLastPurchasedByVendor()` — vendors with no completed carts sort to the bottom
 - `'alpha'`: alphabetical by vendor name
 - `'count'`: total available items descending
 
@@ -129,7 +129,7 @@ Row 2 (ItemListToolbar):
 
 **Cart:** `useVendorCart(cartVendorId)` — creates the cart on first visit if it doesn't exist.
 
-**`lastVisitedAt`:** Stamped via `useUpdateCartLastVisited().mutate(cart.id)` on mount (inside `useEffect` keyed on `cart?.id`). Drives the `'recent'` sort order on the root page.
+**`lastVisitedAt` removed:** The `updateCartLastVisited` mutation and its on-mount `useEffect` have been removed. Sort by "last purchased" uses `completedAt` from completed carts instead (no mutation needed on page visit).
 
 **Pinned items:** Same behavior as before — quantity 0, stay in cart after checkout, move to the same vendor's new cart.
 

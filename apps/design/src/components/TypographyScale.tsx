@@ -8,46 +8,40 @@
 
 const SCALE_ENTRIES = [
   {
-    label: 'text-3xl / 1.875rem',
-    style: { fontSize: '1.875rem', lineHeight: '2.25rem', fontWeight: 700 },
-    sample: 'Pantry',
-    usage: 'Page headings (h1)',
-  },
-  {
     label: 'text-2xl / 1.5rem',
     style: { fontSize: '1.5rem', lineHeight: '2rem', fontWeight: 700 },
-    sample: 'Shopping List',
-    usage: 'Section headings (h2)',
+    sample: 'Welcome to Player 1 Inventory',
+    usage: 'Onboarding welcome title — not used in main app',
   },
   {
     label: 'text-xl / 1.25rem',
     style: { fontSize: '1.25rem', lineHeight: '1.75rem', fontWeight: 600 },
-    sample: 'Filter by tag',
-    usage: 'Sub-headings, dialog titles (h3)',
-  },
-  {
-    label: 'text-lg / 1.125rem',
-    style: { fontSize: '1.125rem', lineHeight: '1.75rem', fontWeight: 500 },
-    sample: 'Organic Whole Milk',
-    usage: 'Item card names, list row primaries',
+    sample: 'Choose from a template',
+    usage: 'Onboarding headings — not used in main app',
   },
   {
     label: 'text-base / 1rem',
     style: { fontSize: '1rem', lineHeight: '1.5rem', fontWeight: 400 },
-    sample: 'Last restocked 3 days ago',
-    usage: 'Body text, descriptions, form labels',
+    sample: 'Costco',
+    usage: 'Page title (h1) — vendor / shelf / recipe detail headers',
   },
   {
-    label: 'text-sm / 0.875rem',
+    label: 'text-sm / 0.875rem · font-medium',
+    style: { fontSize: '0.875rem', lineHeight: '1.25rem', fontWeight: 500 },
+    sample: 'Organic Whole Milk',
+    usage: 'Card titles, button labels, section headings, form labels',
+  },
+  {
+    label: 'text-sm / 0.875rem · font-normal',
     style: { fontSize: '0.875rem', lineHeight: '1.25rem', fontWeight: 400 },
-    sample: 'Added to cart',
-    usage: 'Secondary metadata, helper text, badge labels',
+    sample: 'Your data is stored on this device',
+    usage: 'Card descriptions (default), body text, dropdown items, navigation labels',
   },
   {
     label: 'text-xs / 0.75rem',
     style: { fontSize: '0.75rem', lineHeight: '1rem', fontWeight: 400 },
-    sample: 'Expires 2026-05-01',
-    usage: 'Timestamps, fine print, tooltip text',
+    sample: '3 / 8 active · 2 low stock · dairy',
+    usage: 'CardMetadata, badges, fine print, secondary stats and counts',
   },
 ]
 

@@ -48,7 +48,7 @@ Reusable across multiple features and pages.
 
 **`GroupByToggle`** (`src/components/shared/GroupByToggle/index.tsx`) — segmented button group for switching between shelf, vendor, and recipe groupings on the pantry group views. Props: `current: PantryGroupBy`, `onChange: (groupBy: PantryGroupBy) => void`. Renders three icon buttons (ShelvingUnit / Store / ChefHat) with `aria-pressed` for the active selection. Used in all three group-view toolbars (`ShelfGroupView`, `VendorGroupView`, `RecipeGroupView`).
 
-**`GroupCard`** (`src/components/shared/GroupCard/index.tsx`) — clickable card row representing one group (shelf, vendor, or recipe) in a group-by list. Shows the group name, item count, stock status badges (out-of-stock / low-stock / active), and an `ItemProgressBar` for packed totals across all items in the group. Props: `name`, `icon?`, `itemCount`, `onClick`, `outOfStockCount?`, `lowStockCount?`, `activeCount?`, `totalPackedQuantity?`, `totalTargetInPacks?`, `totalRefillInPacks?`, `nameClassName?` (defaults to `'capitalize'`; pass `'normal-case'` for vendor names).
+**`GroupCard`** (`src/components/shared/GroupCard/index.tsx`) — clickable card row representing one group (shelf, vendor, or recipe) in a group-by list. Shows the group name, item count, stock status (out-of-stock / low-stock rendered as colored text spans with `·` separators), and an `ItemProgressBar` for packed totals across all items in the group. Props: `name`, `icon?`, `itemCount`, `onClick`, `outOfStockCount?`, `lowStockCount?`, `activeCount?`, `totalPackedQuantity?`, `totalTargetInPacks?`, `totalRefillInPacks?`, `nameClassName?` (defaults to `'capitalize'`; pass `'normal-case'` for vendor names).
 
 ## Pantry Components
 
@@ -60,11 +60,11 @@ View components rendered by the pantry home page (`/`) depending on the `?groupB
 
 **`ShelfDetailView`** (`src/components/pantry/ShelfDetailView.tsx`) — item list scoped to one shelf (`?id=<shelfId>`). Shows items filtered by the shelf's tag rules. Toolbar has a back button (returns to `/?groupBy=shelf`) plus sort, search, and tags controls.
 
-**`VendorGroupView`** (`src/components/pantry/VendorGroupView.tsx`) — group-by-vendor overview showing one `GroupCard` per vendor (plus an "Unsorted" card for items with no vendor). Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/vendors`. Vendor `GroupCard` uses `nameClassName="normal-case"` to preserve intentional vendor casing.
+**`VendorGroupView`** (`src/components/pantry/VendorGroupView.tsx`) — group-by-vendor overview showing one `GroupCard` per vendor (plus a "No vendor" card with a `Lock` icon for items with no vendor assigned). Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/vendors`. Vendor `GroupCard` uses `nameClassName="normal-case"` to preserve intentional vendor casing.
 
 **`VendorDetailView`** (`src/components/pantry/VendorDetailView.tsx`) — item list scoped to one vendor (`?id=<vendorId>` or `'unsorted'`). Toolbar has a back button (returns to `/?groupBy=vendor`) plus sort and search controls.
 
-**`RecipeGroupView`** (`src/components/pantry/RecipeGroupView.tsx`) — group-by-recipe overview showing one `GroupCard` per recipe (plus an "Unsorted" card for items not in any recipe). Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/recipes`.
+**`RecipeGroupView`** (`src/components/pantry/RecipeGroupView.tsx`) — group-by-recipe overview showing one `GroupCard` per recipe (plus a "Not added to recipe" card with a `Lock` icon for items not in any recipe). Toolbar: `ViewToggle`, `GroupByToggle`, and a "Manage" link to `/settings/recipes`.
 
 **`RecipeDetailView`** (`src/components/pantry/RecipeDetailView.tsx`) — item list scoped to one recipe (`?id=<recipeId>` or `'unsorted'`). Toolbar has a back button (returns to `/?groupBy=recipe`) plus sort and search controls.
 
@@ -110,7 +110,7 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 ## Shopping Components
 
-**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + cart description), `ChevronRight`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support.
+**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + item count description), trailing flex row (optional packs `Badge` + `ChevronRight`). The packs `Badge` (`neutral-outline` variant) is shown only when `totalQuantity > 0`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support.
 
 ## Shelf Components
 
@@ -119,6 +119,14 @@ Components for the shelf-view feature.
 **`ShelfList`** (`src/components/shelf/ShelfList/ShelfList.tsx`) — list of shelves. Props: `shelves`, `onShelfClick`, `getItemCount`, `getFilterSummary?`, `getOutOfStockCount?`, `getLowStockCount?`, `getActiveCount?`, `getPackTotals?` (returns `{ totalPacked, totalTarget, totalRefill }` per shelf ID).
 
 **`AddShelfDialog`** (`src/components/shelf/AddShelfDialog/AddShelfDialog.tsx`) — dialog for creating a new shelf. Exports `AddShelfDialog` and `CreateShelfInput` type.
+
+## Card Primitives
+
+Exported from `@/components/ui/card`.
+
+**`CardDescription`** — supplementary text rendered as `text-sm text-foreground-muted`. Use for secondary labels and short descriptive copy.
+
+**`CardMetadata`** — same as `CardDescription` but renders `text-xs text-foreground-muted`. Use for compact supplementary data: item counts, badge-style metadata, secondary stats. Exported from `@/components/ui/card`.
 
 ## Dialog Layout Pattern
 

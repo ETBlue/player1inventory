@@ -34,19 +34,21 @@
     "noVendor": "No vendor",
     "cartList": {
       "sort": {
-        "recent": "Last visited",
+        "recent": "Last purchased",
         "alpha": "A–Z",
         "count": "Most items"
       }
     },
     "cartCard": {
-      "packsChecked_one": " ({{count}} pack)",
-      "packsChecked_other": " ({{count}} packs)",
-      "inCart": "{{checked}} / {{total}} items in cart"
+      "packsChecked_one": "{{count}} pack",
+      "packsChecked_other": "{{count}} packs",
+      "inVendor_one": "{{count}} item",
+      "inVendor_other": "{{count}} items",
+      "inCart": "{{count}} in cart"
     },
     "toolbar": {
-      "cartCount_one": "{{count}} pack in cart",
-      "cartCount_other": "{{count}} packs in cart"
+      "cartCount_one": "{{count}} pack",
+      "cartCount_other": "{{count}} packs"
     },
     "vendorFilter": {
       "allVendors": "All vendors",

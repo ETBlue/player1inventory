@@ -1,11 +1,7 @@
 import { ChevronRight, Store } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardHeader, CardMetadata, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 interface VendorCartCardProps {
@@ -44,18 +40,31 @@ export function VendorCartCard({
         <CardTitle className={cn(isNoVendor ? 'normal-case' : 'capitalize')}>
           {vendorName}
         </CardTitle>
-        <CardDescription>
-          {t('shopping.cartCard.inCart', {
-            checked: checkedCount,
-            total: availableCount,
-          })}
-          {totalQuantity > 0 &&
-            t('shopping.cartCard.packsChecked', {
+        <CardMetadata>
+          {[
+            t('shopping.cartCard.inVendor', {
+              count: availableCount,
+            }),
+            checkedCount > 0
+              ? t('shopping.cartCard.inCart', {
+                  count: checkedCount,
+                })
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </CardMetadata>
+      </CardHeader>
+      <div className="flex items-center gap-2">
+        {totalQuantity > 0 && (
+          <Badge variant="neutral-outline">
+            {t('shopping.cartCard.packsChecked', {
               count: totalQuantity,
             })}
-        </CardDescription>
-      </CardHeader>
-      <ChevronRight className="h-4 w-4" />
+          </Badge>
+        )}
+        <ChevronRight className="h-4 w-4" />
+      </div>
     </Card>
   )
 }

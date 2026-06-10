@@ -59,9 +59,7 @@ input InventoryLogInput {
 
 input ShoppingCartInput {
   id: ID!
-  status: String!
-  createdAt: String!
-  completedAt: String
+  lastPurchasedAt: String
 }
 
 input CartItemInput {
