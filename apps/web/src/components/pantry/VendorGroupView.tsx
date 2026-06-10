@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Settings, Settings2, Store } from 'lucide-react'
+import { Lock, Settings, Settings2, Store } from 'lucide-react'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -146,6 +146,7 @@ export function VendorGroupView() {
             const totals = getPackTotals('unsorted')
             return (
               <GroupCard
+                icon={<Lock className="h-4 w-4 text-foreground-muted" />}
                 name="No vendor"
                 itemCount={unsortedItems.length}
                 outOfStockCount={getOutOfStockCount('unsorted')}

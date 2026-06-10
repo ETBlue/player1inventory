@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Settings, Settings2, ShelvingUnit } from 'lucide-react'
+import { Lock, Settings, Settings2 } from 'lucide-react'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -250,7 +250,7 @@ export function ShelfGroupView() {
           return (
             <GroupCard
               name="Unsorted"
-              icon={<ShelvingUnit className="h-4 w-4 text-foreground-muted" />}
+              icon={<Lock className="h-4 w-4 text-foreground-muted" />}
               itemCount={getUnsortedCount()}
               outOfStockCount={getUnsortedOutOfStockCount()}
               lowStockCount={getUnsortedLowStockCount()}

@@ -99,7 +99,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
     return <LoadingSpinner />
   }
 
-  const title = isUnsorted ? 'Unsorted' : (vendor?.name ?? 'Vendor')
+  const title = isUnsorted ? 'No vendor' : (vendor?.name ?? 'Vendor')
 
   const recipeMap = new Map<string, []>()
 

@@ -1,7 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import type React from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
-import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
@@ -78,21 +77,41 @@ export function GroupCard({
             unpacked={0}
           />
           {/* Row 3: counts and badges */}
-          <div className="flex items-center gap-x-2 gap-y-1 mt-1 flex-wrap">
-            <span className="text-sm text-foreground-muted">
+          <div className="flex items-center gap-x-1 gap-y-1 mt-1 flex-wrap">
+            <span className="text-xs text-foreground-muted">
               {displayActiveCount} / {itemCount} active
             </span>
-            {filterSummary && (
-              <span className="text-sm text-foreground-muted truncate">
-                · {filterSummary}
-              </span>
-            )}
-            {outOfStockCount != null && outOfStockCount > 0 && (
-              <Badge variant="error-inverse">{outOfStockCount} empty</Badge>
-            )}
-            {lowStockCount != null && lowStockCount > 0 && (
-              <Badge variant="warning-inverse">{lowStockCount} low stock</Badge>
-            )}
+            {(
+              [
+                outOfStockCount != null && outOfStockCount > 0
+                  ? {
+                      key: 'out-of-stock',
+                      className: 'text-status-error-foreground text-xs',
+                      label: `${outOfStockCount} empty`,
+                    }
+                  : null,
+                lowStockCount != null && lowStockCount > 0
+                  ? {
+                      key: 'low-stock',
+                      className: 'text-status-warning-foreground text-xs',
+                      label: `${lowStockCount} low stock`,
+                    }
+                  : null,
+                filterSummary
+                  ? {
+                      key: 'filter-summary',
+                      className: 'text-xs text-foreground-muted truncate',
+                      label: filterSummary,
+                    }
+                  : null,
+              ] as const
+            )
+              .filter(Boolean)
+              .map((item) => (
+                <span key={item.key} className="flex items-center gap-x-1">
+                  · <span className={item.className}>{item.label}</span>
+                </span>
+              ))}
           </div>
         </div>
       </CardContent>
