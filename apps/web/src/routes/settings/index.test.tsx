@@ -47,9 +47,10 @@ describe('Settings Page', () => {
     // Given the settings page
     render(<Settings />)
 
-    // Then Tags, Vendors, Recipes, Shelves nav cards are rendered (via mocked SettingsNavCard)
+    // Then Locations, Shelves, Vendors, Recipes, Tags nav cards are rendered (via mocked SettingsNavCard)
     const navCards = screen.getAllByTestId('settings-nav-card')
-    expect(navCards).toHaveLength(4)
+    expect(navCards).toHaveLength(5)
+    expect(screen.getByText('Locations')).toBeInTheDocument()
     expect(screen.getByText('Tags')).toBeInTheDocument()
     expect(screen.getByText('Vendors')).toBeInTheDocument()
     expect(screen.getByText('Recipes')).toBeInTheDocument()

@@ -343,6 +343,24 @@
         }
       }
     },
+    "locations": {
+      "label": "Locations",
+      "description": "Manage your homes and storage places",
+      "title": "Locations",
+      "addLabel": "Add location",
+      "addTitle": "Add Location",
+      "namePlaceholder": "Location name",
+      "renameTitle": "Rename Location",
+      "renameLabel": "Rename {{name}}",
+      "deleteLabel": "Delete {{name}}",
+      "deleteTitle": "Delete \"{{name}}\"?",
+      "deleteDescription": "This location will be removed.",
+      "defaultHint": "Default",
+      "dragToReorder": "Drag to reorder {{name}}",
+      "dragInstructions": "Press Space or Enter to pick up a location, use arrow keys to move it, and press Space or Enter again to drop it.",
+      "emptyTitle": "No locations yet",
+      "emptyDescription": "Add a location using the button above."
+    },
     "shelves": {
       "label": "Shelves",
       "description": "Manage shelves and shelf filters"

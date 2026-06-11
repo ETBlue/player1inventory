@@ -273,6 +273,19 @@ test('user can view settings shelves list without accessibility violations', asy
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
+// Settings > Locations list (/settings/locations)
+test('user can view settings locations list without accessibility violations', async ({ page }) => {
+  // Given the user navigates to the locations settings page
+  await page.goto('/settings/locations')
+  await page.waitForLoadState('networkidle')
+
+  // When axe scans the page for accessibility violations
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
 // Onboarding page (/onboarding)
 test('user can view onboarding page without accessibility violations', async ({ page }) => {
   // Given the user navigates directly to the onboarding page
@@ -775,6 +788,19 @@ test.describe('dark mode a11y', () => {
   test('user can view settings shelves list without accessibility violations in dark mode', async ({ page }) => {
     // Given the user navigates to the shelves settings page with dark mode enabled
     await page.goto('/settings/shelves')
+    await page.waitForLoadState('networkidle')
+
+    // When axe scans the page for accessibility violations
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Settings > Locations list (/settings/locations) in dark mode
+  test('user can view settings locations list without accessibility violations in dark mode', async ({ page }) => {
+    // Given the user navigates to the locations settings page with dark mode enabled
+    await page.goto('/settings/locations')
     await page.waitForLoadState('networkidle')
 
     // When axe scans the page for accessibility violations
