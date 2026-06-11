@@ -2,6 +2,7 @@ import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { VendorCartCard } from '@/components/shopping/VendorCartCard'
 import { Button } from '@/components/ui/button'
@@ -125,6 +126,7 @@ function ShoppingIndex() {
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
+        <LocationSwitcher />
         <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

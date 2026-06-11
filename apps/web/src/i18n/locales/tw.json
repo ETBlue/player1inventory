@@ -655,5 +655,9 @@
       "selected_one": "已選擇 {{count}} 個供應商",
       "selected_other": "已選擇 {{count}} 個供應商"
     }
+  },
+  "locationSwitcher": {
+    "triggerLabel": "切換地點（目前：{{name}}）",
+    "manage": "管理地點"
   }
 }

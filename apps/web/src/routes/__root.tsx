@@ -9,6 +9,7 @@ import { useEffect } from 'react'
 import { Layout } from '@/components/global/Layout'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
 import { Toaster } from '@/components/ui/sonner'
+import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { useItems } from '@/hooks/useItems'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useNavigationTracker } from '@/hooks/useNavigationTracker'
@@ -77,7 +78,7 @@ function RootComponent() {
   }, [allLoaded, isEmpty, pathname, navigate])
 
   return (
-    <>
+    <ActiveLocationProvider>
       {mode === 'cloud' && !isE2ETestMode && (
         <>
           <CloudAuthGuard />
@@ -89,7 +90,7 @@ function RootComponent() {
       </Layout>
       <Toaster />
       {/* <TanStackRouterDevtools /> */}
-    </>
+    </ActiveLocationProvider>
   )
 }
 

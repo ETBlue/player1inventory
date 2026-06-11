@@ -659,5 +659,9 @@
       "selected_one": "{{count}} vendor selected",
       "selected_other": "{{count}} vendors selected"
     }
+  },
+  "locationSwitcher": {
+    "triggerLabel": "Switch location (current: {{name}})",
+    "manage": "Manage locations"
   }
 }

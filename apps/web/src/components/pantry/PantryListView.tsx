@@ -7,6 +7,7 @@ import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
 import { useItems, useUpdateItem } from '@/hooks'
@@ -200,15 +201,21 @@ export function PantryListView() {
           vendors={vendors}
           recipes={recipes}
           leading={
-            <ViewToggle
-              current="list"
-              onChange={(view) => {
-                if (view === 'group') {
-                  setPantryView('group')
-                  navigate({ to: '/', search: { groupBy: getStoredGroupBy() } })
-                }
-              }}
-            />
+            <>
+              <LocationSwitcher />
+              <ViewToggle
+                current="list"
+                onChange={(view) => {
+                  if (view === 'group') {
+                    setPantryView('group')
+                    navigate({
+                      to: '/',
+                      search: { groupBy: getStoredGroupBy() },
+                    })
+                  }
+                }}
+              />
+            </>
           }
         >
           <Button

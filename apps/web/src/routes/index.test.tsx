@@ -138,7 +138,9 @@ describe('Home page filtering integration', () => {
     await user.keyboard('{Escape}')
 
     // When user opens Location dropdown and selects Pantry
-    await user.click(screen.getByRole('button', { name: /location/i }))
+    // Anchor the name so it matches the "Location" tag-type filter button only,
+    // not the global LocationSwitcher trigger ("Switch location …").
+    await user.click(screen.getByRole('button', { name: /^location/i }))
     await user.click(screen.getByRole('menuitemcheckbox', { name: /pantry/i }))
 
     // Then no items shown (AND logic across types)
