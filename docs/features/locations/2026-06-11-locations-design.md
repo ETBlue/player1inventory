@@ -22,10 +22,13 @@ interface Item {
   name: string
   tagIds: string[]
   vendorIds?: string[]
+  wikidataUrl?: string    // global; future name-i18n source (added in the tab-restructure PR)
+  note?: string           // global; free-text notes / links (added in the tab-restructure PR)
   createdAt: Date
   updatedAt: Date
 }
 ```
+> `wikidataUrl` and `note` are introduced by the **item-detail tab-restructure** PR that precedes this feature (see `docs/features/items/2026-06-11-item-detail-tabs-design.md`).
 
 **`ItemStock` (new — one per item × location)**
 ```ts
