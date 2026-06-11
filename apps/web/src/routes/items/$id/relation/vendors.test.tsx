@@ -27,7 +27,7 @@ describe('Vendors Tab', () => {
 
   const renderVendorsTab = (itemId: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/vendors`],
+      initialEntries: [`/items/${itemId}/relation/vendors`],
     })
     const router = createRouter({ routeTree, history })
     render(

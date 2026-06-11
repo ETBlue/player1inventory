@@ -8,12 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createItem, createVendor } from '@/db/operations'
+import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Pages/Item/Detail/Vendor',
+  title: 'Pages/Item/Detail/Recipe',
   parameters: {
     layout: 'fullscreen',
   },
@@ -37,117 +37,8 @@ function DefaultStory() {
       await db.delete()
       await db.open()
 
-      await createVendor('Costco')
-      await createVendor('Whole Foods')
-
       const item = await createItem({
-        name: 'Orange Juice',
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 3,
-        refillThreshold: 1,
-        packedQuantity: 2,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      setItemId(item.id)
-      setReady(true)
-    }
-    setup()
-  }, [])
-
-  if (!ready || !itemId) return <div>Loading...</div>
-
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/vendors`],
-    }),
-    context: { queryClient },
-  })
-
-  return (
-    <ApolloProvider client={noopApolloClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ApolloProvider>
-  )
-}
-
-function WithAssignedVendorsStory() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-  )
-  const [ready, setReady] = useState(false)
-  const [itemId, setItemId] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function setup() {
-      await db.delete()
-      await db.open()
-
-      const vendor1 = await createVendor('Costco')
-      const vendor2 = await createVendor("Trader Joe's")
-
-      const item = await createItem({
-        name: 'Pasta',
-        tagIds: [],
-        vendorIds: [vendor1.id, vendor2.id],
-        targetUnit: 'package',
-        targetQuantity: 5,
-        refillThreshold: 2,
-        packedQuantity: 3,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      setItemId(item.id)
-      setReady(true)
-    }
-    setup()
-  }, [])
-
-  if (!ready || !itemId) return <div>Loading...</div>
-
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/vendors`],
-    }),
-    context: { queryClient },
-  })
-
-  return (
-    <ApolloProvider client={noopApolloClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ApolloProvider>
-  )
-}
-
-function EmptyVendorsStory() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-  )
-  const [ready, setReady] = useState(false)
-  const [itemId, setItemId] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function setup() {
-      await db.delete()
-      await db.open()
-
-      const item = await createItem({
-        name: 'Apple',
+        name: 'Eggs',
         tagIds: [],
         targetUnit: 'package',
         targetQuantity: 2,
@@ -157,6 +48,10 @@ function EmptyVendorsStory() {
         consumeAmount: 1,
       })
 
+      // Recipes exist but item is not assigned to any
+      await createRecipe({ name: 'Omelette', items: [] })
+      await createRecipe({ name: 'Scrambled Eggs', items: [] })
+
       setItemId(item.id)
       setReady(true)
     }
@@ -168,7 +63,118 @@ function EmptyVendorsStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/vendors`],
+      initialEntries: [`/items/${itemId}/relation/recipes`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function WithRecipesStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Flour',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      // Recipe with this item assigned
+      await createRecipe({
+        name: 'Pancakes',
+        items: [{ itemId: item.id, defaultAmount: 1 }],
+      })
+      // Another recipe without this item
+      await createRecipe({ name: 'Pasta Sauce', items: [] })
+
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/relation/recipes`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function EmptyRecipesStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Butter',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      // No recipes at all
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/relation/recipes`],
     }),
     context: { queryClient },
   })
@@ -186,10 +192,10 @@ export const Default: Story = {
   render: () => <DefaultStory />,
 }
 
-export const WithAssignedVendors: Story = {
-  render: () => <WithAssignedVendorsStory />,
+export const WithRecipes: Story = {
+  render: () => <WithRecipesStory />,
 }
 
-export const EmptyVendors: Story = {
-  render: () => <EmptyVendorsStory />,
+export const EmptyRecipes: Story = {
+  render: () => <EmptyRecipesStory />,
 }

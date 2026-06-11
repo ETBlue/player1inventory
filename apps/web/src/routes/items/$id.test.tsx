@@ -765,7 +765,7 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('user can see the vendors tab icon', async () => {
+  it('user can see the relation tab icon', async () => {
     // Given an item
     const item = await createItem({
       name: 'Test Item',
@@ -786,10 +786,11 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
     })
 
-    // Then a link to the vendors tab exists
-    const vendorsHref = `/items/${item.id}/vendors`
+    // Then a link to the relation tab exists (tags/vendors/recipes now live
+    // under the relation submenu)
+    const relationHref = `/items/${item.id}/relation`
     const allLinks = screen.getAllByRole('link')
-    expect(allLinks.some((l) => l.getAttribute('href') === vendorsHref)).toBe(
+    expect(allLinks.some((l) => l.getAttribute('href') === relationHref)).toBe(
       true,
     )
   })
@@ -1031,11 +1032,18 @@ describe('Item detail page - hierarchical navigation', () => {
 
     sessionStorage.setItem(
       'app-navigation-history',
-      JSON.stringify(['/', `/items/${item.id}`, `/items/${item.id}/tags`]),
+      JSON.stringify([
+        '/',
+        `/items/${item.id}`,
+        `/items/${item.id}/relation/tags`,
+      ]),
     )
 
     // When rendering tags tab
-    const router = renderItemDetailPage(item.id, `/items/${item.id}/tags`)
+    const router = renderItemDetailPage(
+      item.id,
+      `/items/${item.id}/relation/tags`,
+    )
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
@@ -1818,7 +1826,7 @@ describe('Item detail page - toolbar tabs', () => {
     return router
   }
 
-  it('user sees the five toolbar tabs in order: info, stock, tags, vendors, recipes, log', async () => {
+  it('user sees the four toolbar tabs in order: info, stock, relation, log', async () => {
     // Given an item
     const item = await createItem({
       name: 'Test Item',
@@ -1838,23 +1846,79 @@ describe('Item detail page - toolbar tabs', () => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
     })
 
-    // Then the toolbar links appear in the expected order, with Stock between
-    // Info and Tags.
+    // Then the toolbar links appear in the expected order:
+    // Info (index) · Stock · Relation · Log.
     const links = screen.getAllByRole('link')
     const hrefs = links.map((l) => l.getAttribute('href'))
     const indexHref = `/items/${item.id}`
     const stockHref = `/items/${item.id}/stock`
-    const tagsHref = `/items/${item.id}/tags`
+    const relationHref = `/items/${item.id}/relation`
+    const logHref = `/items/${item.id}/log`
 
     expect(hrefs).toContain(indexHref)
     expect(hrefs).toContain(stockHref)
+    expect(hrefs).toContain(relationHref)
+    expect(hrefs).toContain(logHref)
 
-    // Stock link comes immediately after the Info (index) link, and before Tags
     const indexPos = hrefs.indexOf(indexHref)
     const stockPos = hrefs.indexOf(stockHref)
-    const tagsPos = hrefs.indexOf(tagsHref)
+    const relationPos = hrefs.indexOf(relationHref)
+    const logPos = hrefs.indexOf(logHref)
+
+    // Stock comes immediately after Info; Relation between Stock and Log.
     expect(stockPos).toBe(indexPos + 1)
-    expect(stockPos).toBeLessThan(tagsPos)
+    expect(relationPos).toBe(stockPos + 1)
+    expect(logPos).toBe(relationPos + 1)
+
+    // The three old top-level toolbar buttons are gone.
+    expect(hrefs).not.toContain(`/items/${item.id}/tags`)
+    expect(hrefs).not.toContain(`/items/${item.id}/vendors`)
+    expect(hrefs).not.toContain(`/items/${item.id}/recipes`)
+  })
+
+  it('user can open the Relation tab and lands on vendors with the submenu', async () => {
+    const user = userEvent.setup()
+
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    const router = renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // When user clicks the Relation toolbar button
+    const relationLink = screen
+      .getAllByRole('link')
+      .find((l) => l.getAttribute('href') === `/items/${item.id}/relation`)
+    expect(relationLink).toBeDefined()
+    if (relationLink) await user.click(relationLink)
+
+    // Then it lands on the vendors subtab (default redirect)
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        `/items/${item.id}/relation/vendors`,
+      )
+    })
+
+    // And the submenu exposes the tags / vendors / recipes subtab links
+    const subHrefs = screen
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href'))
+    expect(subHrefs).toContain(`/items/${item.id}/relation/tags`)
+    expect(subHrefs).toContain(`/items/${item.id}/relation/vendors`)
+    expect(subHrefs).toContain(`/items/${item.id}/relation/recipes`)
   })
 
   it('user sees discard dialog when leaving the Info tab with unsaved changes', async () => {

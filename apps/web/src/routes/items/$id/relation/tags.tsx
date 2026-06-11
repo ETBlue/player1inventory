@@ -16,7 +16,7 @@ import {
 import { useAddTagType } from '@/hooks/useAddTagType'
 import type { TagColor } from '@/types'
 
-export const Route = createFileRoute('/items/$id/tags')({
+export const Route = createFileRoute('/items/$id/relation/tags')({
   component: TagsTab,
 })
 

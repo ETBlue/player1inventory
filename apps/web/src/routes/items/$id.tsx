@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { Boxes, ChefHat, History, Settings2, Store, Tags } from 'lucide-react'
+import { Boxes, History, Settings2, Waypoints } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -128,40 +128,16 @@ function ItemLayoutInner() {
               <Boxes className="h-4 w-4" />
             </Link>
             <Link
-              to="/items/$id/tags"
+              to="/items/$id/relation"
               params={{ id }}
-              aria-label={t('items.detail.tabs.tags')}
+              aria-label={t('items.detail.tabs.relations')}
               className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
               }}
-              onClick={(e) => handleTabClick(e, `/items/${id}/tags`)}
+              onClick={(e) => handleTabClick(e, `/items/${id}/relation`)}
             >
-              <Tags className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/items/$id/vendors"
-              params={{ id }}
-              aria-label={t('items.detail.tabs.vendors')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-              activeProps={{
-                className: 'border-foreground-muted',
-              }}
-              onClick={(e) => handleTabClick(e, `/items/${id}/vendors`)}
-            >
-              <Store className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/items/$id/recipes"
-              params={{ id }}
-              aria-label={t('items.detail.tabs.recipes')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-              activeProps={{
-                className: 'border-foreground-muted',
-              }}
-              onClick={(e) => handleTabClick(e, `/items/${id}/recipes`)}
-            >
-              <ChefHat className="h-4 w-4" />
+              <Waypoints className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/log"
