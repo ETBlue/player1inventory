@@ -104,6 +104,34 @@ test('user can edit an item name', async ({ page }) => {
   await expect(pantry.getItemCard('Edit Me')).not.toBeVisible()
 })
 
+test('user can persist note and wikidata URL on the Info tab', async ({ page, baseURL }) => {
+  // wikidataUrl/note are local-first Item fields; the cloud GraphQL Item type does not
+  // support them yet (deferred cloud TODO per the item-detail-tabs design doc).
+  test.skip(baseURL === CLOUD_WEB_URL, 'wikidataUrl/note not yet in cloud GraphQL schema')
+
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given a new item (lands on the Info tab /items/$id after create)
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Info Fields Item')
+  await item.save()
+  const itemId = item.getCurrentItemId()
+
+  // When user fills the Info-tab note + a valid wikidata URL and saves
+  const wikidataUrl = 'https://www.wikidata.org/wiki/Q8495'
+  const note = 'Buy the 1L carton; lactose-free preferred.'
+  await item.fillNote(note)
+  await item.fillWikidataUrl(wikidataUrl)
+  await item.saveExisting()
+
+  // Then reopening the Info tab shows both fields persisted
+  await page.goto(`/items/${itemId}`)
+  await expect(item.getNoteInput()).toHaveValue(note)
+  await expect(item.getWikidataUrlInput()).toHaveValue(wikidataUrl)
+})
+
 test('user can assign a tag to an item', async ({ page, baseURL }) => {
   const pantry = new PantryPage(page)
   const item = new ItemPage(page)
@@ -180,8 +208,9 @@ test('user can set days-from-purchase expiration on an item', async ({ page }) =
   await item.fillEstimatedDueDays('30')
   await item.saveExisting()
 
-  // Then revisiting the item shows "Days from Purchase" mode persisted
-  await page.goto(`/items/${itemId}`)
+  // Then revisiting the item's Stock tab shows "Days from Purchase" mode persisted
+  // (expiration moved to /items/$id/stock in the item-detail tab refactor)
+  await page.goto(`/items/${itemId}/stock`)
   await expect(item.getExpirationModeSelector()).toContainText('Days from Purchase')
 })
 

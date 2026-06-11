@@ -201,11 +201,14 @@ test('user can cook a recipe with partial items and multiple servings', async ({
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Flour')).toBeVisible()
   await pantry.getItemCard('Flour').click()
+  // Packed quantity now lives on the Stock tab (/items/$id/stock) after the item-detail refactor
+  await item.navigateToStockTab()
   await expect(item.getPackedQuantityInput()).toHaveValue('6')
 
   // And: navigate back to pantry and verify Eggs quantity unchanged (was unchecked)
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Eggs')).toBeVisible()
   await pantry.getItemCard('Eggs').click()
+  await item.navigateToStockTab()
   await expect(item.getPackedQuantityInput()).toHaveValue('12')
 })
