@@ -1,37 +1,52 @@
 ### Tabbed Item Form
 
-Item detail pages use a tabbed layout with three sections:
+Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · Relation · Log** (4 buttons). Tags, Vendors, and Recipes are grouped under the **Relation** tab as a secondary submenu.
 
-**1. Stock Status (default tab, `/items/$id`)**
-- Packed and unpacked quantity fields with Pack/Unpack buttons
+**1. Item Info (default tab, `/items/$id`, `Info` icon)**
+- Item name + `wikidataUrl` + `note` only (`ItemForm sections={['info']}`)
+- Save button (persists only name/wikidataUrl/note via `buildInfoUpdates`) — disabled when no changes made
+- Hosts the **Delete** button + cascade-delete dialog
+- Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
+
+**2. Stock (`/items/$id/stock`, `Calculator` icon)**
+- Package unit, packed/unpacked quantity fields with Pack/Unpack buttons (`ItemForm sections={['stock']}`)
 - Target quantity and refill threshold
 - Consumption amount settings
-- **Advanced Stock Status** subsection (always visible within Stock Status):
+- **Advanced Stock Status** subsection (always visible within Stock):
   - Measurement tracking toggle (Track in measurement switch)
   - Measurement unit and amount per package fields
   - Expiration mode select (none / specific date / days from purchase) and threshold
-- Save button disabled when no changes made
+- Save button (persists stock fields via `buildStockUpdates`) — disabled when no changes made
+- Hosts the **recipe-adjust dialog**: when `consumeAmount` or `targetUnit` changes affect a recipe's `defaultAmount`, a confirmation dialog lists adjustments before saving
+- Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
 
-**2. Item Info (same route, `/items/$id`)**
-- Item name and package unit only
+> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.
 
-**3. Tags (`/items/$id/tags`)**
+**3. Relation (`/items/$id/relation`, `Waypoints` icon)**
+- A layout (`$id/relation.tsx`) that renders a secondary submenu (three `Link` icon buttons: Tags `Tags`, Vendors `Store`, Recipes `ChefHat`) under the main toolbar, plus the routed `<Outlet/>`
+- The Relation toolbar button is active on any `…/relation/*` route
+- `/items/$id/relation` (index) redirects to `…/relation/tags` (default subtab)
+
+**3a. Tags (`/items/$id/relation/tags`, default subtab)**
 - Tag assignment interface with uppercase text styling for tag type names
 - Click badges to toggle tag assignment (selected tags show X icon)
 - Visual dividers between tag type sections
 - Inline tag creation via "New Tag" buttons (opens `AddNameDialog`)
 - Changes apply immediately without save button
 
-**4. Vendors (`/items/$id/vendors`)**
+**3b. Vendors (`/items/$id/relation/vendors`)**
 - Vendor assignment interface: click-to-toggle badges, immediate save
 - "New Vendor" button inline with badges — opens `AddNameDialog`, creates and immediately assigns the vendor
 - Changes apply immediately without save button
 
-**5. Recipes (`/items/$id/recipes`)**
+**3c. Recipes (`/items/$id/relation/recipes`)**
 - Recipe assignment interface: click-to-toggle badges, immediate save
 - Architecture: recipe-centric — `Recipe.items[]` stores the relationship; toggling updates the recipe, not the item
 - "New Recipe" button inline with badges — opens `AddNameDialog`, creates recipe assigned to this item
 - Changes apply immediately without save button
+
+**4. Log (`/items/$id/log`, `History` icon)**
+- History/logs tab (view-only); never has unsaved changes
 
 **Measurement Tracking Behavior:**
 
@@ -74,14 +89,15 @@ Back button and post-action navigation use smart history tracking:
 Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
 **Files:**
-- `src/components/item/ItemForm/index.tsx` - Shared form component used by both edit and new item routes
-- `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
-- `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with `sections={['stock', 'info']}`)
-- `src/routes/items/$id/tags.tsx` - Tags tab implementation
-- `src/routes/items/$id/vendors.tsx` - Vendors tab implementation
-- `src/routes/items/$id/vendors.test.tsx` - Vendors tab tests
-- `src/routes/items/$id/recipes.tsx` - Recipes tab implementation
-- `src/routes/items/$id/recipes.test.tsx` - Recipes tab tests
+- `src/components/item/ItemForm/ItemForm.tsx` - Shared form component used by both edit and new item routes (gates fields via its `sections` prop)
+- `src/routes/items/$id.tsx` - Parent layout with the 4-button toolbar (Info · Stock · Relation · Log) and navigation guard (dual-tab dirty guard via `isOnEditableTab`)
+- `src/routes/items/$id/index.tsx` - Info tab (uses ItemForm with `sections={['info']}` — name/wikidataUrl/note); hosts the Delete button. Stories at `$id/index.stories.tsx`
+- `src/routes/items/$id/stock.tsx` - Stock tab (uses ItemForm with `sections={['stock']}`); hosts the recipe-adjust dialog. Stories at `$id/stock.stories.tsx`, tests at `$id/stock.test.tsx`
+- `src/routes/items/$id/relation.tsx` - Relation layout: secondary submenu (Tags/Vendors/Recipes) + `<Outlet/>`. Stories at `$id/relation.stories.tsx`
+- `src/routes/items/$id/relation/index.tsx` - Redirects to `…/relation/tags`
+- `src/routes/items/$id/relation/tags.tsx` - Tags subtab implementation (default); tests at `relation/tags.test.tsx`
+- `src/routes/items/$id/relation/vendors.tsx` - Vendors subtab implementation; tests at `relation/vendors.test.tsx`
+- `src/routes/items/$id/relation/recipes.tsx` - Recipes subtab implementation; tests at `relation/recipes.test.tsx`
 - `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/routes/items/new.tsx` - New item form (uses ItemForm default `sections={['info']}` — Name and Package Unit only)
@@ -104,7 +120,7 @@ Users can manually set current inventory quantities in the item detail form:
 - No automatic normalization/packing
 - Use the **Pack** button in item detail form to manually pack complete units
 
-**Location:** Item detail page (`/items/$id`) via ItemForm component
+**Location:** Item detail Stock tab (`/items/$id/stock`) via ItemForm component
 
 **Behavior:**
 - Pre-populates with current `item.packedQuantity` and `item.unpackedQuantity`
@@ -114,6 +130,6 @@ Users can manually set current inventory quantities in the item detail form:
 - Use for initial setup, corrections, or adjustments
 
 **Files:**
-- `src/routes/items/$id/index.tsx` - Item detail form with quantity fields
+- `src/routes/items/$id/stock.tsx` - Stock tab form with quantity fields
 - `src/routes/items/$id.test.tsx` - Component tests
 - `src/lib/quantityUtils.ts` - packUnpacked() function

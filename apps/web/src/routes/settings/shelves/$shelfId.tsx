@@ -7,8 +7,8 @@ import {
 } from '@tanstack/react-router'
 import {
   Filter,
+  Info,
   ListTodo,
-  Settings2,
   ShelvingUnit,
   SlidersVertical,
   SquareMousePointer,
@@ -122,20 +122,20 @@ function ShelfDetailLayoutInner() {
                 params={{ shelfId }}
                 activeOptions={{ exact: true }}
                 aria-label="Shelf info tab"
-                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+                className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
                 activeProps={{ className: 'border-foreground-muted' }}
                 onClick={(e) =>
                   handleTabClick(e, `/settings/shelves/${shelfId}`)
                 }
               >
-                <Settings2 className="h-4 w-4" />
+                <Info className="h-4 w-4" />
               </Link>
               {shelf.type === 'filter' && (
                 <Link
                   to="/settings/shelves/$shelfId/filters"
                   params={{ shelfId }}
                   aria-label="Shelf filters tab"
-                  className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+                  className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
                   activeProps={{ className: 'border-foreground-muted' }}
                   onClick={(e) =>
                     handleTabClick(e, `/settings/shelves/${shelfId}/filters`)
@@ -149,7 +149,7 @@ function ShelfDetailLayoutInner() {
                   to="/settings/shelves/$shelfId/items"
                   params={{ shelfId }}
                   aria-label="Shelf items tab"
-                  className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+                  className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
                   activeProps={{ className: 'border-foreground-muted' }}
                   onClick={(e) =>
                     handleTabClick(e, `/settings/shelves/${shelfId}/items`)

@@ -181,6 +181,39 @@ describe('Item operations', () => {
     expect(updated?.name).toBe('Whole Milk')
   })
 
+  it('user can persist wikidataUrl and note on an item', async () => {
+    // Given item data with wikidataUrl and note
+    const created = await createItem({
+      name: 'Milk',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+      note: 'Prefer organic; see https://example.com',
+      packageUnit: 'gallon',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // When the item is read back from the database
+    const fetched = await getItem(created.id)
+
+    // Then both fields persist and read back unchanged
+    expect(fetched?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q8495')
+    expect(fetched?.note).toBe('Prefer organic; see https://example.com')
+
+    // And updating them round-trips as well
+    await updateItem(created.id, {
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q11002',
+      note: 'Updated note',
+    })
+    const reFetched = await getItem(created.id)
+    expect(reFetched?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q11002')
+    expect(reFetched?.note).toBe('Updated note')
+  })
+
   it('deletes an item', async () => {
     const item = await createItem({
       name: 'Milk',

@@ -8,12 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createItem, createRecipe } from '@/db/operations'
+import { createItem } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Pages/Item/Detail/Recipe',
+  title: 'Pages/Item/Stock',
   parameters: {
     layout: 'fullscreen',
   },
@@ -22,7 +22,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function DefaultStory() {
+function PackageItemStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -38,19 +38,16 @@ function DefaultStory() {
       await db.open()
 
       const item = await createItem({
-        name: 'Eggs',
+        name: 'Milk',
         tagIds: [],
+        packageUnit: 'bottle',
         targetUnit: 'package',
-        targetQuantity: 2,
-        refillThreshold: 1,
-        packedQuantity: 1,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
         unpackedQuantity: 0,
         consumeAmount: 1,
       })
-
-      // Recipes exist but item is not assigned to any
-      await createRecipe({ name: 'Omelette', items: [] })
-      await createRecipe({ name: 'Scrambled Eggs', items: [] })
 
       setItemId(item.id)
       setReady(true)
@@ -63,7 +60,7 @@ function DefaultStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/recipes`],
+      initialEntries: [`/items/${itemId}/stock`],
     }),
     context: { queryClient },
   })
@@ -77,7 +74,7 @@ function DefaultStory() {
   )
 }
 
-function WithRecipesStory() {
+function MeasurementItemStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -95,21 +92,16 @@ function WithRecipesStory() {
       const item = await createItem({
         name: 'Flour',
         tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 3,
-        refillThreshold: 1,
+        packageUnit: 'pack',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        targetUnit: 'measurement',
+        targetQuantity: 2000,
+        refillThreshold: 500,
         packedQuantity: 2,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
+        unpackedQuantity: 250,
+        consumeAmount: 100,
       })
-
-      // Recipe with this item assigned
-      await createRecipe({
-        name: 'Pancakes',
-        items: [{ itemId: item.id, defaultAmount: 1 }],
-      })
-      // Another recipe without this item
-      await createRecipe({ name: 'Pasta Sauce', items: [] })
 
       setItemId(item.id)
       setReady(true)
@@ -122,7 +114,7 @@ function WithRecipesStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/recipes`],
+      initialEntries: [`/items/${itemId}/stock`],
     }),
     context: { queryClient },
   })
@@ -136,66 +128,10 @@ function WithRecipesStory() {
   )
 }
 
-function EmptyRecipesStory() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-  )
-  const [ready, setReady] = useState(false)
-  const [itemId, setItemId] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function setup() {
-      await db.delete()
-      await db.open()
-
-      const item = await createItem({
-        name: 'Butter',
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 2,
-        refillThreshold: 1,
-        packedQuantity: 1,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      // No recipes at all
-      setItemId(item.id)
-      setReady(true)
-    }
-    setup()
-  }, [])
-
-  if (!ready || !itemId) return <div>Loading...</div>
-
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/recipes`],
-    }),
-    context: { queryClient },
-  })
-
-  return (
-    <ApolloProvider client={noopApolloClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ApolloProvider>
-  )
+export const PackageItem: Story = {
+  render: () => <PackageItemStory />,
 }
 
-export const Default: Story = {
-  render: () => <DefaultStory />,
-}
-
-export const WithRecipes: Story = {
-  render: () => <WithRecipesStory />,
-}
-
-export const EmptyRecipes: Story = {
-  render: () => <EmptyRecipesStory />,
+export const MeasurementItem: Story = {
+  render: () => <MeasurementItemStory />,
 }

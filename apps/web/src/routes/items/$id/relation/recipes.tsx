@@ -14,7 +14,7 @@ import {
 } from '@/hooks/useRecipes'
 import type { RecipeItem } from '@/types'
 
-export const Route = createFileRoute('/items/$id/recipes')({
+export const Route = createFileRoute('/items/$id/relation/recipes')({
   component: RecipesTab,
 })
 

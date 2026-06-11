@@ -20,7 +20,7 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Settings link**: `src/routes/settings/index.tsx` (Store icon)
 
-**Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab in item detail. Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
+**Assignment UI**: `src/routes/items/$id/relation/vendors.tsx` — Vendors subtab in item detail (under the Relation tab). Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
 
 **Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item immediately assigned to this vendor; pressing Escape clears the input.
 

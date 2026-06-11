@@ -272,7 +272,7 @@ describe('Vendor Detail - Info Tab', () => {
       .find(
         (link) =>
           link.getAttribute('href') === `/settings/vendors/${vendor.id}` &&
-          link.querySelector('svg')?.classList.contains('lucide-settings2'),
+          link.querySelector('svg')?.classList.contains('lucide-info'),
       )
     if (!infoTab) throw new Error('Info tab not found')
     await user.click(infoTab)

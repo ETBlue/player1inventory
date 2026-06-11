@@ -8,17 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import {
-  createItem,
-  createTag,
-  createTagType,
-  createVendor,
-} from '@/db/operations'
+import { createItem } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Pages/Item/Detail',
+  title: 'Pages/Item/Info',
   parameters: {
     layout: 'fullscreen',
   },
@@ -76,7 +71,7 @@ function DefaultStory() {
   )
 }
 
-function WithTagsAndVendorsStory() {
+function WithInfoFieldsStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -91,15 +86,11 @@ function WithTagsAndVendorsStory() {
       await db.delete()
       await db.open()
 
-      const tagType = await createTagType({ name: 'Category' })
-      const tag1 = await createTag({ name: 'Dairy', typeId: tagType.id })
-      const tag2 = await createTag({ name: 'Refrigerated', typeId: tagType.id })
-      const vendor = await createVendor('Costco')
-
       const item = await createItem({
         name: 'Organic Whole Milk',
-        tagIds: [tag1.id, tag2.id],
-        vendorIds: [vendor.id],
+        tagIds: [],
+        wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+        note: 'Buy the lactose-free variant for guests.',
         targetUnit: 'package',
         targetQuantity: 4,
         refillThreshold: 2,
@@ -135,6 +126,6 @@ export const Default: Story = {
   render: () => <DefaultStory />,
 }
 
-export const WithTagsAndVendors: Story = {
-  render: () => <WithTagsAndVendorsStory />,
+export const WithInfoFields: Story = {
+  render: () => <WithInfoFieldsStory />,
 }

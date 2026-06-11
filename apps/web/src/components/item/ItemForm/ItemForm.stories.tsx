@@ -20,6 +20,8 @@ const editValues: ItemFormValues = {
   dueDate: '',
   estimatedDueDays: '',
   name: 'Whole Milk',
+  wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
+  note: 'Prefer organic; check expiry on the cap.',
   packageUnit: 'carton',
   targetQuantity: 4,
   refillThreshold: 2,
@@ -48,6 +50,22 @@ export const CreateMode: Story = {
   name: 'Create Mode',
   args: {
     onDirtyChange: undefined,
+  },
+}
+
+export const InfoSection: Story = {
+  name: 'Info Section (name, wikidata, note)',
+  args: {
+    initialValues: editValues,
+    sections: ['info'],
+  },
+}
+
+export const StockSection: Story = {
+  name: 'Stock Section (package unit + quantities)',
+  args: {
+    initialValues: editValues,
+    sections: ['stock'],
   },
 }
 

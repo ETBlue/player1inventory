@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
 import { useCreateVendor } from '@/hooks/useVendors'
 
-export const Route = createFileRoute('/items/$id/vendors')({
+export const Route = createFileRoute('/items/$id/relation/vendors')({
   component: VendorsTab,
 })
 

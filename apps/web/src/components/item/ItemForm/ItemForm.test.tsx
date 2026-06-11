@@ -4,21 +4,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { ItemForm } from '.'
 
 describe('ItemForm — create mode (no onDirtyChange)', () => {
-  it('renders only Item Info section by default', () => {
+  it('renders only the info fields by default', () => {
     // Given an ItemForm in create mode with default sections
     render(<ItemForm onSubmit={vi.fn()} />)
 
-    // Then Item Info section is shown and Stock Status is not
-    expect(screen.getByText('Item Info')).toBeInTheDocument()
-    expect(screen.queryByText('Stock Status')).not.toBeInTheDocument()
+    // Then info fields (Name) are shown and stock fields (Package Unit) are not
+    expect(screen.getByLabelText(/Name/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Package Unit/i)).not.toBeInTheDocument()
   })
 
-  it('does not render Stock Status section unless sections prop includes stock', () => {
+  it('does not render the stock fields unless sections prop includes stock', () => {
     // Given an ItemForm with sections explicitly excluding stock
     render(<ItemForm onSubmit={vi.fn()} sections={['info']} />)
 
-    // Then Stock Status section is not shown
-    expect(screen.queryByText('Stock Status')).not.toBeInTheDocument()
+    // Then stock fields (Package Unit) are not shown
+    expect(screen.queryByLabelText(/Package Unit/i)).not.toBeInTheDocument()
   })
 
   it('submit button is enabled when name is filled and form is valid', async () => {
@@ -83,6 +83,110 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
 
     // Then a validation message is shown
     expect(screen.getByText(/measurement unit.*required/i)).toBeInTheDocument()
+  })
+})
+
+describe('ItemForm — info fields (wikidataUrl, note)', () => {
+  it('renders the wikidataUrl and note fields in the info section', () => {
+    // Given an ItemForm rendering the info section
+    render(<ItemForm onSubmit={vi.fn()} sections={['info']} />)
+
+    // Then the new info fields are shown
+    expect(
+      screen.getByRole('textbox', { name: /wikidata/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /note/i })).toBeInTheDocument()
+  })
+
+  it('renders packageUnit in the stock section, not the info-only section', () => {
+    // Given an info-only render
+    const { rerender } = render(
+      <ItemForm onSubmit={vi.fn()} sections={['info']} />,
+    )
+
+    // Then packageUnit is NOT present in the info section
+    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
+
+    // When the stock section is rendered
+    rerender(<ItemForm onSubmit={vi.fn()} sections={['stock']} />)
+
+    // Then packageUnit IS present in the stock section
+    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
+  })
+
+  it('allows an empty wikidataUrl without showing a validation error', () => {
+    // Given an info form with no wikidataUrl
+    render(<ItemForm onSubmit={vi.fn()} sections={['info']} />)
+
+    // Then no wikidata validation error is shown
+    expect(screen.queryByText(/valid http\(s\)/i)).not.toBeInTheDocument()
+  })
+
+  it('flags a malformed wikidataUrl but keeps submit available', async () => {
+    // Given an info form
+    const user = userEvent.setup()
+    render(<ItemForm onSubmit={vi.fn()} initialValues={{ name: 'Milk' }} />)
+
+    // When user types a malformed URL
+    await user.type(
+      screen.getByRole('textbox', { name: /wikidata/i }),
+      'not-a-url',
+    )
+
+    // Then a non-blocking validation message is shown
+    expect(screen.getByText(/valid http\(s\)/i)).toBeInTheDocument()
+    // And the submit button is still enabled (validation is non-blocking)
+    expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
+  })
+
+  it('marks the form dirty and includes the note in the submit payload', async () => {
+    // Given an edit-mode info form with a dirty handler
+    const user = userEvent.setup()
+    const handleDirtyChange = vi.fn()
+    const handleSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialValues={{ name: 'Milk' }}
+        sections={['info']}
+        onSubmit={handleSubmit}
+        onDirtyChange={handleDirtyChange}
+      />,
+    )
+
+    // When user edits the note field
+    await user.type(
+      screen.getByRole('textbox', { name: /note/i }),
+      'Buy organic',
+    )
+
+    // Then the form is marked dirty
+    expect(handleDirtyChange).toHaveBeenCalledWith(true)
+
+    // And submitting includes the note in the payload
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(handleSubmit).toHaveBeenCalledOnce()
+    expect(handleSubmit.mock.calls[0][0].note).toBe('Buy organic')
+  })
+
+  it('includes a valid wikidataUrl in the submit payload', async () => {
+    // Given a create-mode info form
+    const user = userEvent.setup()
+    const handleSubmit = vi.fn()
+    render(<ItemForm onSubmit={handleSubmit} sections={['info']} />)
+
+    // When user fills name and a valid wikidataUrl
+    await user.type(screen.getByRole('textbox', { name: /name/i }), 'Milk')
+    await user.type(
+      screen.getByRole('textbox', { name: /wikidata/i }),
+      'https://www.wikidata.org/wiki/Q8495',
+    )
+
+    // Then the submit payload carries the wikidataUrl
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(handleSubmit).toHaveBeenCalledOnce()
+    expect(handleSubmit.mock.calls[0][0].wikidataUrl).toBe(
+      'https://www.wikidata.org/wiki/Q8495',
+    )
   })
 })
 
@@ -207,7 +311,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     amountPerPackage: '',
   }
 
-  it('renders Stock Status section when sections includes stock', () => {
+  it('renders the stock fields when sections includes stock', () => {
     // Given an ItemForm in edit mode with all sections
     render(
       <ItemForm
@@ -218,8 +322,8 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
       />,
     )
 
-    // Then the Stock Status section is shown
-    expect(screen.getByText('Stock Status')).toBeInTheDocument()
+    // Then the stock fields (Package Unit) are shown
+    expect(screen.getByLabelText(/Package Unit/i)).toBeInTheDocument()
   })
 
   it('submit button disabled when form is clean', () => {

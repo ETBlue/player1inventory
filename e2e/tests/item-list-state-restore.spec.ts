@@ -267,7 +267,8 @@ test('user can navigate to item detail and back with search state preserved', as
   await pantry.getItemCard('Milk').click()
   await page.waitForURL(/\/items\//)
 
-  // And clicks the back button (aria-label="Go back", src/routes/items/$id.tsx:111)
+  // And clicks the back button (aria-label="Go back" from LayoutInnerPages,
+  // wired via onBack={handleBackClick} in src/routes/items/$id.tsx)
   await page.getByRole('button', { name: 'Go back' }).click()
   // Wait for URL to return to pantry root — pathname is '/' but may include '?q=milk'
   await page.waitForURL((url) => url.pathname === '/')

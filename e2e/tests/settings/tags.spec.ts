@@ -471,25 +471,27 @@ test.describe('new tag from item tags tab', () => {
     // Capture the item ID now (while on the item page) before navigating away
     const itemId = item.getCurrentItemId()
 
-    // When: navigate to the item's tags tab
-    await page.goto(`/items/${itemId}/tags`)
+    // When: navigate to the item's tags tab (now under the Relation submenu)
+    await page.goto(`/items/${itemId}/relation/tags`)
 
-    // And: click "New Tag" under the "Fruit" section, type "Fresh", submit
-    await page.getByRole('button', { name: /new tag/i }).first().click()
+    // And: click "New Tag" under the "Fruit" section, type "Fresh", submit.
+    // Use exact: true so "New Tag" does not also match the "New Tag Type" button
+    // (both live on /items/$id/relation/tags — src/routes/items/$id/relation/tags.tsx).
+    await page.getByRole('button', { name: 'New Tag', exact: true }).first().click()
     // AddNameDialog input: label "Name" (src/components/AddNameDialog/index.tsx:41)
     await page.getByRole('dialog').getByLabel('Name').fill('Fresh')
     await page.getByRole('dialog').getByRole('button', { name: /add tag/i }).click()
 
     // Then: the "Fresh" badge is visible and in a selected/pressed state (aria-pressed=true)
     // Tag badges on item tags tab: role="button" aria-pressed={isSelected}
-    // (src/routes/items/$id/tags.tsx:96-97)
+    // (src/routes/items/$id/relation/tags.tsx)
     await expect(
       page.getByRole('button', { name: /fresh/i, pressed: true })
     ).toBeVisible()
 
     // And: persists after navigating away and back to the tags tab
     await pantry.navigateTo()
-    await page.goto(`/items/${itemId}/tags`)
+    await page.goto(`/items/${itemId}/relation/tags`)
 
     // The "Fresh" badge should still be selected (assigned to the item)
     await expect(

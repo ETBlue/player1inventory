@@ -5,6 +5,11 @@ export type ExpirationMode = 'disabled' | 'date' | 'days from purchase'
 export interface Item {
   id: string
   name: string
+  // Full URL to the Wikidata entity (e.g. https://www.wikidata.org/wiki/Q...);
+  // future source for name internationalization. Optional, non-indexed.
+  wikidataUrl?: string
+  // Free-text notes / links about the item. Optional, non-indexed.
+  note?: string
   tagIds: string[]
   vendorIds?: string[]
 

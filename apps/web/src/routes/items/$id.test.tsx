@@ -29,9 +29,15 @@ describe('Item detail page - manual quantity input', () => {
     sessionStorage.clear()
   })
 
-  const renderItemDetailPage = (itemId: string) => {
+  // Stock fields (packed/unpacked/measurement/expiration/consume) now live on
+  // the dedicated Stock tab at `/items/$id/stock`. Default the helper there so
+  // the manual-quantity tests exercise the stock form.
+  const renderItemDetailPage = (
+    itemId: string,
+    initialPath = `/items/${itemId}/stock`,
+  ) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [initialPath],
     })
     const router = createRouter({ routeTree, history })
 
@@ -759,7 +765,7 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('user can see the vendors tab icon', async () => {
+  it('user can see the relation tab icon', async () => {
     // Given an item
     const item = await createItem({
       name: 'Test Item',
@@ -780,10 +786,11 @@ describe('Item detail page - manual quantity input', () => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
     })
 
-    // Then a link to the vendors tab exists
-    const vendorsHref = `/items/${item.id}/vendors`
+    // Then a link to the relation tab exists (tags/vendors/recipes now live
+    // under the relation submenu)
+    const relationHref = `/items/${item.id}/relation`
     const allLinks = screen.getAllByRole('link')
-    expect(allLinks.some((l) => l.getAttribute('href') === vendorsHref)).toBe(
+    expect(allLinks.some((l) => l.getAttribute('href') === relationHref)).toBe(
       true,
     )
   })
@@ -810,7 +817,7 @@ describe('Item detail page - manual quantity input', () => {
           router={createRouter({
             routeTree,
             history: createMemoryHistory({
-              initialEntries: [`/items/${item.id}`],
+              initialEntries: [`/items/${item.id}/stock`],
             }),
           })}
         />
@@ -840,7 +847,7 @@ describe('Item detail page - manual quantity input', () => {
           router={createRouter({
             routeTree,
             history: createMemoryHistory({
-              initialEntries: [`/items/${item.id}`],
+              initialEntries: [`/items/${item.id}/stock`],
             }),
           })}
         />
@@ -914,7 +921,8 @@ describe('Item detail page - manual quantity input', () => {
       JSON.stringify(['/', `/items/${item.id}`]),
     )
 
-    renderItemDetailPage(item.id)
+    // Delete lives on the Info tab (index route)
+    renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
@@ -1024,11 +1032,18 @@ describe('Item detail page - hierarchical navigation', () => {
 
     sessionStorage.setItem(
       'app-navigation-history',
-      JSON.stringify(['/', `/items/${item.id}`, `/items/${item.id}/tags`]),
+      JSON.stringify([
+        '/',
+        `/items/${item.id}`,
+        `/items/${item.id}/relation/tags`,
+      ]),
     )
 
     // When rendering tags tab
-    const router = renderItemDetailPage(item.id, `/items/${item.id}/tags`)
+    const router = renderItemDetailPage(
+      item.id,
+      `/items/${item.id}/relation/tags`,
+    )
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
@@ -1286,7 +1301,7 @@ describe('Item detail page - expiration field split', () => {
 
   const renderItemDetailPage = (itemId: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [`/items/${itemId}/stock`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1393,7 +1408,7 @@ describe('consumeAmount change — recipe adjustment', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [`/items/${itemId}/stock`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1588,7 +1603,7 @@ describe('targetUnit change — recipe adjustment', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [`/items/${itemId}/stock`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1781,5 +1796,208 @@ describe('targetUnit change — recipe adjustment', () => {
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('Item detail page - toolbar tabs', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (itemId: string, initialPath?: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [initialPath || `/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  it('user sees the four toolbar tabs in order: info, stock, relation, log', async () => {
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // Then the toolbar links appear in the expected order:
+    // Info (index) · Stock · Relation · Log.
+    const links = screen.getAllByRole('link')
+    const hrefs = links.map((l) => l.getAttribute('href'))
+    const indexHref = `/items/${item.id}`
+    const stockHref = `/items/${item.id}/stock`
+    const relationHref = `/items/${item.id}/relation`
+    const logHref = `/items/${item.id}/log`
+
+    expect(hrefs).toContain(indexHref)
+    expect(hrefs).toContain(stockHref)
+    expect(hrefs).toContain(relationHref)
+    expect(hrefs).toContain(logHref)
+
+    const indexPos = hrefs.indexOf(indexHref)
+    const stockPos = hrefs.indexOf(stockHref)
+    const relationPos = hrefs.indexOf(relationHref)
+    const logPos = hrefs.indexOf(logHref)
+
+    // Stock comes immediately after Info; Relation between Stock and Log.
+    expect(stockPos).toBe(indexPos + 1)
+    expect(relationPos).toBe(stockPos + 1)
+    expect(logPos).toBe(relationPos + 1)
+
+    // The three old top-level toolbar buttons are gone.
+    expect(hrefs).not.toContain(`/items/${item.id}/tags`)
+    expect(hrefs).not.toContain(`/items/${item.id}/vendors`)
+    expect(hrefs).not.toContain(`/items/${item.id}/recipes`)
+  })
+
+  it('user can open the Relation tab and lands on tags with the submenu', async () => {
+    const user = userEvent.setup()
+
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    const router = renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // When user clicks the Relation toolbar button
+    const relationLink = screen
+      .getAllByRole('link')
+      .find((l) => l.getAttribute('href') === `/items/${item.id}/relation`)
+    expect(relationLink).toBeDefined()
+    if (relationLink) await user.click(relationLink)
+
+    // Then it lands on the tags subtab (default redirect)
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        `/items/${item.id}/relation/tags`,
+      )
+    })
+
+    // And the submenu exposes the tags / vendors / recipes subtab links
+    const subHrefs = screen
+      .getAllByRole('link')
+      .map((l) => l.getAttribute('href'))
+    expect(subHrefs).toContain(`/items/${item.id}/relation/tags`)
+    expect(subHrefs).toContain(`/items/${item.id}/relation/vendors`)
+    expect(subHrefs).toContain(`/items/${item.id}/relation/recipes`)
+  })
+
+  it('user sees discard dialog when leaving the Info tab with unsaved changes', async () => {
+    const user = userEvent.setup()
+
+    // Given an item shown on the Info tab
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id, `/items/${item.id}`)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument()
+    })
+
+    // When the user edits the name (making the Info form dirty)
+    const nameInput = screen.getByLabelText(/^name$/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Renamed Item')
+
+    // And clicks another tab (Stock)
+    const stockLink = screen
+      .getAllByRole('link')
+      .find((l) => l.getAttribute('href') === `/items/${item.id}/stock`)
+    expect(stockLink).toBeDefined()
+    if (stockLink) await user.click(stockLink)
+
+    // Then the discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    })
+  })
+
+  it('user sees discard dialog when leaving the Stock tab with unsaved changes', async () => {
+    const user = userEvent.setup()
+
+    // Given an item shown on the Stock tab
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id, `/items/${item.id}/stock`)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+
+    // When the user edits packed quantity (making the Stock form dirty)
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+
+    // And clicks another tab (Info / index)
+    const infoLink = screen
+      .getAllByRole('link')
+      .find((l) => l.getAttribute('href') === `/items/${item.id}`)
+    expect(infoLink).toBeDefined()
+    if (infoLink) await user.click(infoLink)
+
+    // Then the discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    })
   })
 })

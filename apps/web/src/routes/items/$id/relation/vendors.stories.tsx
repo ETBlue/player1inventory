@@ -8,13 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createItem, createTag, createTagType } from '@/db/operations'
+import { createItem, createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
-import { TagColor } from '@/types'
 
 const meta = {
-  title: 'Pages/Item/Detail/Tag',
+  title: 'Pages/Item/Detail/Vendor',
   parameters: {
     layout: 'fullscreen',
   },
@@ -38,12 +37,11 @@ function DefaultStory() {
       await db.delete()
       await db.open()
 
-      const tagType = await createTagType({ name: 'Season' })
-      await createTag({ name: 'Summer', typeId: tagType.id })
-      await createTag({ name: 'Winter', typeId: tagType.id })
+      await createVendor('Costco')
+      await createVendor('Whole Foods')
 
       const item = await createItem({
-        name: 'Butter',
+        name: 'Orange Juice',
         tagIds: [],
         targetUnit: 'package',
         targetQuantity: 3,
@@ -63,7 +61,9 @@ function DefaultStory() {
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/tags`] }),
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/relation/vendors`],
+    }),
     context: { queryClient },
   })
 
@@ -76,7 +76,7 @@ function DefaultStory() {
   )
 }
 
-function WithAssignedTagsStory() {
+function WithAssignedVendorsStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -91,13 +91,64 @@ function WithAssignedTagsStory() {
       await db.delete()
       await db.open()
 
-      const tagType = await createTagType({ name: 'Texture' })
-      const tag1 = await createTag({ name: 'Creamy', typeId: tagType.id })
-      const tag2 = await createTag({ name: 'Crunchy', typeId: tagType.id })
+      const vendor1 = await createVendor('Costco')
+      const vendor2 = await createVendor("Trader Joe's")
 
       const item = await createItem({
-        name: 'Cheese',
-        tagIds: [tag1.id, tag2.id],
+        name: 'Pasta',
+        tagIds: [],
+        vendorIds: [vendor1.id, vendor2.id],
+        targetUnit: 'package',
+        targetQuantity: 5,
+        refillThreshold: 2,
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/relation/vendors`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function EmptyVendorsStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Apple',
+        tagIds: [],
         targetUnit: 'package',
         targetQuantity: 2,
         refillThreshold: 1,
@@ -116,128 +167,9 @@ function WithAssignedTagsStory() {
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/tags`] }),
-    context: { queryClient },
-  })
-
-  return (
-    <ApolloProvider client={noopApolloClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ApolloProvider>
-  )
-}
-
-function EmptyTagTypesStory() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-  )
-  const [ready, setReady] = useState(false)
-  const [itemId, setItemId] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function setup() {
-      await db.delete()
-      await db.open()
-
-      const item = await createItem({
-        name: 'Yogurt',
-        tagIds: [],
-        targetUnit: 'container',
-        targetQuantity: 4,
-        refillThreshold: 1,
-        packedQuantity: 2,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      setItemId(item.id)
-      setReady(true)
-    }
-    setup()
-  }, [])
-
-  if (!ready || !itemId) return <div>Loading...</div>
-
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/tags`] }),
-    context: { queryClient },
-  })
-
-  return (
-    <ApolloProvider client={noopApolloClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ApolloProvider>
-  )
-}
-
-function WithNestedTagsStory() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      }),
-  )
-  const [ready, setReady] = useState(false)
-  const [itemId, setItemId] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function setup() {
-      await db.delete()
-      await db.open()
-
-      const tagType = await createTagType({
-        name: 'Diet',
-        color: TagColor.green,
-      })
-      // Top-level tags
-      const vegan = await createTag({ name: 'Vegan', typeId: tagType.id })
-      const vegetarian = await createTag({
-        name: 'Vegetarian',
-        typeId: tagType.id,
-      })
-      // Child tags nested under Vegan
-      const rawVegan = await createTag({
-        name: 'Raw Vegan',
-        typeId: tagType.id,
-        parentId: vegan.id,
-      })
-      // Child tag nested under Vegetarian
-      await createTag({
-        name: 'Lacto-Ovo',
-        typeId: tagType.id,
-        parentId: vegetarian.id,
-      })
-
-      const item = await createItem({
-        name: 'Almond Milk',
-        tagIds: [vegan.id, rawVegan.id],
-        targetUnit: 'carton',
-        targetQuantity: 4,
-        refillThreshold: 1,
-        packedQuantity: 2,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
-
-      setItemId(item.id)
-      setReady(true)
-    }
-    setup()
-  }, [])
-
-  if (!ready || !itemId) return <div>Loading...</div>
-
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/tags`] }),
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/relation/vendors`],
+    }),
     context: { queryClient },
   })
 
@@ -254,14 +186,10 @@ export const Default: Story = {
   render: () => <DefaultStory />,
 }
 
-export const WithAssignedTags: Story = {
-  render: () => <WithAssignedTagsStory />,
+export const WithAssignedVendors: Story = {
+  render: () => <WithAssignedVendorsStory />,
 }
 
-export const EmptyTagTypes: Story = {
-  render: () => <EmptyTagTypesStory />,
-}
-
-export const WithNestedTags: Story = {
-  render: () => <WithNestedTagsStory />,
+export const EmptyVendors: Story = {
+  render: () => <EmptyVendorsStory />,
 }

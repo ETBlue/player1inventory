@@ -198,10 +198,23 @@
         "placeholder": "e.g., Pasta, Milk Tea"
       }
     },
+    "info": {
+      "wikidataUrl": {
+        "label": "Wikidata URL",
+        "placeholder": "https://www.wikidata.org/wiki/Q...",
+        "invalid": "Enter a valid http(s):// URL, or leave empty."
+      },
+      "note": {
+        "label": "Note",
+        "placeholder": "Free-text notes or links"
+      }
+    },
     "detail": {
       "notFound": "Item not found",
       "tabs": {
         "info": "Item info tab",
+        "stock": "Item stock tab",
+        "relations": "Item relations tab",
         "tags": "Item tags tab",
         "vendors": "Item vendors tab",
         "recipes": "Item recipes tab",

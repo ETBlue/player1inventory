@@ -432,13 +432,13 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail tags tab (/items/:id/tags)
-  test('user can view item detail tags tab without accessibility violations', async ({ page }) => {
+  // Item detail stock tab (/items/:id/stock)
+  test('user can view item detail stock tab without accessibility violations', async ({ page }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item tags tab
-    await page.goto(`/items/${itemId}/tags`)
+    // When the user navigates to the item stock tab
+    await page.goto(`/items/${itemId}/stock`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -446,13 +446,13 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail vendors tab (/items/:id/vendors)
-  test('user can view item detail vendors tab without accessibility violations', async ({ page }) => {
+  // Item detail relation > tags subtab (/items/:id/relation/tags)
+  test('user can view item detail relation tags subtab without accessibility violations', async ({ page }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item vendors tab
-    await page.goto(`/items/${itemId}/vendors`)
+    // When the user navigates to the item relation tags subtab
+    await page.goto(`/items/${itemId}/relation/tags`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -460,13 +460,27 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail recipes tab (/items/:id/recipes)
-  test('user can view item detail recipes tab without accessibility violations', async ({ page }) => {
+  // Item detail relation > vendors subtab (/items/:id/relation/vendors)
+  test('user can view item detail relation vendors subtab without accessibility violations', async ({ page }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item recipes tab
-    await page.goto(`/items/${itemId}/recipes`)
+    // When the user navigates to the item relation vendors subtab (direct nav)
+    await page.goto(`/items/${itemId}/relation/vendors`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail relation > recipes subtab (/items/:id/relation/recipes)
+  test('user can view item detail relation recipes subtab without accessibility violations', async ({ page }) => {
+    // Given a seeded item
+    const itemId = await seedItem(page)
+
+    // When the user navigates to the item relation recipes subtab
+    await page.goto(`/items/${itemId}/relation/recipes`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -798,13 +812,13 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail tags tab (/items/:id/tags) in dark mode
-  test('user can view item detail tags tab without accessibility violations in dark mode', async ({ page }) => {
+  // Item detail stock tab (/items/:id/stock) in dark mode
+  test('user can view item detail stock tab without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item tags tab
-    await page.goto(`/items/${itemId}/tags`)
+    // When the user navigates to the item stock tab
+    await page.goto(`/items/${itemId}/stock`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -812,13 +826,13 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail vendors tab (/items/:id/vendors) in dark mode
-  test('user can view item detail vendors tab without accessibility violations in dark mode', async ({ page }) => {
+  // Item detail relation > tags subtab (/items/:id/relation/tags) in dark mode
+  test('user can view item detail relation tags subtab without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item vendors tab
-    await page.goto(`/items/${itemId}/vendors`)
+    // When the user navigates to the item relation tags subtab
+    await page.goto(`/items/${itemId}/relation/tags`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -826,13 +840,27 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail recipes tab (/items/:id/recipes) in dark mode
-  test('user can view item detail recipes tab without accessibility violations in dark mode', async ({ page }) => {
+  // Item detail relation > vendors subtab (/items/:id/relation/vendors) in dark mode
+  test('user can view item detail relation vendors subtab without accessibility violations in dark mode', async ({ page }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item recipes tab
-    await page.goto(`/items/${itemId}/recipes`)
+    // When the user navigates to the item relation vendors subtab (direct nav)
+    await page.goto(`/items/${itemId}/relation/vendors`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail relation > recipes subtab (/items/:id/relation/recipes) in dark mode
+  test('user can view item detail relation recipes subtab without accessibility violations in dark mode', async ({ page }) => {
+    // Given a seeded item
+    const itemId = await seedItem(page)
+
+    // When the user navigates to the item relation recipes subtab
+    await page.goto(`/items/${itemId}/relation/recipes`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
