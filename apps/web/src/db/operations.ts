@@ -4,6 +4,7 @@ import type {
   CartItem,
   InventoryLog,
   Item,
+  Location,
   Recipe,
   RecipeItem,
   Shelf,
@@ -12,7 +13,7 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
-import { TagColor } from '@/types'
+import { DEFAULT_LOCATION_ID, TagColor } from '@/types'
 import { db } from './index'
 
 // Item operations
@@ -622,6 +623,59 @@ export async function reorderShelfItems(
     itemIds: orderedItemIds,
     updatedAt: new Date(),
   })
+}
+
+// Location operations
+//
+// PR A — inert: locations exist but nothing else references them yet. Delete is
+// a plain row delete (no cascade). The default location (DEFAULT_LOCATION_ID)
+// is undeletable. Cloud sync is deferred; locations are local-first for now.
+
+export async function getLocations(): Promise<Location[]> {
+  return db.locations.orderBy('order').toArray()
+}
+
+export async function createLocation(name: string): Promise<Location> {
+  const now = new Date()
+  // Append after the current highest order.
+  const all = await db.locations.toArray()
+  const maxOrder = all.reduce((max, l) => Math.max(max, l.order), -1)
+  const location: Location = {
+    id: crypto.randomUUID(),
+    name: name.trim(),
+    order: maxOrder + 1,
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.locations.add(location)
+  return location
+}
+
+export async function updateLocation(
+  id: string,
+  updates: Partial<Omit<Location, 'id' | 'createdAt'>>,
+): Promise<Location> {
+  const patch = { ...updates, updatedAt: new Date() }
+  if (typeof patch.name === 'string') patch.name = patch.name.trim()
+  await db.locations.update(id, patch)
+  const updated = await db.locations.get(id)
+  if (!updated) throw new Error(`Location not found: ${id}`)
+  return updated
+}
+
+export async function deleteLocation(id: string): Promise<void> {
+  // The default location is undeletable.
+  if (id === DEFAULT_LOCATION_ID) {
+    throw new Error('The default location cannot be deleted.')
+  }
+  await db.locations.delete(id)
+}
+
+export async function reorderLocations(orderedIds: string[]): Promise<void> {
+  const now = new Date()
+  for (const [i, id] of orderedIds.entries()) {
+    await db.locations.update(id, { order: i, updatedAt: now })
+  }
 }
 
 // --- Seed Data ---

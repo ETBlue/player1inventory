@@ -1,5 +1,6 @@
 export * from './useInventoryLogs'
 export * from './useItems'
+export * from './useLocations'
 export * from './useOnboardingSetup'
 export * from './useShelves'
 export * from './useShoppingCart'

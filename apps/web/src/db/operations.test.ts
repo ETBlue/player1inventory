@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { TagColor } from '../types'
+import { DEFAULT_LOCATION_ID } from '../types'
 import { db } from './index'
 import {
   abandonCart,
@@ -7,12 +8,14 @@ import {
   addToCart,
   checkout,
   createItem,
+  createLocation,
   createRecipe,
   createShelf,
   createTag,
   createTagType,
   createVendor,
   deleteItem,
+  deleteLocation,
   deleteRecipe,
   deleteShelf,
   deleteTag,
@@ -33,6 +36,7 @@ import {
   getItemLogs,
   getLastPurchaseDate,
   getLastPurchasedByVendor,
+  getLocations,
   getRecipe,
   getRecipes,
   getShelf,
@@ -41,11 +45,13 @@ import {
   getVendors,
   listShelves,
   migrateTagColorTints,
+  reorderLocations,
   reorderShelfItems,
   reorderShelves,
   seedDefaultData,
   updateCartItem,
   updateItem,
+  updateLocation,
   updateRecipe,
   updateRecipeLastCookedAt,
   updateShelf,
@@ -1683,5 +1689,116 @@ describe('shelves', () => {
     // Then the shelf reflects the new item order
     const updated = await getShelf(shelf.id)
     expect(updated?.itemIds).toEqual(['id-3', 'id-1', 'id-2'])
+  })
+})
+
+describe('locations', () => {
+  beforeEach(async () => {
+    await db.locations.clear()
+  })
+
+  it('user can list locations ordered by order', async () => {
+    // Given three locations created out of order
+    const a = await createLocation('Office')
+    const b = await createLocation('Cabin')
+    await reorderLocations([b.id, a.id])
+
+    // When listing locations
+    const locations = await getLocations()
+
+    // Then they come back sorted by their order field
+    expect(locations.map((l) => l.name)).toEqual(['Cabin', 'Office'])
+  })
+
+  it('user can create a location', async () => {
+    // Given a location name
+    // When the user creates the location
+    const location = await createLocation('Beach House')
+
+    // Then it is persisted with id, order, and timestamps
+    expect(location.id).toBeDefined()
+    expect(location.name).toBe('Beach House')
+    expect(location.order).toBe(0)
+    expect(location.createdAt).toBeInstanceOf(Date)
+    expect(location.updatedAt).toBeInstanceOf(Date)
+  })
+
+  it('user can create a location with a trimmed name', async () => {
+    // Given a name with surrounding whitespace
+    // When the user creates the location
+    const location = await createLocation('  Garage  ')
+
+    // Then the stored name is trimmed
+    expect(location.name).toBe('Garage')
+  })
+
+  it('appends each new location after the current highest order', async () => {
+    // Given two existing locations
+    const first = await createLocation('First')
+    const second = await createLocation('Second')
+
+    // When a third is created
+    const third = await createLocation('Third')
+
+    // Then orders are sequential
+    expect(first.order).toBe(0)
+    expect(second.order).toBe(1)
+    expect(third.order).toBe(2)
+  })
+
+  it('user can rename a location', async () => {
+    // Given an existing location
+    const location = await createLocation('Old Name')
+
+    // When the user renames it
+    const updated = await updateLocation(location.id, { name: 'New Name' })
+
+    // Then the name is updated and updatedAt advances
+    expect(updated.name).toBe('New Name')
+    expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      location.updatedAt.getTime(),
+    )
+  })
+
+  it('user can delete a non-default location', async () => {
+    // Given a non-default location
+    const location = await createLocation('Temporary')
+
+    // When the user deletes it
+    await deleteLocation(location.id)
+
+    // Then it is gone
+    expect(await db.locations.get(location.id)).toBeUndefined()
+  })
+
+  it('user cannot delete the default location', async () => {
+    // Given the default location exists
+    const now = new Date()
+    await db.locations.put({
+      id: DEFAULT_LOCATION_ID,
+      name: 'My Home',
+      order: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    // When the user attempts to delete it
+    // Then it throws and the row remains
+    await expect(deleteLocation(DEFAULT_LOCATION_ID)).rejects.toThrow()
+    expect(await db.locations.get(DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+
+  it('user can reorder locations', async () => {
+    // Given three locations
+    const a = await createLocation('A')
+    const b = await createLocation('B')
+    const c = await createLocation('C')
+
+    // When the user reorders them C, A, B
+    await reorderLocations([c.id, a.id, b.id])
+
+    // Then the stored order reflects the new sequence
+    const locations = await getLocations()
+    expect(locations.map((l) => l.name)).toEqual(['C', 'A', 'B'])
   })
 })
