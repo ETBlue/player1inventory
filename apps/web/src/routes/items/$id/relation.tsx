@@ -12,7 +12,10 @@ function RelationLayout() {
 
   return (
     <div>
-      {/* Secondary submenu under the main toolbar */}
+      {/* Secondary submenu under the main toolbar.
+          The submenu sits on bg-background-base, so its links hover UP to
+          surface (hover:bg-background-base would be invisible here, unlike
+          the main toolbar which sits on surface and hovers down to base). */}
       <div className="flex items-center justify-center border-b-1 border-accessory-default px-2">
         <Link
           to="/items/$id/relation/tags"
