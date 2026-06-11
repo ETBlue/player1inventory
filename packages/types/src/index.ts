@@ -125,3 +125,15 @@ export interface Shelf {
   createdAt: Date
   updatedAt: Date
 }
+
+// The id of the default, undeletable location. Every fresh DB and every
+// upgraded DB is guaranteed to contain a Location with this id ('My Home').
+export const DEFAULT_LOCATION_ID = 'local'
+
+export interface Location {
+  id: string
+  name: string
+  order: number
+  createdAt: Date
+  updatedAt: Date
+}

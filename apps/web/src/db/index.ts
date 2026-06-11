@@ -3,6 +3,7 @@ import type {
   CartItem,
   InventoryLog,
   Item,
+  Location,
   Recipe,
   Shelf,
   ShoppingCart,
@@ -10,6 +11,7 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
+import { DEFAULT_LOCATION_ID } from '@/types'
 
 const db = new Dexie('Player1Inventory') as Dexie & {
   items: EntityTable<Item, 'id'>
@@ -21,6 +23,25 @@ const db = new Dexie('Player1Inventory') as Dexie & {
   vendors: EntityTable<Vendor, 'id'>
   recipes: EntityTable<Recipe, 'id'>
   shelves: EntityTable<Shelf, 'id'>
+  locations: EntityTable<Location, 'id'>
+}
+
+// Idempotently ensure the default location exists. Shared by the v14 upgrade
+// fn (existing users) and the `on('populate')` hook (fresh DBs).
+async function ensureDefaultLocation(
+  // biome-ignore lint/suspicious/noExplicitAny: Dexie tx/table typed loosely so this works from both upgrade (Transaction) and populate (db) contexts
+  locationsTable: any,
+): Promise<void> {
+  const existing = await locationsTable.get(DEFAULT_LOCATION_ID)
+  if (existing) return
+  const now = new Date()
+  await locationsTable.put({
+    id: DEFAULT_LOCATION_ID,
+    name: 'My Home',
+    order: 0,
+    createdAt: now,
+    updatedAt: now,
+  })
 }
 
 // Version 1: Original schema
@@ -263,5 +284,35 @@ db.version(13)
       await tx.table('shoppingCarts').delete(oldCart.id as string)
     }
   })
+
+// Version 14: Add locations table for the location feature (PR A — inert).
+// Seeds the default location 'local' ('My Home') for existing users on upgrade.
+// Brand-new / fresh DBs are seeded via the `on('populate')` hook below instead,
+// because Dexie only runs per-version upgrade fns when migrating from an older
+// version — never on first creation at the latest version.
+db.version(14)
+  .stores({
+    items: 'id, name, targetUnit, createdAt, updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade(async (tx) => {
+    await ensureDefaultLocation(tx.table('locations'))
+  })
+
+// Fresh-DB seed: `on('populate')` fires exactly once, when the database is
+// first created at the latest version (brand-new users). The v14 upgrade fn
+// above does NOT run in that case, so the default location is seeded here.
+db.on('populate', () => {
+  // Dexie runs this inside an open populate transaction; db.locations is valid.
+  return ensureDefaultLocation(db.locations)
+})
 
 export { db }
