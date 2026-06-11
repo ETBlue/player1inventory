@@ -45,6 +45,8 @@ interface Item {
 ```
 Optional, non-indexed → **no Dexie version bump**. `createItem`/`updateItem` in `apps/web/src/db/operations.ts` pass them through; default `undefined`.
 
+> **"No migration" ≠ "absent offline."** IndexedDB (via Dexie) is schemaless for non-indexed fields — `version().stores()` declares only each table's primary key and indexes, not its columns. So `db.items.put({ ...item, wikidataUrl, note })` stores and reads both fields immediately in offline mode with no schema change. A version bump is needed only when **indexes** change (e.g. adding `*tagIds`, re-keying a table); these fields are never queried/sorted on, so there's nothing to migrate. Existing records simply read back `undefined` until first saved — identical to every other optional `Item` field (`vendorIds?`, `packageUnit?`, `dueDate?`). The *only* place these fields need extra work to exist is the **cloud** side (GraphQL/Prisma `Item` type), which is part of the deferred cloud TODOs — not this local-first PR.
+
 **Info-tab inputs:**
 - `wikidataUrl`: single-line text input, optional, light URL validation (non-blocking — allow empty; if present, expect an `http(s)://` URL). Placeholder e.g. `https://www.wikidata.org/wiki/Q...`.
 - `note`: multiline `textarea`, optional. Not capitalized (free text / links).
