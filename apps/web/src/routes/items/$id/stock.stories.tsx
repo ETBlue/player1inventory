@@ -13,7 +13,7 @@ import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
 const meta = {
-  title: 'Pages/Item/Info',
+  title: 'Pages/Item/Stock',
   parameters: {
     layout: 'fullscreen',
   },
@@ -22,7 +22,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function DefaultStory() {
+function PackageItemStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -40,6 +40,7 @@ function DefaultStory() {
       const item = await createItem({
         name: 'Milk',
         tagIds: [],
+        packageUnit: 'bottle',
         targetUnit: 'package',
         targetQuantity: 4,
         refillThreshold: 2,
@@ -58,7 +59,9 @@ function DefaultStory() {
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: [`/items/${itemId}`] }),
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/stock`],
+    }),
     context: { queryClient },
   })
 
@@ -71,7 +74,7 @@ function DefaultStory() {
   )
 }
 
-function WithInfoFieldsStory() {
+function MeasurementItemStory() {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -87,16 +90,17 @@ function WithInfoFieldsStory() {
       await db.open()
 
       const item = await createItem({
-        name: 'Organic Whole Milk',
+        name: 'Flour',
         tagIds: [],
-        wikidataUrl: 'https://www.wikidata.org/wiki/Q8495',
-        note: 'Buy the lactose-free variant for guests.',
-        targetUnit: 'package',
-        targetQuantity: 4,
-        refillThreshold: 2,
-        packedQuantity: 3,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
+        packageUnit: 'pack',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        targetUnit: 'measurement',
+        targetQuantity: 2000,
+        refillThreshold: 500,
+        packedQuantity: 2,
+        unpackedQuantity: 250,
+        consumeAmount: 100,
       })
 
       setItemId(item.id)
@@ -109,7 +113,9 @@ function WithInfoFieldsStory() {
 
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: [`/items/${itemId}`] }),
+    history: createMemoryHistory({
+      initialEntries: [`/items/${itemId}/stock`],
+    }),
     context: { queryClient },
   })
 
@@ -122,10 +128,10 @@ function WithInfoFieldsStory() {
   )
 }
 
-export const Default: Story = {
-  render: () => <DefaultStory />,
+export const PackageItem: Story = {
+  render: () => <PackageItemStory />,
 }
 
-export const WithInfoFields: Story = {
-  render: () => <WithInfoFieldsStory />,
+export const MeasurementItem: Story = {
+  render: () => <MeasurementItemStory />,
 }

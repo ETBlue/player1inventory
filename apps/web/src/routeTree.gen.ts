@@ -33,6 +33,7 @@ import { Route as SettingsShelvesShelfIdRouteImport } from './routes/settings/sh
 import { Route as SettingsRecipesIdRouteImport } from './routes/settings/recipes/$id'
 import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
 import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
+import { Route as ItemsIdStockRouteImport } from './routes/items/$id/stock'
 import { Route as ItemsIdRecipesRouteImport } from './routes/items/$id/recipes'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id/log'
 import { Route as SettingsVendorsIdIndexRouteImport } from './routes/settings/vendors/$id/index'
@@ -165,6 +166,11 @@ const ItemsIdTagsRoute = ItemsIdTagsRouteImport.update({
   path: '/tags',
   getParentRoute: () => ItemsIdRoute,
 } as any)
+const ItemsIdStockRoute = ItemsIdStockRouteImport.update({
+  id: '/stock',
+  path: '/stock',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
 const ItemsIdRecipesRoute = ItemsIdRecipesRouteImport.update({
   id: '/recipes',
   path: '/recipes',
@@ -240,6 +246,7 @@ export interface FileRoutesByFullPath {
   '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
+  '/items/$id/stock': typeof ItemsIdStockRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdRouteWithChildren
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/shopping': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
+  '/items/$id/stock': typeof ItemsIdStockRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/items/$id': typeof ItemsIdIndexRoute
@@ -305,6 +313,7 @@ export interface FileRoutesById {
   '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
   '/items/$id/recipes': typeof ItemsIdRecipesRoute
+  '/items/$id/stock': typeof ItemsIdStockRoute
   '/items/$id/tags': typeof ItemsIdTagsRoute
   '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/recipes/$id': typeof SettingsRecipesIdRouteWithChildren
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/shopping/'
     | '/items/$id/log'
     | '/items/$id/recipes'
+    | '/items/$id/stock'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/$id'
@@ -375,6 +385,7 @@ export interface FileRouteTypes {
     | '/shopping'
     | '/items/$id/log'
     | '/items/$id/recipes'
+    | '/items/$id/stock'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/items/$id'
@@ -408,6 +419,7 @@ export interface FileRouteTypes {
     | '/shopping/'
     | '/items/$id/log'
     | '/items/$id/recipes'
+    | '/items/$id/stock'
     | '/items/$id/tags'
     | '/items/$id/vendors'
     | '/settings/recipes/$id'
@@ -614,6 +626,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemsIdTagsRouteImport
       parentRoute: typeof ItemsIdRoute
     }
+    '/items/$id/stock': {
+      id: '/items/$id/stock'
+      path: '/stock'
+      fullPath: '/items/$id/stock'
+      preLoaderRoute: typeof ItemsIdStockRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
     '/items/$id/recipes': {
       id: '/items/$id/recipes'
       path: '/recipes'
@@ -711,6 +730,7 @@ const ShoppingRouteWithChildren = ShoppingRoute._addFileChildren(
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
   ItemsIdRecipesRoute: typeof ItemsIdRecipesRoute
+  ItemsIdStockRoute: typeof ItemsIdStockRoute
   ItemsIdTagsRoute: typeof ItemsIdTagsRoute
   ItemsIdVendorsRoute: typeof ItemsIdVendorsRoute
   ItemsIdIndexRoute: typeof ItemsIdIndexRoute
@@ -719,6 +739,7 @@ interface ItemsIdRouteChildren {
 const ItemsIdRouteChildren: ItemsIdRouteChildren = {
   ItemsIdLogRoute: ItemsIdLogRoute,
   ItemsIdRecipesRoute: ItemsIdRecipesRoute,
+  ItemsIdStockRoute: ItemsIdStockRoute,
   ItemsIdTagsRoute: ItemsIdTagsRoute,
   ItemsIdVendorsRoute: ItemsIdVendorsRoute,
   ItemsIdIndexRoute: ItemsIdIndexRoute,

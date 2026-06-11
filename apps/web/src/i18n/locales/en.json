@@ -213,6 +213,7 @@
       "notFound": "Item not found",
       "tabs": {
         "info": "Item info tab",
+        "stock": "Item stock tab",
         "tags": "Item tags tab",
         "vendors": "Item vendors tab",
         "recipes": "Item recipes tab",

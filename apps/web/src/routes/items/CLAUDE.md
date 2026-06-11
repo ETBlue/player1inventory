@@ -1,19 +1,26 @@
 ### Tabbed Item Form
 
-Item detail pages use a tabbed layout with three sections:
+Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · Tags · Vendors · Recipes · Log**.
 
-**1. Stock Status (default tab, `/items/$id`)**
-- Packed and unpacked quantity fields with Pack/Unpack buttons
+**1. Item Info (default tab, `/items/$id`, `Settings2` icon)**
+- Item name + `wikidataUrl` + `note` only (`ItemForm sections={['info']}`)
+- Save button (persists only name/wikidataUrl/note via `buildInfoUpdates`) — disabled when no changes made
+- Hosts the **Delete** button + cascade-delete dialog
+- Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
+
+**2. Stock (`/items/$id/stock`, `Boxes` icon)**
+- Package unit, packed/unpacked quantity fields with Pack/Unpack buttons (`ItemForm sections={['stock']}`)
 - Target quantity and refill threshold
 - Consumption amount settings
-- **Advanced Stock Status** subsection (always visible within Stock Status):
+- **Advanced Stock Status** subsection (always visible within Stock):
   - Measurement tracking toggle (Track in measurement switch)
   - Measurement unit and amount per package fields
   - Expiration mode select (none / specific date / days from purchase) and threshold
-- Save button disabled when no changes made
+- Save button (persists stock fields via `buildStockUpdates`) — disabled when no changes made
+- Hosts the **recipe-adjust dialog**: when `consumeAmount` or `targetUnit` changes affect a recipe's `defaultAmount`, a confirmation dialog lists adjustments before saving
+- Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
 
-**2. Item Info (same route, `/items/$id`)**
-- Item name and package unit only
+> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The other tabs (Tags/Vendors/Recipes/Log) apply changes immediately and never go dirty.
 
 **3. Tags (`/items/$id/tags`)**
 - Tag assignment interface with uppercase text styling for tag type names
@@ -75,8 +82,9 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
 **Files:**
 - `src/components/item/ItemForm/index.tsx` - Shared form component used by both edit and new item routes
-- `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard
-- `src/routes/items/$id/index.tsx` - Stock Status + Item Info form (uses ItemForm with `sections={['stock', 'info']}`)
+- `src/routes/items/$id.tsx` - Parent layout with tabs and navigation guard (dual-tab dirty guard via `isOnEditableTab`)
+- `src/routes/items/$id/index.tsx` - Info tab (uses ItemForm with `sections={['info']}` — name/wikidataUrl/note); hosts the Delete button. Stories at `$id/index.stories.tsx`
+- `src/routes/items/$id/stock.tsx` - Stock tab (uses ItemForm with `sections={['stock']}`); hosts the recipe-adjust dialog. Stories at `$id/stock.stories.tsx`, tests at `$id/stock.test.tsx`
 - `src/routes/items/$id/tags.tsx` - Tags tab implementation
 - `src/routes/items/$id/vendors.tsx` - Vendors tab implementation
 - `src/routes/items/$id/vendors.test.tsx` - Vendors tab tests
@@ -104,7 +112,7 @@ Users can manually set current inventory quantities in the item detail form:
 - No automatic normalization/packing
 - Use the **Pack** button in item detail form to manually pack complete units
 
-**Location:** Item detail page (`/items/$id`) via ItemForm component
+**Location:** Item detail Stock tab (`/items/$id/stock`) via ItemForm component
 
 **Behavior:**
 - Pre-populates with current `item.packedQuantity` and `item.unpackedQuantity`
@@ -114,6 +122,6 @@ Users can manually set current inventory quantities in the item detail form:
 - Use for initial setup, corrections, or adjustments
 
 **Files:**
-- `src/routes/items/$id/index.tsx` - Item detail form with quantity fields
+- `src/routes/items/$id/stock.tsx` - Stock tab form with quantity fields
 - `src/routes/items/$id.test.tsx` - Component tests
 - `src/lib/quantityUtils.ts` - packUnpacked() function

@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ChefHat, History, Settings2, Store, Tags } from 'lucide-react'
+import { Boxes, ChefHat, History, Settings2, Store, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -36,7 +36,12 @@ function ItemLayoutInner() {
   const { data: item, isLoading } = useItem(id)
   const { isDirty } = useItemLayout()
   const { goBack } = useAppNavigation('/')
-  const isOnStockTab = router.state.location.pathname === `/items/${id}`
+  // Both the Info tab (index, exact `/items/$id`) and the Stock tab
+  // (`/items/$id/stock`) render an editable ItemForm that registers dirty
+  // state. The dirty-navigation guard must fire when leaving either of them.
+  const currentPath = router.state.location.pathname
+  const isOnEditableTab =
+    currentPath === `/items/${id}` || currentPath === `/items/${id}/stock`
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -48,7 +53,7 @@ function ItemLayoutInner() {
     e: React.MouseEvent<HTMLAnchorElement>,
     path: string,
   ) => {
-    if (isOnStockTab && isDirty && router.state.location.pathname !== path) {
+    if (isOnEditableTab && isDirty && router.state.location.pathname !== path) {
       e.preventDefault()
       setPendingNavigation(path)
       setShowDiscardDialog(true)
@@ -57,7 +62,7 @@ function ItemLayoutInner() {
 
   // Handle back button click with dirty state guard
   const handleBackClick = () => {
-    if (isOnStockTab && isDirty) {
+    if (isOnEditableTab && isDirty) {
       setPendingNavigation('BACK')
       setShowDiscardDialog(true)
     } else {
@@ -109,6 +114,18 @@ function ItemLayoutInner() {
               onClick={(e) => handleTabClick(e, `/items/${id}`)}
             >
               <Settings2 className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/items/$id/stock"
+              params={{ id }}
+              aria-label={t('items.detail.tabs.stock')}
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              activeProps={{
+                className: 'border-foreground-muted',
+              }}
+              onClick={(e) => handleTabClick(e, `/items/${id}/stock`)}
+            >
+              <Boxes className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/tags"

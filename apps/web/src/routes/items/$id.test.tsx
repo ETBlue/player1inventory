@@ -29,9 +29,15 @@ describe('Item detail page - manual quantity input', () => {
     sessionStorage.clear()
   })
 
-  const renderItemDetailPage = (itemId: string) => {
+  // Stock fields (packed/unpacked/measurement/expiration/consume) now live on
+  // the dedicated Stock tab at `/items/$id/stock`. Default the helper there so
+  // the manual-quantity tests exercise the stock form.
+  const renderItemDetailPage = (
+    itemId: string,
+    initialPath = `/items/${itemId}/stock`,
+  ) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [initialPath],
     })
     const router = createRouter({ routeTree, history })
 
@@ -810,7 +816,7 @@ describe('Item detail page - manual quantity input', () => {
           router={createRouter({
             routeTree,
             history: createMemoryHistory({
-              initialEntries: [`/items/${item.id}`],
+              initialEntries: [`/items/${item.id}/stock`],
             }),
           })}
         />
@@ -840,7 +846,7 @@ describe('Item detail page - manual quantity input', () => {
           router={createRouter({
             routeTree,
             history: createMemoryHistory({
-              initialEntries: [`/items/${item.id}`],
+              initialEntries: [`/items/${item.id}/stock`],
             }),
           })}
         />
@@ -914,7 +920,8 @@ describe('Item detail page - manual quantity input', () => {
       JSON.stringify(['/', `/items/${item.id}`]),
     )
 
-    renderItemDetailPage(item.id)
+    // Delete lives on the Info tab (index route)
+    renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
@@ -1286,7 +1293,7 @@ describe('Item detail page - expiration field split', () => {
 
   const renderItemDetailPage = (itemId: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [`/items/${itemId}/stock`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1393,7 +1400,7 @@ describe('consumeAmount change — recipe adjustment', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [`/items/${itemId}/stock`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1588,7 +1595,7 @@ describe('targetUnit change — recipe adjustment', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}`],
+      initialEntries: [`/items/${itemId}/stock`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1781,5 +1788,152 @@ describe('targetUnit change — recipe adjustment', () => {
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('Item detail page - toolbar tabs', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (itemId: string, initialPath?: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [initialPath || `/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  it('user sees the five toolbar tabs in order: info, stock, tags, vendors, recipes, log', async () => {
+    // Given an item
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Item')).toBeInTheDocument()
+    })
+
+    // Then the toolbar links appear in the expected order, with Stock between
+    // Info and Tags.
+    const links = screen.getAllByRole('link')
+    const hrefs = links.map((l) => l.getAttribute('href'))
+    const indexHref = `/items/${item.id}`
+    const stockHref = `/items/${item.id}/stock`
+    const tagsHref = `/items/${item.id}/tags`
+
+    expect(hrefs).toContain(indexHref)
+    expect(hrefs).toContain(stockHref)
+
+    // Stock link comes immediately after the Info (index) link, and before Tags
+    const indexPos = hrefs.indexOf(indexHref)
+    const stockPos = hrefs.indexOf(stockHref)
+    const tagsPos = hrefs.indexOf(tagsHref)
+    expect(stockPos).toBe(indexPos + 1)
+    expect(stockPos).toBeLessThan(tagsPos)
+  })
+
+  it('user sees discard dialog when leaving the Info tab with unsaved changes', async () => {
+    const user = userEvent.setup()
+
+    // Given an item shown on the Info tab
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id, `/items/${item.id}`)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument()
+    })
+
+    // When the user edits the name (making the Info form dirty)
+    const nameInput = screen.getByLabelText(/^name$/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Renamed Item')
+
+    // And clicks another tab (Stock)
+    const stockLink = screen
+      .getAllByRole('link')
+      .find((l) => l.getAttribute('href') === `/items/${item.id}/stock`)
+    expect(stockLink).toBeDefined()
+    if (stockLink) await user.click(stockLink)
+
+    // Then the discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    })
+  })
+
+  it('user sees discard dialog when leaving the Stock tab with unsaved changes', async () => {
+    const user = userEvent.setup()
+
+    // Given an item shown on the Stock tab
+    const item = await createItem({
+      name: 'Test Item',
+      packageUnit: 'pack',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderItemDetailPage(item.id, `/items/${item.id}/stock`)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+
+    // When the user edits packed quantity (making the Stock form dirty)
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+
+    // And clicks another tab (Info / index)
+    const infoLink = screen
+      .getAllByRole('link')
+      .find((l) => l.getAttribute('href') === `/items/${item.id}`)
+    expect(infoLink).toBeDefined()
+    if (infoLink) await user.click(infoLink)
+
+    // Then the discard dialog appears
+    await waitFor(() => {
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    })
   })
 })
