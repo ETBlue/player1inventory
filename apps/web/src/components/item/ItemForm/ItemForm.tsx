@@ -272,12 +272,6 @@ export function ItemForm({
     >
       {showInfo && (
         <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-            <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">Item Info</h2>
-            <div className="h-px bg-accessory-emphasized" />
-          </div>
-
           <div>
             <Label htmlFor="name">Name</Label>
             <Input
@@ -326,12 +320,6 @@ export function ItemForm({
 
       {showStock && (
         <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-            <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">Stock Status</h2>
-            <div className="h-px bg-accessory-emphasized" />
-          </div>
-
           <div>
             <Label htmlFor="packageUnit">Package Unit</Label>
             <Input

@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { ChefHat, ListTodo, Settings2 } from 'lucide-react'
+import { ChefHat, Info, ListTodo } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -96,17 +96,17 @@ function RecipeDetailLayoutInner() {
               params={{ id }}
               activeOptions={{ exact: true }}
               aria-label="Recipe info tab"
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) => handleTabClick(e, `/settings/recipes/${id}`)}
             >
-              <Settings2 className="h-4 w-4" />
+              <Info className="h-4 w-4" />
             </Link>
             <Link
               to="/settings/recipes/$id/items"
               params={{ id }}
               aria-label="Recipe items tab"
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
               activeProps={{ className: 'border-foreground-muted' }}
               onClick={(e) =>
                 handleTabClick(e, `/settings/recipes/${id}/items`)

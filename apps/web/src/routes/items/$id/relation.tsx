@@ -13,12 +13,12 @@ function RelationLayout() {
   return (
     <div>
       {/* Secondary submenu under the main toolbar */}
-      <div className="flex items-center border-b border-accessory-default px-2">
+      <div className="flex items-center justify-center border-b-1 border-accessory-default px-2">
         <Link
           to="/items/$id/relation/tags"
           params={{ id }}
           aria-label={t('items.detail.tabs.tags')}
-          className="px-3 py-3 -mb-[1px] border-b-2 border-transparent hover:bg-background-surface transition-colors"
+          className="px-3 py-3 -mb-[1px] border-b-1 border-accessory-default hover:bg-background-surface transition-colors"
           activeProps={{
             className: 'border-foreground-muted',
           }}
@@ -29,7 +29,7 @@ function RelationLayout() {
           to="/items/$id/relation/vendors"
           params={{ id }}
           aria-label={t('items.detail.tabs.vendors')}
-          className="px-3 py-3 -mb-[1px] border-b-2 border-transparent hover:bg-background-surface transition-colors"
+          className="px-3 py-3 -mb-[1px] border-b-1 border-accessory-default hover:bg-background-surface transition-colors"
           activeProps={{
             className: 'border-foreground-muted',
           }}
@@ -40,7 +40,7 @@ function RelationLayout() {
           to="/items/$id/relation/recipes"
           params={{ id }}
           aria-label={t('items.detail.tabs.recipes')}
-          className="px-3 py-3 -mb-[1px] border-b-2 border-transparent hover:bg-background-surface transition-colors"
+          className="px-3 py-3 -mb-[1px] border-b-1 border-accessory-default hover:bg-background-surface transition-colors"
           activeProps={{
             className: 'border-foreground-muted',
           }}

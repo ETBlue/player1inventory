@@ -4,21 +4,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { ItemForm } from '.'
 
 describe('ItemForm — create mode (no onDirtyChange)', () => {
-  it('renders only Item Info section by default', () => {
+  it('renders only the info fields by default', () => {
     // Given an ItemForm in create mode with default sections
     render(<ItemForm onSubmit={vi.fn()} />)
 
-    // Then Item Info section is shown and Stock Status is not
-    expect(screen.getByText('Item Info')).toBeInTheDocument()
-    expect(screen.queryByText('Stock Status')).not.toBeInTheDocument()
+    // Then info fields (Name) are shown and stock fields (Package Unit) are not
+    expect(screen.getByLabelText(/Name/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Package Unit/i)).not.toBeInTheDocument()
   })
 
-  it('does not render Stock Status section unless sections prop includes stock', () => {
+  it('does not render the stock fields unless sections prop includes stock', () => {
     // Given an ItemForm with sections explicitly excluding stock
     render(<ItemForm onSubmit={vi.fn()} sections={['info']} />)
 
-    // Then Stock Status section is not shown
-    expect(screen.queryByText('Stock Status')).not.toBeInTheDocument()
+    // Then stock fields (Package Unit) are not shown
+    expect(screen.queryByLabelText(/Package Unit/i)).not.toBeInTheDocument()
   })
 
   it('submit button is enabled when name is filled and form is valid', async () => {
@@ -311,7 +311,7 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
     amountPerPackage: '',
   }
 
-  it('renders Stock Status section when sections includes stock', () => {
+  it('renders the stock fields when sections includes stock', () => {
     // Given an ItemForm in edit mode with all sections
     render(
       <ItemForm
@@ -322,8 +322,8 @@ describe('ItemForm — edit mode (with onDirtyChange)', () => {
       />,
     )
 
-    // Then the Stock Status section is shown
-    expect(screen.getByText('Stock Status')).toBeInTheDocument()
+    // Then the stock fields (Package Unit) are shown
+    expect(screen.getByLabelText(/Package Unit/i)).toBeInTheDocument()
   })
 
   it('submit button disabled when form is clean', () => {

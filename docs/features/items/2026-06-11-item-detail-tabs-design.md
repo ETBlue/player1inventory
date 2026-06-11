@@ -14,7 +14,7 @@ Restructure the item-detail tabs so stock has its own tab and the toolbar has ro
 
 | | Before (5) | After (4) |
 |---|---|---|
-| 1 | Info+Stock (`Settings2`) → `/items/$id` | **Info** (`Settings2`) → `/items/$id` |
+| 1 | Info+Stock (`Settings2`) → `/items/$id` | **Info** (`Info`) → `/items/$id` |
 | 2 | Tags (`Tags`) → `/items/$id/tags` | **Stock** (new icon) → `/items/$id/stock` |
 | 3 | Vendors (`Store`) → `/items/$id/vendors` | **Relation** (new icon) → `/items/$id/relation` |
 | 4 | Recipes (`ChefHat`) → `/items/$id/recipes` | **Log** (`History`) → `/items/$id/log` |
@@ -22,9 +22,10 @@ Restructure the item-detail tabs so stock has its own tab and the toolbar has ro
 
 Tags / Vendors / Recipes move *into* the Relation tab's submenu (below the toolbar).
 
-**Icon + i18n proposals** (finalise during impl):
-- Stock icon: lucide `Boxes` (or `Package`); aria-label key `items.detail.tabs.stock` → "Item stock tab".
-- Relation icon: lucide `Waypoints` (or `Network`); aria-label key `items.detail.tabs.relations` → "Item relations tab".
+**Icons + i18n** (as implemented):
+- Info icon: lucide `Info` (was `Settings2`); aria-label key `items.detail.tabs.info`.
+- Stock icon: lucide `Calculator`; aria-label key `items.detail.tabs.stock` → "Item stock tab".
+- Relation icon: lucide `Waypoints`; aria-label key `items.detail.tabs.relations` → "Item relations tab".
 
 ## Field placement
 
@@ -58,7 +59,7 @@ TanStack file-based routes under `apps/web/src/routes/items/`:
 - **`$id/index.tsx`** — becomes the **Info** tab: `ItemForm sections={['info']}` + delete button. Gains a save button + dirty guard (name/wikidata/note are editable).
 - **`$id/stock.tsx`** (new) — the **Stock** tab: `ItemForm sections={['stock']}` + the stock save/dirty behaviour that the combined tab has today (recipe-adjust dialog logic moves here with the stock fields).
 - **`$id/relation.tsx`** (new) — **Relation** layout: renders a secondary submenu (Tags / Vendors / Recipes icon buttons) under the main toolbar + `<Outlet/>`.
-  - **`$id/relation/index.tsx`** (new) — redirect to `…/relation/vendors` (default subtab).
+  - **`$id/relation/index.tsx`** (new) — redirect to `…/relation/tags` (default subtab).
   - **`$id/relation/tags.tsx`**, **`relation/vendors.tsx`**, **`relation/recipes.tsx`** — relocated content from today's `$id/tags.tsx`, `$id/vendors.tsx`, `$id/recipes.tsx` (immediate-apply, unchanged behaviour). Old files removed.
 - **`$id/log.tsx`** — unchanged.
 - **`$id.tsx`** (layout): toolbar rebuilt to the 4-button set; the Relation button is active on any `…/relation/*` route. Dirty-guard now applies when leaving **either** the Info or Stock tab.
@@ -71,7 +72,7 @@ Today only the combined Stock+Info tab is dirty-guarded via `useItemLayout()` + 
 
 ## Relation submenu
 
-`$id/relation.tsx` renders, under the main `LayoutInnerPages` toolbar, a horizontal secondary nav with three `Link` icon buttons (Tags `Tags`, Vendors `Store`, Recipes `ChefHat`) — each active-highlighted on its subroute — plus the routed `<Outlet/>`. Reuse the existing aria-label keys (`items.detail.tabs.tags|vendors|recipes`). Default landing = vendors.
+`$id/relation.tsx` renders, under the main `LayoutInnerPages` toolbar, a horizontal secondary nav with three `Link` icon buttons (Tags `Tags`, Vendors `Store`, Recipes `ChefHat`) — each active-highlighted on its subroute — plus the routed `<Outlet/>`. Reuse the existing aria-label keys (`items.detail.tabs.tags|vendors|recipes`). Default landing = tags.
 
 ## Stories, tests, i18n
 

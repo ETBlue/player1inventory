@@ -1876,7 +1876,7 @@ describe('Item detail page - toolbar tabs', () => {
     expect(hrefs).not.toContain(`/items/${item.id}/recipes`)
   })
 
-  it('user can open the Relation tab and lands on vendors with the submenu', async () => {
+  it('user can open the Relation tab and lands on tags with the submenu', async () => {
     const user = userEvent.setup()
 
     // Given an item
@@ -1905,10 +1905,10 @@ describe('Item detail page - toolbar tabs', () => {
     expect(relationLink).toBeDefined()
     if (relationLink) await user.click(relationLink)
 
-    // Then it lands on the vendors subtab (default redirect)
+    // Then it lands on the tags subtab (default redirect)
     await waitFor(() => {
       expect(router.state.location.pathname).toBe(
-        `/items/${item.id}/relation/vendors`,
+        `/items/${item.id}/relation/tags`,
       )
     })
 

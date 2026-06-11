@@ -465,7 +465,7 @@ test.describe('detail page a11y', () => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation vendors subtab (default landing)
+    // When the user navigates to the item relation vendors subtab (direct nav)
     await page.goto(`/items/${itemId}/relation/vendors`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
@@ -845,7 +845,7 @@ test.describe('dark mode a11y', () => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation vendors subtab (default landing)
+    // When the user navigates to the item relation vendors subtab (direct nav)
     await page.goto(`/items/${itemId}/relation/vendors`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)

@@ -80,7 +80,7 @@ function RelationStory({
   )
 }
 
-// Default: visiting `/items/$id/relation` redirects to the vendors subtab.
+// Default: visiting `/items/$id/relation` redirects to the tags subtab.
 export const Default: Story = {
   render: () => <RelationStory initialPath={(id) => `/items/${id}/relation`} />,
 }

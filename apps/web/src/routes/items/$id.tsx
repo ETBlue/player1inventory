@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { Boxes, History, Settings2, Waypoints } from 'lucide-react'
+import { Calculator, History, Info, Waypoints } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -107,31 +107,31 @@ function ItemLayoutInner() {
               params={{ id }}
               activeOptions={{ exact: true }}
               aria-label={t('items.detail.tabs.info')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
               }}
               onClick={(e) => handleTabClick(e, `/items/${id}`)}
             >
-              <Settings2 className="h-4 w-4" />
+              <Info className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/stock"
               params={{ id }}
               aria-label={t('items.detail.tabs.stock')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
               }}
               onClick={(e) => handleTabClick(e, `/items/${id}/stock`)}
             >
-              <Boxes className="h-4 w-4" />
+              <Calculator className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/relation"
               params={{ id }}
               aria-label={t('items.detail.tabs.relations')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
               }}
@@ -143,7 +143,7 @@ function ItemLayoutInner() {
               to="/items/$id/log"
               params={{ id }}
               aria-label={t('items.detail.tabs.history')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
+              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
               activeProps={{
                 className: 'border-foreground-muted',
               }}

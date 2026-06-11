@@ -6,7 +6,7 @@ import * as stories from './relation.stories'
 const { Default, Vendors } = composeStories(stories)
 
 describe('Item detail relation layout stories smoke tests', () => {
-  it('Default lands on the vendors subtab and shows the submenu', async () => {
+  it('Default lands on the tags subtab and shows the submenu', async () => {
     render(<Default />)
 
     // The submenu exposes all three relation subtab links
@@ -20,8 +20,8 @@ describe('Item detail relation layout stories smoke tests', () => {
       screen.getByRole('link', { name: 'Item recipes tab' }),
     ).toBeInTheDocument()
 
-    // Default redirect lands on vendors → the New Vendor button is shown
-    expect(await screen.findByText('New Vendor')).toBeInTheDocument()
+    // Default redirect lands on tags → the empty tag-types state is shown
+    expect(await screen.findByText('No tag types yet')).toBeInTheDocument()
   })
 
   it('Vendors renders the vendors subtab content', async () => {
