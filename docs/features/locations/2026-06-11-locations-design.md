@@ -60,7 +60,7 @@ A `(itemId, locationId)` pair is unique. An item is "stocked at" a location **if
 **`Location` (new)**
 ```ts
 interface Location {
-  id: string
+  id: string              // default location: 'local' (offline) / user ID (cloud); others: uuid
   name: string
   order: number           // for drag-reorder, like Shelf
   createdAt: Date
@@ -68,6 +68,8 @@ interface Location {
   // memberUserIds: string[]  // CLOUD TODO — no local UI this iteration
 }
 ```
+
+**Default location.** Every user has exactly one **default location**, identified by a well-known id: the constant `'local'` in offline mode, swapped to the **user's ID** in cloud mode. It is created on first run / migration, **never deletable**, and always exists. All non-default locations use a uuid and are freely deletable.
 
 ### Touched existing entities
 
@@ -88,7 +90,7 @@ Changes to existing stores:
 - `shoppingCarts` / `cartItems`: re-key carts to location×vendor (see below).
 
 **Upgrade function (v13 → v14):**
-1. Create a default `Location` `{ name: 'My Home', order: 0 }` → `defaultLocationId`.
+1. Create the **default** `Location` `{ id: 'local', name: 'My Home', order: 0 }` → `defaultLocationId = 'local'`.
 2. For each existing `Item`: create an `ItemStock` carrying its current stock/units/expiration fields with `locationId = defaultLocationId`; strip those fields from the `Item` row.
 3. For each `InventoryLog`: set `locationId = defaultLocationId`.
 4. For each `ShoppingCart` / `CartItem`: re-key to the location×vendor scheme under `defaultLocationId`.
@@ -97,7 +99,7 @@ Migrations are forward-only and idempotent within the version bump.
 
 ## Active location (global, persisted)
 
-A single app-wide **active location**, persisted (localStorage, alongside existing prefs like `theme-preference`). Surfaced via a small context/hook (`useActiveLocation()`), defaulting to the first location by `order` when unset or when the active one is deleted.
+A single app-wide **active location**, persisted (localStorage, alongside existing prefs like `theme-preference`). Surfaced via a small context/hook (`useActiveLocation()`), falling back to the **default location** when unset or when the active one is deleted.
 
 **Switcher UI** — shared component, placed at the **left of the top toolbar** on pantry / shopping / cooking:
 - Trigger: icon-sized button showing the **first letter** of the active location's name.
@@ -142,7 +144,7 @@ Item-Info fields that are **global** (name, tags, vendors) remain on their exist
 - New route under `settings/locations/`, registered in the settings nav.
 - List of locations with **drag-reorder** (mirror the existing shelf-list reorder pattern).
 - Add / rename / delete.
-- **Delete rules:** cannot delete the last remaining location (≥1 always). Deleting cascades the location's `ItemStock` rows, its carts/cart-items, and its inventory logs. If the deleted location was active, fall back to the first remaining by `order`.
+- **Delete rules:** the **default location** (`id = 'local'` / user ID) can **never** be deleted — it has no delete control. Non-default locations are freely deletable. Deleting cascades the location's `ItemStock` rows, its carts/cart-items, and its inventory logs. If the deleted location was active, fall back to the **default** location.
 - **No member UI** this iteration (cloud-deferred).
 
 ## Hooks & operations

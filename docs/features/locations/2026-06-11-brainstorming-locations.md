@@ -59,6 +59,12 @@ A: **No member UI** in local mode (cloud-deferred). Default migrated location na
 **Q: Pantry — all locations or scoped?** (resolved a contradiction)
 A: Pantry is **scoped to the active location**. Only the **item-detail Stock tab** shows the all-locations view. Items not stocked in the active location **don't appear** in the pantry.
 
+**Q: Delete rules — can't-delete-the-last vs. a fixed default?** (late revision)
+A: Every user has one **default location** whose `id` = the user's ID; it can **never** be deleted. Other (non-default) locations are freely deletable.
+
+**Q: What identifies the default location in offline mode (no user ID)?**
+A: A fixed constant — **`'local'`** — used as the default location's `id` offline; swapped to the user's ID in cloud mode.
+
 ## Key decisions
 
 1. **Data split.** Global `Item` keeps `id`/`name`/`tagIds`/`vendorIds`/timestamps. A new `ItemStock` record holds the full stocking profile per (item × location). New `Location` entity. `inventoryLogs` and shopping carts gain `locationId`.
@@ -66,9 +72,9 @@ A: Pantry is **scoped to the active location**. Only the **item-detail Stock tab
 3. **Pantry, shopping, cooking are scoped** to the active location. Cooking consumes from it; shopping carts are per (location × vendor); creating an item stocks it in the active location.
 4. **Pantry Add button** turns the item-name input into a **combobox** searching all items the user can access — pick an existing item (creates an empty stock record in the active location) or create a brand-new item (added to the active location immediately).
 5. **Item detail — new "Stock" tab** (split out of today's combined settings tab). A **pager across all locations**: center dots under the toolbar (one per location), left/right chevrons to slide. Opens on the active location; the active location stays **visually marked** even while viewing others; the currently-viewed location's dot is highlighted. Per page: stocked → fields + **"Remove from location"**; not stocked → empty state + **"Add to location"** CTA.
-6. **Settings › Locations** (new page): add / rename / delete / **reorder** (drag, like the shelf list). No member UI. Can't delete the **last** location; deleting **cascades** that location's stock records, carts, and logs.
+6. **Settings › Locations** (new page): add / rename / delete / **reorder** (drag, like the shelf list). No member UI. Every user has one **default location** whose `id` = the user's ID (the constant `'local'` in offline mode); it is **never deletable**. Non-default locations are freely deletable; deleting **cascades** that location's stock records, carts, and logs. Active location falls back to the default if the active one is deleted.
 7. **Adding an existing item to a new location** copies all stock fields from an existing stock record **except `packedQuantity` & `unpackedQuantity`** (which start at 0). Source: the active location's stock if present, else most-recently-updated.
-8. **Migration:** fold all existing data into one auto-created location, **"My Home"**.
+8. **Migration:** fold all existing data into the **default** location `{ id: 'local', name: 'My Home' }`.
 
 ### Minor defaults (no objection raised)
 
