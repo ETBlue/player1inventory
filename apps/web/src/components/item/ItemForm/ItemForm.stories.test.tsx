@@ -5,6 +5,8 @@ import * as stories from './ItemForm.stories'
 
 const {
   CreateMode,
+  InfoSection,
+  StockSection,
   EditMode,
   EditMeasurementMode,
   EditValidationError,
@@ -16,6 +18,22 @@ describe('ItemForm stories smoke tests', () => {
   it('CreateMode renders without error', () => {
     render(<CreateMode />)
     expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument()
+  })
+
+  it('InfoSection shows the new note and wikidata fields', () => {
+    render(<InfoSection />)
+    // Note textarea is rendered in the info section
+    expect(screen.getByRole('textbox', { name: /note/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('textbox', { name: /wikidata/i }),
+    ).toBeInTheDocument()
+    // Package unit lives in the stock section, so it should NOT be here
+    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
+  })
+
+  it('StockSection shows the package unit field', () => {
+    render(<StockSection />)
+    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
   })
 
   it('EditMode renders without error', () => {

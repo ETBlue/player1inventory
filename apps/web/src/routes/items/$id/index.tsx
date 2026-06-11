@@ -33,6 +33,8 @@ function itemToFormValues(item: Item): ItemFormValues {
       : '',
     estimatedDueDays: item.estimatedDueDays ?? '',
     name: item.name,
+    wikidataUrl: item.wikidataUrl ?? '',
+    note: item.note ?? '',
     packageUnit: item.packageUnit ?? '',
     measurementUnit: item.measurementUnit ?? '',
     amountPerPackage: item.amountPerPackage ?? '',
@@ -63,6 +65,8 @@ type ItemUpdatePayload = Omit<
   | 'dueDate'
   | 'estimatedDueDays'
   | 'expirationMode'
+  | 'wikidataUrl'
+  | 'note'
   | 'packageUnit'
   | 'measurementUnit'
   | 'amountPerPackage'
@@ -71,6 +75,8 @@ type ItemUpdatePayload = Omit<
   dueDate?: Date | undefined
   estimatedDueDays?: number | undefined
   expirationMode?: Item['expirationMode']
+  wikidataUrl?: string | undefined
+  note?: string | undefined
   packageUnit?: string | undefined
   measurementUnit?: string | undefined
   amountPerPackage?: number | undefined
@@ -106,6 +112,10 @@ function buildUpdates(values: ItemFormValues): ItemUpdatePayload {
   // Assign undefined (not delete) so toUpdateItemInput() sees the key as
   // present and sends null to MongoDB — intentionally clearing the field
   // when the user leaves it blank in the full ItemForm.
+  updates.wikidataUrl = values.wikidataUrl.trim()
+    ? values.wikidataUrl.trim()
+    : undefined
+  updates.note = values.note.trim() ? values.note : undefined
   updates.packageUnit = values.packageUnit ? values.packageUnit : undefined
   updates.measurementUnit = values.measurementUnit
     ? values.measurementUnit

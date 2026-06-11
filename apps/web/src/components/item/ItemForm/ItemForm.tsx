@@ -6,6 +6,7 @@ import {
   PackageOpen,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { UnitInline } from '@/components/shared/UnitInline'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +30,8 @@ export type ItemFormValues = {
   estimatedDueDays: string | number
   // Item Info fields
   name: string
+  wikidataUrl: string
+  note: string
   packageUnit: string
   targetQuantity: number
   refillThreshold: number
@@ -47,6 +50,8 @@ const DEFAULT_VALUES: ItemFormValues = {
   dueDate: '',
   estimatedDueDays: '',
   name: '',
+  wikidataUrl: '',
+  note: '',
   packageUnit: '',
   targetQuantity: 0,
   refillThreshold: 0,
@@ -77,6 +82,7 @@ export function ItemForm({
   submitLabel = 'Save',
   isPending = false,
 }: ItemFormProps) {
+  const { t } = useTranslation()
   const merged = { ...DEFAULT_VALUES, ...initialValues }
 
   const [packedQuantity, setPackedQuantity] = useState(merged.packedQuantity)
@@ -89,6 +95,8 @@ export function ItemForm({
   )
 
   const [name, setName] = useState(merged.name)
+  const [wikidataUrl, setWikidataUrl] = useState(merged.wikidataUrl)
+  const [note, setNote] = useState(merged.note)
   const [packageUnit, setPackageUnit] = useState(merged.packageUnit)
   const [targetQuantity, setTargetQuantity] = useState(merged.targetQuantity)
   const [refillThreshold, setRefillThreshold] = useState(merged.refillThreshold)
@@ -118,6 +126,8 @@ export function ItemForm({
     dueDate,
     estimatedDueDays,
     name,
+    wikidataUrl,
+    note,
     packageUnit,
     targetQuantity,
     refillThreshold,
@@ -136,6 +146,8 @@ export function ItemForm({
     dueDate !== baseValues.dueDate ||
     estimatedDueDays !== baseValues.estimatedDueDays ||
     name !== baseValues.name ||
+    wikidataUrl !== baseValues.wikidataUrl ||
+    note !== baseValues.note ||
     packageUnit !== baseValues.packageUnit ||
     targetQuantity !== baseValues.targetQuantity ||
     refillThreshold !== baseValues.refillThreshold ||
@@ -176,6 +188,8 @@ export function ItemForm({
     setDueDate(next.dueDate)
     setEstimatedDueDays(next.estimatedDueDays)
     setName(next.name)
+    setWikidataUrl(next.wikidataUrl)
+    setNote(next.note)
     setPackageUnit(next.packageUnit)
     setTargetQuantity(next.targetQuantity)
     setRefillThreshold(next.refillThreshold)
@@ -207,6 +221,20 @@ export function ItemForm({
   }
 
   const nameError = !name.trim() ? 'Name is required.' : undefined
+  // Light, non-blocking URL validation: empty is allowed; if present, expect an
+  // http(s):// URL. Does not contribute to hasFieldError (submission stays open).
+  const isValidHttpUrl = (value: string) => {
+    try {
+      const url = new URL(value)
+      return url.protocol === 'http:' || url.protocol === 'https:'
+    } catch {
+      return false
+    }
+  }
+  const wikidataUrlError =
+    wikidataUrl.trim() && !isValidHttpUrl(wikidataUrl.trim())
+      ? t('items.info.wikidataUrl.invalid')
+      : undefined
   const measurementUnitError =
     targetUnit === 'measurement' && !measurementUnit
       ? 'Measurement unit is required.'
@@ -264,12 +292,33 @@ export function ItemForm({
           </div>
 
           <div>
-            <Label htmlFor="packageUnit">Package Unit</Label>
+            <Label htmlFor="wikidataUrl">
+              {t('items.info.wikidataUrl.label')}
+            </Label>
             <Input
-              id="packageUnit"
-              value={packageUnit}
-              placeholder="default: pack"
-              onChange={(e) => setPackageUnit(e.target.value)}
+              id="wikidataUrl"
+              type="url"
+              inputMode="url"
+              value={wikidataUrl}
+              placeholder={t('items.info.wikidataUrl.placeholder')}
+              onChange={(e) => setWikidataUrl(e.target.value)}
+              error={wikidataUrlError}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="note">{t('items.info.note.label')}</Label>
+            <textarea
+              id="note"
+              value={note}
+              placeholder={t('items.info.note.placeholder')}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className="flex min-h-16 w-full px-2 py-1
+                placeholder:text-accessory-emphasized
+                disabled:cursor-not-allowed disabled:opacity-50 md:text-sm
+                border border-accessory bg-background-surface
+                rounded-sm"
             />
           </div>
         </div>
@@ -281,6 +330,16 @@ export function ItemForm({
             <div className="h-px bg-accessory-emphasized" />
             <h2 className="text-sm font-medium uppercase">Stock Status</h2>
             <div className="h-px bg-accessory-emphasized" />
+          </div>
+
+          <div>
+            <Label htmlFor="packageUnit">Package Unit</Label>
+            <Input
+              id="packageUnit"
+              value={packageUnit}
+              placeholder="default: pack"
+              onChange={(e) => setPackageUnit(e.target.value)}
+            />
           </div>
 
           <div>

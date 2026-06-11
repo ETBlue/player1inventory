@@ -198,6 +198,17 @@
         "placeholder": "e.g., Pasta, Milk Tea"
       }
     },
+    "info": {
+      "wikidataUrl": {
+        "label": "Wikidata URL",
+        "placeholder": "https://www.wikidata.org/wiki/Q...",
+        "invalid": "Enter a valid http(s):// URL, or leave empty."
+      },
+      "note": {
+        "label": "Note",
+        "placeholder": "Free-text notes or links"
+      }
+    },
     "detail": {
       "notFound": "Item not found",
       "tabs": {
