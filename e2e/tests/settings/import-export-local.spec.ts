@@ -128,8 +128,13 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   await recipeDetail.navigateToItems(recipeId)
   await expect(recipeDetail.getAssignedItemCheckbox('Fixture Item')).toBeVisible()
 
-  // 6. Cart item in shopping page
+  // 6. Item appears inside its vendor's cart.
+  // /shopping is now a vendor-grouped overview (one VendorCartCard per vendor) —
+  // individual item cards live inside a vendor cart at /shopping/<vendorId>.
+  // The Fixture Item is assigned to "Fixture Vendor", so it is listed (as a
+  // pending item) on that vendor's cart page.
   await shopping.navigateTo()
+  await shopping.clickVendorCartCard('Fixture Vendor')
   await expect(shopping.getItemCard('Fixture Item')).toBeVisible()
 
   // 7. Shelf exists and contains the fixture item

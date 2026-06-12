@@ -106,14 +106,15 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     db.vendors.toArray(),
     db.recipes.toArray(),
     db.inventoryLogs.toArray(),
-    db.shoppingCarts.where('status').equals('active').toArray(),
+    db.shoppingCarts.toArray(),
     db.cartItems.toArray(),
     db.shelves.where('type').notEqual('system').toArray(),
   ])
 
-  // Only export cartItems belonging to the active carts
-  const activeCartIds = new Set(shoppingCarts.map((c) => c.id))
-  const activeCartItems = cartItems.filter((ci) => activeCartIds.has(ci.cartId))
+  // Permanent carts (v13+): every cart is exported. Scope cartItems to existing
+  // carts so orphaned items (cartId pointing at a deleted cart) are dropped.
+  const cartIds = new Set(shoppingCarts.map((c) => c.id))
+  const exportedCartItems = cartItems.filter((ci) => cartIds.has(ci.cartId))
 
   return buildExportPayload({
     items,
@@ -123,7 +124,7 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     recipes,
     inventoryLogs,
     shoppingCarts,
-    cartItems: activeCartItems,
+    cartItems: exportedCartItems,
     shelves,
   })
 }

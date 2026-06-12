@@ -416,6 +416,34 @@ describe('importLocalData', () => {
     expect(tags).toHaveLength(1)
   })
 
+  it('user can import permanent carts over a bootstrapped cart without throwing', async () => {
+    // Given the app has already bootstrapped a permanent 'no-vendor' cart
+    await db.shoppingCarts.put({ id: 'no-vendor' })
+
+    // And a backup whose cart carries legacy status/createdAt fields and reuses
+    // the same sentinel id (this collided on the old bulkAdd → ConstraintError,
+    // aborting the whole import)
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      shoppingCarts: [makeShoppingCart('no-vendor')],
+      cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
+    })
+
+    // When importing — must not throw and must drop the legacy fields
+    await importLocalData(payload, 'skip')
+
+    // Then the cart persists in the v13+ schema shape (id only, no status/createdAt)
+    const carts = await db.shoppingCarts.toArray()
+    expect(carts).toHaveLength(1)
+    expect(carts[0].id).toBe('no-vendor')
+    expect('status' in carts[0]).toBe(false)
+    expect('createdAt' in carts[0]).toBe(false)
+
+    // And the cart item is imported
+    const cartItems = await db.cartItems.toArray()
+    expect(cartItems.map((c) => c.id)).toContain('ci-1')
+  })
+
   it('user can import and skip conflicting entities', async () => {
     // Given a database with an existing item
     await db.items.add(makeItem('item-1', 'Milk'))
@@ -493,8 +521,8 @@ describe('importLocalData', () => {
     expect(oldItem).toBeUndefined()
   })
 
-  it('user can import active shopping cart and cart items', async () => {
-    // Given a payload with an active shopping cart and its cart items
+  it('user can import a shopping cart and its cart items (drops legacy status)', async () => {
+    // Given a backup whose cart still carries the legacy status/createdAt fields
     const cart = makeShoppingCart('cart-1', 'active')
     const cartItem = makeCartItem('ci-1', 'cart-1', 'item-1')
     const payload = emptyPayload({
@@ -505,11 +533,12 @@ describe('importLocalData', () => {
     // When importing with skip strategy
     await importLocalData(payload, 'skip')
 
-    // Then the shopping cart and its items are stored
+    // Then the shopping cart and its items are stored in the v13+ shape
     const carts = await db.shoppingCarts.toArray()
     expect(carts).toHaveLength(1)
     expect(carts[0].id).toBe('cart-1')
-    expect(carts[0].status).toBe('active')
+    // Permanent carts (v13+) have no status — the import drops legacy fields.
+    expect('status' in carts[0]).toBe(false)
 
     const cartItems = await db.cartItems.toArray()
     expect(cartItems).toHaveLength(1)
@@ -913,14 +942,16 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.occurredAt).toBe('2026-02-10T08:00:00.000Z')
   })
 
-  it('toShoppingCartInput strips server-only fields and converts Date createdAt', () => {
+  it('toShoppingCartInput keeps only id + lastPurchasedAt, dropping legacy fields', () => {
     const date = new Date('2026-03-01T10:00:00.000Z')
     const rawCart = {
       __typename: 'Cart',
       id: 'cart-1',
+      // Legacy fields from old backups — must be dropped (no longer on the schema)
       status: 'active',
       createdAt: date,
       completedAt: null,
+      lastPurchasedAt: date,
       userId: 'u1',
       familyId: 'f1',
     }
@@ -928,9 +959,12 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result).not.toHaveProperty('__typename')
     expect(result).not.toHaveProperty('userId')
     expect(result).not.toHaveProperty('familyId')
+    expect(result).not.toHaveProperty('status')
+    expect(result).not.toHaveProperty('createdAt')
+    expect(result).not.toHaveProperty('completedAt')
     expect(result.id).toBe('cart-1')
-    expect(result.status).toBe('active')
-    expect(result.createdAt).toBe('2026-03-01T10:00:00.000Z')
+    // lastPurchasedAt (the only optional permanent-cart field) is converted to ISO
+    expect(result.lastPurchasedAt).toBe('2026-03-01T10:00:00.000Z')
   })
 
   it('toCartItemInput strips server-only fields', () => {

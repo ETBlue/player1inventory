@@ -4,7 +4,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { ArrowLeft, Check, Loader2, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
@@ -105,7 +105,8 @@ function VendorCart() {
   const currentUrl = useRouterState({
     select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
-  const { restoreScroll } = useScrollRestoration(currentUrl)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const { restoreScroll } = useScrollRestoration(currentUrl, scrollRef)
   useEffect(() => {
     if (allDataLoaded) restoreScroll()
   }, [allDataLoaded, restoreScroll])
@@ -319,7 +320,10 @@ function VendorCart() {
 
         <div className="h-px bg-accessory-default" />
       </div>
-      <div className="relative overflow-y-auto [container-type:size]">
+      <div
+        ref={scrollRef}
+        className="relative overflow-y-auto [container-type:size]"
+      >
         {cartSectionItems.length > 0 && (
           <>
             <div className="space-y-px">

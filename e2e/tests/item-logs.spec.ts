@@ -179,11 +179,16 @@ test('user can see inventory log after checkout', async ({ page }) => {
   const itemId = item.getCurrentItemId()
 
   // When: add to cart → checkout
-  await shopping.navigateTo()
+  // Test Milk has no vendor, so it lives in the 'no-vendor' cart. The per-item
+  // add/remove checkboxes only exist inside a vendor cart at /shopping/<vendorId>;
+  // /shopping is a vendor-grouped overview. (matches shopping.spec.ts pattern)
+  await shopping.navigateToVendorCart('no-vendor')
   await shopping.addItemToCart('Test Milk')
   await shopping.clickDone()
   await shopping.confirmCheckout()
-  await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
+  // After checkout, the vendor cart page navigates back to the shopping index
+  // (matches shopping.spec.ts) — wait for that before reading the item log.
+  await page.waitForURL(/\/shopping(\?|$)/)
 
   // Then: navigate to the item log tab
   await page.goto(`/items/${itemId}/log`)

@@ -1,6 +1,6 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
@@ -75,7 +75,8 @@ export function PantryListView() {
   const currentUrl = useRouterState({
     select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
-  const { restoreScroll } = useScrollRestoration(currentUrl)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const { restoreScroll } = useScrollRestoration(currentUrl, scrollRef)
   useEffect(() => {
     if (allDataLoaded) restoreScroll()
   }, [allDataLoaded, restoreScroll])
@@ -222,7 +223,11 @@ export function PantryListView() {
         </ItemListToolbar>
         <div className="h-px bg-accessory-default" />
       </div>
-      <div className="overflow-y-auto [container-type:size]">
+      <div
+        ref={scrollRef}
+        data-testid="pantry-scroll"
+        className="overflow-y-auto [container-type:size]"
+      >
         {items.length === 0 ? (
           <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
             <div>
