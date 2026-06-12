@@ -52,8 +52,17 @@ export function GroupCard({
     <Card className="flex items-center gap-4">
       {icon}
       <CardContent
+        role="button"
+        tabIndex={0}
+        aria-label={name}
         className="flex-1 flex items-center justify-between gap-2 py-0 px-0 min-w-0 cursor-pointer"
         onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        }}
       >
         <div className="flex-1 min-w-0">
           {/* Row 1: name + quantity label */}
