@@ -1,8 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ChefHat, Lock, Settings, Settings2 } from 'lucide-react'
+import { ChefHat, Lock, Settings } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
@@ -17,6 +19,7 @@ import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { Item } from '@/types'
 
 export function RecipeGroupView() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: recipes = [], isLoading: recipesLoading } = useRecipes()
   const { data: items = [], isLoading: itemsLoading } = useItems()
@@ -75,13 +78,22 @@ export function RecipeGroupView() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
+            <LocationSwitcher />
             <ViewToggle current="group" onChange={() => {}} />
             <GroupByToggle current="recipe" onChange={() => {}} />
             <div className="flex-1" />
-            <Button size="icon" className="lg:w-auto lg:px-3" disabled asChild>
+            <Button
+              size="icon"
+              className="lg:w-auto lg:px-3"
+              aria-label={t('settings.recipes.manage')}
+              disabled
+              asChild
+            >
               <span>
-                <Settings2 />
-                <span className="hidden lg:inline">Manage</span>
+                <Settings />
+                <span className="hidden lg:inline">
+                  {t('settings.recipes.manage')}
+                </span>
               </span>
             </Button>
           </Toolbar>
@@ -95,6 +107,7 @@ export function RecipeGroupView() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
+          <LocationSwitcher />
           <ViewToggle
             current="group"
             onChange={(view) => {
@@ -118,9 +131,14 @@ export function RecipeGroupView() {
             className="lg:w-auto lg:px-3"
             asChild
           >
-            <Link to="/settings/recipes" aria-label="Manage recipes">
+            <Link
+              to="/settings/recipes"
+              aria-label={t('settings.recipes.manage')}
+            >
               <Settings />
-              <span className="hidden lg:inline">Manage</span>
+              <span className="hidden lg:inline">
+                {t('settings.recipes.manage')}
+              </span>
             </Link>
           </Button>
         </Toolbar>

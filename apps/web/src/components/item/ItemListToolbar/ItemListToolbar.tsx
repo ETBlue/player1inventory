@@ -1,6 +1,14 @@
 // src/components/ItemListToolbar.tsx
 
-import { ArrowDown, ArrowUp, Filter, Plus, Search, Tags, X } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Filter,
+  ListChevronsUpDown,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -33,7 +41,7 @@ interface ItemListToolbarProps {
 
   // Tags toggle — only shown when this prop is provided
   // (shopping page omits it; pantry + assignment pages include it)
-  isTagsToggleEnabled?: boolean
+  isRelationsToggleEnabled?: boolean
 
   // Items — for FilterStatus counts and ItemFilters available options
   items?: Item[]
@@ -64,7 +72,7 @@ export function ItemListToolbar({
   sortBy,
   sortDirection,
   onSortChange,
-  isTagsToggleEnabled,
+  isRelationsToggleEnabled,
   items = [],
   className,
   leading,
@@ -153,15 +161,11 @@ export function ItemListToolbar({
       <Toolbar
         className={`grid grid-cols-[1fr_auto_auto] gap-2 ${className !== undefined ? className : ''}`}
       >
-        {leading && (
-          <div className="flex items-center overflow-hidden gap-2">
-            {leading}
-          </div>
-        )}
+        {leading && <div className="flex items-center gap-2">{leading}</div>}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 truncate">
           {showSort && (
-            <div className="flex items-center ml-2">
+            <div className="flex items-center ml-2 truncate">
               <span className="hidden lg:inline text-sm text-foreground-muted">
                 {t('itemListToolbar.sortBy')}
               </span>
@@ -171,9 +175,9 @@ export function ItemListToolbar({
                     size="default"
                     variant="neutral-ghost"
                     aria-label={t('itemListToolbar.sortByCriteria')}
-                    className="px-0 font-normal"
+                    className="px-0 font-normal truncate"
                   >
-                    {sortLabels[sortBy]}
+                    <span className="truncate">{sortLabels[sortBy]}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
@@ -217,7 +221,7 @@ export function ItemListToolbar({
                 variant="neutral-ghost"
                 onClick={handleDirectionToggle}
                 aria-label={t('itemListToolbar.toggleSortDirection')}
-                className="lg:w-auto lg:px-3"
+                className="lg:w-auto lg:px-3 flex-shrink-0"
               >
                 {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
                 <span className="hidden lg:inline">
@@ -227,16 +231,16 @@ export function ItemListToolbar({
             </div>
           )}
 
-          {isTagsToggleEnabled && (
+          {isRelationsToggleEnabled && (
             <Button
               size="icon"
               variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
               onClick={() => setIsTagsVisible(!isTagsVisible)}
-              aria-label={t('itemListToolbar.toggleTags')}
-              className="lg:w-auto lg:px-3"
+              aria-label={t('itemListToolbar.toggleRelations')}
+              className="lg:w-auto lg:px-3 flex-shrink-0"
             >
-              <Tags />
-              <span className="hidden lg:inline">{t('common.tags')}</span>
+              <ListChevronsUpDown />
+              <span className="hidden lg:inline">{t('common.relations')}</span>
             </Button>
           )}
 
@@ -246,7 +250,7 @@ export function ItemListToolbar({
               variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
               onClick={() => setIsFiltersVisible(!isFiltersVisible)}
               aria-label={t('itemListToolbar.toggleFilters')}
-              className="lg:w-auto lg:px-3"
+              className="lg:w-auto lg:px-3 flex-shrink-0"
             >
               <Filter />
               <span className="hidden lg:inline">{t('common.filters')}</span>
@@ -264,7 +268,7 @@ export function ItemListToolbar({
                 setSearchVisible((v) => !v)
               }}
               aria-label={t('itemListToolbar.toggleSearch')}
-              className="lg:w-auto lg:px-3"
+              className="lg:w-auto lg:px-3 flex-shrink-0"
             >
               <Search />
               <span className="hidden lg:inline">{t('common.search')}</span>

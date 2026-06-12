@@ -27,6 +27,7 @@
     "desc": "Desc",
     "search": "Search",
     "tags": "Tags",
+    "relations": "Relations",
     "filters": "Filters"
   },
   "shopping": {
@@ -252,7 +253,7 @@
     "sortStock": "Stock",
     "sortLastPurchased": "Purchased",
     "toggleSortDirection": "Toggle sort direction",
-    "toggleTags": "Toggle tags",
+    "toggleRelations": "Toggle relations",
     "toggleFilters": "Toggle filters",
     "toggleSearch": "Toggle search",
     "searchPlaceholder": "Search items...",
@@ -323,6 +324,7 @@
     "vendors": {
       "label": "Vendors",
       "description": "Manage vendors",
+      "manage": "Manage vendors",
       "newButton": "New Vendor",
       "empty": {
         "title": "No vendors yet",
@@ -363,11 +365,13 @@
     },
     "shelves": {
       "label": "Shelves",
-      "description": "Manage shelves and shelf filters"
+      "description": "Manage shelves and shelf filters",
+      "manage": "Manage shelves"
     },
     "recipes": {
       "label": "Recipes",
       "description": "Manage recipes",
+      "manage": "Manage recipes",
       "newButton": "New Recipe",
       "empty": {
         "title": "No recipes yet",
@@ -659,5 +663,9 @@
       "selected_one": "{{count}} vendor selected",
       "selected_other": "{{count}} vendors selected"
     }
+  },
+  "locationSwitcher": {
+    "triggerLabel": "Switch location (current: {{name}})",
+    "manage": "Manage locations"
   }
 }

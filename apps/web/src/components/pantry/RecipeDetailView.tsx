@@ -5,6 +5,7 @@ import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -149,7 +150,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
           sortBy={sortBy}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          isTagsToggleEnabled={true}
+          isRelationsToggleEnabled={true}
           hideFiltersToggle={true}
           items={inScopeItems}
           leading={
@@ -157,7 +158,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
               <Button
                 variant="neutral-ghost"
                 size="icon"
-                className="lg:w-auto lg:mr-3"
+                className="lg:w-auto lg:mr-3 flex-shrink-0"
                 onClick={() =>
                   navigate({ to: '/', search: { groupBy: 'recipe' } })
                 }
@@ -166,6 +167,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
+              <LocationSwitcher />
               <h1 className="text-base font-regular truncate capitalize">
                 {title}
               </h1>

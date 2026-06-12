@@ -138,7 +138,9 @@ describe('Home page filtering integration', () => {
     await user.keyboard('{Escape}')
 
     // When user opens Location dropdown and selects Pantry
-    await user.click(screen.getByRole('button', { name: /location/i }))
+    // Anchor the name so it matches the "Location" tag-type filter button only,
+    // not the global LocationSwitcher trigger ("Switch location …").
+    await user.click(screen.getByRole('button', { name: /^location/i }))
     await user.click(screen.getByRole('menuitemcheckbox', { name: /pantry/i }))
 
     // Then no items shown (AND logic across types)
@@ -189,12 +191,14 @@ describe('Home page filtering integration', () => {
     const user = userEvent.setup()
     renderApp()
 
-    // When user enables tag visibility
+    // When user enables relation visibility (shows tag/vendor/recipe badges)
     await waitFor(() => {
       expect(screen.getByText('Tomatoes')).toBeInTheDocument()
     })
-    const tagsButton = screen.getByRole('button', { name: /tags/i })
-    await user.click(tagsButton)
+    const relationsButton = screen.getByRole('button', {
+      name: /toggle relations/i,
+    })
+    await user.click(relationsButton)
 
     // And clicks Vegetables tag badge on Tomatoes card
     const vegBadge = screen.getByText('Vegetables')
@@ -278,8 +282,8 @@ describe('Home page filtering integration', () => {
     expect(screen.getByText('1 tag')).toBeInTheDocument()
     expect(screen.queryByText('Vegetables')).not.toBeInTheDocument()
 
-    // Click tags button to show
-    await user.click(screen.getByRole('button', { name: /toggle tags/i }))
+    // Click relations toggle to show tags/vendors/recipes on cards
+    await user.click(screen.getByRole('button', { name: /toggle relations/i }))
 
     // Now shows individual badges
     await waitFor(() => {

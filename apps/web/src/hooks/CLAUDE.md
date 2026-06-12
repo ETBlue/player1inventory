@@ -24,6 +24,10 @@
 **Cloud / Auth:**
 - `usePostLoginMigration()` (`src/hooks/usePostLoginMigration.ts`) - Cloud mode only. Detects when a signed-in user has local IndexedDB items and has not been prompted before (localStorage `migration-prompted` key). Exposes `state: MigrationState`, `dismiss()`, and `importData(conflictResolution)`. `importData` calls `fetchLocalPayload()` then `importCloudData()` to migrate local data to cloud. Used by `PostLoginMigrationDialog`.
 
+**Location:**
+- `useLocations()` (`src/hooks/useLocations.ts`) - Returns all locations. Local-first only (no cloud GraphQL backend yet) — mode-independent. Also exposes `useCreateLocation`, `useUpdateLocation`, `useDeleteLocation`, `useReorderLocations`.
+- `useActiveLocation()` (`src/hooks/useActiveLocation.tsx`) - React Context hook exposing `{ activeLocationId, setActiveLocationId, activeLocation }`. The active id is persisted in localStorage under `active-location-id` (`ACTIVE_LOCATION_STORAGE_KEY`), defaults to `DEFAULT_LOCATION_ID` (`'local'`), and falls back to the default if the stored id no longer matches any location (e.g. it was deleted). The provider `ActiveLocationProvider` is mounted in `__root.tsx` (wraps the whole app) and reads the location list via `useLocations`. **INERT (PR B):** consumed only by `LocationSwitcher` to display/persist the active location — it does NOT yet scope any page data (scoping arrives in PR D).
+
 **Shelf:**
 - `useShelvesQuery()` (`src/hooks/useShelves.ts`) - Returns all shelves. Dual-mode: local uses TanStack Query + Dexie; cloud uses `useGetShelvesQuery` (Apollo).
 - `useShelfQuery(id)` (`src/hooks/useShelves.ts`) - Returns a single shelf by ID. Dual-mode.

@@ -1,8 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Lock, Settings, Settings2, Store } from 'lucide-react'
+import { Lock, Settings, Store } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
@@ -17,6 +19,7 @@ import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { Item } from '@/types'
 
 export function VendorGroupView() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: vendors = [], isLoading: vendorsLoading } = useVendors()
   const { data: items = [], isLoading: itemsLoading } = useItems()
@@ -66,13 +69,22 @@ export function VendorGroupView() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
+            <LocationSwitcher />
             <ViewToggle current="group" onChange={() => {}} />
             <GroupByToggle current="vendor" onChange={() => {}} />
             <div className="flex-1" />
-            <Button size="icon" className="lg:w-auto lg:px-3" disabled asChild>
+            <Button
+              size="icon"
+              className="lg:w-auto lg:px-3"
+              aria-label={t('settings.vendors.manage')}
+              disabled
+              asChild
+            >
               <span>
-                <Settings2 />
-                <span className="hidden lg:inline">Manage</span>
+                <Settings />
+                <span className="hidden lg:inline">
+                  {t('settings.vendors.manage')}
+                </span>
               </span>
             </Button>
           </Toolbar>
@@ -86,6 +98,7 @@ export function VendorGroupView() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
+          <LocationSwitcher />
           <ViewToggle
             current="group"
             onChange={(view) => {
@@ -109,9 +122,14 @@ export function VendorGroupView() {
             className="lg:w-auto lg:px-3"
             asChild
           >
-            <Link to="/settings/vendors" aria-label="Manage vendors">
+            <Link
+              to="/settings/vendors"
+              aria-label={t('settings.vendors.manage')}
+            >
               <Settings />
-              <span className="hidden lg:inline">Manage</span>
+              <span className="hidden lg:inline">
+                {t('settings.vendors.manage')}
+              </span>
             </Link>
           </Button>
         </Toolbar>

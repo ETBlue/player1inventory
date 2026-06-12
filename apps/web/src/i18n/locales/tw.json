@@ -27,6 +27,7 @@
     "desc": "降冪",
     "search": "搜尋",
     "tags": "標籤",
+    "relations": "關聯",
     "filters": "篩選條件"
   },
   "shopping": {
@@ -247,12 +248,12 @@
   "itemListToolbar": {
     "sortBy": "排序依",
     "sortByCriteria": "選擇排序依據",
-    "sortExpiringSoon": "快到期的",
+    "sortExpiringSoon": "快到期",
     "sortName": "名稱",
-    "sortStock": "快用完的",
-    "sortLastPurchased": "最近買的",
+    "sortStock": "庫存量",
+    "sortLastPurchased": "最近補貨",
     "toggleSortDirection": "切換排序方向",
-    "toggleTags": "顯示/隱藏標籤",
+    "toggleRelations": "顯示/隱藏關聯",
     "toggleFilters": "顯示/隱藏篩選條件",
     "toggleSearch": "顯示/隱藏搜尋框",
     "searchPlaceholder": "搜尋品項...",
@@ -321,6 +322,7 @@
     "vendors": {
       "label": "供應商",
       "description": "管理供應商",
+      "manage": "管理供應商",
       "newButton": "新增供應商",
       "empty": {
         "title": "尚未建立供應商",
@@ -341,30 +343,32 @@
       }
     },
     "locations": {
-      "label": "地點",
-      "description": "管理你的住所與存放地點",
-      "title": "地點",
-      "addLabel": "新增地點",
-      "addTitle": "新增地點",
-      "namePlaceholder": "地點名稱",
-      "renameTitle": "重新命名地點",
+      "label": "據點",
+      "description": "管理你的住處或庫存地點",
+      "title": "據點",
+      "addLabel": "新增據點",
+      "addTitle": "新增據點",
+      "namePlaceholder": "據點名稱",
+      "renameTitle": "重新命名據點",
       "renameLabel": "重新命名 {{name}}",
       "deleteLabel": "刪除 {{name}}",
       "deleteTitle": "刪除「{{name}}」？",
-      "deleteDescription": "將會移除這個地點。",
+      "deleteDescription": "將會移除這個據點。",
       "defaultHint": "預設",
       "dragToReorder": "拖曳以重新排序 {{name}}",
-      "dragInstructions": "按空白鍵或 Enter 拿起地點，使用方向鍵移動，再按一次空白鍵或 Enter 放下。",
-      "emptyTitle": "尚無地點",
-      "emptyDescription": "使用上方按鈕新增地點。"
+      "dragInstructions": "按空白鍵或 Enter 拿起據點，使用方向鍵移動，再按一次空白鍵或 Enter 放下。",
+      "emptyTitle": "尚無據點",
+      "emptyDescription": "使用上方按鈕新增據點。"
     },
     "shelves": {
       "label": "貨架",
-      "description": "管理貨架與設定篩選條件"
+      "description": "管理貨架與設定篩選條件",
+      "manage": "管理貨架"
     },
     "recipes": {
       "label": "食譜",
       "description": "管理食譜",
+      "manage": "管理食譜",
       "newButton": "新增食譜",
       "empty": {
         "title": "尚未建立食譜",
@@ -655,5 +659,9 @@
       "selected_one": "已選擇 {{count}} 個供應商",
       "selected_other": "已選擇 {{count}} 個供應商"
     }
+  },
+  "locationSwitcher": {
+    "triggerLabel": "切換據點（目前：{{name}}）",
+    "manage": "管理據點"
   }
 }

@@ -135,12 +135,12 @@ export const Default: Story = {
 }
 
 export const WithTagsToggle: Story = {
-  render: () => <Controlled isTagsToggleEnabled items={mockItems} />,
+  render: () => <Controlled isRelationsToggleEnabled items={mockItems} />,
 }
 
 export const WithAddButton: Story = {
   render: () => (
-    <Controlled isTagsToggleEnabled items={mockItems}>
+    <Controlled isRelationsToggleEnabled items={mockItems}>
       <Link to="/">
         <Button icon={<Plus />}>Add item</Button>
       </Link>
@@ -184,7 +184,7 @@ export const SortedByStock: Story = {
           setSortBy(f)
           setSortDirection(d)
         }}
-        isTagsToggleEnabled
+        isRelationsToggleEnabled
         items={mockItems}
       />
     )
@@ -204,7 +204,7 @@ export const DescendingSort: Story = {
           setSortBy(f)
           setSortDirection(d)
         }}
-        isTagsToggleEnabled
+        isRelationsToggleEnabled
         items={mockItems}
       />
     )
@@ -213,20 +213,28 @@ export const DescendingSort: Story = {
 
 export const WithVendors: Story = {
   render: () => (
-    <Controlled isTagsToggleEnabled items={mockItems} vendors={mockVendors} />
+    <Controlled
+      isRelationsToggleEnabled
+      items={mockItems}
+      vendors={mockVendors}
+    />
   ),
 }
 
 export const WithRecipes: Story = {
   render: () => (
-    <Controlled isTagsToggleEnabled items={mockItems} recipes={mockRecipes} />
+    <Controlled
+      isRelationsToggleEnabled
+      items={mockItems}
+      recipes={mockRecipes}
+    />
   ),
 }
 
 export const WithVendorsAndRecipes: Story = {
   render: () => (
     <Controlled
-      isTagsToggleEnabled
+      isRelationsToggleEnabled
       items={mockItems}
       vendors={mockVendors}
       recipes={mockRecipes}
@@ -237,7 +245,7 @@ export const WithVendorsAndRecipes: Story = {
 export const HideVendorFilter: Story = {
   render: () => (
     <Controlled
-      isTagsToggleEnabled
+      isRelationsToggleEnabled
       items={mockItems}
       vendors={mockVendors}
       recipes={mockRecipes}
@@ -249,7 +257,7 @@ export const HideVendorFilter: Story = {
 export const HideRecipeFilter: Story = {
   render: () => (
     <Controlled
-      isTagsToggleEnabled
+      isRelationsToggleEnabled
       items={mockItems}
       vendors={mockVendors}
       recipes={mockRecipes}

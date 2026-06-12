@@ -9,7 +9,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import type React from 'react'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { UnitBadge } from '@/components/shared/UnitBadge'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
@@ -197,7 +197,7 @@ export function ItemCard({
       )}
       <CardHeader
         className={cn(
-          'flex flex-row items-start justify-between gap-2 min-h-8',
+          'flex flex-row items-start justify-between gap-2',
           isInactive(item) ? 'opacity-80' : '',
         )}
       >
@@ -234,81 +234,111 @@ export function ItemCard({
               : {})}
           />
         </Link>
-
         {onQuickUpdate && mode === 'pantry' && (
           <Button
             variant="neutral-outline"
             size="icon"
+            className="-mb-1"
             onClick={(e) => {
               e.preventDefault()
               onQuickUpdate()
             }}
             aria-label={`Update quantity of ${item.name}`}
             disabled={isPending}
-          >
-            {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin [transform-box:fill-box]" />
-            ) : (
-              <Calculator className="h-4 w-4" />
-            )}
-          </Button>
+            icon={
+              isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin [transform-box:fill-box]" />
+              ) : (
+                <Calculator className="h-4 w-4" />
+              )
+            }
+          ></Button>
         )}
       </CardHeader>
-      <CardContent className={isInactive(item) ? 'opacity-80' : ''}>
-        <div className="flex items-center gap-2 -mb-1">
-          {showExpiration &&
-            currentQuantity > 0 &&
-            estimatedDueDate &&
-            (() => {
-              const daysUntilExpiration = Math.ceil(
-                (estimatedDueDate.getTime() - Date.now()) / 86400000,
-              )
-              const isWarning =
-                item.expirationThreshold != null &&
-                daysUntilExpiration <= item.expirationThreshold
+      <CardContent className={`mt-1 ${isInactive(item) ? 'opacity-80' : ''}`}>
+        <div className="flex items-center gap-1">
+          {[
+            showExpiration && currentQuantity > 0 && estimatedDueDate
+              ? {
+                  key: 'expiration',
+                  node: (() => {
+                    const daysUntilExpiration = Math.ceil(
+                      (estimatedDueDate.getTime() - Date.now()) / 86400000,
+                    )
+                    const isWarning =
+                      item.expirationThreshold != null &&
+                      daysUntilExpiration <= item.expirationThreshold
 
-              return (
-                <span
-                  className={cn(
-                    'inline-flex gap-1 text-xs',
-                    isWarning
-                      ? 'text-foreground-colorless-inverse bg-status-error-background rounded-sm px-1 py-0.5'
-                      : 'text-foreground',
-                  )}
-                >
-                  {isWarning && <TriangleAlert className="w-4 h-4" />}
-                  {inferExpirationMode(item) === 'days from purchase'
-                    ? // Relative mode: show "Expires in X days"
-                      daysUntilExpiration >= 0
-                      ? `Expires in ${daysUntilExpiration} days`
-                      : `Expired ${Math.abs(daysUntilExpiration)} days ago`
-                    : // Explicit date mode: show "Expires on YYYY-MM-DD"
-                      `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
-                </span>
-              )
-            })()}
-          {(tags.length > 0 || vendors.length > 0 || recipes.length > 0) &&
-            !showTags &&
-            showTagSummary && (
-              <span className="text-xs text-foreground-muted">
-                {[
-                  tags.length > 0
-                    ? `${tags.length} ${tags.length === 1 ? 'tag' : 'tags'}`
-                    : null,
-                  vendors.length > 0
-                    ? `${vendors.length} ${vendors.length === 1 ? 'vendor' : 'vendors'}`
-                    : null,
-                  recipes.length > 0
-                    ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </span>
-            )}
+                    return (
+                      <span
+                        className={cn(
+                          'inline-flex gap-1 text-xs',
+                          isWarning
+                            ? 'text-status-error-foreground'
+                            : 'text-foreground',
+                        )}
+                      >
+                        {isWarning && <TriangleAlert className="w-4 h-4" />}
+                        {inferExpirationMode(item) === 'days from purchase'
+                          ? // Relative mode: show "Expires in X days"
+                            daysUntilExpiration >= 0
+                            ? `Expires in ${daysUntilExpiration} days`
+                            : `Expired ${Math.abs(daysUntilExpiration)} days ago`
+                          : // Explicit date mode: show "Expires on YYYY-MM-DD"
+                            `Expires on ${estimatedDueDate.toISOString().split('T')[0]}`}
+                      </span>
+                    )
+                  })(),
+                }
+              : null,
+
+            !showTags && showTagSummary && tags.length > 0
+              ? {
+                  key: 'tags',
+                  node: (
+                    <span className="text-xs text-foreground-muted">
+                      {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
+                    </span>
+                  ),
+                }
+              : null,
+            !showTags && showTagSummary && vendors.length > 0
+              ? {
+                  key: 'vendors',
+                  node: (
+                    <span className="text-xs text-foreground-muted">
+                      {vendors.length}{' '}
+                      {vendors.length === 1 ? 'vendor' : 'vendors'}
+                    </span>
+                  ),
+                }
+              : null,
+            !showTags && showTagSummary && recipes.length > 0
+              ? {
+                  key: 'recipes',
+                  node: (
+                    <span className="text-xs text-foreground-muted">
+                      {recipes.length}{' '}
+                      {recipes.length === 1 ? 'recipe' : 'recipes'}
+                    </span>
+                  ),
+                }
+              : null,
+          ]
+            .filter(
+              (entry): entry is NonNullable<typeof entry> => entry !== null,
+            )
+            .map((entry, index) => (
+              <Fragment key={entry.key}>
+                {index > 0 && (
+                  <span className="text-xs text-foreground-muted">·</span>
+                )}
+                {entry.node}
+              </Fragment>
+            ))}
         </div>
         {tags.length > 0 && showTags && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="flex flex-wrap gap-1 mt-1">
             {sortTagsByTypeAndName(tags, tagTypes).map((tag) => {
               const tagType = tagTypes.find((t) => t.id === tag.typeId)
               const bgColor = tagType?.color

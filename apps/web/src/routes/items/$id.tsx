@@ -5,7 +5,7 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { Calculator, History, Info, Waypoints } from 'lucide-react'
+import { Calculator, History, Info, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
@@ -137,7 +137,7 @@ function ItemLayoutInner() {
               }}
               onClick={(e) => handleTabClick(e, `/items/${id}/relation`)}
             >
-              <Waypoints className="h-4 w-4" />
+              <Settings2 className="h-4 w-4" />
             </Link>
             <Link
               to="/items/$id/log"

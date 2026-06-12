@@ -9,23 +9,23 @@ interface ViewToggleProps {
 
 export function ViewToggle({ current, onChange }: ViewToggleProps) {
   return (
-    <div className="flex items-center rounded-md border border-accessory-default overflow-hidden">
+    <div className="flex items-center">
       <Button
-        variant={current === 'list' ? 'neutral' : 'neutral-ghost'}
+        variant={current === 'list' ? 'neutral' : 'neutral-outline'}
         size="icon"
         aria-label="List view"
         aria-pressed={current === 'list'}
-        className="rounded-none border-0"
+        className="rounded-tr-none rounded-br-none"
         onClick={() => onChange('list')}
       >
         <List />
       </Button>
       <Button
-        variant={current === 'group' ? 'neutral' : 'neutral-ghost'}
+        variant={current === 'group' ? 'neutral' : 'neutral-outline'}
         size="icon"
         aria-label="Group view"
         aria-pressed={current === 'group'}
-        className="rounded-none border-0"
+        className="rounded-tl-none rounded-bl-none -ml-[1px]"
         onClick={() => onChange('group')}
       >
         <LayoutGrid />

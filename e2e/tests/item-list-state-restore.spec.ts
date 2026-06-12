@@ -332,8 +332,8 @@ test('user can navigate to item detail and back with scroll position restored', 
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
 
   // And tags are toggled visible (adds tag badges to each item card, increasing card height)
-  // Tag toggle: aria-label="Toggle tags" (src/components/item/ItemListToolbar/index.tsx:198)
-  await page.getByRole('button', { name: 'Toggle tags' }).click()
+  // Relations toggle: aria-label="Toggle relations" (src/components/item/ItemListToolbar/ItemListToolbar.tsx)
+  await page.getByRole('button', { name: 'Toggle relations' }).click()
   await expect(page).toHaveURL(/tags=1/)
 
   // The list scrolls inside an inner container, not the window — the app shell pins
@@ -425,8 +425,8 @@ test('user can navigate to item detail and back with scroll position restored wh
 
   // And tags are toggled visible (tag badges affect item card height, exercising the
   // allDataLoaded guard in useScrollRestoration)
-  // Tag toggle: aria-label="Toggle tags" (src/components/item/ItemListToolbar/index.tsx:198)
-  await page.getByRole('button', { name: 'Toggle tags' }).click()
+  // Relations toggle: aria-label="Toggle relations" (src/components/item/ItemListToolbar/ItemListToolbar.tsx)
+  await page.getByRole('button', { name: 'Toggle relations' }).click()
   await expect(page).toHaveURL(/tags=1/)
 
   // The list scrolls inside an inner container, not the window — the app shell pins
