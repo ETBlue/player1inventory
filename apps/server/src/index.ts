@@ -38,6 +38,10 @@ if (E2E_TEST_MODE) {
       prisma.tagType.deleteMany({ where: { userId } }),
       prisma.vendor.deleteMany({ where: { userId } }),
       prisma.recipe.deleteMany({ where: { userId } }),
+      // Shelves are user-scoped too — without this they accumulate across runs
+      // in the shared DB and collide (by id) with imported fixture shelves,
+      // surfacing a spurious "Conflicts detected" dialog on import tests.
+      prisma.shelf.deleteMany({ where: { userId } }),
     ])
     res.json({ ok: true })
   })
