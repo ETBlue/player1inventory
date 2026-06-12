@@ -248,10 +248,10 @@
   "itemListToolbar": {
     "sortBy": "排序依",
     "sortByCriteria": "選擇排序依據",
-    "sortExpiringSoon": "快到期的",
+    "sortExpiringSoon": "快到期",
     "sortName": "名稱",
-    "sortStock": "快用完的",
-    "sortLastPurchased": "最近買的",
+    "sortStock": "庫存量",
+    "sortLastPurchased": "最近補貨",
     "toggleSortDirection": "切換排序方向",
     "toggleRelations": "顯示/隱藏關聯",
     "toggleFilters": "顯示/隱藏篩選條件",
