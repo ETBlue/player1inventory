@@ -1,6 +1,6 @@
 import { createFileRoute, useRouterState } from '@tanstack/react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -28,7 +28,8 @@ function VendorSettings() {
   const currentUrl = useRouterState({
     select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
-  const { restoreScroll } = useScrollRestoration(currentUrl)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const { restoreScroll } = useScrollRestoration(currentUrl, scrollRef)
   useEffect(() => {
     if (!isLoading) restoreScroll()
   }, [isLoading, restoreScroll])
@@ -58,7 +59,10 @@ function VendorSettings() {
         </Button>
       </Toolbar>
 
-      <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
+      <div
+        ref={scrollRef}
+        className="overflow-y-auto [container-type:size] space-y-px pb-4"
+      >
         {sortedVendors.length === 0 ? (
           <EmptyState
             title={t('settings.vendors.empty.title')}

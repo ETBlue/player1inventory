@@ -94,13 +94,16 @@ async function seedTagsForAllItems(
       tagIds.push(result.createTag.id)
     }
 
-    // Assign all tags to every item
-    for (const item of items) {
-      await gql(
-        'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
-        { id: item.id, input: { tagIds } },
-      )
-    }
+    // Assign all tags to every item — run in parallel so seeding 40 items stays
+    // well under the test timeout (sequential awaits were timing out in cloud mode).
+    await Promise.all(
+      items.map((item) =>
+        gql(
+          'mutation UpdateItem($id: ID!, $input: UpdateItemInput!) { updateItem(id: $id, input: $input) { id } }',
+          { id: item.id, input: { tagIds } },
+        ),
+      ),
+    )
     return
   }
 
@@ -200,9 +203,13 @@ async function seedItems(
 ) {
   if (options?.baseURL === CLOUD_WEB_URL && options.request) {
     const gql = makeGql(options.request)
-    for (const name of names) {
-      await gql('mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }', { name })
-    }
+    // Seed in parallel — 40 sequential round-trips would otherwise blow past the
+    // test timeout before the page is even navigated to.
+    await Promise.all(
+      names.map((name) =>
+        gql('mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }', { name }),
+      ),
+    )
     return
   }
 
@@ -308,6 +315,9 @@ test('user can navigate to item detail and back with sort state preserved', asyn
 })
 
 test('user can navigate to item detail and back with scroll position restored', async ({ page, request, baseURL }) => {
+  // Seeds 40 items + tags (via GraphQL in cloud mode) then exercises scroll
+  // restoration — give it extra time so cloud seeding doesn't race the timeout.
+  test.slow()
   const pantry = new PantryPage(page)
 
   // Given many items exist (enough to make the page scrollable), each with tags
@@ -326,21 +336,42 @@ test('user can navigate to item detail and back with scroll position restored', 
   await page.getByRole('button', { name: 'Toggle tags' }).click()
   await expect(page).toHaveURL(/tags=1/)
 
-  // Wait until the page is actually scrollable (content taller than viewport)
-  await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
+  // The list scrolls inside an inner container, not the window — the app shell pins
+  // <main> to the viewport. Target the pantry scroll container by its test id.
+  // data-testid="pantry-scroll" (src/components/pantry/PantryListView.tsx)
+  const scroller = page.locator('[data-testid="pantry-scroll"]')
 
-  // When user scrolls to the bottom so the last item is in the viewport
-  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
-  await page.waitForFunction(() => window.scrollY > 0)
+  // Wait until the container is actually scrollable (content taller than the container)
+  await scroller.evaluate((el) => {
+    return new Promise<void>((resolve) => {
+      const check = () => {
+        if (el.scrollHeight > el.clientHeight) resolve()
+        else requestAnimationFrame(check)
+      }
+      check()
+    })
+  })
+
+  // When user scrolls the container to the bottom so the last item is in the viewport
+  await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' }))
+  await scroller.evaluate((el) => {
+    return new Promise<void>((resolve) => {
+      const check = () => {
+        if (el.scrollTop > 0) resolve()
+        else requestAnimationFrame(check)
+      }
+      check()
+    })
+  })
 
   // The last heading in the list (lexicographic key order: seed-item-9 / "Item 10" sorts last)
   const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
   // Verify it is already in the viewport — Playwright will not auto-scroll it, so
-  // scrollYBefore is not corrupted by the subsequent click
+  // scrollTopBefore is not corrupted by the subsequent click
   await expect(lastItemHeading).toBeInViewport()
 
-  // Record the scroll position before navigating
-  const scrollYBefore = await page.evaluate(() => window.scrollY)
+  // Record the container's scroll position before navigating
+  const scrollTopBefore = await scroller.evaluate((el) => el.scrollTop)
 
   // And navigates to the last item
   await lastItemHeading.click()
@@ -355,13 +386,18 @@ test('user can navigate to item detail and back with scroll position restored', 
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
-  // Then scroll position is restored to approximately where it was before navigation
-  const scrollYAfter = await page.evaluate(() => window.scrollY)
-  expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
-  expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
+  // Then the container scroll position is restored to approximately where it was before
+  const scrollTopAfter = await page
+    .locator('[data-testid="pantry-scroll"]')
+    .evaluate((el) => el.scrollTop)
+  expect(scrollTopAfter).toBeGreaterThanOrEqual(scrollTopBefore - 30)
+  expect(scrollTopAfter).toBeLessThanOrEqual(scrollTopBefore + 30)
 })
 
 test('user can navigate to item detail and back with scroll position restored when filter panel is open', async ({ page, request, baseURL }) => {
+  // Seeds 40 items + tags (via GraphQL in cloud mode) then exercises scroll
+  // restoration — give it extra time so cloud seeding doesn't race the timeout.
+  test.slow()
   const pantry = new PantryPage(page)
 
   // Given many items exist, each with tags, and several tag types (for the filter panel)
@@ -393,21 +429,42 @@ test('user can navigate to item detail and back with scroll position restored wh
   await page.getByRole('button', { name: 'Toggle tags' }).click()
   await expect(page).toHaveURL(/tags=1/)
 
-  // Wait until the page is scrollable
-  await page.waitForFunction(() => document.body.scrollHeight > window.innerHeight)
+  // The list scrolls inside an inner container, not the window — the app shell pins
+  // <main> to the viewport. Target the pantry scroll container by its test id.
+  // data-testid="pantry-scroll" (src/components/pantry/PantryListView.tsx)
+  const scroller = page.locator('[data-testid="pantry-scroll"]')
 
-  // When user scrolls to the bottom so the last item is in the viewport
-  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }))
-  await page.waitForFunction(() => window.scrollY > 0)
+  // Wait until the container is scrollable
+  await scroller.evaluate((el) => {
+    return new Promise<void>((resolve) => {
+      const check = () => {
+        if (el.scrollHeight > el.clientHeight) resolve()
+        else requestAnimationFrame(check)
+      }
+      check()
+    })
+  })
+
+  // When user scrolls the container to the bottom so the last item is in the viewport
+  await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight, behavior: 'instant' }))
+  await scroller.evaluate((el) => {
+    return new Promise<void>((resolve) => {
+      const check = () => {
+        if (el.scrollTop > 0) resolve()
+        else requestAnimationFrame(check)
+      }
+      check()
+    })
+  })
 
   // The last heading in the list (lexicographic key order: seed-item-9 / "Item 10" sorts last)
   const lastItemHeading = page.getByRole('heading', { level: 3 }).last()
   // Verify it is already in the viewport — Playwright will not auto-scroll it, so
-  // scrollYBefore is not corrupted by the subsequent click
+  // scrollTopBefore is not corrupted by the subsequent click
   await expect(lastItemHeading).toBeInViewport()
 
-  // Record the scroll position before navigating
-  const scrollYBefore = await page.evaluate(() => window.scrollY)
+  // Record the container's scroll position before navigating
+  const scrollTopBefore = await scroller.evaluate((el) => el.scrollTop)
 
   // And navigates to the last item
   await lastItemHeading.click()
@@ -429,11 +486,13 @@ test('user can navigate to item detail and back with scroll position restored wh
   await expect(pantry.getItemCard('Item 01')).toBeVisible()
   await page.waitForTimeout(400)
 
-  // Then scroll position is restored to approximately where it was before navigation.
+  // Then the container scroll position is restored to approximately where it was before.
   // Bug: restoreScroll() fires before tagTypes/tags load, filter panel and tag badges are
-  // not yet rendered, so scroll lands at scrollYBefore - (filterPanelHeight + tagBadgesHeight).
+  // not yet rendered, so scroll lands at scrollTopBefore - (filterPanelHeight + tagBadgesHeight).
   // Fix: wait for all layout-affecting data before restoring scroll.
-  const scrollYAfter = await page.evaluate(() => window.scrollY)
-  expect(scrollYAfter).toBeGreaterThanOrEqual(scrollYBefore - 30)
-  expect(scrollYAfter).toBeLessThanOrEqual(scrollYBefore + 30)
+  const scrollTopAfter = await page
+    .locator('[data-testid="pantry-scroll"]')
+    .evaluate((el) => el.scrollTop)
+  expect(scrollTopAfter).toBeGreaterThanOrEqual(scrollTopBefore - 30)
+  expect(scrollTopAfter).toBeLessThanOrEqual(scrollTopBefore + 30)
 })

@@ -1,10 +1,11 @@
 import { createFileRoute, useRouterState } from '@tanstack/react-router'
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
 import { useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -53,7 +54,11 @@ function VendorItemsTab() {
   const currentUrl = useRouterState({
     select: (s) => s.location.pathname + (s.location.searchStr ?? ''),
   })
-  const { restoreScroll } = useScrollRestoration(currentUrl)
+  // The scroll container is owned by the parent LayoutInnerPages (children render
+  // inside its overflow-y-auto div via <Outlet>); read its ref from context.
+  const fallbackScrollRef = useRef<HTMLElement>(null)
+  const scrollRef = useInnerPageScrollRef() ?? fallbackScrollRef
+  const { restoreScroll } = useScrollRestoration(currentUrl, scrollRef)
   useEffect(() => {
     if (!isLoading) restoreScroll()
   }, [isLoading, restoreScroll])
