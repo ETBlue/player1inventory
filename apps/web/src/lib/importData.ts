@@ -96,6 +96,19 @@ function deserializeItem(item: Item): Item {
   return result
 }
 
+// Normalize an imported permanent cart to the v13+ schema shape: keep only
+// `id` and an optional `lastPurchasedAt` (as a Date). Legacy backup fields
+// (status / createdAt / completedAt / vendorId) are dropped so they are never
+// written back into the `shoppingCarts: 'id'` store.
+function deserializeImportedCart(cart: Record<string, unknown>): ShoppingCart {
+  const result: ShoppingCart = { id: cart.id as string }
+  const raw = cart.lastPurchasedAt
+  if (raw != null) {
+    result.lastPurchasedAt = raw instanceof Date ? raw : new Date(raw as string)
+  }
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Batching helpers
 // ---------------------------------------------------------------------------
@@ -214,16 +227,20 @@ export function toInventoryLogInput(log: Record<string, unknown>) {
   }
 }
 
+// Permanent carts (v13+) carry only `id` (= vendorId or 'no-vendor') and an
+// optional `lastPurchasedAt`. The legacy `status`/`createdAt`/`completedAt`
+// fields no longer exist on the schema (Dexie `shoppingCarts: 'id'`) nor on the
+// GraphQL `ShoppingCartInput` (id + lastPurchasedAt only), so they are dropped.
+// Old backups that still carry those stale fields are tolerated — only the
+// permitted fields are mapped through.
 export function toShoppingCartInput(cart: Record<string, unknown>) {
-  const createdAt =
-    cart.createdAt instanceof Date
-      ? cart.createdAt.toISOString()
-      : (cart.createdAt as string)
+  const lastPurchasedAt =
+    cart.lastPurchasedAt instanceof Date
+      ? cart.lastPurchasedAt.toISOString()
+      : ((cart.lastPurchasedAt as string | null | undefined) ?? undefined)
   return {
     id: cart.id as string,
-    status: cart.status as string,
-    createdAt,
-    completedAt: cart.completedAt as string | undefined,
+    ...(lastPurchasedAt != null ? { lastPurchasedAt } : {}),
   }
 }
 
@@ -428,11 +445,14 @@ export function detectConflicts(
       existing.inventoryLogs,
       (e) => (e as InventoryLog).id,
     ),
-    shoppingCarts: detectIdOnlyConflicts(
-      payload.shoppingCarts as IdOnlyEntity[],
-      existing.shoppingCarts,
-      (e) => (e as ShoppingCart).id,
-    ),
+    // Permanent carts (v13+) are id-only sentinels (vendorId or 'no-vendor')
+    // that the app idempotently bootstraps on every boot. An imported cart will
+    // therefore always collide with an auto-created cart of the same id — but a
+    // cart carries no destructible user content, so re-importing it is a no-op
+    // (other than refreshing `lastPurchasedAt`). Reporting these as conflicts
+    // would needlessly halt an otherwise clean auto-import behind the conflict
+    // dialog, so carts are never treated as conflicts and are always upserted.
+    shoppingCarts: [],
     cartItems: detectIdOnlyConflicts(
       payload.cartItems as IdOnlyEntity[],
       existing.cartItems,
@@ -701,7 +721,13 @@ export async function importLocalData(
             : new Date(log.occurredAt as unknown as string),
       })),
     )
-    await db.shoppingCarts.bulkAdd(payload.shoppingCarts as ShoppingCart[])
+    // Carts are id-only sentinels — always upsert (deserialize lastPurchasedAt
+    // and drop any stale legacy fields from old backups).
+    await db.shoppingCarts.bulkPut(
+      (payload.shoppingCarts as Array<Record<string, unknown>>).map(
+        deserializeImportedCart,
+      ),
+    )
     await db.cartItems.bulkAdd(payload.cartItems as CartItem[])
     await db.shelves.bulkAdd(
       ((payload.shelves ?? []) as Shelf[]).map((s) => ({
@@ -749,9 +775,13 @@ export async function importLocalData(
       })),
       { allKeys: false },
     )
-    await db.shoppingCarts.bulkAdd(toCreate.shoppingCarts as ShoppingCart[], {
-      allKeys: false,
-    })
+    // Carts: upsert (never conflict — always go to toCreate) so a re-imported
+    // sentinel cart cannot collide with the bootstrap-created cart of the same id.
+    await db.shoppingCarts.bulkPut(
+      (toCreate.shoppingCarts as Array<Record<string, unknown>>).map(
+        deserializeImportedCart,
+      ),
+    )
     await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
       allKeys: false,
     })
@@ -848,9 +878,13 @@ export async function importLocalData(
     })),
     { allKeys: false },
   )
-  await db.shoppingCarts.bulkAdd(toCreate.shoppingCarts as ShoppingCart[], {
-    allKeys: false,
-  })
+  // Carts: upsert (never conflict — always go to toCreate) so a re-imported
+  // sentinel cart cannot collide with the bootstrap-created cart of the same id.
+  await db.shoppingCarts.bulkPut(
+    (toCreate.shoppingCarts as Array<Record<string, unknown>>).map(
+      deserializeImportedCart,
+    ),
+  )
   await db.cartItems.bulkAdd(toCreate.cartItems as CartItem[], {
     allKeys: false,
   })
@@ -887,7 +921,11 @@ export async function importLocalData(
           : new Date(log.occurredAt as unknown as string),
     })),
   )
-  await db.shoppingCarts.bulkPut(toUpsert.shoppingCarts as ShoppingCart[])
+  await db.shoppingCarts.bulkPut(
+    (toUpsert.shoppingCarts as Array<Record<string, unknown>>).map(
+      deserializeImportedCart,
+    ),
+  )
   await db.cartItems.bulkPut(toUpsert.cartItems as CartItem[])
   await db.shelves.bulkPut(
     ((toUpsert.shelves ?? []) as Shelf[]).map((s) => ({
