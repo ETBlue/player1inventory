@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { buildExportPayload, sanitiseCloudPayload } from './exportData'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { db } from '@/db'
+import {
+  buildExportPayload,
+  fetchLocalPayload,
+  sanitiseCloudPayload,
+} from './exportData'
 
 describe('buildExportPayload', () => {
   it('includes version and exportedAt', () => {
@@ -58,6 +63,58 @@ describe('buildExportPayload', () => {
     })
     expect(payload.shoppingCarts).toHaveLength(1)
     expect(payload.cartItems).toHaveLength(1)
+  })
+})
+
+describe('fetchLocalPayload — local (Dexie) export', () => {
+  beforeEach(async () => {
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
+    await db.items.clear()
+    await db.vendors.clear()
+  })
+
+  it('user can export when shopping carts exist', async () => {
+    // Given permanent shopping carts (v13 model: id only, NO `status` field)
+    // plus cart items belonging to them
+    await db.shoppingCarts.bulkPut([
+      { id: 'vendor-1' },
+      {
+        id: 'no-vendor',
+        lastPurchasedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ] as never)
+    await db.cartItems.bulkPut([
+      { id: 'ci-1', cartId: 'vendor-1', itemId: 'item-1', quantity: 2 },
+      { id: 'ci-2', cartId: 'no-vendor', itemId: 'item-2', quantity: 1 },
+    ] as never)
+
+    // When the local export payload is fetched
+    // (must NOT throw a Dexie SchemaError — `status` index was removed in v13)
+    const payload = await fetchLocalPayload()
+
+    // Then both permanent carts and their cart items are included
+    expect(payload.shoppingCarts).toHaveLength(2)
+    expect(
+      (payload.cartItems as Array<{ id: string }>).map((ci) => ci.id),
+    ).toEqual(expect.arrayContaining(['ci-1', 'ci-2']))
+    expect(payload.cartItems).toHaveLength(2)
+  })
+
+  it('only exports cart items belonging to existing carts', async () => {
+    // Given a cart plus an orphan cart item pointing at a non-existent cart
+    await db.shoppingCarts.bulkPut([{ id: 'vendor-1' }] as never)
+    await db.cartItems.bulkPut([
+      { id: 'ci-1', cartId: 'vendor-1', itemId: 'item-1', quantity: 2 },
+      { id: 'orphan', cartId: 'deleted-cart', itemId: 'item-9', quantity: 1 },
+    ] as never)
+
+    // When the local export payload is fetched
+    const payload = await fetchLocalPayload()
+
+    // Then only the cart item scoped to an existing cart is exported
+    expect(payload.cartItems).toHaveLength(1)
+    expect((payload.cartItems[0] as { id: string }).id).toBe('ci-1')
   })
 })
 
