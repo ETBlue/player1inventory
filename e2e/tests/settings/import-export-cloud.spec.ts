@@ -23,6 +23,14 @@ test.beforeEach(async ({ request }) => {
   })
 })
 
+// Prevent the empty-data redirect to /onboarding so the settings/import UI stays
+// reachable even before/after data exists (mirrors import-export-local.spec.ts).
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('e2e-skip-onboarding', 'true')
+  })
+})
+
 test.afterEach(async ({ request }) => {
   await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
     headers: { 'x-e2e-user-id': E2E_USER_ID },
@@ -60,7 +68,20 @@ async function seedCloudFixture(request: import('@playwright/test').APIRequestCo
   )
   await gql(
     `mutation BulkCreateShoppingCarts($carts: [ShoppingCartInput!]!) { bulkCreateShoppingCarts(carts: $carts) { id } }`,
-    { carts: cloudFixture.shoppingCarts },
+    // Permanent carts (v13+) carry only `id` (+ optional `lastPurchasedAt`). The
+    // fixture deliberately keeps legacy `status`/`createdAt` to exercise
+    // backward-compat *import*, but this direct GraphQL seed must send only the
+    // fields `ShoppingCartInput` accepts, or the server rejects it (BAD_USER_INPUT).
+    {
+      carts: (cloudFixture.shoppingCarts as Array<Record<string, unknown>>).map(
+        (c) => ({
+          id: c.id,
+          ...(c.lastPurchasedAt != null
+            ? { lastPurchasedAt: c.lastPurchasedAt }
+            : {}),
+        }),
+      ),
+    },
   )
   await gql(
     `mutation BulkCreateCartItems($cartItems: [CartItemInput!]!) { bulkCreateCartItems(cartItems: $cartItems) { id } }`,
@@ -103,8 +124,13 @@ async function verifyRelations(page: import('@playwright/test').Page) {
   await recipeDetail.navigateToItems(recipeId)
   await expect(recipeDetail.getAssignedItemCheckbox('Fixture Item')).toBeVisible()
 
-  // 6. Cart item in shopping page
+  // 6. Item appears inside its vendor's cart.
+  // /shopping is now a vendor-grouped overview (one VendorCartCard per vendor) —
+  // individual item cards live inside a vendor cart at /shopping/<vendorId>.
+  // The Fixture Item is assigned to "Fixture Vendor", so it is listed (as a
+  // pending item) on that vendor's cart page.
   await shopping.navigateTo()
+  await shopping.clickVendorCartCard('Fixture Vendor')
   await expect(shopping.getItemCard('Fixture Item')).toBeVisible()
 }
 

@@ -166,6 +166,6 @@ test('user sees out-of-stock badge on recipe group card', async ({ page }) => {
   // When: navigate to the recipe group-by view
   await page.goto('/?groupBy=recipe')
 
-  // Then: the recipe card shows "1 out of stock" badge
-  await expect(page.getByText('1 out of stock')).toBeVisible()
+  // Then: the recipe card shows "1 empty" badge
+  await expect(page.getByText('1 empty')).toBeVisible()
 })

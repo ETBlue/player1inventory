@@ -103,8 +103,8 @@ test('user sees out-of-stock badge on vendor group card', async ({ page }) => {
   // When: navigate to the vendor group-by view
   await page.goto('/?groupBy=vendor')
 
-  // Then: the vendor card shows "1 out of stock" badge
-  await expect(page.getByText('1 out of stock')).toBeVisible()
+  // Then: the vendor card shows "1 empty" badge
+  await expect(page.getByText('1 empty')).toBeVisible()
 })
 
 test('user sees vendor card with item count', async ({ page }) => {

@@ -122,8 +122,8 @@ test('user sees out-of-stock and low-stock badges on shelf cards', async ({ page
   await page.goto('/?groupBy=shelf')
 
   // Then: the shelf card shows stock status badges
-  // ShelfCard renders error-inverse badge for out-of-stock, warning-inverse for low stock
-  await expect(page.getByText('1 out of stock')).toBeVisible()
+  // GroupCard renders "N empty" for out-of-stock, "N low stock" for low stock
+  await expect(page.getByText('1 empty')).toBeVisible()
   await expect(page.getByText('1 low stock')).toBeVisible()
 })
 
