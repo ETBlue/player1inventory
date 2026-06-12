@@ -161,15 +161,11 @@ export function ItemListToolbar({
       <Toolbar
         className={`grid grid-cols-[1fr_auto_auto] gap-2 ${className !== undefined ? className : ''}`}
       >
-        {leading && (
-          <div className="flex items-center overflow-hidden gap-2">
-            {leading}
-          </div>
-        )}
+        {leading && <div className="flex items-center gap-2">{leading}</div>}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 truncate">
           {showSort && (
-            <div className="flex items-center ml-2">
+            <div className="flex items-center ml-2 truncate">
               <span className="hidden lg:inline text-sm text-foreground-muted">
                 {t('itemListToolbar.sortBy')}
               </span>
@@ -179,9 +175,9 @@ export function ItemListToolbar({
                     size="default"
                     variant="neutral-ghost"
                     aria-label={t('itemListToolbar.sortByCriteria')}
-                    className="px-0 font-normal"
+                    className="px-0 font-normal truncate"
                   >
-                    {sortLabels[sortBy]}
+                    <span className="truncate">{sortLabels[sortBy]}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
@@ -225,7 +221,7 @@ export function ItemListToolbar({
                 variant="neutral-ghost"
                 onClick={handleDirectionToggle}
                 aria-label={t('itemListToolbar.toggleSortDirection')}
-                className="lg:w-auto lg:px-3"
+                className="lg:w-auto lg:px-3 flex-shrink-0"
               >
                 {sortDirection === 'asc' ? <ArrowUp /> : <ArrowDown />}
                 <span className="hidden lg:inline">
@@ -241,7 +237,7 @@ export function ItemListToolbar({
               variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
               onClick={() => setIsTagsVisible(!isTagsVisible)}
               aria-label={t('itemListToolbar.toggleRelations')}
-              className="lg:w-auto lg:px-3"
+              className="lg:w-auto lg:px-3 flex-shrink-0"
             >
               <ListChevronsUpDown />
               <span className="hidden lg:inline">{t('common.relations')}</span>
@@ -254,7 +250,7 @@ export function ItemListToolbar({
               variant={isFiltersVisible ? 'neutral' : 'neutral-ghost'}
               onClick={() => setIsFiltersVisible(!isFiltersVisible)}
               aria-label={t('itemListToolbar.toggleFilters')}
-              className="lg:w-auto lg:px-3"
+              className="lg:w-auto lg:px-3 flex-shrink-0"
             >
               <Filter />
               <span className="hidden lg:inline">{t('common.filters')}</span>
@@ -272,7 +268,7 @@ export function ItemListToolbar({
                 setSearchVisible((v) => !v)
               }}
               aria-label={t('itemListToolbar.toggleSearch')}
-              className="lg:w-auto lg:px-3"
+              className="lg:w-auto lg:px-3 flex-shrink-0"
             >
               <Search />
               <span className="hidden lg:inline">{t('common.search')}</span>
