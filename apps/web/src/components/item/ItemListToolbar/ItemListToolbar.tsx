@@ -240,11 +240,11 @@ export function ItemListToolbar({
               size="icon"
               variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
               onClick={() => setIsTagsVisible(!isTagsVisible)}
-              aria-label={t('itemListToolbar.toggleTags')}
+              aria-label={t('itemListToolbar.toggleRelations')}
               className="lg:w-auto lg:px-3"
             >
               <ListChevronsUpDown />
-              <span className="hidden lg:inline">{t('common.tags')}</span>
+              <span className="hidden lg:inline">{t('common.relations')}</span>
             </Button>
           )}
 

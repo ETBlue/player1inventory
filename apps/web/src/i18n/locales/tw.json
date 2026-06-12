@@ -27,6 +27,7 @@
     "desc": "降冪",
     "search": "搜尋",
     "tags": "標籤",
+    "relations": "關聯",
     "filters": "篩選條件"
   },
   "shopping": {
@@ -252,7 +253,7 @@
     "sortStock": "快用完的",
     "sortLastPurchased": "最近買的",
     "toggleSortDirection": "切換排序方向",
-    "toggleTags": "顯示/隱藏標籤",
+    "toggleRelations": "顯示/隱藏關聯",
     "toggleFilters": "顯示/隱藏篩選條件",
     "toggleSearch": "顯示/隱藏搜尋框",
     "searchPlaceholder": "搜尋品項...",

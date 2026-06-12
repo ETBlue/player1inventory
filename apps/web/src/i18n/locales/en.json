@@ -27,6 +27,7 @@
     "desc": "Desc",
     "search": "Search",
     "tags": "Tags",
+    "relations": "Relations",
     "filters": "Filters"
   },
   "shopping": {
@@ -252,7 +253,7 @@
     "sortStock": "Stock",
     "sortLastPurchased": "Purchased",
     "toggleSortDirection": "Toggle sort direction",
-    "toggleTags": "Toggle tags",
+    "toggleRelations": "Toggle relations",
     "toggleFilters": "Toggle filters",
     "toggleSearch": "Toggle search",
     "searchPlaceholder": "Search items...",
