@@ -305,7 +305,12 @@ export function DataModeCard() {
               {t('settings.dataMode.local.enableButton')}
             </Button>
           )}
-          {mode === 'cloud' && <CloudModeSection />}
+          {/* CloudModeSection calls useClerk(); in E2E test mode there is no
+              ClerkProvider (see main.tsx), so guard it like the header above and
+              the cloud guards in __root.tsx / settings/index.tsx. */}
+          {mode === 'cloud' && !import.meta.env.VITE_E2E_TEST_USER_ID && (
+            <CloudModeSection />
+          )}
         </CardContent>
       </Card>
 
