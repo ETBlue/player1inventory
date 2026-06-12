@@ -90,7 +90,7 @@ export function RecipeFilterDropdown({
                 className="flex items-center gap-1.5"
               >
                 <Pencil className="h-4 w-4" />
-                <span className="text-xs">{t('common.manage')}</span>
+                <span>{t('settings.recipes.manage')}</span>
               </Link>
             </DropdownMenuItem>
           </>

@@ -88,7 +88,7 @@ export function VendorFilterDropdown({
                 className="flex items-center gap-1.5"
               >
                 <Pencil className="h-4 w-4" />
-                <span className="text-xs">{t('common.manage')}</span>
+                <span>{t('settings.vendors.manage')}</span>
               </Link>
             </DropdownMenuItem>
           </>

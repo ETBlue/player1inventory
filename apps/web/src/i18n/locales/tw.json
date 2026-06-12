@@ -321,6 +321,7 @@
     "vendors": {
       "label": "供應商",
       "description": "管理供應商",
+      "manage": "管理供應商",
       "newButton": "新增供應商",
       "empty": {
         "title": "尚未建立供應商",
@@ -360,11 +361,13 @@
     },
     "shelves": {
       "label": "貨架",
-      "description": "管理貨架與設定篩選條件"
+      "description": "管理貨架與設定篩選條件",
+      "manage": "管理貨架"
     },
     "recipes": {
       "label": "食譜",
       "description": "管理食譜",
+      "manage": "管理食譜",
       "newButton": "新增食譜",
       "empty": {
         "title": "尚未建立食譜",

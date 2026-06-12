@@ -323,6 +323,7 @@
     "vendors": {
       "label": "Vendors",
       "description": "Manage vendors",
+      "manage": "Manage vendors",
       "newButton": "New Vendor",
       "empty": {
         "title": "No vendors yet",
@@ -363,11 +364,13 @@
     },
     "shelves": {
       "label": "Shelves",
-      "description": "Manage shelves and shelf filters"
+      "description": "Manage shelves and shelf filters",
+      "manage": "Manage shelves"
     },
     "recipes": {
       "label": "Recipes",
       "description": "Manage recipes",
+      "manage": "Manage recipes",
       "newButton": "New Recipe",
       "empty": {
         "title": "No recipes yet",
