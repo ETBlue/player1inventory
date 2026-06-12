@@ -3,20 +3,17 @@ import { ChefHat, MapPin, ShelvingUnit, Store, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DataModeCard } from '@/components/settings/DataModeCard'
 import { ExportCard } from '@/components/settings/ExportCard'
-import { FamilyGroupCard } from '@/components/settings/FamilyGroupCard'
 import { ImportCard } from '@/components/settings/ImportCard'
 import { LanguageCard } from '@/components/settings/LanguageCard'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
 import { ThemeCard } from '@/components/settings/ThemeCard'
 import { Toolbar } from '@/components/shared/Toolbar'
-import { useDataMode } from '@/hooks/useDataMode'
 
 export const Route = createFileRoute('/settings/')({
   component: Settings,
 })
 
 function Settings() {
-  const { mode } = useDataMode()
   const { t } = useTranslation()
 
   return (
@@ -30,9 +27,6 @@ function Settings() {
         <ThemeCard />
         <LanguageCard />
         <DataModeCard />
-        {mode === 'cloud' && !import.meta.env.VITE_E2E_TEST_USER_ID && (
-          <FamilyGroupCard />
-        )}
         <ExportCard />
         <ImportCard />
         <SettingsNavCard

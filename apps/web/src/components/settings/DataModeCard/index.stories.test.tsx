@@ -5,7 +5,7 @@ import * as stories from './index.stories'
 
 // composeStories applies each story's MockedProvider decorator automatically.
 // We manually call each story's beforeEach since composeStories doesn't run them.
-const { LocalMode, CloudMode, CloudModeInGroup } = composeStories(stories)
+const { LocalMode, CloudMode } = composeStories(stories)
 
 describe('DataModeCard stories smoke tests', () => {
   describe('LocalMode', () => {
@@ -24,16 +24,6 @@ describe('DataModeCard stories smoke tests', () => {
 
     it('renders without error', () => {
       render(<CloudMode />)
-      expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
-    })
-  })
-
-  describe('CloudModeInGroup', () => {
-    beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
-    afterEach(() => localStorage.removeItem('data-mode'))
-
-    it('renders without error', () => {
-      render(<CloudModeInGroup />)
       expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
     })
   })

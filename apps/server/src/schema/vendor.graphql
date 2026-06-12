@@ -2,7 +2,6 @@ type Vendor {
   id: ID!
   name: String!
   userId: String!
-  familyId: String
 }
 
 extend type Query {

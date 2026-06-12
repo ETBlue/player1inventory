@@ -18,7 +18,6 @@ query GetItem($id: ID!) {
     estimatedDueDays
     expirationThreshold
     userId
-    familyId
     createdAt
     updatedAt
   }
@@ -44,7 +43,6 @@ query GetItems {
     estimatedDueDays
     expirationThreshold
     userId
-    familyId
     createdAt
     updatedAt
   }

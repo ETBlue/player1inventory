@@ -65,7 +65,7 @@ async function execOp(query: string, variables?: Record<string, unknown>) {
 describe('Vendor resolvers', () => {
   it('user can create a vendor via GraphQL', async () => {
     // Given prisma.vendor.create resolves with a new vendor
-    const newVendor = { id: 'v_1', name: 'Costco', userId: 'user_test123', familyId: null }
+    const newVendor = { id: 'v_1', name: 'Costco', userId: 'user_test123' }
     mockPrisma.vendor.create.mockResolvedValue(newVendor)
     // createVendor also upserts a permanent cart with the vendor ID
     mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', userId: 'user_test123', lastPurchasedAt: null })
@@ -97,7 +97,7 @@ describe('Vendor resolvers', () => {
   it('user can list their vendors', async () => {
     // Given one vendor for this user
     mockPrisma.vendor.findMany.mockResolvedValue([
-      { id: 'v_1', name: 'Costco', userId: 'user_test123', familyId: null },
+      { id: 'v_1', name: 'Costco', userId: 'user_test123' },
     ])
 
     // When listing vendors
@@ -113,7 +113,7 @@ describe('Vendor resolvers', () => {
   it('user can update a vendor', async () => {
     // Given Prisma returns the updated vendor
     mockPrisma.vendor.update.mockResolvedValue({
-      id: 'v_1', name: 'New Name', userId: 'user_test123', familyId: null,
+      id: 'v_1', name: 'New Name', userId: 'user_test123',
     })
 
     // When updating the vendor name

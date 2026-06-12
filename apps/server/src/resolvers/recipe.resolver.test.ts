@@ -57,7 +57,6 @@ function makeRecipe(overrides: Partial<{
     id: overrides.id ?? 'recipe_1',
     name: overrides.name ?? 'Pancakes',
     userId: overrides.userId ?? 'user_test123',
-    familyId: null,
     lastCookedAt: overrides.lastCookedAt ?? null,
     items: overrides.items ?? [],
   }

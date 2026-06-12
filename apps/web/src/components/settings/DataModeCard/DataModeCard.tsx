@@ -21,7 +21,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useMyFamilyGroupQuery } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
 import {
   MIGRATION_PROMPTED_KEY,
@@ -33,7 +32,7 @@ import { type ImportStrategy, importLocalData } from '@/lib/importData'
 
 // ─── Switch flow (cloud → local) ─────────────────────────────────────────────
 
-type SwitchFlow = 'idle' | 'familyWarn' | 'copy' | 'conflict'
+type SwitchFlow = 'idle' | 'copy' | 'conflict'
 type SignOutFlow = 'idle' | 'askOffline' | 'askMigrate' | 'migrating'
 type EnableFlow = 'idle' | 'confirm' | 'copyAsk' | 'strategyAsk'
 
@@ -57,8 +56,6 @@ function CloudModeSectionE2E() {
 function CloudModeSection() {
   const apolloClient = useApolloClient()
   const clerk = useClerk()
-  const { data: familyGroupData } = useMyFamilyGroupQuery()
-  const isInFamilyGroup = !!familyGroupData?.myFamilyGroup
   const { t } = useTranslation()
 
   const [switchFlow, setSwitchFlow] = useState<SwitchFlow>('idle')
@@ -100,10 +97,7 @@ function CloudModeSection() {
 
   return (
     <>
-      <Button
-        variant="neutral-outline"
-        onClick={() => setSwitchFlow(isInFamilyGroup ? 'familyWarn' : 'copy')}
-      >
+      <Button variant="neutral-outline" onClick={() => setSwitchFlow('copy')}>
         {t('settings.dataMode.cloud.switchButton')}
       </Button>
       <Button
@@ -114,27 +108,6 @@ function CloudModeSection() {
       </Button>
 
       {/* ── Switch flow dialogs ─────────────────────────────────────────── */}
-
-      {/* Family group warning dialog */}
-      {/* No onOpenChange: buttons drive all state transitions */}
-      <AlertDialog open={switchFlow === 'familyWarn'}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('settings.dataMode.familyWarnDialog.title')}
-            </AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            {t('settings.dataMode.familyWarnDialog.description')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => setSwitchFlow('copy')}>
-              {t('settings.dataMode.familyWarnDialog.continue')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Copy cloud data dialog */}
       {/* No onOpenChange: buttons drive all state transitions */}

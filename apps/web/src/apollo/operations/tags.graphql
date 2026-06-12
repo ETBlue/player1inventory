@@ -4,7 +4,6 @@ query GetTagTypes {
     name
     color
     userId
-    familyId
   }
 }
 
@@ -14,7 +13,6 @@ query GetTags {
     name
     typeId
     userId
-    familyId
     parentId
   }
 }
@@ -25,7 +23,6 @@ query GetTagsByType($typeId: String!) {
     name
     typeId
     userId
-    familyId
     parentId
   }
 }
