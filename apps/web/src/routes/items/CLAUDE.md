@@ -22,7 +22,7 @@ Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · R
 
 > Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.
 
-**3. Relation (`/items/$id/relation`, `Waypoints` icon)**
+**3. Relation (`/items/$id/relation`, `Settings2` icon)**
 - A layout (`$id/relation.tsx`) that renders a secondary submenu (three `Link` icon buttons: Tags `Tags`, Vendors `Store`, Recipes `ChefHat`) under the main toolbar, plus the routed `<Outlet/>`
 - The Relation toolbar button is active on any `…/relation/*` route
 - `/items/$id/relation` (index) redirects to `…/relation/tags` (default subtab)
