@@ -84,7 +84,6 @@ function makeItem(overrides: Partial<{
     expirationThreshold: null,
     expirationMode: 'disabled',
     userId: overrides.userId ?? 'user_test123',
-    familyId: null,
     createdAt: now,
     updatedAt: now,
     tags: (overrides.tagIds ?? []).map((tagId) => ({ itemId: overrides.id ?? 'item_1', tagId })),

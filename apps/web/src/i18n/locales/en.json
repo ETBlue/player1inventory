@@ -414,11 +414,6 @@
         "switchButton": "Switch...",
         "signOutButton": "Sign Out"
       },
-      "familyWarnDialog": {
-        "title": "You're in a family group",
-        "description": "Other family members may lose access to shared items or see outdated versions in the future. Do you want to continue?",
-        "continue": "Continue"
-      },
       "copyDialog": {
         "title": "Copy your cloud data to local storage?",
         "description": "Your cloud data will be copied to this device.",
@@ -468,38 +463,6 @@
       "import": "Import",
       "skip": "Skip",
       "autoImporting": "Copying local data to cloud…"
-    },
-    "familyGroup": {
-      "title": "Family group",
-      "titleWithName": "Family group · {{name}}",
-      "groupCode": "Group code: {{code}}",
-      "copyCode": "Copy",
-      "description": "Share your pantry with family members",
-      "createButton": "Create group",
-      "joinButton": "Join with code",
-      "disbandButton": "Disband group",
-      "leaveButton": "Leave group",
-      "createDialog": {
-        "title": "Create a family group",
-        "namePlaceholder": "Group name",
-        "create": "Create"
-      },
-      "joinDialog": {
-        "title": "Join a family group",
-        "description": "Enter the 6-character group code.",
-        "codePlaceholder": "ABC123",
-        "join": "Join"
-      },
-      "leaveDialog": {
-        "title": "Leave family group?",
-        "description": "You will no longer have access to the shared pantry.",
-        "leave": "Leave"
-      },
-      "disbandDialog": {
-        "title": "Disband family group?",
-        "description": "All members will lose access to the shared pantry. This cannot be undone.",
-        "disband": "Disband"
-      }
     },
     "export": {
       "label": "Download my data",

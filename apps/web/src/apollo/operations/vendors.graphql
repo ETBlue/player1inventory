@@ -3,7 +3,6 @@ query GetVendors {
     id
     name
     userId
-    familyId
   }
 }
 

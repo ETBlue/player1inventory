@@ -188,7 +188,6 @@ function makePrismaItem(id: string, name = 'Milk') {
     consumeAmount: 1,
     expirationMode: 'disabled',
     userId: 'user_import_test',
-    familyId: null,
     packageUnit: null,
     measurementUnit: null,
     amountPerPackage: null,

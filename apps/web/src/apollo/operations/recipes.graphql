@@ -8,7 +8,6 @@ query GetRecipes {
     }
     lastCookedAt
     userId
-    familyId
   }
 }
 
@@ -22,7 +21,6 @@ query GetRecipe($id: ID!) {
     }
     lastCookedAt
     userId
-    familyId
   }
 }
 

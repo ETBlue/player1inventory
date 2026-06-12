@@ -32,7 +32,7 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
 
 // Mock @clerk/react so tests don't require ClerkProvider.
 // Per-file vi.mock('@clerk/react', ...) overrides this for tests that need
-// specific user IDs (DataModeCard.test.tsx, FamilyGroupCard.test.tsx).
+// specific user IDs (DataModeCard.test.tsx).
 vi.mock('@clerk/react', () => ({
   useUser: vi.fn(() => ({
     user: {
@@ -52,8 +52,8 @@ vi.mock('@clerk/react', () => ({
 }))
 
 // Mock generated Apollo hook functions so tests don't require an ApolloProvider.
-// Uses importOriginal so non-hook exports (DocumentNode constants like
-// MyFamilyGroupDocument) pass through — stories need them for MockedProvider.
+// Uses importOriginal so non-hook exports (DocumentNode constants) pass through
+// — stories need them for MockedProvider.
 // All tests run in local mode (Dexie); cloud hooks are never exercised.
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -78,28 +78,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       {},
     ],
     useDeleteItemMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
-    useMyFamilyGroupQuery: () => ({
-      data: undefined,
-      loading: false,
-      error: undefined,
-      refetch: vi.fn(),
-    }),
-    useCreateFamilyGroupMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
-    useJoinFamilyGroupMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
-    useLeaveFamilyGroupMutation: () => [
-      vi.fn().mockResolvedValue({ data: undefined }),
-      {},
-    ],
-    useDisbandFamilyGroupMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],

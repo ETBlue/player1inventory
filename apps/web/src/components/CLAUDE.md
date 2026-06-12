@@ -11,7 +11,7 @@ src/components/
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
   vendor/         — vendor-specific: NewVendorDialog, VendorCard, VendorInfoForm
   recipe/         — recipe-specific: CookingControlBar, NewRecipeDialog, RecipeCard, RecipeInfoForm
-  settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, FamilyGroupCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
+  settings/       — settings-specific: ConflictDialog, DataModeCard, ExportCard, ImportCard, LanguageCard, SettingsNavCard, ThemeCard
   shelf/          — shelf-specific: ShelfList, AddShelfDialog
   ui/             — shadcn/ui primitives (flat files, not folders)
 ```
@@ -96,7 +96,7 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 **`DataModeCard`** (`src/components/settings/DataModeCard/DataModeCard.tsx`) — data mode toggle card (local ↔ cloud). No props. Uses `useDataMode`. Renders different content for local vs cloud mode. Cloud mode renders `CloudModeSection` which owns all cloud state and dialogs: a **Switch** flow (switch to offline, optional cloud→local data copy, Clerk session kept alive) and a **Sign Out** flow (sign out of Clerk, optionally switch offline and/or copy cloud data). Sign Out button appears inline with the signed-in email.
 
-**`FamilyGroupCard`** (`src/components/settings/FamilyGroupCard/index.tsx`) — family group management card. No props. Cloud mode only (rendered conditionally by the settings page).
+> Note: the alpha global "family group" sharing concept (FamilyGroupCard + the `familyId` column/field and `FamilyGroup` model) was removed. Per-location membership is the planned cloud sharing model going forward.
 
 **`ThemeCard`** (`src/components/settings/ThemeCard/index.tsx`) — theme selector card. No props. Uses `useTheme`. Renders Sun/Moon icon and three segmented buttons (Light / System / Dark).
 

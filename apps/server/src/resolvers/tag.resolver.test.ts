@@ -75,7 +75,7 @@ async function execOp(query: string, variables?: Record<string, unknown>) {
 describe('TagType resolvers', () => {
   it('user can create a tag type via GraphQL', async () => {
     // Given prisma.tagType.create resolves with a new tag type
-    const newTagType = { id: 'tt_1', name: 'Category', color: 'teal', userId: 'user_test123', familyId: null }
+    const newTagType = { id: 'tt_1', name: 'Category', color: 'teal', userId: 'user_test123' }
     mockPrisma.tagType.create.mockResolvedValue(newTagType)
 
     // When creating a tag type
@@ -101,8 +101,8 @@ describe('TagType resolvers', () => {
   it('user can list their tag types', async () => {
     // Given two tag types for this user
     mockPrisma.tagType.findMany.mockResolvedValue([
-      { id: 'tt_1', name: 'Category', color: 'teal', userId: 'user_test123', familyId: null },
-      { id: 'tt_2', name: 'Diet', color: 'green', userId: 'user_test123', familyId: null },
+      { id: 'tt_1', name: 'Category', color: 'teal', userId: 'user_test123' },
+      { id: 'tt_2', name: 'Diet', color: 'green', userId: 'user_test123' },
     ])
 
     // When listing tag types
@@ -118,7 +118,7 @@ describe('TagType resolvers', () => {
   it('user can update a tag type', async () => {
     // Given an updated tag type from Prisma
     mockPrisma.tagType.update.mockResolvedValue({
-      id: 'tt_1', name: 'New Name', color: 'red', userId: 'user_test123', familyId: null,
+      id: 'tt_1', name: 'New Name', color: 'red', userId: 'user_test123',
     })
 
     // When updating name and color
@@ -192,7 +192,7 @@ describe('TagType resolvers', () => {
 describe('Tag resolvers', () => {
   it('user can create a tag via GraphQL', async () => {
     // Given prisma.tag.create resolves with a new tag
-    const newTag = { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', familyId: null, parentId: null }
+    const newTag = { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', parentId: null }
     mockPrisma.tag.create.mockResolvedValue(newTag)
 
     // When creating a tag
@@ -213,7 +213,7 @@ describe('Tag resolvers', () => {
   it('user can list their tags', async () => {
     // Given one tag for this user
     mockPrisma.tag.findMany.mockResolvedValue([
-      { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', familyId: null, parentId: null },
+      { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', parentId: null },
     ])
 
     // When listing tags
@@ -228,7 +228,7 @@ describe('Tag resolvers', () => {
   it('user can list tags by type', async () => {
     // Given one tag of the requested type
     mockPrisma.tag.findMany.mockResolvedValue([
-      { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', familyId: null, parentId: null },
+      { id: 'tag_1', name: 'Dairy', typeId: 'tt_1', userId: 'user_test123', parentId: null },
     ])
 
     // When listing tags by type
@@ -247,7 +247,7 @@ describe('Tag resolvers', () => {
   it('user can update a tag', async () => {
     // Given Prisma returns the updated tag
     mockPrisma.tag.update.mockResolvedValue({
-      id: 'tag_1', name: 'New Tag', typeId: 'tt_1', userId: 'user_test123', familyId: null, parentId: null,
+      id: 'tag_1', name: 'New Tag', typeId: 'tt_1', userId: 'user_test123', parentId: null,
     })
 
     // When updating the tag name

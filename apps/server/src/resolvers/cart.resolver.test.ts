@@ -74,7 +74,6 @@ function makeCart(overrides: Partial<{
   return {
     id: overrides.id ?? 'no-vendor',
     userId: overrides.userId ?? 'user_test123',
-    familyId: null,
     lastPurchasedAt: overrides.lastPurchasedAt ?? null,
   }
 }

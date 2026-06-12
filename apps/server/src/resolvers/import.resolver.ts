@@ -21,7 +21,6 @@ function itemToGraphQL(item: {
   expirationThreshold?: number | null
   expirationMode: ExpirationMode
   userId: string
-  familyId?: string | null
   createdAt: Date
   updatedAt: Date
   tags: { tagId: string }[]

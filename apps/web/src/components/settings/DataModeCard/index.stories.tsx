@@ -1,6 +1,5 @@
 import { MockedProvider } from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
-import { MyFamilyGroupDocument } from '@/generated/graphql'
 import { DataModeCard } from '.'
 
 // DataModeCard uses:
@@ -8,42 +7,16 @@ import { DataModeCard } from '.'
 //   - useUser() from @clerk/react — shown in CloudMode only (email display)
 //   - useClerk() from @clerk/react — signOut, used in sign-out flow
 //   - useApolloClient() — used in switch/sign-out flows for fetchCloudPayload
-//   - useMyFamilyGroupQuery() — Apollo, used in CloudModeSection switch flow
 //
 // Mocking strategy:
 //   - localStorage is set in each story's `beforeEach` to control mode
-//   - Apollo is mocked with MockedProvider
+//   - Apollo is mocked with MockedProvider (no operations are issued on render)
 //   - Clerk: CloudModeSection renders CloudModeSectionWithUser or E2E shim.
 //     In tests/stories without a real Clerk context, useUser/useClerk from
 //     the global vi.mock stub (setup.ts) are used — Storybook will log a
 //     warning but will not throw.
 
-const apolloMocks = [
-  {
-    request: { query: MyFamilyGroupDocument },
-    result: { data: { myFamilyGroup: null } },
-  },
-]
-
-const apolloMocksWithGroup = [
-  {
-    request: { query: MyFamilyGroupDocument },
-    result: {
-      data: {
-        myFamilyGroup: {
-          __typename: 'FamilyGroup',
-          id: 'group-1',
-          name: 'The Smiths',
-          code: 'ABC123',
-          ownerUserId: 'user-owner-1',
-          memberUserIds: ['user-owner-1', 'user-member-2'],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    },
-  },
-]
+const apolloMocks: never[] = []
 
 const meta: Meta<typeof DataModeCard> = {
   title: 'Components/Settings/DataModeCard',
@@ -76,21 +49,6 @@ export const CloudMode: Story = {
   decorators: [
     (Story) => (
       <MockedProvider mocks={apolloMocks} addTypename={false}>
-        <Story />
-      </MockedProvider>
-    ),
-  ],
-  beforeEach() {
-    localStorage.setItem('data-mode', 'cloud')
-    return () => localStorage.removeItem('data-mode')
-  },
-}
-
-export const CloudModeInGroup: Story = {
-  name: 'CloudMode — sharing enabled, in family group',
-  decorators: [
-    (Story) => (
-      <MockedProvider mocks={apolloMocksWithGroup} addTypename={false}>
         <Story />
       </MockedProvider>
     ),

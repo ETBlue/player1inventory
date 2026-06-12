@@ -410,11 +410,6 @@
         "switchButton": "切換...",
         "signOutButton": "登出"
       },
-      "familyWarnDialog": {
-        "title": "你正在家庭群組中",
-        "description": "切換到離線模式後，其他家庭成員可能無法繼續存取共享品項，或看到過時版本。要繼續嗎？",
-        "continue": "繼續"
-      },
       "copyDialog": {
         "title": "資料轉移否？",
         "description": "要將雲端資料複製到目前的裝置嗎？",
@@ -464,38 +459,6 @@
       "import": "匯入",
       "skip": "略過",
       "autoImporting": "正在將本機資料複製到雲端…"
-    },
-    "familyGroup": {
-      "title": "家庭群組",
-      "titleWithName": "家庭群組·{{name}}",
-      "groupCode": "群組代碼：{{code}}",
-      "copyCode": "複製",
-      "description": "與家人共享您的庫存清單",
-      "createButton": "建立群組",
-      "joinButton": "輸入代碼加入",
-      "disbandButton": "解散群組",
-      "leaveButton": "離開群組",
-      "createDialog": {
-        "title": "建立家庭群組",
-        "namePlaceholder": "群組名稱",
-        "create": "建立"
-      },
-      "joinDialog": {
-        "title": "加入家庭群組",
-        "description": "輸入 6 個字元的群組代碼。",
-        "codePlaceholder": "ABC123",
-        "join": "加入"
-      },
-      "leaveDialog": {
-        "title": "離開家庭群組？",
-        "description": "您將無法再存取共享的庫存清單。",
-        "leave": "離開"
-      },
-      "disbandDialog": {
-        "title": "解散家庭群組？",
-        "description": "所有成員將無法再存取共享的庫存清單，此操作無法復原。",
-        "disband": "解散"
-      }
     },
     "export": {
       "label": "下載我的資料",

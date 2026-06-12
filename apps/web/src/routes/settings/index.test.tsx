@@ -11,9 +11,6 @@ vi.mock('@/components/settings/LanguageCard', () => ({
 vi.mock('@/components/settings/DataModeCard', () => ({
   DataModeCard: () => <div data-testid="data-mode-card" />,
 }))
-vi.mock('@/components/settings/FamilyGroupCard', () => ({
-  FamilyGroupCard: () => <div data-testid="family-group-card" />,
-}))
 vi.mock('@/components/settings/ExportCard', () => ({
   ExportCard: () => <div data-testid="export-card" />,
 }))

@@ -3,7 +3,6 @@ type TagType {
   name: String!
   color: String!
   userId: String!
-  familyId: String
 }
 
 type Tag {
@@ -11,7 +10,6 @@ type Tag {
   name: String!
   typeId: String!
   userId: String!
-  familyId: String
   parentId: String
 }
 

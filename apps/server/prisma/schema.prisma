@@ -38,12 +38,10 @@ model TagType {
   name     String
   color    TagColor
   userId   String
-  familyId String?
 
   tags Tag[]
 
   @@index([userId, name])
-  @@index([familyId, name])
 }
 
 model Tag {
@@ -51,7 +49,6 @@ model Tag {
   name     String
   typeId   String
   userId   String
-  familyId String?
   parentId String?
 
   type     TagType   @relation(fields: [typeId], references: [id])
@@ -60,19 +57,16 @@ model Tag {
   items    ItemTag[]
 
   @@index([userId, typeId])
-  @@index([familyId, typeId])
 }
 
 model Vendor {
   id       String  @id @default(cuid())
   name     String
   userId   String
-  familyId String?
 
   items ItemVendor[]
 
   @@index([userId, name])
-  @@index([familyId, name])
 }
 
 model Item {
@@ -92,7 +86,6 @@ model Item {
   expirationThreshold Int?
   expirationMode      ExpirationMode @default(disabled)
   userId              String
-  familyId            String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -102,8 +95,8 @@ model Item {
   inventoryLogs InventoryLog[]
   cartItems     CartItem[]
 
-  @@index([familyId, updatedAt])
-  @@index([familyId, name])
+  @@index([userId, updatedAt])
+  @@index([userId, name])
 }
 
 model ItemTag {
@@ -131,12 +124,10 @@ model Recipe {
   name         String
   lastCookedAt DateTime?
   userId       String
-  familyId     String?
 
   items RecipeItem[]
 
   @@index([userId, name])
-  @@index([familyId, name])
 }
 
 model RecipeItem {
@@ -153,7 +144,6 @@ model RecipeItem {
 model Cart {
   id              String    @id
   userId          String
-  familyId        String?
   lastPurchasedAt DateTime?
 
   items CartItem[]
@@ -191,18 +181,6 @@ model InventoryLog {
   @@index([itemId, occurredAt(sort: Desc)])
 }
 
-model FamilyGroup {
-  id            String   @id @default(cuid())
-  name          String
-  code          String   @unique
-  ownerUserId   String
-  memberUserIds String[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([code])
-}
-
 model Shelf {
   id           String    @id @default(cuid())
   name         String
@@ -211,10 +189,8 @@ model Shelf {
   filterConfig Json?
   itemIds      String[]
   userId       String
-  familyId     String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   @@index([userId, order])
-  @@index([familyId, order])
 }
