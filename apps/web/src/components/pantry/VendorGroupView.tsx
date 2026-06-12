@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Lock, Settings, Settings2, Store } from 'lucide-react'
+import { Lock, Settings, Store } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
@@ -81,7 +81,7 @@ export function VendorGroupView() {
               asChild
             >
               <span>
-                <Settings2 />
+                <Settings />
                 <span className="hidden lg:inline">
                   {t('settings.vendors.manage')}
                 </span>

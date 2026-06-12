@@ -193,7 +193,7 @@ export function PantryListView() {
             setSortBy(field)
             setSortDirection(direction)
           }}
-          isTagsToggleEnabled
+          isRelationsToggleEnabled
           items={items}
           className="border-b"
           onCreateFromSearch={handleCreateFromSearch}

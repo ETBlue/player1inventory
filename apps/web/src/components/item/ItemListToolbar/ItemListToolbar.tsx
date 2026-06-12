@@ -1,6 +1,14 @@
 // src/components/ItemListToolbar.tsx
 
-import { ArrowDown, ArrowUp, Filter, Plus, Search, Tags, X } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Filter,
+  ListChevronsUpDown,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -33,7 +41,7 @@ interface ItemListToolbarProps {
 
   // Tags toggle — only shown when this prop is provided
   // (shopping page omits it; pantry + assignment pages include it)
-  isTagsToggleEnabled?: boolean
+  isRelationsToggleEnabled?: boolean
 
   // Items — for FilterStatus counts and ItemFilters available options
   items?: Item[]
@@ -64,7 +72,7 @@ export function ItemListToolbar({
   sortBy,
   sortDirection,
   onSortChange,
-  isTagsToggleEnabled,
+  isRelationsToggleEnabled,
   items = [],
   className,
   leading,
@@ -227,7 +235,7 @@ export function ItemListToolbar({
             </div>
           )}
 
-          {isTagsToggleEnabled && (
+          {isRelationsToggleEnabled && (
             <Button
               size="icon"
               variant={isTagsVisible ? 'neutral' : 'neutral-ghost'}
@@ -235,7 +243,7 @@ export function ItemListToolbar({
               aria-label={t('itemListToolbar.toggleTags')}
               className="lg:w-auto lg:px-3"
             >
-              <Tags />
+              <ListChevronsUpDown />
               <span className="hidden lg:inline">{t('common.tags')}</span>
             </Button>
           )}

@@ -263,9 +263,9 @@ describe('ItemCard - Tag Sorting', () => {
 
     const messageEl = screen.getByText(/Expires in 3 days/i)
 
-    // Should have warning style
-    expect(messageEl).toHaveClass('bg-status-error-background')
-    expect(messageEl).toHaveClass('text-foreground-colorless-inverse')
+    // Should have warning style (plain colored text, no bg pill)
+    expect(messageEl).toHaveClass('text-status-error-foreground')
+    expect(messageEl).not.toHaveClass('bg-status-error-background')
 
     // Should show warning icon (TriangleAlert component)
     const icon = messageEl.querySelector('svg')
@@ -335,10 +335,10 @@ describe('ItemCard - Tag Sorting', () => {
       <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
-    // Then badge shows error styling (regression guard)
+    // Then badge shows error styling (plain colored text, no bg pill) (regression guard)
     const messageEl = screen.getByText(/Expires in 2 days/i)
-    expect(messageEl).toHaveClass('bg-status-error-background')
-    expect(messageEl).toHaveClass('text-foreground-colorless-inverse')
+    expect(messageEl).toHaveClass('text-status-error-foreground')
+    expect(messageEl).not.toHaveClass('bg-status-error-background')
 
     // And TriangleAlert icon is present
     const icon = messageEl.querySelector('svg')
@@ -614,7 +614,12 @@ describe('ItemCard - vendor and recipe display', () => {
         recipes={mockRecipes}
       />,
     )
-    expect(screen.getByText('1 tag · 1 vendor · 1 recipe')).toBeInTheDocument()
+    // Summary now renders as separate spans joined by `·` separators
+    expect(screen.getByText('1 tag')).toBeInTheDocument()
+    expect(screen.getByText('1 vendor')).toBeInTheDocument()
+    expect(screen.getByText('1 recipe')).toBeInTheDocument()
+    // Two `·` separators between the three entries
+    expect(screen.getAllByText('·')).toHaveLength(2)
   })
 
   it('omits zero-count entries in collapsed state', async () => {
@@ -629,7 +634,10 @@ describe('ItemCard - vendor and recipe display', () => {
       />,
     )
     expect(screen.queryByText(/vendor/i)).not.toBeInTheDocument()
-    expect(screen.getByText('1 tag · 1 recipe')).toBeInTheDocument()
+    // Only tag and recipe entries remain, joined by a single `·` separator
+    expect(screen.getByText('1 tag')).toBeInTheDocument()
+    expect(screen.getByText('1 recipe')).toBeInTheDocument()
+    expect(screen.getAllByText('·')).toHaveLength(1)
   })
 
   it('shows vendor badges when expanded', async () => {

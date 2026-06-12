@@ -40,7 +40,8 @@ export function LocationSwitcher() {
       <DropdownMenuTrigger asChild>
         <Button
           size="icon"
-          variant="neutral-outline"
+          variant="neutral"
+          className="flex-shrink-0"
           aria-label={t('locationSwitcher.triggerLabel', { name: activeName })}
         >
           <span aria-hidden="true" className="text-sm font-medium">

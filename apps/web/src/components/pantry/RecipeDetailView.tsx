@@ -150,16 +150,15 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
           sortBy={sortBy}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          isTagsToggleEnabled={true}
+          isRelationsToggleEnabled={true}
           hideFiltersToggle={true}
           items={inScopeItems}
           leading={
             <>
-              <LocationSwitcher />
               <Button
                 variant="neutral-ghost"
                 size="icon"
-                className="lg:w-auto lg:mr-3"
+                className="lg:w-auto lg:mr-3 flex-shrink-0"
                 onClick={() =>
                   navigate({ to: '/', search: { groupBy: 'recipe' } })
                 }
@@ -168,6 +167,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
+              <LocationSwitcher />
               <h1 className="text-base font-regular truncate capitalize">
                 {title}
               </h1>

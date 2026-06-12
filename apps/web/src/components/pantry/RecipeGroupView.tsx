@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ChefHat, Lock, Settings, Settings2 } from 'lucide-react'
+import { ChefHat, Lock, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
@@ -90,7 +90,7 @@ export function RecipeGroupView() {
               asChild
             >
               <span>
-                <Settings2 />
+                <Settings />
                 <span className="hidden lg:inline">
                   {t('settings.recipes.manage')}
                 </span>

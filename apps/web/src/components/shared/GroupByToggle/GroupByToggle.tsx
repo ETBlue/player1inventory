@@ -9,31 +9,31 @@ interface GroupByToggleProps {
 
 export function GroupByToggle({ current, onChange }: GroupByToggleProps) {
   return (
-    <div className="flex items-center rounded-md border border-accessory-default overflow-hidden">
+    <div className="flex items-center">
       <Button
-        variant={current === 'shelf' ? 'neutral' : 'neutral-ghost'}
+        variant={current === 'shelf' ? 'neutral' : 'neutral-outline'}
         size="icon"
         aria-label="Group by shelf"
         aria-pressed={current === 'shelf'}
-        className="rounded-none border-0"
+        className="rounded-tr-none rounded-br-none"
         onClick={() => onChange('shelf')}
         icon={<ShelvingUnit />}
       ></Button>
       <Button
-        variant={current === 'vendor' ? 'neutral' : 'neutral-ghost'}
+        variant={current === 'vendor' ? 'neutral' : 'neutral-outline'}
         size="icon"
         aria-label="Group by vendor"
         aria-pressed={current === 'vendor'}
-        className="rounded-none border-0"
+        className="rounded-none -ml-[1px]"
         onClick={() => onChange('vendor')}
         icon={<Store />}
       ></Button>
       <Button
-        variant={current === 'recipe' ? 'neutral' : 'neutral-ghost'}
+        variant={current === 'recipe' ? 'neutral' : 'neutral-outline'}
         size="icon"
         aria-label="Group by recipe"
         aria-pressed={current === 'recipe'}
-        className="rounded-none border-0"
+        className="rounded-tl-none rounded-bl-none -ml-[1px]"
         onClick={() => onChange('recipe')}
       >
         <ChefHat />

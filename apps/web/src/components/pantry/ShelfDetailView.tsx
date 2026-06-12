@@ -252,7 +252,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           sortBy={sortBy}
           sortDirection={sortDirection}
           onSortChange={handleSortChange}
-          isTagsToggleEnabled={true}
+          isRelationsToggleEnabled={true}
           hideFiltersToggle={!isUnsorted}
           items={inShelfItems}
           vendors={vendors}
@@ -262,11 +262,10 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           isCreating={createItem.isPending}
           leading={
             <>
-              <LocationSwitcher />
               <Button
                 variant="neutral-ghost"
                 size="icon"
-                className="lg:w-auto lg:mr-3"
+                className="lg:w-auto lg:mr-3 flex-shrink-0"
                 onClick={() =>
                   navigate({ to: '/', search: { groupBy: 'shelf' } })
                 }
@@ -275,6 +274,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
+              <LocationSwitcher />
               <h1 className="text-base font-regular truncate capitalize">
                 {shelfName}
               </h1>
