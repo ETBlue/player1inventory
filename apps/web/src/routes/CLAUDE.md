@@ -24,9 +24,10 @@ groupBy=recipe, id present → RecipeDetailView  (items in one recipe)
 - When switching group-by: writes `setStoredGroupBy(g)` before navigating
 
 **Toolbar controls (group views):**
+- `LocationSwitcher` — leading; global active-location selector (inert in PR B). Mounted on every pantry view (group + detail + flat list)
 - `ViewToggle` — switches between list and group views
 - `GroupByToggle` — switches between shelf / vendor / recipe groupings (three icon buttons)
-- "Manage" button — links to `/settings/shelves`, `/settings/vendors`, or `/settings/recipes` depending on current group-by
+- "Manage X" button — entity-specific label ("Manage shelves" / "Manage vendors" / "Manage recipes" via `settings.{shelves,vendors,recipes}.manage`) links to `/settings/shelves`, `/settings/vendors`, or `/settings/recipes` depending on current group-by. Icon-only on mobile (`hidden lg:inline` for the text)
 
 **Components** (`src/components/pantry/`):
 - `PantryListView` — flat item list with full toolbar (sort, filter, search, add)
@@ -71,7 +72,7 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 **`ItemFilters` dropdown behavior:**
 - Render order: vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
 - Tag badges inside tag type dropdowns: unselected tags render with `${color}-tint` variant (light), selected tags render with `${color}` variant (solid)
-- Vendor and recipe dropdowns include a "Manage" link at the bottom (always visible, with Pencil icon) navigating to `/settings/vendors` and `/settings/recipes` respectively
+- Vendor and recipe dropdowns include a "Manage X" link at the bottom (always visible, with Pencil icon): "Manage vendors" (`settings.vendors.manage`) → `/settings/vendors` and "Manage recipes" (`settings.recipes.manage`) → `/settings/recipes`
 
 ### Shopping Page
 

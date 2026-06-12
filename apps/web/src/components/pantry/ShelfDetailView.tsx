@@ -5,6 +5,7 @@ import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -261,6 +262,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           isCreating={createItem.isPending}
           leading={
             <>
+              <LocationSwitcher />
               <Button
                 variant="neutral-ghost"
                 size="icon"

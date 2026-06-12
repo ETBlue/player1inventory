@@ -1,8 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Lock, Settings, Settings2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { ShelfList } from '@/components/shelf/ShelfList'
@@ -20,6 +22,7 @@ import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { Item, Shelf } from '@/types'
 
 export function ShelfGroupView() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
 
   const { data: shelves, isLoading: shelvesLoading } = useShelvesQuery()
@@ -177,19 +180,22 @@ export function ShelfGroupView() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
+            <LocationSwitcher />
             <ViewToggle current="group" onChange={() => {}} />
             <GroupByToggle current="shelf" onChange={() => {}} />
             <div className="flex-1" />
             <Button
               size="icon"
               className="lg:w-auto lg:px-3"
-              aria-label="Manage shelves"
+              aria-label={t('settings.shelves.manage')}
               disabled
               asChild
             >
               <span>
                 <Settings2 />
-                <span className="hidden lg:inline">Manage</span>
+                <span className="hidden lg:inline">
+                  {t('settings.shelves.manage')}
+                </span>
               </span>
             </Button>
           </Toolbar>
@@ -205,6 +211,7 @@ export function ShelfGroupView() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
+          <LocationSwitcher />
           <ViewToggle
             current="group"
             onChange={(view) => {
@@ -228,9 +235,14 @@ export function ShelfGroupView() {
             className="lg:w-auto lg:px-3"
             asChild
           >
-            <Link to="/settings/shelves" aria-label="Manage shelves">
+            <Link
+              to="/settings/shelves"
+              aria-label={t('settings.shelves.manage')}
+            >
               <Settings />
-              <span className="hidden lg:inline">Manage</span>
+              <span className="hidden lg:inline">
+                {t('settings.shelves.manage')}
+              </span>
             </Link>
           </Button>
         </Toolbar>
