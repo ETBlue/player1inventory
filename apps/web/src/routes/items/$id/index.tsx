@@ -7,13 +7,13 @@ import { DeleteButton } from '@/components/shared/DeleteButton'
 import { useDeleteItem, useItem, useUpdateItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
-import type { Item } from '@/types'
+import type { Item, PantryItem } from '@/types'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemInfoTab,
 })
 
-function itemToFormValues(item: Item): ItemFormValues {
+function itemToFormValues(item: PantryItem): ItemFormValues {
   return {
     packedQuantity: item.packedQuantity,
     unpackedQuantity: item.unpackedQuantity ?? 0,

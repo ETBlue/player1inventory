@@ -9,7 +9,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem } from '@/db/operations'
+import { createItem, getItemStock } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 describe('Item stock tab', () => {
@@ -17,6 +17,7 @@ describe('Item stock tab', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.recipes.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
@@ -66,10 +67,10 @@ describe('Item stock tab', () => {
     await user.type(packedInput, '5')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the stock field is persisted
+    // Then the stock field is persisted on the active-location ItemStock
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.packedQuantity).toBe(5)
+      const stock = await getItemStock(item.id)
+      expect(stock?.packedQuantity).toBe(5)
     })
   })
 
@@ -103,13 +104,14 @@ describe('Item stock tab', () => {
     await user.type(packedInput, '3')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the info fields remain intact
+    // Then the stock change persists and the global info fields remain intact
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.packedQuantity).toBe(3)
-      expect(updated?.name).toBe('Milk')
-      expect(updated?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q8495')
-      expect(updated?.note).toBe('Lactose-free preferred')
+      const stock = await getItemStock(item.id)
+      expect(stock?.packedQuantity).toBe(3)
     })
+    const updated = await db.items.get(item.id)
+    expect(updated?.name).toBe('Milk')
+    expect(updated?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q8495')
+    expect(updated?.note).toBe('Lactose-free preferred')
   })
 })

@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -230,7 +230,11 @@ describe('Vendor Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then the item is created and assigned to the vendor
     await waitFor(async () => {
@@ -309,7 +313,11 @@ describe('Vendor Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then Butter is created and assigned to the vendor
     await waitFor(async () => {
@@ -585,7 +593,11 @@ describe('Vendor Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then the item is created and assigned to the vendor
     await waitFor(async () => {
