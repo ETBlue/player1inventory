@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import type { Item, Recipe, Vendor } from '@/types'
+import type { PantryItem, Recipe, Vendor } from '@/types'
 import { TagColor } from '@/types'
 
 // Shared mock data and Storybook decorator for ItemCard story files.
@@ -40,7 +40,7 @@ export const sharedDecorator: Decorator = (Story) => (
   </QueryClientProvider>
 )
 
-export const mockItem: Item = {
+export const mockItem: PantryItem = {
   id: '1',
   name: 'Yogurt (plain)',
   packageUnit: 'gallon',
@@ -55,7 +55,7 @@ export const mockItem: Item = {
   updatedAt: new Date(),
 }
 
-export const mockDualUnitItem: Item = {
+export const mockDualUnitItem: PantryItem = {
   id: '2',
   name: 'Purple grapes',
   packageUnit: 'bottle',

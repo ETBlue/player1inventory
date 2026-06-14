@@ -25,11 +25,11 @@ import {
 } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
-import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
+import type { PantryItem, Recipe, Tag, TagType, Vendor } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 interface ItemCardProps {
-  item: Item
+  item: PantryItem
   tags: Tag[]
   tagTypes: TagType[]
   onTagClick?: (tagId: string) => void
