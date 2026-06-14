@@ -78,12 +78,18 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// Fallback used when no ActiveLocationProvider is mounted. In the real app the
+// provider is always mounted in __root.tsx; this fallback exists so that
+// isolated unit/story renders (and any hook now reading the active location to
+// scope its data) default to the single default location ('local') without
+// requiring every test to wrap in a provider. Switching is a no-op here.
+const FALLBACK_ACTIVE_LOCATION: ActiveLocationContextValue = {
+  activeLocationId: DEFAULT_LOCATION_ID,
+  setActiveLocationId: () => {},
+  activeLocation: undefined,
+}
+
 export function useActiveLocation(): ActiveLocationContextValue {
   const ctx = useContext(ActiveLocationContext)
-  if (!ctx) {
-    throw new Error(
-      'useActiveLocation must be used within an ActiveLocationProvider',
-    )
-  }
-  return ctx
+  return ctx ?? FALLBACK_ACTIVE_LOCATION
 }

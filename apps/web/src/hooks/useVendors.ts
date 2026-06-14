@@ -16,6 +16,7 @@ import {
 } from '@/generated/graphql'
 import { deserializeVendor } from '@/lib/deserialization'
 import type { Vendor } from '@/types'
+import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
 
 export function useVendors() {
@@ -50,11 +51,13 @@ export function useVendors() {
 export function useCreateVendor() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { activeLocationId } = useActiveLocation()
 
   const localMutation = useMutation({
-    mutationFn: (name: string) => createVendor(name),
+    mutationFn: (name: string) => createVendor(name, activeLocationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] })
+      queryClient.invalidateQueries({ queryKey: ['cart'] })
     },
   })
 
