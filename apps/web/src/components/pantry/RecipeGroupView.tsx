@@ -8,7 +8,7 @@ import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
-import { useItems } from '@/hooks'
+import { useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
   getCurrentQuantity,
@@ -16,20 +16,20 @@ import {
   isInactive,
 } from '@/lib/quantityUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 export function RecipeGroupView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: recipes = [], isLoading: recipesLoading } = useRecipes()
-  const { data: items = [], isLoading: itemsLoading } = useItems()
+  const { data: items = [], isLoading: itemsLoading } = useStockedItems()
 
   const isLoading = recipesLoading || itemsLoading
 
   const getAllRecipeItemIds = () =>
     new Set(recipes.flatMap((r) => r.items.map((ri) => ri.itemId)))
 
-  const getRecipeItems = (recipeId: string): Item[] => {
+  const getRecipeItems = (recipeId: string): PantryItem[] => {
     if (recipeId === 'unsorted') {
       const allIds = getAllRecipeItemIds()
       return items.filter((i) => !allIds.has(i.id))

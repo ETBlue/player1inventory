@@ -8,7 +8,7 @@ import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
-import { useItems } from '@/hooks'
+import { useStockedItems } from '@/hooks'
 import { useVendors } from '@/hooks/useVendors'
 import {
   getCurrentQuantity,
@@ -16,17 +16,17 @@ import {
   isInactive,
 } from '@/lib/quantityUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 export function VendorGroupView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: vendors = [], isLoading: vendorsLoading } = useVendors()
-  const { data: items = [], isLoading: itemsLoading } = useItems()
+  const { data: items = [], isLoading: itemsLoading } = useStockedItems()
 
   const isLoading = vendorsLoading || itemsLoading
 
-  const getVendorItems = (vendorId: string): Item[] =>
+  const getVendorItems = (vendorId: string): PantryItem[] =>
     vendorId === 'unsorted'
       ? items.filter((i) => !i.vendorIds || i.vendorIds.length === 0)
       : items.filter((i) => i.vendorIds?.includes(vendorId))
