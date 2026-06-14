@@ -57,6 +57,15 @@ async function seedCookingData(
         name: 'Test Milk',
         tagIds: [],
         vendorIds: [],
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
+      })
+      // Stock the item in the default location so cooking treats it as available
+      // (PR D: items not stocked in the active location are unavailable).
+      await put('itemStocks', {
+        id: `stock-${milkId}`,
+        itemId: milkId,
+        locationId: 'local',
         targetUnit: 'package',
         targetQuantity: 0,
         refillThreshold: 0,

@@ -3,6 +3,7 @@ import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
+import { splitInlineStock } from '../helpers/locationSeed'
 import { makeGql } from '../utils/cloud'
 
 // Seed items and a recipe for the cooking test.
@@ -118,6 +119,10 @@ async function seedDatabase(
     },
     { flourId, eggsId, recipeId, now },
   )
+
+  // Location PR D: split the inline stock fields into the itemStocks store so the
+  // app (which reads stock per location) sees the seeded quantities.
+  await splitInlineStock(page)
 
   return { flourId, eggsId, recipeId }
 }

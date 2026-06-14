@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { splitInlineStock } from '../helpers/locationSeed'
 
 test.beforeEach(async ({ page }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
@@ -101,6 +102,7 @@ test('user sees out-of-stock badge on vendor group card', async ({ page }) => {
   )
 
   // When: navigate to the vendor group-by view
+  await splitInlineStock(page)
   await page.goto('/?groupBy=vendor')
 
   // Then: the vendor card shows "1 empty" badge
@@ -172,6 +174,7 @@ test('user sees vendor card with item count', async ({ page }) => {
   )
 
   // When: navigate to the vendor group-by view
+  await splitInlineStock(page)
   await page.goto('/?groupBy=vendor')
 
   // Then: the vendor card heading is visible

@@ -79,6 +79,20 @@ async function seedItem(page: Page, name: string, tagIds: string[] = []): Promis
           name,
           tagIds,
           vendorIds: [],
+          createdAt: new Date(now),
+          updatedAt: new Date(now),
+        })
+        req.onsuccess = () => resolve()
+        req.onerror = () => reject(req.error)
+      })
+      // Stock the item in the default location so the location-scoped pantry
+      // (PR D) shows it. Without an itemStocks row the item is hidden.
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('itemStocks', 'readwrite')
+        const req = tx.objectStore('itemStocks').put({
+          id: `stock-${itemId}`,
+          itemId,
+          locationId: 'local',
           targetUnit: 'package',
           targetQuantity: 0,
           refillThreshold: 0,
