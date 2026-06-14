@@ -126,3 +126,25 @@ The connection strings contain embedded credentials (`postgresql://user:password
 releaseCommand = "pnpm --filter server exec prisma migrate deploy"
 ```
 Railway runs the `releaseCommand` after a successful build but before the new instance goes live. If the migration fails, the deploy is aborted and the old instance keeps serving. This means migrations are now applied automatically on every Railway deploy — no manual step needed for future schema changes.
+
+---
+
+## 10. `column "vendorId" of relation "Cart" does not exist` (P3018) — migration drift
+
+**Symptom:** Railway deploy failed during `migrate deploy`. Migration `20260609100000_permanent_vendor_carts` aborted with:
+```
+Error: P3018 / 42703
+ERROR: column "vendorId" of relation "Cart" does not exist
+```
+The failed migration then blocked all subsequent migrations.
+
+**Cause:** The migration ran `ALTER TABLE "Cart" DROP COLUMN "vendorId"`, but **no committed migration ever added `vendorId` to `Cart`**. Two migrations — `20260608171912_add_vendor_cart_fields` (which added `vendorId`) and `20260609000000_remove_last_visited_at` — were created locally by `prisma migrate dev`, applied to the dev DB, then **squashed into `permanent_vendor_carts` and deleted before committing** (they have no git history). The squashed migration's `DROP vendorId` undid the deleted migration's `ADD` — consistent with the dev DB's real state, but impossible on production, which never received the deleted migration. Dev and prod also use **different Neon endpoints** (dev `ep-holy-breeze`, prod `ep-jolly-bonus`), so the dev-only column was invisible to prod.
+
+**Fix:** Changed the drop to `DROP COLUMN IF EXISTS "vendorId"` (PR #238) — a no-op where the column never existed, still drops it where present. Then recovered prod (Postgres rolled the failed migration back atomically, so prod schema was untouched):
+```bash
+cd apps/server && pnpm prisma migrate resolve --rolled-back 20260609100000_permanent_vendor_carts
+# then redeploy → migrate deploy re-runs the corrected migration
+```
+The drifted dev DB was reconciled with `prisma migrate reset` (replays committed history from scratch).
+
+**Prevention:** See `apps/server/prisma/CLAUDE.md` — when squashing/deleting uncommitted `migrate dev` migrations, **reset the dev DB before committing** so dev never diverges from committed history. A hand-written `DROP`/`ALTER` that targets a column only an earlier (now-deleted) migration created will pass locally and fail on every clean database.

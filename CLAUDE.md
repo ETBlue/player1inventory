@@ -52,6 +52,10 @@ Components → TanStack Query hooks → Dexie.js → IndexedDB
 
 Components never access the database directly — they use Query hooks from `src/hooks/`.
 
+## Backend & Prisma Migrations
+
+> See `apps/server/prisma/CLAUDE.md` — migration safety rules (reset the dev DB after squashing uncommitted `migrate dev` migrations; a migration must be valid on a DB built only from committed history).
+
 ## Project Structure
 
 ```
