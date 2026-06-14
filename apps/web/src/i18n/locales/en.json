@@ -90,7 +90,8 @@
     },
     "recipe": {
       "itemCount": "{{count}} / {{total}} selected",
-      "noItems": "No items in this recipe."
+      "noItems": "No items in this recipe.",
+      "unavailable": "Not stocked in this location"
     },
     "log": {
       "consumedVia": "consumed via {{recipes}}",
@@ -155,6 +156,16 @@
   },
   "items": {
     "newButton": "New Item",
+    "addDialog": {
+      "title": "Add Item",
+      "searchPlaceholder": "Search or create an item",
+      "noResults": "No items found",
+      "createOption": "Create \"{{name}}\"",
+      "createButton": "Create \"{{name}}\"",
+      "alreadyStocked": "Already here",
+      "packageUnitLabel": "Package unit",
+      "packageUnitPlaceholder": "e.g. bottle, kg"
+    },
     "tags": {
       "empty": {
         "title": "No tag types yet",
