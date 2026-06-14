@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { TagColor } from '../types'
-import { DEFAULT_LOCATION_ID } from '../types'
+import { cartIdFor, DEFAULT_LOCATION_ID } from '../types'
 import { db } from './index'
 import {
   abandonCart,
   addInventoryLog,
+  addItemToLocation,
   addToCart,
   checkout,
   createItem,
@@ -34,12 +35,15 @@ import {
   getItemCountByRecipe,
   getItemCountByVendor,
   getItemLogs,
+  getItemStock,
+  getItemStocks,
   getLastPurchaseDate,
   getLastPurchasedByVendor,
   getLocations,
   getRecipe,
   getRecipes,
   getShelf,
+  getStockedItems,
   getTagCountByType,
   getTagsByType,
   getVendors,
@@ -59,9 +63,15 @@ import {
   updateVendor,
 } from './operations'
 
+// Cart ids are location-scoped (`${locationId}:${vendorId|'no-vendor'}`) since
+// the Location feature (PR D). Helper for the default location used in tests.
+const localCartId = (vendorId: string | null) =>
+  cartIdFor(DEFAULT_LOCATION_ID, vendorId)
+
 describe('Item operations', () => {
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.inventoryLogs.clear()
   })
 
@@ -240,9 +250,222 @@ describe('Item operations', () => {
   })
 })
 
+describe('ItemStock operations (Location PR D)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.locations.clear()
+  })
+
+  it('user can create an item that is stocked in a given location', async () => {
+    // Given an item created in a non-default location
+    const loc = await createLocation('Storage')
+    const item = await createItem(
+      {
+        name: 'Rice',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      loc.id,
+    )
+
+    // Then the global item carries no stock fields, but an ItemStock exists in loc
+    const rawItem = (await db.items.get(item.id)) as Record<string, unknown>
+    expect(rawItem.packedQuantity).toBeUndefined()
+    const stock = await getItemStock(item.id, loc.id)
+    expect(stock?.packedQuantity).toBe(2)
+    expect(stock?.targetQuantity).toBe(3)
+    // And no stock exists in the default location
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeUndefined()
+  })
+
+  it('joined reads return zeroed stock when the item is not stocked in a location', async () => {
+    // Given an item stocked only in the default location
+    const item = await createItem({
+      name: 'Salt',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const other = await createLocation('Cabin')
+
+    // When read joined against another location
+    const joined = await getItem(item.id, other.id)
+
+    // Then stock fields are zeroed and stockId is undefined
+    expect(joined?.packedQuantity).toBe(0)
+    expect(joined?.stockId).toBeUndefined()
+    expect(joined?.locationId).toBe(other.id)
+  })
+
+  it('copy-on-add inherits all fields except packed/unpacked (which start at 0)', async () => {
+    // Given an item stocked in the default location with quantities + units
+    const item = await createItem({
+      name: 'Flour',
+      tagIds: [],
+      packageUnit: 'bag',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 4,
+      unpackedQuantity: 100,
+      consumeAmount: 100,
+    })
+    const cabin = await createLocation('Cabin')
+
+    // When adding it to another location via copy-on-add
+    const copied = await addItemToLocation(item.id, cabin.id)
+
+    // Then all profile fields are inherited but quantities reset to 0
+    expect(copied.targetQuantity).toBe(2000)
+    expect(copied.refillThreshold).toBe(500)
+    expect(copied.amountPerPackage).toBe(500)
+    expect(copied.consumeAmount).toBe(100)
+    expect(copied.packedQuantity).toBe(0)
+    expect(copied.unpackedQuantity).toBe(0)
+  })
+
+  it('addItemToLocation is a no-op when the item is already stocked there', async () => {
+    const item = await createItem({
+      name: 'Sugar',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+
+    // When adding to the default location where it is already stocked
+    const result = await addItemToLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then the existing stock is returned unchanged (quantities preserved)
+    expect(result.packedQuantity).toBe(3)
+    const stocks = await getItemStocks(item.id)
+    expect(stocks).toHaveLength(1)
+  })
+
+  it('getStockedItems returns only items stocked in the given location', async () => {
+    // Given two items stocked in the default location and one only elsewhere
+    const cabin = await createLocation('Cabin')
+    await createItem({ name: 'Milk', tagIds: [] }, DEFAULT_LOCATION_ID)
+    await createItem({ name: 'Eggs', tagIds: [] }, DEFAULT_LOCATION_ID)
+    const cabinOnly = await createItem(
+      { name: 'Firewood', tagIds: [] },
+      cabin.id,
+    )
+
+    // When reading stocked items for the default location
+    const defaultStocked = await getStockedItems(DEFAULT_LOCATION_ID)
+
+    // Then only the two default-location items appear (not the cabin-only one)
+    const names = defaultStocked.map((i) => i.name).sort()
+    expect(names).toEqual(['Eggs', 'Milk'])
+    expect(defaultStocked.every((i) => i.stockId)).toBe(true)
+
+    // And the cabin location scopes to its own item
+    const cabinStocked = await getStockedItems(cabin.id)
+    expect(cabinStocked.map((i) => i.id)).toEqual([cabinOnly.id])
+  })
+
+  it('getStockedItems re-scopes after copy-on-add into a new location', async () => {
+    // Given an item stocked only in the default location
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      { name: 'Salt', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    expect(await getStockedItems(cabin.id)).toHaveLength(0)
+
+    // When it is added to the cabin via copy-on-add
+    await addItemToLocation(item.id, cabin.id)
+
+    // Then it now appears in the cabin's stocked set
+    const cabinStocked = await getStockedItems(cabin.id)
+    expect(cabinStocked.map((i) => i.id)).toEqual([item.id])
+  })
+
+  it('deleteLocation cascades the location ItemStock rows, carts, and logs', async () => {
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco', cabin.id)
+    const item = await createItem(
+      {
+        name: 'Beans',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+    await addToCart(cartIdFor(cabin.id, vendor.id), item.id, 2)
+    await checkout(cartIdFor(cabin.id, vendor.id))
+
+    // sanity: data exists in the cabin location
+    expect(await getItemStock(item.id, cabin.id)).toBeDefined()
+    expect(await getItemLogs(item.id, cabin.id)).not.toHaveLength(0)
+
+    // When the location is deleted
+    await deleteLocation(cabin.id)
+
+    // Then its stock, logs and carts are gone
+    expect(await getItemStock(item.id, cabin.id)).toBeUndefined()
+    expect(await getItemLogs(item.id, cabin.id)).toHaveLength(0)
+    const carts = await db.shoppingCarts
+      .where('id')
+      .startsWith(`${cabin.id}:`)
+      .toArray()
+    expect(carts).toHaveLength(0)
+    // And the global item itself survives
+    expect(await db.items.get(item.id)).toBeDefined()
+  })
+
+  it('checkout and cooking write to the location passed via the cart/locationId', async () => {
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      {
+        name: 'Pasta',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 5,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+    await addToCart(cartIdFor(cabin.id, null), item.id, 2)
+    await checkout(cartIdFor(cabin.id, null))
+
+    // Stock + log land in the cabin location, not the default one
+    const cabinStock = await getItemStock(item.id, cabin.id)
+    expect(cabinStock?.packedQuantity).toBe(3)
+    expect(await getCurrentQuantity(item.id, cabin.id)).toBe(2)
+    expect(await getCurrentQuantity(item.id, DEFAULT_LOCATION_ID)).toBe(0)
+  })
+})
+
 describe('InventoryLog operations', () => {
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.inventoryLogs.clear()
   })
 
@@ -476,6 +699,7 @@ describe('Tag cascade operations', () => {
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.items.clear()
+    await db.itemStocks.clear()
   })
 
   it('user can delete a tag and it is removed from all items', async () => {
@@ -575,6 +799,7 @@ describe('ShoppingCart operations', () => {
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.inventoryLogs.clear()
   })
 
@@ -585,31 +810,31 @@ describe('ShoppingCart operations', () => {
     // When getting the cart for that vendor
     const cart = await getCart(vendor.id)
 
-    // Then the cart exists with the vendor's id
+    // Then the cart exists with the location-scoped id
     expect(cart).toBeDefined()
-    expect(cart?.id).toBe(vendor.id)
+    expect(cart?.id).toBe(localCartId(vendor.id))
   })
 
   it('getCart returns the no-vendor cart', async () => {
-    // Given a no-vendor cart exists
-    await db.shoppingCarts.put({ id: 'no-vendor' })
+    // Given a no-vendor cart exists (location-scoped id)
+    await db.shoppingCarts.put({ id: localCartId(null) })
 
     // When getting the cart with null vendorId
     const cart = await getCart(null)
 
     // Then the no-vendor cart is returned
     expect(cart).toBeDefined()
-    expect(cart?.id).toBe('no-vendor')
+    expect(cart?.id).toBe(localCartId(null))
   })
 
-  it('createVendor creates a permanent cart with same id', async () => {
+  it('createVendor creates a permanent cart with the location-scoped id', async () => {
     // When creating a vendor
     const vendor = await createVendor('Costco')
 
-    // Then a cart with the same id is created
-    const cart = await db.shoppingCarts.get(vendor.id)
+    // Then a cart with the location-scoped id is created
+    const cart = await db.shoppingCarts.get(localCartId(vendor.id))
     expect(cart).toBeDefined()
-    expect(cart?.id).toBe(vendor.id)
+    expect(cart?.id).toBe(localCartId(vendor.id))
   })
 
   it('deleteVendor deletes the vendor cart and its items', async () => {
@@ -626,19 +851,19 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 2)
+    await addToCart(localCartId(vendor.id), item.id, 2)
 
     // When deleting the vendor
     await deleteVendor(vendor.id)
 
     // Then the vendor cart is gone
-    const cart = await db.shoppingCarts.get(vendor.id)
+    const cart = await db.shoppingCarts.get(localCartId(vendor.id))
     expect(cart).toBeUndefined()
 
     // And the cart items are gone
     const cartItems = await db.cartItems
       .where('cartId')
-      .equals(vendor.id)
+      .equals(localCartId(vendor.id))
       .toArray()
     expect(cartItems).toHaveLength(0)
   })
@@ -659,7 +884,7 @@ describe('ShoppingCart operations', () => {
     })
 
     // When adding an item to the cart
-    const cartItem = await addToCart(vendor.id, item.id, 2)
+    const cartItem = await addToCart(localCartId(vendor.id), item.id, 2)
 
     // Then the cart item is created with the correct quantity
     expect(cartItem.quantity).toBe(2)
@@ -679,13 +904,13 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    const cartItem = await addToCart(vendor.id, item.id, 2)
+    const cartItem = await addToCart(localCartId(vendor.id), item.id, 2)
 
     // When updating the quantity
     await updateCartItem(cartItem.id, 5)
 
     // Then the quantity is updated
-    const items = await getCartItems(vendor.id)
+    const items = await getCartItems(localCartId(vendor.id))
     expect(items[0]?.quantity).toBe(5)
   })
 
@@ -703,10 +928,10 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 3)
+    await addToCart(localCartId(vendor.id), item.id, 3)
 
     // When checking out
-    await checkout(vendor.id)
+    await checkout(localCartId(vendor.id))
 
     // Then inventory logs are created
     const quantity = await getCurrentQuantity(item.id)
@@ -726,14 +951,14 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 1)
+    await addToCart(localCartId(vendor.id), item.id, 1)
     const before = new Date()
 
     // When checking out
-    await checkout(vendor.id)
+    await checkout(localCartId(vendor.id))
 
     // Then the cart has lastPurchasedAt set
-    const cart = await db.shoppingCarts.get(vendor.id)
+    const cart = await db.shoppingCarts.get(localCartId(vendor.id))
     expect(cart?.lastPurchasedAt).toBeDefined()
     expect(cart?.lastPurchasedAt?.getTime()).toBeGreaterThanOrEqual(
       before.getTime(),
@@ -763,17 +988,17 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, activeItem.id, 2)
-    await addToCart(vendor.id, pinnedItem.id, 1)
-    const cartItems = await getCartItems(vendor.id)
+    await addToCart(localCartId(vendor.id), activeItem.id, 2)
+    await addToCart(localCartId(vendor.id), pinnedItem.id, 1)
+    const cartItems = await getCartItems(localCartId(vendor.id))
     const pinnedCartItem = cartItems.find((ci) => ci.itemId === pinnedItem.id)
     if (pinnedCartItem) await updateCartItem(pinnedCartItem.id, 0)
 
     // When checking out
-    await checkout(vendor.id)
+    await checkout(localCartId(vendor.id))
 
     // Then only the active item is removed (the pinned stays)
-    const remainingItems = await getCartItems(vendor.id)
+    const remainingItems = await getCartItems(localCartId(vendor.id))
     expect(remainingItems).toHaveLength(1)
     expect(remainingItems[0].itemId).toBe(pinnedItem.id)
     expect(remainingItems[0].quantity).toBe(0)
@@ -792,15 +1017,15 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 1)
-    const cartItems = await getCartItems(vendor.id)
+    await addToCart(localCartId(vendor.id), item.id, 1)
+    const cartItems = await getCartItems(localCartId(vendor.id))
     await updateCartItem(cartItems[0].id, 0)
 
     // When checking out
-    await checkout(vendor.id)
+    await checkout(localCartId(vendor.id))
 
     // Then the pinned item remains in the same permanent cart
-    const remainingItems = await getCartItems(vendor.id)
+    const remainingItems = await getCartItems(localCartId(vendor.id))
     expect(remainingItems).toHaveLength(1)
     expect(remainingItems[0].itemId).toBe(item.id)
     expect(remainingItems[0].quantity).toBe(0)
@@ -823,10 +1048,10 @@ describe('ShoppingCart operations', () => {
       consumeAmount: 1,
       tagIds: [],
     })
-    await addToCart(vendor.id, item.id, 2)
+    await addToCart(localCartId(vendor.id), item.id, 2)
 
     // When checkout with a logDescriptor
-    await checkout(vendor.id, {
+    await checkout(localCartId(vendor.id), {
       logKey: 'shopping.log.purchasedAt',
       logParams: { vendor: 'Costco' },
     })
@@ -863,17 +1088,17 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item1.id, 3)
-    await addToCart(vendor.id, item2.id, 1)
-    const cartItems = await getCartItems(vendor.id)
+    await addToCart(localCartId(vendor.id), item1.id, 3)
+    await addToCart(localCartId(vendor.id), item2.id, 1)
+    const cartItems = await getCartItems(localCartId(vendor.id))
     const item2CartItem = cartItems.find((ci) => ci.itemId === item2.id)
     if (item2CartItem) await updateCartItem(item2CartItem.id, 0)
 
     // When abandoning the cart
-    await abandonCart(vendor.id)
+    await abandonCart(localCartId(vendor.id))
 
     // Then all items including pinned are removed
-    const remaining = await getCartItems(vendor.id)
+    const remaining = await getCartItems(localCartId(vendor.id))
     expect(remaining).toHaveLength(0)
 
     // And no inventory logs were created
@@ -885,7 +1110,7 @@ describe('ShoppingCart operations', () => {
     // Given two vendor carts and a no-vendor cart
     const vendor1 = await createVendor('Costco')
     const vendor2 = await createVendor('Trader Joes')
-    await db.shoppingCarts.put({ id: 'no-vendor' })
+    await db.shoppingCarts.put({ id: localCartId(null) })
 
     // When getting all carts
     const carts = await getAllCarts()
@@ -893,20 +1118,24 @@ describe('ShoppingCart operations', () => {
     // Then all three carts are returned
     expect(carts.length).toBeGreaterThanOrEqual(3)
     const ids = carts.map((c) => c.id)
-    expect(ids).toContain(vendor1.id)
-    expect(ids).toContain(vendor2.id)
-    expect(ids).toContain('no-vendor')
+    expect(ids).toContain(localCartId(vendor1.id))
+    expect(ids).toContain(localCartId(vendor2.id))
+    expect(ids).toContain(localCartId(null))
   })
 
   it('getLastPurchasedByVendor returns lastPurchasedAt from each cart', async () => {
     // Given two vendor carts with known lastPurchasedAt values
     const vendor1 = await createVendor('Costco')
     const vendor2 = await createVendor('Trader Joes')
-    await db.shoppingCarts.put({ id: 'no-vendor' })
+    await db.shoppingCarts.put({ id: localCartId(null) })
     const date1 = new Date('2026-05-01')
     const date2 = new Date('2026-04-15')
-    await db.shoppingCarts.update(vendor1.id, { lastPurchasedAt: date1 })
-    await db.shoppingCarts.update(vendor2.id, { lastPurchasedAt: date2 })
+    await db.shoppingCarts.update(localCartId(vendor1.id), {
+      lastPurchasedAt: date1,
+    })
+    await db.shoppingCarts.update(localCartId(vendor2.id), {
+      lastPurchasedAt: date2,
+    })
 
     // When getting lastPurchasedByVendor
     const result = await getLastPurchasedByVendor()
@@ -932,10 +1161,10 @@ describe('ShoppingCart operations', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 3)
+    await addToCart(localCartId(vendor.id), item.id, 3)
 
     // When checkout is called
-    await checkout(vendor.id)
+    await checkout(localCartId(vendor.id))
 
     // Then the log quantity reflects total after purchase (existing + bought)
     const logs = await getItemLogs(item.id)
@@ -959,10 +1188,10 @@ describe('ShoppingCart operations', () => {
       consumeAmount: 1,
     })
     // And a cart with that item and a quantity
-    await addToCart(vendor.id, item.id, 3)
+    await addToCart(localCartId(vendor.id), item.id, 3)
 
     // When checkout is called
-    await checkout(vendor.id)
+    await checkout(localCartId(vendor.id))
 
     // Then item.packedQuantity should increase by the cart quantity
     const updatedItem = await getItem(item.id)
@@ -976,6 +1205,7 @@ describe('Vendor operations', () => {
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
     await db.items.clear()
+    await db.itemStocks.clear()
   })
 
   it('user can create a vendor', async () => {
@@ -1094,6 +1324,7 @@ describe('getItemCountByVendor', () => {
     await db.vendors.clear()
     await db.shoppingCarts.clear()
     await db.items.clear()
+    await db.itemStocks.clear()
   })
 
   it('returns count of items assigned to a vendor', async () => {
@@ -1172,6 +1403,7 @@ describe('getTagCountByType', () => {
 describe('Item cascade operations', () => {
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.inventoryLogs.clear()
     await db.cartItems.clear()
     await db.shoppingCarts.clear()
@@ -1253,6 +1485,7 @@ describe('Item cascade operations', () => {
 describe('Count helpers for item relations', () => {
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.inventoryLogs.clear()
     await db.cartItems.clear()
     await db.shoppingCarts.clear()
@@ -1342,6 +1575,7 @@ describe('Recipe operations', () => {
   beforeEach(async () => {
     await db.recipes.clear()
     await db.items.clear()
+    await db.itemStocks.clear()
   })
 
   it('user can create a recipe', async () => {
