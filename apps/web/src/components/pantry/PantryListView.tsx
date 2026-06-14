@@ -10,7 +10,7 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
-import { useItems, useUpdateItem } from '@/hooks'
+import { useStockedItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -32,7 +32,7 @@ export function PantryListView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  const { data: items = [], isLoading } = useItems()
+  const { data: items = [], isLoading } = useStockedItems()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()

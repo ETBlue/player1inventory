@@ -1,4 +1,5 @@
 export * from './useInventoryLogs'
+export * from './useItemStocks'
 export * from './useItems'
 export * from './useLocations'
 export * from './useOnboardingSetup'

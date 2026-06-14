@@ -2,13 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/db'
+import { createItem, createLocation } from '@/db/operations'
 import { GetRecipesDocument } from '@/generated/graphql'
+import { DEFAULT_LOCATION_ID } from '@/types'
+import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
 import {
   useCreateItem,
   useDeleteItem,
   useItem,
   useItems,
   useLastPurchaseDate,
+  useStockedItems,
   useUpdateItem,
 } from './useItems'
 
@@ -377,5 +382,27 @@ describe('useLastPurchaseDate (cloud mode)', () => {
     // Then data is undefined (no purchase on record)
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.data).toBeUndefined()
+  })
+})
+
+describe('useStockedItems (local mode)', () => {
+  it('returns only items stocked in the active location', async () => {
+    // Given local mode with one item stocked here and one stocked elsewhere
+    await db.items.clear()
+    await db.itemStocks.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    const cabin = await createLocation('Cabin')
+    await createItem({ name: 'Milk', tagIds: [] }, DEFAULT_LOCATION_ID)
+    await createItem({ name: 'Firewood', tagIds: [] }, cabin.id)
+
+    // When the hook reads the active (default) location
+    const { result } = renderHook(() => useStockedItems(), {
+      wrapper: createWrapper(),
+    })
+
+    // Then only the default-location item is returned
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    expect(result.current.data?.map((i) => i.name)).toEqual(['Milk'])
   })
 })

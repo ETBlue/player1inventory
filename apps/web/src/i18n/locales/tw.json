@@ -90,7 +90,8 @@
     },
     "recipe": {
       "itemCount": "{{count}} / {{total}} 項已勾選",
-      "noItems": "食譜裡還沒有任何品項喔。"
+      "noItems": "食譜裡還沒有任何品項喔。",
+      "unavailable": "此地點未庫存"
     },
     "log": {
       "consumedVia": "用在 {{recipes}} 上了",
@@ -155,6 +156,16 @@
   },
   "items": {
     "newButton": "新增品項",
+    "addDialog": {
+      "title": "新增品項",
+      "searchPlaceholder": "搜尋或建立品項",
+      "noResults": "找不到品項",
+      "createOption": "建立「{{name}}」",
+      "createButton": "建立「{{name}}」",
+      "alreadyStocked": "已在此地點",
+      "packageUnitLabel": "包裝單位",
+      "packageUnitPlaceholder": "例如：瓶、公斤"
+    },
     "tags": {
       "empty": {
         "title": "尚未建立標籤系統",

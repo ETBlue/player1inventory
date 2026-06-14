@@ -8,7 +8,10 @@ export class ItemPage {
   }
 
   async fillName(name: string) {
-    // Label text is "Name" (src/components/item/ItemForm/ItemForm.tsx)
+    // In the NewItemDialog the Name field is a search combobox (role="combobox"),
+    // labelled "Name" (src/components/item/NewItemDialog/NewItemDialog.tsx). On the
+    // item detail Info form it is a plain input also labelled "Name"
+    // (src/components/item/ItemForm/ItemForm.tsx). getByLabel matches both.
     await this.page.getByLabel('Name').fill(name)
   }
 
@@ -35,15 +38,19 @@ export class ItemPage {
   }
 
   async save() {
-    // Submit button in NewItemDialog renders as <Button>New Item</Button>
-    // (src/components/item/NewItemDialog/NewItemDialog.tsx)
-    // After clicking "New Item" in the dialog, the app navigates to /items/$id —
-    // wait for that navigation so callers can rely on the item being persisted.
-    // The regex excludes /items/new so waitForURL only resolves after the dialog
-    // navigates to a real item detail page (e.g. /items/abc123).
+    // The NewItemDialog is a search combobox. When the typed name matches no
+    // existing item, the dialog footer shows a Create button labelled
+    // Create "<name>" (src/components/item/NewItemDialog/NewItemDialog.tsx).
+    // Clicking it creates the item and navigates to /items/$id — wait for that
+    // navigation so callers can rely on the item being persisted. The regex
+    // excludes /items/new so waitForURL only resolves after the dialog navigates
+    // to a real item detail page (e.g. /items/abc123).
     await Promise.all([
       this.page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
-      this.page.getByRole('button', { name: /new item/i }).click(),
+      this.page
+        .getByRole('dialog')
+        .getByRole('button', { name: /create/i })
+        .click(),
     ])
   }
 

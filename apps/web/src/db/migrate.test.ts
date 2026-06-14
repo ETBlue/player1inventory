@@ -12,56 +12,31 @@ describe('migrateItemsToV2', () => {
     await db.close()
   })
 
-  it('migrates old items with unit field', async () => {
-    // Manually add old-style item (simulating v1 data) using put() to specify ID
+  // As of Dexie v15 the stock/unit fields live on ItemStock, not Item, and the
+  // v15 upgrade fn owns the Item → Item + ItemStock split. The legacy v1 → v2
+  // item migration is now a guarded no-op for DBs already at v15+ so it never
+  // re-adds stock fields onto item rows.
+  it('is a no-op at v15+ (does not re-add stock fields onto items)', async () => {
+    expect(db.verno).toBeGreaterThanOrEqual(15)
+
     await db.items.put({
       id: '1',
-      name: 'Old Item',
-      unit: 'bottle',
+      name: 'Global Item',
       tagIds: [],
-      targetQuantity: 5,
-      refillThreshold: 2,
       createdAt: new Date(),
       updatedAt: new Date(),
-      // biome-ignore lint/suspicious/noExplicitAny: Testing migration of old schema data
+      // biome-ignore lint/suspicious/noExplicitAny: Item no longer carries stock fields; assert they are not added
     } as any)
 
     await migrateItemsToV2()
 
-    const item = await db.items.get('1')
+    const item = (await db.items.get('1')) as
+      | Record<string, unknown>
+      | undefined
     expect(item).toBeDefined()
-    expect(item?.packageUnit).toBe('bottle')
-    expect(item?.measurementUnit).toBeUndefined()
-    expect(item?.targetUnit).toBe('package')
-    expect(item?.packedQuantity).toBe(5)
-    expect(item?.unpackedQuantity).toBe(0)
-    expect(item?.consumeAmount).toBe(1)
-  })
-
-  it('does not modify already migrated items', async () => {
-    const itemId = '2'
-    await db.items.add({
-      id: itemId,
-      name: 'New Item',
-      packageUnit: 'bottle',
-      measurementUnit: 'L',
-      amountPerPackage: 1,
-      targetUnit: 'measurement',
-      targetQuantity: 2,
-      refillThreshold: 0.5,
-      packedQuantity: 1,
-      unpackedQuantity: 0.5,
-      consumeAmount: 0.25,
-      tagIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-
-    await migrateItemsToV2()
-
-    const item = await db.items.get(itemId)
-    expect(item?.packageUnit).toBe('bottle')
-    expect(item?.packedQuantity).toBe(1)
-    expect(item?.unpackedQuantity).toBe(0.5)
+    // No stock fields are written back onto the global item row.
+    expect(item?.packedQuantity).toBeUndefined()
+    expect(item?.targetUnit).toBeUndefined()
+    expect(item?.consumeAmount).toBeUndefined()
   })
 })

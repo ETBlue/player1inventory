@@ -9,14 +9,22 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { createItem, createRecipe, getRecipes } from '@/db/operations'
+import {
+  createItem,
+  createRecipe,
+  getItemStock,
+  getRecipes,
+  upsertItemStock,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Item detail page - manual quantity input', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -84,7 +92,7 @@ describe('Item detail page - manual quantity input', () => {
 
     // Then item is updated in database
     await waitFor(async () => {
-      const updatedItem = await db.items.get(item.id)
+      const updatedItem = await getItemStock(item.id)
       expect(updatedItem?.packedQuantity).toBe(5)
     })
 
@@ -130,7 +138,7 @@ describe('Item detail page - manual quantity input', () => {
 
     // Then item is updated in database
     await waitFor(async () => {
-      const updatedItem = await db.items.get(item.id)
+      const updatedItem = await getItemStock(item.id)
       expect(updatedItem?.unpackedQuantity).toBe(0.5)
     })
   })
@@ -467,7 +475,7 @@ describe('Item detail page - manual quantity input', () => {
 
     // Then save button becomes disabled again (form is clean)
     await waitFor(async () => {
-      const updatedItem = await db.items.get(item.id)
+      const updatedItem = await getItemStock(item.id)
       expect(updatedItem?.packedQuantity).toBe(5)
       expect(saveButton).toBeDisabled()
     })
@@ -641,7 +649,7 @@ describe('Item detail page - manual quantity input', () => {
 
     // Then the database should have the correct packed values (not reverted)
     await waitFor(async () => {
-      const savedItem = await db.items.get(item.id)
+      const savedItem = await getItemStock(item.id)
       expect(savedItem?.packedQuantity).toBe(3)
       expect(savedItem?.unpackedQuantity).toBe(500)
     })
@@ -830,11 +838,11 @@ describe('Item detail page - manual quantity input', () => {
 
     unmount()
 
-    // Simulate pantry +/- updating the DB (packedQuantity goes from 5 to 4)
-    await db.items.update(item.id, {
+    // Simulate pantry +/- updating the DB (packedQuantity goes from 5 to 4).
+    // Stock now lives on the active-location ItemStock, not the item row.
+    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
       packedQuantity: 4,
       unpackedQuantity: 1,
-      updatedAt: new Date(),
     })
 
     // Re-render (simulates navigating back to detail page with stale cache)
@@ -989,6 +997,7 @@ describe('Item detail page - hierarchical navigation', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -1098,6 +1107,7 @@ describe('Item detail page - delete dialog', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -1290,6 +1300,7 @@ describe('Item detail page - expiration field split', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -1377,7 +1388,7 @@ describe('Item detail page - expiration field split', () => {
 
     // Then the saved item has estimatedDueDays cleared so mode resolves to 'date' on reload
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       // The item should NOT still have estimatedDueDays set
       expect(updated?.estimatedDueDays).toBeFalsy()
     })
@@ -1389,6 +1400,7 @@ describe('consumeAmount change — recipe adjustment', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.recipes.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
@@ -1530,7 +1542,7 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     // Then NO dialog appears (no affected recipes)
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       expect(updated?.consumeAmount).toBe(3)
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -1584,6 +1596,7 @@ describe('targetUnit change — recipe adjustment', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.recipes.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
@@ -1751,7 +1764,7 @@ describe('targetUnit change — recipe adjustment', () => {
     // Then NO dialog appears (defaultAmount 0 is unchanged)
     // calcRecipeDefaultAfterUnitSwitch(0, ...) returns 0 early → 0 === 0 → skip
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -1792,7 +1805,7 @@ describe('targetUnit change — recipe adjustment', () => {
 
     // Then NO dialog appears (converted value equals old defaultAmount)
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -1804,6 +1817,7 @@ describe('Item detail page - toolbar tabs', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()

@@ -16,11 +16,11 @@ export interface FilterState {
  * or its descendants).
  * Across tag types: AND logic (item must match all active tag type filters).
  */
-export function filterItems(
-  items: Item[],
+export function filterItems<T extends Item>(
+  items: T[],
   filterState: FilterState,
   allTags?: Tag[],
-): Item[] {
+): T[] {
   // If no filters active, return all items
   const activeFilters = Object.entries(filterState).filter(
     ([, tagIds]) => tagIds.length > 0,
@@ -67,21 +67,21 @@ export function calculateTagCount(
   return filterItems(items, simulatedFilters, allTags).length
 }
 
-export function filterItemsByVendors(
-  items: Item[],
+export function filterItemsByVendors<T extends Item>(
+  items: T[],
   vendorIds: string[],
-): Item[] {
+): T[] {
   if (vendorIds.length === 0) return items
   return items.filter((item) =>
     vendorIds.some((vid) => item.vendorIds?.includes(vid)),
   )
 }
 
-export function filterItemsByRecipes(
-  items: Item[],
+export function filterItemsByRecipes<T extends Item>(
+  items: T[],
   recipeIds: string[],
   recipes: Recipe[],
-): Item[] {
+): T[] {
   if (recipeIds.length === 0) return items
   return items.filter((item) =>
     recipeIds.some((rid) => {

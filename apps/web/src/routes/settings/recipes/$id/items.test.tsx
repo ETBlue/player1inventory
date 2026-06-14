@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -230,7 +230,11 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then the item is created and added to the recipe
     await waitFor(async () => {
@@ -314,7 +318,11 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then Butter is created and added to the recipe
     await waitFor(async () => {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../../constants'
+import { splitInlineStock } from '../../helpers/locationSeed'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
 import { VendorsPage } from '../../pages/settings/VendorsPage'
@@ -178,6 +179,9 @@ test.describe('vendor item count after vendor assignment', () => {
           req.onerror = () => reject(req.error)
         })
       }, { name: 'Test Mango', now: new Date().toISOString() })
+      // Stock the inline-seeded item in the default location so it shows in the
+      // location-scoped pantry (PR D).
+      await splitInlineStock(page)
     }
 
     // First: navigate to vendors list to prime the TanStack Query cache with count=0
@@ -245,6 +249,9 @@ test.describe('vendor item count after item deletion', () => {
       // Local: seed vendor, then seed item with vendor already assigned
       const vendorId = await seedVendor(page, 'Test Market')
       await seedItemWithVendor(page, 'Test Carrot', vendorId)
+      // Stock the inline-seeded item in the default location so it shows in the
+      // location-scoped pantry (PR D).
+      await splitInlineStock(page)
 
       // Navigate to pantry so TanStack Query cache is populated
       await pantry.navigateTo()

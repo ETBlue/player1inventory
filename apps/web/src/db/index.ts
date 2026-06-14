@@ -3,6 +3,7 @@ import type {
   CartItem,
   InventoryLog,
   Item,
+  ItemStock,
   Location,
   Recipe,
   Shelf,
@@ -15,6 +16,7 @@ import { DEFAULT_LOCATION_ID } from '@/types'
 
 const db = new Dexie('Player1Inventory') as Dexie & {
   items: EntityTable<Item, 'id'>
+  itemStocks: EntityTable<ItemStock, 'id'>
   tags: EntityTable<Tag, 'id'>
   tagTypes: EntityTable<TagType, 'id'>
   inventoryLogs: EntityTable<InventoryLog, 'id'>
@@ -25,6 +27,23 @@ const db = new Dexie('Player1Inventory') as Dexie & {
   shelves: EntityTable<Shelf, 'id'>
   locations: EntityTable<Location, 'id'>
 }
+
+// Stock/unit/expiration fields that moved from Item onto ItemStock in v15.
+const STOCK_FIELD_KEYS = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'targetUnit',
+  'targetQuantity',
+  'refillThreshold',
+  'packedQuantity',
+  'unpackedQuantity',
+  'consumeAmount',
+  'dueDate',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+] as const
 
 // Idempotently ensure the default location exists. Shared by the v14 upgrade
 // fn (existing users) and the `on('populate')` hook (fresh DBs).
@@ -307,9 +326,105 @@ db.version(14)
     await ensureDefaultLocation(tx.table('locations'))
   })
 
+// Version 15: Split stock off Item into a per-(item × location) ItemStock
+// record (the Location feature, PR D). New `itemStocks` store; `inventoryLogs`
+// gains a `locationId` index; carts are re-keyed to `${locationId}:${vendorId|'no-vendor'}`.
+//
+// Upgrade (v14 → v15), idempotent:
+//  1. For each Item, create an ItemStock under DEFAULT_LOCATION_ID carrying its
+//     stock/unit/expiration fields, then strip those fields from the item row.
+//  2. Stamp locationId = DEFAULT_LOCATION_ID on every inventoryLog.
+//  3. Re-key every shoppingCart / cartItem to the `local:` scheme. The existing
+//     'no-vendor' cart becomes 'local:no-vendor'; a vendor cart `<vendorId>`
+//     becomes `local:<vendorId>`.
+db.version(15)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade(async (tx) => {
+    const defaultLocationId = DEFAULT_LOCATION_ID
+    await ensureDefaultLocation(tx.table('locations'))
+
+    // 1. Split each Item's stock fields into an ItemStock, then strip them.
+    const items = await tx.table('items').toArray()
+    const itemStocksTable = tx.table('itemStocks')
+    for (const item of items as Array<Record<string, unknown>>) {
+      const itemId = item.id as string
+      // Idempotency: skip if a stock row already exists for this pair.
+      const existing = await itemStocksTable
+        .where('[itemId+locationId]')
+        .equals([itemId, defaultLocationId])
+        .first()
+      if (!existing) {
+        const now = new Date()
+        const stock: Record<string, unknown> = {
+          id: crypto.randomUUID(),
+          itemId,
+          locationId: defaultLocationId,
+          // sensible defaults in case a pre-v2 row lacks some fields
+          targetUnit: 'package',
+          targetQuantity: 0,
+          refillThreshold: 0,
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          createdAt: (item.createdAt as Date) ?? now,
+          updatedAt: (item.updatedAt as Date) ?? now,
+        }
+        for (const key of STOCK_FIELD_KEYS) {
+          if (item[key] !== undefined) stock[key] = item[key]
+        }
+        await itemStocksTable.add(stock)
+      }
+      // Strip stock fields from the item row.
+      await tx.table('items').update(itemId, {
+        ...Object.fromEntries(STOCK_FIELD_KEYS.map((k) => [k, undefined])),
+      })
+    }
+
+    // 2. Stamp locationId on every inventory log.
+    await tx
+      .table('inventoryLogs')
+      .toCollection()
+      .modify((log: Record<string, unknown>) => {
+        if (log.locationId == null) log.locationId = defaultLocationId
+      })
+
+    // 3. Re-key carts and cart items to `local:<vendor|'no-vendor'>`.
+    const carts = await tx.table('shoppingCarts').toArray()
+    for (const cart of carts as Array<Record<string, unknown>>) {
+      const oldId = cart.id as string
+      // Skip if already in the location:vendor scheme.
+      if (oldId.startsWith(`${defaultLocationId}:`)) continue
+      const newId = `${defaultLocationId}:${oldId}`
+      // Move the cart record under the new id.
+      const { id: _id, ...rest } = cart
+      await tx.table('shoppingCarts').put({ id: newId, ...rest })
+      await tx.table('shoppingCarts').delete(oldId)
+      // Re-point its cart items.
+      await tx
+        .table('cartItems')
+        .where('cartId')
+        .equals(oldId)
+        .modify((ci: Record<string, unknown>) => {
+          ci.cartId = newId
+        })
+    }
+  })
+
 // Fresh-DB seed: `on('populate')` fires exactly once, when the database is
-// first created at the latest version (brand-new users). The v14 upgrade fn
-// above does NOT run in that case, so the default location is seeded here.
+// first created at the latest version (brand-new users). The version upgrade
+// fns above do NOT run in that case, so the default location is seeded here.
 db.on('populate', () => {
   // Dexie runs this inside an open populate transaction; db.locations is valid.
   return ensureDefaultLocation(db.locations)

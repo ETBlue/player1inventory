@@ -17,13 +17,13 @@ import { useItem, useUpdateItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
-import type { Item } from '@/types'
+import type { PantryItem, StockFields } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
 })
 
-function itemToFormValues(item: Item): ItemFormValues {
+function itemToFormValues(item: PantryItem): ItemFormValues {
   return {
     packedQuantity: item.packedQuantity,
     unpackedQuantity: item.unpackedQuantity ?? 0,
@@ -60,7 +60,7 @@ function itemToFormValues(item: Item): ItemFormValues {
 // We need a separate type here because `exactOptionalPropertyTypes: true`
 // prevents assigning `undefined` to fields typed as `?: T` on `Partial<Item>`.
 type ItemUpdatePayload = Omit<
-  Partial<Item>,
+  Partial<StockFields>,
   | 'dueDate'
   | 'estimatedDueDays'
   | 'expirationMode'
@@ -71,7 +71,7 @@ type ItemUpdatePayload = Omit<
 > & {
   dueDate?: Date | undefined
   estimatedDueDays?: number | undefined
-  expirationMode?: Item['expirationMode']
+  expirationMode?: StockFields['expirationMode']
   packageUnit?: string | undefined
   measurementUnit?: string | undefined
   amountPerPackage?: number | undefined
@@ -174,11 +174,13 @@ function ItemStockTab() {
   const formValues = itemToFormValues(item)
 
   const doSave = async (values: ItemFormValues) => {
-    // Cast to Partial<Item> — the wider ItemUpdatePayload type is compatible at runtime;
-    // the cast is needed because exactOptionalPropertyTypes disallows undefined on Partial<Item>.
+    // Cast to Partial<StockFields> — the wider ItemUpdatePayload type is
+    // compatible at runtime; the cast is needed because exactOptionalPropertyTypes
+    // disallows undefined on Partial<StockFields>. updateItem routes these stock
+    // fields to the active location's ItemStock.
     await updateItem.mutateAsync({
       id,
-      updates: buildStockUpdates(values) as Partial<Item>,
+      updates: buildStockUpdates(values) as Partial<StockFields>,
     })
     setSavedAt((n) => n + 1)
     goBack()

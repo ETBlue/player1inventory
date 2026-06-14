@@ -194,7 +194,7 @@ function RecipeItemsTab() {
     setNewItemDialogOpen(true)
   }
 
-  const handleNewItemSuccess = async (item: import('@/types').Item) => {
+  const handleNewItemSuccess = async (item: import('@/types').PantryItem) => {
     const newRecipeItems = [
       ...recipeItems,
       { itemId: item.id, defaultAmount: item.consumeAmount },

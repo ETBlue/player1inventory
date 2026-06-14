@@ -1,4 +1,8 @@
-import type { Item } from '@/types'
+import type { StockFields } from '@/types'
+
+// Quantity/expiration helpers operate on the stock fields, which live on
+// ItemStock (or any object that carries them, e.g. a joined PantryItem).
+type Stock = StockFields
 
 function decimalPlaces(n: number): number {
   const s = n.toString()
@@ -12,7 +16,7 @@ export function roundToStep(value: number, step: number | undefined): number {
   return Math.round(value * 10 ** places) / 10 ** places
 }
 
-export function getCurrentQuantity(item: Item): number {
+export function getCurrentQuantity(item: Stock): number {
   if (
     item.targetUnit === 'measurement' &&
     item.measurementUnit &&
@@ -30,7 +34,7 @@ export function getCurrentQuantity(item: Item): number {
  * Returns the total quantity in package units, regardless of targetUnit.
  * For dual-unit items, unpacked measurement quantity is converted to fractional packs.
  */
-export function getPackedTotal(item: Item): number {
+export function getPackedTotal(item: Stock): number {
   if (item.amountPerPackage && item.amountPerPackage > 0) {
     return item.packedQuantity + item.unpackedQuantity / item.amountPerPackage
   }
@@ -46,7 +50,7 @@ export function getStockStatus(
   return 'ok'
 }
 
-export function getItemPackUnits(item: Item): {
+export function getItemPackUnits(item: Stock): {
   packed: number
   target: number
   refill: number
@@ -169,7 +173,7 @@ export function computeFillToFull(item: {
   return { packedQuantity: item.targetQuantity, unpackedQuantity: 0 }
 }
 
-export function consumeItem(item: Item, amount: number): void {
+export function consumeItem(item: Stock, amount: number): void {
   if (
     item.targetUnit === 'measurement' &&
     item.measurementUnit &&
@@ -239,7 +243,7 @@ export function consumeItem(item: Item, amount: number): void {
 }
 
 export function addItem(
-  item: Item,
+  item: Stock,
   amount: number,
   purchaseDate: Date = new Date(),
 ): void {
@@ -263,6 +267,6 @@ export function addItem(
   }
 }
 
-export function isInactive(item: Item): boolean {
+export function isInactive(item: Stock): boolean {
   return item.targetQuantity === 0
 }

@@ -55,7 +55,13 @@ export function useDeleteLocation() {
   return useMutation({
     mutationFn: (id: string) => deleteLocation(id),
     onSuccess: () => {
+      // Deleting a location cascades its ItemStock rows, carts/cart-items, and
+      // logs — invalidate anything that might have read them.
       queryClient.invalidateQueries({ queryKey: ['locations'] })
+      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
+      queryClient.invalidateQueries({ queryKey: ['cart'] })
+      queryClient.invalidateQueries({ queryKey: ['sort'] })
     },
   })
 }

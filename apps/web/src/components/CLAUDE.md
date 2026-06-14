@@ -76,7 +76,13 @@ View components rendered by the pantry home page (`/`) depending on the `?groupB
 
 Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` and are not using this component — they are positioned overlays, not scrolling toolbars.
 
-**`NewItemDialog`** (`src/components/item/NewItemDialog/index.ts`) — dialog for creating a new item. Fields: name (required, `capitalize` class, autoFocus) and package unit (optional). Props: `open`, `onOpenChange`, `initialName?` (pre-fill from search term), `onSuccess?(item)`. On success without `onSuccess`, navigates to the item detail page. Used by: pantry page, tag/vendor/recipe items tabs.
+**`NewItemDialog`** (`src/components/item/NewItemDialog/index.ts`) — the pantry **"Add" dialog**, a searchable **combobox** over all items the user can access (every global `Item`, via `useItems()`). Props: `open`, `onOpenChange`, `initialName?` (pre-fills + focuses the combobox), `onSuccess?(item)`. Behaviour:
+- **Combobox** (`role="combobox"`, labelled "Name", `aria-autocomplete="list"`, `aria-activedescendant` for virtual focus). Typing filters the catalog by name; an empty query lists everything. Arrow keys move the highlight, Enter selects, the input owns all keyboard interaction (options are non-focusable `role="option"` rows).
+- **Select existing (not yet stocked here)** → `useAddItemToLocation()` (copy-on-add) stocks it in the active location and calls `onSuccess?` (no navigation by default — it appears in the pantry).
+- **Already stocked here** → option rendered disabled (`aria-disabled`, "Already here" annotation), not selectable.
+- **No exact catalog match** → a `Create "<name>"` option + a footer Create button + a package-unit field appear; creating calls `useCreateItem()` (item + active-location stock) then, without `onSuccess`, navigates to the item detail page.
+
+Used by: pantry views (Add button) and the tag/vendor/recipe items tabs (which pass `onSuccess` to assign the new/added item). Tests that submit the create path must click the dialog's `Create "<name>"` button (`within(dialog).getByRole('button', { name: /create/i })`), not the old "New Item" button.
 
 **`QuickUpdateDialog`** (`src/components/item/QuickUpdateDialog/index.ts`) — pantry-page dialog for bulk-editing a single item's packed/unpacked quantities in one submit. Triggered by the calculator icon button on each `ItemCard` in pantry mode. Provides +/− steppers, manual inputs, Pack/Unpack buttons (mirrors item info tab logic via `computePack`/`computeUnpack`), Clear, and Fill to Full actions, with a live progress bar preview. Submits a single mutation with the final `{ packedQuantity, unpackedQuantity }` — never touches `dueDate`. Pack/Unpack/Fill-to-Full logic lives in pure functions in `quantityUtils.ts` (`computePack`, `computeUnpack`, `computeFillToFull`).
 

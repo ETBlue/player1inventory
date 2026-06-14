@@ -2,6 +2,8 @@
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.
 
+**Active-location scoping (PR D):** All seven pantry views read `useStockedItems()` (not `useItems()`), so the pantry shows **only items stocked in the active location** (those with an `ItemStock` row there); switching the active location via the `LocationSwitcher` re-scopes the list, and sorting/filtering operate on that scoped set. The **Add button** opens `NewItemDialog`, a combobox over the **full** catalog (`useItems()`) — selecting an existing item stocks it here via copy-on-add, creating a new one stocks it here. Shopping carts and cooking are likewise active-location-scoped (see their sections).
+
 **URL search params** (validated by `validateSearch` on the route):
 - `?groupBy` — `'shelf'` | `'vendor'` | `'recipe'` — switches to group view; absent = flat list view
 - `?id` — entity ID for drill-down detail within a group view (e.g. `/?groupBy=shelf&id=<shelfId>`)
@@ -196,6 +198,8 @@ Row 2:            [N items, M selected, × S]
 **Amount adjustment:** Each item card shows ±buttons to adjust the per-serving amount. Step size is `item.consumeAmount`. Amount can be reduced to 0.
 
 **Consumption calculation:** `totalByItemId[itemId] = servings × sessionAmounts[recipeId][itemId]` for each checked item with amount > 0, summed across all checked recipes.
+
+**Unavailable items (active-location scoping, PR D):** Cooking reads `useItems()` (the full catalog joined with active-location stock). A recipe item **not stocked in the active location** has `stockId === undefined` and is treated as **unavailable**: rendered greyed (`opacity-50`) with a "Not stocked in this location" note (`cooking.recipe.unavailable`), its checkbox disabled (`ItemCard disabled`), excluded from the recipe checkbox's auto-check / tri-state, and excluded from `totalByItemId` so it is never consumed. The set of available item ids is `stockedItemIds = items.filter(i => i.stockId)`; `isItemAvailable(itemId)` gates `handleToggleItem`, `getDefaultCheckedItems`, and the toggle-all logic.
 
 **`ItemCard` in cooking mode:**
 - `showTags={false}` hides tags, vendors, and recipe badges

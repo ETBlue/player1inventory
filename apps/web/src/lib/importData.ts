@@ -47,6 +47,7 @@ import type {
   CartItem,
   InventoryLog,
   Item,
+  PantryItem,
   Recipe,
   Shelf,
   ShoppingCart,
@@ -60,8 +61,16 @@ import type { ExportPayload } from './exportData'
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
 // Convert item date fields from ISO strings (as stored in JSON) to Date objects.
-function deserializeItem(item: Item): Item {
-  const result: Item = {
+//
+// NOTE (Location PR D): export/import still round-trips the legacy combined Item
+// shape (stock fields inline on the item). Splitting backups into Item +
+// ItemStock is deferred to a later phase; for now we type the payload item as
+// PantryItem so the date-bearing stock fields are recognized during import.
+function deserializeItem(rawItem: Item): Item {
+  // Legacy backups carry stock fields inline on the item; treat as PantryItem
+  // internally so the date-bearing fields are recognized, then write back.
+  const item = rawItem as PantryItem
+  const result: PantryItem = {
     ...item,
     createdAt:
       item.createdAt instanceof Date
