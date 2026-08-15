@@ -140,6 +140,47 @@ while `addItemToLocation` has just copied the real `consumeAmount` from the sour
 location. The recipe records 1 instead of the real value. *Fix:* read the amount
 from the freshly created/copied stock rather than the pre-add join.
 
+## Task 4 — HIGH: local → cloud migration loses all stock
+
+Found by the Task 1 implementer and confirmed by its reviewer; not part of the
+original 11 findings. Added as a fourth wave on the user's instruction
+(2026-08-16).
+
+**4.1 — `toItemInput` reads stock fields that no longer exist on `Item`.**
+`apps/web/src/lib/importData.ts:265-283`. `toItemInput` (used by
+`importCloudData`) reads `packedQuantity`, `targetQuantity`, `targetUnit`, … off
+`payload.items`, which post-v15 rows no longer carry. Every path that copies a
+local pantry up to cloud — `usePostLoginMigration` on sign-in, and the
+DataModeCard "copy data" action when switching local → cloud — therefore sends
+null/0 for required fields.
+*Scenario:* local pantry with Milk at 3 packs → sign in → cloud Milk arrives with
+null quantities.
+
+Cloud has **no per-location `ItemStock`** (deliberately deferred in PR D), so the
+migration must collapse a multi-location local pantry to one stock value per
+item.
+
+**Ruling (user, 2026-08-16): send the stock of the location that is active at
+migration time.** Flatten the active-location `ItemStock` back onto each item in
+the cloud payload. Rationale: it matches what the user is looking at on screen
+and how the rest of the app reads stock (`useActiveLocation()`). Cost if wrong: a
+user whose active location is not their main pantry migrates the wrong stock
+figures.
+
+**Ruling (user, 2026-08-16): warn before migrating when more than one location
+exists.** Before the copy runs, tell the user which location will be sent and
+what is being left behind. Needs new i18n strings in **both** `en.json` and
+`tw.json`. Cost if wrong: an extra confirmation step on the sign-in path.
+
+*Fix:* flatten active-location stock onto the cloud payload in `toItemInput`'s
+callers; add the multi-location warning ahead of `usePostLoginMigration` and the
+DataModeCard copy action.
+*Test:* a local → cloud migration preserves the active location's quantities,
+units and expiration; the warning appears only when >1 location exists.
+
+**Ordering:** Task 4 touches `apps/web/src/lib/importData.ts`, which Task 1 also
+changed — run it after Tasks 2 and 3, never in parallel.
+
 ## Final
 
 After all three tasks: whole-branch review, then E2E
