@@ -39,7 +39,10 @@ export function useActiveCart() {
 
   const local = useQuery({
     queryKey: ['cart', 'active', { locationId: activeLocationId }],
-    queryFn: () => getCart(null, activeLocationId),
+    // getCart is a pure read now — it may resolve `undefined` if the cart
+    // hasn't been bootstrapped for this location yet. TanStack Query forbids
+    // a queryFn resolving to `undefined`, so coalesce to `null`.
+    queryFn: () => getCart(null, activeLocationId).then((cart) => cart ?? null),
     enabled: !isCloud,
   })
 
@@ -465,7 +468,10 @@ export function useVendorCart(vendorId: string | null) {
 
   const local = useQuery({
     queryKey: ['cart', 'vendor', vendorId, { locationId: activeLocationId }],
-    queryFn: () => getCart(vendorId, activeLocationId),
+    // See useActiveCart above: coalesce to `null` since getCart is a pure
+    // read and TanStack Query forbids a queryFn resolving to `undefined`.
+    queryFn: () =>
+      getCart(vendorId, activeLocationId).then((cart) => cart ?? null),
     enabled: !isCloud,
   })
 

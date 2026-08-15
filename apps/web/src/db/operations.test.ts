@@ -827,6 +827,19 @@ describe('ShoppingCart operations', () => {
     expect(cart?.id).toBe(localCartId(null))
   })
 
+  it('getCart is a pure read and does not persist a cart when none exists', async () => {
+    // Given no cart exists for this vendor at this location
+    const missingCartId = localCartId('nonexistent-vendor')
+    expect(await db.shoppingCarts.get(missingCartId)).toBeUndefined()
+
+    // When getting the cart
+    const cart = await getCart('nonexistent-vendor')
+
+    // Then it returns undefined rather than lazily creating one
+    expect(cart).toBeUndefined()
+    expect(await db.shoppingCarts.get(missingCartId)).toBeUndefined()
+  })
+
   it('createVendor creates a permanent cart with the location-scoped id', async () => {
     // When creating a vendor
     const vendor = await createVendor('Costco')

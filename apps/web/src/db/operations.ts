@@ -509,19 +509,17 @@ export async function getTagCountByType(typeId: string): Promise<number> {
 //
 // Carts are per (location × vendor); the cart id is `${locationId}:${vendorId|'no-vendor'}`.
 // All cart reads/writes take the active locationId (defaulting to 'local').
+// Pure read — does not create the cart if missing. Cart rows for a location
+// are created up front by `bootstrapCarts` (called from `ActiveLocationProvider`
+// whenever the active location changes), not lazily from a read path. This
+// keeps `getCart` safe to call from TanStack Query `queryFn`s without side
+// effects.
 export async function getCart(
   vendorId: string | null = null,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<ShoppingCart | undefined> {
   const cartId = cartIdFor(locationId, vendorId)
-  const cart = await db.shoppingCarts.get(cartId)
-  if (cart) return cart
-  // Create the cart on first access (parity with the previous behaviour where
-  // bootstrap pre-created carts; here a missing location×vendor cart is lazily
-  // created so the page always has a cart to add to).
-  const fresh: ShoppingCart = { id: cartId }
-  await db.shoppingCarts.put(fresh)
-  return fresh
+  return db.shoppingCarts.get(cartId)
 }
 
 // All carts for a location (one per vendor + the no-vendor cart).

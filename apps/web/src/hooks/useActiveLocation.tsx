@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import {
   createContext,
   type ReactNode,
@@ -7,8 +8,10 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { bootstrapCarts } from '@/db/operations'
 import { useLocations } from '@/hooks/useLocations'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
+import { useDataMode } from './useDataMode'
 
 // localStorage key for the globally active location id. Mirrors the naming of
 // other preference keys (e.g. 'theme-preference', 'pantry-group-by').
@@ -36,6 +39,8 @@ const ActiveLocationContext = createContext<ActiveLocationContextValue | null>(
 
 export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   const { data: locations } = useLocations()
+  const { mode } = useDataMode()
+  const queryClient = useQueryClient()
   const [activeLocationId, setActiveLocationIdState] = useState<string>(() =>
     readStoredLocationId(),
   )
@@ -60,6 +65,32 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
       setActiveLocationId(DEFAULT_LOCATION_ID)
     }
   }, [locations, activeLocationId, setActiveLocationId])
+
+  // `getCart` is a pure read (see db/operations.ts) — it no longer creates a
+  // missing cart on demand. Bootstrap the no-vendor + per-vendor carts for
+  // whichever location is active, then invalidate any cart query that may
+  // have already resolved before the bootstrap finished. Local mode only:
+  // cloud mode's carts live behind Apollo/GraphQL, not local Dexie.
+  //
+  // `cancelled` guards both effects of an in-flight promise settling after
+  // this effect's cleanup: it skips the (now-pointless) invalidation, and it
+  // swallows errors (e.g. Dexie `DatabaseClosedError` when a test unmounts
+  // and closes the DB while the bootstrap is still in flight) instead of
+  // surfacing them as unhandled promise rejections.
+  useEffect(() => {
+    if (mode !== 'local') return
+    let cancelled = false
+    bootstrapCarts(activeLocationId)
+      .then(() => {
+        if (!cancelled) queryClient.invalidateQueries({ queryKey: ['cart'] })
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('bootstrapCarts failed', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, activeLocationId, queryClient])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),
