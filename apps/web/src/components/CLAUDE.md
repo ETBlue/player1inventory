@@ -78,8 +78,9 @@ Note: Fixed nav bars (item detail, vendor detail) use `bg-background-elevated` a
 
 **`NewItemDialog`** (`src/components/item/NewItemDialog/index.ts`) — the pantry **"Add" dialog**, a searchable **combobox** over all items the user can access (every global `Item`, via `useItems()`). Props: `open`, `onOpenChange`, `initialName?` (pre-fills + focuses the combobox), `onSuccess?(item)`. Behaviour:
 - **Combobox** (`role="combobox"`, labelled "Name", `aria-autocomplete="list"`, `aria-activedescendant` for virtual focus). Typing filters the catalog by name; an empty query lists everything. Arrow keys move the highlight, Enter selects, the input owns all keyboard interaction (options are non-focusable `role="option"` rows).
-- **Select existing (not yet stocked here)** → `useAddItemToLocation()` (copy-on-add) stocks it in the active location and calls `onSuccess?` (no navigation by default — it appears in the pantry).
+- **Select existing (not yet stocked here)** → `useAddItemToLocation()` (copy-on-add) stocks it in the active location and calls `onSuccess?` (no navigation by default — it appears in the pantry). **Local mode only.**
 - **Already stocked here** → option rendered disabled (`aria-disabled`, "Already here" annotation), not selectable.
+- **Cloud mode is create-only.** Cloud has no per-location `ItemStock` backend yet (deferred in PR D), so cloud items never carry a `stockId` — every catalog option renders disabled/"already here" and clicking one is a no-op (no orphan local write, no false `onSuccess`). Only the Create path is available.
 - **No exact catalog match** → a `Create "<name>"` option + a footer Create button + a package-unit field appear; creating calls `useCreateItem()` (item + active-location stock) then, without `onSuccess`, navigates to the item detail page.
 
 Used by: pantry views (Add button) and the tag/vendor/recipe items tabs (which pass `onSuccess` to assign the new/added item). Tests that submit the create path must click the dialog's `Create "<name>"` button (`within(dialog).getByRole('button', { name: /create/i })`), not the old "New Item" button.

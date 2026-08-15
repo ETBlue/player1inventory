@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddItemToLocation, useCreateItem, useItems } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
 import { cn } from '@/lib/utils'
 import type { PantryItem } from '@/types'
 
@@ -42,6 +43,13 @@ export function NewItemDialog({
 }: NewItemDialogProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { mode } = useDataMode()
+  // Cloud has no per-location ItemStock backend yet (deferred in PR D): cloud
+  // items never carry a `stockId`, so the add-existing path (Dexie-only) would
+  // silently write an orphan local ItemStock and report false success. In
+  // cloud mode the dialog is create-only — every catalog item renders as
+  // already-here/disabled (PR D review 2.1).
+  const isLocal = mode === 'local'
   const createItem = useCreateItem()
   const addItemToLocation = useAddItemToLocation()
   // The full accessible catalog: every global Item joined with active-location
@@ -97,8 +105,10 @@ export function NewItemDialog({
   }, [matches, showCreate, trimmed])
 
   // Selectable options exclude items already stocked in the active location.
+  // In cloud mode add-existing is unsupported (see isLocal comment above), so
+  // no catalog item is ever selectable there — only Create.
   const isSelectable = (opt: Option) =>
-    opt.kind === 'create' || !opt.item.stockId
+    opt.kind === 'create' || (isLocal && !opt.item.stockId)
 
   // Clamp the highlighted index whenever the option set changes.
   useEffect(() => {
@@ -150,6 +160,8 @@ export function NewItemDialog({
   const handleSelectExisting = async (item: PantryItem) => {
     // Copy-on-add. No-op-safe: if the item is already stocked here, the
     // operation returns the existing row without resetting quantities.
+    // Cloud mode has no ItemStock backend yet — this path is local-only.
+    if (!isLocal) return
     if (submitting) return
     setSubmitting(true)
     try {
@@ -267,7 +279,9 @@ export function NewItemDialog({
                     </div>
                   )
                 }
-                const stocked = !!opt.item.stockId
+                // In cloud mode every catalog item renders as already-here
+                // (disabled) — add-existing is unsupported there (see isLocal).
+                const stocked = isLocal ? !!opt.item.stockId : true
                 return (
                   // biome-ignore lint/a11y/useFocusableInteractive: virtual focus via aria-activedescendant on the combobox input
                   // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled by the combobox input's onKeyDown
