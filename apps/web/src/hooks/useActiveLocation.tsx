@@ -72,11 +72,13 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   // have already resolved before the bootstrap finished. Local mode only:
   // cloud mode's carts live behind Apollo/GraphQL, not local Dexie.
   //
-  // `cancelled` guards both effects of an in-flight promise settling after
-  // this effect's cleanup: it skips the (now-pointless) invalidation, and it
-  // swallows errors (e.g. Dexie `DatabaseClosedError` when a test unmounts
-  // and closes the DB while the bootstrap is still in flight) instead of
-  // surfacing them as unhandled promise rejections.
+  // `cancelled` guards the in-flight promise's success path settling after
+  // this effect's cleanup: it skips the (now-pointless) invalidation instead
+  // of surfacing an unhandled promise rejection from a stale closure. The
+  // `.catch` is intentionally NOT gated on `cancelled` — a real bootstrap
+  // failure (e.g. a genuine Dexie error) is worth logging even when it
+  // resolves after the effect was superseded by a location switch; that is
+  // exactly the case where losing the log would hide the most.
   useEffect(() => {
     if (mode !== 'local') return
     let cancelled = false
@@ -85,7 +87,7 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
         if (!cancelled) queryClient.invalidateQueries({ queryKey: ['cart'] })
       })
       .catch((err) => {
-        if (!cancelled) console.error('bootstrapCarts failed', err)
+        console.error('bootstrapCarts failed', err)
       })
     return () => {
       cancelled = true
