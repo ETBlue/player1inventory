@@ -63,6 +63,14 @@ async function ensureDefaultLocation(
   })
 }
 
+// Idempotently ensure the default location exists in the live database. Used
+// by the backup import, which empties the locations table on a `clear` restore
+// and may be handed a pre-v15 payload that carries no locations at all — the
+// default location is undeletable and must always exist.
+export async function ensureDefaultLocationRow(): Promise<void> {
+  await ensureDefaultLocation(db.locations)
+}
+
 // Version 1: Original schema
 db.version(1).stores({
   items: 'id, name, *tagIds, createdAt',

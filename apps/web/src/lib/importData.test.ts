@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
+import { getStockedItems } from '@/db/operations'
 import type { ExportPayload } from './exportData'
 import {
   type ConflictSummary,
@@ -378,6 +379,8 @@ async function clearAllTables() {
   await db.recipes.clear()
   await db.vendors.clear()
   await db.items.clear()
+  await db.itemStocks.clear()
+  await db.locations.clear()
   await db.shelves.clear()
 }
 
@@ -417,8 +420,8 @@ describe('importLocalData', () => {
   })
 
   it('user can import permanent carts over a bootstrapped cart without throwing', async () => {
-    // Given the app has already bootstrapped a permanent 'no-vendor' cart
-    await db.shoppingCarts.put({ id: 'no-vendor' })
+    // Given the app has already bootstrapped the location's 'no-vendor' cart
+    await db.shoppingCarts.put({ id: 'local:no-vendor' })
 
     // And a backup whose cart carries legacy status/createdAt fields and reuses
     // the same sentinel id (this collided on the old bulkAdd → ConstraintError,
@@ -432,10 +435,11 @@ describe('importLocalData', () => {
     // When importing — must not throw and must drop the legacy fields
     await importLocalData(payload, 'skip')
 
-    // Then the cart persists in the v13+ schema shape (id only, no status/createdAt)
+    // Then the cart persists in the v13+ schema shape (id only, no status/createdAt),
+    // re-keyed onto the default location so it merges with the bootstrapped cart
     const carts = await db.shoppingCarts.toArray()
     expect(carts).toHaveLength(1)
-    expect(carts[0].id).toBe('no-vendor')
+    expect(carts[0].id).toBe('local:no-vendor')
     expect('status' in carts[0]).toBe(false)
     expect('createdAt' in carts[0]).toBe(false)
 
@@ -533,18 +537,28 @@ describe('importLocalData', () => {
     // When importing with skip strategy
     await importLocalData(payload, 'skip')
 
-    // Then the shopping cart and its items are stored in the v13+ shape
+    // Then the shopping cart and its items are stored in the v13+ shape,
+    // re-keyed onto the default location (v15 carts are per location × vendor)
     const carts = await db.shoppingCarts.toArray()
     expect(carts).toHaveLength(1)
-    expect(carts[0].id).toBe('cart-1')
+    expect(carts[0].id).toBe('local:cart-1')
     // Permanent carts (v13+) have no status — the import drops legacy fields.
     expect('status' in carts[0]).toBe(false)
 
     const cartItems = await db.cartItems.toArray()
     expect(cartItems).toHaveLength(1)
     expect(cartItems[0].id).toBe('ci-1')
-    expect(cartItems[0].cartId).toBe('cart-1')
+    expect(cartItems[0].cartId).toBe('local:cart-1')
   })
+
+  // Expiration fields moved onto ItemStock in v15, so a legacy payload's inline
+  // values are asserted on the synthesised 'local' stock row.
+  async function localStockOf(itemId: string) {
+    return db.itemStocks
+      .where('[itemId+locationId]')
+      .equals([itemId, 'local'])
+      .first()
+  }
 
   it('user can import item with dueDate as ISO string — stored as Date', async () => {
     // Given a payload where dueDate is an ISO string (as produced by JSON.parse)
@@ -558,7 +572,7 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then dueDate is stored as a Date object, not a string
-    const stored = await db.items.get('item-1')
+    const stored = await localStockOf('item-1')
     expect(stored?.dueDate).toBeInstanceOf(Date)
     expect(stored?.dueDate?.toISOString()).toBe('2026-06-01T00:00:00.000Z')
   })
@@ -575,7 +589,8 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then dueDate is undefined, not the Unix epoch date
-    const stored = await db.items.get('item-null-due')
+    const stored = await localStockOf('item-null-due')
+    expect(stored).toBeDefined()
     expect(stored?.dueDate).toBeUndefined()
   })
 
@@ -591,7 +606,8 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then estimatedDueDays is undefined
-    const stored = await db.items.get('item-null-days')
+    const stored = await localStockOf('item-null-days')
+    expect(stored).toBeDefined()
     expect(stored?.estimatedDueDays).toBeUndefined()
   })
 
@@ -607,7 +623,8 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then expirationThreshold is undefined
-    const stored = await db.items.get('item-null-threshold')
+    const stored = await localStockOf('item-null-threshold')
+    expect(stored).toBeDefined()
     expect(stored?.expirationThreshold).toBeUndefined()
   })
 
@@ -755,6 +772,226 @@ describe('importLocalData', () => {
     expect((stored?.lastCookedAt as Date).toISOString()).toBe(
       '2026-05-01T09:00:00.000Z',
     )
+  })
+})
+
+describe('importLocalData — item stock and locations (v15 split)', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  // A post-v15 item row: identity only, no stock fields.
+  function makeSplitItem(id: string, name: string) {
+    return {
+      id,
+      name,
+      tagIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  function makeStock(
+    id: string,
+    itemId: string,
+    locationId: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      id,
+      itemId,
+      locationId,
+      targetUnit: 'package' as const,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    }
+  }
+
+  function makeLocation(id: string, name: string, order = 0) {
+    return { id, name, order, createdAt: new Date(), updatedAt: new Date() }
+  }
+
+  it('user can restore a v15 backup and see the pantry populated', async () => {
+    // Given a v15 backup carrying locations and per-location stock
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [
+        makeStock('stock-home', 'item-1', 'local'),
+        makeStock('stock-office', 'item-1', 'office', { packedQuantity: 1 }),
+      ],
+      locations: [
+        makeLocation('local', 'My Home', 0),
+        makeLocation('office', 'Office', 1),
+      ],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then both locations and both stock rows are restored
+    expect((await db.locations.toArray()).map((l) => l.id)).toEqual(
+      expect.arrayContaining(['local', 'office']),
+    )
+    expect(await db.itemStocks.count()).toBe(2)
+
+    // And the pantry (stocked items in the active location) is populated
+    const stocked = await getStockedItems('local')
+    expect(stocked).toHaveLength(1)
+    expect(stocked[0].packedQuantity).toBe(3)
+  })
+
+  it('user can restore a legacy (pre-v15) backup — inline stock becomes local stock', async () => {
+    // Given a pre-v15 backup whose stock fields still live on the item
+    const legacyItem = {
+      ...makeItem('item-1', 'Milk'),
+      packedQuantity: 7,
+      targetQuantity: 9,
+      packageUnit: 'bottle',
+      dueDate: new Date('2026-06-01T00:00:00.000Z'),
+    }
+    const payload = emptyPayload({ items: [legacyItem] })
+
+    // When restoring it
+    await importLocalData(payload, 'skip')
+
+    // Then a 'local' ItemStock is synthesised from the inline fields
+    const stocks = await db.itemStocks.toArray()
+    expect(stocks).toHaveLength(1)
+    expect(stocks[0]).toMatchObject({
+      itemId: 'item-1',
+      locationId: 'local',
+      packedQuantity: 7,
+      targetQuantity: 9,
+      packageUnit: 'bottle',
+    })
+    expect(stocks[0].dueDate).toBeInstanceOf(Date)
+
+    // And the pantry is populated, while the item row no longer carries stock
+    const stocked = await getStockedItems('local')
+    expect(stocked).toHaveLength(1)
+    expect(stocked[0].packedQuantity).toBe(7)
+    const itemRow = (await db.items.get('item-1')) as Record<string, unknown>
+    expect(itemRow.packedQuantity).toBeUndefined()
+  })
+
+  it('user can restore a legacy backup — cart ids gain the location prefix', async () => {
+    // Given a pre-v15 backup whose cart ids are bare vendor ids / 'no-vendor'
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      vendors: [makeVendor('vendor-1', 'Costco')],
+      shoppingCarts: [
+        makeShoppingCart('no-vendor'),
+        makeShoppingCart('vendor-1'),
+      ],
+      cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'skip')
+
+    // Then every cart is re-keyed to `${locationId}:${vendorId|'no-vendor'}`
+    const carts = await db.shoppingCarts.toArray()
+    expect(carts.map((c) => c.id).sort()).toEqual([
+      'local:no-vendor',
+      'local:vendor-1',
+    ])
+
+    // And its cart items follow the cart
+    const cartItems = await db.cartItems.toArray()
+    expect(cartItems[0].cartId).toBe('local:no-vendor')
+  })
+
+  it('clearing on import removes stale item stock rows', async () => {
+    // Given a stale stock row left over from an earlier database
+    await db.itemStocks.put(
+      makeStock('stale', 'item-1', 'local', { packedQuantity: 99 }),
+    )
+
+    // When restoring a backup with the clear strategy
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [makeStock('stock-1', 'item-1', 'local')],
+      locations: [makeLocation('local', 'My Home')],
+    })
+    await importLocalData(payload, 'clear')
+
+    // Then the stale row is gone — the item is not re-attached to old stock
+    const stocks = await db.itemStocks.toArray()
+    expect(stocks).toHaveLength(1)
+    expect(stocks[0].packedQuantity).toBe(3)
+  })
+
+  it('restoring a backup without locations keeps the default location', async () => {
+    // Given a legacy backup that carries no locations at all
+    const payload = emptyPayload({ items: [makeItem('item-1', 'Milk')] })
+
+    // When restoring with the clear strategy (which empties the tables first)
+    await importLocalData(payload, 'clear')
+
+    // Then the undeletable default location still exists
+    const locations = await db.locations.toArray()
+    expect(locations.map((l) => l.id)).toContain('local')
+  })
+
+  it('replacing an item also replaces its stock for the same location', async () => {
+    // Given an existing item whose local stock says 9 packs
+    await db.items.add(makeSplitItem('item-1', 'Milk') as never)
+    await db.itemStocks.put(
+      makeStock('stock-existing', 'item-1', 'local', { packedQuantity: 9 }),
+    )
+
+    // And a backup with the same item and a different stock row for that pair
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [
+        makeStock('stock-imported', 'item-1', 'local', { packedQuantity: 1 }),
+      ],
+      locations: [makeLocation('local', 'My Home')],
+    })
+
+    // When importing with the replace strategy
+    await importLocalData(payload, 'replace')
+
+    // Then the pair keeps exactly one stock row, carrying the imported values
+    const stocks = await db.itemStocks
+      .where('[itemId+locationId]')
+      .equals(['item-1', 'local'])
+      .toArray()
+    expect(stocks).toHaveLength(1)
+    expect(stocks[0].packedQuantity).toBe(1)
+  })
+
+  it('skipping a conflicting item leaves its existing stock untouched', async () => {
+    // Given an existing item whose local stock says 9 packs
+    await db.items.add(makeSplitItem('item-1', 'Milk') as never)
+    await db.itemStocks.put(
+      makeStock('stock-existing', 'item-1', 'local', { packedQuantity: 9 }),
+    )
+
+    // And a backup with the same item id and a different stock value
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [
+        makeStock('stock-imported', 'item-1', 'local', { packedQuantity: 1 }),
+      ],
+      locations: [makeLocation('local', 'My Home')],
+    })
+
+    // When importing with the skip strategy
+    await importLocalData(payload, 'skip')
+
+    // Then the existing stock is preserved (the item itself was skipped)
+    const stocks = await db.itemStocks
+      .where('[itemId+locationId]')
+      .equals(['item-1', 'local'])
+      .toArray()
+    expect(stocks).toHaveLength(1)
+    expect(stocks[0].packedQuantity).toBe(9)
   })
 })
 

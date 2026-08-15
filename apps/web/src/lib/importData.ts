@@ -1,5 +1,5 @@
 import type { ApolloClient } from '@apollo/client'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import {
   AllCartItemsDocument,
   type AllCartItemsQuery,
@@ -47,7 +47,8 @@ import type {
   CartItem,
   InventoryLog,
   Item,
-  PantryItem,
+  ItemStock,
+  Location,
   Recipe,
   Shelf,
   ShoppingCart,
@@ -55,54 +56,119 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
+import { DEFAULT_LOCATION_ID } from '@/types'
 import { deserializeRecipe } from './deserialization'
 import type { ExportPayload } from './exportData'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
+// Stock/unit/expiration fields that moved from Item onto ItemStock in v15.
+// Pre-v15 backups (and cloud payloads, whose Item still carries stock inline)
+// hold them on the item; the import upgrades those into 'local' ItemStock rows.
+const STOCK_FIELD_KEYS = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'targetUnit',
+  'targetQuantity',
+  'refillThreshold',
+  'packedQuantity',
+  'unpackedQuantity',
+  'consumeAmount',
+  'dueDate',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+] as const
+
+const DATE_FIELD_KEYS = ['dueDate', 'createdAt', 'updatedAt'] as const
+
+function toDate(value: unknown): Date {
+  return value instanceof Date ? value : new Date(value as string)
+}
+
 // Convert item date fields from ISO strings (as stored in JSON) to Date objects.
-//
-// NOTE (Location PR D): export/import still round-trips the legacy combined Item
-// shape (stock fields inline on the item). Splitting backups into Item +
-// ItemStock is deferred to a later phase; for now we type the payload item as
-// PantryItem so the date-bearing stock fields are recognized during import.
 function deserializeItem(rawItem: Item): Item {
-  // Legacy backups carry stock fields inline on the item; treat as PantryItem
-  // internally so the date-bearing fields are recognized, then write back.
-  const item = rawItem as PantryItem
-  const result: PantryItem = {
-    ...item,
-    createdAt:
-      item.createdAt instanceof Date
-        ? item.createdAt
-        : new Date(item.createdAt as unknown as string),
-    updatedAt:
-      item.updatedAt instanceof Date
-        ? item.updatedAt
-        : new Date(item.updatedAt as unknown as string),
+  return {
+    ...rawItem,
+    createdAt: toDate(rawItem.createdAt),
+    updatedAt: toDate(rawItem.updatedAt),
   }
-  if (item.dueDate !== null && item.dueDate !== undefined) {
-    result.dueDate =
-      item.dueDate instanceof Date
-        ? item.dueDate
-        : new Date(item.dueDate as string)
-  } else {
-    delete result.dueDate
+}
+
+// Convert stock date fields from ISO strings to Date objects; drop nulls
+// (JSON.stringify writes absent optional fields as null on cloud payloads).
+function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
+  const result = { ...raw } as Record<string, unknown>
+  for (const key of DATE_FIELD_KEYS) {
+    if (result[key] == null) delete result[key]
+    else result[key] = toDate(result[key])
   }
-  if (item.estimatedDueDays !== null && item.estimatedDueDays !== undefined) {
-    result.estimatedDueDays = item.estimatedDueDays
-  } else {
-    delete result.estimatedDueDays
+  return result as unknown as ItemStock
+}
+
+function deserializeLocation(raw: Record<string, unknown>): Location {
+  return {
+    ...raw,
+    createdAt: toDate(raw.createdAt),
+    updatedAt: toDate(raw.updatedAt),
+  } as unknown as Location
+}
+
+// Build the 'local' ItemStock described by a pre-v15 item's inline fields.
+function legacyStockFromItem(item: Record<string, unknown>): ItemStock {
+  const stock: Record<string, unknown> = {
+    id: crypto.randomUUID(),
+    itemId: item.id,
+    locationId: DEFAULT_LOCATION_ID,
+    // Defaults, in case an old backup lacks some of the fields.
+    targetUnit: 'package',
+    targetQuantity: 0,
+    refillThreshold: 0,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   }
-  if (
-    item.expirationThreshold !== null &&
-    item.expirationThreshold !== undefined
-  ) {
-    result.expirationThreshold = item.expirationThreshold
-  } else {
-    delete result.expirationThreshold
+  for (const key of STOCK_FIELD_KEYS) {
+    if (item[key] != null) stock[key] = item[key]
   }
-  return result
+  return deserializeItemStock(stock)
+}
+
+// Upgrade a pre-v15 backup (or a cloud payload, which keeps stock inline on the
+// Item) to the split shape the local database expects since v15:
+//   - synthesise a 'local' ItemStock per item and strip the inline stock fields
+//   - re-key carts and cart items to `${locationId}:${vendorId|'no-vendor'}`
+// A payload that already carries `itemStocks` is post-v15 and passes through.
+function upgradeLegacyPayload(payload: ExportPayload): ExportPayload {
+  if (payload.itemStocks !== undefined) return payload
+
+  const itemStocks: ItemStock[] = []
+  const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
+    itemStocks.push(legacyStockFromItem(raw))
+    const item = { ...raw }
+    for (const key of STOCK_FIELD_KEYS) delete item[key]
+    return item
+  })
+
+  const scopeCartId = (id: string) => `${DEFAULT_LOCATION_ID}:${id}`
+
+  return {
+    ...payload,
+    items,
+    itemStocks,
+    shoppingCarts: (
+      payload.shoppingCarts as Array<Record<string, unknown>>
+    ).map((cart) => ({ ...cart, id: scopeCartId(cart.id as string) })),
+    cartItems: (payload.cartItems as Array<Record<string, unknown>>).map(
+      (cartItem) => ({
+        ...cartItem,
+        cartId: scopeCartId(cartItem.cartId as string),
+      }),
+    ),
+  }
 }
 
 // Normalize an imported permanent cart to the v13+ schema shape: keep only
@@ -695,10 +761,70 @@ async function fetchLocalExistingData(): Promise<ExistingData> {
   }
 }
 
-export async function importLocalData(
+// Restore the payload's locations. Locations carry no destructible user
+// content, so (like carts) they are never reported as conflicts: `skip` adds
+// the ones that are missing, the other strategies overwrite. The default
+// location is re-ensured afterwards — it is undeletable, and `clear` empties
+// the table while a legacy payload carries no locations at all.
+async function importLocations(
   payload: ExportPayload,
   strategy: ImportStrategy,
 ): Promise<void> {
+  const locations = (
+    (payload.locations ?? []) as Array<Record<string, unknown>>
+  ).map(deserializeLocation)
+
+  if (strategy === 'skip') {
+    const existingIds = new Set((await db.locations.toArray()).map((l) => l.id))
+    const toAdd = locations.filter((l) => !existingIds.has(l.id))
+    if (toAdd.length > 0) await db.locations.bulkAdd(toAdd)
+  } else if (locations.length > 0) {
+    await db.locations.bulkPut(locations)
+  }
+
+  await ensureDefaultLocationRow()
+}
+
+// Restore the payload's ItemStock rows. Stock follows its item: only stocks
+// whose item was actually written are imported (so a skipped conflicting item
+// keeps the stock it already has). Any existing row for the same
+// (itemId, locationId) is dropped first — that pair is unique.
+async function importItemStocks(
+  payload: ExportPayload,
+  writtenItemIds: Set<string>,
+): Promise<void> {
+  const incoming = (
+    (payload.itemStocks ?? []) as Array<Record<string, unknown>>
+  )
+    .map(deserializeItemStock)
+    .filter((stock) => writtenItemIds.has(stock.itemId))
+  if (incoming.length === 0) return
+
+  const staleIds: string[] = []
+  for (const stock of incoming) {
+    const existing = await db.itemStocks
+      .where('[itemId+locationId]')
+      .equals([stock.itemId, stock.locationId])
+      .toArray()
+    staleIds.push(...existing.filter((e) => e.id !== stock.id).map((e) => e.id))
+  }
+  if (staleIds.length > 0) await db.itemStocks.bulkDelete(staleIds)
+
+  await db.itemStocks.bulkPut(incoming)
+}
+
+function itemIdsOf(entries: unknown[]): Set<string> {
+  return new Set((entries as Array<{ id: string }>).map((e) => e.id))
+}
+
+export async function importLocalData(
+  rawPayload: ExportPayload,
+  strategy: ImportStrategy,
+): Promise<void> {
+  // Pre-v15 backups (and cloud payloads) carry stock inline on the item and
+  // unscoped cart ids — upgrade them to the split shape before writing.
+  const payload = upgradeLegacyPayload(rawPayload)
+
   if (strategy === 'clear') {
     // Delete all tables in dependency order (children before parents)
     await db.shelves.clear()
@@ -709,10 +835,14 @@ export async function importLocalData(
     await db.tagTypes.clear()
     await db.recipes.clear()
     await db.vendors.clear()
+    await db.itemStocks.clear()
     await db.items.clear()
+    await db.locations.clear()
 
     // Bulk add all entities in reverse order (parents before children)
+    await importLocations(payload, strategy)
     await db.items.bulkAdd((payload.items as Item[]).map(deserializeItem))
+    await importItemStocks(payload, itemIdsOf(payload.items))
     await db.vendors.bulkAdd(payload.vendors as Vendor[])
     await db.recipes.bulkAdd(
       (payload.recipes as Recipe[]).map((r) =>
@@ -760,9 +890,13 @@ export async function importLocalData(
   if (strategy === 'skip') {
     const { toCreate } = partitionPayload(payload, conflicts, 'skip')
 
+    await importLocations(payload, strategy)
     await db.items.bulkAdd((toCreate.items as Item[]).map(deserializeItem), {
       allKeys: false,
     })
+    // Only the newly created items get their stock — conflicting items were
+    // skipped, so the stock they already have stays as it is.
+    await importItemStocks(payload, itemIdsOf(toCreate.items))
     await db.vendors.bulkAdd(toCreate.vendors as Vendor[], { allKeys: false })
     await db.recipes.bulkAdd(
       (toCreate.recipes as Recipe[]).map((r) =>
@@ -865,6 +999,7 @@ export async function importLocalData(
   // strategy === 'replace'
   const { toCreate, toUpsert } = partitionPayload(payload, conflicts, 'replace')
 
+  await importLocations(payload, strategy)
   await db.items.bulkAdd((toCreate.items as Item[]).map(deserializeItem), {
     allKeys: false,
   })
@@ -913,6 +1048,9 @@ export async function importLocalData(
   )
 
   await db.items.bulkPut((toUpsert.items as Item[]).map(deserializeItem))
+  // Every payload item was written (created or replaced), so all of the
+  // payload's stock rows apply.
+  await importItemStocks(payload, itemIdsOf(payload.items))
   await db.vendors.bulkPut(toUpsert.vendors as Vendor[])
   await db.recipes.bulkPut(
     (toUpsert.recipes as Recipe[]).map((r) =>
