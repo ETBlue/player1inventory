@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
 import {
@@ -67,6 +68,8 @@ function CookingPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
   const { data: recipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
   const consumeRecipes = useConsumeRecipes()
@@ -102,11 +105,18 @@ function CookingPage() {
   // `useItems()` joins the active-location ItemStock; `stockId` is undefined when
   // the item isn't stocked here, so such recipe items are shown unavailable and
   // never consumed.
-  const stockedItemIds = useMemo(
-    () => new Set(items.filter((i) => i.stockId).map((i) => i.id)),
-    [items],
+  //
+  // Cloud mode has no ItemStock backend yet (deferred in PR D) — cloud items
+  // carry inline stock and never a `stockId`, so the location gate is bypassed
+  // there and every item counts as available (pre-split behaviour).
+  const availableItemIds = useMemo(
+    () =>
+      new Set(
+        (isCloud ? items : items.filter((i) => i.stockId)).map((i) => i.id),
+      ),
+    [items, isCloud],
   )
-  const isItemAvailable = (itemId: string) => stockedItemIds.has(itemId)
+  const isItemAvailable = (itemId: string) => availableItemIds.has(itemId)
 
   const sortedRecipes = useMemo(() => {
     const sorted = [...recipes].sort((a, b) => {
@@ -317,13 +327,17 @@ function CookingPage() {
       const included = checkedItemIds.get(recipeId) ?? new Set()
       for (const [itemId, amount] of recipeAmounts) {
         // Skip items not stocked in the active location — they can't be consumed.
-        if (amount > 0 && included.has(itemId) && stockedItemIds.has(itemId)) {
+        if (
+          amount > 0 &&
+          included.has(itemId) &&
+          availableItemIds.has(itemId)
+        ) {
           totals.set(itemId, (totals.get(itemId) ?? 0) + servings * amount)
         }
       }
     }
     return totals
-  }, [sessionAmounts, sessionServings, checkedItemIds, stockedItemIds])
+  }, [sessionAmounts, sessionServings, checkedItemIds, availableItemIds])
 
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {

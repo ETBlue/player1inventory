@@ -199,7 +199,9 @@ Row 2:            [N items, M selected, × S]
 
 **Consumption calculation:** `totalByItemId[itemId] = servings × sessionAmounts[recipeId][itemId]` for each checked item with amount > 0, summed across all checked recipes.
 
-**Unavailable items (active-location scoping, PR D):** Cooking reads `useItems()` (the full catalog joined with active-location stock). A recipe item **not stocked in the active location** has `stockId === undefined` and is treated as **unavailable**: rendered greyed (`opacity-50`) with a "Not stocked in this location" note (`cooking.recipe.unavailable`), its checkbox disabled (`ItemCard disabled`), excluded from the recipe checkbox's auto-check / tri-state, and excluded from `totalByItemId` so it is never consumed. The set of available item ids is `stockedItemIds = items.filter(i => i.stockId)`; `isItemAvailable(itemId)` gates `handleToggleItem`, `getDefaultCheckedItems`, and the toggle-all logic.
+**Unavailable items (active-location scoping, PR D):** Cooking reads `useItems()` (the full catalog joined with active-location stock). A recipe item **not stocked in the active location** has `stockId === undefined` and is treated as **unavailable**: rendered greyed (`opacity-50`) with a "Not stocked in this location" note (`cooking.recipe.unavailable`), its checkbox disabled (`ItemCard disabled`), excluded from the recipe checkbox's auto-check / tri-state, and excluded from `totalByItemId` so it is never consumed. The set of available item ids is `availableItemIds`; `isItemAvailable(itemId)` gates `handleToggleItem`, `getDefaultCheckedItems`, and the toggle-all logic.
+
+**Cloud mode bypasses the location gate.** `ItemStock` has no GraphQL backend yet (deferred in PR D), so cloud items carry inline stock and never a `stockId`. In cloud mode `availableItemIds` is therefore built from **all** items — every recipe item stays checkable and consumable, preserving pre-split cloud behaviour. Covered by `src/routes/cooking.cloud.test.tsx`.
 
 **`ItemCard` in cooking mode:**
 - `showTags={false}` hides tags, vendors, and recipe badges
