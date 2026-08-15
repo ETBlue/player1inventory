@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useItem, useUpdateItem } from '@/hooks'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
@@ -158,6 +159,7 @@ function ItemStockTab() {
   const updateItem = useUpdateItem()
   const { registerDirtyState } = useItemLayout()
   const { goBack } = useAppNavigation()
+  const { activeLocation } = useActiveLocation()
   const [savedAt, setSavedAt] = useState(0)
 
   const { data: allRecipes } = useRecipes()
@@ -167,6 +169,13 @@ function ItemStockTab() {
     Adjustment[] | null
   >(null)
   const [pendingFormValues, setPendingFormValues] =
+    useState<ItemFormValues | null>(null)
+
+  // Implicit stock-add confirmation: Save on an item not yet stocked in the
+  // active location would otherwise silently create its ItemStock row here
+  // (updateItem routes stock fields through upsertItemStock). Gate that with
+  // a confirmation instead of saving straight through.
+  const [pendingStockAddValues, setPendingStockAddValues] =
     useState<ItemFormValues | null>(null)
 
   if (!item) return null
@@ -186,7 +195,7 @@ function ItemStockTab() {
     goBack()
   }
 
-  const handleSubmit = async (values: ItemFormValues) => {
+  const proceedWithSubmit = async (values: ItemFormValues) => {
     const oldConsumeAmount = item.consumeAmount ?? 1
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
@@ -248,6 +257,25 @@ function ItemStockTab() {
     }
 
     await doSave(values)
+  }
+
+  const handleSubmit = async (values: ItemFormValues) => {
+    if (item.stockId === undefined) {
+      setPendingStockAddValues(values)
+      return
+    }
+    await proceedWithSubmit(values)
+  }
+
+  const handleConfirmStockAdd = async () => {
+    if (!pendingStockAddValues) return
+    const values = pendingStockAddValues
+    setPendingStockAddValues(null)
+    await proceedWithSubmit(values)
+  }
+
+  const handleCancelStockAdd = () => {
+    setPendingStockAddValues(null)
   }
 
   const handleConfirmAdjustments = async () => {
@@ -334,6 +362,35 @@ function ItemStockTab() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmAdjustments}>
               {t('items.detail.recipeAdjustDialog.updateButton')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingStockAddValues}
+        onOpenChange={(open) => {
+          if (!open) handleCancelStockAdd()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('items.detail.stockAddDialog.title', {
+                name: item.name,
+                location: activeLocation?.name ?? '',
+              })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('items.detail.stockAddDialog.description')}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelStockAdd}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStockAdd}>
+              {t('common.add')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

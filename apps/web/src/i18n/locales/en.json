@@ -243,6 +243,10 @@
         "currentHeader": "Current",
         "newHeader": "New",
         "updateButton": "Update & Save"
+      },
+      "stockAddDialog": {
+        "title": "Add {{name}} to {{location}}?",
+        "description": "This item isn't stocked in this location yet. Saving will add it here with these values."
       }
     },
     "history": {

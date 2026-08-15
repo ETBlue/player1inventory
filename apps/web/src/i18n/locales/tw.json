@@ -243,6 +243,10 @@
         "currentHeader": "調整前",
         "newHeader": "調整後",
         "updateButton": "更新並儲存"
+      },
+      "stockAddDialog": {
+        "title": "將 {{name}} 加入 {{location}}？",
+        "description": "這項物資尚未在此地點建立庫存。儲存後將以目前填寫的數值把它加入這個地點。"
       }
     },
     "history": {

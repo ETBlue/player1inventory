@@ -5,12 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import { createItem, getItemStock } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Item stock tab', () => {
   let queryClient: QueryClient
@@ -113,5 +114,50 @@ describe('Item stock tab', () => {
     expect(updated?.name).toBe('Milk')
     expect(updated?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q8495')
     expect(updated?.note).toBe('Lactose-free preferred')
+  })
+
+  it('confirms before implicitly stocking an item not yet in the active location', async () => {
+    const user = userEvent.setup()
+
+    // Given an item that is stocked elsewhere, but NOT in the active
+    // (default) location — its stock tab loads with zeroed pre-filled values
+    const item = await createItem(
+      {
+        name: 'Butter',
+        packageUnit: 'block',
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      },
+      'loc-other',
+    )
+
+    renderStockTab(item.id)
+
+    // When the user edits a stock field and clicks Save
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a confirmation dialog appears instead of saving immediately —
+    // no ItemStock row is created in the active location yet
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toBeInTheDocument()
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeUndefined()
+
+    // And confirming proceeds with the implicit stock-add
+    await user.click(within(dialog).getByRole('button', { name: /add/i }))
+    await waitFor(async () => {
+      const stock = await getItemStock(item.id, DEFAULT_LOCATION_ID)
+      expect(stock?.packedQuantity).toBe(5)
+    })
   })
 })
