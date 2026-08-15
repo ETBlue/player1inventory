@@ -10,7 +10,6 @@ import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
 import { createApolloClientForE2E } from './apollo/client'
 import { db } from './db'
-import { migrateItemsToV2 } from './db/migrate'
 import { bootstrapCarts } from './db/operations'
 import type { DataMode } from './lib/dataMode'
 import { DATA_MODE_STORAGE_KEY, DEFAULT_DATA_MODE } from './lib/dataMode'
@@ -100,7 +99,6 @@ function renderApp() {
 if (mode === 'local') {
   // Only run IndexedDB migration in local mode
   db.open()
-    .then(() => migrateItemsToV2())
     .then(() => bootstrapCarts())
     .then(() => {
       console.log('Database migration complete')
