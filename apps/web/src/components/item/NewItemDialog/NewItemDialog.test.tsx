@@ -167,6 +167,30 @@ describe('NewItemDialog', () => {
     expect(option).toHaveAttribute('aria-disabled', 'true')
   })
 
+  it('pressing Enter creates a new item when the only catalog match is disabled (already-stocked)', async () => {
+    // Given an item already stocked here that partially matches the query
+    // (not an exact match, so the Create option is offered alongside it)
+    await createItem({ name: 'Eggsalad', tagIds: [] }, DEFAULT_LOCATION_ID)
+    const user = userEvent.setup()
+    renderDialog(<NewItemDialog open={true} onOpenChange={vi.fn()} />)
+
+    // When the user types a partial query matching only the disabled item,
+    // then presses Enter without using the mouse to pick the Create option
+    const input = await screen.findByRole('combobox', { name: /name/i })
+    await user.type(input, 'Eggs')
+    await screen.findByRole('option', { name: /eggsalad/i })
+    await user.keyboard('{Enter}')
+
+    // Then Enter is not a dead key: it creates the typed name as a new item
+    await vi.waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.objectContaining({ to: '/items/$id' }),
+      )
+    })
+    const items = await db.items.toArray()
+    expect(items.find((i) => i.name === 'Eggs')).toBeDefined()
+  })
+
   it('copy-on-add is a no-op for an already-stocked item (quantities preserved)', async () => {
     // Given an item stocked here with quantities
     const item = await createItem(

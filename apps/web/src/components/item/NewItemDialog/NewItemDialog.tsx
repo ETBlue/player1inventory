@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { Check, Plus } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -107,16 +107,28 @@ export function NewItemDialog({
   // Selectable options exclude items already stocked in the active location.
   // In cloud mode add-existing is unsupported (see isLocal comment above), so
   // no catalog item is ever selectable there — only Create.
-  const isSelectable = (opt: Option) =>
-    opt.kind === 'create' || (isLocal && !opt.item.stockId)
+  const isSelectable = useCallback(
+    (opt: Option) => opt.kind === 'create' || (isLocal && !opt.item.stockId),
+    [isLocal],
+  )
 
-  // Clamp the highlighted index whenever the option set changes.
+  // Keep the highlighted index on a selectable option whenever the option set
+  // changes. Without this, a disabled (already-stocked) option sorted first —
+  // or left over from a previous, now-stale query — could sit at index 0 with
+  // no selectable option ever highlighted, making Enter (and the missing
+  // Create button) a dead key even when a Create option is available further
+  // down the list (PR D review 3.3).
   useEffect(() => {
     setActiveIndex((prev) => {
       if (options.length === 0) return 0
-      return Math.min(prev, options.length - 1)
+      const prevOpt = options[prev]
+      if (prevOpt && isSelectable(prevOpt)) return prev
+      const firstSelectable = options.findIndex((opt) => isSelectable(opt))
+      return firstSelectable === -1
+        ? Math.min(prev, options.length - 1)
+        : firstSelectable
     })
-  }, [options.length])
+  }, [options, isSelectable])
 
   const resetForm = () => {
     setName(initialName)
@@ -200,15 +212,28 @@ export function NewItemDialog({
     }
   }
 
+  // Steps the highlight in `direction`, skipping non-selectable (disabled)
+  // options so the keyboard highlight never gets stuck on one — see the
+  // options-change effect above for the same guarantee on initial highlight.
+  const findNextSelectable = (from: number, direction: 1 | -1): number => {
+    let idx = from
+    for (let i = 0; i < options.length; i++) {
+      idx = (idx + direction + options.length) % options.length
+      const opt = options[idx]
+      if (opt && isSelectable(opt)) return idx
+    }
+    return from
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (options.length === 0) return
-      setActiveIndex((prev) => (prev + 1) % options.length)
+      setActiveIndex((prev) => findNextSelectable(prev, 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       if (options.length === 0) return
-      setActiveIndex((prev) => (prev - 1 + options.length) % options.length)
+      setActiveIndex((prev) => findNextSelectable(prev, -1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const opt = options[activeIndex]
