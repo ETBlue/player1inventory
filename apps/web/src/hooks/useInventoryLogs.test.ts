@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useItemLogs } from './useInventoryLogs'
+import { useAddInventoryLog, useItemLogs } from './useInventoryLogs'
 
 const mockItemLogsQuery = vi.fn()
 let capturedItemLogsQueryOptions: Record<string, unknown> | undefined
@@ -26,6 +26,19 @@ vi.mock('@/db/operations', async (importOriginal) => {
     ...original,
     getItemLogs: vi.fn().mockResolvedValue([]),
     addInventoryLog: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
+vi.mock('@/hooks/useActiveLocation', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('@/hooks/useActiveLocation')>()
+  return {
+    ...original,
+    useActiveLocation: () => ({
+      activeLocationId: 'cabin',
+      setActiveLocationId: vi.fn(),
+      activeLocation: undefined,
+    }),
   }
 })
 
@@ -152,5 +165,32 @@ describe('useItemLogs (local mode)', () => {
     const log = result.current.data?.[0]
     expect(log.occurredAt).toBeInstanceOf(Date)
     expect(log.itemId).toBe('item-1')
+  })
+})
+
+describe('useAddInventoryLog (local mode)', () => {
+  it('user adds a log entry — the active location id is threaded to addInventoryLog', async () => {
+    // Given local mode with an active location other than the default
+    const { addInventoryLog } = await import('@/db/operations')
+
+    // When an inventory log is added
+    const { result } = renderHook(() => useAddInventoryLog(), {
+      wrapper: createWrapper(),
+    })
+    const occurredAt = new Date('2026-03-19T10:00:00.000Z')
+    await act(async () => {
+      await result.current.mutateAsync({
+        itemId: 'item-1',
+        delta: 2,
+        quantity: 5,
+        occurredAt,
+      })
+    })
+
+    // Then addInventoryLog is called with the active location's id, not the
+    // 'local' default
+    expect(addInventoryLog).toHaveBeenCalledWith(
+      expect.objectContaining({ locationId: 'cabin' }),
+    )
   })
 })

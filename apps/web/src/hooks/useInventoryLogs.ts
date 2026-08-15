@@ -64,6 +64,7 @@ export function useAddInventoryLog() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
   const queryClient = useQueryClient()
+  const { activeLocationId } = useActiveLocation()
   const [cloudMutate] = useAddInventoryLogMutation()
 
   return useMutation({
@@ -92,7 +93,7 @@ export function useAddInventoryLog() {
         })
         return
       }
-      return addInventoryLog(input)
+      return addInventoryLog({ ...input, locationId: activeLocationId })
     },
     onSuccess: (_, { itemId }) => {
       queryClient.invalidateQueries({ queryKey: ['items', itemId] })
