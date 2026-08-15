@@ -742,7 +742,9 @@ export async function createVendor(
   }
   await db.vendors.add(vendor)
   // Pre-create the vendor's cart for the active location so it shows up on the
-  // shopping index immediately. Carts for other locations are created lazily.
+  // shopping index immediately. Carts for other locations are created by
+  // `bootstrapCarts`, called from `ActiveLocationProvider` whenever the
+  // active location changes — not lazily from a read path (see `getCart`).
   await db.shoppingCarts.put({ id: cartIdFor(locationId, vendor.id) })
   return vendor
 }
