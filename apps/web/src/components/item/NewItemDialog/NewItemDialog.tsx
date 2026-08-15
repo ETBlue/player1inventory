@@ -165,10 +165,25 @@ export function NewItemDialog({
     if (submitting) return
     setSubmitting(true)
     try {
-      await addItemToLocation.mutateAsync(item.id)
+      // The resolved ItemStock carries the real, freshly copied stock fields.
+      // Merge those in rather than spreading the stale pre-add `item` (whose
+      // stock fields reflect the zeroed pre-add join when it wasn't
+      // previously stocked at the active location) — otherwise callers like
+      // the recipe items dialog read defaults (e.g. consumeAmount: 1) instead
+      // of the item's real copied values (PR D review 3.5).
+      const stock = await addItemToLocation.mutateAsync(item.id)
       handleClose()
       if (onSuccess) {
-        onSuccess({ ...item, stockId: item.stockId ?? 'pending' })
+        const { id, itemId, createdAt, updatedAt, ...stockFields } = stock
+        void itemId
+        void createdAt
+        void updatedAt
+        onSuccess({
+          ...item,
+          ...stockFields,
+          stockId: id,
+          locationId: stock.locationId,
+        })
       }
       // No navigation by default — the item now appears in the pantry list.
     } finally {

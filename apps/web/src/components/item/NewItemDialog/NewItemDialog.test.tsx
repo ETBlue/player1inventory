@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { addItemToLocation, createItem, getItemStock } from '@/db/operations'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
-import type { Item } from '@/types'
+import type { Item, PantryItem } from '@/types'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { NewItemDialog } from './NewItemDialog'
 
@@ -103,6 +103,51 @@ describe('NewItemDialog', () => {
     })
     expect(onSuccess).toHaveBeenCalled()
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('calls onSuccess with the freshly copied stock, not the stale pre-add join', async () => {
+    // Given a global item stocked elsewhere with a non-default consumeAmount
+    // (not stocked in the active location, so the pre-add join would supply
+    // ZERO_STOCK's consumeAmount of 1 instead of the real value)
+    const created = await createItem(
+      {
+        name: 'Honey',
+        tagIds: [],
+        consumeAmount: 3,
+        targetQuantity: 10,
+        refillThreshold: 2,
+      },
+      'loc-other',
+    )
+    await db.itemStocks.where('locationId').equals(DEFAULT_LOCATION_ID).delete()
+    const user = userEvent.setup()
+    const onSuccess = vi.fn()
+    renderDialog(
+      <NewItemDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        onSuccess={onSuccess}
+      />,
+    )
+
+    // When the user searches and selects the existing item
+    await user.type(
+      await screen.findByRole('combobox', { name: /name/i }),
+      'Honey',
+    )
+    await user.click(await screen.findByRole('option', { name: /honey/i }))
+
+    // Then onSuccess receives the real copied consumeAmount (3), not the
+    // stale ZERO_STOCK default (1) from the pre-add PantryItem join
+    await vi.waitFor(() => {
+      expect(onSuccess).toHaveBeenCalled()
+    })
+    const arg = onSuccess.mock.calls[0]?.[0] as PantryItem
+    expect(arg.consumeAmount).toBe(3)
+    expect(arg.stockId).toBeDefined()
+    expect(arg.stockId).not.toBe('pending')
+    const stockRow = await getItemStock(created.id, DEFAULT_LOCATION_ID)
+    expect(arg.stockId).toBe(stockRow?.id)
   })
 
   it('shows an already-stocked item as a disabled option', async () => {
