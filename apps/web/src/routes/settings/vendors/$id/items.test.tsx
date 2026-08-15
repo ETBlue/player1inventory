@@ -649,4 +649,57 @@ describe('Vendor Detail - Items Tab', () => {
     })
     expect(screen.queryByTestId('tag-badge-Vegetables')).not.toBeInTheDocument()
   })
+
+  it('user does not duplicate the vendor when selecting an already-assigned item via the dialog', async () => {
+    // Given a vendor and an item already assigned to it but not yet stocked
+    // in the active location (selectable in the dialog's combobox)
+    const vendor = await createVendor('Costco')
+    const item = await createItem(
+      { name: 'Butter', tagIds: [], vendorIds: [vendor.id] },
+      'loc-other',
+    )
+    await db.itemStocks.where('locationId').equals('local').delete()
+
+    renderItemsTab(vendor.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel, types a name with no exact catalog
+    // match to reveal the create-item button, opens the dialog, then within
+    // the dialog searches for and selects the already-assigned "Butter"
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /create item/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    const dialog = screen.getByRole('dialog')
+    const dialogInput = within(dialog).getByRole('combobox', {
+      name: /name/i,
+    })
+    await user.clear(dialogInput)
+    await user.type(dialogInput, 'Butter')
+    await user.click(
+      await within(dialog).findByRole('option', { name: /butter/i }),
+    )
+
+    // Then the vendor is not duplicated on the item
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      expect(updated?.vendorIds?.filter((id) => id === vendor.id)).toHaveLength(
+        1,
+      )
+    })
+  })
 })
