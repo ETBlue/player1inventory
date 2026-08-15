@@ -100,6 +100,14 @@ describe('NewItemDialog — cloud mode', () => {
     // no orphan ItemStock is ever written to local Dexie, and onSuccess never
     // fires as if the add had succeeded.
     expect(option).toHaveAttribute('aria-disabled', 'true')
+    // Flush the macrotask queue: a `setTimeout(0)` callback only runs after
+    // every currently-queued microtask has drained, so this waits out any
+    // depth of purely-promise-based chain a (regressed) click handler might
+    // kick off — e.g. `addItemToLocation.mutateAsync(...)`'s Dexie write —
+    // without needing to reach into the component for a settle signal. This
+    // is a real safety margin, not a guess: the only way it would under-wait
+    // is if a future handler itself used a macrotask (another `setTimeout`/
+    // `requestAnimationFrame`) internally, which nothing on this path does.
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(await db.itemStocks.toArray()).toHaveLength(0)
     expect(onSuccess).not.toHaveBeenCalled()

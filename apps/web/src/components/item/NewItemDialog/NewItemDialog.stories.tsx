@@ -1,4 +1,5 @@
 import { ApolloProvider } from '@apollo/client/react'
+import { MockedProvider } from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -9,6 +10,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
+import { GetItemsDocument } from '@/generated/graphql'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -115,4 +117,83 @@ export const MatchingExisting: Story = {
 // Query with no catalog match — the "Create" option + package-unit field appear.
 export const CreateNew: Story = {
   render: () => <DialogHarness initialName="Sparkling Water" />,
+}
+
+// Cloud mode has no per-location ItemStock backend yet (deferred in PR D):
+// every catalog option renders disabled ("already here") regardless of
+// whether it has a stockId, and only the Create path is available (PR D
+// review 2.1 — selecting a disabled option must never write an orphan local
+// ItemStock). This mocks `useGetItemsQuery` via `MockedProvider` instead of
+// seeding Dexie, since cloud mode reads the catalog from GraphQL, not local
+// IndexedDB.
+function CloudDialogHarness() {
+  const [queryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  )
+
+  const rootRoute = createRootRoute({
+    component: () => (
+      <ActiveLocationProvider>
+        <NewItemDialog
+          open
+          onOpenChange={() => {}}
+          onSuccess={(item) => console.log('Added/created item:', item)}
+        />
+      </ActiveLocationProvider>
+    ),
+  })
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+
+  const mocks = [
+    {
+      request: { query: GetItemsDocument, variables: {} },
+      result: {
+        data: {
+          items: [
+            {
+              id: 'item-flour',
+              name: 'Flour',
+              tagIds: [],
+              vendorIds: [],
+              packageUnit: null,
+              measurementUnit: null,
+              amountPerPackage: null,
+              targetUnit: 'package',
+              targetQuantity: 10,
+              refillThreshold: 2,
+              packedQuantity: 5,
+              unpackedQuantity: 0,
+              consumeAmount: 1,
+              expirationMode: null,
+              dueDate: null,
+              estimatedDueDays: null,
+              expirationThreshold: null,
+              userId: 'user-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      },
+    },
+  ]
+
+  return (
+    <MockedProvider mocks={mocks} addTypename={false}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </MockedProvider>
+  )
+}
+
+export const CloudMode: Story = {
+  beforeEach() {
+    localStorage.setItem('data-mode', 'cloud')
+    return () => localStorage.removeItem('data-mode')
+  },
+  render: () => <CloudDialogHarness />,
 }

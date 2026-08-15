@@ -1,9 +1,49 @@
 import { composeStories } from '@storybook/react'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as stories from './NewItemDialog.stories'
 
-const { Default, MatchingExisting, CreateNew } = composeStories(stories)
+// composeStories doesn't run a story's own `beforeEach` (see
+// DataModeCard/index.stories.test.tsx) — CloudMode's `data-mode` localStorage
+// key is set/cleared manually below instead.
+const { Default, MatchingExisting, CreateNew, CloudMode } =
+  composeStories(stories)
+
+// setup.ts globally stubs `useGetItemsQuery` to always return
+// `data: undefined` (all other tests run in local mode, so cloud data is
+// never needed there) — that stub wins over the CloudMode story's
+// `MockedProvider` mock under vitest (MockedProvider only takes effect for a
+// real Apollo context, e.g. actual Storybook). Override it here, scoped to
+// this file, so the smoke test below sees the same catalog the story mocks.
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/generated/graphql')>()
+  return {
+    ...original,
+    useGetItemsQuery: () => ({
+      data: {
+        items: [
+          {
+            id: 'item-flour',
+            name: 'Flour',
+            tagIds: [],
+            targetUnit: 'package',
+            targetQuantity: 10,
+            refillThreshold: 2,
+            packedQuantity: 5,
+            unpackedQuantity: 0,
+            consumeAmount: 1,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: vi.fn(),
+    }),
+  }
+})
 
 describe('NewItemDialog stories smoke tests', () => {
   it('Default renders the dialog with a search combobox', async () => {
@@ -25,5 +65,19 @@ describe('NewItemDialog stories smoke tests', () => {
     expect(
       await screen.findByRole('option', { name: /create .*sparkling water/i }),
     ).toBeInTheDocument()
+  })
+
+  describe('CloudMode', () => {
+    beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
+    afterEach(() => localStorage.removeItem('data-mode'))
+
+    it('renders every catalog option as disabled (create-only)', async () => {
+      render(<CloudMode />)
+      // Cloud mode has no per-location ItemStock backend yet — every catalog
+      // option (e.g. "Flour", from the mocked GetItems response) renders
+      // disabled/"already here" regardless of stockId (PR D review 2.1).
+      const option = await screen.findByRole('option', { name: /flour/i })
+      expect(option).toHaveAttribute('aria-disabled', 'true')
+    })
   })
 })
