@@ -2237,10 +2237,57 @@ describe('resolveFlattenLocationId — cloud file import cannot silently zero st
 
   it('passes the request through when there is no stock to flatten', () => {
     // Given a cloud-shaped payload (no itemStocks at all) and one with an
-    // empty stock table — neither can lose stock by being flattened
+    // empty stock table and no carts — neither can lose anything by being
+    // flattened
     expect(resolveFlattenLocationId(emptyPayload(), 'local')).toBe('local')
     expect(resolveFlattenLocationId(payloadWithStockIn(), 'local')).toBe(
       'local',
     )
+  })
+
+  // With no stock to disambiguate, the carts still carry a location prefix, and
+  // flattening by a location none of them use drops every cart and cart item
+  // silently. Zeroed stock is correct here (there is none); losing the carts is
+  // not.
+  function payloadWithCartsIn(...locationIds: string[]): ExportPayload {
+    return emptyPayload({
+      items: [{ id: 'item-1', name: 'Milk', tagIds: [] }],
+      itemStocks: [],
+      shoppingCarts: locationIds.map((locationId) => ({
+        id: `${locationId}:vendor-1`,
+      })),
+      cartItems: locationIds.map((locationId, i) => ({
+        id: `ci-${i}`,
+        cartId: `${locationId}:vendor-1`,
+        itemId: 'item-1',
+        quantity: 1,
+      })),
+    })
+  }
+
+  it('falls back to the cart location when there is no stock to disambiguate', () => {
+    // Given a stock-less backup whose carts all belong to one other location
+    const payload = payloadWithCartsIn('kitchen-a1b2')
+
+    // When resolving against 'local'
+    // Then the carts' own location is used — flattening by 'local' would have
+    // dropped every cart and cart item with no warning
+    expect(resolveFlattenLocationId(payload, 'local')).toBe('kitchen-a1b2')
+  })
+
+  it('prefers the requested location when its carts are in the backup', () => {
+    // Given a stock-less backup with carts in both locations
+    const payload = payloadWithCartsIn('local', 'office')
+
+    // Then the request still wins — Ruling A is unaffected
+    expect(resolveFlattenLocationId(payload, 'office')).toBe('office')
+  })
+
+  it('refuses to guess when stock-less carts span several unknown locations', () => {
+    // Given carts in two locations, neither of them this device's
+    const payload = payloadWithCartsIn('kitchen-a1b2', 'garage-c3d4')
+
+    // Then there is no safe answer — refuse rather than drop half the carts
+    expect(resolveFlattenLocationId(payload, 'local')).toBeNull()
   })
 })

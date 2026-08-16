@@ -299,8 +299,11 @@ export function flattenPayloadForCloud(
 //   - the payload's stock spans several locations, none of them the requested
 //     one → `null`. There is no safe answer; the caller must refuse the import
 //     rather than upload zeros.
-//   - nothing to flatten (no `itemStocks` table, or an empty one) → the request
-//     passes through; no stock can be lost.
+//   - no stock to flatten (no `itemStocks` table, or an empty one) → the same
+//     three rules are applied to the CART id prefixes instead. Zeroed stock is
+//     correct when there is none, but the carts still carry a location and
+//     flattening by one they do not use drops every cart and cart item silently.
+//   - nothing at all to go on → the request passes through; nothing can be lost.
 export function resolveFlattenLocationId(
   payload: ExportPayload,
   requestedLocationId: string,
@@ -312,11 +315,35 @@ export function resolveFlattenLocationId(
       (stock) => stock.locationId as string,
     ),
   )
-  if (locationIds.size === 0) return requestedLocationId
+  if (locationIds.size === 0) {
+    return resolveByCartLocations(payload, requestedLocationId)
+  }
+  return pickLocationId(locationIds, requestedLocationId)
+}
+
+// The locations a payload's cart ids are scoped to. Ids with no `:` are bare
+// (cloud-shaped or pre-v15) and name no location, so they are ignored.
+function resolveByCartLocations(
+  payload: ExportPayload,
+  requestedLocationId: string,
+): string | null {
+  const cartLocationIds = new Set<string>()
+  for (const cart of payload.shoppingCarts as Array<Record<string, unknown>>) {
+    const id = cart.id as string
+    const idx = id.indexOf(':')
+    if (idx > 0) cartLocationIds.add(id.slice(0, idx))
+  }
+  if (cartLocationIds.size === 0) return requestedLocationId
+  return pickLocationId(cartLocationIds, requestedLocationId)
+}
+
+// Iterating (rather than indexing) keeps the value typed as `string` under
+// noUncheckedIndexedAccess.
+function pickLocationId(
+  locationIds: Set<string>,
+  requestedLocationId: string,
+): string | null {
   if (locationIds.has(requestedLocationId)) return requestedLocationId
-  // The payload's stock lives in exactly one other location — use it. Iterating
-  // (rather than indexing) keeps the value typed as `string` under
-  // noUncheckedIndexedAccess.
   if (locationIds.size === 1) {
     for (const onlyLocationId of locationIds) return onlyLocationId
   }
