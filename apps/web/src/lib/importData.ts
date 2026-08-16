@@ -1,5 +1,6 @@
 import type { ApolloClient } from '@apollo/client'
 import { db, ensureDefaultLocationRow } from '@/db'
+import { bootstrapCarts } from '@/db/operations'
 import {
   AllCartItemsDocument,
   type AllCartItemsQuery,
@@ -972,6 +973,13 @@ export async function importLocalData(
       })),
     )
 
+    // `clear` wipes the cart table, and `getCart` is a pure read — nothing
+    // recreates the sentinel carts if the payload carried none (a backup taken
+    // before any shopping did). Re-bootstrap every restored location so the
+    // shopping pages are usable straight after the import.
+    for (const location of await db.locations.toArray()) {
+      await bootstrapCarts(location.id)
+    }
     return
   }
 

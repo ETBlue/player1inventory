@@ -1970,3 +1970,51 @@ describe('importCloudData — local → cloud stock flattening (v15 split)', () 
     expect(sentOf(client, 'cartItems')).toHaveLength(1)
   })
 })
+
+describe('importLocalData — carts survive a clear import', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  it('user importing a cart-less backup with clear still has shopping carts', async () => {
+    // Given a backup that carries no carts at all (e.g. exported before any
+    // shopping happened) and two locations
+    const now = new Date()
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      vendors: [makeVendor('vendor-1', 'Costco')],
+      itemStocks: [],
+      locations: [
+        {
+          id: 'local',
+          name: 'My Home',
+          order: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'office',
+          name: 'Office',
+          order: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      shoppingCarts: [],
+      cartItems: [],
+    })
+
+    // When restoring it with the destructive 'clear' strategy, which wipes the
+    // cart table first
+    await importLocalData(payload, 'clear')
+
+    // Then every location still has its no-vendor + per-vendor carts — `getCart`
+    // is a pure read, so a cart-less database leaves shopping unusable
+    const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id).sort()
+    expect(cartIds).toEqual([
+      'local:no-vendor',
+      'local:vendor-1',
+      'office:no-vendor',
+      'office:vendor-1',
+    ])
+  })
+})
