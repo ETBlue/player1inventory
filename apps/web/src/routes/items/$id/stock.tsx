@@ -14,16 +14,18 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useItem, useUpdateItem } from '@/hooks'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
-import type { Item } from '@/types'
+import type { PantryItem, StockFields } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
 })
 
-function itemToFormValues(item: Item): ItemFormValues {
+function itemToFormValues(item: PantryItem): ItemFormValues {
   return {
     packedQuantity: item.packedQuantity,
     unpackedQuantity: item.unpackedQuantity ?? 0,
@@ -60,7 +62,7 @@ function itemToFormValues(item: Item): ItemFormValues {
 // We need a separate type here because `exactOptionalPropertyTypes: true`
 // prevents assigning `undefined` to fields typed as `?: T` on `Partial<Item>`.
 type ItemUpdatePayload = Omit<
-  Partial<Item>,
+  Partial<StockFields>,
   | 'dueDate'
   | 'estimatedDueDays'
   | 'expirationMode'
@@ -71,7 +73,7 @@ type ItemUpdatePayload = Omit<
 > & {
   dueDate?: Date | undefined
   estimatedDueDays?: number | undefined
-  expirationMode?: Item['expirationMode']
+  expirationMode?: StockFields['expirationMode']
   packageUnit?: string | undefined
   measurementUnit?: string | undefined
   amountPerPackage?: number | undefined
@@ -158,6 +160,9 @@ function ItemStockTab() {
   const updateItem = useUpdateItem()
   const { registerDirtyState } = useItemLayout()
   const { goBack } = useAppNavigation()
+  const { activeLocation } = useActiveLocation()
+  const { mode } = useDataMode()
+  const isLocal = mode === 'local'
   const [savedAt, setSavedAt] = useState(0)
 
   const { data: allRecipes } = useRecipes()
@@ -169,22 +174,34 @@ function ItemStockTab() {
   const [pendingFormValues, setPendingFormValues] =
     useState<ItemFormValues | null>(null)
 
+  // Implicit stock-add confirmation: Save on an item not yet stocked in the
+  // active location would otherwise silently create its ItemStock row here
+  // (updateItem routes stock fields through upsertItemStock). Gate that with
+  // a confirmation instead of saving straight through. Local mode only —
+  // ItemStock has no cloud backend yet (deferred), so cloud items never
+  // carry a stockId; reading item.stockId === undefined in cloud mode is
+  // unconditionally true and would fire this confirmation on every Save.
+  const [pendingStockAddValues, setPendingStockAddValues] =
+    useState<ItemFormValues | null>(null)
+
   if (!item) return null
 
   const formValues = itemToFormValues(item)
 
   const doSave = async (values: ItemFormValues) => {
-    // Cast to Partial<Item> — the wider ItemUpdatePayload type is compatible at runtime;
-    // the cast is needed because exactOptionalPropertyTypes disallows undefined on Partial<Item>.
+    // Cast to Partial<StockFields> — the wider ItemUpdatePayload type is
+    // compatible at runtime; the cast is needed because exactOptionalPropertyTypes
+    // disallows undefined on Partial<StockFields>. updateItem routes these stock
+    // fields to the active location's ItemStock.
     await updateItem.mutateAsync({
       id,
-      updates: buildStockUpdates(values) as Partial<Item>,
+      updates: buildStockUpdates(values) as Partial<StockFields>,
     })
     setSavedAt((n) => n + 1)
     goBack()
   }
 
-  const handleSubmit = async (values: ItemFormValues) => {
+  const proceedWithSubmit = async (values: ItemFormValues) => {
     const oldConsumeAmount = item.consumeAmount ?? 1
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
@@ -246,6 +263,25 @@ function ItemStockTab() {
     }
 
     await doSave(values)
+  }
+
+  const handleSubmit = async (values: ItemFormValues) => {
+    if (isLocal && item.stockId === undefined) {
+      setPendingStockAddValues(values)
+      return
+    }
+    await proceedWithSubmit(values)
+  }
+
+  const handleConfirmStockAdd = async () => {
+    if (!pendingStockAddValues) return
+    const values = pendingStockAddValues
+    setPendingStockAddValues(null)
+    await proceedWithSubmit(values)
+  }
+
+  const handleCancelStockAdd = () => {
+    setPendingStockAddValues(null)
   }
 
   const handleConfirmAdjustments = async () => {
@@ -332,6 +368,39 @@ function ItemStockTab() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmAdjustments}>
               {t('items.detail.recipeAdjustDialog.updateButton')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        // Wait for activeLocation to resolve before rendering: otherwise the
+        // dialog can briefly show a half-formed "Add <item> to ?" sentence
+        // while locations are still loading. It simply pops open once
+        // activeLocation resolves via context re-render.
+        open={!!pendingStockAddValues && !!activeLocation}
+        onOpenChange={(open) => {
+          if (!open) handleCancelStockAdd()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('items.detail.stockAddDialog.title', {
+                name: item.name,
+                location: activeLocation?.name ?? '',
+              })}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('items.detail.stockAddDialog.description')}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelStockAdd}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStockAdd}>
+              {t('common.add')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

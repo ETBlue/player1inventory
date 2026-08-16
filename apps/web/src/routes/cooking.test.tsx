@@ -13,6 +13,7 @@ import {
   createRecipe,
   createTag,
   createTagType,
+  getItemStock,
   getRecipe,
   updateRecipeLastCookedAt,
 } from '@/db/operations'
@@ -23,6 +24,7 @@ describe('Use (Cooking) Page', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.recipes.clear()
     await db.inventoryLogs.clear()
     await db.tags.clear()
@@ -337,7 +339,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then the item's quantity is reduced in the database
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       expect(updated).toBeDefined()
       const total =
         (updated?.packedQuantity ?? 0) + (updated?.unpackedQuantity ?? 0)
@@ -466,7 +468,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then the item's quantity is NOT reduced (amount was 0)
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       expect(updated?.packedQuantity).toBe(5) // unchanged
     })
 
@@ -620,7 +622,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then Flour's quantity is reduced
     await waitFor(async () => {
-      const updatedFlour = await db.items.get(flour.id)
+      const updatedFlour = await getItemStock(flour.id)
       const total =
         (updatedFlour?.packedQuantity ?? 0) +
         (updatedFlour?.unpackedQuantity ?? 0)
@@ -629,7 +631,7 @@ describe('Use (Cooking) Page', () => {
 
     // But Bacon's quantity is unchanged
     await waitFor(async () => {
-      const updatedBacon = await db.items.get(bacon.id)
+      const updatedBacon = await getItemStock(bacon.id)
       expect(updatedBacon?.packedQuantity).toBe(3)
     })
   })
@@ -807,7 +809,7 @@ describe('Use (Cooking) Page', () => {
 
     // Then Flour is reduced by 3 × 2 = 6 (from 10 to 4)
     await waitFor(async () => {
-      const updated = await db.items.get(item.id)
+      const updated = await getItemStock(item.id)
       const total =
         (updated?.packedQuantity ?? 0) + (updated?.unpackedQuantity ?? 0)
       expect(total).toBe(4)
@@ -1760,5 +1762,98 @@ describe('Use (Cooking) Page', () => {
       const search = router.state.location.search as Record<string, unknown>
       expect(search.expanded).toBeFalsy()
     })
+  })
+
+  // Creates a global item stocked ONLY in another location, so it is unavailable
+  // in the active ('local') location used by the cooking page.
+  const makeUnstockedItem = async (name: string) => {
+    const now = new Date()
+    const id = crypto.randomUUID()
+    await db.items.put({ id, name, tagIds: [], createdAt: now, updatedAt: now })
+    await db.itemStocks.put({
+      id: `stock-${id}`,
+      itemId: id,
+      locationId: 'loc-elsewhere',
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+    return { id }
+  }
+
+  it('user sees a recipe item not stocked in the active location as unavailable', async () => {
+    // Given a recipe with one stocked item and one item stocked elsewhere only
+    const stocked = await makeItem('Flour', 1)
+    const elsewhere = await makeUnstockedItem('Saffron')
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: stocked.id, defaultAmount: 2 },
+        { itemId: elsewhere.id, defaultAmount: 2 },
+      ],
+    })
+
+    const router = renderPage()
+    const user = userEvent.setup()
+
+    // When the recipe is expanded
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /Expand Pasta/i }),
+      ).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: /Expand Pasta/i }))
+
+    // Then the unavailable item shows an "unavailable" note
+    await waitFor(() => {
+      expect(screen.getByText('Saffron')).toBeInTheDocument()
+      expect(
+        screen.getByText(/not stocked in this location/i),
+      ).toBeInTheDocument()
+    })
+    expect(router).toBeDefined()
+  })
+
+  it('checking a recipe does not consume an unavailable item', async () => {
+    // Given a recipe with one available item and one unavailable item, both with defaults
+    const stocked = await makeItem('Flour', 1)
+    const elsewhere = await makeUnstockedItem('Saffron')
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: stocked.id, defaultAmount: 1 },
+        { itemId: elsewhere.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // When the recipe is checked and confirmed Done
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument(),
+    )
+    await user.click(screen.getByLabelText('Pasta'))
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /confirm/i }),
+      ).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+
+    // Then the available item is consumed but the unavailable item is untouched
+    await waitFor(async () => {
+      const flourStock = await getItemStock(stocked.id, 'local')
+      expect(flourStock?.packedQuantity).toBe(4) // 5 - 1
+    })
+    // The unavailable item never gained a 'local' stock row
+    const saffronLocal = await getItemStock(elsewhere.id, 'local')
+    expect(saffronLocal).toBeUndefined()
   })
 })

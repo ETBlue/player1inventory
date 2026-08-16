@@ -46,6 +46,11 @@ export interface ExportPayload {
   shoppingCarts: unknown[]
   cartItems: unknown[]
   shelves: unknown[]
+  // Local-only (v15 Item/ItemStock split). Absent on cloud exports — cloud
+  // items still carry stock inline — and on pre-v15 backups, whose absence is
+  // what marks a payload as legacy on the import side.
+  itemStocks?: unknown[]
+  locations?: unknown[]
 }
 
 export function buildExportPayload(
@@ -99,6 +104,8 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     shoppingCarts,
     cartItems,
     shelves,
+    itemStocks,
+    locations,
   ] = await Promise.all([
     db.items.toArray(),
     db.tags.toArray(),
@@ -109,6 +116,10 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     db.shoppingCarts.toArray(),
     db.cartItems.toArray(),
     db.shelves.where('type').notEqual('system').toArray(),
+    // v15 split: quantities, units and expiration live on ItemStock, one row
+    // per (item × location) — without these the backup carries no stock at all.
+    db.itemStocks.toArray(),
+    db.locations.toArray(),
   ])
 
   // Permanent carts (v13+): every cart is exported. Scope cartItems to existing
@@ -126,6 +137,8 @@ export async function fetchLocalPayload(): Promise<ExportPayload> {
     shoppingCarts,
     cartItems: exportedCartItems,
     shelves,
+    itemStocks,
+    locations,
   })
 }
 

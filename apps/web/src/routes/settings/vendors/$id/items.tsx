@@ -160,6 +160,9 @@ function VendorItemsTab() {
   }
 
   const handleNewItemSuccess = async (item: import('@/types').Item) => {
+    // onSuccess also fires on the select-existing path (not just create), so
+    // an item may already carry this vendor — guard against duplicating it.
+    if ((item.vendorIds ?? []).includes(vendorId)) return
     await updateItem.mutateAsync({
       id: item.id,
       updates: { vendorIds: [...(item.vendorIds ?? []), vendorId] },

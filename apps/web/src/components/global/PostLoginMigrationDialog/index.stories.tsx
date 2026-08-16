@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { PostLoginMigrationDialog } from '.'
@@ -7,6 +8,8 @@ import { PostLoginMigrationDialog } from '.'
 //   - usePostLoginMigration() → useAuth() from @clerk/react
 //     (mocked in Storybook via .storybook/mocks/clerk.tsx — always returns isSignedIn: true)
 //   - getAllItems() from db — async Dexie call
+//   - useLocations() — TanStack Query read backing the multi-location warning,
+//     hence the QueryClientProvider decorator below
 //
 // Idle story: set 'migration-prompted' in localStorage so the hook returns early.
 //   No db access occurs. Dialog stays closed.
@@ -14,9 +17,20 @@ import { PostLoginMigrationDialog } from '.'
 // Prompting story: seed db with one item and clear 'migration-prompted'.
 //   The hook finds local items → sets state to 'prompting' → dialog opens.
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
+
 const meta: Meta<typeof PostLoginMigrationDialog> = {
   title: 'Components/Global/PostLoginMigrationDialog',
   component: PostLoginMigrationDialog,
+  decorators: [
+    (Story) => (
+      <QueryClientProvider client={queryClient}>
+        <Story />
+      </QueryClientProvider>
+    ),
+  ],
   parameters: {
     layout: 'centered',
   },

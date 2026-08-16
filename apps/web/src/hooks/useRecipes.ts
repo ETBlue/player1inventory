@@ -23,6 +23,7 @@ import {
 } from '@/generated/graphql'
 import { deserializeRecipe } from '@/lib/deserialization'
 import type { Recipe, RecipeItem } from '@/types'
+import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
 
 export function useRecipes() {
@@ -298,6 +299,7 @@ export function useUpdateRecipeLastCookedAt() {
 export function useConsumeRecipes() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { activeLocationId } = useActiveLocation()
   const [cloudConsumeRecipes] = useConsumeRecipesMutation()
 
   return useMutation({
@@ -337,7 +339,7 @@ export function useConsumeRecipes() {
           },
         })
       }
-      return consumeRecipesBatch(input)
+      return consumeRecipesBatch({ ...input, locationId: activeLocationId })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })

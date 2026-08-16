@@ -1,13 +1,15 @@
-import type { Item, Recipe, Shelf, ShoppingCart, Vendor } from '@/types'
+import type { PantryItem, Recipe, Shelf, ShoppingCart, Vendor } from '@/types'
 
 // GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
-export function deserializeItem(raw: Record<string, unknown>): Item {
+// The cloud Item still carries stock/unit/expiration fields (ItemStock is
+// local-only for now — cloud TODO), so the deserialized value is a PantryItem.
+export function deserializeItem(raw: Record<string, unknown>): PantryItem {
   return {
     ...raw,
     dueDate: raw.dueDate ? new Date(raw.dueDate as string) : undefined,
     createdAt: new Date(raw.createdAt as string),
     updatedAt: new Date(raw.updatedAt as string),
-  } as Item
+  } as PantryItem
 }
 
 // GraphQL returns createdAt as ISO string; convert to Date.

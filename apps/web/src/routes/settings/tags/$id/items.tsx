@@ -206,6 +206,9 @@ function TagItemsTab() {
   }
 
   const handleNewItemSuccess = async (item: import('@/types').Item) => {
+    // onSuccess also fires on the select-existing path (not just create), so
+    // an item may already carry this tag — guard against duplicating it.
+    if ((item.tagIds ?? []).includes(tagId)) return
     await updateItem.mutateAsync({
       id: item.id,
       updates: { tagIds: [...(item.tagIds ?? []), tagId] },

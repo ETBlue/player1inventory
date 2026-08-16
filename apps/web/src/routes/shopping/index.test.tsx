@@ -10,12 +10,14 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import { addToCart, createItem, createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Shopping index page', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -139,9 +141,9 @@ describe('Shopping index page', () => {
     })
 
     // Both items added to the no-vendor cart (simulating a pre-vendor-carts backup import)
-    await db.shoppingCarts.put({ id: 'no-vendor' })
-    await addToCart('no-vendor', milkWithVendor.id, 3) // vendor-assigned item, qty > 0
-    await addToCart('no-vendor', centrumNoVendor.id, 1) // no-vendor item, qty > 0
+    await db.shoppingCarts.put({ id: cartIdFor(DEFAULT_LOCATION_ID, null) })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), milkWithVendor.id, 3) // vendor-assigned item, qty > 0
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), centrumNoVendor.id, 1) // no-vendor item, qty > 0
 
     renderShoppingIndex()
 
@@ -165,7 +167,7 @@ describe('Shopping index page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 2)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 2)
 
     renderShoppingIndex()
 
@@ -181,8 +183,12 @@ describe('Shopping index page', () => {
     // Costco: older lastPurchasedAt; iHerb: newer lastPurchasedAt
     const olderDate = new Date('2025-01-01T00:00:00Z')
     const newerDate = new Date('2025-06-01T00:00:00Z')
-    await db.shoppingCarts.update(costco.id, { lastPurchasedAt: olderDate })
-    await db.shoppingCarts.update(iherb.id, { lastPurchasedAt: newerDate })
+    await db.shoppingCarts.update(cartIdFor(DEFAULT_LOCATION_ID, costco.id), {
+      lastPurchasedAt: olderDate,
+    })
+    await db.shoppingCarts.update(cartIdFor(DEFAULT_LOCATION_ID, iherb.id), {
+      lastPurchasedAt: newerDate,
+    })
 
     // Render shopping index with ?sort=recent
     const history = createMemoryHistory({
@@ -281,8 +287,8 @@ describe('Shopping index page', () => {
       consumeAmount: 1,
     })
     // Null-vendor cart (simulates imported backup with 7 packs)
-    await db.shoppingCarts.put({ id: 'no-vendor' })
-    await addToCart('no-vendor', milk.id, 7)
+    await db.shoppingCarts.put({ id: cartIdFor(DEFAULT_LOCATION_ID, null) })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), milk.id, 7)
 
     renderShoppingIndex()
 

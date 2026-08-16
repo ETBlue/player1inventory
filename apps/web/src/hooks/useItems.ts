@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  addItemToLocation,
   createItem,
   deleteItem,
   getAllItems,
@@ -7,6 +8,7 @@ import {
   getInventoryLogCountByItem,
   getItem,
   getLastPurchaseDate,
+  getStockedItems,
   updateItem,
 } from '@/db/operations'
 import type { CreateItemInput, UpdateItemInput } from '@/generated/graphql'
@@ -24,19 +26,23 @@ import {
 } from '@/generated/graphql'
 import { deserializeItem } from '@/lib/deserialization'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
-import type { Item } from '@/types'
+import type { Item, StockFields } from '@/types'
+import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
+
+// In local mode, item create/update accept the global Item fields plus stock
+// fields (split into the active-location ItemStock by the operations layer).
+type ItemMutationInput = Omit<Item, 'id' | 'createdAt' | 'updatedAt'> &
+  Partial<StockFields>
 
 // Map frontend Item (without id/timestamps) to the GraphQL CreateItemInput shape.
 // Converts dueDate from Date to ISO string; passes all other fields through.
-function toCreateItemInput(
-  input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
-): CreateItemInput {
+function toCreateItemInput(input: ItemMutationInput): CreateItemInput {
   const { dueDate, ...rest } = input
   return {
     ...rest,
     dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
-  }
+  } as CreateItemInput
 }
 
 // Map frontend Item partial to the GraphQL UpdateItemInput shape.
@@ -50,7 +56,9 @@ function toCreateItemInput(
 // omit expiration and measurement fields, leaving them untouched in MongoDB.
 // The full ItemForm explicitly sets these fields (to a value or undefined) so
 // it still controls their DB state.
-export function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
+export function toUpdateItemInput(
+  updates: Partial<Item> & Partial<StockFields>,
+): UpdateItemInput {
   const { id: _id, createdAt: _c, updatedAt: _u, dueDate, ...rest } = updates
   return {
     // Non-clearable fields (name, tagIds, quantities, etc.) pass through unchanged.
@@ -82,10 +90,52 @@ export function toUpdateItemInput(updates: Partial<Item>): UpdateItemInput {
 export function useItems() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const local = useQuery({
-    queryKey: ['items'],
-    queryFn: getAllItems,
+    queryKey: ['items', { locationId: activeLocationId }],
+    queryFn: () => getAllItems(activeLocationId),
+    enabled: !isCloud,
+  })
+
+  const cloud = useGetItemsQuery({ skip: !isCloud })
+
+  if (isCloud) {
+    return {
+      data: cloud.data?.items.map((i) =>
+        deserializeItem(i as Record<string, unknown>),
+      ),
+      isLoading: cloud.loading,
+      isFetching: cloud.networkStatus < 7, // 7 = NetworkStatus.ready
+      isError: !!cloud.error,
+      refetch: cloud.refetch,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isFetching: local.isFetching,
+    isError: local.isError,
+    refetch: local.refetch,
+  }
+}
+
+// Items stocked in the active location (have an ItemStock row there), joined
+// with that location's stock. This is the pantry's data source — items not
+// stocked in the active location are absent. Switching the active location
+// re-scopes the result (activeLocationId is part of the query key).
+//
+// Cloud mode: ItemStock has no GraphQL backend yet, so this falls back to the
+// full cloud item list (cloud TODO: per-location stock + catalog).
+export function useStockedItems() {
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
+
+  const local = useQuery({
+    queryKey: ['items', 'stocked', { locationId: activeLocationId }],
+    queryFn: () => getStockedItems(activeLocationId),
     enabled: !isCloud,
   })
 
@@ -115,10 +165,11 @@ export function useItems() {
 export function useItem(id: string) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const local = useQuery({
-    queryKey: ['items', id],
-    queryFn: () => getItem(id),
+    queryKey: ['items', id, { locationId: activeLocationId }],
+    queryFn: () => getItem(id, activeLocationId),
     enabled: !!id && !isCloud,
   })
 
@@ -142,10 +193,11 @@ export function useItem(id: string) {
 }
 
 export function useItemWithQuantity(id: string) {
+  const { activeLocationId } = useActiveLocation()
   const itemQuery = useItem(id)
   const lastPurchaseQuery = useQuery({
-    queryKey: ['items', id, 'lastPurchase'],
-    queryFn: () => getLastPurchaseDate(id),
+    queryKey: ['items', id, 'lastPurchase', { locationId: activeLocationId }],
+    queryFn: () => getLastPurchaseDate(id, activeLocationId),
     enabled: !!id,
   })
 
@@ -160,6 +212,7 @@ export function useItemWithQuantity(id: string) {
 export function useLastPurchaseDate(itemId: string) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   // Cloud: use Apollo batch query (local logs are stale in cloud mode)
   const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
@@ -170,10 +223,15 @@ export function useLastPurchaseDate(itemId: string) {
     (r) => r.itemId === itemId,
   )?.date
 
-  // Local: TanStack Query + Dexie (unchanged from before)
+  // Local: TanStack Query + Dexie, scoped to the active location
   const localQuery = useQuery({
-    queryKey: ['items', itemId, 'lastPurchase'],
-    queryFn: () => getLastPurchaseDate(itemId),
+    queryKey: [
+      'items',
+      itemId,
+      'lastPurchase',
+      { locationId: activeLocationId },
+    ],
+    queryFn: () => getLastPurchaseDate(itemId, activeLocationId),
     enabled: !isCloud && !!itemId,
   })
 
@@ -191,10 +249,11 @@ export function useLastPurchaseDate(itemId: string) {
 export function useCreateItem() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { activeLocationId } = useActiveLocation()
 
   const localMutation = useMutation({
-    mutationFn: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) =>
-      createItem(input),
+    mutationFn: (input: ItemMutationInput) =>
+      createItem(input, activeLocationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
     },
@@ -207,7 +266,7 @@ export function useCreateItem() {
   if (mode === 'cloud') {
     return {
       mutate: (
-        input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>,
+        input: ItemMutationInput,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
         cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
@@ -216,7 +275,7 @@ export function useCreateItem() {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: (input: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) =>
+      mutateAsync: (input: ItemMutationInput) =>
         cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
           (r) => r.data?.createItem,
         ),
@@ -227,13 +286,35 @@ export function useCreateItem() {
   return localMutation
 }
 
+// Stock an existing global item in the active location via copy-on-add
+// (inherits all stock fields except packed/unpacked → 0). No-op if the item is
+// already stocked there. Local-first only — ItemStock has no cloud backend yet.
+export function useAddItemToLocation() {
+  const queryClient = useQueryClient()
+  const { activeLocationId } = useActiveLocation()
+
+  return useMutation({
+    mutationFn: (itemId: string) => addItemToLocation(itemId, activeLocationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
+    },
+  })
+}
+
+type ItemUpdateVars = {
+  id: string
+  updates: Partial<Item> & Partial<StockFields>
+}
+
 export function useUpdateItem() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { activeLocationId } = useActiveLocation()
 
   const localMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
-      updateItem(id, updates),
+    mutationFn: ({ id, updates }: ItemUpdateVars) =>
+      updateItem(id, updates, activeLocationId),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['items', id] })
@@ -252,7 +333,7 @@ export function useUpdateItem() {
     // with undefined/null are sent as null (server clears them).
     return {
       mutate: (
-        { id, updates }: { id: string; updates: Partial<Item> },
+        { id, updates }: ItemUpdateVars,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
         cloudUpdate({
@@ -263,7 +344,7 @@ export function useUpdateItem() {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: ({ id, updates }: { id: string; updates: Partial<Item> }) =>
+      mutateAsync: ({ id, updates }: ItemUpdateVars) =>
         cloudUpdate({
           variables: { id, input: toUpdateItemInput(updates) },
         }).then((r) => r.data?.updateItem),

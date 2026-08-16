@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
+import { splitInlineStock, relocateCarts } from '../helpers/locationSeed'
 import { makeGql } from '../utils/cloud'
 
 test.beforeEach(async ({ page, request, baseURL }) => {
@@ -146,6 +147,10 @@ test('user can see expiration badge updated after checkout without manual refres
       { itemId, cartItemId },
     )
 
+    // Location PR D: migrate inline stock + raw-id carts to the new schema.
+    await splitInlineStock(page)
+    await relocateCarts(page)
+
     // Reload pantry after seeding so React Query fetches fresh data from the populated DB.
     await pantry.navigateTo()
 
@@ -214,6 +219,9 @@ test('user can checkout items from shopping cart', async ({ page, baseURL }) => 
     })
   }, { itemId })
 
+  await splitInlineStock(page)
+  await relocateCarts(page)
+
   // When: navigate to no-vendor cart (Test Milk has no vendor), add to cart, checkout
   await shopping.navigateToVendorCart('no-vendor')
   await shopping.addItemToCart('Test Milk')
@@ -271,6 +279,9 @@ test('user can see vendor cart cards on the shopping page', async ({ page, baseU
     })
   }, { vendorAId, vendorBId })
 
+  await splitInlineStock(page)
+  await relocateCarts(page)
+
   // When: navigate to shopping index
   await shopping.navigateTo()
 
@@ -309,6 +320,9 @@ test('user can navigate into a vendor cart and back to the list', async ({ page,
       createdAt: now, updatedAt: now,
     })
   }, { vendorId })
+
+  await splitInlineStock(page)
+  await relocateCarts(page)
 
   // Navigate to shopping index
   await shopping.navigateTo()
@@ -371,6 +385,9 @@ test('user can checkout from a vendor cart without affecting another vendor cart
     await put('cartItems', { id: 'ci-a-e2e', cartId: vendorAId, itemId: 'checkout-item-a', quantity: 1 })
     await put('cartItems', { id: 'ci-b-e2e', cartId: vendorBId, itemId: 'checkout-item-b', quantity: 1 })
   }, { vendorAId, vendorBId })
+
+  await splitInlineStock(page)
+  await relocateCarts(page)
 
   // Navigate to Vendor A's cart and checkout
   await shopping.navigateToVendorCart(vendorAId)

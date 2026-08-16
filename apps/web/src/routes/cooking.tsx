@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
 import {
@@ -67,6 +68,8 @@ function CookingPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
   const { data: recipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
   const consumeRecipes = useConsumeRecipes()
@@ -97,6 +100,23 @@ function CookingPage() {
   const [newRecipeInitialName, setNewRecipeInitialName] = useState('')
 
   const { expiryDates } = useItemSortData(items)
+
+  // An item is consumable in the active location only if it has stock there.
+  // `useItems()` joins the active-location ItemStock; `stockId` is undefined when
+  // the item isn't stocked here, so such recipe items are shown unavailable and
+  // never consumed.
+  //
+  // Cloud mode has no ItemStock backend yet (deferred in PR D) — cloud items
+  // carry inline stock and never a `stockId`, so the location gate is bypassed
+  // there and every item counts as available (pre-split behaviour).
+  const availableItemIds = useMemo(
+    () =>
+      new Set(
+        (isCloud ? items : items.filter((i) => i.stockId)).map((i) => i.id),
+      ),
+    [items, isCloud],
+  )
+  const isItemAvailable = (itemId: string) => availableItemIds.has(itemId)
 
   const sortedRecipes = useMemo(() => {
     const sorted = [...recipes].sort((a, b) => {
@@ -169,11 +189,12 @@ function CookingPage() {
     }
   }
 
-  // Returns the default checked item set for a recipe (items with defaultAmount > 0)
+  // Returns the default checked item set for a recipe (items with defaultAmount
+  // > 0 that are stocked in the active location — unavailable items are skipped).
   const getDefaultCheckedItems = (recipe: (typeof recipes)[0]): Set<string> => {
     const set = new Set<string>()
     for (const ri of recipe.items) {
-      if (ri.defaultAmount > 0) set.add(ri.itemId)
+      if (ri.defaultAmount > 0 && isItemAvailable(ri.itemId)) set.add(ri.itemId)
     }
     return set
   }
@@ -234,10 +255,15 @@ function CookingPage() {
     setSessionAmounts(amounts)
     setSessionServings(servings)
 
-    // Toggle based on default items (defaultAmount > 0); fall back to all items if none have defaults
+    // Toggle based on default items (defaultAmount > 0); fall back to all items
+    // if none have defaults. Unavailable items (not stocked here) are excluded.
     const currentChecked = checkedItemIds.get(recipeId) ?? new Set()
-    const defaultItems = recipe.items.filter((ri) => ri.defaultAmount > 0)
-    const effectiveItems = defaultItems.length > 0 ? defaultItems : recipe.items
+    const availableItems = recipe.items.filter((ri) =>
+      isItemAvailable(ri.itemId),
+    )
+    const defaultItems = availableItems.filter((ri) => ri.defaultAmount > 0)
+    const effectiveItems =
+      defaultItems.length > 0 ? defaultItems : availableItems
     const allEffectiveChecked =
       effectiveItems.length > 0 &&
       effectiveItems.every((ri) => currentChecked.has(ri.itemId))
@@ -247,11 +273,11 @@ function CookingPage() {
       // All effective items checked → uncheck all
       updatedItemIds.set(recipeId, new Set())
     } else {
-      // Some or none checked → check all effective items
+      // Some or none checked → check all effective (available) items
       const toCheck =
         defaultItems.length > 0
           ? getDefaultCheckedItems(recipe)
-          : new Set(recipe.items.map((ri) => ri.itemId))
+          : new Set(availableItems.map((ri) => ri.itemId))
       updatedItemIds.set(recipeId, toCheck)
     }
     setCheckedItemIds(updatedItemIds)
@@ -280,6 +306,8 @@ function CookingPage() {
   }
 
   const handleToggleItem = (recipeId: string, itemId: string) => {
+    // Unavailable items (not stocked in the active location) can't be toggled.
+    if (!isItemAvailable(itemId)) return
     const newCheckedItemIds = new Map(checkedItemIds)
     const itemSet = new Set(newCheckedItemIds.get(recipeId) ?? [])
     if (itemSet.has(itemId)) {
@@ -298,13 +326,18 @@ function CookingPage() {
       const servings = sessionServings.get(recipeId) ?? 1
       const included = checkedItemIds.get(recipeId) ?? new Set()
       for (const [itemId, amount] of recipeAmounts) {
-        if (amount > 0 && included.has(itemId)) {
+        // Skip items not stocked in the active location — they can't be consumed.
+        if (
+          amount > 0 &&
+          included.has(itemId) &&
+          availableItemIds.has(itemId)
+        ) {
           totals.set(itemId, (totals.get(itemId) ?? 0) + servings * amount)
         }
       }
     }
     return totals
-  }, [sessionAmounts, sessionServings, checkedItemIds])
+  }, [sessionAmounts, sessionServings, checkedItemIds, availableItemIds])
 
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {
@@ -492,16 +525,20 @@ function CookingPage() {
               const totalItemCount = recipe.items.length
 
               // Tri-state for recipe checkbox — based on default items (defaultAmount > 0);
-              // falls back to all items when none have a default amount
+              // falls back to all items when none have a default amount. Items not
+              // stocked in the active location are unavailable and excluded.
+              const availableRecipeItems = recipe.items.filter((ri) =>
+                isItemAvailable(ri.itemId),
+              )
               const defaultItemIds = new Set(
-                recipe.items
+                availableRecipeItems
                   .filter((ri) => ri.defaultAmount > 0)
                   .map((ri) => ri.itemId),
               )
               const effectiveItemIds =
                 defaultItemIds.size > 0
                   ? defaultItemIds
-                  : new Set(recipe.items.map((ri) => ri.itemId))
+                  : new Set(availableRecipeItems.map((ri) => ri.itemId))
               const checkedEffectiveCount = [
                 ...(checkedItemIds.get(recipe.id) ?? new Set()),
               ].filter((id) => effectiveItemIds.has(id)).length
@@ -627,9 +664,11 @@ function CookingPage() {
                           )
                           const amount =
                             recipeAmounts?.get(ri.itemId) ?? ri.defaultAmount
+                          const available = isItemAvailable(ri.itemId)
                           const isItemChecked =
-                            checkedItemIds.get(recipe.id)?.has(ri.itemId) ??
-                            false
+                            available &&
+                            (checkedItemIds.get(recipe.id)?.has(ri.itemId) ??
+                              false)
 
                           return (
                             <div
@@ -638,29 +677,37 @@ function CookingPage() {
                                 isItemChecked ? 'bg-background-surface' : ''
                               }
                             >
-                              <ItemCard
-                                item={item}
-                                tags={itemTags}
-                                tagTypes={tagTypes}
-                                mode="cooking"
-                                showTags={false}
-                                showTagSummary={false}
-                                isChecked={isItemChecked}
-                                onCheckboxToggle={() =>
-                                  handleToggleItem(recipe.id, ri.itemId)
-                                }
-                                controlAmount={amount}
-                                onAmountChange={(delta) =>
-                                  handleAdjustAmount(
-                                    recipe.id,
-                                    ri.itemId,
-                                    delta,
-                                  )
-                                }
-                                highlightedName={
-                                  q ? highlight(item.name, q) : undefined
-                                }
-                              />
+                              <div className={available ? '' : 'opacity-50'}>
+                                <ItemCard
+                                  item={item}
+                                  tags={itemTags}
+                                  tagTypes={tagTypes}
+                                  mode="cooking"
+                                  showTags={false}
+                                  showTagSummary={false}
+                                  isChecked={isItemChecked}
+                                  disabled={!available}
+                                  onCheckboxToggle={() =>
+                                    handleToggleItem(recipe.id, ri.itemId)
+                                  }
+                                  controlAmount={amount}
+                                  onAmountChange={(delta) =>
+                                    handleAdjustAmount(
+                                      recipe.id,
+                                      ri.itemId,
+                                      delta,
+                                    )
+                                  }
+                                  highlightedName={
+                                    q ? highlight(item.name, q) : undefined
+                                  }
+                                />
+                              </div>
+                              {!available && (
+                                <p className="px-4 pb-1 text-xs text-foreground-muted">
+                                  {t('cooking.recipe.unavailable')}
+                                </p>
+                              )}
                             </div>
                           )
                         })}

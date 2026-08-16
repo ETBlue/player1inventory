@@ -27,11 +27,11 @@ import {
   isInactive,
   roundToStep,
 } from '@/lib/quantityUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 interface QuickUpdateDialogProps {
-  item: Item
+  item: PantryItem
   isOpen: boolean
   onClose: () => void
   onSubmit: (updates: {

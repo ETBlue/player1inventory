@@ -10,12 +10,14 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import { addToCart, createItem, createVendor } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Vendor cart page', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -71,7 +73,7 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 3)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 3)
 
     // When user navigates to the vendor cart
     renderVendorCart(vendor.id)
@@ -128,7 +130,7 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 2)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 2)
 
     // When user navigates to the vendor cart
     renderVendorCart(vendor.id)
@@ -188,9 +190,9 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await db.shoppingCarts.put({ id: 'no-vendor' })
-    await addToCart('no-vendor', milkWithVendor.id, 10) // vendor-assigned, qty 10
-    await addToCart('no-vendor', centrumNoVendor.id, 5) // no-vendor item, qty 5
+    await db.shoppingCarts.put({ id: cartIdFor(DEFAULT_LOCATION_ID, null) })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), milkWithVendor.id, 10) // vendor-assigned, qty 10
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), centrumNoVendor.id, 5) // no-vendor item, qty 5
 
     // When user navigates to the no-vendor cart
     renderVendorCart('no-vendor')
@@ -234,11 +236,11 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await db.shoppingCarts.put({ id: 'no-vendor' })
-    await addToCart('no-vendor', milkPxMart.id, 10)
+    await db.shoppingCarts.put({ id: cartIdFor(DEFAULT_LOCATION_ID, null) })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), milkPxMart.id, 10)
 
     // And: a separate PX Mart vendor cart with 3 packs (what the cart page should show)
-    await addToCart(vendor.id, milkPxMart.id, 3)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), milkPxMart.id, 3)
 
     // When user navigates to the PX Mart vendor cart page
     renderVendorCart(vendor.id)
@@ -271,7 +273,9 @@ describe('Vendor cart page', () => {
     await screen.findByText('Costco')
 
     // Then the cart's lastVisitedAt is NOT set after visiting
-    const cart = await db.shoppingCarts.get(vendor.id)
+    const cart = await db.shoppingCarts.get(
+      cartIdFor(DEFAULT_LOCATION_ID, vendor.id),
+    )
     expect(cart).toBeDefined()
     expect((cart as Record<string, unknown>).lastVisitedAt).toBeUndefined()
   })
@@ -330,7 +334,7 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 1)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
 
     // When user navigates to the vendor cart
     renderVendorCart(vendor.id)
@@ -366,7 +370,7 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 2)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 2)
 
     // When user navigates to the vendor cart
     renderVendorCart(vendor.id)
@@ -413,7 +417,7 @@ describe('Vendor cart page', () => {
       unpackedQuantity: 0,
       consumeAmount: 1,
     })
-    await addToCart(vendor.id, item.id, 1)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
 
     // When user navigates to the vendor cart
     renderVendorCart(vendor.id)

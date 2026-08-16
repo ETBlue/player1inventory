@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -230,7 +230,11 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then the item is created and added to the recipe
     await waitFor(async () => {
@@ -314,7 +318,11 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then Butter is created and added to the recipe
     await waitFor(async () => {
@@ -325,6 +333,72 @@ describe('Recipe Detail - Items Tab', () => {
       expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
         true,
       )
+    })
+  })
+
+  it('user does not duplicate the recipe-item when selecting an already-assigned item via the dialog', async () => {
+    // Given a recipe and an item already assigned to it but not yet stocked
+    // in the active location (selectable in the dialog's combobox)
+    const recipe = await makeRecipe('Baking')
+    const item = await createItem(
+      {
+        name: 'Butter',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    await db.recipes.update(recipe.id, {
+      items: [{ itemId: item.id, defaultAmount: 1 }],
+    })
+    await db.itemStocks.where('locationId').equals('local').delete()
+
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel, types a name with no exact catalog
+    // match to reveal the create-item button, opens the dialog, then within
+    // the dialog searches for and selects the already-assigned "Butter"
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /create item/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    const dialog = screen.getByRole('dialog')
+    const dialogInput = within(dialog).getByRole('combobox', {
+      name: /name/i,
+    })
+    await user.clear(dialogInput)
+    await user.type(dialogInput, 'Butter')
+    await user.click(
+      await within(dialog).findByRole('option', { name: /butter/i }),
+    )
+
+    // Then the recipe-item entry is not duplicated
+    await waitFor(async () => {
+      const updatedRecipe = await db.recipes.get(recipe.id)
+      expect(
+        updatedRecipe?.items.filter((ri) => ri.itemId === item.id),
+      ).toHaveLength(1)
     })
   })
 

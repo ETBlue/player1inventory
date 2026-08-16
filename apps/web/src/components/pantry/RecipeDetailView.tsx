@@ -7,7 +7,7 @@ import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
-import { useItems, useUpdateItem } from '@/hooks'
+import { useStockedItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useSortFilter } from '@/hooks/useSortFilter'
@@ -16,7 +16,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 interface RecipeDetailViewProps {
   recipeId: string
@@ -26,7 +26,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const navigate = useNavigate()
   const isUnsorted = recipeId === 'unsorted'
 
-  const { data: allItems = [], isLoading: isItemsLoading } = useItems()
+  const { data: allItems = [], isLoading: isItemsLoading } = useStockedItems()
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const { data: vendors = [] } = useVendors()
   const { data: tags = [] } = useTags()
@@ -57,7 +57,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
 
   const { quantities, expiryDates, purchaseDates } = useItemSortData(allItems)
 
-  const inScopeItems = useMemo((): Item[] => {
+  const inScopeItems = useMemo((): PantryItem[] => {
     if (isUnsorted) {
       const allIds = new Set(
         recipes.flatMap((r) => r.items.map((ri) => ri.itemId)),
@@ -69,7 +69,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     return allItems.filter((i) => ids.has(i.id))
   }, [isUnsorted, allItems, recipes, recipe])
 
-  const sortedItems = useMemo((): Item[] => {
+  const sortedItems = useMemo((): PantryItem[] => {
     return sortItems(
       inScopeItems,
       quantities ?? new Map(),
@@ -124,7 +124,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     }
   }
 
-  const renderItemCard = (item: Item) => (
+  const renderItemCard = (item: PantryItem) => (
     <ItemCard
       key={item.id}
       item={item}

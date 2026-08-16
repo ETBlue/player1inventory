@@ -90,7 +90,8 @@
     },
     "recipe": {
       "itemCount": "{{count}} / {{total}} 項已勾選",
-      "noItems": "食譜裡還沒有任何品項喔。"
+      "noItems": "食譜裡還沒有任何品項喔。",
+      "unavailable": "此地點未庫存"
     },
     "log": {
       "consumedVia": "用在 {{recipes}} 上了",
@@ -155,6 +156,18 @@
   },
   "items": {
     "newButton": "新增品項",
+    "addDialog": {
+      "title": "新增品項",
+      "searchPlaceholder": "搜尋或建立品項",
+      "noResults": "找不到品項",
+      "createOption": "建立「{{name}}」",
+      "createButton": "建立「{{name}}」",
+      "alreadyStocked": "已在此地點",
+      "alreadyStockedHere": "「{{name}}」已在「{{location}}」中。",
+      "alreadyExists": "已有名為「{{name}}」的品項。",
+      "packageUnitLabel": "包裝單位",
+      "packageUnitPlaceholder": "例如：瓶、公斤"
+    },
     "tags": {
       "empty": {
         "title": "尚未建立標籤系統",
@@ -232,6 +245,10 @@
         "currentHeader": "調整前",
         "newHeader": "調整後",
         "updateButton": "更新並儲存"
+      },
+      "stockAddDialog": {
+        "title": "將 {{name}} 加入 {{location}}？",
+        "description": "這項物資尚未在此地點建立庫存。儲存後將以目前填寫的數值把它加入這個地點。"
       }
     },
     "history": {
@@ -460,6 +477,12 @@
       "skip": "略過",
       "autoImporting": "正在將本機資料複製到雲端…"
     },
+    "migrationLocationWarning": {
+      "title": "只會複製「{{location}}」",
+      "description": "雲端模式尚未支援多個地點，因此只有「{{location}}」的庫存會複製到您的雲端帳戶。",
+      "leftBehind": "不會複製：{{locations}}。這些庫存完全不會存進雲端，只會留在這台裝置上。",
+      "continue": "仍要複製"
+    },
     "export": {
       "label": "下載我的資料",
       "description": "將資料匯出為 JSON 格式的檔案，以供備份",
@@ -477,6 +500,7 @@
       "success": "資料匯入成功",
       "error": "資料匯入失敗",
       "invalidFile": "無效的備份檔案",
+      "unknownLocations": "這份備份的物品分散在多個地點，而這些地點都不存在於此裝置。雲端模式每項物品只保存一組數量，因此無法判斷該上傳哪個地點的數量。請先在離線模式還原這份備份、選好地點，再複製到雲端。",
       "entities": {
         "items": "品項",
         "tags": "標籤",

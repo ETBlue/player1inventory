@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
 
-// PR B: the LocationSwitcher is an INERT global active-location selector shown at
-// the left of the pantry/shopping/cooking toolbars. It persists the active
-// location and updates its trigger label, but does NOT scope any displayed data.
-// Locations are local-first (no cloud backend yet), so these flows are local-only.
+// The LocationSwitcher is a global active-location selector shown at the left of
+// the pantry/shopping/cooking toolbars. PR B made it persist the active location
+// and update its trigger label; PR D made it LIVE — switching the active location
+// re-scopes the pantry to items stocked in that location. Locations are
+// local-first (no cloud backend yet), so these flows are local-only.
 
 test.beforeEach(async ({ page }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
@@ -114,4 +115,102 @@ test('"Manage" navigates to the locations settings page', async ({
   // Then the locations settings page is shown
   await expect(page).toHaveURL(/\/settings\/locations$/)
   await expect(page.getByText('My Home')).toBeVisible()
+})
+
+// Switch the active location to a fresh one via the switcher dropdown.
+async function switchTo(
+  page: import('@playwright/test').Page,
+  name: string,
+  letter: string,
+) {
+  const trigger = page.getByRole('button', { name: /switch location/i }).first()
+  await trigger.click()
+  await page.getByRole('menuitem', { name }).click()
+  await expect(trigger).toHaveText(letter)
+}
+
+test('switching the active location re-scopes the pantry to stocked items', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+
+  // Given a second location "Office" and an item created in "My Home"
+  await seedOfficeLocation(page)
+  await page.goto('/')
+
+  // Create "Yogurt" in the active (My Home) location via the Add combobox.
+  // Add-item button: aria-label="Add item" (src/components/pantry/PantryListView.tsx)
+  await page.getByRole('button', { name: 'Add item' }).click()
+  const dialog = page.getByRole('dialog')
+  // Combobox: role="combobox" aria-label via the Name label (NewItemDialog.tsx)
+  await dialog.getByRole('combobox').fill('Yogurt')
+  // No catalog match → "Create" button appears in the dialog footer; clicking it
+  // creates the item and navigates to its detail page.
+  await Promise.all([
+    page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
+    dialog.getByRole('button', { name: /create/i }).click(),
+  ])
+
+  // Go back to the pantry.
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: 'Yogurt', level: 3 }),
+  ).toBeVisible()
+
+  // When the user switches to the empty "Office" location
+  await switchTo(page, 'Office', 'O')
+
+  // Then the pantry is empty there (Yogurt is stocked only in My Home)
+  await expect(
+    page.getByRole('heading', { name: 'Yogurt', level: 3 }),
+  ).toHaveCount(0)
+
+  // When the user adds the existing "Yogurt" here via the combobox (copy-on-add)
+  await page.getByRole('button', { name: 'Add item' }).click()
+  const officeDialog = page.getByRole('dialog')
+  await officeDialog.getByRole('combobox').fill('Yog')
+  // Existing global item shows up as a selectable option
+  await officeDialog.getByRole('option', { name: /yogurt/i }).click()
+
+  // Then it now appears in the Office pantry
+  await expect(
+    page.getByRole('heading', { name: 'Yogurt', level: 3 }),
+  ).toBeVisible()
+
+  // And switching back to "My Home" still shows the original item (unaffected)
+  await switchTo(page, 'My Home', 'M')
+  await expect(
+    page.getByRole('heading', { name: 'Yogurt', level: 3 }),
+  ).toBeVisible()
+})
+
+test('an item already stocked in the active location is shown disabled in the Add combobox', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+
+  // Given an item created in the active (My Home) location
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Add item' }).click()
+  let dialog = page.getByRole('dialog')
+  await dialog.getByRole('combobox').fill('Oats')
+  await Promise.all([
+    page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
+    dialog.getByRole('button', { name: /create/i }).click(),
+  ])
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: 'Oats', level: 3 }),
+  ).toBeVisible()
+
+  // When the user re-opens Add and searches for the same item
+  await page.getByRole('button', { name: 'Add item' }).click()
+  dialog = page.getByRole('dialog')
+  await dialog.getByRole('combobox').fill('Oats')
+
+  // Then the matching option is marked disabled (already stocked here)
+  const option = dialog.getByRole('option', { name: /oats/i })
+  await expect(option).toHaveAttribute('aria-disabled', 'true')
 })

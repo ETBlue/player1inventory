@@ -29,15 +29,20 @@ import {
 } from '@/generated/graphql'
 import { deserializeCart } from '@/lib/deserialization'
 import type { CartItem } from '@/types'
+import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
 
 export function useActiveCart() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const local = useQuery({
-    queryKey: ['cart', 'active'],
-    queryFn: () => getCart(null),
+    queryKey: ['cart', 'active', { locationId: activeLocationId }],
+    // getCart is a pure read now — it may resolve `undefined` if the cart
+    // hasn't been bootstrapped for this location yet. TanStack Query forbids
+    // a queryFn resolving to `undefined`, so coalesce to `null`.
+    queryFn: () => getCart(null, activeLocationId).then((cart) => cart ?? null),
     enabled: !isCloud,
   })
 
@@ -459,10 +464,14 @@ export function useAbandonCart() {
 export function useVendorCart(vendorId: string | null) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const local = useQuery({
-    queryKey: ['cart', 'vendor', vendorId],
-    queryFn: () => getCart(vendorId),
+    queryKey: ['cart', 'vendor', vendorId, { locationId: activeLocationId }],
+    // See useActiveCart above: coalesce to `null` since getCart is a pure
+    // read and TanStack Query forbids a queryFn resolving to `undefined`.
+    queryFn: () =>
+      getCart(vendorId, activeLocationId).then((cart) => cart ?? null),
     enabled: !isCloud,
   })
 
@@ -492,10 +501,11 @@ export function useVendorCart(vendorId: string | null) {
 export function useAllActiveCarts() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const local = useQuery({
-    queryKey: ['cart', 'all-active'],
-    queryFn: getAllCarts,
+    queryKey: ['cart', 'all-active', { locationId: activeLocationId }],
+    queryFn: () => getAllCarts(activeLocationId),
     enabled: !isCloud,
   })
 
@@ -522,10 +532,15 @@ export function useAllActiveCarts() {
 export function useLastPurchasedByVendor() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   return useQuery({
-    queryKey: ['cart', 'last-purchased-by-vendor'],
-    queryFn: getLastPurchasedByVendor,
+    queryKey: [
+      'cart',
+      'last-purchased-by-vendor',
+      { locationId: activeLocationId },
+    ],
+    queryFn: () => getLastPurchasedByVendor(activeLocationId),
     enabled: !isCloud,
   })
 }

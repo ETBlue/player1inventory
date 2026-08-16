@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { ExportPayload } from '@/lib/exportData'
 import {
@@ -24,6 +25,7 @@ import {
   type ImportStrategy,
   importCloudData,
   importLocalData,
+  resolveFlattenLocationId,
 } from '@/lib/importData'
 import { ConflictDialog } from '../ConflictDialog'
 
@@ -62,6 +64,10 @@ export function ImportCard() {
   const { mode } = useDataMode()
   const client = useApolloClient()
   const queryClient = useQueryClient()
+  // Cloud keeps stock inline on the Item (no per-location ItemStock yet), so a
+  // post-v15 backup has to be flattened onto one location on the way up — the
+  // one the user is currently in.
+  const { activeLocationId } = useActiveLocation()
   const [importStatus, setImportStatus] = useState<ImportStatus>({
     phase: 'idle',
   })
@@ -115,7 +121,10 @@ export function ImportCard() {
       await handleCloudImport(strategy, payload)
     } else {
       try {
-        await importLocalData(payload, strategy)
+        // A legacy/cloud payload's stock is synthesised into the location the
+        // user is in — mirroring the outbound rule. Landing it in the default
+        // location while they are elsewhere shows an empty pantry.
+        await importLocalData(payload, strategy, activeLocationId)
         await queryClient.invalidateQueries()
         toast.success(t('settings.import.success'))
         setImportStatus({ phase: 'idle' })
@@ -139,6 +148,20 @@ export function ImportCard() {
 
     if (!payload) return
 
+    // Which location's stock goes up. Unlike the migration paths, the payload
+    // here is a file from another device, whose location ids need not exist on
+    // this one — flattening by an id the backup does not know would upload every
+    // item with zeroed stock and drop every cart. `resolveFlattenLocationId`
+    // falls back to the backup's own location when that is unambiguous, and
+    // returns null when it is not: refuse the import rather than lose the data
+    // silently (before the v15 split this case failed loudly on its own).
+    const locationId = resolveFlattenLocationId(payload, activeLocationId)
+    if (locationId === null) {
+      toast.error(t('settings.import.unknownLocations'))
+      setImportStatus({ phase: 'idle' })
+      return
+    }
+
     const session: ImportSession = existingSession ?? {
       payload,
       strategy,
@@ -161,6 +184,7 @@ export function ImportCard() {
           )
         },
         session,
+        locationId,
       })
       await client.resetStore()
       setImportStatus({ phase: 'done' })

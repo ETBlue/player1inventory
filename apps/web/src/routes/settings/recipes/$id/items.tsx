@@ -194,7 +194,10 @@ function RecipeItemsTab() {
     setNewItemDialogOpen(true)
   }
 
-  const handleNewItemSuccess = async (item: import('@/types').Item) => {
+  const handleNewItemSuccess = async (item: import('@/types').PantryItem) => {
+    // onSuccess also fires on the select-existing path (not just create), so
+    // an item may already be assigned to this recipe — guard against duplicating it.
+    if (isAssigned(item.id)) return
     const newRecipeItems = [
       ...recipeItems,
       { itemId: item.id, defaultAmount: item.consumeAmount },

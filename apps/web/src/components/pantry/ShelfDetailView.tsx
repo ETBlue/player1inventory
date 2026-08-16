@@ -7,7 +7,7 @@ import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
-import { useCreateItem, useItems, useUpdateItem } from '@/hooks'
+import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
@@ -27,7 +27,7 @@ import {
 import { isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 interface ShelfDetailViewProps {
   shelfId: string
@@ -37,7 +37,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const navigate = useNavigate()
   const isUnsorted = shelfId === 'unsorted'
 
-  const { data: allItems = [], isLoading: isItemsLoading } = useItems()
+  const { data: allItems = [], isLoading: isItemsLoading } = useStockedItems()
   const { data: allShelves = [], isLoading: isShelvesLoading } =
     useShelvesQuery()
   const { data: shelf, isLoading: isShelfLoading } = useShelfQuery(
@@ -79,7 +79,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
   const { quantities, expiryDates, purchaseDates } = useItemSortData(allItems)
 
-  const inShelfItems = useMemo((): Item[] => {
+  const inShelfItems = useMemo((): PantryItem[] => {
     if (isUnsorted) {
       const selectionShelfItemIds = new Set<string>()
       for (const s of allShelves) {
@@ -123,7 +123,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     })
   }, [isUnsorted, shelf, allItems, allShelves, recipes, tags])
 
-  const sortedInShelfItems = useMemo((): Item[] => {
+  const sortedInShelfItems = useMemo((): PantryItem[] => {
     return sortItems(
       inShelfItems,
       quantities ?? new Map(),
@@ -175,7 +175,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     [inShelfItems],
   )
 
-  const outsideShelfSearchMatches = useMemo((): Item[] => {
+  const outsideShelfSearchMatches = useMemo((): PantryItem[] => {
     if (!trimmedSearch) return []
     return allItems.filter(
       (item) =>
@@ -311,7 +311,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               isInactive(item),
             )
 
-            const renderItemCard = (item: Item) => (
+            const renderItemCard = (item: PantryItem) => (
               <ItemCard
                 key={item.id}
                 item={item}

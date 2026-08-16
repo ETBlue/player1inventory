@@ -18,6 +18,7 @@ Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · R
   - Expiration mode select (none / specific date / days from purchase) and threshold
 - Save button (persists stock fields via `buildStockUpdates`) — disabled when no changes made
 - Hosts the **recipe-adjust dialog**: when `consumeAmount` or `targetUnit` changes affect a recipe's `defaultAmount`, a confirmation dialog lists adjustments before saving
+- Hosts the **stock-add confirmation dialog**: `updateItem` routes stock fields through `upsertItemStock`, which silently creates an `ItemStock` row when none exists for the active location. When `item.stockId === undefined` (item not yet stocked here), Save is gated — form values are stashed and an `AlertDialog` asks "Add `<item>` to `<location>`?" (`items.detail.stockAddDialog.*` i18n keys) before falling through to the normal save path
 - Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
 
 > Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.

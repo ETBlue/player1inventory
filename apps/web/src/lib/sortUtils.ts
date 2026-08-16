@@ -1,17 +1,17 @@
 import { getStockStatus, isInactive } from '@/lib/quantityUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 export type SortField = 'name' | 'stock' | 'purchased' | 'expiring'
 export type SortDirection = 'asc' | 'desc'
 
 export function sortItems(
-  items: Item[],
+  items: PantryItem[],
   quantities: Map<string, number>,
   expiryDates: Map<string, Date | undefined>,
   purchaseDates: Map<string, Date | null>,
   sortBy: SortField,
   sortDirection: SortDirection,
-): Item[] {
+): PantryItem[] {
   const sorted = [...items].sort((a, b) => {
     let comparison = 0
 

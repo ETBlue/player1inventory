@@ -4,16 +4,18 @@ import {
   useAddInventoryLogMutation,
   useItemLogsQuery,
 } from '@/generated/graphql'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { InventoryLog } from '@/types'
 
 export function useItemLogs(itemId: string) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const local = useQuery({
-    queryKey: ['items', itemId, 'logs'],
-    queryFn: () => getItemLogs(itemId),
+    queryKey: ['items', itemId, 'logs', { locationId: activeLocationId }],
+    queryFn: () => getItemLogs(itemId, activeLocationId),
     enabled: !isCloud && !!itemId,
   })
 
@@ -62,6 +64,7 @@ export function useAddInventoryLog() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
   const queryClient = useQueryClient()
+  const { activeLocationId } = useActiveLocation()
   const [cloudMutate] = useAddInventoryLogMutation()
 
   return useMutation({
@@ -90,7 +93,7 @@ export function useAddInventoryLog() {
         })
         return
       }
-      return addInventoryLog(input)
+      return addInventoryLog({ ...input, locationId: activeLocationId })
     },
     onSuccess: (_, { itemId }) => {
       queryClient.invalidateQueries({ queryKey: ['items', itemId] })

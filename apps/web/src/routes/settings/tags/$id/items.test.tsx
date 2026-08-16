@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -231,7 +231,11 @@ describe('Tag Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then the item is created and assigned to the tag
     await waitFor(async () => {
@@ -319,7 +323,11 @@ describe('Tag Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then Butter is created and assigned to the tag
     await waitFor(async () => {
@@ -630,7 +638,11 @@ describe('Tag Detail - Items Tab', () => {
     })
 
     // When user submits the dialog
-    await user.click(screen.getByRole('button', { name: /new item/i }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
 
     // Then the new item is created and assigned to the tag
     await waitFor(async () => {
@@ -685,6 +697,61 @@ describe('Tag Detail - Items Tab', () => {
       expect(screen.getByLabelText('Remove Tomatoes')).toBeInTheDocument()
     })
     expect(screen.queryByTestId('tag-badge-Vegetables')).not.toBeInTheDocument()
+  })
+
+  it('user does not duplicate the tag when selecting an already-assigned item via the dialog', async () => {
+    // Given a tag and an item already assigned to it but not yet stocked in
+    // the active location (selectable in the dialog's combobox)
+    const tagType = await createTagType({
+      name: 'Category',
+      color: TagColor.blue,
+    })
+    const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
+    const item = await createItem(
+      { name: 'Butter', tagIds: [tag.id], vendorIds: [] },
+      'loc-other',
+    )
+    await db.itemStocks.where('locationId').equals('local').delete()
+
+    renderItemsTab(tag.id)
+    const user = userEvent.setup()
+
+    // When user opens the search panel, types a name with no exact catalog
+    // match to reveal the create-item button, opens the dialog, then within
+    // the dialog searches for and selects the already-assigned "Butter"
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /create item/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /create item/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    const dialog = screen.getByRole('dialog')
+    const dialogInput = within(dialog).getByRole('combobox', {
+      name: /name/i,
+    })
+    await user.clear(dialogInput)
+    await user.type(dialogInput, 'Butter')
+    await user.click(
+      await within(dialog).findByRole('option', { name: /butter/i }),
+    )
+
+    // Then the tag is not duplicated on the item
+    await waitFor(async () => {
+      const updated = await db.items.get(item.id)
+      expect(updated?.tagIds.filter((id) => id === tag.id)).toHaveLength(1)
+    })
   })
 
   it('user can see active assigned items before inactive assigned items', async () => {

@@ -118,6 +118,93 @@ describe('fetchLocalPayload — local (Dexie) export', () => {
   })
 })
 
+describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.locations.clear()
+  })
+
+  it('user can export a multi-location pantry with its stock', async () => {
+    // Given two locations, one item, and a stock row in each location
+    const now = new Date('2026-02-01T00:00:00.000Z')
+    await db.locations.bulkPut([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'office',
+        name: 'Office',
+        order: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    await db.items.put({
+      id: 'item-1',
+      name: 'Milk',
+      tagIds: [],
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.itemStocks.bulkPut([
+      {
+        id: 'stock-home',
+        itemId: 'item-1',
+        locationId: 'local',
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        packageUnit: 'bottle',
+        dueDate: new Date('2026-03-01T00:00:00.000Z'),
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'stock-office',
+        itemId: 'item-1',
+        locationId: 'office',
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 0,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+
+    // When the local export payload is fetched
+    const payload = await fetchLocalPayload()
+
+    // Then both locations and both stock rows are exported
+    expect(
+      (payload.locations ?? []).map((l) => (l as { id: string }).id),
+    ).toEqual(expect.arrayContaining(['local', 'office']))
+    const stocks = (payload.itemStocks ?? []) as Array<Record<string, unknown>>
+    expect(stocks).toHaveLength(2)
+
+    // And the stock values that no longer live on the Item survive the export
+    const home = stocks.find((s) => s.id === 'stock-home')
+    expect(home).toMatchObject({
+      itemId: 'item-1',
+      locationId: 'local',
+      packedQuantity: 3,
+      targetQuantity: 4,
+      packageUnit: 'bottle',
+    })
+    expect(home?.dueDate).toBeInstanceOf(Date)
+  })
+})
+
 describe('sanitiseCloudPayload — strip Apollo/server fields from cloud export', () => {
   it('strips __typename, userId, and familyId from items', () => {
     // Given a raw Apollo item with server-only fields

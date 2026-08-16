@@ -7,7 +7,7 @@ import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
-import { useItems, useUpdateItem } from '@/hooks'
+import { useStockedItems, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
@@ -15,7 +15,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 interface VendorDetailViewProps {
   vendorId: string
@@ -25,7 +25,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   const navigate = useNavigate()
   const isUnsorted = vendorId === 'unsorted'
 
-  const { data: allItems = [], isLoading: isItemsLoading } = useItems()
+  const { data: allItems = [], isLoading: isItemsLoading } = useStockedItems()
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -55,14 +55,14 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
 
   const { quantities, expiryDates, purchaseDates } = useItemSortData(allItems)
 
-  const inScopeItems = useMemo((): Item[] => {
+  const inScopeItems = useMemo((): PantryItem[] => {
     if (isUnsorted) {
       return allItems.filter((i) => !i.vendorIds || i.vendorIds.length === 0)
     }
     return allItems.filter((i) => i.vendorIds?.includes(vendorId))
   }, [isUnsorted, allItems, vendorId])
 
-  const sortedItems = useMemo((): Item[] => {
+  const sortedItems = useMemo((): PantryItem[] => {
     return sortItems(
       inScopeItems,
       quantities ?? new Map(),
@@ -104,7 +104,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
 
   const recipeMap = new Map<string, []>()
 
-  const renderItemCard = (item: Item) => (
+  const renderItemCard = (item: PantryItem) => (
     <ItemCard
       key={item.id}
       item={item}

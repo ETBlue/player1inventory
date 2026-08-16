@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { splitInlineStock } from '../helpers/locationSeed'
 
 test.beforeEach(async ({ page }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
@@ -84,6 +85,9 @@ test('user sees recipe group card', async ({ page }) => {
     { recipeId, itemId, now },
   )
 
+  // Location PR D: split inline stock into itemStocks before the app reads it.
+  await splitInlineStock(page)
+
   // When: navigate to the recipe group-by view
   await page.goto('/?groupBy=recipe')
 
@@ -162,6 +166,9 @@ test('user sees out-of-stock badge on recipe group card', async ({ page }) => {
     },
     { recipeId, outOfStockItemId, okItemId, now },
   )
+
+  // Location PR D: split inline stock into itemStocks before the app reads it.
+  await splitInlineStock(page)
 
   // When: navigate to the recipe group-by view
   await page.goto('/?groupBy=recipe')

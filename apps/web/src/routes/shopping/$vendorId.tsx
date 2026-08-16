@@ -42,7 +42,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
   component: VendorCart,
@@ -119,7 +119,7 @@ function VendorCart() {
     purchaseDates: allPurchaseDates,
   } = useItemSortData(items)
 
-  const vendorScopedItems: Item[] =
+  const vendorScopedItems: PantryItem[] =
     cartVendorId === null
       ? items.filter((i) => !(i.vendorIds ?? []).length)
       : items.filter((i) => (i.vendorIds ?? []).includes(cartVendorId))
@@ -173,7 +173,7 @@ function VendorCart() {
     })
     .reduce((sum, ci) => sum + ci.quantity, 0)
 
-  function handleToggleCart(item: Item) {
+  function handleToggleCart(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
     const clearPending = () =>
       setPendingItemIds((prev) => {
@@ -197,7 +197,7 @@ function VendorCart() {
     }
   }
 
-  function handleUpdateCartQuantity(item: Item, qty: number) {
+  function handleUpdateCartQuantity(item: PantryItem, qty: number) {
     const ci = cartItemMap.get(item.id)
     if (ci) {
       const clearPending = () =>
@@ -214,7 +214,7 @@ function VendorCart() {
     }
   }
 
-  function renderItemCard(item: Item) {
+  function renderItemCard(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
     const itemTags = tags.filter((t) => item.tagIds.includes(t.id))
     return (

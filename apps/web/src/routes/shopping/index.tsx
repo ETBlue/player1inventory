@@ -21,7 +21,9 @@ import {
   useVendorItemCounts,
   useVendors,
 } from '@/hooks'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { cartIdFor } from '@/types'
 
 export const Route = createFileRoute('/shopping/')({
   component: ShoppingIndex,
@@ -40,6 +42,7 @@ function ShoppingIndex() {
 
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   const { data: allCarts = [] } = useAllActiveCarts()
   const { data: vendors = [] } = useVendors()
@@ -82,7 +85,13 @@ function ShoppingIndex() {
   )
 
   function cartForVendor(vendorId: string | null) {
-    const cartId = vendorId ?? 'no-vendor'
+    // Local carts are scoped to the active location:
+    // `${locationId}:${vendorId|'no-vendor'}`. Cloud carts are **not** — the
+    // server keys them bare (`'no-vendor'` / `<vendorId>`) because locations and
+    // ItemStock have no cloud backend yet, so prefixing would match nothing.
+    const cartId = isCloud
+      ? (vendorId ?? 'no-vendor')
+      : cartIdFor(activeLocationId, vendorId)
     return allCarts.find((c) => c.id === cartId)
   }
 

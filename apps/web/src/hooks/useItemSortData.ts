@@ -2,15 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useLastPurchaseDatesQuery } from '@/generated/graphql'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import { computeExpiryDate } from '@/lib/expiration'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
-import type { Item } from '@/types'
+import type { PantryItem } from '@/types'
 
-export function useItemSortData(items: Item[] | undefined) {
+export function useItemSortData(items: PantryItem[] | undefined) {
   const safeItems = items ?? []
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const { activeLocationId } = useActiveLocation()
 
   // quantities: sync from item fields — already cloud-compatible, unchanged
   const quantities = useMemo(() => {
@@ -44,11 +46,19 @@ export function useItemSortData(items: Item[] | undefined) {
     .join(',')
 
   const { data: localExpiryDates } = useQuery({
-    queryKey: ['sort', 'expiryDates', expiryKey],
+    queryKey: [
+      'sort',
+      'expiryDates',
+      { locationId: activeLocationId },
+      expiryKey,
+    ],
     queryFn: async () => {
       const map = new Map<string, Date | undefined>()
       for (const item of safeItems) {
-        const lastPurchase = await getLastPurchaseDate(item.id)
+        const lastPurchase = await getLastPurchaseDate(
+          item.id,
+          activeLocationId,
+        )
         map.set(item.id, computeExpiryDate(item, lastPurchase ?? undefined))
       }
       return map
@@ -59,11 +69,16 @@ export function useItemSortData(items: Item[] | undefined) {
   const purchaseKey = safeItems.map((i) => i.id).join(',')
 
   const { data: localPurchaseDates } = useQuery({
-    queryKey: ['sort', 'purchaseDates', purchaseKey],
+    queryKey: [
+      'sort',
+      'purchaseDates',
+      { locationId: activeLocationId },
+      purchaseKey,
+    ],
     queryFn: async () => {
       const map = new Map<string, Date | null>()
       for (const item of safeItems) {
-        map.set(item.id, await getLastPurchaseDate(item.id))
+        map.set(item.id, await getLastPurchaseDate(item.id, activeLocationId))
       }
       return map
     },

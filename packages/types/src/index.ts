@@ -2,6 +2,8 @@ export const DEFAULT_PACKAGE_UNIT = 'pack'
 
 export type ExpirationMode = 'disabled' | 'date' | 'days from purchase'
 
+// Global item identity. Stock/unit/expiration now live on ItemStock (one per
+// item × location); see the Location feature (PR D — Item/ItemStock split).
 export interface Item {
   id: string
   name: string
@@ -12,6 +14,18 @@ export interface Item {
   note?: string
   tagIds: string[]
   vendorIds?: string[]
+
+  // Metadata
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Per-(item × location) stocking profile. A (itemId, locationId) pair is unique.
+// An item is "stocked at" a location iff an ItemStock row exists for that pair.
+export interface ItemStock {
+  id: string
+  itemId: string
+  locationId: string
 
   // Dual-unit tracking
   packageUnit?: string
@@ -38,6 +52,28 @@ export interface Item {
   createdAt: Date
   updatedAt: Date
 }
+
+// The stock/unit/expiration fields of an ItemStock, without the join keys or
+// per-row metadata. Used by quantity/expiration helpers and forms that operate
+// on stock values regardless of which row they came from.
+export type StockFields = Omit<
+  ItemStock,
+  'id' | 'itemId' | 'locationId' | 'createdAt' | 'updatedAt'
+>
+
+// A global Item joined with its active-location ItemStock fields. This is the
+// runtime shape the pantry/shopping/cooking pages consume — the hooks join an
+// Item with its ItemStock for the active location so existing read sites keep
+// reading `item.packedQuantity`, `item.targetQuantity`, etc. unchanged.
+//
+// `stockId`/`locationId` identify the underlying ItemStock row (for writes).
+// When an item is NOT stocked in the active location, the join yields zeroed
+// stock fields and `stockId` is undefined.
+export type PantryItem = Item &
+  StockFields & {
+    stockId?: string
+    locationId?: string
+  }
 
 export interface Tag {
   id: string
@@ -68,6 +104,10 @@ export interface TagType {
 export interface InventoryLog {
   id: string
   itemId: string
+  // The location this log belongs to. Added in the Location feature (PR D);
+  // existing logs are migrated to DEFAULT_LOCATION_ID. Optional for back-compat
+  // with cloud/export payloads that predate the field.
+  locationId?: string
   delta: number
   quantity: number
   note?: string
@@ -78,8 +118,30 @@ export interface InventoryLog {
 }
 
 export interface ShoppingCart {
-  id: string           // = vendorId, or 'no-vendor' for null-vendor cart
+  // Cart id is `${locationId}:${vendorId | 'no-vendor'}` (per location × vendor).
+  // Added in the Location feature (PR D); previously the id was just the vendor
+  // id or 'no-vendor'.
+  id: string
   lastPurchasedAt?: Date
+}
+
+// Build the location-scoped cart id. vendorId === null means the no-vendor cart.
+export function cartIdFor(locationId: string, vendorId: string | null): string {
+  return `${locationId}:${vendorId ?? 'no-vendor'}`
+}
+
+// Parse a location-scoped cart id back into its parts. Returns vendorId === null
+// for the no-vendor cart. Handles vendor ids that themselves contain ':' by
+// splitting only on the first colon.
+export function parseCartId(cartId: string): {
+  locationId: string
+  vendorId: string | null
+} {
+  const idx = cartId.indexOf(':')
+  if (idx === -1) return { locationId: cartId, vendorId: null }
+  const locationId = cartId.slice(0, idx)
+  const rest = cartId.slice(idx + 1)
+  return { locationId, vendorId: rest === 'no-vendor' ? null : rest }
 }
 
 export interface CartItem {

@@ -9,7 +9,7 @@ import { Toolbar } from '@/components/shared/Toolbar'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { ShelfList } from '@/components/shelf/ShelfList'
 import { Button } from '@/components/ui/button'
-import { useItems, useShelvesQuery } from '@/hooks'
+import { useShelvesQuery, useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
 import {
@@ -19,14 +19,14 @@ import {
 } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
-import type { Item, Shelf } from '@/types'
+import type { PantryItem, Shelf } from '@/types'
 
 export function ShelfGroupView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
   const { data: shelves, isLoading: shelvesLoading } = useShelvesQuery()
-  const { data: items, isLoading: itemsLoading } = useItems()
+  const { data: items, isLoading: itemsLoading } = useStockedItems()
   const { data: recipes = [] } = useRecipes()
   const { data: tags = [] } = useTags()
 
@@ -38,7 +38,7 @@ export function ShelfGroupView() {
     navigate({ to: '/', search: { groupBy: 'shelf', id: 'unsorted' } })
   }
 
-  const getShelfItems = (shelfId: string): Item[] => {
+  const getShelfItems = (shelfId: string): PantryItem[] => {
     if (!items || !shelves) return []
 
     const shelf = shelves.find((s: Shelf) => s.id === shelfId)
@@ -46,13 +46,13 @@ export function ShelfGroupView() {
 
     if (shelf.type === 'selection') {
       const ids = new Set(shelf.itemIds ?? [])
-      return items.filter((item: Item) => ids.has(item.id))
+      return items.filter((item: PantryItem) => ids.has(item.id))
     }
 
     const { filterConfig } = shelf
     if (!filterConfig) return items
 
-    return items.filter((item: Item) =>
+    return items.filter((item: PantryItem) =>
       matchesFilterConfig(item, filterConfig, recipes, tags),
     )
   }
@@ -111,7 +111,7 @@ export function ShelfGroupView() {
     )
   }
 
-  const getUnsortedItems = (): Item[] => {
+  const getUnsortedItems = (): PantryItem[] => {
     if (!items || !shelves) return []
 
     const selectionItemIds = new Set<string>()
@@ -133,7 +133,7 @@ export function ShelfGroupView() {
     }
 
     return items.filter(
-      (item: Item) =>
+      (item: PantryItem) =>
         !selectionItemIds.has(item.id) && !filterMatchedIds.has(item.id),
     )
   }
