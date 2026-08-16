@@ -3,12 +3,19 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
+import { getLocations } from '@/db/operations'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
 } from '@/hooks/useActiveLocation'
 import { importCloudData } from '@/lib/importData'
 import { PostLoginMigrationDialog } from '.'
+
+// Partial mock so a test can hold the location query unresolved.
+vi.mock('@/db/operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/db/operations')>()
+  return { ...actual, getLocations: vi.fn(() => actual.getLocations()) }
+})
 
 vi.mock('@/lib/exportData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/exportData')>()
@@ -64,6 +71,7 @@ describe('PostLoginMigrationDialog — multi-location warning', () => {
   afterEach(async () => {
     localStorage.clear()
     vi.mocked(importCloudData).mockClear()
+    vi.mocked(getLocations).mockReset()
     await db.items.clear()
     await db.locations.clear()
   })
@@ -108,5 +116,19 @@ describe('PostLoginMigrationDialog — multi-location warning', () => {
     expect(
       screen.queryByRole('heading', { name: /will be copied/ }),
     ).not.toBeInTheDocument()
+  })
+
+  it('user cannot start the copy while the location list is still loading', async () => {
+    // Given the location query has not resolved yet
+    vi.mocked(getLocations).mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    renderDialog()
+
+    // When the user accepts the import prompt
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+
+    // Then nothing is copied — treating an unresolved list as a single-location
+    // pantry would skip the warning for a multi-location user who clicks fast
+    expect(importCloudData).not.toHaveBeenCalled()
   })
 })

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
+import { getLocations } from '@/db/operations'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
@@ -23,6 +24,12 @@ function renderCard() {
     </QueryClientProvider>,
   )
 }
+
+// Partial mock so a test can hold the location query unresolved.
+vi.mock('@/db/operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/db/operations')>()
+  return { ...actual, getLocations: vi.fn(() => actual.getLocations()) }
+})
 
 vi.mock('@clerk/react', () => ({
   useUser: vi.fn(() => ({
@@ -378,5 +385,39 @@ describe('DataModeCard — multi-location migration warning', () => {
     ).not.toBeInTheDocument()
     expect(localStorage.getItem('migration-strategy')).toBe('skip')
     expect(reloadMock).toHaveBeenCalledOnce()
+  })
+})
+
+describe('DataModeCard — the warning cannot be skipped by timing', () => {
+  // `useLocations()` resolves asynchronously. Treating a not-yet-loaded list as
+  // "one location" would let a fast-clicking multi-location user start the copy
+  // with no warning at all, which is the unsafe default.
+  afterEach(async () => {
+    localStorage.clear()
+    vi.mocked(getLocations).mockReset()
+    await db.locations.clear()
+  })
+
+  it('user cannot start the copy while the location list is still loading', async () => {
+    // Given the location query has not resolved yet
+    vi.mocked(getLocations).mockReturnValue(new Promise(() => {}))
+    const reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    })
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the user clicks through to a copy strategy
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
+    await user.click(screen.getByRole('button', { name: 'Skip conflicts' }))
+
+    // Then nothing is copied — the app cannot yet know whether to warn
+    expect(localStorage.getItem('migration-strategy')).toBeNull()
+    expect(localStorage.getItem('data-mode')).toBeNull()
+    expect(reloadMock).not.toHaveBeenCalled()
   })
 })

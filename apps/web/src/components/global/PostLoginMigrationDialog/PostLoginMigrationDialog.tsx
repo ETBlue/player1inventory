@@ -25,6 +25,11 @@ export function PostLoginMigrationDialog() {
   // A single-location pantry — the common case — is never interrupted.
   const { data: locations } = useLocations()
   const { activeLocationId, activeLocation } = useActiveLocation()
+  // Until the list has loaded there is no way to tell a single-location pantry
+  // from a multi-location one, and defaulting to "no warning" would let a fast
+  // click skip it. Hold the import instead — `locations` is undefined only while
+  // the query is in flight.
+  const locationsLoaded = locations !== undefined
   const otherLocations = (locations ?? []).filter(
     (loc) => loc.id !== activeLocationId,
   )
@@ -76,7 +81,7 @@ export function PostLoginMigrationDialog() {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleImport}
-              disabled={state === 'importing'}
+              disabled={state === 'importing' || !locationsLoaded}
             >
               {state === 'importing'
                 ? '...'

@@ -243,6 +243,11 @@ export function DataModeCard() {
   // whenever there is another location whose stock will be left behind.
   const { data: locations } = useLocations()
   const { activeLocationId, activeLocation } = useActiveLocation()
+  // Until the list has loaded there is no way to tell a single-location pantry
+  // from a multi-location one, and defaulting to "no warning" would let a fast
+  // click skip it. Hold the copy instead — `locations` is undefined only while
+  // the query is in flight.
+  const locationsLoaded = locations !== undefined
   const otherLocations = (locations ?? []).filter(
     (loc) => loc.id !== activeLocationId,
   )
@@ -385,13 +390,22 @@ export function DataModeCard() {
             <AlertDialogCancel onClick={() => setEnableFlow('copyAsk')}>
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => requestEnableSwitch('skip')}>
+            <AlertDialogAction
+              disabled={!locationsLoaded}
+              onClick={() => requestEnableSwitch('skip')}
+            >
               {t('settings.dataMode.enableStrategyDialog.skip')}
             </AlertDialogAction>
-            <AlertDialogAction onClick={() => requestEnableSwitch('replace')}>
+            <AlertDialogAction
+              disabled={!locationsLoaded}
+              onClick={() => requestEnableSwitch('replace')}
+            >
               {t('settings.dataMode.enableStrategyDialog.overwrite')}
             </AlertDialogAction>
-            <AlertDialogAction onClick={() => requestEnableSwitch('clear')}>
+            <AlertDialogAction
+              disabled={!locationsLoaded}
+              onClick={() => requestEnableSwitch('clear')}
+            >
               {t('settings.dataMode.enableStrategyDialog.clearAndImport')}
             </AlertDialogAction>
           </AlertDialogFooter>
