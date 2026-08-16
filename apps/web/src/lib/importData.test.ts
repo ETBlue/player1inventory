@@ -995,6 +995,60 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     expect(stocks).toHaveLength(1)
     expect(stocks[0].packedQuantity).toBe(9)
   })
+
+  // `importItemStocks` only removes stale rows for (itemId, locationId) pairs
+  // the payload actually mentions, so a destructive 'clear' restore depends on
+  // `db.itemStocks.clear()` / `db.locations.clear()` to wipe everything else.
+  it('user restoring with clear does not keep stock in a location the backup omits', async () => {
+    // Given an item stocked in 'local' on this device
+    await db.items.add(makeSplitItem('item-1', 'Milk') as never)
+    await db.locations.put(makeLocation('local', 'My Home', 0) as never)
+    await db.itemStocks.put(
+      makeStock('stock-stale', 'item-1', 'local', { packedQuantity: 9 }),
+    )
+
+    // And a backup carrying that same item stocked ONLY in another location
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [makeStock('stock-office', 'item-1', 'office')],
+      locations: [makeLocation('office', 'Office', 0)],
+    })
+
+    // When restoring it with the destructive 'clear' strategy
+    await importLocalData(payload, 'clear')
+
+    // Then the item is no longer stocked in 'local' — a stale row surviving
+    // would re-attach to the restored item and show phantom stock
+    const staleStocks = await db.itemStocks
+      .where('[itemId+locationId]')
+      .equals(['item-1', 'local'])
+      .toArray()
+    expect(staleStocks).toHaveLength(0)
+    expect(await getStockedItems('local')).toHaveLength(0)
+
+    // And the backup's own location still holds the restored stock
+    expect(await getStockedItems('office')).toHaveLength(1)
+  })
+
+  it('user restoring with clear does not keep a location the backup omits', async () => {
+    // Given a location on this device that the backup knows nothing about
+    await db.locations.put(makeLocation('attic', 'Attic', 5) as never)
+
+    // And a backup carrying a different location set
+    const payload = emptyPayload({
+      items: [],
+      itemStocks: [],
+      locations: [makeLocation('office', 'Office', 0)],
+    })
+
+    // When restoring it with the destructive 'clear' strategy
+    await importLocalData(payload, 'clear')
+
+    // Then the omitted location is gone (the default location is re-ensured,
+    // since it is undeletable)
+    const locationIds = (await db.locations.toArray()).map((l) => l.id).sort()
+    expect(locationIds).toEqual(['local', 'office'])
+  })
 })
 
 describe('cloud import input mappers — strip server-only fields', () => {
