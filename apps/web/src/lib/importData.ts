@@ -258,6 +258,41 @@ export function flattenPayloadForCloud(
   return { ...rest, items, shoppingCarts, cartItems, inventoryLogs }
 }
 
+// Which location a payload should be flattened by, for the FILE-IMPORT path
+// only (`ImportCard` in cloud mode).
+//
+// The migration paths always flatten by the active location — Ruling A, and the
+// data is this device's own, so the location is guaranteed to exist. A backup
+// file is different: it was written on another device whose location ids need
+// not exist here (a cloud-only device has just `'local'`). Flattening by an id
+// the payload knows nothing about would upload every item with zeroed stock and
+// drop every cart — silently, where the pre-split code failed loudly.
+//
+//   - the requested location has stock in the payload → use it (Ruling A)
+//   - the payload's stock lives in exactly one other location → use that one:
+//     it is the only reading that preserves the data, no guessing involved
+//   - the payload's stock spans several locations, none of them the requested
+//     one → `null`. There is no safe answer; the caller must refuse the import
+//     rather than upload zeros.
+//   - nothing to flatten (no `itemStocks` table, or an empty one) → the request
+//     passes through; no stock can be lost.
+export function resolveFlattenLocationId(
+  payload: ExportPayload,
+  requestedLocationId: string,
+): string | null {
+  if (payload.itemStocks === undefined) return requestedLocationId
+
+  const locationIds = new Set(
+    (payload.itemStocks as Array<Record<string, unknown>>).map(
+      (stock) => stock.locationId as string,
+    ),
+  )
+  if (locationIds.size === 0) return requestedLocationId
+  if (locationIds.has(requestedLocationId)) return requestedLocationId
+  if (locationIds.size === 1) return [...locationIds][0]
+  return null
+}
+
 // Normalize an imported permanent cart to the v13+ schema shape: keep only
 // `id` and an optional `lastPurchasedAt` (as a Date). Legacy backup fields
 // (status / createdAt / completedAt / vendorId) are dropped so they are never

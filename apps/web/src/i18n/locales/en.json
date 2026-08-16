@@ -503,6 +503,7 @@
       "success": "Data imported successfully",
       "error": "Failed to import data",
       "invalidFile": "Invalid backup file",
+      "unknownLocations": "This backup stores its items across several locations, none of which exist on this device. Cloud mode holds one set of quantities per item, so there is no way to tell which location's quantities to upload. Restore the backup in offline mode first, pick a location there, then copy it to the cloud.",
       "entities": {
         "items": "Items",
         "tags": "Tags",

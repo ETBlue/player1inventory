@@ -11,6 +11,7 @@ import {
   importCloudData,
   importLocalData,
   partitionPayload,
+  resolveFlattenLocationId,
   toCartItemInput,
   toInventoryLogInput,
   toItemInput,
@@ -2016,5 +2017,63 @@ describe('importLocalData — carts survive a clear import', () => {
       'office:no-vendor',
       'office:vendor-1',
     ])
+  })
+})
+
+describe('resolveFlattenLocationId — cloud file import cannot silently zero stock', () => {
+  function payloadWithStockIn(...locationIds: string[]): ExportPayload {
+    return emptyPayload({
+      items: [{ id: 'item-1', name: 'Milk', tagIds: [] }],
+      itemStocks: locationIds.map((locationId, i) => ({
+        id: `stock-${i}`,
+        itemId: 'item-1',
+        locationId,
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })),
+    })
+  }
+
+  it('prefers the requested location when the backup has stock for it', () => {
+    // Given a backup holding stock in both locations
+    const payload = payloadWithStockIn('local', 'office')
+
+    // When resolving against the device's active location
+    // Then that location wins — Ruling A is unaffected
+    expect(resolveFlattenLocationId(payload, 'office')).toBe('office')
+  })
+
+  it('falls back to the backup single location when the requested one is absent', () => {
+    // Given a backup written on another device, whose only location id is
+    // unknown here (this device has just 'local')
+    const payload = payloadWithStockIn('kitchen-a1b2')
+
+    // When resolving against 'local'
+    // Then the one location the backup does have is used — flattening by
+    // 'local' would have uploaded every item with zeroed stock
+    expect(resolveFlattenLocationId(payload, 'local')).toBe('kitchen-a1b2')
+  })
+
+  it('refuses to guess when the backup has several unknown locations', () => {
+    // Given a backup with stock in two locations, neither of them this device's
+    const payload = payloadWithStockIn('kitchen-a1b2', 'garage-c3d4')
+
+    // When resolving against 'local'
+    // Then there is no safe answer — the caller must fail loudly rather than
+    // upload zeros for everything
+    expect(resolveFlattenLocationId(payload, 'local')).toBeNull()
+  })
+
+  it('passes the request through when there is no stock to flatten', () => {
+    // Given a cloud-shaped payload (no itemStocks at all) and one with an
+    // empty stock table — neither can lose stock by being flattened
+    expect(resolveFlattenLocationId(emptyPayload(), 'local')).toBe('local')
+    expect(resolveFlattenLocationId(payloadWithStockIn(), 'local')).toBe(
+      'local',
+    )
   })
 })

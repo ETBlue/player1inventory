@@ -25,6 +25,7 @@ import {
   type ImportStrategy,
   importCloudData,
   importLocalData,
+  resolveFlattenLocationId,
 } from '@/lib/importData'
 import { ConflictDialog } from '../ConflictDialog'
 
@@ -144,6 +145,20 @@ export function ImportCard() {
 
     if (!payload) return
 
+    // Which location's stock goes up. Unlike the migration paths, the payload
+    // here is a file from another device, whose location ids need not exist on
+    // this one — flattening by an id the backup does not know would upload every
+    // item with zeroed stock and drop every cart. `resolveFlattenLocationId`
+    // falls back to the backup's own location when that is unambiguous, and
+    // returns null when it is not: refuse the import rather than lose the data
+    // silently (before the v15 split this case failed loudly on its own).
+    const locationId = resolveFlattenLocationId(payload, activeLocationId)
+    if (locationId === null) {
+      toast.error(t('settings.import.unknownLocations'))
+      setImportStatus({ phase: 'idle' })
+      return
+    }
+
     const session: ImportSession = existingSession ?? {
       payload,
       strategy,
@@ -166,7 +181,7 @@ export function ImportCard() {
           )
         },
         session,
-        locationId: activeLocationId,
+        locationId,
       })
       await client.resetStore()
       setImportStatus({ phase: 'done' })
