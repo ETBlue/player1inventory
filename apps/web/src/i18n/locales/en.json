@@ -246,9 +246,23 @@
         "newHeader": "New",
         "updateButton": "Update & Save"
       },
-      "stockAddDialog": {
-        "title": "Add {{name}} to {{location}}?",
-        "description": "This item isn't stocked in this location yet. Saving will add it here with these values."
+      "locationPager": {
+        "label": "Stock by location",
+        "previous": "Previous location",
+        "next": "Next location",
+        "pageActive": "{{location}} (active location)",
+        "activeHint": "Active",
+        "viewing": "Viewing stock for {{location}}",
+        "notStockedTitle": "Not stocked here",
+        "notStockedDescription": "{{name}} has no stock in {{location}} yet.",
+        "addToLocation": "Add to location",
+        "removeFromLocation": "Remove from location"
+      },
+      "removeLocationDialog": {
+        "title": "Remove {{name}} from {{location}}?",
+        "description": "This deletes its stock, inventory logs and cart entries in {{location}}. {{name}} stays in your catalog and can be added back later.",
+        "affected": "Inventory logs: {{logs}} · Cart entries: {{carts}}",
+        "confirm": "Remove"
       }
     },
     "history": {

@@ -8,7 +8,11 @@ Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · R
 - Hosts the **Delete** button + cascade-delete dialog
 - Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
 
-**2. Stock (`/items/$id/stock`, `Calculator` icon)**
+**2. Stock (`/items/$id/stock`, `Calculator` icon)** — an all-locations pager (PR E)
+
+The tab is split at the top by data mode (`ItemStockTab` renders `LocalStockTab` **or** `CloudStockTab`), so the cloud branch never mounts a location hook. `StockFormPanel` is the shared piece both branches render: the `ItemForm` plus the recipe-adjust dialog.
+
+*Per-location page content (`StockFormPanel`):*
 - Package unit, packed/unpacked quantity fields with Pack/Unpack buttons (`ItemForm sections={['stock']}`)
 - Target quantity and refill threshold
 - Consumption amount settings
@@ -16,10 +20,17 @@ Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · R
   - Measurement tracking toggle (Track in measurement switch)
   - Measurement unit and amount per package fields
   - Expiration mode select (none / specific date / days from purchase) and threshold
-- Save button (persists stock fields via `buildStockUpdates`) — disabled when no changes made
+- Save button (persists stock fields via `buildStockUpdates`) — disabled when no changes made. Saves route to **the location whose page is on screen** (`useUpdateItem({ …, locationId })`), not necessarily the active one
 - Hosts the **recipe-adjust dialog**: when `consumeAmount` or `targetUnit` changes affect a recipe's `defaultAmount`, a confirmation dialog lists adjustments before saving
-- Hosts the **stock-add confirmation dialog**: `updateItem` routes stock fields through `upsertItemStock`, which silently creates an `ItemStock` row when none exists for the active location. When `item.stockId === undefined` (item not yet stocked here), Save is gated — form values are stashed and an `AlertDialog` asks "Add `<item>` to `<location>`?" (`items.detail.stockAddDialog.*` i18n keys) before falling through to the normal save path
 - Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
+
+*Local mode (`LocalStockTab`):* one page per `Location` (ordered by `order`), read from `useLocations()` + `useItemStocks(itemId)`. The pager opens on the **active** location and remembers the page the user turned to (`viewedLocationId`; `null` means "follow the active location").
+- **Stocked page** → `StockFormPanel` for that location's `ItemStock` (re-joined by `withLocationStock`), plus a **"Remove from location"** `DeleteButton`. Its confirmation names the item and the location and lists what else goes: `Inventory logs: N · Cart entries: N`, from `useInventoryLogCountByItem(itemId, locationId)` / `useCartItemCountByItem(itemId, locationId)` — **location-scoped**, and rendered only once both counts resolve. Confirming calls `useRemoveItemFromLocation({ itemId, locationId })`; the page then becomes the not-stocked state (no navigation)
+- **Not-stocked page** → `EmptyState` + an **"Add to location"** button calling `useAddItemToLocation({ itemId, locationId })` (copy-on-add). There is no stock form to save, which is why the PR D implicit stock-add confirmation (`items.detail.stockAddDialog.*`) is gone: an explicit CTA replaced it and the dialog became unreachable
+- **Paging while dirty** shows the shared discard dialog (`common.unsaved*`) — the form is remounted per page (`key={locationId}`), so its edits would otherwise vanish silently. Confirming also calls `registerDirtyState(false)`: `ItemForm` only reports a *change* in dirtiness, so a remount alone would leave the tab guard thinking edits are still pending
+- **Single location → no pager chrome at all** (no dots, no chevrons); `showPager = locations.length > 1` gates both the `LocationPager` and the `role="tabpanel"` wiring around the page
+
+*Cloud mode (`CloudStockTab`):* cloud has no locations and no `ItemStock` (deferred in PR D) — a cloud `Item` carries its stock inline. It renders the bare form, exactly as the tab did before the pager: no dots, no chevrons, no add, no remove. Both location mutations throw in cloud mode by design (Task 1), so this branch deliberately never mounts them.
 
 > Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.
 
@@ -93,7 +104,8 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/components/item/ItemForm/ItemForm.tsx` - Shared form component used by both edit and new item routes (gates fields via its `sections` prop)
 - `src/routes/items/$id.tsx` - Parent layout with the 4-button toolbar (Info · Stock · Relation · Log) and navigation guard (dual-tab dirty guard via `isOnEditableTab`)
 - `src/routes/items/$id/index.tsx` - Info tab (uses ItemForm with `sections={['info']}` — name/wikidataUrl/note); hosts the Delete button. Stories at `$id/index.stories.tsx`
-- `src/routes/items/$id/stock.tsx` - Stock tab (uses ItemForm with `sections={['stock']}`); hosts the recipe-adjust dialog. Stories at `$id/stock.stories.tsx`, tests at `$id/stock.test.tsx`
+- `src/routes/items/$id/stock.tsx` - Stock tab: `ItemStockTab` (mode split) → `LocalStockTab` (all-locations pager) / `CloudStockTab` (single page), both rendering `StockFormPanel` (ItemForm + recipe-adjust dialog). Stories at `$id/stock.stories.tsx`, smoke tests at `$id/stock.stories.test.tsx`, integration tests at `$id/stock.test.tsx`
+- `src/components/item/LocationPager/LocationPager.tsx` - the dot pager (tablist) used by the Stock tab
 - `src/routes/items/$id/relation.tsx` - Relation layout: secondary submenu (Tags/Vendors/Recipes) + `<Outlet/>`. Stories at `$id/relation.stories.tsx`
 - `src/routes/items/$id/relation/index.tsx` - Redirects to `…/relation/tags`
 - `src/routes/items/$id/relation/tags.tsx` - Tags subtab implementation (default); tests at `relation/tags.test.tsx`
