@@ -31,6 +31,10 @@ describe('Item detail stock tab stories smoke tests', () => {
     const saveButton = await screen.findByRole('button', { name: /save/i })
     await user.click(saveButton)
 
-    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toBeInTheDocument()
+    expect(
+      await screen.findByText('Add Butter to My Home?'),
+    ).toBeInTheDocument()
   })
 })

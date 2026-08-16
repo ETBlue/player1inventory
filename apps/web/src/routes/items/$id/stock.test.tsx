@@ -7,11 +7,94 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, getItemStock } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { DEFAULT_LOCATION_ID } from '@/types'
+
+// Cloud-mode override for the "Important 1" regression test below: only
+// useGetItemQuery and useUpdateItemMutation get test-controlled behavior.
+// Every other hook keeps the exact same safe default stub used by the global
+// mock in src/test/setup.ts (which this file-level vi.mock replaces for this
+// file only) — this avoids letting the real, un-stubbed Apollo hooks run
+// when ancestor routes (__root.tsx, $id.tsx) render alongside the stock tab.
+const mockUseGetItemQuery = vi.fn(() => ({
+  data: undefined,
+  loading: false,
+  error: undefined,
+}))
+const mockUseUpdateItemMutation = vi.fn(() => [
+  vi.fn().mockResolvedValue({ data: undefined }),
+  {},
+])
+
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/generated/graphql')>()
+  const queryStub = () => ({
+    data: undefined,
+    loading: false,
+    error: undefined,
+  })
+  const mutationStub = () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ]
+  return {
+    ...original,
+    useGetItemQuery: (...args: unknown[]) => mockUseGetItemQuery(...args),
+    useGetItemsQuery: queryStub,
+    useCreateItemMutation: mutationStub,
+    useUpdateItemMutation: (...args: unknown[]) =>
+      mockUseUpdateItemMutation(...args),
+    useDeleteItemMutation: mutationStub,
+    useGetTagTypesQuery: queryStub,
+    useGetTagsQuery: queryStub,
+    useGetTagsByTypeQuery: queryStub,
+    useCreateTagTypeMutation: mutationStub,
+    useUpdateTagTypeMutation: mutationStub,
+    useDeleteTagTypeMutation: mutationStub,
+    useCreateTagMutation: mutationStub,
+    useUpdateTagMutation: mutationStub,
+    useDeleteTagMutation: mutationStub,
+    useItemCountByTagQuery: queryStub,
+    useTagCountByTypeQuery: queryStub,
+    useGetVendorsQuery: queryStub,
+    useCreateVendorMutation: mutationStub,
+    useUpdateVendorMutation: mutationStub,
+    useDeleteVendorMutation: mutationStub,
+    useItemCountByVendorQuery: queryStub,
+    useGetRecipesQuery: queryStub,
+    useGetRecipeQuery: queryStub,
+    useCreateRecipeMutation: mutationStub,
+    useUpdateRecipeMutation: mutationStub,
+    useDeleteRecipeMutation: mutationStub,
+    useUpdateRecipeLastCookedAtMutation: mutationStub,
+    useConsumeRecipesMutation: mutationStub,
+    useItemCountByRecipeQuery: queryStub,
+    useActiveCartQuery: queryStub,
+    useCartItemsQuery: queryStub,
+    useAddToCartMutation: mutationStub,
+    useUpdateCartItemMutation: mutationStub,
+    useRemoveFromCartMutation: mutationStub,
+    useCheckoutMutation: mutationStub,
+    useAbandonCartMutation: mutationStub,
+    useVendorCartQuery: queryStub,
+    useAllCartsQuery: queryStub,
+    useAllCartItemsQuery: queryStub,
+    useItemLogsQuery: queryStub,
+    useInventoryLogCountByItemQuery: queryStub,
+    useLastPurchaseDatesQuery: queryStub,
+    useAddInventoryLogMutation: mutationStub,
+    useGetShelvesQuery: queryStub,
+    useGetShelfQuery: queryStub,
+    useCreateShelfMutation: mutationStub,
+    useUpdateShelfMutation: mutationStub,
+    useDeleteShelfMutation: mutationStub,
+    useReorderShelvesMutation: mutationStub,
+    useReorderShelfItemsMutation: mutationStub,
+  }
+})
 
 describe('Item stock tab', () => {
   let queryClient: QueryClient
@@ -27,6 +110,21 @@ describe('Item stock tab', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+    // Reset the cloud-mode Apollo overrides to safe defaults before every
+    // test; the cloud-mode test below overrides them further for itself.
+    mockUseGetItemQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+    mockUseUpdateItemMutation.mockReturnValue([
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ])
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('data-mode')
   })
 
   const renderStockTab = (itemId: string) => {
@@ -151,6 +249,9 @@ describe('Item stock tab', () => {
     // no ItemStock row is created in the active location yet
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Add Butter to My Home?'),
+    ).toBeInTheDocument()
     expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeUndefined()
 
     // And confirming proceeds with the implicit stock-add
@@ -159,5 +260,55 @@ describe('Item stock tab', () => {
       const stock = await getItemStock(item.id, DEFAULT_LOCATION_ID)
       expect(stock?.packedQuantity).toBe(5)
     })
+  })
+
+  it('cloud mode: saving persists directly without the stock-add confirmation', async () => {
+    const user = userEvent.setup()
+
+    // Given cloud mode is active and the item comes back from the cloud API
+    // (cloud items never carry a stockId — ItemStock has no cloud backend
+    // yet — so reading item.stockId === undefined must not be interpreted
+    // as "not yet stocked in this location" while in cloud mode)
+    localStorage.setItem('data-mode', 'cloud')
+    const cloudItem = {
+      id: 'item-cloud-1',
+      name: 'Cloud Milk',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+    }
+    mockUseGetItemQuery.mockReturnValue({
+      data: { item: cloudItem },
+      loading: false,
+      error: undefined,
+    })
+    const mockCloudUpdate = vi.fn().mockResolvedValue({
+      data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
+    })
+    mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
+
+    renderStockTab(cloudItem.id)
+
+    // When the user edits a stock field and clicks Save
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    })
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the update is sent directly — no local-only "not yet stocked
+    // here" confirmation dialog ever appears in cloud mode
+    await waitFor(() => {
+      expect(mockCloudUpdate).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })

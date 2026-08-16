@@ -16,6 +16,7 @@ import {
 import { useItem, useUpdateItem } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import type { PantryItem, StockFields } from '@/types'
@@ -160,6 +161,8 @@ function ItemStockTab() {
   const { registerDirtyState } = useItemLayout()
   const { goBack } = useAppNavigation()
   const { activeLocation } = useActiveLocation()
+  const { mode } = useDataMode()
+  const isLocal = mode === 'local'
   const [savedAt, setSavedAt] = useState(0)
 
   const { data: allRecipes } = useRecipes()
@@ -174,7 +177,10 @@ function ItemStockTab() {
   // Implicit stock-add confirmation: Save on an item not yet stocked in the
   // active location would otherwise silently create its ItemStock row here
   // (updateItem routes stock fields through upsertItemStock). Gate that with
-  // a confirmation instead of saving straight through.
+  // a confirmation instead of saving straight through. Local mode only —
+  // ItemStock has no cloud backend yet (deferred), so cloud items never
+  // carry a stockId; reading item.stockId === undefined in cloud mode is
+  // unconditionally true and would fire this confirmation on every Save.
   const [pendingStockAddValues, setPendingStockAddValues] =
     useState<ItemFormValues | null>(null)
 
@@ -260,7 +266,7 @@ function ItemStockTab() {
   }
 
   const handleSubmit = async (values: ItemFormValues) => {
-    if (item.stockId === undefined) {
+    if (isLocal && item.stockId === undefined) {
       setPendingStockAddValues(values)
       return
     }
@@ -368,7 +374,11 @@ function ItemStockTab() {
       </AlertDialog>
 
       <AlertDialog
-        open={!!pendingStockAddValues}
+        // Wait for activeLocation to resolve before rendering: otherwise the
+        // dialog can briefly show a half-formed "Add <item> to ?" sentence
+        // while locations are still loading. It simply pops open once
+        // activeLocation resolves via context re-render.
+        open={!!pendingStockAddValues && !!activeLocation}
         onOpenChange={(open) => {
           if (!open) handleCancelStockAdd()
         }}
