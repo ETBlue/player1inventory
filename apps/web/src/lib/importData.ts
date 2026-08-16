@@ -948,6 +948,21 @@ function itemIdsOf(entries: unknown[]): Set<string> {
   return new Set((entries as Array<{ id: string }>).map((e) => e.id))
 }
 
+// `getCart` is a pure read, so nothing recreates a missing sentinel cart on
+// demand. Every import strategy can leave one missing:
+//   - `clear` wipes the cart table, and the payload may carry no carts at all
+//     (a backup taken before any shopping happened);
+//   - `skip` / `replace` can introduce a **new vendor** whose cart is not in the
+//     payload — cloud carts are created lazily, and a backup from another device
+//     carries that device's location prefixes.
+// Without a cart, `/shopping/<vendorId>` disables every add-to-cart control with
+// no message, so re-bootstrap every location after any import.
+async function bootstrapCartsForAllLocations(): Promise<void> {
+  for (const location of await db.locations.toArray()) {
+    await bootstrapCarts(location.id)
+  }
+}
+
 export async function importLocalData(
   rawPayload: ExportPayload,
   strategy: ImportStrategy,
@@ -1013,13 +1028,7 @@ export async function importLocalData(
       })),
     )
 
-    // `clear` wipes the cart table, and `getCart` is a pure read — nothing
-    // recreates the sentinel carts if the payload carried none (a backup taken
-    // before any shopping did). Re-bootstrap every restored location so the
-    // shopping pages are usable straight after the import.
-    for (const location of await db.locations.toArray()) {
-      await bootstrapCarts(location.id)
-    }
+    await bootstrapCartsForAllLocations()
     return
   }
 
@@ -1132,6 +1141,7 @@ export async function importLocalData(
       await db.recipes.update(conflictEntry.id, { items: mergedItems })
     }
 
+    await bootstrapCartsForAllLocations()
     return
   }
 
@@ -1226,6 +1236,8 @@ export async function importLocalData(
           : new Date(s.updatedAt as unknown as string),
     })),
   )
+
+  await bootstrapCartsForAllLocations()
 }
 
 async function fetchCloudExistingData(

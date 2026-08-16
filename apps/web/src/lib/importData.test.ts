@@ -539,12 +539,13 @@ describe('importLocalData', () => {
     await importLocalData(payload, 'skip')
 
     // Then the shopping cart and its items are stored in the v13+ shape,
-    // re-keyed onto the default location (v15 carts are per location × vendor)
-    const carts = await db.shoppingCarts.toArray()
-    expect(carts).toHaveLength(1)
-    expect(carts[0].id).toBe('local:cart-1')
+    // re-keyed onto the default location (v15 carts are per location × vendor).
+    // The import also bootstraps the location's sentinel carts, so the imported
+    // one is looked up by id rather than by being the only row.
+    const imported = await db.shoppingCarts.get('local:cart-1')
+    expect(imported).toBeDefined()
     // Permanent carts (v13+) have no status — the import drops legacy fields.
-    expect('status' in carts[0]).toBe(false)
+    expect('status' in (imported as object)).toBe(false)
 
     const cartItems = await db.cartItems.toArray()
     expect(cartItems).toHaveLength(1)
@@ -1972,7 +1973,7 @@ describe('importCloudData — local → cloud stock flattening (v15 split)', () 
   })
 })
 
-describe('importLocalData — carts survive a clear import', () => {
+describe('importLocalData — carts are bootstrapped by every strategy', () => {
   beforeEach(clearAllTables)
   afterEach(clearAllTables)
 
@@ -2017,6 +2018,43 @@ describe('importLocalData — carts survive a clear import', () => {
       'office:no-vendor',
       'office:vendor-1',
     ])
+  })
+
+  it('user importing a new vendor with skip gets a usable cart for it', async () => {
+    // Given a backup introducing a vendor the payload carries no cart for
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      vendors: [makeVendor('vendor-new', 'Costco')],
+      itemStocks: [],
+      shoppingCarts: [],
+      cartItems: [],
+    })
+
+    // When merging it with the non-destructive 'skip' strategy
+    await importLocalData(payload, 'skip')
+
+    // Then the new vendor has a cart — without it `/shopping/vendor-new`
+    // disables every add-to-cart control with no message
+    const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id)
+    expect(cartIds).toContain('local:vendor-new')
+  })
+
+  it('user importing a new vendor with replace gets a usable cart for it', async () => {
+    // Given the same backup restored over an existing database
+    const payload = emptyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      vendors: [makeVendor('vendor-new', 'Costco')],
+      itemStocks: [],
+      shoppingCarts: [],
+      cartItems: [],
+    })
+
+    // When merging it with the 'replace' strategy
+    await importLocalData(payload, 'replace')
+
+    // Then the new vendor has a cart
+    const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id)
+    expect(cartIds).toContain('local:vendor-new')
   })
 })
 
