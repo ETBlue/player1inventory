@@ -154,6 +154,50 @@ export async function addItemToLocation(
   return upsertItemStock(itemId, locationId, fields)
 }
 
+// Un-stock an item from one location: deletes that (item × location) ItemStock
+// row and cascades the data that only makes sense alongside it — the item's
+// inventory logs for that location and its entries in that location's carts
+// (`${locationId}:${vendorId|'no-vendor'}`). The cart rows themselves survive:
+// they are shared by every item in the location.
+//
+// The global `Item` deliberately persists. An item removed from its last
+// location becomes an "orphan": hidden from the pantry (`getStockedItems`
+// filters on ItemStock) but still in the catalog (`getAllItems`), so the Add
+// combobox can find and re-add it. Use `deleteItem` to remove it everywhere.
+//
+// Local/Dexie only. Cloud mode has no locations and no ItemStock — cloud items
+// carry inline stock on the GraphQL `Item` — so no cloud branch exists here and
+// nothing in the cloud code path may call this.
+export async function removeItemFromLocation(
+  itemId: string,
+  locationId: string = DEFAULT_LOCATION_ID,
+): Promise<void> {
+  await db.itemStocks
+    .where('[itemId+locationId]')
+    .equals([itemId, locationId])
+    .delete()
+
+  // Inventory logs for this (item, location). Logs predating the Location
+  // feature may carry no locationId, so treat an absent one as the default
+  // location — the same reading `getItemLogs` uses.
+  const logIds = (
+    await db.inventoryLogs.where('itemId').equals(itemId).toArray()
+  )
+    .filter((log) => (log.locationId ?? DEFAULT_LOCATION_ID) === locationId)
+    .map((log) => log.id)
+  if (logIds.length > 0) await db.inventoryLogs.bulkDelete(logIds)
+
+  // Entries in this location's carts (every vendor cart plus the no-vendor
+  // one). Match on the parsed cart id rather than a string prefix so a vendor
+  // id containing ':' can't be mistaken for a location.
+  const cartItemIds = (
+    await db.cartItems.where('itemId').equals(itemId).toArray()
+  )
+    .filter((ci) => parseCartId(ci.cartId).locationId === locationId)
+    .map((ci) => ci.id)
+  if (cartItemIds.length > 0) await db.cartItems.bulkDelete(cartItemIds)
+}
+
 // Item operations
 //
 // CreateItemInput accepts the global item fields plus optional stock fields:
