@@ -135,7 +135,7 @@ export const AlreadyStockedExactMatch: Story = {
 // ItemStock). This mocks `useGetItemsQuery` via `MockedProvider` instead of
 // seeding Dexie, since cloud mode reads the catalog from GraphQL, not local
 // IndexedDB.
-function CloudDialogHarness() {
+function CloudDialogHarness({ initialName }: { initialName?: string }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
@@ -146,6 +146,7 @@ function CloudDialogHarness() {
         <NewItemDialog
           open
           onOpenChange={() => {}}
+          {...(initialName ? { initialName } : {})}
           onSuccess={(item) => console.log('Added/created item:', item)}
         />
       </ActiveLocationProvider>
@@ -205,4 +206,16 @@ export const CloudMode: Story = {
     return () => localStorage.removeItem('data-mode')
   },
   render: () => <CloudDialogHarness />,
+}
+
+// Cloud mode, query exactly matching a catalog item ("Flour") — Create stays
+// suppressed (duplicate names are impossible in cloud too) and inline feedback
+// explains why, with a location-free sentence since cloud has no locations
+// (PR D review I-3, user ruling 2026-08-16).
+export const CloudExactMatch: Story = {
+  beforeEach() {
+    localStorage.setItem('data-mode', 'cloud')
+    return () => localStorage.removeItem('data-mode')
+  },
+  render: () => <CloudDialogHarness initialName="Flour" />,
 }

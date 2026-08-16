@@ -9,6 +9,19 @@ import type { Item, PantryItem } from '@/types'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { NewItemDialog } from './NewItemDialog'
 
+// Lets one test hold the location query unresolved, to pin the loading guard on
+// the inline exact-match feedback.
+const locationsGate = { hang: false }
+vi.mock('@/db/operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/db/operations')>()
+  return {
+    ...actual,
+    getLocations: vi.fn(() =>
+      locationsGate.hang ? new Promise<never>(() => {}) : actual.getLocations(),
+    ),
+  }
+})
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('@tanstack/react-router')>()
@@ -32,6 +45,7 @@ describe('NewItemDialog', () => {
   beforeEach(async () => {
     await db.items.clear()
     await db.itemStocks.clear()
+    locationsGate.hang = false
     mockNavigate.mockClear()
   })
 
@@ -250,6 +264,27 @@ describe('NewItemDialog', () => {
     await user.keyboard('{Enter}')
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('does not render a half-formed sentence while the location list loads', async () => {
+    // Given an already-stocked item and a location query that has not resolved
+    await createItem({ name: 'Milk', tagIds: [] }, DEFAULT_LOCATION_ID)
+    locationsGate.hang = true
+    const user = userEvent.setup()
+    renderDialog(<NewItemDialog open={true} onOpenChange={vi.fn()} />)
+
+    // When the user types the exact name
+    const input = await screen.findByRole('combobox', { name: /name/i })
+    await user.type(input, 'Milk')
+
+    // Then the option is already known to be stocked here...
+    const option = await screen.findByRole('option', { name: /milk/i })
+    expect(option).toHaveAttribute('aria-disabled', 'true')
+
+    // ...but the feedback waits for the location name instead of rendering
+    // "Milk is already in ." (the sibling dialog in items/$id/stock.tsx guards
+    // exactly this)
+    expect(screen.queryByText(/is already in/i)).not.toBeInTheDocument()
   })
 
   it('copy-on-add is a no-op for an already-stocked item (quantities preserved)', async () => {

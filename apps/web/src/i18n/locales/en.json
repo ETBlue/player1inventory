@@ -164,6 +164,7 @@
       "createButton": "Create \"{{name}}\"",
       "alreadyStocked": "Already here",
       "alreadyStockedHere": "{{name}} is already in {{location}}.",
+      "alreadyExists": "An item named {{name}} already exists.",
       "packageUnitLabel": "Package unit",
       "packageUnitPlaceholder": "e.g. bottle, kg"
     },

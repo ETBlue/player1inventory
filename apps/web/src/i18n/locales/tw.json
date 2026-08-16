@@ -164,6 +164,7 @@
       "createButton": "建立「{{name}}」",
       "alreadyStocked": "已在此地點",
       "alreadyStockedHere": "「{{name}}」已在「{{location}}」中。",
+      "alreadyExists": "已有名為「{{name}}」的品項。",
       "packageUnitLabel": "包裝單位",
       "packageUnitPlaceholder": "例如：瓶、公斤"
     },

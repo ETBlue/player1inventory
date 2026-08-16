@@ -12,6 +12,7 @@ const {
   CreateNew,
   AlreadyStockedExactMatch,
   CloudMode,
+  CloudExactMatch,
 } = composeStories(stories)
 
 // setup.ts globally stubs `useGetItemsQuery` to always return
@@ -99,6 +100,18 @@ describe('NewItemDialog stories smoke tests', () => {
       // disabled/"already here" regardless of stockId (PR D review 2.1).
       const option = await screen.findByRole('option', { name: /flour/i })
       expect(option).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('CloudExactMatch explains why an existing name cannot be created', async () => {
+      render(<CloudExactMatch />)
+      // Cloud has no locations, so the message must not name one (PR D review
+      // I-3).
+      expect(
+        await screen.findByText('An item named Flour already exists.'),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /create/i }),
+      ).not.toBeInTheDocument()
     })
   })
 })

@@ -112,4 +112,53 @@ describe('NewItemDialog — cloud mode', () => {
     expect(await db.itemStocks.toArray()).toHaveLength(0)
     expect(onSuccess).not.toHaveBeenCalled()
   })
+
+  // An exact name match blocks Create in cloud mode too (duplicate names stay
+  // impossible, consistent with local mode — user ruling 2026-08-16). Without
+  // feedback that is a dead end: no selectable option, no Create button, no
+  // explanation. Cloud has no locations, so the local copy ("… is already in
+  // Kitchen") would be wrong here and this state needs its own string.
+  it('user typing an existing name in cloud mode is told the item already exists', async () => {
+    // Given a cloud catalog containing "Flour"
+    const user = userEvent.setup()
+    renderDialog(<NewItemDialog open={true} onOpenChange={vi.fn()} />)
+
+    // When the user types that exact name
+    await user.type(
+      await screen.findByRole('combobox', { name: /name/i }),
+      'Flour',
+    )
+
+    // Then the dialog explains why nothing can happen — with a location-free
+    // sentence, since cloud mode has no locations
+    expect(
+      await screen.findByText('An item named Flour already exists.'),
+    ).toBeInTheDocument()
+
+    // And Create stays suppressed — duplicate names remain impossible
+    expect(
+      screen.queryByRole('option', { name: /create/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /create/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user typing a new name in cloud mode still gets the Create path', async () => {
+    // Given a cloud catalog that does not contain "Sparkling Water"
+    const user = userEvent.setup()
+    renderDialog(<NewItemDialog open={true} onOpenChange={vi.fn()} />)
+
+    // When the user types a name with no exact match
+    await user.type(
+      await screen.findByRole('combobox', { name: /name/i }),
+      'Sparkling Water',
+    )
+
+    // Then Create is offered and no "already exists" note is shown
+    expect(
+      await screen.findByRole('option', { name: /create .*sparkling water/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/already exists/i)).not.toBeInTheDocument()
+  })
 })

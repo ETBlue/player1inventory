@@ -103,8 +103,23 @@ export function NewItemDialog({
   // can't fix this case: there is no other option to skip to. Per explicit
   // user ruling (2026-08-16, PR D review 3.3 / Important 3), show inline
   // feedback naming the item and location instead of inventing another fix.
+  //
+  // Gated on `activeLocation` as well: `useLocations()` resolves asynchronously,
+  // and without it the sentence renders as "Milk is already in ." while the
+  // list is in flight. The sibling dialog in items/$id/stock.tsx guards the
+  // same way (PR D review m-5).
   const alreadyStockedExactMatch =
-    isLocal && trimmed.length > 0 && exactMatchItem?.stockId
+    isLocal && trimmed.length > 0 && exactMatchItem?.stockId && activeLocation
+      ? exactMatchItem
+      : undefined
+
+  // Cloud mode is create-only, and an exact name match also suppresses Create
+  // (duplicate names stay impossible, consistent with local mode — user ruling
+  // 2026-08-16, PR D review I-3). That leaves the same dead end as above, so it
+  // needs the same feedback — but cloud has no locations, which makes the local
+  // copy wrong here; hence its own location-free string.
+  const cloudExactMatch =
+    !isLocal && trimmed.length > 0 && exactMatchItem
       ? exactMatchItem
       : undefined
 
@@ -380,6 +395,13 @@ export function NewItemDialog({
                 {t('items.addDialog.alreadyStockedHere', {
                   name: alreadyStockedExactMatch.name,
                   location: activeLocation?.name ?? '',
+                })}
+              </p>
+            )}
+            {cloudExactMatch && (
+              <p className="text-sm text-foreground-muted">
+                {t('items.addDialog.alreadyExists', {
+                  name: cloudExactMatch.name,
                 })}
               </p>
             )}
