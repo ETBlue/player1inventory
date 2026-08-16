@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { getStockedItems } from '@/db/operations'
+import { addItemToLocation, getStockedItems } from '@/db/operations'
 import type { ExportPayload } from './exportData'
 import {
   type ConflictSummary,
@@ -1043,6 +1043,32 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // Then it defaults to the default location, as before
     const stocks = await db.itemStocks.toArray()
     expect(stocks[0].locationId).toBe('local')
+  })
+
+  // An old backup can carry items with no createdAt/updatedAt at all. The
+  // synthesised stock row must still get timestamps — `addItemToLocation` sorts
+  // candidate source rows by `updatedAt.getTime()` and throws on an absent one.
+  // `toShelfInput` already defends the same case with a `new Date()` fallback.
+  it('user can stock an item in another location after importing a timestamp-less backup', async () => {
+    // Given a very old backup whose item carries no timestamps
+    const payload = emptyPayload({
+      items: [
+        { id: 'item-1', name: 'Milk', tagIds: [], packedQuantity: 2 },
+      ] as never,
+    })
+    await importLocalData(payload, 'skip')
+
+    // Then the synthesised stock still has usable timestamps
+    const stocks = await db.itemStocks.toArray()
+    expect(stocks[0].updatedAt).toBeInstanceOf(Date)
+    expect(stocks[0].createdAt).toBeInstanceOf(Date)
+
+    // When the user stocks it in a new location, copying from one it is not in
+    // (so the source has to be picked by the most-recently-updated sort)
+    const stock = await addItemToLocation('item-1', 'kitchen', 'office')
+
+    // Then it succeeds instead of throwing
+    expect(stock.locationId).toBe('kitchen')
   })
 
   // `importItemStocks` only removes stale rows for (itemId, locationId) pairs

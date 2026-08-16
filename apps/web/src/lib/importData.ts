@@ -84,6 +84,11 @@ const STOCK_FIELD_KEYS = [
 
 const DATE_FIELD_KEYS = ['dueDate', 'createdAt', 'updatedAt'] as const
 
+// createdAt/updatedAt are required on an ItemStock; dueDate is genuinely
+// optional. An absent timestamp is not harmless: `addItemToLocation` picks its
+// source row with `b.updatedAt.getTime()`, which throws on an undefined one.
+const REQUIRED_STOCK_DATE_KEYS = ['createdAt', 'updatedAt'] as const
+
 function toDate(value: unknown): Date {
   return value instanceof Date ? value : new Date(value as string)
 }
@@ -99,11 +104,16 @@ function deserializeItem(rawItem: Item): Item {
 
 // Convert stock date fields from ISO strings to Date objects; drop nulls
 // (JSON.stringify writes absent optional fields as null on cloud payloads).
+// The required timestamps fall back to now for old backups that carry none —
+// the same defence `toShelfInput` applies.
 function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
   const result = { ...raw } as Record<string, unknown>
   for (const key of DATE_FIELD_KEYS) {
     if (result[key] == null) delete result[key]
     else result[key] = toDate(result[key])
+  }
+  for (const key of REQUIRED_STOCK_DATE_KEYS) {
+    if (result[key] == null) result[key] = new Date()
   }
   return result as unknown as ItemStock
 }
