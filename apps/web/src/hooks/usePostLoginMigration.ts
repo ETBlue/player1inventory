@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { type ImportStrategy, importCloudData } from '@/lib/importData'
+import { DEFAULT_LOCATION_ID } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
+import { useLocations } from './useLocations'
 
 export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
 export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
@@ -25,6 +27,19 @@ export function usePostLoginMigration() {
   // the stock of the location that is active at migration time — what the user
   // was last looking at. `importCloudData` flattens the payload onto it.
   const { activeLocationId } = useActiveLocation()
+  const { data: locations } = useLocations()
+  // On the first render `activeLocationId` is whatever localStorage held, which
+  // may name a location that no longer exists — `ActiveLocationProvider` only
+  // corrects it once `useLocations()` resolves, which is asynchronous. Copying
+  // by a stale id flattens against stock nothing matches: every item uploads
+  // zeroed and every cart is dropped, and the one-shot ref below then blocks the
+  // corrected retry. So wait until the list has loaded AND names the active
+  // location. The default location is always allowed — it is undeletable, and
+  // gating on it would deadlock a database whose table is still being seeded.
+  const locationResolved =
+    locations !== undefined &&
+    (activeLocationId === DEFAULT_LOCATION_ID ||
+      locations.some((loc) => loc.id === activeLocationId))
   // The auto-import is one-shot. `activeLocationId` is a dependency of the
   // effect below, and MIGRATION_PROMPTED_KEY is only written once the import
   // resolves — so without this guard a location change landing mid-flight would
@@ -42,6 +57,10 @@ export function usePostLoginMigration() {
     ) as ImportStrategy | null
 
     if (storedStrategy) {
+      // Only the auto-import is gated: it is one-shot and destructive on the
+      // cloud side. The prompting path below merely decides whether to show the
+      // dialog, and the dialog gates its own confirm button on the same list.
+      if (!locationResolved) return
       if (autoImportStarted.current) return
       autoImportStarted.current = true
       setState('auto-importing')
@@ -73,7 +92,7 @@ export function usePostLoginMigration() {
         localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       }
     })
-  }, [isLoaded, isSignedIn, apolloClient, activeLocationId])
+  }, [isLoaded, isSignedIn, apolloClient, activeLocationId, locationResolved])
 
   function dismiss() {
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')

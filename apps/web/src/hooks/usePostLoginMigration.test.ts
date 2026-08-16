@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getAllItems, getLocations } from '@/db/operations'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { bootstrapCarts, getAllItems, getLocations } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
 import {
@@ -67,6 +67,28 @@ const emptyPayload = {
   shelves: [],
 }
 
+// The hook reads the location list (useLocations) so it never copies by a
+// location id the provider is about to correct — that needs a QueryClient, and
+// the real app always has one (mounted in __root.tsx).
+function wrapper({ children }: { children: ReactNode }) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return createElement(
+    QueryClientProvider,
+    { client: queryClient },
+    createElement(ActiveLocationProvider, null, children),
+  )
+}
+
+// `vi.resetAllMocks()` below strips the factory implementations, so re-arm the
+// Dexie reads the provider and hook depend on before every test.
+beforeEach(() => {
+  vi.mocked(getAllItems).mockResolvedValue([])
+  vi.mocked(getLocations).mockResolvedValue([])
+  vi.mocked(bootstrapCarts).mockResolvedValue(undefined)
+})
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
@@ -85,7 +107,7 @@ describe('usePostLoginMigration — auto-import path', () => {
     )
 
     // When: the hook mounts
-    const { result } = renderHook(() => usePostLoginMigration())
+    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
 
     // Then: state transitions to 'done' (dialog closes) rather than staying 'auto-importing'
     await waitFor(() => {
@@ -108,7 +130,7 @@ describe('usePostLoginMigration — auto-import path', () => {
     mockImportCloudData.mockResolvedValue(undefined)
 
     // When: the hook mounts
-    const { result } = renderHook(() => usePostLoginMigration())
+    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
 
     // Then: state transitions to 'done'
     await waitFor(() => {
@@ -129,17 +151,6 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
   // down to importCloudData — otherwise the copy silently falls back to
   // 'local' and a user whose active location is elsewhere migrates the wrong
   // (or zeroed) quantities.
-  function wrapper({ children }: { children: ReactNode }) {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    return createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(ActiveLocationProvider, null, children),
-    )
-  }
-
   function seedTwoLocations() {
     const now = new Date()
     // afterEach resets every mock, so re-arm the ones the hook reads.
@@ -213,17 +224,6 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
   // mid-flight would re-enter the effect and fire a second copy. There is a
   // concrete trigger: ActiveLocationProvider resets a stale stored id to the
   // default once useLocations() resolves, which is asynchronous.
-  function wrapper({ children }: { children: ReactNode }) {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    return createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(ActiveLocationProvider, null, children),
-    )
-  }
-
   it('a location reset mid-migration does not start a second copy', async () => {
     // Given a stored active location that no longer exists
     const now = new Date()
@@ -253,5 +253,42 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     // Then the pantry is copied up exactly once — a second copy would run the
     // stored strategy again over the rows the first one just created
     expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+  })
+
+  // The one-shot ref makes the FIRST call the only call, so that call must not
+  // be made with a location id the provider is about to correct: flattening by
+  // an id no location has uploads every item with zeroed stock and drops every
+  // cart, and the ref then blocks the corrected retry.
+  it('a stale stored location is corrected before the copy starts', async () => {
+    // Given a stored active location that no longer exists
+    const now = new Date()
+    vi.mocked(getAllItems).mockResolvedValue([])
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(undefined)
+
+    // When the hook mounts
+    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    await waitFor(() => expect(result.current.state).toBe('done'))
+
+    // Then the copy runs against the corrected location, exactly once
+    expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+    expect(mockImportCloudData).toHaveBeenCalledWith(
+      emptyPayload,
+      'skip',
+      expect.anything(),
+      expect.objectContaining({ locationId: 'local' }),
+    )
   })
 })
