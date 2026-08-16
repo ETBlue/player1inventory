@@ -356,6 +356,10 @@ export function useRemoveItemFromLocation() {
       queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
       queryClient.invalidateQueries({ queryKey: ['cart'] })
       queryClient.invalidateQueries({ queryKey: ['sort'] })
+      // The two per-item counts the cascade changes. No UI consumer today, but
+      // Task 2's confirmation dialog is specified to name what gets deleted.
+      queryClient.invalidateQueries({ queryKey: ['inventoryLogs'] })
+      queryClient.invalidateQueries({ queryKey: ['cartItems'] })
     },
   })
 }

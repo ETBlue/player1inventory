@@ -4,18 +4,26 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
+  addInventoryLog,
   addItemToLocation,
+  addToCart,
   createItem,
   createLocation,
+  getItem,
   getItemStock,
 } from '@/db/operations'
 import { GetRecipesDocument } from '@/generated/graphql'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import type { PantryItem } from '@/types'
+import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
+import { useItemSortData } from './useItemSortData'
+import { useItemStocks } from './useItemStocks'
 import {
   useAddItemToLocation,
+  useCartItemCountByItem,
   useCreateItem,
   useDeleteItem,
+  useInventoryLogCountByItem,
   useItem,
   useItems,
   useLastPurchaseDate,
@@ -23,6 +31,7 @@ import {
   useStockedItems,
   useUpdateItem,
 } from './useItems'
+import { useCartItems } from './useShoppingCart'
 
 const mockUseGetItemQuery = vi.fn()
 const mockUseGetItemsQuery = vi.fn()
@@ -46,6 +55,9 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     },
     useLastPurchaseDatesQuery: (opts: unknown) =>
       mockUseLastPurchaseDatesQuery(opts),
+    // Cloud read paths that are `skip`ped in local mode but would still demand
+    // an ApolloProvider. Stubbed so local-mode hooks can be rendered here.
+    useCartItemsQuery: () => ({ data: undefined, loading: false }),
   }
 })
 
@@ -474,6 +486,82 @@ describe('useRemoveItemFromLocation (local mode)', () => {
     // Then only the cabin's stock is gone
     expect(await getItemStock(beans.id, cabin.id)).toBeUndefined()
     expect(await getItemStock(beans.id, DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+})
+
+// Every query family the cascade changes must re-resolve after a removal from
+// the active location. Asserted through the REAL consumer hooks sharing one
+// QueryClient with the mutation — not by spying on invalidateQueries, which
+// would only prove the call was made, not that anything re-read.
+describe('useRemoveItemFromLocation invalidates every affected query family', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.cartItems.clear()
+    await db.shoppingCarts.clear()
+    await db.locations.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    // useItemSortData's cloud branch is skipped in local mode but still calls
+    // the Apollo hook; give it a shape it can destructure.
+    mockUseLastPurchaseDatesQuery.mockReturnValue({ data: undefined })
+  })
+
+  it('stock, cart, sort and count reads all re-resolve after a removal', async () => {
+    // Given an item stocked in the active location, with a purchase log and a
+    // cart entry — one live reader cached per affected key family
+    const item = await createItem(
+      { name: 'Beans', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 2,
+      quantity: 2,
+      occurredAt: new Date(),
+    })
+    const cartId = cartIdFor(DEFAULT_LOCATION_ID, null)
+    await db.shoppingCarts.put({ id: cartId })
+    await addToCart(cartId, item.id, 1)
+    const pantryItems = [
+      (await getItem(item.id, DEFAULT_LOCATION_ID)) as PantryItem,
+    ]
+
+    const { result } = renderHook(
+      () => ({
+        stocks: useItemStocks(item.id), // ['itemStocks', …]
+        cartItems: useCartItems(cartId), // ['cart', …]
+        sort: useItemSortData(pantryItems), // ['sort', …]
+        logCount: useInventoryLogCountByItem(item.id), // ['inventoryLogs', …]
+        cartCount: useCartItemCountByItem(item.id), // ['cartItems', …]
+        remove: useRemoveItemFromLocation(),
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => {
+      expect(result.current.stocks.data).toHaveLength(1)
+      expect(result.current.cartItems.data).toHaveLength(1)
+      expect(result.current.sort.purchaseDates?.get(item.id)).toBeInstanceOf(
+        Date,
+      )
+      expect(result.current.logCount.data).toBe(1)
+      expect(result.current.cartCount.data).toBe(1)
+    })
+
+    // When the item is removed from the active location
+    await result.current.remove.mutateAsync({ itemId: item.id })
+
+    // Then every cached reader re-resolves on its own
+    await waitFor(() => {
+      expect(result.current.stocks.data).toEqual([])
+      expect(result.current.cartItems.data).toEqual([])
+      expect(result.current.sort.purchaseDates?.get(item.id)).toBeNull()
+      expect(result.current.logCount.data).toBe(0)
+      expect(result.current.cartCount.data).toBe(0)
+    })
   })
 })
 
