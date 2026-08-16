@@ -289,7 +289,12 @@ export function resolveFlattenLocationId(
   )
   if (locationIds.size === 0) return requestedLocationId
   if (locationIds.has(requestedLocationId)) return requestedLocationId
-  if (locationIds.size === 1) return [...locationIds][0]
+  // The payload's stock lives in exactly one other location — use it. Iterating
+  // (rather than indexing) keeps the value typed as `string` under
+  // noUncheckedIndexedAccess.
+  if (locationIds.size === 1) {
+    for (const onlyLocationId of locationIds) return onlyLocationId
+  }
   return null
 }
 
