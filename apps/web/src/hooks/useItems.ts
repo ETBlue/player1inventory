@@ -298,18 +298,25 @@ export function useCreateItem() {
 const LOCAL_ONLY_LOCATION_MUTATION =
   'Location stock mutations are local-mode only: cloud mode has no locations or ItemStock.'
 
-// Stock an existing global item in the active location via copy-on-add
-// (inherits all stock fields except packed/unpacked → 0). No-op if the item is
-// already stocked there. Local-first only — ItemStock has no cloud backend yet.
+type AddToLocationVars = {
+  itemId: string
+  // The Stock-tab pager adds to the location on the page being viewed, which
+  // is not necessarily the active one; defaults to the active location.
+  locationId?: string
+}
+
+// Stock an existing global item in a location via copy-on-add (inherits all
+// stock fields except packed/unpacked → 0). No-op if the item is already
+// stocked there. Local-first only — ItemStock has no cloud backend yet.
 export function useAddItemToLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
 
   return useMutation({
-    mutationFn: (itemId: string) => {
+    mutationFn: ({ itemId, locationId }: AddToLocationVars) => {
       if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
-      return addItemToLocation(itemId, activeLocationId)
+      return addItemToLocation(itemId, locationId ?? activeLocationId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
@@ -367,6 +374,11 @@ export function useRemoveItemFromLocation() {
 type ItemUpdateVars = {
   id: string
   updates: Partial<Item> & Partial<StockFields>
+  // Local mode only: which location's ItemStock the stock fields are written
+  // to. The Stock-tab pager saves to the location on the page being viewed;
+  // everything else omits it and writes to the active location. Cloud mode
+  // ignores it — cloud items carry inline stock and have no locations.
+  locationId?: string
 }
 
 export function useUpdateItem() {
@@ -375,13 +387,17 @@ export function useUpdateItem() {
   const { activeLocationId } = useActiveLocation()
 
   const localMutation = useMutation({
-    mutationFn: ({ id, updates }: ItemUpdateVars) =>
-      updateItem(id, updates, activeLocationId),
+    mutationFn: ({ id, updates, locationId }: ItemUpdateVars) =>
+      updateItem(id, updates, locationId ?? activeLocationId),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['items', id] })
       queryClient.invalidateQueries({ queryKey: ['items', 'countByTag'] })
       queryClient.invalidateQueries({ queryKey: ['items', 'countByVendor'] })
+      // Stock fields are written to an ItemStock row, so the raw-stock readers
+      // (`useItemStock`/`useItemStocks`, which the Stock pager reads to build
+      // each location's page) must re-resolve too.
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
     },
   })
 

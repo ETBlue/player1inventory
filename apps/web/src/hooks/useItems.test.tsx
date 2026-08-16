@@ -487,6 +487,70 @@ describe('useRemoveItemFromLocation (local mode)', () => {
     expect(await getItemStock(beans.id, cabin.id)).toBeUndefined()
     expect(await getItemStock(beans.id, DEFAULT_LOCATION_ID)).toBeDefined()
   })
+
+  it('user can add an item to a non-active location by passing an explicit locationId', async () => {
+    // Given an item stocked only in the active (default) location, and a cabin
+    const cabin = await createLocation('Cabin')
+    const beans = await createItem(
+      { name: 'Beans', tagIds: [], packedQuantity: 4, targetQuantity: 6 },
+      DEFAULT_LOCATION_ID,
+    )
+
+    const { result } = renderHook(() => useAddItemToLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When the pager stocks it in the cabin while the default is active
+    await result.current.mutateAsync({ itemId: beans.id, locationId: cabin.id })
+
+    // Then the copy lands in the cabin (quantities zeroed, settings inherited)
+    // and the active location's own stock is untouched
+    const cabinStock = await getItemStock(beans.id, cabin.id)
+    expect(cabinStock?.packedQuantity).toBe(0)
+    expect(cabinStock?.targetQuantity).toBe(6)
+    expect(
+      (await getItemStock(beans.id, DEFAULT_LOCATION_ID))?.packedQuantity,
+    ).toBe(4)
+  })
+
+  it('user can save stock to a non-active location by passing an explicit locationId', async () => {
+    // Given an item stocked in both the active location and a cabin
+    const cabin = await createLocation('Cabin')
+    const beans = await createItem(
+      { name: 'Beans', tagIds: [], packedQuantity: 4 },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(beans.id, cabin.id)
+
+    const { result } = renderHook(
+      () => ({
+        update: useUpdateItem(),
+        stocks: useItemStocks(beans.id),
+      }),
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(result.current.stocks.data).toHaveLength(2))
+
+    // When the Stock pager saves while viewing the cabin page
+    await result.current.update.mutateAsync({
+      id: beans.id,
+      updates: { packedQuantity: 9 },
+      locationId: cabin.id,
+    })
+
+    // Then the cabin's stock row takes the change, the active location's does
+    // not, and the cached raw-stock reader re-resolves on its own
+    expect((await getItemStock(beans.id, cabin.id))?.packedQuantity).toBe(9)
+    expect(
+      (await getItemStock(beans.id, DEFAULT_LOCATION_ID))?.packedQuantity,
+    ).toBe(4)
+    await waitFor(() =>
+      expect(
+        result.current.stocks.data?.find((s) => s.locationId === cabin.id)
+          ?.packedQuantity,
+      ).toBe(9),
+    )
+  })
 })
 
 // Every query family the cascade changes must re-resolve after a removal from
@@ -669,7 +733,9 @@ describe('location mutations refuse to run in cloud mode', () => {
 
     // When something tries to stock it anyway
     // Then the mutation rejects and no ItemStock row is written
-    await expect(result.current.mutateAsync(item.id)).rejects.toThrow(/local/i)
+    await expect(
+      result.current.mutateAsync({ itemId: item.id }),
+    ).rejects.toThrow(/local/i)
     expect(await db.itemStocks.toArray()).toHaveLength(0)
   })
 })

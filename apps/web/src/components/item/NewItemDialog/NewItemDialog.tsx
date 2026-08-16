@@ -213,7 +213,7 @@ export function NewItemDialog({
       // previously stocked at the active location) — otherwise callers like
       // the recipe items dialog read defaults (e.g. consumeAmount: 1) instead
       // of the item's real copied values (PR D review 3.5).
-      const stock = await addItemToLocation.mutateAsync(item.id)
+      const stock = await addItemToLocation.mutateAsync({ itemId: item.id })
       handleClose()
       if (onSuccess) {
         const {
