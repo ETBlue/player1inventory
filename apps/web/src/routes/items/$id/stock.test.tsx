@@ -296,6 +296,47 @@ describe('Item stock tab', () => {
     )
   })
 
+  it('saving on another location page writes to that location, not the active one', async () => {
+    const user = userEvent.setup()
+
+    // Given an item stocked in two locations with different quantities
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await addItemToLocation(item.id, cabin.id)
+    await upsertItemStock(item.id, cabin.id, { packedQuantity: 7 })
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+
+    // When the user pages to the other location, edits its stock and saves
+    await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toHaveValue(7)
+    })
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '9')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the change lands on that location's ItemStock and the active
+    // location's own stock is untouched
+    await waitFor(async () => {
+      expect((await getItemStock(item.id, cabin.id))?.packedQuantity).toBe(9)
+    })
+    expect(
+      (await getItemStock(item.id, DEFAULT_LOCATION_ID))?.packedQuantity,
+    ).toBe(2)
+  })
+
   it('keeps the active location marked while the user views another one', async () => {
     const user = userEvent.setup()
 
@@ -326,6 +367,96 @@ describe('Item stock tab', () => {
     expect(
       screen.getByRole('tab', { name: /my home.*active/i }),
     ).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('asks before paging away from unsaved edits, and clears the tab dirty guard', async () => {
+    const user = userEvent.setup()
+
+    // Given an item stocked in two locations
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await addItemToLocation(item.id, cabin.id)
+    await upsertItemStock(item.id, cabin.id, { packedQuantity: 7 })
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+
+    // When the user edits the form and then tries to page to another location
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+    await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+
+    // Then the edits are not dropped silently — the discard dialog asks first
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Unsaved changes')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^packed/i)).toHaveValue(5)
+
+    // And discarding turns the page…
+    await user.click(within(dialog).getByRole('button', { name: /discard/i }))
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toHaveValue(7)
+    })
+
+    // …and clears the layout dirty flag with it: leaving the tab afterwards
+    // must not re-raise a discard prompt for edits that no longer exist
+    await user.click(screen.getByRole('link', { name: /item info tab/i }))
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('leaves no phantom unsaved-changes prompt after removing a location with a dirty form', async () => {
+    const user = userEvent.setup()
+
+    // Given an item stocked in two locations
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({
+      name: 'Milk',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await addItemToLocation(item.id, cabin.id)
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+
+    // When the user edits the form and then removes this location — the form
+    // is replaced by the not-stocked empty state, so nothing remounts to
+    // report the dirty state back down
+    const packedInput = screen.getByLabelText(/^packed/i)
+    await user.clear(packedInput)
+    await user.type(packedInput, '5')
+    await user.click(
+      screen.getByRole('button', { name: /remove from location/i }),
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /remove/i }))
+    await screen.findByRole('button', { name: /add to location/i })
+
+    // Then leaving the tab is not blocked by edits that no longer exist
+    await user.click(screen.getByRole('link', { name: /item info tab/i }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /add to location/i }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('user can move between location pages with the arrow keys', async () => {
@@ -420,6 +551,20 @@ describe('Item stock tab', () => {
     const cartId = cartIdFor(cabin.id, null)
     await db.shoppingCarts.put({ id: cartId })
     await addToCart(cartId, item.id, 1)
+    // Noise in the OTHER location: two logs and a cart entry that this removal
+    // must not claim (an item-global count would say 3 and 2).
+    for (const delta of [1, 2]) {
+      await addInventoryLog({
+        itemId: item.id,
+        locationId: DEFAULT_LOCATION_ID,
+        delta,
+        quantity: delta,
+        occurredAt: new Date(),
+      })
+    }
+    const homeCartId = cartIdFor(DEFAULT_LOCATION_ID, null)
+    await db.shoppingCarts.put({ id: homeCartId })
+    await addToCart(homeCartId, item.id, 1)
 
     renderStockTab(item.id)
     await screen.findByLabelText(/^packed/i)

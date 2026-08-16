@@ -440,15 +440,14 @@ function LocalStockTab({ itemId }: { itemId: string }) {
   const goToPage = (index: number) => {
     const target = ordered[index]
     if (!target) return
-    // The form is remounted per page, which drops its edits; ask first rather
-    // than losing them silently. The layout's dirty flag is reset here too —
-    // ItemForm only reports a *change* in dirtiness, so a remount alone would
-    // leave the tab guard believing the (gone) edits are still pending.
+    // The form is remounted per page (`key={viewed.id}`), which drops its
+    // edits — ask first rather than losing them silently. Turning the page
+    // needs no explicit dirty reset: the remounted ItemForm reports
+    // `onDirtyChange(false)` on mount.
     if (isDirty) {
       setPendingPageIndex(index)
       return
     }
-    registerDirtyState(false)
     setViewedLocationId(target.id)
   }
 
@@ -456,7 +455,6 @@ function LocalStockTab({ itemId }: { itemId: string }) {
     const target = pendingPageIndex === null ? null : ordered[pendingPageIndex]
     setPendingPageIndex(null)
     if (!target) return
-    registerDirtyState(false)
     setViewedLocationId(target.id)
   }
 
@@ -465,6 +463,10 @@ function LocalStockTab({ itemId }: { itemId: string }) {
   }
 
   const handleRemove = async () => {
+    // Unlike turning the page, removing replaces the form with the not-stocked
+    // empty state — no ItemForm mounts to report the dirty state back down. A
+    // form left dirty would otherwise keep the tab guard armed for edits that
+    // no longer exist anywhere.
     registerDirtyState(false)
     await removeItemFromLocation.mutateAsync({ itemId, locationId: viewed.id })
   }
