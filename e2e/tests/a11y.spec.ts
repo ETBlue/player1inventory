@@ -1,6 +1,8 @@
 import { test } from '@playwright/test'
 import { checkA11y, injectAxe } from 'axe-playwright'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { seedRows } from '../helpers/locationSeed'
+import { StockPagerPage } from '../pages/StockPagerPage'
 
 // WCAG AA target: 4.5:1 contrast ratio for normal text, 3:1 for large text.
 // Explicitly set runOnly so future tooling and AI agents know the intended level.
@@ -408,6 +410,55 @@ async function seedShelf(page: import('@playwright/test').Page): Promise<string>
   })
 }
 
+// Helper: seed a second location plus an item stocked in the default one, so
+// the item-detail Stock tab renders its all-locations PAGER (chrome only shows
+// with more than one location). Returns the item ID.
+//
+// Note for future readers: axe's colour-contrast rule is text-only, so a green
+// run here says nothing about the pager DOTS. Their styling is judged by eye in
+// LocationPager.stories.tsx. What these tests do cover is the tablist/tabpanel
+// wiring, the accessible names, and the dialog semantics.
+const A11Y_PAGER_ITEM = 'a11y-pager-item'
+const A11Y_OTHER_LOCATION = 'a11y-other-location'
+
+async function seedStockPagerFixture(
+  page: import('@playwright/test').Page,
+): Promise<string> {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  const now = new Date()
+
+  await seedRows(page, 'locations', [
+    { id: A11Y_OTHER_LOCATION, name: 'Office', order: 1, createdAt: now, updatedAt: now },
+  ])
+  await seedRows(page, 'items', [
+    {
+      id: A11Y_PAGER_ITEM,
+      name: 'pager item',
+      tagIds: [],
+      vendorIds: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+  await seedRows(page, 'itemStocks', [
+    {
+      id: 'a11y-pager-stock',
+      itemId: A11Y_PAGER_ITEM,
+      locationId: 'local',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+  return A11Y_PAGER_ITEM
+}
+
 // Helper: seed a recipe into IndexedDB and return its ID
 async function seedRecipe(page: import('@playwright/test').Page): Promise<string> {
   await page.goto('/')
@@ -453,6 +504,54 @@ test.describe('detail page a11y', () => {
     // When the user navigates to the item stock tab
     await page.goto(`/items/${itemId}/stock`)
     await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, stocked page WITH the all-locations pager
+  test('user can view the stock pager on a stocked location without accessibility violations', async ({ page }) => {
+    // Given an item stocked in the active location, with a second location so
+    // the pager chrome renders
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+
+    // When the user opens the Stock tab
+    await stockTab.navigateTo(itemId)
+    await stockTab.getStockForm().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, NOT-stocked page (empty state + "Add to location")
+  test('user can view the stock pager on a not-stocked location without accessibility violations', async ({ page }) => {
+    // Given the same fixture, paged to the location the item is not stocked in
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.goToNext()
+    await stockTab.getAddToLocationButton().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, remove-from-location confirmation dialog
+  test('user can view the remove-from-location dialog without accessibility violations', async ({ page }) => {
+    // Given the stocked page with its remove confirmation open
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.openRemoveDialog()
+    // The affected-counts line renders only once both count queries resolve —
+    // scan the dialog in its final state, not mid-load
+    await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
     await injectAxe(page)
 
     // Then there should be no violations
@@ -846,6 +945,52 @@ test.describe('dark mode a11y', () => {
     // When the user navigates to the item stock tab
     await page.goto(`/items/${itemId}/stock`)
     await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, stocked page WITH the all-locations pager, in dark mode
+  test('user can view the stock pager on a stocked location without accessibility violations in dark mode', async ({ page }) => {
+    // Given an item stocked in the active location, with a second location so
+    // the pager chrome renders (dark mode enabled)
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+
+    // When the user opens the Stock tab
+    await stockTab.navigateTo(itemId)
+    await stockTab.getStockForm().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, NOT-stocked page, in dark mode
+  test('user can view the stock pager on a not-stocked location without accessibility violations in dark mode', async ({ page }) => {
+    // Given the same fixture, paged to the location the item is not stocked in
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.goToNext()
+    await stockTab.getAddToLocationButton().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, remove-from-location confirmation dialog, in dark mode
+  test('user can view the remove-from-location dialog without accessibility violations in dark mode', async ({ page }) => {
+    // Given the stocked page with its remove confirmation open
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.openRemoveDialog()
+    await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
     await injectAxe(page)
 
     // Then there should be no violations

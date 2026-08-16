@@ -10,6 +10,59 @@ import type { Page } from '@playwright/test'
 
 const DEFAULT_LOCATION_ID = 'local'
 
+// Generic table seed/read against the app's Dexie database. Multi-location
+// fixtures (several `locations`, one `itemStocks` row per location, per-location
+// logs and cart items) run to well past the 10-step UI budget the E2E convention
+// sets for UI-driven setup, so the Stock-pager spec seeds them directly.
+//
+// Navigate to '/' first so Dexie has created the schema at the current version —
+// `indexedDB.open` without a version opens whatever exists, and on a cold
+// profile that is nothing.
+export async function seedRows(
+  page: Page,
+  store: string,
+  rows: object[],
+): Promise<void> {
+  await page.evaluate(
+    async ({ store, rows }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      for (const row of rows) {
+        await new Promise<void>((resolve, reject) => {
+          const req = db
+            .transaction(store, 'readwrite')
+            .objectStore(store)
+            .put(row)
+          req.onsuccess = () => resolve()
+          req.onerror = () => reject(req.error)
+        })
+      }
+    },
+    { store, rows },
+  )
+}
+
+export async function readRows(
+  page: Page,
+  store: string,
+): Promise<Record<string, unknown>[]> {
+  return page.evaluate(async (store) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('Player1Inventory')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    return new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      const req = db.transaction(store).objectStore(store).getAll()
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+  }, store)
+}
+
 // For every item carrying inline stock fields, create a matching itemStocks row
 // in the default location (idempotent). Run after seeding `items`.
 export async function splitInlineStock(page: Page): Promise<void> {
