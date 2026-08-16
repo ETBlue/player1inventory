@@ -112,7 +112,16 @@ async function seedFixture(
   )
 }
 
-test.describe('item stock pager', () => {
+// The describe title must contain "items". The project's documented E2E gate grep is
+// `--grep "items|shopping|cooking|settings|a11y"`, and Playwright matches it against
+// the joined title path — project, FILE PATH, describes, test title. Every other file
+// the gate selects matches through its filename (`a11y.spec.ts`, `shopping.spec.ts`,
+// `cooking.spec.ts`, `settings/*`); `item-stock-pager.spec.ts` does not, because
+// "item-stock-pager" has no "items" in it. Without "items" here, `--grep "items"`
+// selects ZERO of the specs below and the whole file silently never runs under the
+// convention — it only passes when invoked directly. Verified: `--grep "items"` now
+// selects all 5.
+test.describe('items stock tab — location pager', () => {
   test('user can add an item to a location from the not-stocked page', async ({
     page,
     baseURL,
