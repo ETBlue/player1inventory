@@ -474,9 +474,15 @@ describe('removeItemFromLocation (Location PR E)', () => {
     await db.locations.clear()
   })
 
-  // An item stocked in BOTH the default location and a cabin, with inventory
-  // logs and cart entries in each. The cabin side is the control group: nothing
-  // there may change when the default-location stock is removed.
+  // An item ('Beans') stocked in BOTH the default location and a cabin, with
+  // inventory logs and cart entries in each. Two control groups guard the two
+  // halves of the cascade's scoping, and nothing in either may change when the
+  // default-location Beans stock is removed:
+  //   - the CABIN side  → the `locationId` half of the filter
+  //   - a second item ('Rice') in the SAME (default) location, with its own
+  //     stock, log and cart entry → the `itemId` half. Without it no test can
+  //     tell "scoped to this item" from "deletes everything in this location",
+  //     which is the silent cross-item data-loss case.
   async function seedItemInTwoLocations() {
     const cabin = await createLocation('Cabin')
     const vendor = await createVendor('Costco')
@@ -516,12 +522,26 @@ describe('removeItemFromLocation (Location PR E)', () => {
     await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), item.id, 3)
     await addToCart(cartIdFor(cabin.id, vendor.id), item.id, 4)
 
-    return { cabin, item, vendor }
+    // The bystander: a different item in the SAME location being removed from.
+    const other = await createItem(
+      { name: 'Rice', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addInventoryLog({
+      itemId: other.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 9,
+      quantity: 9,
+      occurredAt: new Date(),
+    })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), other.id, 2)
+
+    return { cabin, item, other, vendor }
   }
 
   it('user can remove an item from a location — its stock row is gone', async () => {
     // Given an item stocked in the default location and a cabin
-    const { item, cabin } = await seedItemInTwoLocations()
+    const { item, cabin, other } = await seedItemInTwoLocations()
     expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
 
     // When the user removes it from the default location
@@ -532,11 +552,13 @@ describe('removeItemFromLocation (Location PR E)', () => {
     // And the cabin's stock row is untouched
     expect(await getItemStock(item.id, cabin.id)).toBeDefined()
     expect(await getItemStocks(item.id)).toHaveLength(1)
+    // And the OTHER item's stock in that same location is untouched
+    expect(await getItemStock(other.id, DEFAULT_LOCATION_ID)).toBeDefined()
   })
 
   it('removing from a location deletes that location inventory logs only', async () => {
     // Given an item with logs in both locations
-    const { item, cabin } = await seedItemInTwoLocations()
+    const { item, cabin, other } = await seedItemInTwoLocations()
     expect(await getItemLogs(item.id, DEFAULT_LOCATION_ID)).toHaveLength(1)
 
     // When the user removes it from the default location
@@ -547,22 +569,33 @@ describe('removeItemFromLocation (Location PR E)', () => {
     const cabinLogs = await getItemLogs(item.id, cabin.id)
     expect(cabinLogs).toHaveLength(1)
     expect(cabinLogs[0].delta).toBe(5)
+    // And the OTHER item's log in that same location is untouched — the
+    // cascade is scoped to this item, not to everything in the location
+    const otherLogs = await getItemLogs(other.id, DEFAULT_LOCATION_ID)
+    expect(otherLogs).toHaveLength(1)
+    expect(otherLogs[0].delta).toBe(9)
   })
 
   it('removing from a location clears its cart entries but keeps the carts', async () => {
     // Given the item sits in that location's vendor cart and no-vendor cart
-    const { item, vendor } = await seedItemInTwoLocations()
+    // (the vendor cart also holds the OTHER item)
+    const { item, other, vendor } = await seedItemInTwoLocations()
     const vendorCartId = cartIdFor(DEFAULT_LOCATION_ID, vendor.id)
     const noVendorCartId = cartIdFor(DEFAULT_LOCATION_ID, null)
-    expect(await getCartItems(vendorCartId)).toHaveLength(1)
+    expect(await getCartItems(vendorCartId)).toHaveLength(2)
     expect(await getCartItems(noVendorCartId)).toHaveLength(1)
 
     // When the user removes it from the default location
     await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
 
-    // Then both of that location's carts lose the item
-    expect(await getCartItems(vendorCartId)).toHaveLength(0)
+    // Then both of that location's carts lose that item
+    const vendorCartItems = await getCartItems(vendorCartId)
+    expect(vendorCartItems.map((ci) => ci.itemId)).not.toContain(item.id)
     expect(await getCartItems(noVendorCartId)).toHaveLength(0)
+    // And the OTHER item's entry in the same cart is untouched
+    expect(vendorCartItems).toHaveLength(1)
+    expect(vendorCartItems[0].itemId).toBe(other.id)
+    expect(vendorCartItems[0].quantity).toBe(2)
     // And the cart rows themselves survive (they are shared by all items)
     expect(await db.shoppingCarts.get(vendorCartId)).toBeDefined()
     expect(await db.shoppingCarts.get(noVendorCartId)).toBeDefined()
