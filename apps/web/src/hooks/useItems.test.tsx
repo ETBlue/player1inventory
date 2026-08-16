@@ -1,9 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { createItem, createLocation } from '@/db/operations'
+import {
+  addItemToLocation,
+  createItem,
+  createLocation,
+  getItemStock,
+} from '@/db/operations'
 import { GetRecipesDocument } from '@/generated/graphql'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
@@ -13,6 +18,7 @@ import {
   useItem,
   useItems,
   useLastPurchaseDate,
+  useRemoveItemFromLocation,
   useStockedItems,
   useUpdateItem,
 } from './useItems'
@@ -404,5 +410,68 @@ describe('useStockedItems (local mode)', () => {
     // Then only the default-location item is returned
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data?.map((i) => i.name)).toEqual(['Milk'])
+  })
+})
+
+describe('useRemoveItemFromLocation (local mode)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.locations.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  })
+
+  it('user can remove an item from the active location and the pantry updates without a reload', async () => {
+    // Given two items stocked in the active (default) location, already cached
+    const milk = await createItem(
+      { name: 'Milk', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem({ name: 'Eggs', tagIds: [] }, DEFAULT_LOCATION_ID)
+
+    const { result } = renderHook(
+      () => ({
+        stocked: useStockedItems(),
+        remove: useRemoveItemFromLocation(),
+      }),
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(result.current.stocked.data).toHaveLength(2))
+
+    // When the user removes one from the active location
+    await result.current.remove.mutateAsync({ itemId: milk.id })
+
+    // Then the cached pantry query re-resolves on its own (invalidated), with
+    // no manual refetch and no page reload
+    await waitFor(() =>
+      expect(result.current.stocked.data?.map((i) => i.name)).toEqual(['Eggs']),
+    )
+    expect(await getItemStock(milk.id, DEFAULT_LOCATION_ID)).toBeUndefined()
+  })
+
+  it('user can remove an item from a non-active location by passing an explicit locationId', async () => {
+    // Given an item stocked in both the active location and a cabin
+    const cabin = await createLocation('Cabin')
+    const beans = await createItem(
+      { name: 'Beans', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(beans.id, cabin.id)
+
+    const { result } = renderHook(() => useRemoveItemFromLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When the pager removes it from the cabin while the default is active
+    await result.current.mutateAsync({
+      itemId: beans.id,
+      locationId: cabin.id,
+    })
+
+    // Then only the cabin's stock is gone
+    expect(await getItemStock(beans.id, cabin.id)).toBeUndefined()
+    expect(await getItemStock(beans.id, DEFAULT_LOCATION_ID)).toBeDefined()
   })
 })

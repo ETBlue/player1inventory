@@ -9,6 +9,7 @@ import {
   getItem,
   getLastPurchaseDate,
   getStockedItems,
+  removeItemFromLocation,
   updateItem,
 } from '@/db/operations'
 import type { CreateItemInput, UpdateItemInput } from '@/generated/graphql'
@@ -299,6 +300,42 @@ export function useAddItemToLocation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
+    },
+  })
+}
+
+type RemoveFromLocationVars = {
+  itemId: string
+  // The Stock-tab pager removes from the location on the page being viewed,
+  // which is not necessarily the active one; defaults to the active location.
+  locationId?: string
+}
+
+// Un-stock an item from a location, cascading that location's inventory logs
+// and cart entries (see `removeItemFromLocation`). The global Item survives, so
+// the item stays in the Add combobox catalog and can be re-added.
+//
+// Invalidates every query family the cascade touches so removing from the
+// ACTIVE location leaves the UI consistent without a reload: `['items']` (the
+// pantry `getStockedItems` list, single-item reads and the item's logs, which
+// are keyed `['items', id, 'logs', …]`), `['itemStocks']`, `['cart']` (the
+// deleted cart entries) and `['sort']` (expiry/purchase dates derived from the
+// deleted logs).
+//
+// Local-first only — ItemStock has no cloud backend, and cloud mode has no
+// locations, so no cloud branch exists here.
+export function useRemoveItemFromLocation() {
+  const queryClient = useQueryClient()
+  const { activeLocationId } = useActiveLocation()
+
+  return useMutation({
+    mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) =>
+      removeItemFromLocation(itemId, locationId ?? activeLocationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
+      queryClient.invalidateQueries({ queryKey: ['cart'] })
+      queryClient.invalidateQueries({ queryKey: ['sort'] })
     },
   })
 }
