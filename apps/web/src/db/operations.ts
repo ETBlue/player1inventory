@@ -36,24 +36,27 @@ const ZERO_STOCK: StockFields = {
   consumeAmount: 1,
 }
 
+// Every field `joinItemStock` copies from an ItemStock onto an Item.
+const STOCK_FIELD_KEYS: (keyof StockFields)[] = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'targetUnit',
+  'targetQuantity',
+  'refillThreshold',
+  'packedQuantity',
+  'unpackedQuantity',
+  'consumeAmount',
+  'dueDate',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+]
+
 // Pull just the stock fields off an object (drops join keys / metadata / undefined).
 function pickStockFields(source: Record<string, unknown>): StockFields {
   const out: StockFields = { ...ZERO_STOCK }
-  const keys: (keyof StockFields)[] = [
-    'packageUnit',
-    'measurementUnit',
-    'amountPerPackage',
-    'targetUnit',
-    'targetQuantity',
-    'refillThreshold',
-    'packedQuantity',
-    'unpackedQuantity',
-    'consumeAmount',
-    'dueDate',
-    'estimatedDueDays',
-    'expirationThreshold',
-    'expirationMode',
-  ]
+  const keys = STOCK_FIELD_KEYS
   for (const key of keys) {
     const value = source[key]
     if (value !== undefined) {
@@ -64,8 +67,25 @@ function pickStockFields(source: Record<string, unknown>): StockFields {
   return out
 }
 
+// Reduce an already-joined PantryItem back to its global Item.
+//
+// Re-joining a PantryItem with a DIFFERENT location's row without this is a
+// data-correctness bug, not a tidiness one: an ItemStock omits its unset
+// optional keys entirely (see ZERO_STOCK / pickStockFields), so spreading the
+// second row over the first join leaves the FIRST location's packageUnit,
+// measurementUnit, amountPerPackage, dueDate, estimatedDueDays,
+// expirationThreshold and expirationMode showing through — and a form fed that
+// shape saves one location's values into another location's row.
+export function stripStockFields(item: PantryItem): Item {
+  const out: Record<string, unknown> = { ...item }
+  for (const key of STOCK_FIELD_KEYS) delete out[key]
+  delete out.stockId
+  delete out.locationId
+  return out as Item
+}
+
 // Join an Item with a stock row into the runtime PantryItem shape.
-function joinItemStock(
+export function joinItemStock(
   item: Item,
   stock: ItemStock | undefined,
   locationId: string,

@@ -337,6 +337,149 @@ describe('Item stock tab', () => {
     ).toBe(2)
   })
 
+  // Regression guard for the cross-location field bleed: `useItem()` hands the
+  // tab a PantryItem ALREADY joined with the ACTIVE location's stock, so a page
+  // built by spreading another location's row over it inherits the active
+  // location's value for every optional key that row happens to omit — and Save
+  // then writes it into the other location's ItemStock.
+  it('shows only the viewed location stock — optional fields absent there stay empty', async () => {
+    const user = userEvent.setup()
+
+    // Given an item whose ACTIVE-location stock has every optional field set
+    const cabin = await createLocation('Cabin')
+    const office = await createLocation('Office')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
+      packageUnit: 'bottle',
+      measurementUnit: 'ml',
+      amountPerPackage: 500,
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      expirationMode: 'date',
+      dueDate: new Date('2030-01-02T00:00:00.000Z'),
+      estimatedDueDays: 30,
+      expirationThreshold: 5,
+    })
+
+    // …and two other locations whose rows carry only the required fields —
+    // the normal shape of any row created before a field was first set
+    const baseRow = {
+      itemId: item.id,
+      targetUnit: 'package' as const,
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    await db.itemStocks.add({
+      ...baseRow,
+      id: crypto.randomUUID(),
+      locationId: cabin.id,
+    })
+    // The office row sets an expiration date but no warning threshold.
+    await db.itemStocks.add({
+      ...baseRow,
+      id: crypto.randomUUID(),
+      locationId: office.id,
+      expirationMode: 'date',
+      dueDate: new Date('2031-06-07T00:00:00.000Z'),
+    })
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+
+    // When the user pages to the location with the bare row
+    await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^packed/i)).toHaveValue(1)
+    })
+
+    // Then none of the active location's optional values show through
+    expect(screen.getByLabelText(/package unit/i)).toHaveValue('')
+    expect(screen.getByLabelText(/measurement unit/i)).toHaveValue('')
+    expect(screen.getByLabelText(/amount per package/i)).toHaveValue(null)
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/expires in/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/warning in/i)).not.toBeInTheDocument()
+
+    // And saving this page does not persist the active location's values into
+    // this location's ItemStock
+    const targetInput = screen.getByLabelText(/target quantity/i)
+    await user.clear(targetInput)
+    await user.type(targetInput, '6')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(async () => {
+      expect((await getItemStock(item.id, cabin.id))?.targetQuantity).toBe(6)
+    })
+    const cabinStock = await getItemStock(item.id, cabin.id)
+    expect(cabinStock?.packageUnit).toBeFalsy()
+    expect(cabinStock?.measurementUnit).toBeFalsy()
+    expect(cabinStock?.amountPerPackage).toBeFalsy()
+    expect(cabinStock?.dueDate).toBeFalsy()
+    expect(cabinStock?.estimatedDueDays).toBeFalsy()
+    expect(cabinStock?.expirationThreshold).toBeFalsy()
+    expect(cabinStock?.expirationMode).toBe('disabled')
+    // The active location keeps everything it had
+    const homeStock = await getItemStock(item.id, DEFAULT_LOCATION_ID)
+    expect(homeStock?.packageUnit).toBe('bottle')
+    expect(homeStock?.dueDate).toBeInstanceOf(Date)
+  })
+
+  it('shows the viewed location own expiry, not the active location threshold', async () => {
+    const user = userEvent.setup()
+
+    // Given the active location has an expiry warning threshold and another
+    // location has an expiry date but no threshold of its own
+    const office = await createLocation('Office')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      expirationMode: 'date',
+      dueDate: new Date('2030-01-02T00:00:00.000Z'),
+      expirationThreshold: 5,
+    })
+    await db.itemStocks.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      locationId: office.id,
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      expirationMode: 'date',
+      dueDate: new Date('2031-06-07T00:00:00.000Z'),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+
+    // When the user pages to that location
+    await user.click(screen.getByRole('tab', { name: 'Office' }))
+
+    // Then it shows its own due date and an empty warning threshold
+    await waitFor(() => {
+      expect(screen.getByLabelText(/expires on/i)).toHaveValue('2031-06-07')
+    })
+    expect(screen.getByLabelText(/warning in/i)).toHaveValue(null)
+  })
+
   it('keeps the active location marked while the user views another one', async () => {
     const user = userEvent.setup()
 

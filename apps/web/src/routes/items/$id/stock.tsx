@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { joinItemStock, stripStockFields } from '@/db/operations'
 import {
   useAddItemToLocation,
   useCartItemCountByItem,
@@ -70,20 +71,18 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
   }
 }
 
-// Re-join a global item with the stock of ONE location — the page the pager is
-// showing, which is not necessarily the active location `useItem()` joined.
-// Only the stock fields are taken from the row; the item's own id/timestamps
-// stay put.
+// Re-join an item with the stock of ONE location — the page the pager is
+// showing, which is not necessarily the active location.
+//
+// `item` arrives from `useItem()` ALREADY joined with the ACTIVE location's
+// stock, so the previous join has to be stripped first. Spreading the viewed
+// row straight over it would let every optional key that row omits fall
+// through to the active location's value — and Save would then persist the
+// active location's package unit / expiry into the viewed location's row.
+// `stripStockFields` + `joinItemStock` are the single shared implementation
+// the operations layer already uses for the active-location join.
 function withLocationStock(item: PantryItem, stock: ItemStock): PantryItem {
-  const {
-    id,
-    itemId: _itemId,
-    locationId,
-    createdAt: _createdAt,
-    updatedAt: _updatedAt,
-    ...stockFields
-  } = stock
-  return { ...item, ...stockFields, stockId: id, locationId }
+  return joinItemStock(stripStockFields(item), stock, stock.locationId)
 }
 
 // A wider update type that allows explicit `undefined` for optional fields.
