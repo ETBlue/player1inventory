@@ -206,3 +206,52 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
     )
   })
 })
+
+describe('usePostLoginMigration — the auto-import runs once', () => {
+  // `activeLocationId` is in the effect's dep array, and MIGRATION_PROMPTED_KEY
+  // is only written after the import resolves — so a location change landing
+  // mid-flight would re-enter the effect and fire a second copy. There is a
+  // concrete trigger: ActiveLocationProvider resets a stale stored id to the
+  // default once useLocations() resolves, which is asynchronous.
+  function wrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    return createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ActiveLocationProvider, null, children),
+    )
+  }
+
+  it('a location reset mid-migration does not start a second copy', async () => {
+    // Given a stored active location that no longer exists
+    const now = new Date()
+    vi.mocked(getAllItems).mockResolvedValue([])
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    // And an import that is still in flight (so nothing has marked it done)
+    mockImportCloudData.mockReturnValue(new Promise(() => {}))
+
+    // When the hook mounts and the provider resets the stale location
+    renderHook(() => usePostLoginMigration(), { wrapper })
+    await waitFor(() =>
+      expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe('local'),
+    )
+
+    // Then the pantry is copied up exactly once — a second copy would run the
+    // stored strategy again over the rows the first one just created
+    expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+  })
+})

@@ -1,6 +1,6 @@
 import { useApolloClient } from '@apollo/client/react'
 import { useAuth } from '@clerk/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { type ImportStrategy, importCloudData } from '@/lib/importData'
@@ -25,6 +25,13 @@ export function usePostLoginMigration() {
   // the stock of the location that is active at migration time — what the user
   // was last looking at. `importCloudData` flattens the payload onto it.
   const { activeLocationId } = useActiveLocation()
+  // The auto-import is one-shot. `activeLocationId` is a dependency of the
+  // effect below, and MIGRATION_PROMPTED_KEY is only written once the import
+  // resolves — so without this guard a location change landing mid-flight would
+  // re-enter and start a second copy over the rows the first one just wrote.
+  // There is a real trigger: `ActiveLocationProvider` resets a stale stored id
+  // to the default once `useLocations()` resolves, which is asynchronous.
+  const autoImportStarted = useRef(false)
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
@@ -35,6 +42,8 @@ export function usePostLoginMigration() {
     ) as ImportStrategy | null
 
     if (storedStrategy) {
+      if (autoImportStarted.current) return
+      autoImportStarted.current = true
       setState('auto-importing')
       fetchLocalPayload()
         .then((payload) =>
