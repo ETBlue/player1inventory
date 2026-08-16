@@ -252,10 +252,12 @@
         "next": "下一個據點",
         "pageActive": "{{location}}（目前所在據點）",
         "activeHint": "目前所在",
+        "activeElsewhere": "目前所在：{{location}}",
         "viewing": "正在檢視 {{location}} 的庫存",
         "notStockedTitle": "這個據點還沒有庫存",
         "notStockedDescription": "{{name}} 尚未在 {{location}} 建立庫存。",
         "addToLocation": "加入這個據點",
+        "addFailed": "無法將 {{name}} 加入 {{location}}，請再試一次。",
         "removeFromLocation": "從這個據點移除"
       },
       "removeLocationDialog": {

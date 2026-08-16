@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -24,15 +24,29 @@ interface LocationPagerProps {
 // because the panel's tabpanel/aria-labelledby wiring has to appear and
 // disappear along with the tablist.
 //
-// Two independent visual channels, so they compose instead of competing:
-//   • FILL says which page you are viewing — solid `importance-primary`
-//     against the muted `accessory-emphasized` of the others.
-//   • RING says which location is the globally active one — an
-//     `importance-primary-accessory` ring that stays put while you page
-//     through the others (both at once when you are viewing the active one).
-// Neither marker is colour-only: the viewed page is `aria-selected` and named
-// in the heading above the dots, and the active location carries "(active
-// location)" in its accessible name plus a visible "Active" hint.
+// Three channels, none of them colour alone:
+//   • SIZE + FILL COLOUR say which page you are viewing (a larger dot in
+//     `importance-primary-background` against the smaller `foreground-muted`
+//     ones). Size carries it on its own, because in dark mode those two
+//     tokens are ~1.1:1 apart in luminance — a hue-only difference.
+//   • SHAPE says which location is the globally active one: its dot is drawn
+//     hollow (a 2px stroke around the page background) while the others are
+//     solid. Shape survives greyscale, low vision and low contrast, which a
+//     halo ring does not — the previous `ring-importance-primary-accessory`
+//     measured 2.44:1 against the page and 1.16:1 against the dot it wrapped,
+//     both under WCAG 1.4.11's 3:1 for non-text indicators. Both dot colours
+//     clear 3:1 against `background-elevated` in either theme, and because the
+//     hollow dot's stroke IS the dot colour and its centre IS the page, the
+//     stroke inherits that same ratio.
+//   • WORDS carry both facts for anyone the graphics fail: the viewed
+//     location's name is the heading, and the caption underneath always says
+//     which location is active — "Active" when you are standing on it,
+//     "Active: <name>" while you are looking at another page. That caption is
+//     the fix for the marker vanishing exactly when it matters.
+//
+// `data-viewed` / `data-active` mirror the two states onto the DOM so a test
+// can bind the marker to the right dot; the CSS itself can only be judged by
+// eye (see LocationPager.stories.tsx, both themes).
 export function LocationPager({
   locations,
   currentIndex,
@@ -43,8 +57,20 @@ export function LocationPager({
 }: LocationPagerProps) {
   const { t } = useTranslation()
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  // Set by a keyboard move, consumed once the page actually turns. The parent
+  // may refuse the change (unsaved edits open a discard dialog instead), and
+  // focusing a dot the pager never moved to would strand focus on the wrong
+  // one when the user cancels.
+  const focusOnPageChange = useRef(false)
+
+  useEffect(() => {
+    if (!focusOnPageChange.current) return
+    focusOnPageChange.current = false
+    tabRefs.current[currentIndex]?.focus()
+  }, [currentIndex])
 
   const current = locations[currentIndex]
+  const activeLocation = locations.find((l) => l.id === activeLocationId)
   if (!current) return null
 
   // Automatic activation (the ARIA tabs pattern): an arrow key selects the
@@ -53,8 +79,8 @@ export function LocationPager({
   const move = (index: number) => {
     const next = Math.min(Math.max(index, 0), locations.length - 1)
     if (next === currentIndex) return
+    focusOnPageChange.current = true
     onChange(next)
-    tabRefs.current[next]?.focus()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -86,15 +112,19 @@ export function LocationPager({
         <ChevronLeft />
       </Button>
 
-      <div className="flex min-w-0 flex-col items-center gap-1">
-        <p className="flex min-w-0 items-baseline gap-1.5">
-          <span className="truncate text-sm font-medium">{current.name}</span>
-          {current.id === activeLocationId && (
-            <span className="shrink-0 text-xs text-foreground-muted">
-              {t('items.detail.locationPager.activeHint')}
-            </span>
-          )}
-        </p>
+      <div className="flex min-w-0 flex-col items-center gap-0.5">
+        <p className="min-w-0 truncate text-sm font-medium">{current.name}</p>
+
+        {/* Always present, so the active location never stops being named. */}
+        {activeLocation && (
+          <p className="min-w-0 truncate text-xs text-foreground-muted">
+            {activeLocation.id === current.id
+              ? t('items.detail.locationPager.activeHint')
+              : t('items.detail.locationPager.activeElsewhere', {
+                  location: activeLocation.name,
+                })}
+          </p>
+        )}
 
         {/* Arrow/Home/End handling lives here on the tablist; the dots
             themselves are real buttons, so click and Enter/Space are native. */}
@@ -102,7 +132,7 @@ export function LocationPager({
           role="tablist"
           aria-label={t('items.detail.locationPager.label')}
           aria-orientation="horizontal"
-          className="flex items-center"
+          className="mt-0.5 flex items-center"
           onKeyDown={handleKeyDown}
         >
           {locations.map((location, index) => {
@@ -132,13 +162,21 @@ export function LocationPager({
               >
                 <span
                   aria-hidden="true"
+                  data-viewed={isViewed || undefined}
+                  data-active={isActive || undefined}
                   className={cn(
-                    'block size-2 rounded-full transition-colors',
-                    isViewed
-                      ? 'bg-importance-primary-background'
-                      : 'bg-accessory-emphasized',
-                    isActive &&
-                      'ring-2 ring-importance-primary-accessory ring-offset-2 ring-offset-background-elevated',
+                    'block rounded-full transition-all',
+                    isViewed ? 'size-3.5' : 'size-2.5',
+                    isActive
+                      ? cn(
+                          'border-2 bg-transparent',
+                          isViewed
+                            ? 'border-importance-primary-background'
+                            : 'border-foreground-muted',
+                        )
+                      : isViewed
+                        ? 'bg-importance-primary-background'
+                        : 'bg-foreground-muted',
                   )}
                 />
               </button>

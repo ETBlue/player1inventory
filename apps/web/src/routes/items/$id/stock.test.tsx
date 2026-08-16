@@ -602,6 +602,112 @@ describe('Item stock tab', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
+  it('names the active location in the pager while another page is viewed', async () => {
+    const user = userEvent.setup()
+
+    // Given two locations, the default one active
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    await addItemToLocation(item.id, cabin.id)
+
+    renderStockTab(item.id)
+
+    // Then standing on the active location says so
+    expect(await screen.findByText('Active')).toBeInTheDocument()
+
+    // When the user pages away from it
+    await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+
+    // Then the pager still says which location is active, in words — the ring
+    // on the dot is not the only sighted cue
+    expect(await screen.findByText('Active: My Home')).toBeInTheDocument()
+  })
+
+  it('announces the location being viewed in a live region', async () => {
+    const user = userEvent.setup()
+
+    // Given two locations
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    await addItemToLocation(item.id, cabin.id)
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+    expect(screen.getByText(/viewing stock for my home/i)).toBeInTheDocument()
+
+    // When the user turns the page
+    await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+
+    // Then the live region announces the new location
+    const live = await screen.findByText(/viewing stock for cabin/i)
+    expect(live).toBeInTheDocument()
+    expect(live).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('user can jump to the first and last location with Home and End', async () => {
+    const user = userEvent.setup()
+
+    // Given three locations
+    await createLocation('Cabin')
+    await createLocation('Office')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+
+    renderStockTab(item.id)
+    const firstTab = await screen.findByRole('tab', { name: /my home/i })
+    firstTab.focus()
+
+    // When the user presses End
+    await user.keyboard('{End}')
+
+    // Then the last location is selected and focused
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Office' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+    })
+    expect(screen.getByRole('tab', { name: 'Office' })).toHaveFocus()
+
+    // And Home returns to the first
+    await user.keyboard('{Home}')
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', { name: /my home.*active/i }),
+      ).toHaveAttribute('aria-selected', 'true')
+    })
+  })
+
+  it('disables the chevron at each end of the pager', async () => {
+    const user = userEvent.setup()
+
+    // Given two locations, opening on the first
+    await createLocation('Cabin')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+
+    renderStockTab(item.id)
+    await screen.findByRole('tablist')
+
+    // Then the previous chevron is dead and the next one is live — paging
+    // clamps rather than wraps, and the boundary has to be visible
+    expect(
+      screen.getByRole('button', { name: /previous location/i }),
+    ).toBeDisabled()
+    expect(screen.getByRole('button', { name: /next location/i })).toBeEnabled()
+
+    // When the user reaches the last page
+    await user.click(screen.getByRole('button', { name: /next location/i }))
+
+    // Then the ends swap
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /next location/i }),
+      ).toBeDisabled()
+    })
+    expect(
+      screen.getByRole('button', { name: /previous location/i }),
+    ).toBeEnabled()
+  })
+
   it('user can move between location pages with the arrow keys', async () => {
     const user = userEvent.setup()
 

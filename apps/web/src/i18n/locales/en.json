@@ -252,10 +252,12 @@
         "next": "Next location",
         "pageActive": "{{location}} (active location)",
         "activeHint": "Active",
+        "activeElsewhere": "Active: {{location}}",
         "viewing": "Viewing stock for {{location}}",
         "notStockedTitle": "Not stocked here",
         "notStockedDescription": "{{name}} has no stock in {{location}} yet.",
         "addToLocation": "Add to location",
+        "addFailed": "Could not add {{name}} to {{location}}. Please try again.",
         "removeFromLocation": "Remove from location"
       },
       "removeLocationDialog": {
