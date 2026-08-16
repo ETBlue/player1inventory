@@ -6,8 +6,13 @@ import * as stories from './NewItemDialog.stories'
 // composeStories doesn't run a story's own `beforeEach` (see
 // DataModeCard/index.stories.test.tsx) — CloudMode's `data-mode` localStorage
 // key is set/cleared manually below instead.
-const { Default, MatchingExisting, CreateNew, CloudMode } =
-  composeStories(stories)
+const {
+  Default,
+  MatchingExisting,
+  CreateNew,
+  AlreadyStockedExactMatch,
+  CloudMode,
+} = composeStories(stories)
 
 // setup.ts globally stubs `useGetItemsQuery` to always return
 // `data: undefined` (all other tests run in local mode, so cloud data is
@@ -65,6 +70,22 @@ describe('NewItemDialog stories smoke tests', () => {
     expect(
       await screen.findByRole('option', { name: /create .*sparkling water/i }),
     ).toBeInTheDocument()
+  })
+
+  it('AlreadyStockedExactMatch shows inline feedback naming the item and location', async () => {
+    render(<AlreadyStockedExactMatch />)
+    // Wait for the inline feedback first — it only renders once the catalog
+    // query has actually resolved (exactMatchItem populated from real data).
+    // Querying the "Milk" option before that can transiently match the
+    // "Create Milk" row instead (rendered while allItems is still empty on
+    // the very first render, since initialName sets the query synchronously
+    // — unlike the real-Dexie test, which types char-by-char and so never
+    // observes that pre-load window).
+    expect(
+      await screen.findByText('Milk is already in My Home.'),
+    ).toBeInTheDocument()
+    const option = await screen.findByRole('option', { name: /milk/i })
+    expect(option).toHaveAttribute('aria-disabled', 'true')
   })
 
   describe('CloudMode', () => {

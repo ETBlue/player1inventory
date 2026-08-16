@@ -163,6 +163,7 @@
       "createOption": "Create \"{{name}}\"",
       "createButton": "Create \"{{name}}\"",
       "alreadyStocked": "Already here",
+      "alreadyStockedHere": "{{name}} is already in {{location}}.",
       "packageUnitLabel": "Package unit",
       "packageUnitPlaceholder": "e.g. bottle, kg"
     },

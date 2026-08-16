@@ -191,6 +191,67 @@ describe('NewItemDialog', () => {
     expect(items.find((i) => i.name === 'Eggs')).toBeDefined()
   })
 
+  it('hovering a disabled option does not steal keyboard focus (Enter still creates)', async () => {
+    // Given an item already stocked here that partially matches the query
+    // (not an exact match, so the Create option is offered alongside it)
+    await createItem({ name: 'Eggsalad', tagIds: [] }, DEFAULT_LOCATION_ID)
+    const user = userEvent.setup()
+    renderDialog(<NewItemDialog open={true} onOpenChange={vi.fn()} />)
+
+    // When the user types a partial query, hovers the mouse over the
+    // disabled (already-stocked) option, then presses Enter without clicking
+    const input = await screen.findByRole('combobox', { name: /name/i })
+    await user.type(input, 'Eggs')
+    const disabledOption = await screen.findByRole('option', {
+      name: /eggsalad/i,
+    })
+    await user.hover(disabledOption)
+    await user.keyboard('{Enter}')
+
+    // Then Enter is not a dead key: hovering the disabled option must not
+    // move the keyboard highlight there, so Enter still creates the typed
+    // name via the selectable Create option
+    await vi.waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.objectContaining({ to: '/items/$id' }),
+      )
+    })
+    const items = await db.items.toArray()
+    expect(items.find((i) => i.name === 'Eggs')).toBeDefined()
+  })
+
+  it('shows inline feedback when the query exactly matches an item already stocked here (Enter is inert)', async () => {
+    // Given an item already stocked in the active location
+    await createItem({ name: 'Milk', tagIds: [] }, DEFAULT_LOCATION_ID)
+    const user = userEvent.setup()
+    renderDialog(<NewItemDialog open={true} onOpenChange={vi.fn()} />)
+
+    // When the user types the exact name of the already-stocked item
+    const input = await screen.findByRole('combobox', { name: /name/i })
+    await user.type(input, 'Milk')
+
+    // Then the sole option is disabled and no Create option is offered —
+    // the plan's original "skip non-selectable options" remedy provably
+    // cannot fix this case (there is no other option to skip to)
+    const option = await screen.findByRole('option', { name: /milk/i })
+    expect(option).toHaveAttribute('aria-disabled', 'true')
+    expect(
+      screen.queryByRole('button', { name: /create/i }),
+    ).not.toBeInTheDocument()
+
+    // And inline feedback explains why, naming the item and location
+    // (user ruling 2026-08-16: inline feedback, not a fix to the option
+    // list — see PR D review 3.3 / Important 3)
+    expect(
+      await screen.findByText('Milk is already in My Home.'),
+    ).toBeInTheDocument()
+
+    // And Enter stays inert — no navigation, no mutation
+    await user.keyboard('{Enter}')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
   it('copy-on-add is a no-op for an already-stocked item (quantities preserved)', async () => {
     // Given an item stocked here with quantities
     const item = await createItem(

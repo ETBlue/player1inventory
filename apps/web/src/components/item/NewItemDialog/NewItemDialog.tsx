@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddItemToLocation, useCreateItem, useItems } from '@/hooks'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import { cn } from '@/lib/utils'
 import type { PantryItem } from '@/types'
@@ -50,6 +51,7 @@ export function NewItemDialog({
   // cloud mode the dialog is create-only — every catalog item renders as
   // already-here/disabled (PR D review 2.1).
   const isLocal = mode === 'local'
+  const { activeLocation } = useActiveLocation()
   const createItem = useCreateItem()
   const addItemToLocation = useAddItemToLocation()
   // The full accessible catalog: every global Item joined with active-location
@@ -84,14 +86,27 @@ export function NewItemDialog({
     })
   }, [allItems, lower])
 
-  const hasExactMatch = useMemo(
-    () => allItems.some((i) => i.name.toLowerCase() === lower),
+  const exactMatchItem = useMemo(
+    () => allItems.find((i) => i.name.toLowerCase() === lower),
     [allItems, lower],
   )
+  const hasExactMatch = !!exactMatchItem
 
   // The "Create" option is offered only when there's a query with no exact name
   // collision in the catalog.
   const showCreate = trimmed.length > 0 && !hasExactMatch
+
+  // When the query exactly matches an item already stocked in the active
+  // location, the sole matching option renders disabled and no Create
+  // option is offered — Enter is a dead key with no visible explanation.
+  // The plan's original remedy ("skip non-selectable options") provably
+  // can't fix this case: there is no other option to skip to. Per explicit
+  // user ruling (2026-08-16, PR D review 3.3 / Important 3), show inline
+  // feedback naming the item and location instead of inventing another fix.
+  const alreadyStockedExactMatch =
+    isLocal && trimmed.length > 0 && exactMatchItem?.stockId
+      ? exactMatchItem
+      : undefined
 
   // Flattened option list for keyboard navigation. The create row (if present)
   // is always last.
@@ -186,15 +201,19 @@ export function NewItemDialog({
       const stock = await addItemToLocation.mutateAsync(item.id)
       handleClose()
       if (onSuccess) {
-        const { id, itemId, createdAt, updatedAt, ...stockFields } = stock
-        void itemId
-        void createdAt
-        void updatedAt
+        const {
+          id,
+          itemId: _itemId,
+          createdAt: _createdAt,
+          updatedAt: _updatedAt,
+          locationId,
+          ...stockFields
+        } = stock
         onSuccess({
           ...item,
           ...stockFields,
           stockId: id,
-          locationId: stock.locationId,
+          locationId,
         })
       }
       // No navigation by default — the item now appears in the pantry list.
@@ -307,7 +326,9 @@ export function NewItemDialog({
                         'flex items-center gap-2 px-3 py-2 text-sm cursor-pointer text-importance-primary-foreground',
                         active && 'bg-background-elevated',
                       )}
-                      onMouseEnter={() => setActiveIndex(index)}
+                      onMouseEnter={() => {
+                        if (isSelectable(opt)) setActiveIndex(index)
+                      }}
                       onClick={() => handleSelectOption(opt)}
                     >
                       <Plus className="h-4 w-4 shrink-0" />
@@ -338,7 +359,9 @@ export function NewItemDialog({
                         : 'cursor-pointer',
                       active && !stocked && 'bg-background-elevated',
                     )}
-                    onMouseEnter={() => setActiveIndex(index)}
+                    onMouseEnter={() => {
+                      if (isSelectable(opt)) setActiveIndex(index)
+                    }}
                     onClick={() => handleSelectOption(opt)}
                   >
                     <span className="truncate">{opt.item.name}</span>
@@ -352,6 +375,14 @@ export function NewItemDialog({
                 )
               })}
             </div>
+            {alreadyStockedExactMatch && (
+              <p className="text-sm text-foreground-muted">
+                {t('items.addDialog.alreadyStockedHere', {
+                  name: alreadyStockedExactMatch.name,
+                  location: activeLocation?.name ?? '',
+                })}
+              </p>
+            )}
           </div>
           {showCreate && (
             <div className="space-y-2">

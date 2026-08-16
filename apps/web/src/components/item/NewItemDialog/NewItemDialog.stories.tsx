@@ -119,6 +119,15 @@ export const CreateNew: Story = {
   render: () => <DialogHarness initialName="Sparkling Water" />,
 }
 
+// Query exactly matches an item already stocked here ("Milk") — the sole
+// option renders disabled, no Create option is offered, and inline feedback
+// explains why (PR D review 3.3 / Important 3 — user ruling: inline feedback
+// instead of skipping non-selectable options, since there's nothing else to
+// skip to in the exact-match case).
+export const AlreadyStockedExactMatch: Story = {
+  render: () => <DialogHarness initialName="Milk" />,
+}
+
 // Cloud mode has no per-location ItemStock backend yet (deferred in PR D):
 // every catalog option renders disabled ("already here") regardless of
 // whether it has a stockId, and only the Create path is available (PR D
