@@ -3,6 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/db'
+import {
+  ACTIVE_LOCATION_STORAGE_KEY,
+  ActiveLocationProvider,
+  useActiveLocation,
+} from '@/hooks/useActiveLocation'
 import { useAddInventoryLog, useItemLogs } from './useInventoryLogs'
 
 const mockItemLogsQuery = vi.fn()
@@ -29,16 +35,21 @@ vi.mock('@/db/operations', async (importOriginal) => {
   }
 })
 
+// `useActiveLocation` is mocked to a fixed id ('cabin') by default so most
+// tests don't need a real ActiveLocationProvider/Dexie location row. It's a
+// vi.fn() (not a plain arrow function) so the last test below can swap in the
+// real implementation via mockImplementation — see "the active location id
+// is threaded to a real Dexie inventoryLogs row".
 vi.mock('@/hooks/useActiveLocation', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('@/hooks/useActiveLocation')>()
   return {
     ...original,
-    useActiveLocation: () => ({
+    useActiveLocation: vi.fn(() => ({
       activeLocationId: 'cabin',
       setActiveLocationId: vi.fn(),
       activeLocation: undefined,
-    }),
+    })),
   }
 })
 
@@ -192,5 +203,90 @@ describe('useAddInventoryLog (local mode)', () => {
     expect(addInventoryLog).toHaveBeenCalledWith(
       expect.objectContaining({ locationId: 'cabin' }),
     )
+  })
+
+  describe('with a real ActiveLocationProvider and real Dexie row', () => {
+    // PR D review 3-Minor-4: the test above only asserts that the mocked
+    // `addInventoryLog` was *called* with the mocked `useActiveLocation`'s
+    // hardcoded 'cabin' string — it never exercises the real active-location
+    // context or a real persisted row, so it can't catch a regression in the
+    // actual read path (getItemLogs filters by `activeLocationId` from the
+    // real provider). This test swaps both dependencies back to their real
+    // implementations and asserts against a real Dexie `inventoryLogs` row.
+    afterEach(async () => {
+      // Restore the file-level mocks to their defaults so later tests (and
+      // re-runs within this file) aren't affected by this describe block.
+      vi.mocked(useActiveLocation).mockImplementation(() => ({
+        activeLocationId: 'cabin',
+        setActiveLocationId: vi.fn(),
+        activeLocation: undefined,
+      }))
+      await db.locations.clear()
+      await db.inventoryLogs.clear()
+    })
+
+    function createWrapperWithActiveLocation() {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      return ({ children }: { children: ReactNode }) =>
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(ActiveLocationProvider, null, children),
+        )
+    }
+
+    it('user adds a log entry — the active location id is threaded to a real Dexie inventoryLogs row', async () => {
+      // Given a real location (not the default) persisted in Dexie, made
+      // active via the same localStorage key the real provider reads on
+      // mount, and both `useActiveLocation` and `addInventoryLog` restored
+      // to their real implementations
+      const { addInventoryLog: realAddInventoryLog, createLocation } =
+        await vi.importActual<typeof import('@/db/operations')>(
+          '@/db/operations',
+        )
+      const { useActiveLocation: realUseActiveLocation } =
+        await vi.importActual<typeof import('@/hooks/useActiveLocation')>(
+          '@/hooks/useActiveLocation',
+        )
+      const cabin = await createLocation('Cabin')
+      localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, cabin.id)
+      vi.mocked(useActiveLocation).mockImplementation(realUseActiveLocation)
+      const { addInventoryLog: mockedAddInventoryLog } = await import(
+        '@/db/operations'
+      )
+      vi.mocked(mockedAddInventoryLog).mockImplementation(realAddInventoryLog)
+
+      // When an inventory log is added
+      const { result } = renderHook(() => useAddInventoryLog(), {
+        wrapper: createWrapperWithActiveLocation(),
+      })
+      // Let ActiveLocationProvider's own effects (useLocations resolving,
+      // bootstrapCarts) settle inside act() before mutating below — otherwise
+      // their state updates land outside this test's act() blocks.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+      const occurredAt = new Date('2026-03-19T10:00:00.000Z')
+      await act(async () => {
+        await result.current.mutateAsync({
+          itemId: 'item-1',
+          delta: 2,
+          quantity: 5,
+          occurredAt,
+        })
+      })
+
+      // Then the real Dexie row carries the real active location's id, not
+      // the DEFAULT_LOCATION_ID fallback `addInventoryLog` would apply if the
+      // id were never threaded through at all
+      const logs = await db.inventoryLogs
+        .where('itemId')
+        .equals('item-1')
+        .toArray()
+      expect(logs).toHaveLength(1)
+      expect(logs[0]?.locationId).toBe(cabin.id)
+    })
   })
 })
