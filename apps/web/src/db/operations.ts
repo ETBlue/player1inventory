@@ -77,7 +77,9 @@ function pickStockFields(source: Record<string, unknown>): StockFields {
 // expirationThreshold and expirationMode showing through — and a form fed that
 // shape saves one location's values into another location's row.
 export function stripStockFields(item: PantryItem): Item {
-  const out: Record<string, unknown> = { ...item }
+  // Typed as Partial<PantryItem> so the deletes type-check (every key being
+  // removed is optional there) and the result still converts to Item.
+  const out: Partial<PantryItem> = { ...item }
   for (const key of STOCK_FIELD_KEYS) delete out[key]
   delete out.stockId
   delete out.locationId
