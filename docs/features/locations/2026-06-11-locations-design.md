@@ -63,7 +63,7 @@ A `(itemId, locationId)` pair is unique. An item is "stocked at" a location **if
 **`Location` (new)**
 ```ts
 interface Location {
-  id: string              // default location: 'local' (offline) / user ID (cloud); others: uuid
+  id: string              // default location: 'local'; others: uuid
   name: string
   order: number           // for drag-reorder, like Shelf
   createdAt: Date
@@ -72,7 +72,9 @@ interface Location {
 }
 ```
 
-**Default location.** Every user has exactly one **default location**, identified by a well-known id: the constant `'local'` in offline mode, swapped to the **user's ID** in cloud mode. It is created on first run / migration, **never deletable**, and always exists. All non-default locations use a uuid and are freely deletable.
+**Default location.** Every user has exactly one **default location**, identified by the well-known constant `DEFAULT_LOCATION_ID = 'local'`. It is created on first run / migration, **never deletable**, and always exists. All non-default locations use a uuid and are freely deletable.
+
+> **As built (PR D, 2026-08-16):** the id is `'local'` **unconditionally** — it is *not* swapped to the user's ID in cloud mode, as this section originally proposed. Cloud `Location`/`ItemStock` are deliberately deferred: cloud mode still keeps stock inline on the `Item` and its carts keyed bare, so there is no cloud-side location identity to swap to. When the GraphQL/Prisma `Location` backend lands, revisit this.
 
 ### Touched existing entities
 
