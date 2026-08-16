@@ -37,12 +37,14 @@ import { type ImportStrategy, importLocalData } from '@/lib/importData'
 
 type SwitchFlow = 'idle' | 'copy' | 'conflict'
 type SignOutFlow = 'idle' | 'askOffline' | 'askMigrate' | 'migrating'
+// The multi-location warning carries the strategy the user picked, so
+// "showing the warning" and "knowing what to do on confirm" cannot drift apart.
 type EnableFlow =
-  | 'idle'
-  | 'confirm'
-  | 'copyAsk'
-  | 'strategyAsk'
-  | 'locationWarning'
+  | { kind: 'idle' }
+  | { kind: 'confirm' }
+  | { kind: 'copyAsk' }
+  | { kind: 'strategyAsk' }
+  | { kind: 'locationWarning'; strategy: ImportStrategy }
 
 // Inner component that calls useUser() — only rendered when not in E2E mode
 function CloudModeSectionWithUser() {
@@ -231,10 +233,7 @@ function CloudModeSection() {
 
 export function DataModeCard() {
   const { mode } = useDataMode()
-  const [enableFlow, setEnableFlow] = useState<EnableFlow>('idle')
-  const [pendingStrategy, setPendingStrategy] = useState<ImportStrategy | null>(
-    null,
-  )
+  const [enableFlow, setEnableFlow] = useState<EnableFlow>({ kind: 'idle' })
   const { t } = useTranslation()
 
   // The copy itself runs after the reload, in `usePostLoginMigration`'s
@@ -267,8 +266,7 @@ export function DataModeCard() {
       doEnableSwitch(strategy)
       return
     }
-    setPendingStrategy(strategy)
-    setEnableFlow('locationWarning')
+    setEnableFlow({ kind: 'locationWarning', strategy })
   }
 
   return (
@@ -309,7 +307,7 @@ export function DataModeCard() {
           {mode === 'local' && (
             <Button
               variant="neutral-outline"
-              onClick={() => setEnableFlow('confirm')}
+              onClick={() => setEnableFlow({ kind: 'confirm' })}
             >
               {t('settings.dataMode.local.enableButton')}
             </Button>
@@ -324,7 +322,7 @@ export function DataModeCard() {
       </Card>
 
       {/* ① Confirm dialog — no onOpenChange: buttons drive transitions */}
-      <AlertDialog open={enableFlow === 'confirm'}>
+      <AlertDialog open={enableFlow.kind === 'confirm'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -335,10 +333,12 @@ export function DataModeCard() {
             {t('settings.dataMode.enableDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setEnableFlow('idle')}>
+            <AlertDialogCancel onClick={() => setEnableFlow({ kind: 'idle' })}>
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => setEnableFlow('copyAsk')}>
+            <AlertDialogAction
+              onClick={() => setEnableFlow({ kind: 'copyAsk' })}
+            >
               {t('settings.dataMode.enableDialog.enable')}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -346,7 +346,7 @@ export function DataModeCard() {
       </AlertDialog>
 
       {/* ② Copy local data? dialog — no onOpenChange: buttons drive transitions */}
-      <AlertDialog open={enableFlow === 'copyAsk'}>
+      <AlertDialog open={enableFlow.kind === 'copyAsk'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -357,7 +357,7 @@ export function DataModeCard() {
             {t('settings.dataMode.enableCopyDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setEnableFlow('idle')}>
+            <AlertDialogCancel onClick={() => setEnableFlow({ kind: 'idle' })}>
               {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogCancel
@@ -368,7 +368,9 @@ export function DataModeCard() {
             >
               {t('settings.dataMode.enableCopyDialog.no')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => setEnableFlow('strategyAsk')}>
+            <AlertDialogAction
+              onClick={() => setEnableFlow({ kind: 'strategyAsk' })}
+            >
               {t('settings.dataMode.enableCopyDialog.yes')}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -376,7 +378,7 @@ export function DataModeCard() {
       </AlertDialog>
 
       {/* ③ Strategy dialog — no onOpenChange: buttons drive transitions */}
-      <AlertDialog open={enableFlow === 'strategyAsk'}>
+      <AlertDialog open={enableFlow.kind === 'strategyAsk'}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -387,7 +389,9 @@ export function DataModeCard() {
             {t('settings.dataMode.enableStrategyDialog.description')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setEnableFlow('copyAsk')}>
+            <AlertDialogCancel
+              onClick={() => setEnableFlow({ kind: 'copyAsk' })}
+            >
               {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
@@ -413,18 +417,15 @@ export function DataModeCard() {
       </AlertDialog>
 
       {/* ④ Multi-location warning — only when another location would be left behind */}
-      <MigrationLocationWarningDialog
-        open={enableFlow === 'locationWarning'}
-        activeLocationName={activeLocation?.name ?? activeLocationId}
-        otherLocationNames={otherLocations.map((loc) => loc.name)}
-        onConfirm={() => {
-          if (pendingStrategy) doEnableSwitch(pendingStrategy)
-        }}
-        onCancel={() => {
-          setPendingStrategy(null)
-          setEnableFlow('strategyAsk')
-        }}
-      />
+      {enableFlow.kind === 'locationWarning' && (
+        <MigrationLocationWarningDialog
+          open
+          activeLocationName={activeLocation?.name ?? activeLocationId}
+          otherLocationNames={otherLocations.map((loc) => loc.name)}
+          onConfirm={() => doEnableSwitch(enableFlow.strategy)}
+          onCancel={() => setEnableFlow({ kind: 'strategyAsk' })}
+        />
+      )}
     </>
   )
 }
