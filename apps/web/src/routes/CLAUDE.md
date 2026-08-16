@@ -1,3 +1,17 @@
+### Active-Location Scoping
+
+One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under `active-location-id`, defaulting to `DEFAULT_LOCATION_ID = 'local'`) and switched from the `LocationSwitcher` mounted on the pantry, shopping, and cooking toolbars. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
+
+| Page | What the active location decides |
+| --- | --- |
+| **Pantry** (`/`) | Which items exist at all — only those with an `ItemStock` here (`useStockedItems`), and the stock values their cards show |
+| **Shopping** (`/shopping`, `/shopping/$vendorId`) | Which carts exist — carts are per `(location × vendor)`; checkout consumes this location's stock and stamps its logs |
+| **Cooking** (`/cooking`) | Which recipe items are consumable — an item not stocked here is shown unavailable and never consumed |
+
+The **item detail Stock tab** is the deliberate exception: it pages across **all** locations rather than following the active one (it opens there and keeps it marked). See `items/CLAUDE.md`. Settings pages (tags, vendors, recipes, shelves, locations) are location-independent — those entities are global.
+
+**Cloud mode has no locations.** `Location`/`ItemStock` have no GraphQL backend yet (deferred in PR D): a cloud `Item` carries its stock inline and its carts are keyed bare. Each page's cloud branch therefore keeps its pre-split behaviour, and the two location mutations (`useAddItemToLocation` / `useRemoveItemFromLocation`) **throw** rather than write local rows the cloud UI never reads.
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.
@@ -85,6 +99,8 @@ Two-level route structure (mirrors `items/` pattern):
 
 **`'no-vendor'` sentinel:** The URL segment `no-vendor` maps to `vendorId: null` in the database. Items with no vendors assigned appear exclusively in the no-vendor cart.
 
+**Active-location scoping (PR D):** carts are per **(location × vendor)**, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId` and carries it in its query key, so switching location swaps the whole set of carts. Checkout consumes from the **active location's** `ItemStock` and stamps its `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` (`bootstrapCarts(locationId)`) whenever the active location changes; `getCart` is a pure read.
+
 ---
 
 #### Root page: `/shopping` (vendor cart list)
@@ -130,7 +146,7 @@ Row 2 (ItemListToolbar):
 - Normal vendor: `items.filter(i => (i.vendorIds ?? []).includes(cartVendorId))`
 - No-vendor: `items.filter(i => !(i.vendorIds ?? []).length)`
 
-**Cart:** `useVendorCart(cartVendorId)` — creates the cart on first visit if it doesn't exist.
+**Cart:** `useVendorCart(cartVendorId)` — a pure read of the `(active location × vendor)` cart. The cart itself is pre-created by `ActiveLocationProvider`'s `bootstrapCarts`, not lazily on visit.
 
 **`lastVisitedAt` removed:** The `updateCartLastVisited` mutation and its on-mount `useEffect` have been removed. Sort by "last purchased" uses `completedAt` from completed carts instead (no mutation needed on page visit).
 

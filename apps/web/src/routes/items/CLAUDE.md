@@ -33,6 +33,13 @@ The tab is split at the top by data mode (`ItemStockTab` renders `LocalStockTab`
 
 *Cloud mode (`CloudStockTab`):* cloud has no locations and no `ItemStock` (deferred in PR D) — a cloud `Item` carries its stock inline. It renders the bare form, exactly as the tab did before the pager: no dots, no chevrons, no add, no remove. Both location mutations throw in cloud mode by design (Task 1), so this branch deliberately never mounts them.
 
+*What "Remove from location" destroys — and what it doesn't.* `removeItemFromLocation(itemId, locationId)` (`src/db/operations.ts`) deletes exactly the rows that only make sense alongside that `(item × location)` stock:
+- the `ItemStock` row for the pair,
+- the item's `inventoryLogs` for that location (a log with no `locationId` — imported from a pre-v15 backup — reads as the default location, matching `getItemLogs`),
+- the item's `cartItems` in that location's carts, matched via `parseCartId` rather than a string prefix.
+
+The **cart rows themselves survive** (they are shared by every item in the location), other locations' logs and cart entries are untouched, and the global **`Item` persists**. An item removed from its *last* location becomes an **orphan**: gone from the pantry (`getStockedItems` filters on `ItemStock`) but still in the catalog (`getAllItems`), so the pantry Add combobox still finds it and can re-stock it via copy-on-add. Removing an item from *everywhere* is the Info tab's **Delete** button (`deleteItem`), not this. The Stock tab is also reachable for an orphan — every page just renders the not-stocked state.
+
 > Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.
 
 **3. Relation (`/items/$id/relation`, `Settings2` icon)**
