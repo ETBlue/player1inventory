@@ -52,6 +52,10 @@ Components → TanStack Query hooks → Dexie.js → IndexedDB
 
 Components never access the database directly — they use Query hooks from `src/hooks/`.
 
+## Local Database & Dexie Schema
+
+> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` migrations, the Item/ItemStock join, and the three cascades.
+
 ## Backend & Prisma Migrations
 
 > See `apps/server/prisma/CLAUDE.md` — migration safety rules (reset the dev DB after squashing uncommitted `migrate dev` migrations; a migration must be valid on a DB built only from committed history).
@@ -75,10 +79,6 @@ src/
 - **Data types** defined in `src/types/index.ts`
 - **Database operations** in `src/db/operations.ts` with tests in `src/db/operations.test.ts`
 - **Query hooks** wrap database operations and handle cache invalidation
-- **Dexie schema** in `src/db/index.ts` — one `db.version(n).stores({...})` per migration, forward-only and idempotent within a bump. Current version: **15**. Add a new version rather than editing an old one; the upgrade function must be valid on a DB built only from committed history.
-  - **v14 — `locations`** (`id, order, name`). Seeds the default `Location {id: 'local', name: 'My Home', order: 0}` via `ensureDefaultLocation`. Fresh databases open straight at the latest version and never run a per-version upgrade fn, so the same seed also runs from the `on('populate')` hook.
-  - **v15 — the `Item` → `Item` + `ItemStock` split.** `items` keeps only global identity (`id, name, tagIds, vendorIds, wikidataUrl, note`, timestamps); everything about *stocking* moves to `itemStocks` (`id, itemId, locationId, [itemId+locationId], updatedAt`), one row per **(item × location)**. `inventoryLogs` gains a `locationId` index, and shopping carts are re-keyed to `${locationId}:${vendorId | 'no-vendor'}` (parse with `parseCartId`, never a string prefix). The upgrade moves each item's stock fields into an `ItemStock` under `'local'`, strips them from the item row, stamps `locationId` on every log, and re-keys the carts.
-  - An item is "stocked at" a location **iff** an `ItemStock` row exists for the pair. Reads join the two — `useItems`/`useItem` return a `PantryItem` (global `Item` + the active location's stock, via `joinItemStock`/`stripStockFields`). Cloud mode has **no** `Location` or `ItemStock` (deferred): a cloud `Item` still carries its stock inline.
 - **Routes** auto-generate `src/routeTree.gen.ts` on dev server start
 - **Component file naming:** each component directory contains `ComponentName.tsx` (the implementation) and a thin barrel `index.ts` (`export * from './ComponentName'`). Import via the directory: `@/components/item/ItemCard`. Do **not** use `index.tsx` for components — it breaks VS Code Cmd+P discoverability.
 
