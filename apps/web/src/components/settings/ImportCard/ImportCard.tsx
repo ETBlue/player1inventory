@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { ExportPayload } from '@/lib/exportData'
 import {
@@ -62,6 +63,10 @@ export function ImportCard() {
   const { mode } = useDataMode()
   const client = useApolloClient()
   const queryClient = useQueryClient()
+  // Cloud keeps stock inline on the Item (no per-location ItemStock yet), so a
+  // post-v15 backup has to be flattened onto one location on the way up — the
+  // one the user is currently in.
+  const { activeLocationId } = useActiveLocation()
   const [importStatus, setImportStatus] = useState<ImportStatus>({
     phase: 'idle',
   })
@@ -161,6 +166,7 @@ export function ImportCard() {
           )
         },
         session,
+        locationId: activeLocationId,
       })
       await client.resetStore()
       setImportStatus({ phase: 'done' })

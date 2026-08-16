@@ -1743,3 +1743,230 @@ describe('importLocalData — recipe items merge on skip conflict', () => {
     expect(recipe?.items[0].itemId).toBe('item-old')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Local → cloud migration (v15 split). Cloud has no per-location ItemStock, so
+// the migration flattens the ACTIVE location's stock back onto each item.
+// ---------------------------------------------------------------------------
+
+describe('importCloudData — local → cloud stock flattening (v15 split)', () => {
+  function makeCloudClient(mutateFn = vi.fn().mockResolvedValue({})) {
+    return {
+      mutate: mutateFn,
+      resetStore: vi.fn().mockResolvedValue(undefined),
+      query: vi.fn().mockResolvedValue({
+        data: {
+          items: [],
+          tags: [],
+          tagTypes: [],
+          vendors: [],
+          recipes: [],
+          inventoryLogs: [],
+          shoppingCarts: [],
+          allCartItems: [],
+          shelves: [],
+        },
+      }),
+    }
+  }
+
+  // A post-v15 item row: identity only, no stock fields.
+  function splitItem(id: string, name: string) {
+    return {
+      id,
+      name,
+      tagIds: [],
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    }
+  }
+
+  function stockRow(
+    id: string,
+    itemId: string,
+    locationId: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      id,
+      itemId,
+      locationId,
+      targetUnit: 'package' as const,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    }
+  }
+
+  // Pull the variables of the first `items` mutation out of an Apollo mock.
+  function sentItems(client: { mutate: ReturnType<typeof vi.fn> }) {
+    const call = client.mutate.mock.calls.find(
+      (c) => (c[0]?.variables as { items?: unknown[] })?.items !== undefined,
+    )
+    return (call?.[0].variables as { items: Record<string, unknown>[] }).items
+  }
+
+  function sentOf(client: { mutate: ReturnType<typeof vi.fn> }, key: string) {
+    const call = client.mutate.mock.calls.find(
+      (c) => (c[0]?.variables as Record<string, unknown>)?.[key] !== undefined,
+    )
+    return call
+      ? (call[0].variables as Record<string, Record<string, unknown>[]>)[key]
+      : undefined
+  }
+
+  it('user migrating to cloud sends the active location stock, not nulls', async () => {
+    // Given a local pantry where Milk is stocked in two locations
+    const payload = emptyPayload({
+      items: [splitItem('item-1', 'Milk')],
+      itemStocks: [
+        stockRow('stock-home', 'item-1', 'local', { packedQuantity: 3 }),
+        stockRow('stock-office', 'item-1', 'office', {
+          packedQuantity: 9,
+          targetQuantity: 12,
+          packageUnit: 'bottle',
+          dueDate: new Date('2026-06-01T00:00:00.000Z'),
+        }),
+      ],
+      locations: [
+        { id: 'local', name: 'My Home', order: 0 },
+        { id: 'office', name: 'Office', order: 1 },
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When migrating with 'office' as the active location
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'office',
+    })
+
+    // Then the item carries the office stock, fully populated
+    const items = sentItems(client)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      id: 'item-1',
+      name: 'Milk',
+      packedQuantity: 9,
+      targetQuantity: 12,
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      refillThreshold: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    // And the Date dueDate is serialised as an ISO string for GraphQL
+    expect(items[0].dueDate).toBe('2026-06-01T00:00:00.000Z')
+  })
+
+  it('an item not stocked in the active location is still sent, with zeroed stock', async () => {
+    // Given Rice is only stocked in 'local' while 'office' is active
+    const payload = emptyPayload({
+      items: [splitItem('item-1', 'Milk'), splitItem('item-2', 'Rice')],
+      itemStocks: [
+        stockRow('stock-office', 'item-1', 'office', { packedQuantity: 9 }),
+        stockRow('stock-home', 'item-2', 'local', { packedQuantity: 5 }),
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When migrating with 'office' active
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'office',
+    })
+
+    // Then Rice is still sent (recipes/shelves reference it) but with the
+    // zeroed stock the app itself shows for an item absent from this location
+    const rice = sentItems(client).find((i) => i.id === 'item-2')
+    expect(rice).toMatchObject({
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      consumeAmount: 1,
+      targetUnit: 'package',
+    })
+    // And no other location's quantity leaks in
+    expect(rice?.packedQuantity).not.toBe(5)
+  })
+
+  it('cart ids lose the location prefix and other locations carts are dropped', async () => {
+    // Given carts in two locations (local ids are `${locationId}:${vendorId}`)
+    const payload = emptyPayload({
+      items: [splitItem('item-1', 'Milk')],
+      itemStocks: [stockRow('s1', 'item-1', 'office')],
+      shoppingCarts: [
+        { id: 'office:no-vendor' },
+        { id: 'office:vendor-1' },
+        { id: 'local:no-vendor' },
+      ],
+      cartItems: [
+        makeCartItem('ci-1', 'office:no-vendor', 'item-1'),
+        makeCartItem('ci-2', 'local:no-vendor', 'item-1'),
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When migrating with 'office' active
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'office',
+    })
+
+    // Then cloud receives bare vendor-keyed cart ids for the active location only
+    const carts = sentOf(client, 'carts')
+    expect(carts?.map((c) => c.id).sort()).toEqual(['no-vendor', 'vendor-1'])
+
+    // And only that location's cart items travel, re-keyed to match
+    const cartItems = sentOf(client, 'cartItems')
+    expect(cartItems).toHaveLength(1)
+    expect(cartItems?.[0]).toMatchObject({ id: 'ci-1', cartId: 'no-vendor' })
+  })
+
+  it('inventory logs from other locations are not sent', async () => {
+    // Given logs recorded in two locations
+    const payload = emptyPayload({
+      items: [splitItem('item-1', 'Milk')],
+      itemStocks: [stockRow('s1', 'item-1', 'office')],
+      inventoryLogs: [
+        { ...makeInventoryLog('log-office'), locationId: 'office' },
+        { ...makeInventoryLog('log-home'), locationId: 'local' },
+        // A pre-Location log with no locationId still belongs to the user
+        makeInventoryLog('log-legacy'),
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When migrating with 'office' active
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'office',
+    })
+
+    // Then only the active location's (and un-scoped) logs are sent
+    const logs = sentOf(client, 'logs')
+    expect(logs?.map((l) => l.id).sort()).toEqual(['log-legacy', 'log-office'])
+  })
+
+  it('a cloud-shaped payload (no itemStocks) passes through untouched', async () => {
+    // Given a cloud/legacy payload whose stock still lives inline on the item
+    const payload = emptyPayload({
+      items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 7 }],
+      shoppingCarts: [{ id: 'no-vendor' }],
+      cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
+    })
+    const client = makeCloudClient()
+
+    // When importing it into cloud
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'office',
+    })
+
+    // Then nothing is flattened or re-keyed away
+    expect(sentItems(client)[0]).toMatchObject({ packedQuantity: 7 })
+    expect(sentOf(client, 'carts')?.[0]).toMatchObject({ id: 'no-vendor' })
+    expect(sentOf(client, 'cartItems')).toHaveLength(1)
+  })
+})

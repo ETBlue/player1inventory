@@ -171,6 +171,92 @@ function upgradeLegacyPayload(payload: ExportPayload): ExportPayload {
   }
 }
 
+// Cloud has NO per-location ItemStock (deliberately deferred in PR D): a cloud
+// Item still carries its stock inline and a cloud cart id is a bare
+// `vendorId | 'no-vendor'`. Copying a local (post-v15) pantry up to cloud must
+// therefore collapse the split shape back down — otherwise every stock field
+// arrives as `undefined` (they are non-null in `ItemInput`, so the migration
+// fails outright) and every cart id keeps a `${locationId}:` prefix no cloud
+// query ever looks up.
+//
+// Ruling (user, 2026-08-16): send the stock of the location that is ACTIVE at
+// migration time — it is what the user is looking at, and it is how the rest of
+// the app reads stock (`useActiveLocation()`). Data in other locations is NOT
+// migrated and is NOT preserved anywhere in cloud; the UI warns about that
+// before the copy runs (see `MigrationLocationWarningDialog`).
+//
+// A payload with no `itemStocks` is already flat (cloud export, or a pre-v15
+// backup) and passes through untouched.
+export function flattenPayloadForCloud(
+  payload: ExportPayload,
+  locationId: string,
+): ExportPayload {
+  if (payload.itemStocks === undefined) return payload
+
+  const stockByItemId = new Map<string, Record<string, unknown>>()
+  for (const raw of payload.itemStocks as Array<Record<string, unknown>>) {
+    if (raw.locationId === locationId) {
+      stockByItemId.set(raw.itemId as string, raw)
+    }
+  }
+
+  // Every item is sent, stocked here or not — recipes, shelves and cart items
+  // reference item ids, so dropping an item would leave dangling references.
+  // An item with no stock in this location gets the same zeroed values the app
+  // itself displays for it (see ZERO_STOCK / joinItemStock in db/operations).
+  const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
+    const stock = stockByItemId.get(raw.id as string)
+    const item: Record<string, unknown> = {
+      ...raw,
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+    if (stock) {
+      for (const key of STOCK_FIELD_KEYS) {
+        if (stock[key] !== undefined) item[key] = stock[key]
+      }
+    }
+    return item
+  })
+
+  // Carts: keep this location's carts only and strip the prefix. Another
+  // location's cart would collide with it on the un-prefixed cloud id.
+  const prefix = `${locationId}:`
+  const keptCartIds = new Set<string>()
+  const shoppingCarts = (
+    payload.shoppingCarts as Array<Record<string, unknown>>
+  )
+    .filter((cart) => (cart.id as string).startsWith(prefix))
+    .map((cart) => {
+      const id = cart.id as string
+      keptCartIds.add(id)
+      return { ...cart, id: id.slice(prefix.length) }
+    })
+  const cartItems = (payload.cartItems as Array<Record<string, unknown>>)
+    .filter((cartItem) => keptCartIds.has(cartItem.cartId as string))
+    .map((cartItem) => ({
+      ...cartItem,
+      cartId: (cartItem.cartId as string).slice(prefix.length),
+    }))
+
+  // Logs: this location's, plus pre-Location logs that carry no locationId.
+  const inventoryLogs = (
+    payload.inventoryLogs as Array<Record<string, unknown>>
+  ).filter((log) => log.locationId == null || log.locationId === locationId)
+
+  // `itemStocks`/`locations` are local-only tables with no cloud counterpart —
+  // dropping them also marks the result as a flat (cloud-shaped) payload.
+  const { itemStocks, locations, ...rest } = payload
+  void itemStocks
+  void locations
+
+  return { ...rest, items, shoppingCarts, cartItems, inventoryLogs }
+}
+
 // Normalize an imported permanent cart to the v13+ schema shape: keep only
 // `id` and an optional `lastPurchasedAt` (as a Date). Legacy backup fields
 // (status / createdAt / completedAt / vendorId) are dropped so they are never
@@ -240,7 +326,11 @@ export function toItemInput(item: Record<string, unknown>) {
     packedQuantity: item.packedQuantity as number,
     unpackedQuantity: item.unpackedQuantity as number,
     consumeAmount: item.consumeAmount as number,
-    dueDate: item.dueDate as string | undefined,
+    // A local ItemStock carries `dueDate` as a Date (cloud sends a string).
+    dueDate:
+      item.dueDate instanceof Date
+        ? item.dueDate.toISOString()
+        : (item.dueDate as string | undefined),
     estimatedDueDays: item.estimatedDueDays as number | undefined,
     expirationThreshold: item.expirationThreshold as number | undefined,
     expirationMode: item.expirationMode as string | undefined,
@@ -881,6 +971,7 @@ export async function importLocalData(
             : new Date(s.updatedAt as unknown as string),
       })),
     )
+
     return
   }
 
@@ -1509,14 +1600,25 @@ function computeTotalBatches(data: ExportPayload): number {
 }
 
 export async function importCloudData(
-  payload: ExportPayload,
+  rawPayload: ExportPayload,
   strategy: ImportStrategy,
   client: ApolloClient,
   options?: {
     onProgress?: (p: ImportProgress) => void
     session?: ImportSession
+    // Which location's stock to send. Cloud has no per-location ItemStock, so a
+    // local (post-v15) payload is collapsed onto this one location. Defaults to
+    // the default location; callers thread `useActiveLocation().activeLocationId`.
+    locationId?: string
   },
 ): Promise<void> {
+  // Mirror of `importLocalData`'s `upgradeLegacyPayload`: collapse the local
+  // split shape down to the flat shape cloud expects, before anything reads
+  // the payload (conflict detection, partitioning and batching all see it).
+  const payload = flattenPayloadForCloud(
+    rawPayload,
+    options?.locationId ?? DEFAULT_LOCATION_ID,
+  )
   const onProgress = options?.onProgress ?? (() => undefined)
   const session: ImportSession = options?.session ?? {
     payload,

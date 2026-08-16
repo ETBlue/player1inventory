@@ -1,7 +1,14 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getAllItems, getLocations } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
+import {
+  ACTIVE_LOCATION_STORAGE_KEY,
+  ActiveLocationProvider,
+} from './useActiveLocation'
 import {
   MIGRATION_PROMPTED_KEY,
   MIGRATION_STRATEGY_KEY,
@@ -18,9 +25,12 @@ vi.mock('@/lib/importData', () => ({
   importCloudData: vi.fn(),
 }))
 
-// Mock getAllItems (used in the prompting path)
+// Mock the Dexie operations the hook (and ActiveLocationProvider) reach for:
+// getAllItems drives the prompting path, getLocations backs useLocations.
 vi.mock('@/db/operations', () => ({
   getAllItems: vi.fn().mockResolvedValue([]),
+  getLocations: vi.fn().mockResolvedValue([]),
+  bootstrapCarts: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Provide a stable apolloClient object to prevent useEffect from re-firing on
@@ -110,5 +120,89 @@ describe('usePostLoginMigration — auto-import path', () => {
 
     // And: MIGRATION_STRATEGY_KEY is removed
     expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+  })
+})
+
+describe('usePostLoginMigration — active location is what gets migrated', () => {
+  // Cloud has no per-location ItemStock, so the copy sends the stock of the
+  // location that is active at migration time. The hook must thread that id
+  // down to importCloudData — otherwise the copy silently falls back to
+  // 'local' and a user whose active location is elsewhere migrates the wrong
+  // (or zeroed) quantities.
+  function wrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    return createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ActiveLocationProvider, null, children),
+    )
+  }
+
+  function seedTwoLocations() {
+    const now = new Date()
+    // afterEach resets every mock, so re-arm the ones the hook reads.
+    vi.mocked(getAllItems).mockResolvedValue([])
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'office',
+        name: 'Office',
+        order: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+  }
+
+  it('auto-import sends the active location id to importCloudData', async () => {
+    // Given the user last worked in 'office' and chose a copy strategy
+    seedTwoLocations()
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(undefined)
+
+    // When the hook mounts and runs the auto-import
+    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+    await waitFor(() => expect(result.current.state).toBe('done'))
+
+    // Then the office stock is what gets copied
+    expect(mockImportCloudData).toHaveBeenCalledWith(
+      emptyPayload,
+      'skip',
+      expect.anything(),
+      expect.objectContaining({ locationId: 'office' }),
+    )
+  })
+
+  it('manual import sends the active location id to importCloudData', async () => {
+    // Given the user is prompted after signing in, with 'office' active
+    seedTwoLocations()
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
+
+    // When the user confirms the import
+    await result.current.importData('append')
+
+    // Then the office stock is what gets copied
+    expect(mockImportCloudData).toHaveBeenCalledWith(
+      emptyPayload,
+      'skip',
+      expect.anything(),
+      expect.objectContaining({ locationId: 'office' }),
+    )
   })
 })

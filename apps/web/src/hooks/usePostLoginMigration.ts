@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getAllItems } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { type ImportStrategy, importCloudData } from '@/lib/importData'
+import { useActiveLocation } from './useActiveLocation'
 
 export const MIGRATION_PROMPTED_KEY = 'migration-prompted'
 export const MIGRATION_STRATEGY_KEY = 'migration-strategy'
@@ -20,6 +21,10 @@ export function usePostLoginMigration() {
   const { isSignedIn, isLoaded } = useAuth()
   const [state, setState] = useState<MigrationState>('idle')
   const apolloClient = useApolloClient()
+  // Cloud has no per-location ItemStock (deferred in PR D), so the copy sends
+  // the stock of the location that is active at migration time — what the user
+  // was last looking at. `importCloudData` flattens the payload onto it.
+  const { activeLocationId } = useActiveLocation()
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
@@ -33,7 +38,9 @@ export function usePostLoginMigration() {
       setState('auto-importing')
       fetchLocalPayload()
         .then((payload) =>
-          importCloudData(payload, storedStrategy, apolloClient),
+          importCloudData(payload, storedStrategy, apolloClient, {
+            locationId: activeLocationId,
+          }),
         )
         .then(() => {
           localStorage.removeItem(MIGRATION_STRATEGY_KEY)
@@ -57,7 +64,7 @@ export function usePostLoginMigration() {
         localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       }
     })
-  }, [isLoaded, isSignedIn, apolloClient])
+  }, [isLoaded, isSignedIn, apolloClient, activeLocationId])
 
   function dismiss() {
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
@@ -68,7 +75,9 @@ export function usePostLoginMigration() {
     setState('importing')
     const payload = await fetchLocalPayload()
     const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
-    await importCloudData(payload, strategy, apolloClient)
+    await importCloudData(payload, strategy, apolloClient, {
+      locationId: activeLocationId,
+    })
     localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
     setState('done')
   }
