@@ -288,15 +288,29 @@ export function useCreateItem() {
   return localMutation
 }
 
+// Both location mutations below are Dexie-only: cloud mode has no locations and
+// no ItemStock backend (deferred in PR D), so running them there would write to
+// local rows the cloud UI never reads and report success for something that did
+// not happen. They throw instead of no-op'ing so a wiring mistake fails loudly
+// in dev rather than silently — false success is exactly the PR D trap. This is
+// a safety net under the component-level `mode === 'local'` guard (the
+// NewItemDialog pattern), not a replacement for it.
+const LOCAL_ONLY_LOCATION_MUTATION =
+  'Location stock mutations are local-mode only: cloud mode has no locations or ItemStock.'
+
 // Stock an existing global item in the active location via copy-on-add
 // (inherits all stock fields except packed/unpacked → 0). No-op if the item is
 // already stocked there. Local-first only — ItemStock has no cloud backend yet.
 export function useAddItemToLocation() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
 
   return useMutation({
-    mutationFn: (itemId: string) => addItemToLocation(itemId, activeLocationId),
+    mutationFn: (itemId: string) => {
+      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
+      return addItemToLocation(itemId, activeLocationId)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
@@ -322,15 +336,21 @@ type RemoveFromLocationVars = {
 // deleted cart entries) and `['sort']` (expiry/purchase dates derived from the
 // deleted logs).
 //
-// Local-first only — ItemStock has no cloud backend, and cloud mode has no
-// locations, so no cloud branch exists here.
+// Local-first only, and it refuses to run in cloud mode (see
+// LOCAL_ONLY_LOCATION_MUTATION above). This one is destructive and
+// irreversible — it deletes every inventory log for the pair — so a stray
+// cloud-mode call would silently destroy local history the cloud UI never
+// shows.
 export function useRemoveItemFromLocation() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
 
   return useMutation({
-    mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) =>
-      removeItemFromLocation(itemId, locationId ?? activeLocationId),
+    mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) => {
+      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
+      return removeItemFromLocation(itemId, locationId ?? activeLocationId)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['itemStocks'] })

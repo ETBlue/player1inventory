@@ -13,6 +13,7 @@ import { GetRecipesDocument } from '@/generated/graphql'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
 import {
+  useAddItemToLocation,
   useCreateItem,
   useDeleteItem,
   useItem,
@@ -473,5 +474,54 @@ describe('useRemoveItemFromLocation (local mode)', () => {
     // Then only the cabin's stock is gone
     expect(await getItemStock(beans.id, cabin.id)).toBeUndefined()
     expect(await getItemStock(beans.id, DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+})
+
+// Cloud mode has no locations and no ItemStock backend (deferred in PR D), so
+// both location mutations are Dexie-only. Firing them in cloud mode would write
+// to (or, for remove, irreversibly destroy) local rows the cloud UI never
+// reads — a silent false success. They refuse loudly instead. Task 2 still owns
+// the component-level guard that keeps the controls off screen in cloud mode;
+// this is the safety net underneath it.
+describe('location mutations refuse to run in cloud mode', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.locations.clear()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  })
+
+  it('useRemoveItemFromLocation rejects in cloud mode and deletes nothing', async () => {
+    // Given an item stocked locally, and the app in cloud mode
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    localStorage.setItem('data-mode', 'cloud')
+
+    const { result } = renderHook(() => useRemoveItemFromLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When something tries to remove it anyway
+    // Then the mutation rejects and the local stock row is untouched
+    await expect(
+      result.current.mutateAsync({ itemId: item.id }),
+    ).rejects.toThrow(/local/i)
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+
+  it('useAddItemToLocation rejects in cloud mode and writes no orphan stock', async () => {
+    // Given a global item with no stock anywhere, and the app in cloud mode
+    const item = await createItem({ name: 'Flour', tagIds: [] })
+    await db.itemStocks.clear()
+    localStorage.setItem('data-mode', 'cloud')
+
+    const { result } = renderHook(() => useAddItemToLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When something tries to stock it anyway
+    // Then the mutation rejects and no ItemStock row is written
+    await expect(result.current.mutateAsync(item.id)).rejects.toThrow(/local/i)
+    expect(await db.itemStocks.toArray()).toHaveLength(0)
   })
 })
