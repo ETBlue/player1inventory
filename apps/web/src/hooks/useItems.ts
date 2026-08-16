@@ -484,18 +484,28 @@ export function useDeleteItem() {
   return localMutation
 }
 
-export function useInventoryLogCountByItem(itemId: string) {
+// Both counts accept an optional locationId that scopes them to the rows
+// `removeItemFromLocation` would delete for that (item, location) pair — the
+// Stock tab's remove confirmation names one location, so an item-global count
+// would over-report. Omitting it keeps the item-global count. The location is
+// part of the query key so the two scopes never share a cache entry; the
+// remove mutation invalidates the whole `['inventoryLogs']` / `['cartItems']`
+// families, so both re-resolve after a removal.
+export function useInventoryLogCountByItem(
+  itemId: string,
+  locationId?: string,
+) {
   return useQuery({
-    queryKey: ['inventoryLogs', 'countByItem', itemId],
-    queryFn: () => getInventoryLogCountByItem(itemId),
+    queryKey: ['inventoryLogs', 'countByItem', itemId, { locationId }],
+    queryFn: () => getInventoryLogCountByItem(itemId, locationId),
     enabled: !!itemId,
   })
 }
 
-export function useCartItemCountByItem(itemId: string) {
+export function useCartItemCountByItem(itemId: string, locationId?: string) {
   return useQuery({
-    queryKey: ['cartItems', 'countByItem', itemId],
-    queryFn: () => getCartItemCountByItem(itemId),
+    queryKey: ['cartItems', 'countByItem', itemId, { locationId }],
+    queryFn: () => getCartItemCountByItem(itemId, locationId),
     enabled: !!itemId,
   })
 }

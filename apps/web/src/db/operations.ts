@@ -362,14 +362,39 @@ export async function deleteItem(id: string): Promise<void> {
   await db.items.delete(id)
 }
 
+// Per-item counts of the two families `removeItemFromLocation` cascades.
+// Passing `locationId` scopes the count to that location using exactly the
+// predicate the cascade deletes by, so the Stock tab's remove confirmation can
+// state what disappears for the location it names. Omitting it counts every
+// location (the original, item-global behaviour).
 export async function getInventoryLogCountByItem(
   itemId: string,
+  locationId?: string,
 ): Promise<number> {
-  return await db.inventoryLogs.where('itemId').equals(itemId).count()
+  if (locationId === undefined) {
+    return await db.inventoryLogs.where('itemId').equals(itemId).count()
+  }
+  // Logs predating the Location feature carry no locationId; treat an absent
+  // one as the default location (same reading as getItemLogs / the cascade).
+  return await db.inventoryLogs
+    .where('itemId')
+    .equals(itemId)
+    .filter((log) => (log.locationId ?? DEFAULT_LOCATION_ID) === locationId)
+    .count()
 }
 
-export async function getCartItemCountByItem(itemId: string): Promise<number> {
-  return await db.cartItems.where('itemId').equals(itemId).count()
+export async function getCartItemCountByItem(
+  itemId: string,
+  locationId?: string,
+): Promise<number> {
+  if (locationId === undefined) {
+    return await db.cartItems.where('itemId').equals(itemId).count()
+  }
+  return await db.cartItems
+    .where('itemId')
+    .equals(itemId)
+    .filter((ci) => parseCartId(ci.cartId).locationId === locationId)
+    .count()
 }
 
 // InventoryLog operations

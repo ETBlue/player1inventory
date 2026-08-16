@@ -563,6 +563,66 @@ describe('useRemoveItemFromLocation invalidates every affected query family', ()
       expect(result.current.cartCount.data).toBe(0)
     })
   })
+
+  // The remove confirmation names ONE location, so the counts it shows must be
+  // scoped to it — an item-global count would tell the user more is being
+  // deleted than actually is.
+  it('the count hooks report per-location totals and re-resolve after that location is removed', async () => {
+    // Given an item stocked in two locations, each with its own log and cart
+    // entry
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      { name: 'Beans', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(item.id, cabin.id)
+    for (const locationId of [DEFAULT_LOCATION_ID, cabin.id]) {
+      await addInventoryLog({
+        itemId: item.id,
+        locationId,
+        delta: 1,
+        quantity: 1,
+        occurredAt: new Date(),
+      })
+      const cartId = cartIdFor(locationId, null)
+      await db.shoppingCarts.put({ id: cartId })
+      await addToCart(cartId, item.id, 1)
+    }
+
+    const { result } = renderHook(
+      () => ({
+        hereLogs: useInventoryLogCountByItem(item.id, DEFAULT_LOCATION_ID),
+        hereCart: useCartItemCountByItem(item.id, DEFAULT_LOCATION_ID),
+        cabinLogs: useInventoryLogCountByItem(item.id, cabin.id),
+        cabinCart: useCartItemCountByItem(item.id, cabin.id),
+        remove: useRemoveItemFromLocation(),
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    // Then each location reports only its own rows
+    await waitFor(() => {
+      expect(result.current.hereLogs.data).toBe(1)
+      expect(result.current.hereCart.data).toBe(1)
+      expect(result.current.cabinLogs.data).toBe(1)
+      expect(result.current.cabinCart.data).toBe(1)
+    })
+
+    // When the cabin's stock is removed
+    await result.current.remove.mutateAsync({
+      itemId: item.id,
+      locationId: cabin.id,
+    })
+
+    // Then the cabin's counts drop to zero and the default location's are
+    // untouched
+    await waitFor(() => {
+      expect(result.current.cabinLogs.data).toBe(0)
+      expect(result.current.cabinCart.data).toBe(0)
+    })
+    expect(result.current.hereLogs.data).toBe(1)
+    expect(result.current.hereCart.data).toBe(1)
+  })
 })
 
 // Cloud mode has no locations and no ItemStock backend (deferred in PR D), so

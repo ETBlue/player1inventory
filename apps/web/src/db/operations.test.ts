@@ -1789,6 +1789,67 @@ describe('Count helpers for item relations', () => {
     // Then count is correct
     expect(count).toBe(2)
   })
+
+  // Both counts back the Stock-tab "Remove from location" confirmation, which
+  // names one location. Scoped counts must match exactly what
+  // removeItemFromLocation deletes for that pair — no more, no less.
+  it('getInventoryLogCountByItem counts only the given location when scoped', async () => {
+    // Given an item with logs in the default location, another location, and
+    // one legacy log carrying no locationId at all
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 1,
+      quantity: 1,
+      occurredAt: new Date(),
+    })
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: 'loc-other',
+      delta: 2,
+      quantity: 2,
+      occurredAt: new Date(),
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: 3,
+      quantity: 3,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+
+    // When counting per location
+    // Then the default location owns its own log plus the legacy one (an
+    // absent locationId reads as the default location, matching getItemLogs
+    // and removeItemFromLocation), the other location owns exactly one, and
+    // the unscoped call still counts every log
+    expect(await getInventoryLogCountByItem(item.id, DEFAULT_LOCATION_ID)).toBe(
+      2,
+    )
+    expect(await getInventoryLogCountByItem(item.id, 'loc-other')).toBe(1)
+    expect(await getInventoryLogCountByItem(item.id)).toBe(3)
+  })
+
+  it('getCartItemCountByItem counts only the given location when scoped', async () => {
+    // Given an item in two carts of one location and one cart of another
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    const here = cartIdFor(DEFAULT_LOCATION_ID, null)
+    const hereVendor = cartIdFor(DEFAULT_LOCATION_ID, 'vendor-1')
+    const elsewhere = cartIdFor('loc-other', null)
+    for (const cartId of [here, hereVendor, elsewhere]) {
+      await db.shoppingCarts.put({ id: cartId })
+      await addToCart(cartId, item.id, 1)
+    }
+
+    // When counting per location
+    // Then each location reports only its own cart entries, and the unscoped
+    // call still counts every entry
+    expect(await getCartItemCountByItem(item.id, DEFAULT_LOCATION_ID)).toBe(2)
+    expect(await getCartItemCountByItem(item.id, 'loc-other')).toBe(1)
+    expect(await getCartItemCountByItem(item.id)).toBe(3)
+  })
 })
 
 describe('Recipe operations', () => {
