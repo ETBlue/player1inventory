@@ -152,12 +152,32 @@ function legacyStockFromItem(
   return deserializeItemStock(stock)
 }
 
+// True when an item row still carries its stock inline — the pre-v15 shape. The
+// v15 upgrade (and `upgradeLegacyPayload` below) strips these off the Item, so a
+// fully split item has none of them.
+function hasInlineStock(item: Record<string, unknown>): boolean {
+  return STOCK_FIELD_KEYS.some((key) => item[key] != null)
+}
+
+// Strip the inline stock off one pre-v15 item, returning the split item and the
+// ItemStock the inline fields describe.
+function splitLegacyItem(
+  raw: Record<string, unknown>,
+  locationId: string,
+): { item: Record<string, unknown>; stock: ItemStock } {
+  const stock = legacyStockFromItem(raw, locationId)
+  const item = { ...raw }
+  for (const key of STOCK_FIELD_KEYS) delete item[key]
+  return { item, stock }
+}
+
 // Upgrade a pre-v15 backup (or a cloud payload, which keeps stock inline on the
 // Item) to the split shape the local database expects since v15:
 //   - synthesise one ItemStock per item, in `locationId`, and strip the inline
 //     stock fields
 //   - re-key carts and cart items to `${locationId}:${vendorId|'no-vendor'}`
-// A payload that already carries `itemStocks` is post-v15 and passes through.
+// A payload that already carries `itemStocks` is post-v15 — but only for the
+// items it actually has stock rows for; see `upgradeUnsplitItems`.
 //
 // `locationId` is the location the import targets. It mirrors the outbound
 // local → cloud rule (Ruling A: use the location ACTIVE at migration time) — a
@@ -169,14 +189,15 @@ function upgradeLegacyPayload(
   payload: ExportPayload,
   locationId: string,
 ): ExportPayload {
-  if (payload.itemStocks !== undefined) return payload
+  if (payload.itemStocks !== undefined) {
+    return upgradeUnsplitItems(payload, locationId)
+  }
 
   const itemStocks: ItemStock[] = []
   const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
-    itemStocks.push(legacyStockFromItem(raw, locationId))
-    const item = { ...raw }
-    for (const key of STOCK_FIELD_KEYS) delete item[key]
-    return item
+    const split = splitLegacyItem(raw, locationId)
+    itemStocks.push(split.stock)
+    return split.item
   })
 
   const scopeCartId = (id: string) => `${locationId}:${id}`
@@ -194,6 +215,52 @@ function upgradeLegacyPayload(
         cartId: scopeCartId(cartItem.cartId as string),
       }),
     ),
+  }
+}
+
+// Being pre-v15 is a property of each ITEM, not of the payload as a whole.
+// `fetchLocalPayload` always writes an `itemStocks` key, empty or not, so a
+// database whose items were never split (or only partly split) exports as
+// `items: [ ...inline stock... ]` beside an `itemStocks` array that says nothing
+// about them. Treating the mere presence of that key as "already split" drops
+// the stock those items carry — and since the pantry lists only items that HAVE
+// a stock row (`getStockedItems`), they vanish from every view. That is the
+// local → local round trip in
+// e2e/tests/settings/import-export-local.spec.ts.
+//
+// So upgrade the leftovers individually: an item that still carries inline stock
+// and has no stock row ANYWHERE in the payload gets one synthesised in
+// `locationId`. Keyed on "anywhere" so an item stocked only in some other
+// location — which correctly carries no inline stock — never gains a duplicate
+// row here.
+//
+// Carts are deliberately NOT re-keyed on this path: a payload that declares
+// `itemStocks` already uses `${locationId}:${vendorId}` cart ids, and prefixing
+// them again would produce `local:local:vendor`.
+function upgradeUnsplitItems(
+  payload: ExportPayload,
+  locationId: string,
+): ExportPayload {
+  const stockedItemIds = new Set(
+    (payload.itemStocks as Array<Record<string, unknown>>).map(
+      (stock) => stock.itemId as string,
+    ),
+  )
+
+  const synthesised: ItemStock[] = []
+  const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
+    if (stockedItemIds.has(raw.id as string) || !hasInlineStock(raw)) return raw
+    const split = splitLegacyItem(raw, locationId)
+    synthesised.push(split.stock)
+    return split.item
+  })
+
+  if (synthesised.length === 0) return payload
+
+  return {
+    ...payload,
+    items,
+    itemStocks: [...(payload.itemStocks as unknown[]), ...synthesised],
   }
 }
 

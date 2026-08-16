@@ -1124,6 +1124,115 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     const locationIds = (await db.locations.toArray()).map((l) => l.id).sort()
     expect(locationIds).toEqual(['local', 'office'])
   })
+
+  // `fetchLocalPayload` always writes an `itemStocks` key, empty or not. A
+  // database whose item rows still carry stock inline therefore exports as
+  // `items: [ ...inline stock... ], itemStocks: []` — and a payload-level
+  // "itemStocks is present, so this is post-v15" check reads that as nothing to
+  // upgrade, drops the stock, and leaves the restored pantry empty (the pantry
+  // lists only items that HAVE a stock row). This is the local → local round
+  // trip in e2e/tests/settings/import-export-local.spec.ts.
+  it('user re-importing an export whose itemStocks table is empty keeps the pantry', async () => {
+    // Given a backup that declares an empty itemStocks table while its item
+    // still carries the stock inline
+    const payload = emptyPayload({
+      items: [
+        {
+          ...makeItem('item-1', 'Milk'),
+          packedQuantity: 4,
+          targetQuantity: 6,
+          packageUnit: 'bottle',
+        },
+      ],
+      itemStocks: [],
+      locations: [makeLocation('local', 'My Home', 0)],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then the inline stock became a 'local' ItemStock and the pantry shows it
+    const stocked = await getStockedItems('local')
+    expect(stocked).toHaveLength(1)
+    expect(stocked[0].packedQuantity).toBe(4)
+    expect(stocked[0].targetQuantity).toBe(6)
+    expect(stocked[0].packageUnit).toBe('bottle')
+
+    // And the item row no longer carries the inline stock
+    const itemRow = (await db.items.get('item-1')) as Record<string, unknown>
+    expect(itemRow.packedQuantity).toBeUndefined()
+  })
+
+  // A partly split database exports a MIXED payload: stock rows for the items
+  // that were split, inline stock on the ones that were not. Legacy-ness is a
+  // property of each item, not of the payload.
+  it('user restoring a partly split backup keeps the stock of the unsplit items', async () => {
+    // Given a backup where one item is split and the other still has its stock
+    // inline
+    const payload = emptyPayload({
+      items: [
+        makeSplitItem('item-1', 'Milk'),
+        {
+          ...makeItem('item-2', 'Eggs'),
+          packedQuantity: 2,
+          targetQuantity: 12,
+        },
+      ],
+      itemStocks: [makeStock('stock-1', 'item-1', 'local')],
+      locations: [makeLocation('local', 'My Home', 0)],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then BOTH items are stocked in 'local'
+    const stocked = await getStockedItems('local')
+    expect(stocked.map((i) => i.name).sort()).toEqual(['Eggs', 'Milk'])
+    const eggs = stocked.find((i) => i.name === 'Eggs')
+    expect(eggs?.packedQuantity).toBe(2)
+    expect(eggs?.targetQuantity).toBe(12)
+  })
+
+  // The counterpart guard: `itemStocks: []` next to genuinely split items means
+  // "nothing is stocked", and must NOT invent zeroed rows for every item.
+  it('user restoring a split backup with no stock at all gets no phantom stock rows', async () => {
+    // Given a post-v15 backup whose items carry no stock and whose stock table
+    // is legitimately empty
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [],
+      locations: [makeLocation('local', 'My Home', 0)],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then no stock row is synthesised and the pantry stays empty
+    expect(await db.itemStocks.count()).toBe(0)
+    expect(await getStockedItems('local')).toHaveLength(0)
+  })
+
+  // An item stocked only in another location still carries no inline stock, so
+  // it must not gain a duplicate row in the target location.
+  it('user restoring a backup does not duplicate stock for an item stocked elsewhere', async () => {
+    // Given a backup whose item is stocked in 'office' only
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [makeStock('stock-office', 'item-1', 'office')],
+      locations: [
+        makeLocation('local', 'My Home', 0),
+        makeLocation('office', 'Office', 1),
+      ],
+    })
+
+    // When restoring it into 'local'
+    await importLocalData(payload, 'clear', 'local')
+
+    // Then it keeps exactly the one row it had
+    expect(await db.itemStocks.count()).toBe(1)
+    expect(await getStockedItems('local')).toHaveLength(0)
+    expect(await getStockedItems('office')).toHaveLength(1)
+  })
 })
 
 describe('cloud import input mappers — strip server-only fields', () => {
