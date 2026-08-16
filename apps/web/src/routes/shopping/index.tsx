@@ -85,8 +85,13 @@ function ShoppingIndex() {
   )
 
   function cartForVendor(vendorId: string | null) {
-    // Carts are scoped to the active location: `${locationId}:${vendorId|'no-vendor'}`.
-    const cartId = cartIdFor(activeLocationId, vendorId)
+    // Local carts are scoped to the active location:
+    // `${locationId}:${vendorId|'no-vendor'}`. Cloud carts are **not** — the
+    // server keys them bare (`'no-vendor'` / `<vendorId>`) because locations and
+    // ItemStock have no cloud backend yet, so prefixing would match nothing.
+    const cartId = isCloud
+      ? (vendorId ?? 'no-vendor')
+      : cartIdFor(activeLocationId, vendorId)
     return allCarts.find((c) => c.id === cartId)
   }
 
