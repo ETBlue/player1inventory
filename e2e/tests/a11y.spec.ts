@@ -1,5 +1,5 @@
-import { test } from '@playwright/test'
-import { checkA11y, injectAxe } from 'axe-playwright'
+import { expect, test } from '@playwright/test'
+import { checkA11y, getViolations, injectAxe } from 'axe-playwright'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { seedRows } from '../helpers/locationSeed'
 import { StockPagerPage } from '../pages/StockPagerPage'
@@ -11,21 +11,80 @@ const AXE_OPTIONS = {
 }
 
 // KNOWN PRE-EXISTING DEFECT — the filled destructive button (`variant="destructive"`,
-// used for the confirm action inside the SHARED `DeleteButton`) measures **3.92:1**
-// (#f7f1f4 on #ac6185), under WCAG AA's 4.5:1 for normal text. It is a shortfall in
-// the `--importance-destructive-background` design token, not in any one dialog:
-// verified identical on the Settings › Locations delete dialog, which predates the
-// Stock-tab pager. No a11y test had ever opened a delete confirmation before, which
-// is why it went unreported.
+// used for the confirm action inside the SHARED `DeleteButton`) fails contrast.
 //
-// The dialog scans below exclude that one element so they police what they are
-// actually about — dialog roles, accessible names, the affected-counts line — rather
-// than re-reporting a global token issue. Fixing the token changes every destructive
-// button in the app and belongs with the design-token owner (see
-// src/design-tokens/theme.css: light `oklch(55% 30% 350)`, dark `oklch(70% 40% 350)`).
-// Remove this exclusion once the token clears 4.5:1.
-const EXCLUDE_DESTRUCTIVE_CONFIRM = {
+//   Criterion: WCAG 2.1 SC 1.4.3 Contrast (Minimum), Level AA — 4.5:1 for NORMAL text.
+//              The button is `text-sm` (14px) `font-medium` (500), which is normal
+//              text, not large (large = 18pt/24px, or 14pt/18.66px bold), so the 3:1
+//              large-text allowance does not apply.
+//              NOT SC 1.4.11 (non-text contrast): the button against the dialog
+//              surface measures 3.78:1 light / 5.28:1 dark, both clearing that 3:1
+//              bar. Do not cite 1.4.11 for this.
+//   Measured:  3.92:1 light (axe: #f7f1f4 on #ac6185) · ~4.09:1 dark (modelled).
+//
+// ROOT CAUSE IS **`opacity-90`** ON THE `buttonVariants` BASE CLASS
+// (`apps/web/src/components/ui/button.tsx:13`) — not the colour token. Every button
+// in the app renders at 90%, so background AND label composite over the dialog
+// surface; #f7f1f4 is simply white at 90% over #ac6185. The token itself PASSES as
+// authored — `--importance-destructive-background` gives 5.20:1 light and 4.71:1
+// dark — so re-darkening it would be the wrong repair and would restyle every
+// destructive surface in the app. The button also passes on `hover:opacity-100`; it
+// fails only at rest. (`disabled:opacity-50` is fine — disabled controls are exempt
+// from 1.4.3.)
+//
+// Pre-existing and app-wide, not introduced here: reproduced identically on the
+// Settings › Locations delete dialog, which predates the Stock-tab pager. It went
+// unreported because no a11y test in the repo had ever opened a delete confirmation.
+// The user has ruled the fix a follow-up on its own branch with its own visual review.
+//
+// SCOPE: this excludes the element from the **`color-contrast` rule only** (see
+// `checkA11yAllowingKnownConfirmContrast` below), not from every rule. `button-name`,
+// `target-size` and the aria rules still police that button. Excluding it outright
+// would also hide any FUTURE violation on it.
+//
+// REMOVAL CONDITION — checkable: once `opacity-90` is removed/raised on the
+// `buttonVariants` base class (or the confirm button opts out of it), delete this
+// constant, delete `checkA11yAllowingKnownConfirmContrast`, and change both call
+// sites back to `checkA11y(page, undefined, AXE_OPTIONS)`; the two dialog tests pass
+// unaided once the composite clears 4.5:1. Note an `exclude` is silent — it will not
+// announce the fix, so this has to be revisited deliberately.
+const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
   exclude: [['.bg-importance-destructive-background']],
+}
+
+// Two scans instead of one, so the known defect is excluded from a single RULE
+// rather than from every rule on that element.
+//
+// These use `getViolations`, not `checkA11y`, deliberately. `checkA11y`'s third
+// parameter is axe-playwright's own `AxeOptions` WRAPPER and it forwards only
+// `axeOptions.axeOptions` to axe — so handing it a bare axe `RunOptions` (as the 60
+// sibling scans in this file do with `AXE_OPTIONS`) silently runs axe with its
+// DEFAULTS and the option object has no effect. `getViolations(page, context,
+// runOptions)` takes `RunOptions` directly, so rule selection here actually applies.
+// The two scans below therefore cover the same effective rule set as the siblings
+// (axe defaults), minus one rule on one element.
+async function checkA11yAllowingKnownConfirmContrast(
+  page: import('@playwright/test').Page,
+) {
+  // 1. Every rule EXCEPT color-contrast, with nothing excluded — the confirm button
+  //    is still policed for accessible name, target size, aria validity and the rest.
+  const nonContrast = await getViolations(page, undefined, {
+    rules: { 'color-contrast': { enabled: false } },
+  })
+  expect(
+    nonContrast.map((v) => v.id),
+    'non-contrast a11y violations',
+  ).toEqual([])
+
+  // 2. color-contrast alone, excluding only the known-bad confirm button — so a
+  //    contrast regression anywhere else in the dialog still fails the test.
+  const contrast = await getViolations(page, KNOWN_CONFIRM_CONTRAST_EXCLUSION, {
+    runOnly: { type: 'rule', values: ['color-contrast'] },
+  })
+  expect(
+    contrast.flatMap((v) => v.nodes.map((n) => n.target.join(' '))),
+    'color-contrast violations outside the known destructive confirm button',
+  ).toEqual([])
 }
 
 // Prevent the empty-data redirect to /onboarding so tests can navigate to any
@@ -572,8 +631,8 @@ test.describe('detail page a11y', () => {
     await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
     await injectAxe(page)
 
-    // Then there should be no violations (see EXCLUDE_DESTRUCTIVE_CONFIRM)
-    await checkA11y(page, EXCLUDE_DESTRUCTIVE_CONFIRM, AXE_OPTIONS)
+    // Then there should be no violations (see KNOWN_CONFIRM_CONTRAST_EXCLUSION)
+    await checkA11yAllowingKnownConfirmContrast(page)
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags)
@@ -1011,8 +1070,8 @@ test.describe('dark mode a11y', () => {
     await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
     await injectAxe(page)
 
-    // Then there should be no violations (see EXCLUDE_DESTRUCTIVE_CONFIRM)
-    await checkA11y(page, EXCLUDE_DESTRUCTIVE_CONFIRM, AXE_OPTIONS)
+    // Then there should be no violations (see KNOWN_CONFIRM_CONTRAST_EXCLUSION)
+    await checkA11yAllowingKnownConfirmContrast(page)
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags) in dark mode
