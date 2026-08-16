@@ -996,6 +996,55 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     expect(stocks[0].packedQuantity).toBe(9)
   })
 
+  // Copying cloud data down (and importing any pre-v15 backup) must place the
+  // restored stock where the user is actually looking — the ACTIVE location —
+  // mirroring the outbound local → cloud rule. Landing everything in 'local'
+  // while the active location is elsewhere renders an empty pantry.
+  it('user copying cloud data down lands stock and carts in the target location', async () => {
+    // Given a legacy/cloud payload: stock inline on the item, bare cart ids
+    const legacyItem = {
+      ...makeItem('item-1', 'Milk'),
+      packedQuantity: 5,
+      targetQuantity: 6,
+    }
+    const payload = emptyPayload({
+      items: [legacyItem],
+      vendors: [makeVendor('vendor-1', 'Costco')],
+      shoppingCarts: [makeShoppingCart('vendor-1')],
+      cartItems: [makeCartItem('ci-1', 'vendor-1', 'item-1')],
+      locations: [makeLocation('office', 'Office', 1)],
+    })
+
+    // When importing it with 'office' as the target location
+    await importLocalData(payload, 'skip', 'office')
+
+    // Then the synthesised stock lands in 'office', not 'local'
+    const stocks = await db.itemStocks.toArray()
+    expect(stocks).toHaveLength(1)
+    expect(stocks[0].locationId).toBe('office')
+    expect(await getStockedItems('office')).toHaveLength(1)
+    expect(await getStockedItems('local')).toHaveLength(0)
+
+    // And the carts are re-keyed onto the same location
+    const cartIds = (await db.shoppingCarts.toArray()).map((c) => c.id)
+    expect(cartIds).toContain('office:vendor-1')
+    expect((await db.cartItems.get('ci-1'))?.cartId).toBe('office:vendor-1')
+  })
+
+  it('user importing a legacy backup without a target location still lands in local', async () => {
+    // Given the same legacy payload and no explicit target location
+    const payload = emptyPayload({
+      items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 5 }],
+    })
+
+    // When importing it
+    await importLocalData(payload, 'skip')
+
+    // Then it defaults to the default location, as before
+    const stocks = await db.itemStocks.toArray()
+    expect(stocks[0].locationId).toBe('local')
+  })
+
   // `importItemStocks` only removes stale rows for (itemId, locationId) pairs
   // the payload actually mentions, so a destructive 'clear' restore depends on
   // `db.itemStocks.clear()` / `db.locations.clear()` to wipe everything else.

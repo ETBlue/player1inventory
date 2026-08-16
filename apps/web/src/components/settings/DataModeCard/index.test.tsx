@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -8,7 +8,23 @@ import {
   ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
 } from '@/hooks/useActiveLocation'
+import { importLocalData } from '@/lib/importData'
 import { DataModeCard } from '.'
+
+// A cloud payload: stock inline on the item, no itemStocks table.
+const CLOUD_PAYLOAD = {
+  version: 1,
+  exportedAt: new Date().toISOString(),
+  items: [],
+  tags: [],
+  tagTypes: [],
+  vendors: [],
+  recipes: [],
+  inventoryLogs: [],
+  shoppingCarts: [],
+  cartItems: [],
+  shelves: [],
+}
 
 // DataModeCard reads the location list (useLocations → TanStack Query) to decide
 // whether a local → cloud copy needs the multi-location warning.
@@ -29,6 +45,17 @@ function renderCard() {
 vi.mock('@/db/operations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/db/operations')>()
   return { ...actual, getLocations: vi.fn(() => actual.getLocations()) }
+})
+
+// Cloud→local copy: stub the network fetch and observe the local import call.
+vi.mock('@/lib/exportData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/exportData')>()
+  return { ...actual, fetchCloudPayload: vi.fn(async () => CLOUD_PAYLOAD) }
+})
+
+vi.mock('@/lib/importData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/importData')>()
+  return { ...actual, importLocalData: vi.fn(async () => {}) }
 })
 
 vi.mock('@clerk/react', () => ({
@@ -419,5 +446,82 @@ describe('DataModeCard — the warning cannot be skipped by timing', () => {
     expect(localStorage.getItem('migration-strategy')).toBeNull()
     expect(localStorage.getItem('data-mode')).toBeNull()
     expect(reloadMock).not.toHaveBeenCalled()
+  })
+})
+
+// Cloud has no per-location ItemStock, so a cloud payload's stock is inline and
+// has to be placed somewhere on the way down. It must go to the location the
+// user is ACTIVE in — the same rule the outbound copy follows. `doSwitch`
+// reloads the page but does NOT reset `active-location-id`, so hard-coding the
+// default location leaves the user staring at an empty pantry (PR D review I-4).
+describe('DataModeCard — cloud to local copy lands in the active location', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    vi.mocked(importLocalData).mockClear()
+    await db.locations.clear()
+  })
+
+  async function seedLocations() {
+    const now = new Date()
+    await db.locations.bulkPut([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'office',
+        name: 'Office',
+        order: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+  }
+
+  it('user copying their cloud data down gets it in the location they are in', async () => {
+    // Given cloud mode with 'office' as the active location
+    await seedLocations()
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: vi.fn() },
+      writable: true,
+    })
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the user copies their cloud data down
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    await user.click(screen.getByRole('button', { name: /append/i }))
+
+    // Then the import is told to place the stock in 'office'
+    await waitFor(() => expect(importLocalData).toHaveBeenCalled())
+    expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('office')
+  })
+
+  it('user signing out with a copy also keeps their active location', async () => {
+    // Given the same setup, taking the sign-out route instead
+    await seedLocations()
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: vi.fn() },
+      writable: true,
+    })
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the user signs out, switches offline and copies their data
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+    await user.click(screen.getByRole('button', { name: /switch to offline/i }))
+    await user.click(screen.getByRole('button', { name: /copy/i }))
+
+    // Then the copy lands in 'office' too
+    await waitFor(() => expect(importLocalData).toHaveBeenCalled())
+    expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('office')
   })
 })

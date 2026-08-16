@@ -116,12 +116,16 @@ function deserializeLocation(raw: Record<string, unknown>): Location {
   } as unknown as Location
 }
 
-// Build the 'local' ItemStock described by a pre-v15 item's inline fields.
-function legacyStockFromItem(item: Record<string, unknown>): ItemStock {
+// Build the ItemStock described by a pre-v15 item's inline fields, placed in
+// the target location.
+function legacyStockFromItem(
+  item: Record<string, unknown>,
+  locationId: string,
+): ItemStock {
   const stock: Record<string, unknown> = {
     id: crypto.randomUUID(),
     itemId: item.id,
-    locationId: DEFAULT_LOCATION_ID,
+    locationId,
     // Defaults, in case an old backup lacks some of the fields.
     targetUnit: 'package',
     targetQuantity: 0,
@@ -140,21 +144,32 @@ function legacyStockFromItem(item: Record<string, unknown>): ItemStock {
 
 // Upgrade a pre-v15 backup (or a cloud payload, which keeps stock inline on the
 // Item) to the split shape the local database expects since v15:
-//   - synthesise a 'local' ItemStock per item and strip the inline stock fields
+//   - synthesise one ItemStock per item, in `locationId`, and strip the inline
+//     stock fields
 //   - re-key carts and cart items to `${locationId}:${vendorId|'no-vendor'}`
 // A payload that already carries `itemStocks` is post-v15 and passes through.
-function upgradeLegacyPayload(payload: ExportPayload): ExportPayload {
+//
+// `locationId` is the location the import targets. It mirrors the outbound
+// local → cloud rule (Ruling A: use the location ACTIVE at migration time) — a
+// cloud → local copy must land where the user is looking, or the pantry, every
+// group/detail view and the cart pages render empty after the reload with no
+// explanation. It defaults to the default location for callers with no active
+// location (boot-time and legacy paths).
+function upgradeLegacyPayload(
+  payload: ExportPayload,
+  locationId: string,
+): ExportPayload {
   if (payload.itemStocks !== undefined) return payload
 
   const itemStocks: ItemStock[] = []
   const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
-    itemStocks.push(legacyStockFromItem(raw))
+    itemStocks.push(legacyStockFromItem(raw, locationId))
     const item = { ...raw }
     for (const key of STOCK_FIELD_KEYS) delete item[key]
     return item
   })
 
-  const scopeCartId = (id: string) => `${DEFAULT_LOCATION_ID}:${id}`
+  const scopeCartId = (id: string) => `${locationId}:${id}`
 
   return {
     ...payload,
@@ -966,10 +981,12 @@ async function bootstrapCartsForAllLocations(): Promise<void> {
 export async function importLocalData(
   rawPayload: ExportPayload,
   strategy: ImportStrategy,
+  locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
   // Pre-v15 backups (and cloud payloads) carry stock inline on the item and
-  // unscoped cart ids — upgrade them to the split shape before writing.
-  const payload = upgradeLegacyPayload(rawPayload)
+  // unscoped cart ids — upgrade them to the split shape before writing, into
+  // the caller's target location (the active one, for the UI paths).
+  const payload = upgradeLegacyPayload(rawPayload, locationId)
 
   if (strategy === 'clear') {
     // Delete all tables in dependency order (children before parents)

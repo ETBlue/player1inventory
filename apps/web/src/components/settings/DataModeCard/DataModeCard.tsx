@@ -67,6 +67,11 @@ function CloudModeSection() {
   const apolloClient = useApolloClient()
   const clerk = useClerk()
   const { t } = useTranslation()
+  // Cloud keeps stock inline on the Item (no per-location ItemStock yet), so a
+  // copy down has to be placed into one location — the one the user is in.
+  // `active-location-id` survives the reload below and nothing resets it, so
+  // landing everything in the default location would show an empty pantry.
+  const { activeLocationId } = useActiveLocation()
 
   const [switchFlow, setSwitchFlow] = useState<SwitchFlow>('idle')
   const [signOutFlow, setSignOutFlow] = useState<SignOutFlow>('idle')
@@ -82,6 +87,7 @@ function CloudModeSection() {
       await importLocalData(
         payload,
         conflictRes === 'replace' ? 'replace' : 'skip',
+        activeLocationId,
       )
     }
     // Clerk session stays alive — seamless re-enable
@@ -95,7 +101,7 @@ function CloudModeSection() {
     if (copyData && switchToOffline) {
       setSignOutFlow('migrating')
       const payload = await fetchCloudPayload(apolloClient)
-      await importLocalData(payload, 'skip')
+      await importLocalData(payload, 'skip', activeLocationId)
     }
     await clerk.signOut()
     if (switchToOffline) {

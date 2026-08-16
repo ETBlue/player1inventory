@@ -159,3 +159,70 @@ describe('ImportCard — cloud import scopes stock to the active location', () =
     expect(importCloudData).not.toHaveBeenCalled()
   })
 })
+
+// Inbound (file / cloud → local) must mirror the outbound rule: restored stock
+// goes to the location the user is ACTIVE in, not always 'local'. Landing it in
+// 'local' while the user is in another location renders an empty pantry with no
+// explanation (PR D review I-4).
+describe('ImportCard — local import lands in the active location', () => {
+  afterEach(async () => {
+    localStorage.clear()
+    vi.mocked(toast.error).mockClear()
+    await db.locations.clear()
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.shoppingCarts.clear()
+    await db.cartItems.clear()
+  })
+
+  // A pre-v15 backup: stock inline on the item, no itemStocks table.
+  function legacyPayload() {
+    const iso = new Date().toISOString()
+    return {
+      version: 1,
+      exportedAt: iso,
+      items: [
+        {
+          id: 'item-1',
+          name: 'Milk',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 3,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          createdAt: iso,
+          updatedAt: iso,
+        },
+      ],
+      locations: [],
+      tags: [],
+      tagTypes: [],
+      vendors: [],
+      recipes: [],
+      inventoryLogs: [],
+      shoppingCarts: [],
+      cartItems: [],
+      shelves: [],
+    }
+  }
+
+  it('user restoring a legacy backup sees it in the location they are in', async () => {
+    // Given local mode with 'office' as the active location
+    await seedLocations(['local', 'My Home'], ['office', 'Office'])
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    const { container } = renderCard()
+
+    // When the user restores a pre-v15 backup
+    await uploadPayload(container, legacyPayload())
+
+    // Then the synthesised stock lands in 'office' — the pantry they are
+    // looking at — instead of the default location
+    await waitFor(async () => {
+      expect(await db.itemStocks.count()).toBe(1)
+    })
+    const stocks = await db.itemStocks.toArray()
+    expect(stocks[0].locationId).toBe('office')
+  })
+})
