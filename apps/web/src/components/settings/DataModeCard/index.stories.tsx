@@ -1,5 +1,6 @@
 import { MockedProvider } from '@apollo/client/testing/react'
 import type { Meta, StoryObj } from '@storybook/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DataModeCard } from '.'
 
 // DataModeCard uses:
@@ -7,6 +8,8 @@ import { DataModeCard } from '.'
 //   - useUser() from @clerk/react — shown in CloudMode only (email display)
 //   - useClerk() from @clerk/react — signOut, used in sign-out flow
 //   - useApolloClient() — used in switch/sign-out flows for fetchCloudPayload
+//   - useLocations() — TanStack Query read backing the multi-location copy
+//     warning, hence the QueryClientProvider decorator below
 //
 // Mocking strategy:
 //   - localStorage is set in each story's `beforeEach` to control mode
@@ -18,14 +21,20 @@ import { DataModeCard } from '.'
 
 const apolloMocks: never[] = []
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
+
 const meta: Meta<typeof DataModeCard> = {
   title: 'Components/Settings/DataModeCard',
   component: DataModeCard,
   decorators: [
     (Story) => (
-      <MockedProvider mocks={apolloMocks} addTypename={false}>
-        <Story />
-      </MockedProvider>
+      <QueryClientProvider client={queryClient}>
+        <MockedProvider mocks={apolloMocks} addTypename={false}>
+          <Story />
+        </MockedProvider>
+      </QueryClientProvider>
     ),
   ],
   parameters: {
@@ -48,9 +57,11 @@ export const CloudMode: Story = {
   name: 'CloudMode — sharing enabled',
   decorators: [
     (Story) => (
-      <MockedProvider mocks={apolloMocks} addTypename={false}>
-        <Story />
-      </MockedProvider>
+      <QueryClientProvider client={queryClient}>
+        <MockedProvider mocks={apolloMocks} addTypename={false}>
+          <Story />
+        </MockedProvider>
+      </QueryClientProvider>
     ),
   ],
   beforeEach() {
@@ -79,9 +90,11 @@ export const SignOutDialog: Story = {
   name: 'CloudMode — sign out dialog open',
   decorators: [
     (Story) => (
-      <MockedProvider mocks={apolloMocks} addTypename={false}>
-        <Story />
-      </MockedProvider>
+      <QueryClientProvider client={queryClient}>
+        <MockedProvider mocks={apolloMocks} addTypename={false}>
+          <Story />
+        </MockedProvider>
+      </QueryClientProvider>
     ),
   ],
   play: async ({ canvasElement }) => {

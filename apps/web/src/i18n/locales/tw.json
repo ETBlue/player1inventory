@@ -476,6 +476,12 @@
       "skip": "略過",
       "autoImporting": "正在將本機資料複製到雲端…"
     },
+    "migrationLocationWarning": {
+      "title": "只會複製「{{location}}」",
+      "description": "雲端模式尚未支援多個地點，因此只有「{{location}}」的庫存會複製到您的雲端帳戶。",
+      "leftBehind": "不會複製：{{locations}}。這些庫存完全不會存進雲端，只會留在這台裝置上。",
+      "continue": "仍要複製"
+    },
     "export": {
       "label": "下載我的資料",
       "description": "將資料匯出為 JSON 格式的檔案，以供備份",

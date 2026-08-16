@@ -480,6 +480,12 @@
       "skip": "Skip",
       "autoImporting": "Copying local data to cloud…"
     },
+    "migrationLocationWarning": {
+      "title": "Only {{location}} will be copied",
+      "description": "Cloud mode does not support multiple locations yet, so only the stock in {{location}} is copied to your cloud account.",
+      "leftBehind": "Not copied: {{locations}}. That stock is not saved to the cloud at all — it stays on this device only.",
+      "continue": "Copy anyway"
+    },
     "export": {
       "label": "Download my data",
       "description": "Export all data as a JSON backup",

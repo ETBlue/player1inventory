@@ -3,6 +3,7 @@ import { useClerk, useUser } from '@clerk/react'
 import { Cloud, Database } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MigrationLocationWarningDialog } from '@/components/shared/MigrationLocationWarningDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +22,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { useLocations } from '@/hooks/useLocations'
 import {
   MIGRATION_PROMPTED_KEY,
   MIGRATION_STRATEGY_KEY,
@@ -34,7 +37,12 @@ import { type ImportStrategy, importLocalData } from '@/lib/importData'
 
 type SwitchFlow = 'idle' | 'copy' | 'conflict'
 type SignOutFlow = 'idle' | 'askOffline' | 'askMigrate' | 'migrating'
-type EnableFlow = 'idle' | 'confirm' | 'copyAsk' | 'strategyAsk'
+type EnableFlow =
+  | 'idle'
+  | 'confirm'
+  | 'copyAsk'
+  | 'strategyAsk'
+  | 'locationWarning'
 
 // Inner component that calls useUser() — only rendered when not in E2E mode
 function CloudModeSectionWithUser() {
@@ -224,7 +232,20 @@ function CloudModeSection() {
 export function DataModeCard() {
   const { mode } = useDataMode()
   const [enableFlow, setEnableFlow] = useState<EnableFlow>('idle')
+  const [pendingStrategy, setPendingStrategy] = useState<ImportStrategy | null>(
+    null,
+  )
   const { t } = useTranslation()
+
+  // The copy itself runs after the reload, in `usePostLoginMigration`'s
+  // auto-import branch, and sends only the ACTIVE location's stock (cloud has no
+  // per-location ItemStock yet). Warn here — before the strategy is stored —
+  // whenever there is another location whose stock will be left behind.
+  const { data: locations } = useLocations()
+  const { activeLocationId, activeLocation } = useActiveLocation()
+  const otherLocations = (locations ?? []).filter(
+    (loc) => loc.id !== activeLocationId,
+  )
 
   function doEnableSwitch(strategy?: ImportStrategy) {
     if (strategy) {
@@ -233,6 +254,16 @@ export function DataModeCard() {
     }
     localStorage.setItem(DATA_MODE_STORAGE_KEY, 'cloud')
     window.location.reload()
+  }
+
+  // Single-location pantries (the common case) get no extra confirmation.
+  function requestEnableSwitch(strategy: ImportStrategy) {
+    if (otherLocations.length === 0) {
+      doEnableSwitch(strategy)
+      return
+    }
+    setPendingStrategy(strategy)
+    setEnableFlow('locationWarning')
   }
 
   return (
@@ -354,18 +385,32 @@ export function DataModeCard() {
             <AlertDialogCancel onClick={() => setEnableFlow('copyAsk')}>
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => doEnableSwitch('skip')}>
+            <AlertDialogAction onClick={() => requestEnableSwitch('skip')}>
               {t('settings.dataMode.enableStrategyDialog.skip')}
             </AlertDialogAction>
-            <AlertDialogAction onClick={() => doEnableSwitch('replace')}>
+            <AlertDialogAction onClick={() => requestEnableSwitch('replace')}>
               {t('settings.dataMode.enableStrategyDialog.overwrite')}
             </AlertDialogAction>
-            <AlertDialogAction onClick={() => doEnableSwitch('clear')}>
+            <AlertDialogAction onClick={() => requestEnableSwitch('clear')}>
               {t('settings.dataMode.enableStrategyDialog.clearAndImport')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ④ Multi-location warning — only when another location would be left behind */}
+      <MigrationLocationWarningDialog
+        open={enableFlow === 'locationWarning'}
+        activeLocationName={activeLocation?.name ?? activeLocationId}
+        otherLocationNames={otherLocations.map((loc) => loc.name)}
+        onConfirm={() => {
+          if (pendingStrategy) doEnableSwitch(pendingStrategy)
+        }}
+        onCancel={() => {
+          setPendingStrategy(null)
+          setEnableFlow('strategyAsk')
+        }}
+      />
     </>
   )
 }
