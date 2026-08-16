@@ -782,6 +782,82 @@ describe('Item stock tab', () => {
     expect(await screen.findByLabelText(/^packed/i)).toHaveValue(0)
   })
 
+  // The literal state the PR D implicit stock-add dialog guarded: the item is
+  // not stocked in the ACTIVE location when the tab opens. There is no form to
+  // save here at all, which is why that dialog is gone.
+  it('opens on the empty state when the item is not stocked in the active location', async () => {
+    // Given an item stocked only somewhere else
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Butter', tagIds: [] }, cabin.id)
+
+    renderStockTab(item.id)
+
+    // Then the active location's page offers to add it, with no stock form
+    // that Save could silently create a row from
+    expect(
+      await screen.findByRole('button', { name: /add to location/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/not stocked here/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /save/i }),
+    ).not.toBeInTheDocument()
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeUndefined()
+  })
+
+  it('never runs the remove-dialog counts unscoped', async () => {
+    // Given an item stocked in the active location
+    await createLocation('Cabin')
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/^packed/i)
+    await screen.findByRole('button', { name: /remove from location/i })
+
+    // Then every count query the tab ran names a location. Declared before
+    // `useLocations()` resolves they would each fire once with
+    // `locationId: undefined` — an item-global scan whose result is wrong for
+    // a dialog that names one location, thrown away a tick later.
+    const countKeys = queryClient
+      .getQueryCache()
+      .getAll()
+      .map((q) => q.queryKey)
+      .filter((key) => key[1] === 'countByItem')
+    expect(countKeys.length).toBeGreaterThan(0)
+    for (const key of countKeys) {
+      expect((key[3] as { locationId?: string }).locationId).toBeDefined()
+    }
+  })
+
+  it('tells the user when adding to a location fails', async () => {
+    const user = userEvent.setup()
+
+    // Given an item not stocked in the active location, and a write that fails
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Butter', tagIds: [] }, cabin.id)
+    const addSpy = vi
+      .spyOn(db.itemStocks, 'add')
+      .mockRejectedValueOnce(new Error('disk on fire'))
+
+    renderStockTab(item.id)
+    const addButton = await screen.findByRole('button', {
+      name: /add to location/i,
+    })
+
+    // When the user tries to add it
+    await user.click(addButton)
+
+    // Then the failure is reported instead of vanishing into an unhandled
+    // rejection, and the page still offers to try again
+    expect(
+      await screen.findByText(/could not add butter to my home/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /add to location/i }),
+    ).toBeEnabled()
+    addSpy.mockRestore()
+  })
+
   it('user can remove the item from the location being viewed after confirming', async () => {
     const user = userEvent.setup()
 

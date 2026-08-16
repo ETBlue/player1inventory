@@ -34,7 +34,7 @@ import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
-import type { ItemStock, PantryItem, StockFields } from '@/types'
+import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
@@ -398,6 +398,61 @@ function CloudStockTab({ itemId }: { itemId: string }) {
   )
 }
 
+// "Remove from location" and its confirmation. This is a component rather than
+// inline JSX so the two count queries only exist while a stocked page is on
+// screen: declared up in LocalStockTab they would run once against
+// `locationId: undefined` (an item-global scan) before `useLocations()`
+// resolves, then re-key and run again.
+function RemoveFromLocationButton({
+  itemId,
+  itemName,
+  location,
+  onRemove,
+}: {
+  itemId: string
+  itemName: string
+  location: Location
+  onRemove: () => Promise<void>
+}) {
+  const { t } = useTranslation()
+  // Scoped to this page, so the confirmation counts exactly the rows removal
+  // would delete — an item-global count would over-report.
+  const logCount = useInventoryLogCountByItem(itemId, location.id)
+  const cartCount = useCartItemCountByItem(itemId, location.id)
+
+  return (
+    <DeleteButton
+      trigger={t('items.detail.locationPager.removeFromLocation')}
+      buttonVariant="destructive-outline"
+      buttonClassName="w-full max-w-2xl mt-4"
+      dialogTitle={t('items.detail.removeLocationDialog.title', {
+        name: itemName,
+        location: location.name,
+      })}
+      dialogDescription={
+        <>
+          {t('items.detail.removeLocationDialog.description', {
+            name: itemName,
+            location: location.name,
+          })}
+          {/* Only once both counts have resolved — a half-rendered
+              "Inventory logs:  · Cart entries: " helps nobody. */}
+          {logCount.data !== undefined && cartCount.data !== undefined && (
+            <span className="mt-2 block">
+              {t('items.detail.removeLocationDialog.affected', {
+                logs: logCount.data,
+                carts: cartCount.data,
+              })}
+            </span>
+          )}
+        </>
+      }
+      confirmLabel={t('items.detail.removeLocationDialog.confirm')}
+      onDelete={onRemove}
+    />
+  )
+}
+
 // Local mode: a pager across every location. Each page shows that location's
 // own ItemStock — its form plus "Remove from location" when stocked, an empty
 // state plus "Add to location" when not.
@@ -417,6 +472,7 @@ function LocalStockTab({ itemId }: { itemId: string }) {
   // null = "not paged yet", i.e. follow the active location.
   const [viewedLocationId, setViewedLocationId] = useState<string | null>(null)
   const [pendingPageIndex, setPendingPageIndex] = useState<number | null>(null)
+  const [addFailed, setAddFailed] = useState(false)
 
   const ordered = locations ?? []
   const wantedIndex = ordered.findIndex(
@@ -424,11 +480,6 @@ function LocalStockTab({ itemId }: { itemId: string }) {
   )
   const currentIndex = wantedIndex === -1 ? 0 : wantedIndex
   const viewed = ordered[currentIndex]
-
-  // Scoped to the page being viewed, so the remove confirmation counts exactly
-  // the rows that removal would delete.
-  const logCount = useInventoryLogCountByItem(itemId, viewed?.id)
-  const cartCount = useCartItemCountByItem(itemId, viewed?.id)
 
   if (!item || !locations || !stocks) return <LoadingSpinner />
   if (!viewed) return null
@@ -458,7 +509,15 @@ function LocalStockTab({ itemId }: { itemId: string }) {
   }
 
   const handleAdd = async () => {
-    await addItemToLocation.mutateAsync({ itemId, locationId: viewed.id })
+    // Caught rather than left to reject: this runs straight off an onClick, so
+    // a failure would otherwise be an unhandled rejection with nothing on
+    // screen to tell the user the add never happened.
+    setAddFailed(false)
+    try {
+      await addItemToLocation.mutateAsync({ itemId, locationId: viewed.id })
+    } catch {
+      setAddFailed(true)
+    }
   }
 
   const handleRemove = async () => {
@@ -500,35 +559,11 @@ function LocalStockTab({ itemId }: { itemId: string }) {
               locationId={viewed.id}
             />
             <div className="max-w-2xl mx-auto">
-              <DeleteButton
-                trigger={t('items.detail.locationPager.removeFromLocation')}
-                buttonVariant="destructive-outline"
-                buttonClassName="w-full max-w-2xl mt-4"
-                dialogTitle={t('items.detail.removeLocationDialog.title', {
-                  name: item.name,
-                  location: viewed.name,
-                })}
-                dialogDescription={
-                  <>
-                    {t('items.detail.removeLocationDialog.description', {
-                      name: item.name,
-                      location: viewed.name,
-                    })}
-                    {/* Only once both counts have resolved — a half-rendered
-                        "Inventory logs:  · Cart entries: " helps nobody. */}
-                    {logCount.data !== undefined &&
-                      cartCount.data !== undefined && (
-                        <span className="mt-2 block">
-                          {t('items.detail.removeLocationDialog.affected', {
-                            logs: logCount.data,
-                            carts: cartCount.data,
-                          })}
-                        </span>
-                      )}
-                  </>
-                }
-                confirmLabel={t('items.detail.removeLocationDialog.confirm')}
-                onDelete={handleRemove}
+              <RemoveFromLocationButton
+                itemId={itemId}
+                itemName={item.name}
+                location={viewed}
+                onRemove={handleRemove}
               />
             </div>
           </>
@@ -541,7 +576,7 @@ function LocalStockTab({ itemId }: { itemId: string }) {
                 { name: item.name, location: viewed.name },
               )}
             />
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-2">
               <Button
                 type="button"
                 onClick={handleAdd}
@@ -549,6 +584,17 @@ function LocalStockTab({ itemId }: { itemId: string }) {
               >
                 {t('items.detail.locationPager.addToLocation')}
               </Button>
+              {addFailed && (
+                <p
+                  role="alert"
+                  className="text-sm text-status-error-foreground"
+                >
+                  {t('items.detail.locationPager.addFailed', {
+                    name: item.name,
+                    location: viewed.name,
+                  })}
+                </p>
+              )}
             </div>
           </div>
         )}
