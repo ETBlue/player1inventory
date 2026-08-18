@@ -46,7 +46,7 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
 
 // A wider update type that allows explicit `undefined` for optional fields.
 // Passing `undefined` tells Dexie (local) to clear those properties and
-// tells toUpdateItemInput() (cloud) to send null so MongoDB clears them.
+// tells toUpdateItemInput() (cloud) to send null so the server clears them.
 // We need a separate type here because `exactOptionalPropertyTypes: true`
 // prevents assigning `undefined` to fields typed as `?: T` on `Partial<Item>`.
 type ItemInfoUpdatePayload = Omit<Partial<Item>, 'wikidataUrl' | 'note'> & {
@@ -60,7 +60,7 @@ function buildInfoUpdates(values: ItemFormValues): ItemInfoUpdatePayload {
   return {
     name: values.name,
     // Assign undefined (not delete) so toUpdateItemInput() sees the key as
-    // present and sends null to MongoDB — intentionally clearing the field
+    // present and sends null to the server — intentionally clearing the field
     // when the user leaves it blank.
     wikidataUrl: values.wikidataUrl.trim()
       ? values.wikidataUrl.trim()

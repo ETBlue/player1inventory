@@ -156,7 +156,7 @@ test.beforeEach(async ({ page, request, baseURL }) => {
 
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
+    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
     await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
       headers: { 'x-e2e-user-id': E2E_USER_ID },
     })
@@ -211,7 +211,7 @@ test('user can delete a recipe', async ({ page, baseURL }) => {
   const recipes = new RecipesPage(page)
 
   if (baseURL === CLOUD_WEB_URL) {
-    // Cloud: create via UI (data goes to MongoDB)
+    // Cloud: create via UI (data goes to Postgres)
     await recipes.navigateTo()
     await recipes.clickNewRecipe()
     await recipes.fillRecipeName('Pancakes')

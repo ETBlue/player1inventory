@@ -8,7 +8,7 @@ import { makeGql } from '../utils/cloud'
 
 // Seed items and a recipe for the cooking test.
 // Local mode: seeds directly into IndexedDB (avoids 10-15 UI steps).
-// Cloud mode: seeds via GraphQL API (IndexedDB is irrelevant, data lives in MongoDB).
+// Cloud mode: seeds via GraphQL API (IndexedDB is irrelevant, data lives in Postgres).
 async function seedDatabase(
   page: Page,
   request: APIRequestContext,
@@ -141,7 +141,7 @@ test.beforeEach(async ({ page, request, baseURL }) => {
 
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from MongoDB via the E2E cleanup endpoint.
+    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
     await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
       headers: { 'x-e2e-user-id': E2E_USER_ID },
     })
