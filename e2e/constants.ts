@@ -15,6 +15,3 @@ export const CLOUD_GRAPHQL_URL = `${CLOUD_SERVER_URL}/graphql`
 
 // E2E test identity — must match the x-e2e-user-id header and VITE_E2E_TEST_USER_ID
 export const E2E_USER_ID = 'e2e-test-user'
-
-// Dedicated MongoDB database for E2E tests — isolated from the dev database
-export const E2E_MONGODB_URI = 'mongodb://localhost:27017/player1inventory-e2e'

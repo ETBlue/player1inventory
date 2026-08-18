@@ -5,7 +5,6 @@ import {
   CLOUD_SERVER_URL,
   CLOUD_WEB_PORT,
   CLOUD_WEB_URL,
-  E2E_MONGODB_URI,
   E2E_USER_ID,
   LOCAL_WEB_PORT,
   LOCAL_WEB_URL,
@@ -71,13 +70,16 @@ export default defineConfig({
     },
     {
       // Cloud-mode backend — dedicated port avoids conflicts with the normal dev
-      // server. E2E_TEST_MODE bypasses Clerk auth; a dedicated MongoDB database
-      // keeps test data isolated from development data.
+      // server. E2E_TEST_MODE bypasses Clerk auth and mounts the /e2e/cleanup route.
+      //
+      // Isolation note: the server loads apps/server/.env, so these tests run against
+      // whichever database DATABASE_URL points at — normally the dev database, not a
+      // separate one. Isolation is by row ownership, not by database: every write is
+      // scoped to E2E_USER_ID, and /e2e/cleanup only deletes rows owned by that user.
       command: [
         'E2E_TEST_MODE=true',
         `PORT=${CLOUD_SERVER_PORT}`,
         `CLIENT_ORIGIN=${CLOUD_WEB_URL}`,
-        `MONGODB_URI=${E2E_MONGODB_URI}`,
         'pnpm --filter server dev',
       ].join(' '),
       url: CLOUD_GRAPHQL_URL,
