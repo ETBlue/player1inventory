@@ -13,7 +13,7 @@ import {
 
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: false, // cloud tests share a real MongoDB — run all tests serially
+  fullyParallel: false, // cloud tests share one real database — run all tests serially
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
@@ -26,7 +26,7 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
-      // Cloud mode: app reads from MongoDB via GraphQL. Scoped to item tests for now;
+      // Cloud mode: app reads from Postgres via GraphQL. Scoped to item tests for now;
       // expand testMatch as each feature is migrated to the cloud backend.
       name: 'cloud',
       use: {

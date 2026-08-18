@@ -53,7 +53,7 @@ function toCreateItemInput(input: ItemMutationInput): CreateItemInput {
 //   - Field present with undefined/null value → sent as null → server clears it
 //
 // This means partial updates (quantity buttons, tag assignment, etc.) safely
-// omit expiration and measurement fields, leaving them untouched in MongoDB.
+// omit expiration and measurement fields, leaving them untouched in the database.
 // The full ItemForm explicitly sets these fields (to a value or undefined) so
 // it still controls their DB state.
 export function toUpdateItemInput(
@@ -63,7 +63,8 @@ export function toUpdateItemInput(
   return {
     // Non-clearable fields (name, tagIds, quantities, etc.) pass through unchanged.
     // Guard assignments below MUST come after ...rest — they coerce optional fields that
-    // rest may have written as undefined into explicit null for MongoDB $set.
+    // rest may have written as undefined into explicit null, which the server reads as
+    // an instruction to clear the field.
     ...rest,
     ...('packageUnit' in rest && { packageUnit: rest.packageUnit ?? null }),
     ...('measurementUnit' in rest && {

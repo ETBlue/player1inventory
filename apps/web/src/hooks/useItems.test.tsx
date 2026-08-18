@@ -237,7 +237,7 @@ describe('useUpdateItem (cloud mode)', () => {
     expect(mockCloudUpdate).toHaveBeenCalled()
   })
 
-  it('omits absent optional fields so MongoDB $set leaves them untouched', async () => {
+  it('omits absent optional fields so the server leaves them untouched', async () => {
     // Given cloud mode and an update that omits all optional clearable fields
     localStorage.setItem('data-mode', 'cloud')
     mockCloudUpdate.mockResolvedValue({
@@ -260,7 +260,7 @@ describe('useUpdateItem (cloud mode)', () => {
     })
 
     // Then the GraphQL input does NOT include optional clearable fields
-    // (absent fields are omitted so MongoDB $set leaves them untouched)
+    // (absent fields are omitted so the server leaves them untouched)
     const callArg = mockCloudUpdate.mock.calls[0][0]
     const input = callArg?.variables?.input ?? {}
     expect(input).not.toHaveProperty('packageUnit')
