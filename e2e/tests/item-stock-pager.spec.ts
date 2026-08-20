@@ -290,8 +290,8 @@ test.describe('items stock tab — location pager', () => {
     await expect(stockTab.getPreviousButton()).toBeDisabled()
     await expect(stockTab.getNextButton()).toBeEnabled()
 
-    // And the active location is marked on its own dot, distinct from the
-    // viewed-page highlight
+    // And the active location is named on its own dot's accessible name — the
+    // dots draw only page position, so this is where the fact lives for AT
     await expect(stockTab.getActiveDot()).toHaveAccessibleName(
       'My Home (active location)',
     )

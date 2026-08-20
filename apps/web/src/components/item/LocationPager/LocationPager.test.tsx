@@ -38,26 +38,49 @@ const dotOf = (tabName: string | RegExp) =>
   screen.getByRole('tab', { name: tabName }).querySelector('span')
 
 describe('LocationPager', () => {
-  it('marks the viewed page and the active location on different dots', async () => {
+  it('moves the filled dot to the page being viewed', async () => {
     const user = userEvent.setup()
 
-    // Given the pager opens on the active location
+    // Given the pager opens on the first location
     render(<Harness />)
 
-    // Then that one dot carries both marks
+    // Then only that dot is filled — every other dot is hollow
     expect(dotOf(/my home/i)).toHaveAttribute('data-viewed')
-    expect(dotOf(/my home/i)).toHaveAttribute('data-active')
     expect(dotOf('Cabin')).not.toHaveAttribute('data-viewed')
-    expect(dotOf('Cabin')).not.toHaveAttribute('data-active')
+    expect(dotOf('Office')).not.toHaveAttribute('data-viewed')
 
     // When the user pages away
     await user.click(screen.getByRole('tab', { name: 'Cabin' }))
 
-    // Then the two marks separate — the active marker does not follow the page
+    // Then the fill follows the page, and nothing else does — fill is the
+    // pager's only channel, so it must never mark two dots at once
     expect(dotOf('Cabin')).toHaveAttribute('data-viewed')
-    expect(dotOf('Cabin')).not.toHaveAttribute('data-active')
-    expect(dotOf(/my home/i)).toHaveAttribute('data-active')
     expect(dotOf(/my home/i)).not.toHaveAttribute('data-viewed')
+    expect(dotOf('Office')).not.toHaveAttribute('data-viewed')
+  })
+
+  it('keeps naming the active location on its own dot while paging elsewhere', async () => {
+    const user = userEvent.setup()
+
+    // Given the pager opens on the active location
+    render(<Harness />)
+    expect(
+      screen.getByRole('tab', { name: 'My Home (active location)' }),
+    ).toBeInTheDocument()
+
+    // When the user pages away
+    await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+
+    // Then the active location's dot keeps the suffix in its accessible name
+    // and no other dot picks it up — the dots stopped drawing that fact when
+    // fill was reassigned to page position, so the name is where it survives
+    expect(
+      screen.getByRole('tab', { name: 'My Home (active location)' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Cabin' })).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('tab', { name: /\(active location\)$/ }),
+    ).toHaveLength(1)
   })
 
   it('names the active location in words on every page', async () => {
@@ -68,8 +91,9 @@ describe('LocationPager', () => {
     expect(screen.getByText('Active')).toBeInTheDocument()
 
     // When the user pages to each other location
-    // Then the caption keeps naming the active one — the dot's shape is not
-    // the only sighted cue while browsing elsewhere
+    // Then the caption keeps naming the active one — the dots do not mark it
+    // at all, so this caption is the ONLY sighted cue for which location is
+    // active while browsing elsewhere
     await user.click(screen.getByRole('tab', { name: 'Cabin' }))
     expect(screen.getByText('Active: My Home')).toBeInTheDocument()
 

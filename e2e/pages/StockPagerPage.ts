@@ -31,6 +31,8 @@ export class StockPagerPage {
   getActiveDot(): Locator {
     // Only the globally active location's dot carries the "(active location)"
     // suffix — it keeps it while the user pages elsewhere (LocationPager.tsx:153-158).
+    // This is a name-only distinction: the dots themselves draw page position
+    // and nothing else, so there is no visual active marker to locate.
     return this.getTablist().getByRole('tab', { name: /\(active location\)$/ })
   }
 

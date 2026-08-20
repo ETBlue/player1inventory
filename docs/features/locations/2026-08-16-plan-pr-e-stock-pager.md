@@ -64,6 +64,21 @@ orphan that the combobox can re-add.
    visually marked while viewing others; the current page's dot is highlighted.
    *Open note from the plan:* active-vs-viewed indicator styling is unresolved —
    choose using existing design tokens, and show the choice in the report.
+
+   **RESOLVED (designer ruling, 2026-08-16):** every dot is the same size and the
+   same colour; the dot for the page being viewed is filled and the rest are
+   hollow. Implemented as `size-3` + `border-2 border-foreground-muted` on all
+   dots, with `bg-foreground-muted` vs `bg-transparent` as the only difference.
+   `foreground-muted` measures 8.73:1 (light) / 7.30:1 (dark) against
+   `background-elevated`, clearing WCAG 1.4.11's 3:1 for non-text indicators;
+   the hollow dot's stroke is that colour and its centre is the page, so the
+   stroke inherits the ratio. **Accepted consequence:** the ruling spends size,
+   colour *and* fill on page position, so the globally active location has no
+   dot marker at all. It keeps the words channel — the caption under the
+   heading always reads "Active" / "Active: `<name>`" — plus the
+   "(active location)" suffix in that dot's accessible name. No replacement
+   visual marker was invented (rings, halos and opacity tricks were all
+   explicitly out of scope, and the ring previously tried here failed contrast).
 2. **Per page:** stocked → the existing stock form for that location, plus
    **"Remove from location"**; not stocked → empty state plus **"Add to location"**
    (copy-on-add, reusing `addItemToLocation`).

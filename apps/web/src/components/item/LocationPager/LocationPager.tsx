@@ -10,7 +10,7 @@ interface LocationPagerProps {
   locations: Location[]
   /** Index into `locations` of the page currently on screen. */
   currentIndex: number
-  /** The globally active location — marked wherever it sits in the list. */
+  /** The globally active location — named in the caption and in its dot's accessible name. */
   activeLocationId: string
   onChange: (index: number) => void
   /** `id` of the panel these tabs control. */
@@ -24,29 +24,29 @@ interface LocationPagerProps {
 // because the panel's tabpanel/aria-labelledby wiring has to appear and
 // disappear along with the tablist.
 //
-// Three channels, none of them colour alone:
-//   • SIZE + FILL COLOUR say which page you are viewing (a larger dot in
-//     `importance-primary-background` against the smaller `foreground-muted`
-//     ones). Size carries it on its own, because in dark mode those two
-//     tokens are ~1.1:1 apart in luminance — a hue-only difference.
-//   • SHAPE says which location is the globally active one: its dot is drawn
-//     hollow (a 2px stroke around the page background) while the others are
-//     solid. Shape survives greyscale, low vision and low contrast, which a
-//     halo ring does not — the previous `ring-importance-primary-accessory`
-//     measured 2.44:1 against the page and 1.16:1 against the dot it wrapped,
-//     both under WCAG 1.4.11's 3:1 for non-text indicators. Both dot colours
-//     clear 3:1 against `background-elevated` in either theme, and because the
-//     hollow dot's stroke IS the dot colour and its centre IS the page, the
-//     stroke inherits that same ratio.
-//   • WORDS carry both facts for anyone the graphics fail: the viewed
-//     location's name is the heading, and the caption underneath always says
-//     which location is active — "Active" when you are standing on it,
-//     "Active: <name>" while you are looking at another page. That caption is
-//     the fix for the marker vanishing exactly when it matters.
+// Two channels, neither of them colour:
+//   • FILL says which page you are viewing. Every dot is the same size
+//     (`size-3`) and the same colour (`foreground-muted`); the viewed one is
+//     solid and the rest are hollow — a 2px stroke of that same colour around
+//     a transparent centre. This is the standard pager-dot idiom, and because
+//     the difference is shape rather than hue it survives greyscale, low
+//     vision and low contrast. `foreground-muted` measures 8.73:1 against
+//     `background-elevated` in light mode and 7.30:1 in dark, well clear of
+//     WCAG 1.4.11's 3:1 for non-text indicators; the hollow dot's stroke IS
+//     that colour and its centre IS the page, so the stroke inherits the same
+//     ratio. (Do not reach for a halo ring to add a third state: the
+//     `ring-importance-primary-accessory` this replaced measured 2.44:1
+//     against the page and 1.16:1 against the dot it wrapped — both fail.)
+//   • WORDS say which location is the globally active one. The dots do not
+//     mark it at all — fill is spent on page position — so the caption under
+//     the heading carries it on every page: "Active" when you are standing on
+//     it, "Active: <name>" while you are looking elsewhere. The active dot's
+//     accessible name also keeps its "(active location)" suffix wherever it
+//     sits in the list, so assistive tech gets the fact per-dot too.
 //
-// `data-viewed` / `data-active` mirror the two states onto the DOM so a test
-// can bind the marker to the right dot; the CSS itself can only be judged by
-// eye (see LocationPager.stories.tsx, both themes).
+// `data-viewed` mirrors the styled state onto the DOM so a test can bind the
+// fill to the right dot; the CSS itself can only be judged by eye (see
+// LocationPager.stories.tsx, both themes).
 export function LocationPager({
   locations,
   currentIndex,
@@ -163,20 +163,11 @@ export function LocationPager({
                 <span
                   aria-hidden="true"
                   data-viewed={isViewed || undefined}
-                  data-active={isActive || undefined}
                   className={cn(
-                    'block rounded-full transition-all',
-                    isViewed ? 'size-3.5' : 'size-2.5',
-                    isActive
-                      ? cn(
-                          'border-2 bg-transparent',
-                          isViewed
-                            ? 'border-importance-primary-background'
-                            : 'border-foreground-muted',
-                        )
-                      : isViewed
-                        ? 'bg-importance-primary-background'
-                        : 'bg-foreground-muted',
+                    // One geometry for every dot — only the fill changes, so
+                    // nothing shifts or resizes as the page turns.
+                    'block size-3 rounded-full border-2 border-foreground-muted transition-colors',
+                    isViewed ? 'bg-foreground-muted' : 'bg-transparent',
                   )}
                 />
               </button>

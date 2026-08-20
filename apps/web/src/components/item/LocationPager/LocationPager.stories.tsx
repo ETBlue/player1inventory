@@ -5,11 +5,12 @@ import { LocationPager } from './LocationPager'
 
 // The dot states are CSS — no test can judge them, so these stories exist to be
 // looked at, in BOTH themes. What to check:
-//   • the viewed dot is visibly larger AND a different colour (dark mode has
-//     almost no luminance difference between the two fills, so size carries it)
-//   • the active location's dot is hollow — a shape difference that survives
-//     greyscale, unlike the halo ring this replaced
-//   • the caption under the name always says which location is active
+//   • every dot is the same size and the same colour (`foreground-muted`);
+//     only the viewed one is filled and the rest are hollow rings
+//   • the fill lands on the page you are looking at — and on nothing else.
+//     The dots say nothing about which location is globally active
+//   • which is why the caption under the name always names the active
+//     location: it is the only sighted cue for that fact
 const meta = {
   title: 'Components/Item/LocationPager',
   component: LocationPager,
@@ -66,7 +67,7 @@ export const OnTheActiveLocation: Story = {
 }
 
 export const ViewingAnotherLocation: Story = {
-  name: 'Viewing another location — active stays marked',
+  name: 'Viewing another location — caption names the active one',
   args: {} as never,
   render: () => <PagerHarness locations={threeLocations} startIndex={1} />,
 }
