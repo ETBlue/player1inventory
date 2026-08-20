@@ -75,8 +75,11 @@ orphan that the combobox can re-add.
    stroke inherits the ratio. **Accepted consequence:** the ruling spends size,
    colour *and* fill on page position, so the globally active location has no
    dot marker at all. It keeps the words channel — the caption under the
-   heading always reads "Active" / "Active: `<name>`" — plus the
-   "(active location)" suffix in that dot's accessible name. No replacement
+   heading always reads "Current location" / "Current location: `<name>`" —
+   plus the "(current location)" suffix in that dot's accessible name. A second
+   designer ruling settled that wording: user-facing copy calls it the CURRENT
+   location, while the code keeps "active" for `activeLocationId` and
+   `useActiveLocation`, which are app-wide. No replacement
    visual marker was invented (rings, halos and opacity tricks were all
    explicitly out of scope, and the ring previously tried here failed contrast).
 2. **Per page:** stocked → the existing stock form for that location, plus
