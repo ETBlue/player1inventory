@@ -1227,6 +1227,21 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
+  // Shopping > Vendor cart page (/shopping/:vendorId) on mobile
+  test('user can view vendor cart page without accessibility violations on mobile', async ({ page }) => {
+    // Given a seeded vendor on a mobile viewport
+    const vendorId = await seedVendor(page)
+
+    // Navigate to the vendor's cart page, exercising the toolbar (LocationSwitcher,
+    // back button, vendor name, cart count, cancel/done) at 390px width
+    await page.goto(`/shopping/${vendorId}`)
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations, including no toolbar-crowding contrast/overlap issues
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
   test('user can view settings page without accessibility violations on mobile', async ({ page }) => {
     // Given the user navigates to the settings page on a mobile viewport
     await page.goto('/settings')
