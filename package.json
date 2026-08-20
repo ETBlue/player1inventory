@@ -16,7 +16,7 @@
     "test:e2e:debug": "playwright test --config=e2e/playwright.config.ts --debug",
     "test:e2e:cloud": "playwright test --config=e2e/playwright.config.ts --project=cloud",
     "test:e2e:cloud:ui": "playwright test --config=e2e/playwright.config.ts --project=cloud --ui",
-    "typecheck": "pnpm --filter web typecheck",
+    "typecheck": "pnpm --filter web typecheck && pnpm --filter server typecheck",
     "test:all": "pnpm -r test",
     "lint": "pnpm --filter web lint",
     "format": "pnpm --filter web format",
