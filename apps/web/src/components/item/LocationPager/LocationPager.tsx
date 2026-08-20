@@ -10,7 +10,10 @@ interface LocationPagerProps {
   locations: Location[]
   /** Index into `locations` of the page currently on screen. */
   currentIndex: number
-  /** The globally active location — named in the caption and in its dot's accessible name. */
+  /**
+   * The globally active location. The pager never draws it — it surfaces it in
+   * words only, as the "current location" caption and that dot's accessible name.
+   */
   activeLocationId: string
   onChange: (index: number) => void
   /** `id` of the panel these tabs control. */
@@ -37,12 +40,15 @@ interface LocationPagerProps {
 //     ratio. (Do not reach for a halo ring to add a third state: the
 //     `ring-importance-primary-accessory` this replaced measured 2.44:1
 //     against the page and 1.16:1 against the dot it wrapped — both fail.)
-//   • WORDS say which location is the globally active one. The dots do not
-//     mark it at all — fill is spent on page position — so the caption under
-//     the heading carries it on every page: "Active" when you are standing on
-//     it, "Active: <name>" while you are looking elsewhere. The active dot's
-//     accessible name also keeps its "(active location)" suffix wherever it
-//     sits in the list, so assistive tech gets the fact per-dot too.
+//   • WORDS say which location is the globally active one — user-facing copy
+//     calls it the CURRENT location (designer ruling; the code keeps "active"
+//     for `activeLocationId` and `useActiveLocation`, which are app-wide). The
+//     dots do not mark it at all — fill is spent on page position — so the
+//     caption under the heading carries it on every page: "Current location"
+//     when you are standing on it, "Current location: <name>" while you are
+//     looking elsewhere. That dot's accessible name also keeps its
+//     "(current location)" suffix wherever it sits in the list, so assistive
+//     tech gets the fact per-dot too.
 //
 // `data-viewed` mirrors the styled state onto the DOM so a test can bind the
 // fill to the right dot; the CSS itself can only be judged by eye (see
@@ -119,8 +125,8 @@ export function LocationPager({
         {activeLocation && (
           <p className="min-w-0 truncate text-xs text-foreground-muted">
             {activeLocation.id === current.id
-              ? t('items.detail.locationPager.activeHint')
-              : t('items.detail.locationPager.activeElsewhere', {
+              ? t('items.detail.locationPager.currentHint')
+              : t('items.detail.locationPager.currentElsewhere', {
                   location: activeLocation.name,
                 })}
           </p>
@@ -152,7 +158,7 @@ export function LocationPager({
                 tabIndex={isViewed ? 0 : -1}
                 aria-label={
                   isActive
-                    ? t('items.detail.locationPager.pageActive', {
+                    ? t('items.detail.locationPager.pageCurrent', {
                         location: location.name,
                       })
                     : location.name

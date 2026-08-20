@@ -12,21 +12,21 @@ const {
 } = composeStories(stories)
 
 describe('LocationPager stories smoke tests', () => {
-  it('OnTheActiveLocation selects My Home and says it is active', () => {
+  it('OnTheActiveLocation selects My Home and says it is the current location', () => {
     render(<OnTheActiveLocation />)
     expect(
-      screen.getByRole('tab', { name: /my home.*active/i }),
+      screen.getByRole('tab', { name: /my home.*current location/i }),
     ).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Current location')).toBeInTheDocument()
   })
 
-  it('ViewingAnotherLocation selects Cabin while naming My Home as active', () => {
+  it('ViewingAnotherLocation selects Cabin while naming My Home as the current location', () => {
     render(<ViewingAnotherLocation />)
     expect(screen.getByRole('tab', { name: 'Cabin' })).toHaveAttribute(
       'aria-selected',
       'true',
     )
-    expect(screen.getByText('Active: My Home')).toBeInTheDocument()
+    expect(screen.getByText('Current location: My Home')).toBeInTheDocument()
   })
 
   it('OnTheLastLocation disables the next chevron', () => {

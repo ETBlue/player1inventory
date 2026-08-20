@@ -65,7 +65,7 @@ describe('LocationPager', () => {
     // Given the pager opens on the active location
     render(<Harness />)
     expect(
-      screen.getByRole('tab', { name: 'My Home (active location)' }),
+      screen.getByRole('tab', { name: 'My Home (current location)' }),
     ).toBeInTheDocument()
 
     // When the user pages away
@@ -75,11 +75,11 @@ describe('LocationPager', () => {
     // and no other dot picks it up — the dots stopped drawing that fact when
     // fill was reassigned to page position, so the name is where it survives
     expect(
-      screen.getByRole('tab', { name: 'My Home (active location)' }),
+      screen.getByRole('tab', { name: 'My Home (current location)' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Cabin' })).toBeInTheDocument()
     expect(
-      screen.getAllByRole('tab', { name: /\(active location\)$/ }),
+      screen.getAllByRole('tab', { name: /\(current location\)$/ }),
     ).toHaveLength(1)
   })
 
@@ -88,17 +88,17 @@ describe('LocationPager', () => {
 
     // Given the pager opens on the active location
     render(<Harness />)
-    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Current location')).toBeInTheDocument()
 
     // When the user pages to each other location
     // Then the caption keeps naming the active one — the dots do not mark it
     // at all, so this caption is the ONLY sighted cue for which location is
     // active while browsing elsewhere
     await user.click(screen.getByRole('tab', { name: 'Cabin' }))
-    expect(screen.getByText('Active: My Home')).toBeInTheDocument()
+    expect(screen.getByText('Current location: My Home')).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Office' }))
-    expect(screen.getByText('Active: My Home')).toBeInTheDocument()
+    expect(screen.getByText('Current location: My Home')).toBeInTheDocument()
   })
 
   it('keeps focus on the selected dot when the parent refuses the change', async () => {

@@ -293,7 +293,7 @@ test.describe('items stock tab — location pager', () => {
     // And the active location is named on its own dot's accessible name — the
     // dots draw only page position, so this is where the fact lives for AT
     await expect(stockTab.getActiveDot()).toHaveAccessibleName(
-      'My Home (active location)',
+      'My Home (current location)',
     )
 
     // When the user pages right twice with the chevron
@@ -313,9 +313,9 @@ test.describe('items stock tab — location pager', () => {
 
     // And the active location is still marked while viewing another page,
     // named in words as well as on the dot
-    await expect(stockTab.getActiveHint()).toHaveText('Active: My Home')
+    await expect(stockTab.getActiveHint()).toHaveText('Current location: My Home')
     await expect(stockTab.getActiveDot()).toHaveAccessibleName(
-      'My Home (active location)',
+      'My Home (current location)',
     )
 
     // When the user jumps straight back with a dot

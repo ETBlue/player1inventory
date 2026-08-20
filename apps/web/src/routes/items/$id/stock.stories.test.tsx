@@ -86,11 +86,11 @@ describe('Item detail stock tab stories smoke tests', () => {
     })
     expect(within(tablist).getAllByRole('tab')).toHaveLength(3)
     expect(
-      await screen.findByRole('tab', { name: /my home.*active/i }),
+      await screen.findByRole('tab', { name: /my home.*current location/i }),
     ).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('ViewingAnotherLocation shows the viewed location stock while My Home stays marked active', async () => {
+  it('ViewingAnotherLocation shows the viewed location stock while My Home stays named the current location', async () => {
     render(<ViewingAnotherLocation />)
     const user = userEvent.setup()
 
@@ -99,7 +99,7 @@ describe('Item detail stock tab stories smoke tests', () => {
 
     expect(await screen.findByLabelText(/^packed/i)).toHaveValue(7)
     expect(
-      screen.getByRole('tab', { name: /my home.*active/i }),
+      screen.getByRole('tab', { name: /my home.*current location/i }),
     ).toHaveAttribute('aria-selected', 'false')
   })
 

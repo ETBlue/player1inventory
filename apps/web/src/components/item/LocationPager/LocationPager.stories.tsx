@@ -9,8 +9,9 @@ import { LocationPager } from './LocationPager'
 //     only the viewed one is filled and the rest are hollow rings
 //   • the fill lands on the page you are looking at — and on nothing else.
 //     The dots say nothing about which location is globally active
-//   • which is why the caption under the name always names the active
-//     location: it is the only sighted cue for that fact
+//   • which is why the caption under the name always names it — "Current
+//     location" / "Current location: <name>", the only sighted cue for that
+//     fact. (User-facing copy says "current"; the prop stays `activeLocationId`.)
 const meta = {
   title: 'Components/Item/LocationPager',
   component: LocationPager,
@@ -61,13 +62,13 @@ function PagerHarness({
 }
 
 export const OnTheActiveLocation: Story = {
-  name: 'Viewing the active location',
+  name: 'Viewing the current location',
   args: {} as never,
   render: () => <PagerHarness locations={threeLocations} />,
 }
 
 export const ViewingAnotherLocation: Story = {
-  name: 'Viewing another location — caption names the active one',
+  name: 'Viewing another location — caption names the current one',
   args: {} as never,
   render: () => <PagerHarness locations={threeLocations} startIndex={1} />,
 }

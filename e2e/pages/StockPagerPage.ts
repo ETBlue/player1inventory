@@ -20,20 +20,20 @@ export class StockPagerPage {
 
   getDot(locationName: string): Locator {
     // Each dot is role="tab". Its accessible name is the location name, or
-    // "{{location}} (active location)" for the globally active one
-    // (items.detail.locationPager.pageActive — LocationPager.tsx:149-159).
+    // "{{location}} (current location)" for the globally active one
+    // (items.detail.locationPager.pageCurrent — LocationPager.tsx:149-159).
     // The regex matches both forms so callers need not know which is active.
     return this.getTablist().getByRole('tab', {
-      name: new RegExp(`^${escapeRegExp(locationName)}( \\(active location\\))?$`),
+      name: new RegExp(`^${escapeRegExp(locationName)}( \\(current location\\))?$`),
     })
   }
 
   getActiveDot(): Locator {
-    // Only the globally active location's dot carries the "(active location)"
+    // Only the globally active location's dot carries the "(current location)"
     // suffix — it keeps it while the user pages elsewhere (LocationPager.tsx:153-158).
     // This is a name-only distinction: the dots themselves draw page position
     // and nothing else, so there is no visual active marker to locate.
-    return this.getTablist().getByRole('tab', { name: /\(active location\)$/ })
+    return this.getTablist().getByRole('tab', { name: /\(current location\)$/ })
   }
 
   getPreviousButton(): Locator {
@@ -55,10 +55,10 @@ export class StockPagerPage {
   }
 
   getActiveHint(): Locator {
-    // The caption under the viewed location's name. "Active" when standing on
-    // the active location, "Active: {{name}}" while viewing another page
-    // (items.detail.locationPager.activeHint / .activeElsewhere — LocationPager.tsx:119-127).
-    return this.page.getByText(/^Active(: .+)?$/)
+    // The caption under the viewed location's name. "Current location" when
+    // standing on it, "Current location: {{name}}" while viewing another page
+    // (items.detail.locationPager.currentHint / .currentElsewhere — LocationPager.tsx:119-127).
+    return this.page.getByText(/^Current location(: .+)?$/)
   }
 
   async goToNext() {

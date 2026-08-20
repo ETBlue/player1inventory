@@ -490,17 +490,18 @@ describe('Item stock tab', () => {
 
     renderStockTab(item.id)
 
-    // Then the active location is named as such — not by colour alone
+    // Then that location's dot names it as the current location — the dots
+    // themselves draw page position only, so the name is where the fact lives
     const activeTab = await screen.findByRole('tab', {
-      name: /my home.*active/i,
+      name: /my home.*current location/i,
     })
     expect(activeTab).toHaveAttribute('aria-selected', 'true')
 
     // When the user pages away from it
     await user.click(screen.getByRole('tab', { name: 'Cabin' }))
 
-    // Then the active marker stays on My Home even though Cabin is the page
-    // being viewed
+    // Then the "(current location)" name stays on My Home even though Cabin is
+    // the page being viewed
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Cabin' })).toHaveAttribute(
         'aria-selected',
@@ -508,7 +509,7 @@ describe('Item stock tab', () => {
       )
     })
     expect(
-      screen.getByRole('tab', { name: /my home.*active/i }),
+      screen.getByRole('tab', { name: /my home.*current location/i }),
     ).toHaveAttribute('aria-selected', 'false')
   })
 
@@ -613,14 +614,16 @@ describe('Item stock tab', () => {
     renderStockTab(item.id)
 
     // Then standing on the active location says so
-    expect(await screen.findByText('Active')).toBeInTheDocument()
+    expect(await screen.findByText('Current location')).toBeInTheDocument()
 
     // When the user pages away from it
     await user.click(screen.getByRole('tab', { name: 'Cabin' }))
 
-    // Then the pager still says which location is active, in words — the ring
-    // on the dot is not the only sighted cue
-    expect(await screen.findByText('Active: My Home')).toBeInTheDocument()
+    // Then the pager still names it, in words — the dots mark page position
+    // only, so this caption is the sole sighted cue for the current location
+    expect(
+      await screen.findByText('Current location: My Home'),
+    ).toBeInTheDocument()
   })
 
   it('announces the location being viewed in a live region', async () => {
@@ -672,7 +675,7 @@ describe('Item stock tab', () => {
     await user.keyboard('{Home}')
     await waitFor(() => {
       expect(
-        screen.getByRole('tab', { name: /my home.*active/i }),
+        screen.getByRole('tab', { name: /my home.*current location/i }),
       ).toHaveAttribute('aria-selected', 'true')
     })
   })
@@ -736,7 +739,7 @@ describe('Item stock tab', () => {
     await user.keyboard('{ArrowLeft}')
     await waitFor(() => {
       expect(
-        screen.getByRole('tab', { name: /my home.*active/i }),
+        screen.getByRole('tab', { name: /my home.*current location/i }),
       ).toHaveAttribute('aria-selected', 'true')
     })
   })
