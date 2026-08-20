@@ -36,24 +36,27 @@ const ZERO_STOCK: StockFields = {
   consumeAmount: 1,
 }
 
+// Every field `joinItemStock` copies from an ItemStock onto an Item.
+const STOCK_FIELD_KEYS: (keyof StockFields)[] = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'targetUnit',
+  'targetQuantity',
+  'refillThreshold',
+  'packedQuantity',
+  'unpackedQuantity',
+  'consumeAmount',
+  'dueDate',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+]
+
 // Pull just the stock fields off an object (drops join keys / metadata / undefined).
 function pickStockFields(source: Record<string, unknown>): StockFields {
   const out: StockFields = { ...ZERO_STOCK }
-  const keys: (keyof StockFields)[] = [
-    'packageUnit',
-    'measurementUnit',
-    'amountPerPackage',
-    'targetUnit',
-    'targetQuantity',
-    'refillThreshold',
-    'packedQuantity',
-    'unpackedQuantity',
-    'consumeAmount',
-    'dueDate',
-    'estimatedDueDays',
-    'expirationThreshold',
-    'expirationMode',
-  ]
+  const keys = STOCK_FIELD_KEYS
   for (const key of keys) {
     const value = source[key]
     if (value !== undefined) {
@@ -64,8 +67,27 @@ function pickStockFields(source: Record<string, unknown>): StockFields {
   return out
 }
 
+// Reduce an already-joined PantryItem back to its global Item.
+//
+// Re-joining a PantryItem with a DIFFERENT location's row without this is a
+// data-correctness bug, not a tidiness one: an ItemStock omits its unset
+// optional keys entirely (see ZERO_STOCK / pickStockFields), so spreading the
+// second row over the first join leaves the FIRST location's packageUnit,
+// measurementUnit, amountPerPackage, dueDate, estimatedDueDays,
+// expirationThreshold and expirationMode showing through — and a form fed that
+// shape saves one location's values into another location's row.
+export function stripStockFields(item: PantryItem): Item {
+  // Typed as Partial<PantryItem> so the deletes type-check (every key being
+  // removed is optional there) and the result still converts to Item.
+  const out: Partial<PantryItem> = { ...item }
+  for (const key of STOCK_FIELD_KEYS) delete out[key]
+  delete out.stockId
+  delete out.locationId
+  return out as Item
+}
+
 // Join an Item with a stock row into the runtime PantryItem shape.
-function joinItemStock(
+export function joinItemStock(
   item: Item,
   stock: ItemStock | undefined,
   locationId: string,
@@ -152,6 +174,50 @@ export async function addItemToLocation(
     : { ...ZERO_STOCK }
 
   return upsertItemStock(itemId, locationId, fields)
+}
+
+// Un-stock an item from one location: deletes that (item × location) ItemStock
+// row and cascades the data that only makes sense alongside it — the item's
+// inventory logs for that location and its entries in that location's carts
+// (`${locationId}:${vendorId|'no-vendor'}`). The cart rows themselves survive:
+// they are shared by every item in the location.
+//
+// The global `Item` deliberately persists. An item removed from its last
+// location becomes an "orphan": hidden from the pantry (`getStockedItems`
+// filters on ItemStock) but still in the catalog (`getAllItems`), so the Add
+// combobox can find and re-add it. Use `deleteItem` to remove it everywhere.
+//
+// Local/Dexie only. Cloud mode has no locations and no ItemStock — cloud items
+// carry inline stock on the GraphQL `Item` — so no cloud branch exists here and
+// nothing in the cloud code path may call this.
+export async function removeItemFromLocation(
+  itemId: string,
+  locationId: string = DEFAULT_LOCATION_ID,
+): Promise<void> {
+  await db.itemStocks
+    .where('[itemId+locationId]')
+    .equals([itemId, locationId])
+    .delete()
+
+  // Inventory logs for this (item, location). Logs predating the Location
+  // feature may carry no locationId, so treat an absent one as the default
+  // location — the same reading `getItemLogs` uses.
+  const logIds = (
+    await db.inventoryLogs.where('itemId').equals(itemId).toArray()
+  )
+    .filter((log) => (log.locationId ?? DEFAULT_LOCATION_ID) === locationId)
+    .map((log) => log.id)
+  if (logIds.length > 0) await db.inventoryLogs.bulkDelete(logIds)
+
+  // Entries in this location's carts (every vendor cart plus the no-vendor
+  // one). Match on the parsed cart id rather than a string prefix so a vendor
+  // id containing ':' can't be mistaken for a location.
+  const cartItemIds = (
+    await db.cartItems.where('itemId').equals(itemId).toArray()
+  )
+    .filter((ci) => parseCartId(ci.cartId).locationId === locationId)
+    .map((ci) => ci.id)
+  if (cartItemIds.length > 0) await db.cartItems.bulkDelete(cartItemIds)
 }
 
 // Item operations
@@ -318,14 +384,39 @@ export async function deleteItem(id: string): Promise<void> {
   await db.items.delete(id)
 }
 
+// Per-item counts of the two families `removeItemFromLocation` cascades.
+// Passing `locationId` scopes the count to that location using exactly the
+// predicate the cascade deletes by, so the Stock tab's remove confirmation can
+// state what disappears for the location it names. Omitting it counts every
+// location (the original, item-global behaviour).
 export async function getInventoryLogCountByItem(
   itemId: string,
+  locationId?: string,
 ): Promise<number> {
-  return await db.inventoryLogs.where('itemId').equals(itemId).count()
+  if (locationId === undefined) {
+    return await db.inventoryLogs.where('itemId').equals(itemId).count()
+  }
+  // Logs predating the Location feature carry no locationId; treat an absent
+  // one as the default location (same reading as getItemLogs / the cascade).
+  return await db.inventoryLogs
+    .where('itemId')
+    .equals(itemId)
+    .filter((log) => (log.locationId ?? DEFAULT_LOCATION_ID) === locationId)
+    .count()
 }
 
-export async function getCartItemCountByItem(itemId: string): Promise<number> {
-  return await db.cartItems.where('itemId').equals(itemId).count()
+export async function getCartItemCountByItem(
+  itemId: string,
+  locationId?: string,
+): Promise<number> {
+  if (locationId === undefined) {
+    return await db.cartItems.where('itemId').equals(itemId).count()
+  }
+  return await db.cartItems
+    .where('itemId')
+    .equals(itemId)
+    .filter((ci) => parseCartId(ci.cartId).locationId === locationId)
+    .count()
 }
 
 // InventoryLog operations

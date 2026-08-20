@@ -1,21 +1,37 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { createItem, createLocation } from '@/db/operations'
-import { GetRecipesDocument } from '@/generated/graphql'
-import { DEFAULT_LOCATION_ID } from '@/types'
-import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
 import {
+  addInventoryLog,
+  addItemToLocation,
+  addToCart,
+  createItem,
+  createLocation,
+  getItem,
+  getItemStock,
+} from '@/db/operations'
+import { GetRecipesDocument } from '@/generated/graphql'
+import type { PantryItem } from '@/types'
+import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
+import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
+import { useItemSortData } from './useItemSortData'
+import { useItemStocks } from './useItemStocks'
+import {
+  useAddItemToLocation,
+  useCartItemCountByItem,
   useCreateItem,
   useDeleteItem,
+  useInventoryLogCountByItem,
   useItem,
   useItems,
   useLastPurchaseDate,
+  useRemoveItemFromLocation,
   useStockedItems,
   useUpdateItem,
 } from './useItems'
+import { useCartItems } from './useShoppingCart'
 
 const mockUseGetItemQuery = vi.fn()
 const mockUseGetItemsQuery = vi.fn()
@@ -39,6 +55,9 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     },
     useLastPurchaseDatesQuery: (opts: unknown) =>
       mockUseLastPurchaseDatesQuery(opts),
+    // Cloud read paths that are `skip`ped in local mode but would still demand
+    // an ApolloProvider. Stubbed so local-mode hooks can be rendered here.
+    useCartItemsQuery: () => ({ data: undefined, loading: false }),
   }
 })
 
@@ -404,5 +423,319 @@ describe('useStockedItems (local mode)', () => {
     // Then only the default-location item is returned
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data?.map((i) => i.name)).toEqual(['Milk'])
+  })
+})
+
+describe('useRemoveItemFromLocation (local mode)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.locations.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  })
+
+  it('user can remove an item from the active location and the pantry updates without a reload', async () => {
+    // Given two items stocked in the active (default) location, already cached
+    const milk = await createItem(
+      { name: 'Milk', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem({ name: 'Eggs', tagIds: [] }, DEFAULT_LOCATION_ID)
+
+    const { result } = renderHook(
+      () => ({
+        stocked: useStockedItems(),
+        remove: useRemoveItemFromLocation(),
+      }),
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(result.current.stocked.data).toHaveLength(2))
+
+    // When the user removes one from the active location
+    await result.current.remove.mutateAsync({ itemId: milk.id })
+
+    // Then the cached pantry query re-resolves on its own (invalidated), with
+    // no manual refetch and no page reload
+    await waitFor(() =>
+      expect(result.current.stocked.data?.map((i) => i.name)).toEqual(['Eggs']),
+    )
+    expect(await getItemStock(milk.id, DEFAULT_LOCATION_ID)).toBeUndefined()
+  })
+
+  it('user can remove an item from a non-active location by passing an explicit locationId', async () => {
+    // Given an item stocked in both the active location and a cabin
+    const cabin = await createLocation('Cabin')
+    const beans = await createItem(
+      { name: 'Beans', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(beans.id, cabin.id)
+
+    const { result } = renderHook(() => useRemoveItemFromLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When the pager removes it from the cabin while the default is active
+    await result.current.mutateAsync({
+      itemId: beans.id,
+      locationId: cabin.id,
+    })
+
+    // Then only the cabin's stock is gone
+    expect(await getItemStock(beans.id, cabin.id)).toBeUndefined()
+    expect(await getItemStock(beans.id, DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+
+  it('user can add an item to a non-active location by passing an explicit locationId', async () => {
+    // Given an item stocked only in the active (default) location, and a cabin
+    const cabin = await createLocation('Cabin')
+    const beans = await createItem(
+      { name: 'Beans', tagIds: [], packedQuantity: 4, targetQuantity: 6 },
+      DEFAULT_LOCATION_ID,
+    )
+
+    const { result } = renderHook(() => useAddItemToLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When the pager stocks it in the cabin while the default is active
+    await result.current.mutateAsync({ itemId: beans.id, locationId: cabin.id })
+
+    // Then the copy lands in the cabin (quantities zeroed, settings inherited)
+    // and the active location's own stock is untouched
+    const cabinStock = await getItemStock(beans.id, cabin.id)
+    expect(cabinStock?.packedQuantity).toBe(0)
+    expect(cabinStock?.targetQuantity).toBe(6)
+    expect(
+      (await getItemStock(beans.id, DEFAULT_LOCATION_ID))?.packedQuantity,
+    ).toBe(4)
+  })
+
+  it('user can save stock to a non-active location by passing an explicit locationId', async () => {
+    // Given an item stocked in both the active location and a cabin
+    const cabin = await createLocation('Cabin')
+    const beans = await createItem(
+      { name: 'Beans', tagIds: [], packedQuantity: 4 },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(beans.id, cabin.id)
+
+    const { result } = renderHook(
+      () => ({
+        update: useUpdateItem(),
+        stocks: useItemStocks(beans.id),
+      }),
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(result.current.stocks.data).toHaveLength(2))
+
+    // When the Stock pager saves while viewing the cabin page
+    await result.current.update.mutateAsync({
+      id: beans.id,
+      updates: { packedQuantity: 9 },
+      locationId: cabin.id,
+    })
+
+    // Then the cabin's stock row takes the change, the active location's does
+    // not, and the cached raw-stock reader re-resolves on its own
+    expect((await getItemStock(beans.id, cabin.id))?.packedQuantity).toBe(9)
+    expect(
+      (await getItemStock(beans.id, DEFAULT_LOCATION_ID))?.packedQuantity,
+    ).toBe(4)
+    await waitFor(() =>
+      expect(
+        result.current.stocks.data?.find((s) => s.locationId === cabin.id)
+          ?.packedQuantity,
+      ).toBe(9),
+    )
+  })
+})
+
+// Every query family the cascade changes must re-resolve after a removal from
+// the active location. Asserted through the REAL consumer hooks sharing one
+// QueryClient with the mutation — not by spying on invalidateQueries, which
+// would only prove the call was made, not that anything re-read.
+describe('useRemoveItemFromLocation invalidates every affected query family', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.cartItems.clear()
+    await db.shoppingCarts.clear()
+    await db.locations.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    // useItemSortData's cloud branch is skipped in local mode but still calls
+    // the Apollo hook; give it a shape it can destructure.
+    mockUseLastPurchaseDatesQuery.mockReturnValue({ data: undefined })
+  })
+
+  it('stock, cart, sort and count reads all re-resolve after a removal', async () => {
+    // Given an item stocked in the active location, with a purchase log and a
+    // cart entry — one live reader cached per affected key family
+    const item = await createItem(
+      { name: 'Beans', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 2,
+      quantity: 2,
+      occurredAt: new Date(),
+    })
+    const cartId = cartIdFor(DEFAULT_LOCATION_ID, null)
+    await db.shoppingCarts.put({ id: cartId })
+    await addToCart(cartId, item.id, 1)
+    const pantryItems = [
+      (await getItem(item.id, DEFAULT_LOCATION_ID)) as PantryItem,
+    ]
+
+    const { result } = renderHook(
+      () => ({
+        stocks: useItemStocks(item.id), // ['itemStocks', …]
+        cartItems: useCartItems(cartId), // ['cart', …]
+        sort: useItemSortData(pantryItems), // ['sort', …]
+        logCount: useInventoryLogCountByItem(item.id), // ['inventoryLogs', …]
+        cartCount: useCartItemCountByItem(item.id), // ['cartItems', …]
+        remove: useRemoveItemFromLocation(),
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => {
+      expect(result.current.stocks.data).toHaveLength(1)
+      expect(result.current.cartItems.data).toHaveLength(1)
+      expect(result.current.sort.purchaseDates?.get(item.id)).toBeInstanceOf(
+        Date,
+      )
+      expect(result.current.logCount.data).toBe(1)
+      expect(result.current.cartCount.data).toBe(1)
+    })
+
+    // When the item is removed from the active location
+    await result.current.remove.mutateAsync({ itemId: item.id })
+
+    // Then every cached reader re-resolves on its own
+    await waitFor(() => {
+      expect(result.current.stocks.data).toEqual([])
+      expect(result.current.cartItems.data).toEqual([])
+      expect(result.current.sort.purchaseDates?.get(item.id)).toBeNull()
+      expect(result.current.logCount.data).toBe(0)
+      expect(result.current.cartCount.data).toBe(0)
+    })
+  })
+
+  // The remove confirmation names ONE location, so the counts it shows must be
+  // scoped to it — an item-global count would tell the user more is being
+  // deleted than actually is.
+  it('the count hooks report per-location totals and re-resolve after that location is removed', async () => {
+    // Given an item stocked in two locations, each with its own log and cart
+    // entry
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      { name: 'Beans', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(item.id, cabin.id)
+    for (const locationId of [DEFAULT_LOCATION_ID, cabin.id]) {
+      await addInventoryLog({
+        itemId: item.id,
+        locationId,
+        delta: 1,
+        quantity: 1,
+        occurredAt: new Date(),
+      })
+      const cartId = cartIdFor(locationId, null)
+      await db.shoppingCarts.put({ id: cartId })
+      await addToCart(cartId, item.id, 1)
+    }
+
+    const { result } = renderHook(
+      () => ({
+        hereLogs: useInventoryLogCountByItem(item.id, DEFAULT_LOCATION_ID),
+        hereCart: useCartItemCountByItem(item.id, DEFAULT_LOCATION_ID),
+        cabinLogs: useInventoryLogCountByItem(item.id, cabin.id),
+        cabinCart: useCartItemCountByItem(item.id, cabin.id),
+        remove: useRemoveItemFromLocation(),
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    // Then each location reports only its own rows
+    await waitFor(() => {
+      expect(result.current.hereLogs.data).toBe(1)
+      expect(result.current.hereCart.data).toBe(1)
+      expect(result.current.cabinLogs.data).toBe(1)
+      expect(result.current.cabinCart.data).toBe(1)
+    })
+
+    // When the cabin's stock is removed
+    await result.current.remove.mutateAsync({
+      itemId: item.id,
+      locationId: cabin.id,
+    })
+
+    // Then the cabin's counts drop to zero and the default location's are
+    // untouched
+    await waitFor(() => {
+      expect(result.current.cabinLogs.data).toBe(0)
+      expect(result.current.cabinCart.data).toBe(0)
+    })
+    expect(result.current.hereLogs.data).toBe(1)
+    expect(result.current.hereCart.data).toBe(1)
+  })
+})
+
+// Cloud mode has no locations and no ItemStock backend (deferred in PR D), so
+// both location mutations are Dexie-only. Firing them in cloud mode would write
+// to (or, for remove, irreversibly destroy) local rows the cloud UI never
+// reads — a silent false success. They refuse loudly instead. Task 2 still owns
+// the component-level guard that keeps the controls off screen in cloud mode;
+// this is the safety net underneath it.
+describe('location mutations refuse to run in cloud mode', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.locations.clear()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  })
+
+  it('useRemoveItemFromLocation rejects in cloud mode and deletes nothing', async () => {
+    // Given an item stocked locally, and the app in cloud mode
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    localStorage.setItem('data-mode', 'cloud')
+
+    const { result } = renderHook(() => useRemoveItemFromLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When something tries to remove it anyway
+    // Then the mutation rejects and the local stock row is untouched
+    await expect(
+      result.current.mutateAsync({ itemId: item.id }),
+    ).rejects.toThrow(/local/i)
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+
+  it('useAddItemToLocation rejects in cloud mode and writes no orphan stock', async () => {
+    // Given a global item with no stock anywhere, and the app in cloud mode
+    const item = await createItem({ name: 'Flour', tagIds: [] })
+    await db.itemStocks.clear()
+    localStorage.setItem('data-mode', 'cloud')
+
+    const { result } = renderHook(() => useAddItemToLocation(), {
+      wrapper: createWrapper(),
+    })
+
+    // When something tries to stock it anyway
+    // Then the mutation rejects and no ItemStock row is written
+    await expect(
+      result.current.mutateAsync({ itemId: item.id }),
+    ).rejects.toThrow(/local/i)
+    expect(await db.itemStocks.toArray()).toHaveLength(0)
   })
 })

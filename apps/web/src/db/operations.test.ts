@@ -49,6 +49,7 @@ import {
   getVendors,
   listShelves,
   migrateTagColorTints,
+  removeItemFromLocation,
   reorderLocations,
   reorderShelfItems,
   reorderShelves,
@@ -459,6 +460,212 @@ describe('ItemStock operations (Location PR D)', () => {
     expect(cabinStock?.packedQuantity).toBe(3)
     expect(await getCurrentQuantity(item.id, cabin.id)).toBe(2)
     expect(await getCurrentQuantity(item.id, DEFAULT_LOCATION_ID)).toBe(0)
+  })
+})
+
+describe('removeItemFromLocation (Location PR E)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.cartItems.clear()
+    await db.shoppingCarts.clear()
+    await db.vendors.clear()
+    await db.locations.clear()
+  })
+
+  // An item ('Beans') stocked in BOTH the default location and a cabin, with
+  // inventory logs and cart entries in each. Two control groups guard the two
+  // halves of the cascade's scoping, and nothing in either may change when the
+  // default-location Beans stock is removed:
+  //   - the CABIN side  → the `locationId` half of the filter
+  //   - a second item ('Rice') in the SAME (default) location, with its own
+  //     stock, log and cart entry → the `itemId` half. Without it no test can
+  //     tell "scoped to this item" from "deletes everything in this location",
+  //     which is the silent cross-item data-loss case.
+  async function seedItemInTwoLocations() {
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco')
+    await db.shoppingCarts.put({ id: cartIdFor(DEFAULT_LOCATION_ID, null) })
+    await db.shoppingCarts.put({ id: cartIdFor(cabin.id, vendor.id) })
+    const item = await createItem(
+      {
+        name: 'Beans',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 6,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await addItemToLocation(item.id, cabin.id)
+
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 6,
+      quantity: 6,
+      occurredAt: new Date(),
+    })
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: cabin.id,
+      delta: 5,
+      quantity: 5,
+      occurredAt: new Date(),
+    })
+
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, null), item.id, 3)
+    await addToCart(cartIdFor(cabin.id, vendor.id), item.id, 4)
+
+    // The bystander: a different item in the SAME location being removed from.
+    const other = await createItem(
+      { name: 'Rice', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+    await addInventoryLog({
+      itemId: other.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 9,
+      quantity: 9,
+      occurredAt: new Date(),
+    })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), other.id, 2)
+
+    return { cabin, item, other, vendor }
+  }
+
+  it('user can remove an item from a location — its stock row is gone', async () => {
+    // Given an item stocked in the default location and a cabin
+    const { item, cabin, other } = await seedItemInTwoLocations()
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
+
+    // When the user removes it from the default location
+    await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then that (item × location) stock row is gone
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeUndefined()
+    // And the cabin's stock row is untouched
+    expect(await getItemStock(item.id, cabin.id)).toBeDefined()
+    expect(await getItemStocks(item.id)).toHaveLength(1)
+    // And the OTHER item's stock in that same location is untouched
+    expect(await getItemStock(other.id, DEFAULT_LOCATION_ID)).toBeDefined()
+  })
+
+  it('removing from a location deletes that location inventory logs only', async () => {
+    // Given an item with logs in both locations
+    const { item, cabin, other } = await seedItemInTwoLocations()
+    expect(await getItemLogs(item.id, DEFAULT_LOCATION_ID)).toHaveLength(1)
+
+    // When the user removes it from the default location
+    await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then that location's logs are gone and the cabin's remain
+    expect(await getItemLogs(item.id, DEFAULT_LOCATION_ID)).toHaveLength(0)
+    const cabinLogs = await getItemLogs(item.id, cabin.id)
+    expect(cabinLogs).toHaveLength(1)
+    expect(cabinLogs[0].delta).toBe(5)
+    // And the OTHER item's log in that same location is untouched — the
+    // cascade is scoped to this item, not to everything in the location
+    const otherLogs = await getItemLogs(other.id, DEFAULT_LOCATION_ID)
+    expect(otherLogs).toHaveLength(1)
+    expect(otherLogs[0].delta).toBe(9)
+  })
+
+  it('removing from a location clears its cart entries but keeps the carts', async () => {
+    // Given the item sits in that location's vendor cart and no-vendor cart
+    // (the vendor cart also holds the OTHER item)
+    const { item, other, vendor } = await seedItemInTwoLocations()
+    const vendorCartId = cartIdFor(DEFAULT_LOCATION_ID, vendor.id)
+    const noVendorCartId = cartIdFor(DEFAULT_LOCATION_ID, null)
+    expect(await getCartItems(vendorCartId)).toHaveLength(2)
+    expect(await getCartItems(noVendorCartId)).toHaveLength(1)
+
+    // When the user removes it from the default location
+    await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then both of that location's carts lose that item
+    const vendorCartItems = await getCartItems(vendorCartId)
+    expect(vendorCartItems.map((ci) => ci.itemId)).not.toContain(item.id)
+    expect(await getCartItems(noVendorCartId)).toHaveLength(0)
+    // And the OTHER item's entry in the same cart is untouched
+    expect(vendorCartItems).toHaveLength(1)
+    expect(vendorCartItems[0].itemId).toBe(other.id)
+    expect(vendorCartItems[0].quantity).toBe(2)
+    // And the cart rows themselves survive (they are shared by all items)
+    expect(await db.shoppingCarts.get(vendorCartId)).toBeDefined()
+    expect(await db.shoppingCarts.get(noVendorCartId)).toBeDefined()
+  })
+
+  it('carts for OTHER locations keep the item', async () => {
+    // Given the item is also in the cabin's vendor cart
+    const { item, cabin, vendor } = await seedItemInTwoLocations()
+    const cabinCartId = cartIdFor(cabin.id, vendor.id)
+
+    // When the user removes it from the default location
+    await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then the cabin cart entry is untouched
+    const cabinCartItems = await getCartItems(cabinCartId)
+    expect(cabinCartItems).toHaveLength(1)
+    expect(cabinCartItems[0].quantity).toBe(4)
+  })
+
+  it('the global Item survives being removed from a location', async () => {
+    // Given an item stocked in two locations
+    const { item } = await seedItemInTwoLocations()
+
+    // When the user removes it from the default location
+    await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then the global Item row is still there
+    expect(await db.items.get(item.id)).toBeDefined()
+  })
+
+  it('removing the last location leaves an orphan the pantry hides but the combobox can re-add', async () => {
+    // Given an item stocked only in the default location
+    const item = await createItem(
+      { name: 'Saffron', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+
+    // When the user removes it from its only location
+    await removeItemFromLocation(item.id, DEFAULT_LOCATION_ID)
+
+    // Then it has no stock anywhere and the pantry (getStockedItems) hides it
+    expect(await getItemStocks(item.id)).toHaveLength(0)
+    const stocked = await getStockedItems(DEFAULT_LOCATION_ID)
+    expect(stocked.map((i) => i.id)).not.toContain(item.id)
+
+    // But the Add combobox catalog (getAllItems) still finds it, zero-stocked
+    const catalog = await getAllItems(DEFAULT_LOCATION_ID)
+    const orphan = catalog.find((i) => i.id === item.id)
+    expect(orphan).toBeDefined()
+    expect(orphan?.name).toBe('Saffron')
+    expect(orphan?.stockId).toBeUndefined()
+    expect(orphan?.packedQuantity).toBe(0)
+
+    // And re-adding it through copy-on-add puts it back in the pantry
+    await addItemToLocation(item.id, DEFAULT_LOCATION_ID)
+    const reStocked = await getStockedItems(DEFAULT_LOCATION_ID)
+    expect(reStocked.map((i) => i.id)).toContain(item.id)
+  })
+
+  it('removing an item that is not stocked in that location is a safe no-op', async () => {
+    // Given an item stocked only in the default location
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Chili', tagIds: [] })
+
+    // When the user removes it from a location where it was never stocked
+    await removeItemFromLocation(item.id, cabin.id)
+
+    // Then the default-location stock is untouched
+    expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
+    expect(await getItemStocks(item.id)).toHaveLength(1)
   })
 })
 
@@ -1581,6 +1788,67 @@ describe('Count helpers for item relations', () => {
 
     // Then count is correct
     expect(count).toBe(2)
+  })
+
+  // Both counts back the Stock-tab "Remove from location" confirmation, which
+  // names one location. Scoped counts must match exactly what
+  // removeItemFromLocation deletes for that pair — no more, no less.
+  it('getInventoryLogCountByItem counts only the given location when scoped', async () => {
+    // Given an item with logs in the default location, another location, and
+    // one legacy log carrying no locationId at all
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 1,
+      quantity: 1,
+      occurredAt: new Date(),
+    })
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: 'loc-other',
+      delta: 2,
+      quantity: 2,
+      occurredAt: new Date(),
+    })
+    await db.inventoryLogs.add({
+      id: crypto.randomUUID(),
+      itemId: item.id,
+      delta: 3,
+      quantity: 3,
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    })
+
+    // When counting per location
+    // Then the default location owns its own log plus the legacy one (an
+    // absent locationId reads as the default location, matching getItemLogs
+    // and removeItemFromLocation), the other location owns exactly one, and
+    // the unscoped call still counts every log
+    expect(await getInventoryLogCountByItem(item.id, DEFAULT_LOCATION_ID)).toBe(
+      2,
+    )
+    expect(await getInventoryLogCountByItem(item.id, 'loc-other')).toBe(1)
+    expect(await getInventoryLogCountByItem(item.id)).toBe(3)
+  })
+
+  it('getCartItemCountByItem counts only the given location when scoped', async () => {
+    // Given an item in two carts of one location and one cart of another
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    const here = cartIdFor(DEFAULT_LOCATION_ID, null)
+    const hereVendor = cartIdFor(DEFAULT_LOCATION_ID, 'vendor-1')
+    const elsewhere = cartIdFor('loc-other', null)
+    for (const cartId of [here, hereVendor, elsewhere]) {
+      await db.shoppingCarts.put({ id: cartId })
+      await addToCart(cartId, item.id, 1)
+    }
+
+    // When counting per location
+    // Then each location reports only its own cart entries, and the unscoped
+    // call still counts every entry
+    expect(await getCartItemCountByItem(item.id, DEFAULT_LOCATION_ID)).toBe(2)
+    expect(await getCartItemCountByItem(item.id, 'loc-other')).toBe(1)
+    expect(await getCartItemCountByItem(item.id)).toBe(3)
   })
 })
 

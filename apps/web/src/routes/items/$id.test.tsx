@@ -1340,6 +1340,9 @@ describe('Item detail page - expiration field split', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => screen.getByText('Milk'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // Then "Expires in (days)" is visible
     expect(screen.getByLabelText(/expires in/i)).toBeInTheDocument()
@@ -1372,6 +1375,9 @@ describe('Item detail page - expiration field split', () => {
 
     renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Cheese'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When user changes expiration mode to "Specific Date"
     const modeSelect = screen.getByRole('combobox', {
@@ -1452,6 +1458,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When user changes consumeAmount from 2 to 3
     const consumeInput = screen.getByLabelText(
@@ -1490,6 +1499,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When changing consumeAmount to 3 and confirming
     const consumeInput = screen.getByLabelText(
@@ -1531,6 +1543,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Salt'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When changing consumeAmount to 3 and saving
     const consumeInput = screen.getByLabelText(
@@ -1570,6 +1585,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Oil'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When changing consumeAmount to 3 and confirming
     const consumeInput = screen.getByLabelText(
@@ -1652,6 +1670,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When user toggles track in measurement OFF (switching to package mode)
     await user.click(
@@ -1704,6 +1725,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When user toggles track in measurement ON (switching to measurement mode)
     await user.click(
@@ -1754,6 +1778,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Salt'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When user switches to package mode and saves
     await user.click(
@@ -1796,6 +1823,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Milk'))
+    // The Stock tab resolves its location list and per-location stock
+    // before rendering a form, so the item name appearing is not enough.
+    await screen.findByLabelText(/target quantity/i)
 
     // When user switches to package mode and saves
     await user.click(

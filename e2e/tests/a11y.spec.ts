@@ -1,11 +1,90 @@
-import { test } from '@playwright/test'
-import { checkA11y, injectAxe } from 'axe-playwright'
+import { expect, test } from '@playwright/test'
+import { checkA11y, getViolations, injectAxe } from 'axe-playwright'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { seedRows } from '../helpers/locationSeed'
+import { StockPagerPage } from '../pages/StockPagerPage'
 
 // WCAG AA target: 4.5:1 contrast ratio for normal text, 3:1 for large text.
 // Explicitly set runOnly so future tooling and AI agents know the intended level.
 const AXE_OPTIONS = {
   runOnly: { type: 'tag' as const, values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },
+}
+
+// KNOWN PRE-EXISTING DEFECT — the filled destructive button (`variant="destructive"`,
+// used for the confirm action inside the SHARED `DeleteButton`) fails contrast.
+//
+//   Criterion: WCAG 2.1 SC 1.4.3 Contrast (Minimum), Level AA — 4.5:1 for NORMAL text.
+//              The button is `text-sm` (14px) `font-medium` (500), which is normal
+//              text, not large (large = 18pt/24px, or 14pt/18.66px bold), so the 3:1
+//              large-text allowance does not apply.
+//              NOT SC 1.4.11 (non-text contrast): the button against the dialog
+//              surface measures 3.78:1 light / 5.28:1 dark, both clearing that 3:1
+//              bar. Do not cite 1.4.11 for this.
+//   Measured:  3.92:1 light (axe: #f7f1f4 on #ac6185) · ~4.09:1 dark (modelled).
+//
+// ROOT CAUSE IS **`opacity-90`** ON THE `buttonVariants` BASE CLASS
+// (`apps/web/src/components/ui/button.tsx:13`) — not the colour token. Every button
+// in the app renders at 90%, so background AND label composite over the dialog
+// surface; #f7f1f4 is simply white at 90% over #ac6185. The token itself PASSES as
+// authored — `--importance-destructive-background` gives 5.20:1 light and 4.71:1
+// dark — so re-darkening it would be the wrong repair and would restyle every
+// destructive surface in the app. The button also passes on `hover:opacity-100`; it
+// fails only at rest. (`disabled:opacity-50` is fine — disabled controls are exempt
+// from 1.4.3.)
+//
+// Pre-existing and app-wide, not introduced here: reproduced identically on the
+// Settings › Locations delete dialog, which predates the Stock-tab pager. It went
+// unreported because no a11y test in the repo had ever opened a delete confirmation.
+// The user has ruled the fix a follow-up on its own branch with its own visual review.
+//
+// SCOPE: this excludes the element from the **`color-contrast` rule only** (see
+// `checkA11yAllowingKnownConfirmContrast` below), not from every rule. `button-name`,
+// `target-size` and the aria rules still police that button. Excluding it outright
+// would also hide any FUTURE violation on it.
+//
+// REMOVAL CONDITION — checkable: once `opacity-90` is removed/raised on the
+// `buttonVariants` base class (or the confirm button opts out of it), delete this
+// constant, delete `checkA11yAllowingKnownConfirmContrast`, and change both call
+// sites back to `checkA11y(page, undefined, AXE_OPTIONS)`; the two dialog tests pass
+// unaided once the composite clears 4.5:1. Note an `exclude` is silent — it will not
+// announce the fix, so this has to be revisited deliberately.
+const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
+  exclude: [['.bg-importance-destructive-background']],
+}
+
+// Two scans instead of one, so the known defect is excluded from a single RULE
+// rather than from every rule on that element.
+//
+// These use `getViolations`, not `checkA11y`, deliberately. `checkA11y`'s third
+// parameter is axe-playwright's own `AxeOptions` WRAPPER and it forwards only
+// `axeOptions.axeOptions` to axe — so handing it a bare axe `RunOptions` (as the 60
+// sibling scans in this file do with `AXE_OPTIONS`) silently runs axe with its
+// DEFAULTS and the option object has no effect. `getViolations(page, context,
+// runOptions)` takes `RunOptions` directly, so rule selection here actually applies.
+// The two scans below therefore cover the same effective rule set as the siblings
+// (axe defaults), minus one rule on one element.
+async function checkA11yAllowingKnownConfirmContrast(
+  page: import('@playwright/test').Page,
+) {
+  // 1. Every rule EXCEPT color-contrast, with nothing excluded — the confirm button
+  //    is still policed for accessible name, target size, aria validity and the rest.
+  const nonContrast = await getViolations(page, undefined, {
+    rules: { 'color-contrast': { enabled: false } },
+  })
+  expect(
+    nonContrast.map((v) => v.id),
+    'non-contrast a11y violations',
+  ).toEqual([])
+
+  // 2. color-contrast alone, excluding only the known-bad confirm button — so a
+  //    contrast regression anywhere else in the dialog still fails the test.
+  const contrast = await getViolations(page, KNOWN_CONFIRM_CONTRAST_EXCLUSION, {
+    runOnly: { type: 'rule', values: ['color-contrast'] },
+  })
+  expect(
+    contrast.flatMap((v) => v.nodes.map((n) => n.target.join(' '))),
+    'color-contrast violations outside the known destructive confirm button',
+  ).toEqual([])
 }
 
 // Prevent the empty-data redirect to /onboarding so tests can navigate to any
@@ -408,6 +487,55 @@ async function seedShelf(page: import('@playwright/test').Page): Promise<string>
   })
 }
 
+// Helper: seed a second location plus an item stocked in the default one, so
+// the item-detail Stock tab renders its all-locations PAGER (chrome only shows
+// with more than one location). Returns the item ID.
+//
+// Note for future readers: axe's colour-contrast rule is text-only, so a green
+// run here says nothing about the pager DOTS. Their styling is judged by eye in
+// LocationPager.stories.tsx. What these tests do cover is the tablist/tabpanel
+// wiring, the accessible names, and the dialog semantics.
+const A11Y_PAGER_ITEM = 'a11y-pager-item'
+const A11Y_OTHER_LOCATION = 'a11y-other-location'
+
+async function seedStockPagerFixture(
+  page: import('@playwright/test').Page,
+): Promise<string> {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  const now = new Date()
+
+  await seedRows(page, 'locations', [
+    { id: A11Y_OTHER_LOCATION, name: 'Office', order: 1, createdAt: now, updatedAt: now },
+  ])
+  await seedRows(page, 'items', [
+    {
+      id: A11Y_PAGER_ITEM,
+      name: 'pager item',
+      tagIds: [],
+      vendorIds: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+  await seedRows(page, 'itemStocks', [
+    {
+      id: 'a11y-pager-stock',
+      itemId: A11Y_PAGER_ITEM,
+      locationId: 'local',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+  return A11Y_PAGER_ITEM
+}
+
 // Helper: seed a recipe into IndexedDB and return its ID
 async function seedRecipe(page: import('@playwright/test').Page): Promise<string> {
   await page.goto('/')
@@ -457,6 +585,54 @@ test.describe('detail page a11y', () => {
 
     // Then there should be no violations
     await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, stocked page WITH the all-locations pager
+  test('user can view the stock pager on a stocked location without accessibility violations', async ({ page }) => {
+    // Given an item stocked in the active location, with a second location so
+    // the pager chrome renders
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+
+    // When the user opens the Stock tab
+    await stockTab.navigateTo(itemId)
+    await stockTab.getStockForm().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, NOT-stocked page (empty state + "Add to location")
+  test('user can view the stock pager on a not-stocked location without accessibility violations', async ({ page }) => {
+    // Given the same fixture, paged to the location the item is not stocked in
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.goToNext()
+    await stockTab.getAddToLocationButton().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, remove-from-location confirmation dialog
+  test('user can view the remove-from-location dialog without accessibility violations', async ({ page }) => {
+    // Given the stocked page with its remove confirmation open
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.openRemoveDialog()
+    // The affected-counts line renders only once both count queries resolve —
+    // scan the dialog in its final state, not mid-load
+    await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
+    await injectAxe(page)
+
+    // Then there should be no violations (see KNOWN_CONFIRM_CONTRAST_EXCLUSION)
+    await checkA11yAllowingKnownConfirmContrast(page)
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags)
@@ -850,6 +1026,52 @@ test.describe('dark mode a11y', () => {
 
     // Then there should be no violations
     await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, stocked page WITH the all-locations pager, in dark mode
+  test('user can view the stock pager on a stocked location without accessibility violations in dark mode', async ({ page }) => {
+    // Given an item stocked in the active location, with a second location so
+    // the pager chrome renders (dark mode enabled)
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+
+    // When the user opens the Stock tab
+    await stockTab.navigateTo(itemId)
+    await stockTab.getStockForm().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, NOT-stocked page, in dark mode
+  test('user can view the stock pager on a not-stocked location without accessibility violations in dark mode', async ({ page }) => {
+    // Given the same fixture, paged to the location the item is not stocked in
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.goToNext()
+    await stockTab.getAddToLocationButton().waitFor({ state: 'visible' })
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+
+    // Then there should be no violations
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  })
+
+  // Item detail stock tab, remove-from-location confirmation dialog, in dark mode
+  test('user can view the remove-from-location dialog without accessibility violations in dark mode', async ({ page }) => {
+    // Given the stocked page with its remove confirmation open
+    const itemId = await seedStockPagerFixture(page)
+    const stockTab = new StockPagerPage(page)
+    await stockTab.navigateTo(itemId)
+    await stockTab.openRemoveDialog()
+    await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
+    await injectAxe(page)
+
+    // Then there should be no violations (see KNOWN_CONFIRM_CONTRAST_EXCLUSION)
+    await checkA11yAllowingKnownConfirmContrast(page)
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags) in dark mode

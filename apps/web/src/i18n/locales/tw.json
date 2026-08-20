@@ -246,9 +246,25 @@
         "newHeader": "調整後",
         "updateButton": "更新並儲存"
       },
-      "stockAddDialog": {
-        "title": "將 {{name}} 加入 {{location}}？",
-        "description": "這項物資尚未在此地點建立庫存。儲存後將以目前填寫的數值把它加入這個地點。"
+      "locationPager": {
+        "label": "各據點庫存",
+        "previous": "上一個據點",
+        "next": "下一個據點",
+        "pageCurrent": "{{location}}（目前所在據點）",
+        "currentHint": "目前所在",
+        "currentElsewhere": "目前所在：{{location}}",
+        "viewing": "正在檢視 {{location}} 的庫存",
+        "notStockedTitle": "這個據點還沒有庫存",
+        "notStockedDescription": "{{name}} 尚未在 {{location}} 建立庫存。",
+        "addToLocation": "加入這個據點",
+        "addFailed": "無法將 {{name}} 加入 {{location}}，請再試一次。",
+        "removeFromLocation": "從這個據點移除"
+      },
+      "removeLocationDialog": {
+        "title": "將 {{name}} 從 {{location}} 移除？",
+        "description": "將一併刪除它在 {{location}} 的庫存、庫存紀錄與購物清單項目。{{name}} 仍會留在品項目錄中，之後可以再加回來。",
+        "affected": "庫存紀錄：{{logs}} 筆 · 購物清單項目：{{carts}} 筆",
+        "confirm": "移除"
       }
     },
     "history": {

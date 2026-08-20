@@ -9,6 +9,7 @@ import {
   getItem,
   getLastPurchaseDate,
   getStockedItems,
+  removeItemFromLocation,
   updateItem,
 } from '@/db/operations'
 import type { CreateItemInput, UpdateItemInput } from '@/generated/graphql'
@@ -287,15 +288,36 @@ export function useCreateItem() {
   return localMutation
 }
 
-// Stock an existing global item in the active location via copy-on-add
-// (inherits all stock fields except packed/unpacked → 0). No-op if the item is
-// already stocked there. Local-first only — ItemStock has no cloud backend yet.
+// Both location mutations below are Dexie-only: cloud mode has no locations and
+// no ItemStock backend (deferred in PR D), so running them there would write to
+// local rows the cloud UI never reads and report success for something that did
+// not happen. They throw instead of no-op'ing so a wiring mistake fails loudly
+// in dev rather than silently — false success is exactly the PR D trap. This is
+// a safety net under the component-level `mode === 'local'` guard (the
+// NewItemDialog pattern), not a replacement for it.
+const LOCAL_ONLY_LOCATION_MUTATION =
+  'Location stock mutations are local-mode only: cloud mode has no locations or ItemStock.'
+
+type AddToLocationVars = {
+  itemId: string
+  // The Stock-tab pager adds to the location on the page being viewed, which
+  // is not necessarily the active one; defaults to the active location.
+  locationId?: string
+}
+
+// Stock an existing global item in a location via copy-on-add (inherits all
+// stock fields except packed/unpacked → 0). No-op if the item is already
+// stocked there. Local-first only — ItemStock has no cloud backend yet.
 export function useAddItemToLocation() {
   const queryClient = useQueryClient()
+  const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
 
   return useMutation({
-    mutationFn: (itemId: string) => addItemToLocation(itemId, activeLocationId),
+    mutationFn: ({ itemId, locationId }: AddToLocationVars) => {
+      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
+      return addItemToLocation(itemId, locationId ?? activeLocationId)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
@@ -303,9 +325,60 @@ export function useAddItemToLocation() {
   })
 }
 
+type RemoveFromLocationVars = {
+  itemId: string
+  // The Stock-tab pager removes from the location on the page being viewed,
+  // which is not necessarily the active one; defaults to the active location.
+  locationId?: string
+}
+
+// Un-stock an item from a location, cascading that location's inventory logs
+// and cart entries (see `removeItemFromLocation`). The global Item survives, so
+// the item stays in the Add combobox catalog and can be re-added.
+//
+// Invalidates every query family the cascade touches so removing from the
+// ACTIVE location leaves the UI consistent without a reload: `['items']` (the
+// pantry `getStockedItems` list, single-item reads and the item's logs, which
+// are keyed `['items', id, 'logs', …]`), `['itemStocks']`, `['cart']` (the
+// deleted cart entries) and `['sort']` (expiry/purchase dates derived from the
+// deleted logs).
+//
+// Local-first only, and it refuses to run in cloud mode (see
+// LOCAL_ONLY_LOCATION_MUTATION above). This one is destructive and
+// irreversible — it deletes every inventory log for the pair — so a stray
+// cloud-mode call would silently destroy local history the cloud UI never
+// shows.
+export function useRemoveItemFromLocation() {
+  const queryClient = useQueryClient()
+  const { mode } = useDataMode()
+  const { activeLocationId } = useActiveLocation()
+
+  return useMutation({
+    mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) => {
+      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
+      return removeItemFromLocation(itemId, locationId ?? activeLocationId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
+      queryClient.invalidateQueries({ queryKey: ['cart'] })
+      queryClient.invalidateQueries({ queryKey: ['sort'] })
+      // The two per-item counts the cascade changes. No UI consumer today, but
+      // Task 2's confirmation dialog is specified to name what gets deleted.
+      queryClient.invalidateQueries({ queryKey: ['inventoryLogs'] })
+      queryClient.invalidateQueries({ queryKey: ['cartItems'] })
+    },
+  })
+}
+
 type ItemUpdateVars = {
   id: string
   updates: Partial<Item> & Partial<StockFields>
+  // Local mode only: which location's ItemStock the stock fields are written
+  // to. The Stock-tab pager saves to the location on the page being viewed;
+  // everything else omits it and writes to the active location. Cloud mode
+  // ignores it — cloud items carry inline stock and have no locations.
+  locationId?: string
 }
 
 export function useUpdateItem() {
@@ -314,13 +387,17 @@ export function useUpdateItem() {
   const { activeLocationId } = useActiveLocation()
 
   const localMutation = useMutation({
-    mutationFn: ({ id, updates }: ItemUpdateVars) =>
-      updateItem(id, updates, activeLocationId),
+    mutationFn: ({ id, updates, locationId }: ItemUpdateVars) =>
+      updateItem(id, updates, locationId ?? activeLocationId),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['items', id] })
       queryClient.invalidateQueries({ queryKey: ['items', 'countByTag'] })
       queryClient.invalidateQueries({ queryKey: ['items', 'countByVendor'] })
+      // Stock fields are written to an ItemStock row, so the raw-stock readers
+      // (`useItemStock`/`useItemStocks`, which the Stock pager reads to build
+      // each location's page) must re-resolve too.
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
     },
   })
 
@@ -423,18 +500,28 @@ export function useDeleteItem() {
   return localMutation
 }
 
-export function useInventoryLogCountByItem(itemId: string) {
+// Both counts accept an optional locationId that scopes them to the rows
+// `removeItemFromLocation` would delete for that (item, location) pair — the
+// Stock tab's remove confirmation names one location, so an item-global count
+// would over-report. Omitting it keeps the item-global count. The location is
+// part of the query key so the two scopes never share a cache entry; the
+// remove mutation invalidates the whole `['inventoryLogs']` / `['cartItems']`
+// families, so both re-resolve after a removal.
+export function useInventoryLogCountByItem(
+  itemId: string,
+  locationId?: string,
+) {
   return useQuery({
-    queryKey: ['inventoryLogs', 'countByItem', itemId],
-    queryFn: () => getInventoryLogCountByItem(itemId),
+    queryKey: ['inventoryLogs', 'countByItem', itemId, { locationId }],
+    queryFn: () => getInventoryLogCountByItem(itemId, locationId),
     enabled: !!itemId,
   })
 }
 
-export function useCartItemCountByItem(itemId: string) {
+export function useCartItemCountByItem(itemId: string, locationId?: string) {
   return useQuery({
-    queryKey: ['cartItems', 'countByItem', itemId],
-    queryFn: () => getCartItemCountByItem(itemId),
+    queryKey: ['cartItems', 'countByItem', itemId, { locationId }],
+    queryFn: () => getCartItemCountByItem(itemId, locationId),
     enabled: !!itemId,
   })
 }

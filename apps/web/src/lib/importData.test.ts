@@ -88,6 +88,13 @@ function makeCartItem(id: string, cartId = 'cart-1', itemId = 'item-1') {
   }
 }
 
+// The CURRENT (post-v15) payload shape: `itemStocks` and `locations` are
+// present, empty or not. They are optional on `ExportPayload`, and omitting
+// them here made every default test payload legacy-shaped — `itemStocks ===
+// undefined` is exactly what `upgradeLegacyPayload` reads as "pre-v15", so no
+// test that used the default ever reached the v15 branch. That is the
+// structural reason unit coverage missed a real data-loss bug on PR D. Use
+// `legacyPayload()` below when a test wants the pre-v15 shape on purpose.
 function emptyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
   return {
     version: 1,
@@ -101,8 +108,23 @@ function emptyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
     shoppingCarts: [],
     cartItems: [],
     shelves: [],
+    itemStocks: [],
+    locations: [],
     ...overrides,
   }
+}
+
+// A pre-v15 backup (or a cloud export): no `itemStocks` key at all. Items carry
+// their stock inline and cart ids are bare (`vendorId | 'no-vendor'`), so the
+// import side must split the stock out and re-key the carts. The absent
+// `itemStocks` key is the ONLY thing that marks a payload legacy —
+// `upgradeLegacyPayload` branches on nothing else — so that is what this drops.
+// `locations` goes too unless the caller asks for it explicitly (a real pre-v15
+// backup has neither; a cloud-down copy may still target a known location).
+function legacyPayload(overrides: Partial<ExportPayload> = {}): ExportPayload {
+  const { itemStocks, locations, ...rest } = emptyPayload(overrides)
+  void itemStocks
+  return 'locations' in overrides ? { ...rest, locations } : rest
 }
 
 function emptyExisting(overrides: Partial<ExistingData> = {}): ExistingData {
@@ -369,6 +391,41 @@ describe('partitionPayload', () => {
     expect(toCreate.items).toHaveLength(2)
     expect(toUpsert.items).toHaveLength(0)
   })
+
+  // The v15-only tables are in no conflict set, so partitioning must carry them
+  // through untouched on every strategy. Nothing else asserts this: they were
+  // absent from the default payload helper until now, so an implementation that
+  // rebuilt `toCreate` table-by-table instead of spreading would have silently
+  // dropped every stock row and location — items would import stockless and the
+  // pantry would render empty.
+  it.each([
+    'skip',
+    'replace',
+    'clear',
+  ] as const)('user importing a v15 backup with %s keeps its itemStocks and locations', (strategy) => {
+    // Given a v15 payload carrying stock rows and locations
+    const v15Payload = emptyPayload({
+      items: [existingItem, newItem],
+      itemStocks: [
+        { id: 'stock-1', itemId: 'item-1', locationId: 'local' },
+        { id: 'stock-2', itemId: 'item-2', locationId: 'office' },
+      ],
+      locations: [{ id: 'office', name: 'Office', order: 1 }],
+    })
+
+    // When partitioning it
+    const { toCreate } = partitionPayload(
+      v15Payload,
+      detectConflicts(v15Payload, existing),
+      strategy,
+    )
+
+    // Then both v15 tables survive intact
+    expect(toCreate.itemStocks).toHaveLength(2)
+    expect((toCreate.itemStocks as Array<{ id: string }>).map((s) => s.id)) //
+      .toEqual(['stock-1', 'stock-2'])
+    expect(toCreate.locations).toHaveLength(1)
+  })
 })
 
 async function clearAllTables() {
@@ -427,7 +484,7 @@ describe('importLocalData', () => {
     // And a backup whose cart carries legacy status/createdAt fields and reuses
     // the same sentinel id (this collided on the old bulkAdd → ConstraintError,
     // aborting the whole import)
-    const payload = emptyPayload({
+    const payload = legacyPayload({
       items: [makeItem('item-1', 'Milk')],
       shoppingCarts: [makeShoppingCart('no-vendor')],
       cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],
@@ -530,7 +587,7 @@ describe('importLocalData', () => {
     // Given a backup whose cart still carries the legacy status/createdAt fields
     const cart = makeShoppingCart('cart-1', 'active')
     const cartItem = makeCartItem('ci-1', 'cart-1', 'item-1')
-    const payload = emptyPayload({
+    const payload = legacyPayload({
       shoppingCarts: [cart],
       cartItems: [cartItem],
     })
@@ -883,7 +940,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
 
   it('user can restore a legacy backup — cart ids gain the location prefix', async () => {
     // Given a pre-v15 backup whose cart ids are bare vendor ids / 'no-vendor'
-    const payload = emptyPayload({
+    const payload = legacyPayload({
       items: [makeItem('item-1', 'Milk')],
       vendors: [makeVendor('vendor-1', 'Costco')],
       shoppingCarts: [
@@ -1007,7 +1064,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
       packedQuantity: 5,
       targetQuantity: 6,
     }
-    const payload = emptyPayload({
+    const payload = legacyPayload({
       items: [legacyItem],
       vendors: [makeVendor('vendor-1', 'Costco')],
       shoppingCarts: [makeShoppingCart('vendor-1')],
@@ -2192,7 +2249,7 @@ describe('importCloudData — local → cloud stock flattening (v15 split)', () 
 
   it('a cloud-shaped payload (no itemStocks) passes through untouched', async () => {
     // Given a cloud/legacy payload whose stock still lives inline on the item
-    const payload = emptyPayload({
+    const payload = legacyPayload({
       items: [{ ...makeItem('item-1', 'Milk'), packedQuantity: 7 }],
       shoppingCarts: [{ id: 'no-vendor' }],
       cartItems: [makeCartItem('ci-1', 'no-vendor', 'item-1')],

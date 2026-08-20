@@ -52,6 +52,10 @@ Components → TanStack Query hooks → Dexie.js → IndexedDB
 
 Components never access the database directly — they use Query hooks from `src/hooks/`.
 
+## Local Database & Dexie Schema
+
+> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` migrations, the Item/ItemStock join, and the three cascades.
+
 ## Backend & Prisma Migrations
 
 > See `apps/server/prisma/CLAUDE.md` — migration safety rules (reset the dev DB after squashing uncommitted `migrate dev` migrations; a migration must be valid on a DB built only from committed history).
@@ -89,9 +93,10 @@ src/
 ## Features
 
 > Feature documentation lives in sub-directory CLAUDE.md files co-located with the routes:
-> - `apps/web/src/routes/CLAUDE.md` — filter pipeline, shopping, cooking
-> - `apps/web/src/routes/items/CLAUDE.md` — item form, manual quantity input
+> - `apps/web/src/routes/CLAUDE.md` — active-location scoping, filter pipeline, shopping, cooking
+> - `apps/web/src/routes/items/CLAUDE.md` — item form, Stock-tab location pager, manual quantity input
 > - `apps/web/src/routes/settings/CLAUDE.md` — cascade deletion
+> - `apps/web/src/routes/settings/locations/CLAUDE.md` — location management
 > - `apps/web/src/routes/settings/tags/CLAUDE.md` — tag management
 > - `apps/web/src/routes/settings/vendors/CLAUDE.md` — vendor management
 > - `apps/web/src/routes/settings/recipes/CLAUDE.md` — recipe management
