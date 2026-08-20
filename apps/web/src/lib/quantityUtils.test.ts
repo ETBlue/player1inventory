@@ -11,6 +11,8 @@ import {
   getPackedTotal,
   getStockStatus,
   isInactive,
+  isInactiveHere,
+  isStockedHere,
   roundToStep,
 } from './quantityUtils'
 
@@ -463,6 +465,59 @@ describe('isInactive', () => {
     }
 
     expect(isInactive(item as Item)).toBe(true)
+  })
+})
+
+describe('isStockedHere', () => {
+  it('returns true when item carries a stockId', () => {
+    const item = { stockId: 'stock-1' }
+
+    expect(isStockedHere(item)).toBe(true)
+  })
+
+  it('returns false when item has no stockId (not stocked in the active location)', () => {
+    // This is the ZERO_STOCK join shape returned by joinItemStock() for an item
+    // with no ItemStock row in the active location — stockId is undefined even
+    // though the item exists globally.
+    const item = { stockId: undefined }
+
+    expect(isStockedHere(item)).toBe(false)
+  })
+})
+
+describe('isInactiveHere', () => {
+  it('returns true when stocked here and targetQuantity is 0', () => {
+    const item: Partial<Item> & { stockId?: string } = {
+      stockId: 'stock-1',
+      targetQuantity: 0,
+      refillThreshold: 0,
+    }
+
+    expect(isInactiveHere(item as Item & { stockId?: string })).toBe(true)
+  })
+
+  it('returns false when stocked here and targetQuantity > 0', () => {
+    const item: Partial<Item> & { stockId?: string } = {
+      stockId: 'stock-1',
+      targetQuantity: 2,
+      refillThreshold: 1,
+    }
+
+    expect(isInactiveHere(item as Item & { stockId?: string })).toBe(false)
+  })
+
+  it('returns false when NOT stocked here even though targetQuantity is 0 (the ZERO_STOCK trap)', () => {
+    // joinItemStock() returns ZERO_STOCK (targetQuantity: 0, no stockId) for an
+    // item with no ItemStock row in the active location. isInactive() alone
+    // would wrongly report this merely-unstocked item as inactive; isInactiveHere
+    // must guard on stockId to avoid the trap.
+    const item: Partial<Item> & { stockId?: string } = {
+      stockId: undefined,
+      targetQuantity: 0,
+      refillThreshold: 0,
+    }
+
+    expect(isInactiveHere(item as Item & { stockId?: string })).toBe(false)
   })
 })
 

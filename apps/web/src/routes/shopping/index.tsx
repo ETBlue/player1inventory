@@ -18,11 +18,12 @@ import {
   useAllActiveCarts,
   useItems,
   useLastPurchasedByVendor,
-  useVendorItemCounts,
+  useVendorCartCounts,
   useVendors,
 } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
 import { cartIdFor } from '@/types'
 
 export const Route = createFileRoute('/shopping/')({
@@ -47,7 +48,7 @@ function ShoppingIndex() {
   const { data: allCarts = [] } = useAllActiveCarts()
   const { data: vendors = [] } = useVendors()
   const { data: items = [] } = useItems()
-  const vendorItemCounts = useVendorItemCounts()
+  const vendorCartCounts = useVendorCartCounts()
   const { data: lastPurchasedByVendor } = useLastPurchasedByVendor()
 
   // Local mode: fan-out one TanStack Query per cart (reads from Dexie)
@@ -115,7 +116,17 @@ function ShoppingIndex() {
     }
   }
 
-  const noVendorCount = items.filter((i) => !(i.vendorIds ?? []).length).length
+  // No-vendor card mirrors useVendorCartCounts()'s location-scoping: cloud has
+  // no Location/ItemStock backend (no stockId), so it bypasses the location
+  // gate and never reports an inactive count.
+  const noVendorItems = items.filter((i) => !(i.vendorIds ?? []).length)
+  const noVendorScopedItems = isCloud
+    ? noVendorItems
+    : noVendorItems.filter(isStockedHere)
+  const noVendorCount = noVendorScopedItems.length
+  const noVendorInactiveCount = isCloud
+    ? 0
+    : noVendorScopedItems.filter(isInactiveHere).length
 
   const sortedVendors = [...vendors].sort((a, b) => {
     let cmp = 0
@@ -123,7 +134,8 @@ function ShoppingIndex() {
       cmp = a.name.localeCompare(b.name)
     } else if (sort === 'count') {
       cmp =
-        (vendorItemCounts.get(b.id) ?? 0) - (vendorItemCounts.get(a.id) ?? 0)
+        (vendorCartCounts.get(b.id)?.count ?? 0) -
+        (vendorCartCounts.get(a.id)?.count ?? 0)
     } else {
       const aTime = lastPurchasedByVendor?.get(a.id)?.getTime() ?? 0
       const bTime = lastPurchasedByVendor?.get(b.id)?.getTime() ?? 0
@@ -207,7 +219,10 @@ function ShoppingIndex() {
               vendorName={vendor.name}
               checkedCount={checkedCount}
               totalQuantity={totalQuantity}
-              availableCount={vendorItemCounts.get(vendor.id) ?? 0}
+              availableCount={vendorCartCounts.get(vendor.id)?.count ?? 0}
+              inactiveCount={
+                vendorCartCounts.get(vendor.id)?.inactiveCount ?? 0
+              }
               onClick={() =>
                 navigate(
                   // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
@@ -231,6 +246,7 @@ function ShoppingIndex() {
                 checkedCount={checkedCount}
                 totalQuantity={totalQuantity}
                 availableCount={noVendorCount}
+                inactiveCount={noVendorInactiveCount}
                 onClick={() =>
                   navigate(
                     // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes

@@ -270,3 +270,21 @@ export function addItem(
 export function isInactive(item: Stock): boolean {
   return item.targetQuantity === 0
 }
+
+// Location predicates — guard against the ZERO_STOCK trap: joinItemStock()
+// returns targetQuantity: 0 (no stockId) for an item with no ItemStock row in
+// the active location, so isInactive() alone reports a merely-unstocked item
+// as inactive. Every location-scoped count must check stockId first.
+
+// True when the item has a real ItemStock row in the active location (as
+// opposed to the zeroed join result for an item not stocked here).
+export function isStockedHere(item: { stockId?: string }): boolean {
+  return item.stockId !== undefined
+}
+
+// Strict "inactive" for the active location: stocked here AND targetQuantity
+// is 0. An item that is simply not stocked here is neither active nor
+// inactive here — it is absent, so this returns false for it.
+export function isInactiveHere(item: { stockId?: string } & Stock): boolean {
+  return isStockedHere(item) && isInactive(item)
+}

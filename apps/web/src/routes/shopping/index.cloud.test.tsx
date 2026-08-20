@@ -67,6 +67,17 @@ const CLOUD_CART_ITEM = {
   quantity: 3,
 }
 
+// A cloud item with targetQuantity: 0 — real user data (the item is simply
+// inactive), not the "not stocked here" ZERO_STOCK trap local items hit. Cloud
+// has no Location/ItemStock backend, so a cloud item never carries a stockId;
+// the inactive segment must stay hidden and the vendor count must stay global.
+const CLOUD_ITEM_INACTIVE = {
+  ...CLOUD_ITEM,
+  id: 'item-expired-snack',
+  name: 'Expired Snack',
+  targetQuantity: 0,
+}
+
 describe('Shopping index page — cloud mode', () => {
   let queryClient: QueryClient
 
@@ -130,5 +141,24 @@ describe('Shopping index page — cloud mode', () => {
 
     // Then the card metadata reports it as in the cart
     expect(await screen.findByText(/1 in cart/i)).toBeInTheDocument()
+  })
+
+  it('vendor card keeps the global item count and omits the inactive segment in cloud mode, even for a targetQuantity: 0 item', async () => {
+    // Given two Costco items in cloud mode: one active, one with targetQuantity: 0.
+    // Cloud items never carry a stockId, so the location-scoped inactive count
+    // must not apply here — the count stays global and no inactive segment shows.
+    mockUseGetItemsQuery.mockReturnValue({
+      ...emptyQuery,
+      data: { items: [CLOUD_ITEM, CLOUD_ITEM_INACTIVE] },
+      networkStatus: 7,
+      refetch: vi.fn(),
+    })
+
+    renderShoppingIndex()
+
+    // Then the card shows the global count of 2 items and 1 in cart, with no
+    // inactive segment anywhere on the page.
+    expect(await screen.findByText(/2 items · 1 in cart/)).toBeInTheDocument()
+    expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
   })
 })

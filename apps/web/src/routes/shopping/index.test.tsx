@@ -8,7 +8,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { addToCart, createItem, createVendor } from '@/db/operations'
+import {
+  addToCart,
+  createItem,
+  createLocation,
+  createVendor,
+} from '@/db/operations'
+import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
@@ -24,7 +30,9 @@ describe('Shopping index page', () => {
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
     await db.vendors.clear()
+    await db.locations.clear()
     sessionStorage.clear()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -297,5 +305,243 @@ describe('Shopping index page', () => {
     expect(await screen.findByText(/costco/i)).toBeInTheDocument()
     expect(screen.queryByText(/1 item · 1 in cart/)).not.toBeInTheDocument()
     expect(screen.queryByText(/7 packs/i)).not.toBeInTheDocument()
+  })
+
+  it('vendor card shows a location-scoped count with an inactive segment, ignoring an item not stocked in the active location (the trap)', async () => {
+    // Given a vendor with: one active item and one inactive item stocked in the
+    // active (default) location, plus a third item that only exists in another
+    // location (Cabin) and must NOT be counted here at all.
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco')
+    await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Discontinued Snack',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Firewood',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+
+    renderShoppingIndex()
+
+    // Then the card shows 2 items in vendor (Milk + Discontinued Snack — NOT
+    // Firewood, which is only stocked in Cabin) and 1 inactive (Discontinued Snack)
+    expect(await screen.findByText(/2 items · 1 inactive/)).toBeInTheDocument()
+  })
+
+  it('vendor card count changes when the active location switches (items split across two locations)', async () => {
+    // Given the same vendor with items split across the default location and Cabin
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco')
+    await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Firewood',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+
+    // When the active location is Cabin
+    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, cabin.id)
+    renderShoppingIndex()
+
+    // Then the card shows only the item stocked in Cabin (Firewood), not Milk
+    expect(await screen.findByText(/1 item(?! ·)/)).toBeInTheDocument()
+    expect(screen.queryByText(/2 items/)).not.toBeInTheDocument()
+  })
+
+  it('no-vendor card applies the same location-scoped and inactive treatment as vendor cards', async () => {
+    // Given two no-vendor items: one stocked here and inactive, one stocked
+    // only in another location (Cabin) and must not be counted here.
+    const cabin = await createLocation('Cabin')
+    await createItem(
+      {
+        name: 'Expired Coupon',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Cabin Only Item',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+
+    renderShoppingIndex()
+
+    // Then the no-vendor card shows 1 item (not 2) and 1 inactive
+    expect(await screen.findByText(/1 item · 1 inactive/)).toBeInTheDocument()
+  })
+
+  it('sort=count orders vendor cards by the location-scoped count, not the global item count (R2)', async () => {
+    // Given vendor "Many" with 3 items globally but only 1 stocked in the active
+    // location (the other 2 live only in Cabin), and vendor "Few" with 2 items,
+    // both stocked in the active location. A global-count sort would rank "Many"
+    // first (3 > 2); the location-scoped sort must rank "Few" first (2 > 1).
+    const cabin = await createLocation('Cabin')
+    const many = await createVendor('Many')
+    const few = await createVendor('Few')
+
+    await createItem(
+      {
+        name: 'Many Item 1',
+        tagIds: [],
+        vendorIds: [many.id],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Many Item 2',
+        tagIds: [],
+        vendorIds: [many.id],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+    await createItem(
+      {
+        name: 'Many Item 3',
+        tagIds: [],
+        vendorIds: [many.id],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+    await createItem(
+      {
+        name: 'Few Item 1',
+        tagIds: [],
+        vendorIds: [few.id],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Few Item 2',
+        tagIds: [],
+        vendorIds: [few.id],
+        targetUnit: 'package',
+        targetQuantity: 1,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+
+    // When sorted by count, descending
+    const history = createMemoryHistory({
+      initialEntries: ['/shopping?sort=count&dir=desc'],
+    })
+    const router = createRouter({
+      routeTree,
+      history,
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    // Then "Few" (2 in this location) ranks before "Many" (1 in this location)
+    const fewEl = await screen.findByText(/^Few$/i)
+    const manyEl = await screen.findByText(/^Many$/i)
+    expect(fewEl.compareDocumentPosition(manyEl)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
   })
 })

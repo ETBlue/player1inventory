@@ -45,6 +45,8 @@
       "packsChecked_other": "{{count}} packs",
       "inVendor_one": "{{count}} item",
       "inVendor_other": "{{count}} items",
+      "inactive_one": "{{count}} inactive",
+      "inactive_other": "{{count}} inactive",
       "inCart": "{{count}} in cart"
     },
     "toolbar": {
