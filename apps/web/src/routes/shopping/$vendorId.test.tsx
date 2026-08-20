@@ -8,7 +8,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { addToCart, createItem, createVendor } from '@/db/operations'
+import {
+  addToCart,
+  createItem,
+  createLocation,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
@@ -444,5 +449,57 @@ describe('Vendor cart page', () => {
         screen.queryByText(/abandon this shopping trip/i),
       ).not.toBeInTheDocument()
     })
+  })
+
+  it('user can see the active-location switcher in the cart toolbar', async () => {
+    // Given a vendor exists
+    const vendor = await createVendor('Costco')
+
+    // When user navigates to the vendor cart
+    renderVendorCart(vendor.id)
+
+    // Then the location switcher trigger is rendered in the toolbar
+    expect(
+      await screen.findByRole('button', { name: /switch location/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('switching the active location shows the target location cart, not the previous one', async () => {
+    // Given a second location exists, and the vendor cart at the default
+    // location ("My Home") already has a checked item
+    await createLocation('Office')
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 2)
+
+    // When user navigates to the vendor cart
+    renderVendorCart(vendor.id)
+
+    // Then the cart shows 2 packs (My Home's cart)
+    await screen.findByText(/2 packs/i)
+
+    // When the user switches the active location to "Office"
+    const switcherTrigger = await screen.findByRole('button', {
+      name: /switch location/i,
+    })
+    await userEvent.click(switcherTrigger)
+    await userEvent.click(await screen.findByText('Office'))
+
+    // Then the cart re-reads cleanly: it shows Office's fresh (empty) cart,
+    // not stale rows carried over from My Home
+    await waitFor(() => {
+      expect(screen.getByText(/0 packs/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/2 packs/i)).not.toBeInTheDocument()
   })
 })

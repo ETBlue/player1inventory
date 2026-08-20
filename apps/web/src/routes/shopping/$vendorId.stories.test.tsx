@@ -3,7 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './$vendorId.stories'
 
-const { Default, WithCartItems, WithNoVendorCart } = composeStories(stories)
+const { Default, WithCartItems, WithNoVendorCart, WithMultipleLocations } =
+  composeStories(stories)
 
 describe('ShoppingVendorCart page stories smoke tests', () => {
   it('Default renders vendor name or back button', async () => {
@@ -22,5 +23,12 @@ describe('ShoppingVendorCart page stories smoke tests', () => {
   it('WithNoVendorCart renders no vendor text', async () => {
     render(<WithNoVendorCart />)
     expect(await screen.findByText(/no vendor/i)).toBeInTheDocument()
+  })
+
+  it('WithMultipleLocations renders the active-location switcher in the toolbar', async () => {
+    render(<WithMultipleLocations />)
+    expect(
+      await screen.findByRole('button', { name: /switch location/i }),
+    ).toBeInTheDocument()
   })
 })

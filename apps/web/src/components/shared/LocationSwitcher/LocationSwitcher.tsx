@@ -15,9 +15,10 @@ import { useLocations } from '@/hooks/useLocations'
 /**
  * Global active-location selector for the top toolbar of pantry/shopping/cooking.
  *
- * INERT (PR B): selecting a location updates + persists the active-location
- * state and the trigger label only. It does NOT scope or change any displayed
- * data — every page still reads stock off `Item`. Scoping arrives in PR D.
+ * LIVE (PR D): selecting a location updates + persists the active-location
+ * state and the trigger label, and re-scopes every stock-bearing page —
+ * pantry item lists, shopping carts, and cooking availability all read off
+ * the active location and refetch when it changes.
  *
  * Vendor-name display rule applies: location names render as-stored (no forced
  * casing). The single-letter trigger uppercases the first character so it reads

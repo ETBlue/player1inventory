@@ -131,8 +131,9 @@ Vendor-scoped cart with three-toolbar layout.
 
 Row 1 (single combined toolbar):
 ```
-[← Go back]  [Vendor name]  [flex-1]  [N packs in cart]  [✕ Cancel]  [✓ Done]
+[LocationSwitcher]  [← Go back]  [Vendor name]  [flex-1]  [N packs in cart]  [✕ Cancel]  [✓ Done]
 ```
+- `LocationSwitcher` — leading, left of the back button (same placement as every other main page's toolbar); switching location re-reads the active-location-scoped cart via `useVendorCart`'s query key, so the page shows the target location's cart rather than stale rows
 - Back button: icon-only on mobile, "Go back" text on desktop (`hidden lg:inline`), aria-label `common.goBack`
 - Vendor name: `normal-case` class for vendor names (preserves casing like "iHerb"); plain for "No vendor"
 - Cancel: icon-only on mobile, "Cancel" text on desktop — visible only when `cartItems.length > 0`

@@ -8,9 +8,15 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { addToCart, createItem, createVendor } from '@/db/operations'
+import {
+  addToCart,
+  createItem,
+  createLocation,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 const meta = {
   title: 'Pages/ShoppingVendorCart',
@@ -170,6 +176,63 @@ function WithCartItemsStory() {
   )
 }
 
+function WithMultipleLocationsStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [vendorId, setVendorId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+      // A second location exists alongside the default one, so the toolbar's
+      // LocationSwitcher has something to switch between (demonstrates the
+      // toolbar state introduced by mounting the switcher on the cart page).
+      await createLocation('Office')
+      const vendor = await createVendor('Costco')
+
+      const milk = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), milk.id, 2)
+
+      setVendorId(vendor.id)
+    }
+    setup()
+  }, [])
+
+  if (!vendorId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/shopping/${vendorId}`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 function WithNoVendorCartStory() {
   return (
     <VendorCartStory
@@ -201,4 +264,8 @@ export const WithCartItems: Story = {
 
 export const WithNoVendorCart: Story = {
   render: () => <WithNoVendorCartStory />,
+}
+
+export const WithMultipleLocations: Story = {
+  render: () => <WithMultipleLocationsStory />,
 }

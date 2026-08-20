@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -244,6 +245,7 @@ function VendorCart() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
+          <LocationSwitcher />
           <Button
             size="icon"
             variant="neutral-ghost"
