@@ -10,6 +10,7 @@ import {
   getItemPackUnits,
   getPackedTotal,
   getStockStatus,
+  hasStockHere,
   isEmptyStock,
   isInactive,
   isInactiveHere,
@@ -484,6 +485,27 @@ describe('isStockedHere', () => {
     const item = { stockId: undefined }
 
     expect(isStockedHere(item)).toBe(false)
+  })
+})
+
+describe('hasStockHere', () => {
+  it('returns true when at least one item in the group is stocked here', () => {
+    // Given a group where only the second item has an ItemStock row here
+    const items = [{ stockId: undefined }, { stockId: 'stock-1' }]
+
+    expect(hasStockHere(items)).toBe(true)
+  })
+
+  it('returns false when every item is stocked only in another location', () => {
+    // Given the ZERO_STOCK join shape for every item in the group — they exist
+    // globally but carry no ItemStock row in the active location.
+    const items = [{ stockId: undefined }, { stockId: undefined }]
+
+    expect(hasStockHere(items)).toBe(false)
+  })
+
+  it('returns false for an empty group', () => {
+    expect(hasStockHere([])).toBe(false)
   })
 })
 

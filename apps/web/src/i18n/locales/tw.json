@@ -28,7 +28,9 @@
     "search": "搜尋",
     "tags": "標籤",
     "relations": "關聯",
-    "filters": "篩選條件"
+    "filters": "篩選條件",
+    "notStockedHere_one": "此據點無庫存的 {{count}} 項",
+    "notStockedHere_other": "此據點無庫存的 {{count}} 項"
   },
   "shopping": {
     "title": "購物",

@@ -3,6 +3,7 @@ import { Lock, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -188,6 +189,61 @@ export function ShelfGroupView() {
 
   const sortedShelves = [...(shelves ?? [])].sort((a, b) => a.order - b.order)
 
+  // A shelf is "stocked here" when at least one of its items has stock in the
+  // active location. `getShelfItems` resolves against `useStockedItems()`,
+  // which is already location-scoped (and falls back to the full list in cloud
+  // mode), so an empty resolved list is the signal — no stockId guard or cloud
+  // bypass belongs here.
+  //
+  // `getItemCount` is deliberately NOT the key: for a selection shelf it
+  // returns the raw `itemIds` length, which counts items stocked in other
+  // locations too, and would put such a shelf on the wrong side of the divider.
+  //
+  // Partitioning with two filters rather than a sort: filter preserves relative
+  // order, so the user's `order` sort survives within each half instead of
+  // being overridden by a stocked-ness primary key.
+  const isShelfStockedHere = (shelf: Shelf) =>
+    getShelfItems(shelf.id).length > 0
+  const stockedShelves = sortedShelves.filter(isShelfStockedHere)
+  const unstockedShelves = sortedShelves.filter((s) => !isShelfStockedHere(s))
+
+  // The Unsorted bucket is never hidden (it is the only route to items on no
+  // shelf), but it does participate in the partition: with nothing here it
+  // sinks below the divider rather than disappearing.
+  const unsortedCount = getUnsortedCount()
+  const unsortedSinks = unsortedCount === 0
+  const unstockedGroupCount = unstockedShelves.length + (unsortedSinks ? 1 : 0)
+
+  const renderShelfList = (list: Shelf[]) => (
+    <ShelfList
+      shelves={list}
+      onShelfClick={handleShelfClick}
+      getItemCount={getItemCount}
+      getOutOfStockCount={getOutOfStockCount}
+      getLowStockCount={getLowStockCount}
+      getActiveCount={getActiveCount}
+      getPackTotals={getShelfPackTotals}
+    />
+  )
+
+  const renderUnsortedCard = () => {
+    const unsortedPackTotals = getUnsortedPackTotals()
+    return (
+      <GroupCard
+        name="Unsorted"
+        icon={<Lock className="h-4 w-4 text-foreground-muted" />}
+        itemCount={unsortedCount}
+        outOfStockCount={getUnsortedOutOfStockCount()}
+        lowStockCount={getUnsortedLowStockCount()}
+        activeCount={getUnsortedActiveCount()}
+        onClick={handleUnsortedClick}
+        totalPackedQuantity={unsortedPackTotals.totalPacked}
+        totalTargetInPacks={unsortedPackTotals.totalTarget}
+        totalRefillInPacks={unsortedPackTotals.totalRefill}
+      />
+    )
+  }
+
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
@@ -229,32 +285,15 @@ export function ShelfGroupView() {
         </Toolbar>
       </div>
       <div className="overflow-y-auto flex flex-col gap-px">
-        <ShelfList
-          shelves={sortedShelves}
-          onShelfClick={handleShelfClick}
-          getItemCount={getItemCount}
-          getOutOfStockCount={getOutOfStockCount}
-          getLowStockCount={getLowStockCount}
-          getActiveCount={getActiveCount}
-          getPackTotals={getShelfPackTotals}
-        />
-        {(() => {
-          const unsortedPackTotals = getUnsortedPackTotals()
-          return (
-            <GroupCard
-              name="Unsorted"
-              icon={<Lock className="h-4 w-4 text-foreground-muted" />}
-              itemCount={getUnsortedCount()}
-              outOfStockCount={getUnsortedOutOfStockCount()}
-              lowStockCount={getUnsortedLowStockCount()}
-              activeCount={getUnsortedActiveCount()}
-              onClick={handleUnsortedClick}
-              totalPackedQuantity={unsortedPackTotals.totalPacked}
-              totalTargetInPacks={unsortedPackTotals.totalTarget}
-              totalRefillInPacks={unsortedPackTotals.totalRefill}
-            />
-          )
-        })()}
+        {renderShelfList(stockedShelves)}
+        {!unsortedSinks && renderUnsortedCard()}
+        {unstockedGroupCount > 0 && (
+          <ListSectionDivider>
+            {t('common.notStockedHere', { count: unstockedGroupCount })}
+          </ListSectionDivider>
+        )}
+        {renderShelfList(unstockedShelves)}
+        {unsortedSinks && renderUnsortedCard()}
       </div>
     </div>
   )

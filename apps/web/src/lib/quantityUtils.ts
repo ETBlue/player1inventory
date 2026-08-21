@@ -282,6 +282,13 @@ export function isStockedHere(item: { stockId?: string }): boolean {
   return item.stockId !== undefined
 }
 
+// True when at least one of the group's items is stocked in the active
+// location. Groups for which this is false sink below the "not stocked here"
+// divider on every group list.
+export function hasStockHere(items: { stockId?: string }[]): boolean {
+  return items.some(isStockedHere)
+}
+
 // Strict "inactive" for the active location: stocked here AND targetQuantity
 // is 0. An item that is simply not stocked here is neither active nor
 // inactive here — it is absent, so this returns false for it.

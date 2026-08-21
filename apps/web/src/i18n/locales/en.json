@@ -28,7 +28,9 @@
     "search": "Search",
     "tags": "Tags",
     "relations": "Relations",
-    "filters": "Filters"
+    "filters": "Filters",
+    "notStockedHere_one": "{{count}} not stocked here",
+    "notStockedHere_other": "{{count}} not stocked here"
   },
   "shopping": {
     "title": "Shopping",
