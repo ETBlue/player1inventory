@@ -110,11 +110,13 @@ Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownM
 **Sort options** (persisted in `?sort` + `?dir` URL params):
 - `'recent'` (default desc): sorted by most recent `completedAt` across all completed carts per vendor, via `useLastPurchasedByVendor()` — vendors with no completed carts sort to the bottom
 - `'alpha'`: alphabetical by vendor name
-- `'count'`: total available items descending
+- `'count'`: total available items descending, scoped to the active location (matches the card's displayed count — see `useVendorCartCounts()` below)
 
 **"No vendor" card:** Shown only when at least one item has no vendors assigned. Always renders last regardless of sort order.
 
-**Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorItemCounts()` + `useVendors()` + `useItems()`.
+**Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorCartCounts()` (see `apps/web/src/hooks/CLAUDE.md`) + `useVendors()` + `useItems()`.
+
+**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** (cloud bypasses the location gate — see the hook's doc comment). This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug.
 
 **Files:**
 - `src/routes/shopping.tsx` — layout (4 lines)
