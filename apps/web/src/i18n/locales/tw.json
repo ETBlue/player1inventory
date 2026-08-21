@@ -45,8 +45,8 @@
       "packsChecked_other": "共 {{count}} 件",
       "inVendor_one": "{{count}} 個品項",
       "inVendor_other": "{{count}} 個品項",
-      "inactive_one": "{{count}} 項暫停使用",
-      "inactive_other": "{{count}} 項暫停使用",
+      "inactive_one": "暫時沒在用的 {{count}} 項",
+      "inactive_other": "暫時沒在用的 {{count}} 項",
       "inCart": "{{count}} 採購中"
     },
     "toolbar": {
