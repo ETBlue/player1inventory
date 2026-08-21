@@ -180,6 +180,49 @@ describe('ShelfGroupView location partition', () => {
     expect(screen.queryByText(/not stocked here/i)).not.toBeInTheDocument()
   })
 
+  it("a selection shelf's item count only counts items stocked in the active location", async () => {
+    // Regression: `getItemCount` returned a selection shelf's raw `itemIds`
+    // length, which is location-blind. A shelf holding one item stocked here
+    // and one stocked only in Cabin therefore advertised "2" while sitting
+    // among the location-scoped counts — and a shelf holding nothing here
+    // could sit below the "not stocked here" divider still showing a non-zero
+    // count, the feature contradicting itself on screen.
+    const cabin = await createLocation('Cabin')
+    const milk = await stockItem('Milk', DEFAULT_LOCATION_ID)
+    const firewood = await stockItem('Firewood', cabin.id)
+    const kindling = await stockItem('Kindling', cabin.id)
+
+    await createShelf({
+      name: 'Pantry',
+      type: 'selection',
+      order: 0,
+      itemIds: [milk.id, firewood.id],
+    })
+    await createShelf({
+      name: 'Woodpile',
+      type: 'selection',
+      order: 1,
+      itemIds: [firewood.id, kindling.id],
+    })
+
+    renderShelfGroupView()
+    await screen.findByRole('button', { name: 'Pantry' })
+
+    // Then the mixed shelf counts only the item stocked here...
+    expect(screen.getByRole('button', { name: 'Pantry' })).toHaveTextContent(
+      '1 / 1 active',
+    )
+
+    // ...and the shelf with nothing here reads zero, matching its position
+    // below the divider rather than contradicting it
+    expect(screen.getByRole('button', { name: 'Woodpile' })).toHaveTextContent(
+      '0 / 0 active',
+    )
+    expect(
+      isBefore(divider(), screen.getByRole('button', { name: 'Woodpile' })),
+    ).toBe(true)
+  })
+
   it('user still sees the Unsorted card when it holds nothing here — it sinks rather than hides', async () => {
     // Given every item stocked here belongs to a shelf, so Unsorted is empty
     // in the active location. It is unconditional (ruling R2) and must remain

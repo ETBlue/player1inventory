@@ -59,23 +59,14 @@ export function ShelfGroupView() {
     )
   }
 
-  const getItemCount = (shelfId: string): number => {
-    if (!items || !shelves) return 0
-
-    const shelf = shelves.find((s) => s.id === shelfId)
-    if (!shelf) return 0
-
-    if (shelf.type === 'selection') {
-      return shelf.itemIds?.length ?? 0
-    }
-
-    const { filterConfig } = shelf
-    if (!filterConfig) return items.length
-
-    return (items ?? []).filter((item) =>
-      matchesFilterConfig(item, filterConfig, recipes, tags),
-    ).length
-  }
+  // Counts the shelf's items in the ACTIVE LOCATION, by reusing the resolved
+  // list rather than re-deriving one. A selection shelf's raw `itemIds` is
+  // location-blind: it includes items stocked only elsewhere, so counting it
+  // advertised a total the card's own health counts (all `getShelfItems`-based)
+  // never agreed with — and let a shelf sit below the "not stocked here"
+  // divider still showing a non-zero count.
+  const getItemCount = (shelfId: string): number =>
+    getShelfItems(shelfId).length
 
   const getOutOfStockCount = (shelfId: string): number => {
     return getShelfItems(shelfId).filter(isEmptyStock).length
@@ -194,10 +185,6 @@ export function ShelfGroupView() {
   // which is already location-scoped (and falls back to the full list in cloud
   // mode), so an empty resolved list is the signal — no stockId guard or cloud
   // bypass belongs here.
-  //
-  // `getItemCount` is deliberately NOT the key: for a selection shelf it
-  // returns the raw `itemIds` length, which counts items stocked in other
-  // locations too, and would put such a shelf on the wrong side of the divider.
   //
   // Partitioning with two filters rather than a sort: filter preserves relative
   // order, so the user's `order` sort survives within each half instead of
