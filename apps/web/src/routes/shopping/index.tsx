@@ -212,6 +212,10 @@ function ShoppingIndex() {
       </Toolbar>
       <div className="overflow-y-auto divide-y divide-accessory-default">
         {sortedVendors.map((vendor) => {
+          const availableCount = vendorCartCounts.get(vendor.id)?.count ?? 0
+          // Hide a vendor with nothing stocked in the active location — the
+          // same rule the no-vendor card below applies at `noVendorCount > 0`.
+          if (availableCount === 0) return null
           const { checkedCount, totalQuantity } = statsForVendor(vendor.id)
           return (
             <VendorCartCard
@@ -219,7 +223,7 @@ function ShoppingIndex() {
               vendorName={vendor.name}
               checkedCount={checkedCount}
               totalQuantity={totalQuantity}
-              availableCount={vendorCartCounts.get(vendor.id)?.count ?? 0}
+              availableCount={availableCount}
               inactiveCount={
                 vendorCartCounts.get(vendor.id)?.inactiveCount ?? 0
               }

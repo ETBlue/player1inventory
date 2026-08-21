@@ -112,11 +112,13 @@ Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownM
 - `'alpha'`: alphabetical by vendor name
 - `'count'`: total available items descending, scoped to the active location (matches the card's displayed count — see `useVendorCartCounts()` below)
 
-**"No vendor" card:** Shown only when at least one item has no vendors assigned. Always renders last regardless of sort order.
+**"No vendor" card:** Shown only when at least one item has no vendors assigned (`noVendorCount > 0`). Always renders last regardless of sort order.
+
+**Vendor cards follow the same zero-count rule.** A vendor whose `useVendorCartCounts()` count is 0 (nothing stocked in the active location; cloud: no item assigned to it at all) is not rendered — one rule, applied consistently to both the vendor loop and the no-vendor card, so a vendor with an empty cart section never shows a "0 items" card. If every vendor and the no-vendor card end up hidden (e.g. a location where nothing is stocked yet), the page currently renders an empty list under the toolbar — there is no dedicated empty state for `/shopping` today.
 
 **Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorCartCounts()` (see `apps/web/src/hooks/CLAUDE.md`) + `useVendors()` + `useItems()`.
 
-**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** (cloud bypasses the location gate — see the hook's doc comment). This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug.
+**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** (cloud bypasses the location gate — see the hook's doc comment). This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug. The same divergence carries into the zero-count hide rule above: in cloud mode a vendor is hidden only if it truly has zero items assigned anywhere (global count), so a cloud user never loses a vendor they can still shop.
 
 **Files:**
 - `src/routes/shopping.tsx` — layout (4 lines)

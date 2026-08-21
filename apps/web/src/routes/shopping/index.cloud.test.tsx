@@ -143,6 +143,27 @@ describe('Shopping index page — cloud mode', () => {
     expect(await screen.findByText(/1 in cart/i)).toBeInTheDocument()
   })
 
+  it('vendor card stays visible in cloud mode as long as it has any globally-assigned item (no location gate)', async () => {
+    // Given a second cloud vendor with zero items assigned anywhere, alongside
+    // Costco which has one item (CLOUD_ITEM, seeded in beforeEach). Cloud has
+    // no locations, so the gate must fall back to the global count — a cloud
+    // user must not lose a vendor they can still shop just because this page
+    // now hides zero-count vendors.
+    const EMPTY_VENDOR = { id: 'vendor-empty', name: 'Empty Mart' }
+    mockUseGetVendorsQuery.mockReturnValue({
+      ...emptyQuery,
+      data: { vendors: [CLOUD_VENDOR, EMPTY_VENDOR] },
+    })
+
+    renderShoppingIndex()
+
+    // Then Costco (global count 1) still renders...
+    expect(await screen.findByText(/costco/i)).toBeInTheDocument()
+    // ...while Empty Mart (global count 0) is hidden — same rule as local mode,
+    // just evaluated against the global count instead of a location-scoped one.
+    expect(screen.queryByText(/empty mart/i)).not.toBeInTheDocument()
+  })
+
   it('vendor card keeps the global item count and omits the inactive segment in cloud mode, even for a targetQuantity: 0 item', async () => {
     // Given two Costco items in cloud mode: one active, one with targetQuantity: 0.
     // Cloud items never carry a stockId, so the location-scoped inactive count

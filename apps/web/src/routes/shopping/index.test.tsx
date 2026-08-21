@@ -64,15 +64,84 @@ describe('Shopping index page', () => {
   })
 
   it('user can see vendor names in the cart list', async () => {
-    // Given two vendors exist
-    await createVendor('Costco')
-    await createVendor('iHerb')
+    // Given two vendors, each with an item stocked in the active location
+    const costco = await createVendor('Costco')
+    const iherb = await createVendor('iHerb')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [costco.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Fish Oil',
+      tagIds: [],
+      vendorIds: [iherb.id],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
 
     renderShoppingIndex()
 
     // Then both vendor names are displayed
     expect(await screen.findByText(/costco/i)).toBeInTheDocument()
     expect(await screen.findByText(/iherb/i)).toBeInTheDocument()
+  })
+
+  it('vendor card is hidden when nothing is stocked in the active location (mirrors the no-vendor card rule)', async () => {
+    // Given a vendor (Costco) whose only item is stocked in another location
+    // (Cabin), not the active (default) location — so its location-scoped
+    // count is 0 — plus a control vendor (Alpine Mart) stocked here, so we
+    // have a reliable "data has loaded" signal to wait on before asserting
+    // Costco's absence (asserting absence alone would pass vacuously before
+    // the vendors/items queries resolve).
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco')
+    await createItem(
+      {
+        name: 'Firewood',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+    const controlVendor = await createVendor('Alpine Mart')
+    await createItem(
+      {
+        name: 'Trail Mix',
+        tagIds: [],
+        vendorIds: [controlVendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+
+    renderShoppingIndex()
+
+    // Then once the control vendor's card has loaded, the Costco card is
+    // nowhere on the page — same rule as the no-vendor card at 0 items.
+    await screen.findByText(/alpine mart/i)
+    expect(screen.queryByText(/costco/i)).not.toBeInTheDocument()
   })
 
   it('user can see no-vendor card when items have no vendor', async () => {
@@ -184,9 +253,32 @@ describe('Shopping index page', () => {
   })
 
   it('last purchased sort orders vendor cards by most recently completed cart', async () => {
-    // Given two vendors: Costco and iHerb
+    // Given two vendors: Costco and iHerb, each with an item stocked here
+    // (a vendor with nothing stocked in the active location is hidden)
     const costco = await createVendor('Costco')
     const iherb = await createVendor('iHerb')
+    await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [costco.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await createItem({
+      name: 'Fish Oil',
+      tagIds: [],
+      vendorIds: [iherb.id],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
 
     // Costco: older lastPurchasedAt; iHerb: newer lastPurchasedAt
     const olderDate = new Date('2025-01-01T00:00:00Z')
