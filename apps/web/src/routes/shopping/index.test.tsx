@@ -363,13 +363,43 @@ describe('Shopping index page', () => {
     expect(await screen.findByText(/2 items · 1 inactive/)).toBeInTheDocument()
   })
 
-  it('vendor card count changes when the active location switches (items split across two locations)', async () => {
-    // Given the same vendor with items split across the default location and Cabin
+  it('vendor card count changes when the active location switches (items split across two locations, with differing counts)', async () => {
+    // Given the same vendor with THREE items stocked at the default location
+    // (My Home) and only ONE item stocked at Cabin — the counts must differ
+    // so this test cannot pass against a location-blind implementation.
     const cabin = await createLocation('Cabin')
     const vendor = await createVendor('Costco')
     await createItem(
       {
         name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Eggs',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Bread',
         tagIds: [],
         vendorIds: [vendor.id],
         targetUnit: 'package',
@@ -396,13 +426,26 @@ describe('Shopping index page', () => {
       cabin.id,
     )
 
-    // When the active location is Cabin
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, cabin.id)
+    // When the page first renders at the default active location (My Home)
     renderShoppingIndex()
 
-    // Then the card shows only the item stocked in Cabin (Firewood), not Milk
-    expect(await screen.findByText(/1 item(?! ·)/)).toBeInTheDocument()
-    expect(screen.queryByText(/2 items/)).not.toBeInTheDocument()
+    // Then the card shows the 3 items stocked at My Home (Milk, Eggs, Bread) —
+    // not the 1 stocked only at Cabin (Firewood)
+    expect(await screen.findByText(/3 items/)).toBeInTheDocument()
+
+    // When the user switches the active location to Cabin via the real UI
+    const switcherTrigger = await screen.findByRole('button', {
+      name: /switch location/i,
+    })
+    await userEvent.click(switcherTrigger)
+    await userEvent.click(await screen.findByText('Cabin'))
+
+    // Then the card re-reads and now shows only the 1 item stocked at Cabin
+    // (Firewood) — the 3-item figure from My Home is gone
+    await waitFor(() => {
+      expect(screen.getByText(/1 item(?! ·)/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/3 items/)).not.toBeInTheDocument()
   })
 
   it('no-vendor card applies the same location-scoped and inactive treatment as vendor cards', async () => {
