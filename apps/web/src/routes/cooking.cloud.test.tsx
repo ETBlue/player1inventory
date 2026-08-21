@@ -134,6 +134,33 @@ describe('Use (Cooking) Page — cloud mode', () => {
     expect(screen.getByLabelText('Pasta')).toBeEnabled()
   })
 
+  it('every recipe renders in the top section in cloud mode, with no not-stocked-here divider', async () => {
+    // Given the seeded cloud recipe (its item carries inline stock and no
+    // stockId) plus one with no items at all — the case that has nothing
+    // "available" to count even after the item-level cloud bypass, so it is
+    // what actually pins the list-level bypass. Cloud has no locations, so
+    // nothing may be labelled "not stocked here".
+    const CLOUD_EMPTY_RECIPE = {
+      ...CLOUD_RECIPE,
+      id: 'recipe-empty',
+      name: 'Empty Plate',
+      items: [],
+    }
+    mockUseGetRecipesQuery.mockReturnValue({
+      ...emptyQuery,
+      data: { recipes: [CLOUD_RECIPE, CLOUD_EMPTY_RECIPE] },
+    })
+
+    renderPage()
+
+    // Then both recipes render and no divider is present
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument(),
+    )
+    expect(screen.getByLabelText('Empty Plate')).toBeInTheDocument()
+    expect(screen.queryByText(/not stocked here/i)).not.toBeInTheDocument()
+  })
+
   it('user can consume a recipe in cloud mode', async () => {
     // Given a cloud recipe with one item at defaultAmount 2
     renderPage()

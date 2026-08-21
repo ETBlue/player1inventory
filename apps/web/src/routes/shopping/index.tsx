@@ -2,6 +2,7 @@ import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import { VendorCartCard } from '@/components/shopping/VendorCartCard'
@@ -24,7 +25,7 @@ import {
 import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
-import { cartIdFor } from '@/types'
+import { cartIdFor, type Vendor } from '@/types'
 
 export const Route = createFileRoute('/shopping/')({
   component: ShoppingIndex,
@@ -127,6 +128,11 @@ function ShoppingIndex() {
   const noVendorInactiveCount = isCloud
     ? 0
     : noVendorScopedItems.filter(isInactiveHere).length
+  // The no-vendor bucket's zero is ambiguous: it means either nothing is
+  // unfiled anywhere (genuinely empty — stay hidden) or unfiled items exist but
+  // are stocked in other locations (render, below the divider).
+  const hasNoVendorItemsAnywhere = noVendorItems.length > 0
+  const noVendorSinks = hasNoVendorItemsAnywhere && noVendorCount === 0
 
   const sortedVendors = [...vendors].sort((a, b) => {
     let cmp = 0
@@ -143,6 +149,72 @@ function ShoppingIndex() {
     }
     return dir === 'asc' ? -cmp : cmp
   })
+
+  // A vendor is "stocked here" when at least one of its items has stock in the
+  // active location. `useVendorCartCounts()` already computes that count
+  // location-scoped, and a vendor with nothing stocked here has no map entry at
+  // all — hence the `?? 0`.
+  //
+  // Cloud has no Location/ItemStock backend, so that hook falls back to a
+  // global tally there; a "not stocked here" section would be meaningless
+  // without locations, so cloud skips the partition entirely.
+  //
+  // Partitioning with two filters rather than a sort key: filter preserves
+  // relative order, so the user's chosen sort survives within each half instead
+  // of being overridden by a stocked-ness primary key.
+  const isUnstockedHere = (vendorId: string) =>
+    !isCloud && (vendorCartCounts.get(vendorId)?.count ?? 0) === 0
+  const stockedVendors = sortedVendors.filter((v) => !isUnstockedHere(v.id))
+  const unstockedVendors = sortedVendors.filter((v) => isUnstockedHere(v.id))
+  const unstockedGroupCount = unstockedVendors.length + (noVendorSinks ? 1 : 0)
+
+  const renderVendorCard = (vendor: Vendor) => {
+    const availableCount = vendorCartCounts.get(vendor.id)?.count ?? 0
+    const { checkedCount, totalQuantity } = statsForVendor(vendor.id)
+    return (
+      <VendorCartCard
+        key={vendor.id}
+        vendorName={vendor.name}
+        checkedCount={checkedCount}
+        totalQuantity={totalQuantity}
+        availableCount={availableCount}
+        inactiveCount={vendorCartCounts.get(vendor.id)?.inactiveCount ?? 0}
+        onClick={() =>
+          navigate(
+            // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
+            {
+              to: '/shopping/$vendorId',
+              params: { vendorId: vendor.id },
+            } as any,
+          )
+        }
+      />
+    )
+  }
+
+  const renderNoVendorCard = () => {
+    const { checkedCount, totalQuantity } = statsForVendor(null)
+    return (
+      <VendorCartCard
+        key="no-vendor"
+        vendorName={t('shopping.noVendor')}
+        isNoVendor
+        checkedCount={checkedCount}
+        totalQuantity={totalQuantity}
+        availableCount={noVendorCount}
+        inactiveCount={noVendorInactiveCount}
+        onClick={() =>
+          navigate(
+            // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
+            {
+              to: '/shopping/$vendorId',
+              params: { vendorId: 'no-vendor' },
+            } as any,
+          )
+        }
+      />
+    )
+  }
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
@@ -211,58 +283,15 @@ function ShoppingIndex() {
         </div>
       </Toolbar>
       <div className="overflow-y-auto divide-y divide-accessory-default">
-        {sortedVendors.map((vendor) => {
-          const availableCount = vendorCartCounts.get(vendor.id)?.count ?? 0
-          // Hide a vendor with nothing stocked in the active location — the
-          // same rule the no-vendor card below applies at `noVendorCount > 0`.
-          if (availableCount === 0) return null
-          const { checkedCount, totalQuantity } = statsForVendor(vendor.id)
-          return (
-            <VendorCartCard
-              key={vendor.id}
-              vendorName={vendor.name}
-              checkedCount={checkedCount}
-              totalQuantity={totalQuantity}
-              availableCount={availableCount}
-              inactiveCount={
-                vendorCartCounts.get(vendor.id)?.inactiveCount ?? 0
-              }
-              onClick={() =>
-                navigate(
-                  // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
-                  {
-                    to: '/shopping/$vendorId',
-                    params: { vendorId: vendor.id },
-                  } as any,
-                )
-              }
-            />
-          )
-        })}
-        {noVendorCount > 0 &&
-          (() => {
-            const { checkedCount, totalQuantity } = statsForVendor(null)
-            return (
-              <VendorCartCard
-                key="no-vendor"
-                vendorName={t('shopping.noVendor')}
-                isNoVendor
-                checkedCount={checkedCount}
-                totalQuantity={totalQuantity}
-                availableCount={noVendorCount}
-                inactiveCount={noVendorInactiveCount}
-                onClick={() =>
-                  navigate(
-                    // biome-ignore lint/suspicious/noExplicitAny: TanStack Router requires this cast for dynamic routes
-                    {
-                      to: '/shopping/$vendorId',
-                      params: { vendorId: 'no-vendor' },
-                    } as any,
-                  )
-                }
-              />
-            )
-          })()}
+        {stockedVendors.map(renderVendorCard)}
+        {hasNoVendorItemsAnywhere && !noVendorSinks && renderNoVendorCard()}
+        {unstockedGroupCount > 0 && (
+          <ListSectionDivider>
+            {t('common.notStockedHere', { count: unstockedGroupCount })}
+          </ListSectionDivider>
+        )}
+        {unstockedVendors.map(renderVendorCard)}
+        {noVendorSinks && renderNoVendorCard()}
       </div>
     </div>
   )

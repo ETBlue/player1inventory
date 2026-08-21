@@ -112,13 +112,15 @@ Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownM
 - `'alpha'`: alphabetical by vendor name
 - `'count'`: total available items descending, scoped to the active location (matches the card's displayed count — see `useVendorCartCounts()` below)
 
-**"No vendor" card:** Shown only when at least one item has no vendors assigned (`noVendorCount > 0`). Always renders last regardless of sort order.
+**"No vendor" card:** Shown only when at least one item has no vendors assigned **anywhere**. Always renders last within its section. Its zero is ambiguous and is split: hidden when nothing is unfiled anywhere (the bucket is genuinely empty), rendered below the divider when unfiled items exist but none are stocked in the active location.
 
-**Vendor cards follow the same zero-count rule.** A vendor whose `useVendorCartCounts()` count is 0 (nothing stocked in the active location; cloud: no item assigned to it at all) is not rendered — one rule, applied consistently to both the vendor loop and the no-vendor card, so a vendor with an empty cart section never shows a "0 items" card. If every vendor and the no-vendor card end up hidden (e.g. a location where nothing is stocked yet), the page currently renders an empty list under the toolbar — there is no dedicated empty state for `/shopping` today.
+**Groups with nothing stocked here sink below a divider (they are never hidden).** A vendor whose `useVendorCartCounts()` count is 0 — nothing stocked in the active location — still renders, but below a `ListSectionDivider` labelled `common.notStockedHere` ("N not stocked here"), together with the no-vendor bucket when that one sinks too. This is the same rule the three pantry group views apply, and it replaces the earlier "hide at zero" behaviour: a vendor that vanished gave no way to tell "empty *here*" from "gone". Interactivity is unchanged — the card still opens its cart, which is the path to adding items at this location.
+
+The partition runs **after** the sort, as two `.filter` passes, so the chosen sort (`recent` / `alpha` / `count` × direction) is preserved *within* each section and never overridden by a stocked-ness primary key. **Cloud mode skips the partition entirely** (`!isCloud && …`): without a Location/`ItemStock` backend no cloud item carries a `stockId`, `useVendorCartCounts()` falls back to a global tally, and a "not stocked here" section would be meaningless — so every cloud vendor renders in the top section with no divider.
 
 **Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorCartCounts()` (see `apps/web/src/hooks/CLAUDE.md`) + `useVendors()` + `useItems()`.
 
-**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** (cloud bypasses the location gate — see the hook's doc comment). This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug. The same divergence carries into the zero-count hide rule above: in cloud mode a vendor is hidden only if it truly has zero items assigned anywhere (global count), so a cloud user never loses a vendor they can still shop.
+**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** (cloud bypasses the location gate — see the hook's doc comment). This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug. The same divergence carries into the partition above: in cloud mode there is no location to be "not stocked in", so no vendor ever sinks and a cloud user never loses a vendor they can still shop.
 
 **Files:**
 - `src/routes/shopping.tsx` — layout (4 lines)
@@ -242,6 +244,8 @@ Row 3:            [A / T here · N empty · N low stock]
 
 **Fully unavailable recipes are disabled.** When `availableRecipeItems.length === 0` (nothing in the recipe is stocked in the active location) the recipe `Checkbox` is `disabled` and the card is dimmed `opacity-80`, matching how `ItemCard` dims an inactive item. Before this the checkbox looked enabled but was inert — `handleToggleRecipeCheckbox` computed an empty `effectiveItemIds` set and did nothing. The chevron and the name link stay live so the user can still open the recipe and see *why* it is unavailable, and the checkbox's `aria-describedby` gives non-visual users the same reason (see Row 3 above). A recipe with no items at all falls into the same branch, which is correct: it has nothing to consume either.
 
+**…and sink below a divider.** The recipe list is partitioned the same way the shopping vendor list is: recipes with something stocked here first, then a `ListSectionDivider` labelled `common.notStockedHere`, then the rest. Visibility/order and interactivity are **independent axes** — a sunk recipe is still `disabled`, still dimmed, and still carries its `aria-describedby` wiring; only its position changes. The partition runs after the sort as two `.filter` passes (order preserved within each section) and is skipped entirely in cloud mode, where no item carries a `stockId` and nothing can be "not stocked here".
+
 **Cloud mode bypasses the location gate.** `ItemStock` has no GraphQL backend yet (deferred in PR D), so cloud items carry inline stock and never a `stockId`. In cloud mode `availableItemIds` is therefore built from **all** items — every recipe item stays checkable and consumable, preserving pre-split cloud behaviour. The Row 3 status line follows from the same set: a cloud recipe always reads `T / T here` and is never disabled, with health computed off the inline stock. Covered by `src/routes/cooking.cloud.test.tsx`.
 
 **`ItemCard` in cooking mode:**
@@ -272,7 +276,7 @@ Row 3:            [A / T here · N empty · N low stock]
 **Files:**
 - `src/routes/cooking.tsx` — main page
 - `src/routes/cooking.test.tsx` — integration tests
-- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable)
+- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable, NotStockedHereSplit)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
 
 ### Onboarding Page

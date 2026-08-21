@@ -143,12 +143,12 @@ describe('Shopping index page — cloud mode', () => {
     expect(await screen.findByText(/1 in cart/i)).toBeInTheDocument()
   })
 
-  it('vendor card stays visible in cloud mode as long as it has any globally-assigned item (no location gate)', async () => {
+  it('every vendor card renders in the top section in cloud mode, with no not-stocked-here divider', async () => {
     // Given a second cloud vendor with zero items assigned anywhere, alongside
     // Costco which has one item (CLOUD_ITEM, seeded in beforeEach). Cloud has
-    // no locations, so the gate must fall back to the global count — a cloud
-    // user must not lose a vendor they can still shop just because this page
-    // now hides zero-count vendors.
+    // no Location/ItemStock backend, so no cloud item carries a stockId — the
+    // location partition must be bypassed entirely here or every vendor would
+    // sink under a divider that means nothing without locations.
     const EMPTY_VENDOR = { id: 'vendor-empty', name: 'Empty Mart' }
     mockUseGetVendorsQuery.mockReturnValue({
       ...emptyQuery,
@@ -157,11 +157,11 @@ describe('Shopping index page — cloud mode', () => {
 
     renderShoppingIndex()
 
-    // Then Costco (global count 1) still renders...
+    // Then both vendors render...
     expect(await screen.findByText(/costco/i)).toBeInTheDocument()
-    // ...while Empty Mart (global count 0) is hidden — same rule as local mode,
-    // just evaluated against the global count instead of a location-scoped one.
-    expect(screen.queryByText(/empty mart/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/empty mart/i)).toBeInTheDocument()
+    // ...and neither is pushed below a divider
+    expect(screen.queryByText(/not stocked here/i)).not.toBeInTheDocument()
   })
 
   it('vendor card keeps the global item count and omits the inactive segment in cloud mode, even for a targetQuantity: 0 item', async () => {

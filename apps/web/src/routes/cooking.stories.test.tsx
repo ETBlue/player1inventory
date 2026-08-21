@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './cooking.stories'
 
@@ -19,6 +19,7 @@ const {
   StockStatusHealthy,
   StockStatusPartial,
   StockStatusUnavailable,
+  NotStockedHereSplit,
 } = composeStories(stories)
 
 describe('Cooking stories smoke tests', () => {
@@ -99,9 +100,24 @@ describe('Cooking stories smoke tests', () => {
     expect(screen.getByText('1 low stock')).toBeInTheDocument()
   })
 
+  it('NotStockedHereSplit sinks the unstocked recipe below the divider', async () => {
+    render(<NotStockedHereSplit />)
+    // Re-query inside waitFor: a recipe card is remounted when it moves
+    // between the two sections as the item query resolves.
+    await waitFor(() =>
+      expect(screen.getByText(/not stocked here/i)).toHaveTextContent(
+        '1 not stocked here',
+      ),
+    )
+    expect(screen.getByLabelText('Beef Stew')).toBeInTheDocument()
+    expect(screen.getByLabelText('Thai Curry')).toBeDisabled()
+  })
+
   it('StockStatusUnavailable shows a disabled recipe with nothing stocked here', async () => {
     render(<StockStatusUnavailable />)
-    expect(await screen.findByText('0 / 2 here')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByText('0 / 2 here')).toBeInTheDocument(),
+    )
     expect(screen.getByLabelText('Thai Curry')).toBeDisabled()
   })
 })

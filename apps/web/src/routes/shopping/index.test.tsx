@@ -18,6 +18,27 @@ import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
+const divider = () => screen.getByText(/not stocked here/i)
+
+const isBefore = (a: Element, b: Element) =>
+  !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+const stockItem = (name: string, vendorIds: string[], locationId: string) =>
+  createItem(
+    {
+      name,
+      tagIds: [],
+      vendorIds,
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    },
+    locationId,
+  )
+
 describe('Shopping index page', () => {
   let queryClient: QueryClient
 
@@ -97,51 +118,129 @@ describe('Shopping index page', () => {
     expect(await screen.findByText(/iherb/i)).toBeInTheDocument()
   })
 
-  it('vendor card is hidden when nothing is stocked in the active location (mirrors the no-vendor card rule)', async () => {
-    // Given a vendor (Costco) whose only item is stocked in another location
-    // (Cabin), not the active (default) location — so its location-scoped
-    // count is 0 — plus a control vendor (Alpine Mart) stocked here, so we
-    // have a reliable "data has loaded" signal to wait on before asserting
-    // Costco's absence (asserting absence alone would pass vacuously before
-    // the vendors/items queries resolve).
+  it('vendor card with nothing stocked in the active location renders below the divider', async () => {
+    // Given two vendors whose items are stocked in the active (default)
+    // location, and two whose only item is stocked ONLY in another location
+    // (Cabin). The second pair is the load-bearing fixture: without it a
+    // location-blind implementation would pass this test. The control vendors
+    // stocked here also give a reliable "data has loaded" signal to wait on,
+    // so the ordering assertions cannot pass vacuously before the
+    // vendors/items queries resolve.
     const cabin = await createLocation('Cabin')
-    const vendor = await createVendor('Costco')
-    await createItem(
-      {
-        name: 'Firewood',
-        tagIds: [],
-        vendorIds: [vendor.id],
-        targetUnit: 'package',
-        targetQuantity: 2,
-        refillThreshold: 1,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      },
-      cabin.id,
-    )
-    const controlVendor = await createVendor('Alpine Mart')
-    await createItem(
-      {
-        name: 'Trail Mix',
-        tagIds: [],
-        vendorIds: [controlVendor.id],
-        targetUnit: 'package',
-        targetQuantity: 2,
-        refillThreshold: 1,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      },
-      DEFAULT_LOCATION_ID,
-    )
+    const alpine = await createVendor('Alpine Mart')
+    const bodega = await createVendor('Bodega')
+    const costco = await createVendor('Costco')
+    const depot = await createVendor('Depot')
+
+    await stockItem('Trail Mix', [alpine.id], DEFAULT_LOCATION_ID)
+    await stockItem('Bread', [bodega.id], DEFAULT_LOCATION_ID)
+    await stockItem('Firewood', [costco.id], cabin.id)
+    await stockItem('Nails', [depot.id], cabin.id)
 
     renderShoppingIndex()
+    // Wait for the settled partition before reading positions: while the item
+    // query is still pending every vendor counts as unstocked, and a card is
+    // remounted when it moves between sections, so an element captured earlier
+    // can already be detached.
+    await waitFor(() =>
+      expect(divider()).toHaveTextContent('2 not stocked here'),
+    )
 
-    // Then once the control vendor's card has loaded, the Costco card is
-    // nowhere on the page — same rule as the no-vendor card at 0 items.
+    // Then the two vendors stocked here sit above the divider...
+    expect(isBefore(screen.getByText(/alpine mart/i), divider())).toBe(true)
+    expect(isBefore(screen.getByText(/bodega/i), divider())).toBe(true)
+
+    // ...and the two stocked-only-elsewhere vendors render (no longer hidden)
+    // below it
+    expect(isBefore(divider(), screen.getByText(/costco/i))).toBe(true)
+    expect(isBefore(divider(), screen.getByText(/depot/i))).toBe(true)
+
+    // And the divider counts exactly the below-the-line vendors
+    expect(divider()).toHaveTextContent('2 not stocked here')
+  })
+
+  it('user sees no divider when every vendor is stocked in the active location', async () => {
+    // Given two vendors, both with an item stocked in the active location
+    const alpine = await createVendor('Alpine Mart')
+    const bodega = await createVendor('Bodega')
+    await stockItem('Trail Mix', [alpine.id], DEFAULT_LOCATION_ID)
+    await stockItem('Bread', [bodega.id], DEFAULT_LOCATION_ID)
+
+    renderShoppingIndex()
     await screen.findByText(/alpine mart/i)
-    expect(screen.queryByText(/costco/i)).not.toBeInTheDocument()
+
+    // Then nothing sinks and no divider is rendered (waited for, since the
+    // divider is briefly present while the item query is still pending)
+    await waitFor(() =>
+      expect(screen.queryByText(/not stocked here/i)).not.toBeInTheDocument(),
+    )
+  })
+
+  it('the chosen sort holds within each section of the partitioned vendor list', async () => {
+    // Given vendors created in non-alphabetical order, two stocked here and
+    // two stocked only in Cabin
+    const cabin = await createLocation('Cabin')
+    const zeta = await createVendor('Zeta Foods')
+    const alphaMart = await createVendor('Alpha Mart')
+    const yankee = await createVendor('Yankee Goods')
+    const bravo = await createVendor('Bravo Bazaar')
+
+    await stockItem('Trail Mix', [zeta.id], DEFAULT_LOCATION_ID)
+    await stockItem('Bread', [alphaMart.id], DEFAULT_LOCATION_ID)
+    await stockItem('Firewood', [yankee.id], cabin.id)
+    await stockItem('Nails', [bravo.id], cabin.id)
+
+    // When the list is sorted alphabetically
+    const history = createMemoryHistory({
+      initialEntries: ['/shopping?sort=alpha&dir=desc'],
+    })
+    const router = createRouter({
+      routeTree,
+      history,
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() =>
+      expect(divider()).toHaveTextContent('2 not stocked here'),
+    )
+
+    // Then each section is alphabetised on its own — the partition groups but
+    // never re-sorts
+    expect(
+      isBefore(
+        screen.getByText(/alpha mart/i),
+        screen.getByText(/zeta foods/i),
+      ),
+    ).toBe(true)
+    expect(isBefore(screen.getByText(/zeta foods/i), divider())).toBe(true)
+    expect(isBefore(divider(), screen.getByText(/bravo bazaar/i))).toBe(true)
+    expect(
+      isBefore(
+        screen.getByText(/bravo bazaar/i),
+        screen.getByText(/yankee goods/i),
+      ),
+    ).toBe(true)
+  })
+
+  it('no-vendor card renders below the divider when its items are stocked only elsewhere', async () => {
+    // Given an unfiled item that exists but is stocked only in Cabin, plus a
+    // vendor stocked here so the top section is populated
+    const cabin = await createLocation('Cabin')
+    const alpine = await createVendor('Alpine Mart')
+    await stockItem('Trail Mix', [alpine.id], DEFAULT_LOCATION_ID)
+    await stockItem('Firewood', [], cabin.id)
+
+    renderShoppingIndex()
+    await waitFor(() =>
+      expect(divider()).toHaveTextContent('1 not stocked here'),
+    )
+
+    // Then the no-vendor bucket is not hidden — it sinks below the divider
+    expect(isBefore(divider(), screen.getByText(/no vendor/i))).toBe(true)
   })
 
   it('user can see no-vendor card when items have no vendor', async () => {
@@ -254,7 +353,7 @@ describe('Shopping index page', () => {
 
   it('last purchased sort orders vendor cards by most recently completed cart', async () => {
     // Given two vendors: Costco and iHerb, each with an item stocked here
-    // (a vendor with nothing stocked in the active location is hidden)
+    // (so both sit in the top, stocked-here section of the list)
     const costco = await createVendor('Costco')
     const iherb = await createVendor('iHerb')
     await createItem({

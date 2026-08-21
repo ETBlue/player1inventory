@@ -598,3 +598,37 @@ function StockStatusUnavailableStory() {
 export const StockStatusUnavailable: Story = {
   render: () => <StockStatusUnavailableStory />,
 }
+
+// Story 12: the split list — a recipe stocked here on top, one with nothing
+// stocked here below the "N not stocked here" divider (still disabled).
+function NotStockedHereSplitStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const beef = await stockedHere('Beef Chuck', {
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 4,
+        })
+        await createRecipe({
+          name: 'Beef Stew',
+          items: [{ itemId: beef.id, defaultAmount: 1 }],
+        })
+
+        const paste = await stockedElsewhere('Red Curry Paste')
+        const coconut = await stockedElsewhere('Coconut Milk')
+        await createRecipe({
+          name: 'Thai Curry',
+          items: [
+            { itemId: paste.id, defaultAmount: 1 },
+            { itemId: coconut.id, defaultAmount: 1 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const NotStockedHereSplit: Story = {
+  render: () => <NotStockedHereSplitStory />,
+}
