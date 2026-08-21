@@ -178,9 +178,15 @@ test('user can view vendor cart page without accessibility violations', async ({
 
 // Cooking page (/cooking)
 test('user can view cooking page without accessibility violations', async ({ page }) => {
-  // Given the user navigates to the cooking page
+  // Given seeded recipe cards covering both stock-status states
+  await seedCookingFixture(page)
+
+  // Navigate to the cooking page, waiting until the unavailable card has
+  // rendered so a seeding failure fails here rather than silently scanning
+  // an empty page
   await page.goto('/cooking')
   await page.waitForLoadState('networkidle')
+  await expect(page.getByText('0 / 2 here')).toBeVisible()
 
   // When axe scans the page for accessibility violations
   await injectAxe(page)
@@ -557,6 +563,99 @@ async function seedRecipe(page: import('@playwright/test').Page): Promise<string
   })
 }
 
+// Seeds the two recipe-card states the cooking page's Row 3 stock status can be
+// in, so axe scans real cards rather than an empty page:
+//
+//   Pasta Carbonara  →  "3 / 3 here · 1 empty · 1 low stock"  (healthy card;
+//                       exercises text-status-error-foreground and
+//                       text-status-warning-foreground)
+//   Thai Curry       →  "0 / 2 here"  (nothing stocked here: disabled checkbox
+//                       on an opacity-80 dimmed card, so the dim's composited
+//                       text is scanned for contrast)
+//
+// Without this the /cooking scans below pass against a page with no recipes on
+// it, which proves nothing about either state.
+async function seedCookingFixture(
+  page: import('@playwright/test').Page,
+): Promise<void> {
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  const now = new Date()
+
+  // A second location, so "stocked elsewhere" refers to somewhere real.
+  await seedRows(page, 'locations', [
+    { id: A11Y_OTHER_LOCATION, name: 'Office', order: 1, createdAt: now, updatedAt: now },
+  ])
+
+  const item = (id: string, name: string) => ({
+    id,
+    name,
+    tagIds: [],
+    vendorIds: [],
+    createdAt: now,
+    updatedAt: now,
+  })
+  const stock = (
+    itemId: string,
+    locationId: string,
+    targetQuantity: number,
+    refillThreshold: number,
+    packedQuantity: number,
+  ) => ({
+    id: `a11y-cooking-stock-${itemId}`,
+    itemId,
+    locationId,
+    targetUnit: 'package',
+    targetQuantity,
+    refillThreshold,
+    packedQuantity,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  await seedRows(page, 'items', [
+    item('a11y-cooking-flour', 'flour'),
+    item('a11y-cooking-butter', 'butter'),
+    item('a11y-cooking-cream', 'cream'),
+    item('a11y-cooking-paste', 'curry paste'),
+    item('a11y-cooking-coconut', 'coconut milk'),
+  ])
+  await seedRows(page, 'itemStocks', [
+    // Stocked in the active location: healthy, empty, low stock.
+    stock('a11y-cooking-flour', 'local', 4, 2, 5),
+    stock('a11y-cooking-butter', 'local', 4, 2, 0),
+    stock('a11y-cooking-cream', 'local', 4, 2, 2),
+    // Stocked ONLY in the other location — unavailable on /cooking.
+    stock('a11y-cooking-paste', A11Y_OTHER_LOCATION, 4, 1, 3),
+    stock('a11y-cooking-coconut', A11Y_OTHER_LOCATION, 4, 1, 3),
+  ])
+  await seedRows(page, 'recipes', [
+    {
+      id: 'a11y-cooking-recipe-ok',
+      name: 'pasta carbonara',
+      items: [
+        { itemId: 'a11y-cooking-flour', defaultAmount: 1 },
+        { itemId: 'a11y-cooking-butter', defaultAmount: 1 },
+        { itemId: 'a11y-cooking-cream', defaultAmount: 1 },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'a11y-cooking-recipe-unavailable',
+      name: 'thai curry',
+      items: [
+        { itemId: 'a11y-cooking-paste', defaultAmount: 1 },
+        { itemId: 'a11y-cooking-coconut', defaultAmount: 1 },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+}
+
 test.describe('detail page a11y', () => {
   // Item detail page (/items/:id)
   test('user can view item detail page without accessibility violations', async ({ page, baseURL }) => {
@@ -799,9 +898,14 @@ test.describe('dark mode a11y', () => {
 
   // Cooking page (/cooking) in dark mode
   test('user can view cooking page without accessibility violations in dark mode', async ({ page }) => {
-    // Given the user navigates to the cooking page with dark mode enabled
+    // Given seeded recipe cards covering both stock-status states
+    await seedCookingFixture(page)
+
+    // Navigate to the cooking page with dark mode enabled, waiting until the
+    // unavailable card has rendered
     await page.goto('/cooking')
     await page.waitForLoadState('networkidle')
+    await expect(page.getByText('0 / 2 here')).toBeVisible()
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)
@@ -1216,9 +1320,14 @@ test.describe('mobile viewport a11y', () => {
   })
 
   test('user can view cooking page without accessibility violations on mobile', async ({ page }) => {
-    // Given the user navigates to the cooking page on a mobile viewport
+    // Given seeded recipe cards covering both stock-status states
+    await seedCookingFixture(page)
+
+    // Navigate to the cooking page on a mobile viewport, waiting until the
+    // unavailable card has rendered
     await page.goto('/cooking')
     await page.waitForLoadState('networkidle')
+    await expect(page.getByText('0 / 2 here')).toBeVisible()
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)
