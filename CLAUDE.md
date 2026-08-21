@@ -469,6 +469,18 @@ export class CookingPage {
 1. **UI-driven** (default): Navigate through the app to create test data. Use for simple setup (1–5 steps).
 2. **`page.evaluate()` seeding**: Seed IndexedDB directly for complex multi-entity setup. Navigate to `/` first so Dexie initialises the schema, then open `indexedDB.open('Player1Inventory')` and use `readwrite` transactions. Use when UI setup would require 10+ steps (e.g. creating items + linking them to a recipe).
 
+**Always resolve a seed write on `tx.oncomplete`, never on `request.onsuccess`.** `IDBRequest`'s success event fires while the transaction is still open, so a helper that resolves there reports success for a write that has not committed — and the navigation which follows every seed destroys the document, aborting the open transaction and silently discarding those rows. The page then renders an empty state and the test fails much later, as an unexplained locator timeout, only on slow runs. Reject on `tx.onerror` and `tx.onabort` too:
+
+```ts
+await new Promise<void>((resolve, reject) => {
+  const tx = db.transaction(store, 'readwrite')
+  for (const row of rows) tx.objectStore(store).put(row)
+  tx.oncomplete = () => resolve()
+  tx.onerror = () => reject(tx.error)
+  tx.onabort = () => reject(tx.error)
+})
+```
+
 **`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
 
 **Test naming** — same "user can ..." convention with Given-When-Then comments as unit tests.
