@@ -262,6 +262,9 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           isCreating={createItem.isPending}
           leading={
             <>
+              {/* Leftmost, ahead of the back button — the placement every
+                  other toolbar uses (shopping, cooking, pantry group views). */}
+              <LocationSwitcher />
               <Button
                 variant="neutral-ghost"
                 size="icon"
@@ -274,7 +277,6 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
                 <ArrowLeft />
                 <span className="hidden lg:inline">Go back</span>
               </Button>
-              <LocationSwitcher />
               <h1 className="text-base font-regular truncate capitalize">
                 {shelfName}
               </h1>
