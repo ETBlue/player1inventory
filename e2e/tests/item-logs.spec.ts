@@ -57,8 +57,10 @@ async function seedCookingData(
           const tx = db.transaction(storeName, 'readwrite')
           tx.objectStore(storeName).put(record)
           tx.oncomplete = () => resolve()
-          tx.onerror = () => reject(tx.error)
-          tx.onabort = () => reject(tx.error)
+          tx.onerror = () =>
+            reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+          tx.onabort = () =>
+            reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
         })
       await put('items', {
         id: milkId,

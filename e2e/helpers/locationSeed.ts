@@ -40,8 +40,10 @@ export async function seedRows(
         const objectStore = tx.objectStore(store)
         for (const row of rows) objectStore.put(row)
         tx.oncomplete = () => resolve()
-        tx.onerror = () => reject(tx.error)
-        tx.onabort = () => reject(tx.error)
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
     },
     { store, rows },
@@ -87,8 +89,10 @@ export async function splitInlineStock(page: Page): Promise<void> {
         const tx = db.transaction(store, 'readwrite')
         tx.objectStore(store).put(record)
         tx.oncomplete = () => resolve()
-        tx.onerror = () => reject(tx.error)
-        tx.onabort = () => reject(tx.error)
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
 
     const STOCK_KEYS = [
@@ -166,8 +170,10 @@ export async function relocateCarts(page: Page): Promise<void> {
           result = req.result
         }
         tx.oncomplete = () => resolve(result)
-        tx.onerror = () => reject(tx.error)
-        tx.onabort = () => reject(tx.error)
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
 
     const carts = await getAll('shoppingCarts')
