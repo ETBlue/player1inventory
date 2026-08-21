@@ -10,8 +10,10 @@ import {
   getItemPackUnits,
   getPackedTotal,
   getStockStatus,
+  isEmptyStock,
   isInactive,
   isInactiveHere,
+  isLowStock,
   isStockedHere,
   roundToStep,
 } from './quantityUtils'
@@ -518,6 +520,83 @@ describe('isInactiveHere', () => {
     }
 
     expect(isInactiveHere(item as Item & { stockId?: string })).toBe(false)
+  })
+})
+
+describe('isEmptyStock', () => {
+  const base: Partial<Item> = {
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 2,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+  }
+
+  it('returns true when quantity is below the refill threshold', () => {
+    expect(isEmptyStock({ ...base, packedQuantity: 1 } as Item)).toBe(true)
+  })
+
+  it('returns false when quantity sits exactly at the refill threshold', () => {
+    expect(isEmptyStock({ ...base, packedQuantity: 2 } as Item)).toBe(false)
+  })
+
+  it('returns false when quantity is above the refill threshold', () => {
+    expect(isEmptyStock({ ...base, packedQuantity: 3 } as Item)).toBe(false)
+  })
+
+  it('returns false for an inactive item even when it has no stock', () => {
+    const item = { ...base, targetQuantity: 0, refillThreshold: 2 }
+
+    expect(isEmptyStock(item as Item)).toBe(false)
+  })
+
+  it('counts unpacked measurement quantity towards the threshold', () => {
+    const item = {
+      ...base,
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 0,
+      unpackedQuantity: 600,
+    }
+
+    expect(isEmptyStock(item as Item)).toBe(false)
+  })
+})
+
+describe('isLowStock', () => {
+  const base: Partial<Item> = {
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 2,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+  }
+
+  it('returns true when quantity sits exactly at the refill threshold', () => {
+    expect(isLowStock(base as Item)).toBe(true)
+  })
+
+  it('returns false when quantity is below the refill threshold', () => {
+    expect(isLowStock({ ...base, packedQuantity: 1 } as Item)).toBe(false)
+  })
+
+  it('returns false when quantity is above the refill threshold', () => {
+    expect(isLowStock({ ...base, packedQuantity: 3 } as Item)).toBe(false)
+  })
+
+  it('returns false when the refill threshold is 0 and quantity is 0', () => {
+    const item = { ...base, refillThreshold: 0, packedQuantity: 0 }
+
+    expect(isLowStock(item as Item)).toBe(false)
+  })
+
+  it('returns false for an inactive item sitting at its refill threshold', () => {
+    const item = { ...base, targetQuantity: 0 }
+
+    expect(isLowStock(item as Item)).toBe(false)
   })
 })
 

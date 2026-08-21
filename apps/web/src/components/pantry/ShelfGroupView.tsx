@@ -13,9 +13,10 @@ import { useShelvesQuery, useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
 import {
-  getCurrentQuantity,
   getItemPackUnits,
+  isEmptyStock,
   isInactive,
+  isLowStock,
 } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
@@ -76,21 +77,11 @@ export function ShelfGroupView() {
   }
 
   const getOutOfStockCount = (shelfId: string): number => {
-    return getShelfItems(shelfId).filter(
-      (item) =>
-        !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold,
-    ).length
+    return getShelfItems(shelfId).filter(isEmptyStock).length
   }
 
   const getLowStockCount = (shelfId: string): number => {
-    return getShelfItems(shelfId).filter((item) => {
-      const qty = getCurrentQuantity(item)
-      return (
-        !isInactive(item) &&
-        item.refillThreshold > 0 &&
-        qty === item.refillThreshold
-      )
-    }).length
+    return getShelfItems(shelfId).filter(isLowStock).length
   }
 
   const getActiveCount = (shelfId: string): number => {
@@ -141,20 +132,10 @@ export function ShelfGroupView() {
   const getUnsortedCount = (): number => getUnsortedItems().length
 
   const getUnsortedOutOfStockCount = (): number =>
-    getUnsortedItems().filter(
-      (item) =>
-        !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold,
-    ).length
+    getUnsortedItems().filter(isEmptyStock).length
 
   const getUnsortedLowStockCount = (): number =>
-    getUnsortedItems().filter((item) => {
-      const qty = getCurrentQuantity(item)
-      return (
-        !isInactive(item) &&
-        item.refillThreshold > 0 &&
-        qty === item.refillThreshold
-      )
-    }).length
+    getUnsortedItems().filter(isLowStock).length
 
   const getUnsortedActiveCount = (): number =>
     getUnsortedItems().filter((item) => !isInactive(item)).length

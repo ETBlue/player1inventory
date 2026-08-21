@@ -11,9 +11,10 @@ import { Button } from '@/components/ui/button'
 import { useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
-  getCurrentQuantity,
   getItemPackUnits,
+  isEmptyStock,
   isInactive,
+  isLowStock,
 } from '@/lib/quantityUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { PantryItem } from '@/types'
@@ -43,17 +44,10 @@ export function RecipeGroupView() {
   const getItemCount = (recipeId: string) => getRecipeItems(recipeId).length
 
   const getOutOfStockCount = (recipeId: string) =>
-    getRecipeItems(recipeId).filter(
-      (i) => !isInactive(i) && getCurrentQuantity(i) < i.refillThreshold,
-    ).length
+    getRecipeItems(recipeId).filter(isEmptyStock).length
 
   const getLowStockCount = (recipeId: string) =>
-    getRecipeItems(recipeId).filter((i) => {
-      const qty = getCurrentQuantity(i)
-      return (
-        !isInactive(i) && i.refillThreshold > 0 && qty === i.refillThreshold
-      )
-    }).length
+    getRecipeItems(recipeId).filter(isLowStock).length
 
   const getActiveCount = (recipeId: string) =>
     getRecipeItems(recipeId).filter((i) => !isInactive(i)).length

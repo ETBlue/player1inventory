@@ -11,9 +11,10 @@ import { Button } from '@/components/ui/button'
 import { useStockedItems } from '@/hooks'
 import { useVendors } from '@/hooks/useVendors'
 import {
-  getCurrentQuantity,
   getItemPackUnits,
+  isEmptyStock,
   isInactive,
+  isLowStock,
 } from '@/lib/quantityUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { PantryItem } from '@/types'
@@ -34,17 +35,10 @@ export function VendorGroupView() {
   const getItemCount = (vendorId: string) => getVendorItems(vendorId).length
 
   const getOutOfStockCount = (vendorId: string) =>
-    getVendorItems(vendorId).filter(
-      (i) => !isInactive(i) && getCurrentQuantity(i) < i.refillThreshold,
-    ).length
+    getVendorItems(vendorId).filter(isEmptyStock).length
 
   const getLowStockCount = (vendorId: string) =>
-    getVendorItems(vendorId).filter((i) => {
-      const qty = getCurrentQuantity(i)
-      return (
-        !isInactive(i) && i.refillThreshold > 0 && qty === i.refillThreshold
-      )
-    }).length
+    getVendorItems(vendorId).filter(isLowStock).length
 
   const getActiveCount = (vendorId: string) =>
     getVendorItems(vendorId).filter((i) => !isInactive(i)).length

@@ -288,3 +288,23 @@ export function isStockedHere(item: { stockId?: string }): boolean {
 export function isInactiveHere(item: { stockId?: string } & Stock): boolean {
   return isStockedHere(item) && isInactive(item)
 }
+
+// Health predicates — shared by every surface that summarises a group of items
+// (the pantry group cards and the cooking recipe card). Inactive items are
+// excluded from both: with targetQuantity 0 there is no level to fall short of.
+
+// True when the item's current quantity has fallen BELOW its refill threshold.
+// Displayed as "empty".
+export function isEmptyStock(item: Stock): boolean {
+  return !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold
+}
+
+// True when the item's current quantity sits exactly AT its refill threshold.
+// A refill threshold of 0 never counts as low stock.
+export function isLowStock(item: Stock): boolean {
+  return (
+    !isInactive(item) &&
+    item.refillThreshold > 0 &&
+    getCurrentQuantity(item) === item.refillThreshold
+  )
+}
