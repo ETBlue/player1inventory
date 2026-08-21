@@ -30,16 +30,19 @@ export async function seedRows(
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
-      for (const row of rows) {
-        await new Promise<void>((resolve, reject) => {
-          const req = db
-            .transaction(store, 'readwrite')
-            .objectStore(store)
-            .put(row)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-        })
-      }
+      // One transaction for all rows, resolved on COMMIT rather than on each
+      // request's success event. IDBRequest fires success while the
+      // transaction is still open, so resolving there reports a write that has
+      // not landed — and the navigation that follows a seed destroys the
+      // document, aborting the open transaction and discarding those rows.
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite')
+        const objectStore = tx.objectStore(store)
+        for (const row of rows) objectStore.put(row)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
+      })
     },
     { store, rows },
   )
@@ -78,14 +81,14 @@ export async function splitInlineStock(page: Page): Promise<void> {
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
+    // Resolved on COMMIT — see `seedRows` above.
     const put = (store: string, record: object) =>
       new Promise<void>((resolve, reject) => {
-        const req = db
-          .transaction(store, 'readwrite')
-          .objectStore(store)
-          .put(record)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
+        const tx = db.transaction(store, 'readwrite')
+        tx.objectStore(store).put(record)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
       })
 
     const STOCK_KEYS = [
@@ -151,11 +154,20 @@ export async function relocateCarts(page: Page): Promise<void> {
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
+    // Resolved on COMMIT — see `seedRows` above. The request's result is
+    // captured when it succeeds but only handed back once the write is
+    // durable, so a caller can never act on a value that a later abort undoes.
     const run = (store: string, fn: (s: IDBObjectStore) => IDBRequest) =>
       new Promise<unknown>((resolve, reject) => {
-        const req = fn(db.transaction(store, 'readwrite').objectStore(store))
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => reject(req.error)
+        const tx = db.transaction(store, 'readwrite')
+        const req = fn(tx.objectStore(store))
+        let result: unknown
+        req.onsuccess = () => {
+          result = req.result
+        }
+        tx.oncomplete = () => resolve(result)
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
       })
 
     const carts = await getAll('shoppingCarts')
