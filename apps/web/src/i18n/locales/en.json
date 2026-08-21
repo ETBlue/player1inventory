@@ -92,6 +92,11 @@
     },
     "recipe": {
       "itemCount": "{{count}} / {{total}} selected",
+      "availableHere": "{{count}} / {{total}} here",
+      "emptyCount_one": "{{count}} empty",
+      "emptyCount_other": "{{count}} empty",
+      "lowStockCount_one": "{{count}} low stock",
+      "lowStockCount_other": "{{count}} low stock",
       "noItems": "No items in this recipe.",
       "unavailable": "Not stocked in this location"
     },

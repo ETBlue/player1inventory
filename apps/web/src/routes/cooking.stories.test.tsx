@@ -16,6 +16,9 @@ const {
   WithSearch,
   SortByRecent,
   SortByCount,
+  StockStatusHealthy,
+  StockStatusPartial,
+  StockStatusUnavailable,
 } = composeStories(stories)
 
 describe('Cooking stories smoke tests', () => {
@@ -80,5 +83,25 @@ describe('Cooking stories smoke tests', () => {
     expect(
       await screen.findByRole('button', { name: /done/i }),
     ).toBeInTheDocument()
+  })
+
+  it('StockStatusHealthy shows every item stocked here and no health counts', async () => {
+    render(<StockStatusHealthy />)
+    expect(await screen.findByText('2 / 2 here')).toBeInTheDocument()
+    expect(screen.queryByText(/empty/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/low stock/)).not.toBeInTheDocument()
+  })
+
+  it('StockStatusPartial shows the availability split with health counts', async () => {
+    render(<StockStatusPartial />)
+    expect(await screen.findByText('3 / 5 here')).toBeInTheDocument()
+    expect(screen.getByText('1 empty')).toBeInTheDocument()
+    expect(screen.getByText('1 low stock')).toBeInTheDocument()
+  })
+
+  it('StockStatusUnavailable shows a disabled recipe with nothing stocked here', async () => {
+    render(<StockStatusUnavailable />)
+    expect(await screen.findByText('0 / 2 here')).toBeInTheDocument()
+    expect(screen.getByLabelText('Thai Curry')).toBeDisabled()
   })
 })

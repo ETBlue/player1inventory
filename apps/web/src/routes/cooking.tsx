@@ -33,6 +33,8 @@ import {
   consumeItem,
   getCurrentQuantity,
   getPackedTotal,
+  isEmptyStock,
+  isLowStock,
   roundToStep,
 } from '@/lib/quantityUtils'
 
@@ -551,18 +553,37 @@ function CookingPage() {
                       ? true
                       : 'indeterminate'
 
+              // Stock status line — health is computed over the items that are
+              // actually available here, so an item stocked only elsewhere is
+              // absent from the counts rather than reported as empty (its
+              // ZERO_STOCK join would otherwise read as inactive).
+              const availablePantryItems = availableRecipeItems
+                .map((ri) => items.find((i) => i.id === ri.itemId))
+                .filter((i): i is (typeof items)[number] => i !== undefined)
+              const emptyCount =
+                availablePantryItems.filter(isEmptyStock).length
+              const lowStockCount =
+                availablePantryItems.filter(isLowStock).length
+              // Nothing stocked here means the checkbox can only ever be a
+              // no-op, so it is disabled rather than silently inert. Expanding
+              // and the name link stay live so the user can see why.
+              const isRecipeUnavailable = availableRecipeItems.length === 0
+
               return (
                 <React.Fragment key={recipe.id}>
                   <div
                     className={recipeCheckState ? 'bg-background-surface' : ''}
                   >
-                    <Card className="relative mr-28">
+                    <Card
+                      className={`relative mr-28 ${isRecipeUnavailable ? 'opacity-80' : ''}`}
+                    >
                       <CardContent>
                         {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
                         <div className="flex items-center gap-2">
                           <Checkbox
                             id={`recipe-${recipe.id}`}
                             checked={recipeCheckState}
+                            disabled={isRecipeUnavailable}
                             onCheckedChange={() =>
                               handleToggleRecipeCheckbox(recipe.id)
                             }
@@ -632,6 +653,39 @@ function CookingPage() {
                             total: totalItemCount,
                           })}
                         </CardMetadata>
+                        {/* Row 3: stock status — availability here, then health */}
+                        <div className="mx-6 flex items-center gap-1 flex-wrap">
+                          <span className="text-xs text-foreground-muted">
+                            {t('cooking.recipe.availableHere', {
+                              count: availableRecipeItems.length,
+                              total: totalItemCount,
+                            })}
+                          </span>
+                          {emptyCount > 0 && (
+                            <>
+                              <span className="text-xs text-foreground-muted">
+                                ·
+                              </span>
+                              <span className="text-xs text-status-error-foreground">
+                                {t('cooking.recipe.emptyCount', {
+                                  count: emptyCount,
+                                })}
+                              </span>
+                            </>
+                          )}
+                          {lowStockCount > 0 && (
+                            <>
+                              <span className="text-xs text-foreground-muted">
+                                ·
+                              </span>
+                              <span className="text-xs text-status-warning-foreground">
+                                {t('cooking.recipe.lowStockCount', {
+                                  count: lowStockCount,
+                                })}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
                   </div>

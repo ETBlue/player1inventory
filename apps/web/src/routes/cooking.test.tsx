@@ -1856,4 +1856,163 @@ describe('Use (Cooking) Page', () => {
     const saffronLocal = await getItemStock(elsewhere.id, 'local')
     expect(saffronLocal).toBeUndefined()
   })
+
+  // Creates an item stocked in the active ('local') location with explicit
+  // stock levels, so the recipe card's health counts can be exercised.
+  const makeStockedItem = (
+    name: string,
+    stock: {
+      targetQuantity: number
+      refillThreshold: number
+      packedQuantity: number
+    },
+  ) =>
+    createItem({
+      name,
+      targetUnit: 'package',
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      ...stock,
+    })
+
+  it('user sees how many recipe items are stocked in the active location', async () => {
+    // Given a recipe with two items stocked here and one stocked only elsewhere
+    const flour = await makeItem('Flour')
+    const eggs = await makeItem('Eggs')
+    const saffron = await makeUnstockedItem('Saffron')
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: flour.id, defaultAmount: 1 },
+        { itemId: eggs.id, defaultAmount: 1 },
+        { itemId: saffron.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+
+    // Then the card reports 2 of the 3 items as stocked here
+    await waitFor(() => {
+      expect(screen.getByText('2 / 3 here')).toBeInTheDocument()
+    })
+  })
+
+  it('user sees a recipe with nothing stocked in the active location as disabled', async () => {
+    // Given a recipe whose every item is stocked only in another location
+    const saffron = await makeUnstockedItem('Saffron')
+    const truffle = await makeUnstockedItem('Truffle')
+    await createRecipe({
+      name: 'Thai Curry',
+      items: [
+        { itemId: saffron.id, defaultAmount: 1 },
+        { itemId: truffle.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+    const user = userEvent.setup()
+
+    // Then the card reports none stocked here and its checkbox is disabled
+    await waitFor(() => {
+      expect(screen.getByText('0 / 2 here')).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Thai Curry')).toBeDisabled()
+
+    // And clicking the checkbox cannot start a cooking session
+    await user.click(screen.getByLabelText('Thai Curry'))
+    expect(screen.getByRole('button', { name: /done/i })).toBeDisabled()
+
+    // But the recipe can still be expanded to see why it is unavailable
+    await user.click(screen.getByRole('button', { name: /Expand Thai Curry/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Saffron')).toBeInTheDocument()
+    })
+  })
+
+  it('recipe card counts empty and low stock among the items stocked here', async () => {
+    // Given a recipe with one empty, one low-stock, one healthy and two
+    // inactive items stocked here — plus one stocked only in another location
+    const empty = await makeStockedItem('Butter', {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+    })
+    const low = await makeStockedItem('Cream', {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+    })
+    const healthy = await makeStockedItem('Flour', {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 5,
+    })
+    // Two inactive items (targetQuantity 0), one below its refill threshold and
+    // one exactly at it. Neither may be counted — the same exclusion the pantry
+    // group cards apply — so each guards one of the two health predicates.
+    const inactiveEmpty = await makeStockedItem('Vanilla', {
+      targetQuantity: 0,
+      refillThreshold: 2,
+      packedQuantity: 0,
+    })
+    const inactiveLow = await makeStockedItem('Nutmeg', {
+      targetQuantity: 0,
+      refillThreshold: 2,
+      packedQuantity: 2,
+    })
+    // Not stocked here at all — must not count towards the availability total.
+    const saffron = await makeUnstockedItem('Saffron')
+    await createRecipe({
+      name: 'Pasta',
+      items: [
+        { itemId: empty.id, defaultAmount: 1 },
+        { itemId: low.id, defaultAmount: 1 },
+        { itemId: healthy.id, defaultAmount: 1 },
+        { itemId: inactiveEmpty.id, defaultAmount: 1 },
+        { itemId: inactiveLow.id, defaultAmount: 1 },
+        { itemId: saffron.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+
+    // Then 5 of the 6 items are stocked here, with one empty and one low stock
+    await waitFor(() => {
+      expect(screen.getByText('5 / 6 here')).toBeInTheDocument()
+    })
+    expect(screen.getByText('1 empty')).toBeInTheDocument()
+    expect(screen.getByText('1 low stock')).toBeInTheDocument()
+  })
+
+  it('recipe card omits the health counts when every stocked item is healthy', async () => {
+    // Given a recipe whose items are all comfortably above their thresholds
+    const flour = await makeStockedItem('Flour', {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 5,
+    })
+    const eggs = await makeStockedItem('Eggs', {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 4,
+    })
+    await createRecipe({
+      name: 'Beef Stew',
+      items: [
+        { itemId: flour.id, defaultAmount: 1 },
+        { itemId: eggs.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderPage()
+
+    // Then only the availability clause is shown
+    await waitFor(() => {
+      expect(screen.getByText('2 / 2 here')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/empty/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/low stock/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Beef Stew')).toBeEnabled()
+  })
 })

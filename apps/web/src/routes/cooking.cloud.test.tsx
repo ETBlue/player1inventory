@@ -120,6 +120,20 @@ describe('Use (Cooking) Page — cloud mode', () => {
     )
   })
 
+  it('cloud recipe card counts every item as stocked here and stays checkable', async () => {
+    // Given a cloud recipe whose item carries inline stock and no stockId —
+    // in local mode that item would read as not stocked in the active location
+    renderPage()
+
+    // Then the availability line counts it as stocked here
+    await waitFor(() =>
+      expect(screen.getByText('1 / 1 here')).toBeInTheDocument(),
+    )
+
+    // And the recipe checkbox is never disabled in cloud mode
+    expect(screen.getByLabelText('Pasta')).toBeEnabled()
+  })
+
   it('user can consume a recipe in cloud mode', async () => {
     // Given a cloud recipe with one item at defaultAmount 2
     renderPage()

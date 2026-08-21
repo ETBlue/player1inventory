@@ -220,11 +220,13 @@ Row 3 (search input, inside `CookingControlBar`, conditional):
 ```
 Row 1: [checkbox] [recipe name →detail link] [chevron▼▶]    [− N +]
 Row 2:            [N items, M selected, × S]
+Row 3:            [A / T here · N empty · N low stock]
 ```
 - **Checkbox** — tri-state (checked / indeterminate / unchecked), derived from `checkedItemIds`; clicking toggles all default items (items with `defaultAmount > 0`); if all items have `defaultAmount === 0`, falls back to toggling all items
 - **Chevron** — toggles expand/collapse of the item list; purely layout, no effect on check state
 - **Serving stepper** (`− N +`) — absolutely positioned to the right of the card; visible when recipe is checked; min = 1
 - **Subtitle** (Row 2) — always visible; shows `N items`, `, M selected` when M > 0, and `, × S` when recipe is checked (even at S = 1)
+- **Stock status** (Row 3) — always visible; the `GroupCard` row-3 idiom (muted `·` separators, `text-status-error-foreground` for empty, `text-status-warning-foreground` for low stock). Clause 1 is availability, `A / T here` (`cooking.recipe.availableHere`), where `A = availableRecipeItems.length` and `T = recipe.items.length`. Clauses 2 and 3 are health over the **available** items only — `isEmptyStock` / `isLowStock` from `quantityUtils` (shared with the pantry group cards, see `components/CLAUDE.md`) — each rendered only when its count is non-zero. Computing health over the available subset is what keeps a not-stocked-here item out of the counts: its `ZERO_STOCK` join (`targetQuantity: 0`) reads as inactive, so it is absent rather than reported as empty
 
 **Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked). Expand/collapse state is preserved when Done or Cancel is confirmed — only session interaction state (servings, amounts, checked items) is reset.
 
@@ -236,7 +238,9 @@ Row 2:            [N items, M selected, × S]
 
 **Unavailable items (active-location scoping, PR D):** Cooking reads `useItems()` (the full catalog joined with active-location stock). A recipe item **not stocked in the active location** has `stockId === undefined` and is treated as **unavailable**: rendered greyed (`opacity-50`) with a "Not stocked in this location" note (`cooking.recipe.unavailable`), its checkbox disabled (`ItemCard disabled`), excluded from the recipe checkbox's auto-check / tri-state, and excluded from `totalByItemId` so it is never consumed. The set of available item ids is `availableItemIds`; `isItemAvailable(itemId)` gates `handleToggleItem`, `getDefaultCheckedItems`, and the toggle-all logic.
 
-**Cloud mode bypasses the location gate.** `ItemStock` has no GraphQL backend yet (deferred in PR D), so cloud items carry inline stock and never a `stockId`. In cloud mode `availableItemIds` is therefore built from **all** items — every recipe item stays checkable and consumable, preserving pre-split cloud behaviour. Covered by `src/routes/cooking.cloud.test.tsx`.
+**Fully unavailable recipes are disabled.** When `availableRecipeItems.length === 0` (nothing in the recipe is stocked in the active location) the recipe `Checkbox` is `disabled` and the card is dimmed `opacity-80`, matching how `ItemCard` dims an inactive item. Before this the checkbox looked enabled but was inert — `handleToggleRecipeCheckbox` computed an empty `effectiveItemIds` set and did nothing. The chevron and the name link stay live so the user can still open the recipe and see *why* it is unavailable. A recipe with no items at all falls into the same branch, which is correct: it has nothing to consume either.
+
+**Cloud mode bypasses the location gate.** `ItemStock` has no GraphQL backend yet (deferred in PR D), so cloud items carry inline stock and never a `stockId`. In cloud mode `availableItemIds` is therefore built from **all** items — every recipe item stays checkable and consumable, preserving pre-split cloud behaviour. The Row 3 status line follows from the same set: a cloud recipe always reads `T / T here` and is never disabled, with health computed off the inline stock. Covered by `src/routes/cooking.cloud.test.tsx`.
 
 **`ItemCard` in cooking mode:**
 - `showTags={false}` hides tags, vendors, and recipe badges
@@ -266,7 +270,7 @@ Row 2:            [N items, M selected, × S]
 **Files:**
 - `src/routes/cooking.tsx` — main page
 - `src/routes/cooking.test.tsx` — integration tests
-- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount)
+- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
 
 ### Onboarding Page
