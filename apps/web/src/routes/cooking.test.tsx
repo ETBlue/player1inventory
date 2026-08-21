@@ -1930,6 +1930,49 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
+  it('a disabled recipe checkbox is described by its stock status line', async () => {
+    // Given one recipe with nothing stocked here and one that is fine, so the
+    // description ids can also be compared for uniqueness
+    const saffron = await makeUnstockedItem('Saffron')
+    const truffle = await makeUnstockedItem('Truffle')
+    const flour = await makeItem('Flour')
+    await createRecipe({
+      name: 'Thai Curry',
+      items: [
+        { itemId: saffron.id, defaultAmount: 1 },
+        { itemId: truffle.id, defaultAmount: 1 },
+      ],
+    })
+    await createRecipe({
+      name: 'Pasta',
+      items: [{ itemId: flour.id, defaultAmount: 1 }],
+    })
+
+    renderPage()
+
+    // Then the disabled checkbox points at an element that explains why:
+    // a screen reader announces the reason, not just "checkbox, disabled"
+    await waitFor(() => {
+      expect(screen.getByLabelText('Thai Curry')).toBeDisabled()
+    })
+    const curry = screen.getByLabelText('Thai Curry')
+    const describedBy = curry.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    const description = document.getElementById(describedBy as string)
+    expect(description).not.toBeNull()
+    expect(description).toHaveTextContent('0 / 2 here')
+
+    // And each recipe carries its own description id
+    const pastaDescribedBy = screen
+      .getByLabelText('Pasta')
+      .getAttribute('aria-describedby')
+    expect(pastaDescribedBy).toBeTruthy()
+    expect(pastaDescribedBy).not.toBe(describedBy)
+    expect(
+      document.getElementById(pastaDescribedBy as string),
+    ).toHaveTextContent('1 / 1 here')
+  })
+
   it('recipe card counts empty and low stock among the items stocked here', async () => {
     // Given a recipe with one empty, one low-stock, one healthy and two
     // inactive items stocked here — plus one stocked only in another location

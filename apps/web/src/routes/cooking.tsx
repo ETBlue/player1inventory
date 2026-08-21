@@ -584,6 +584,13 @@ function CookingPage() {
                             id={`recipe-${recipe.id}`}
                             checked={recipeCheckState}
                             disabled={isRecipeUnavailable}
+                            // Points at the Row 3 status line so a screen
+                            // reader announces WHY a disabled recipe is
+                            // disabled ("0 / 2 here") instead of just
+                            // "checkbox, disabled" — the association a sighted
+                            // user makes spatially. No axe or Biome rule covers
+                            // this, so it has to be wired by hand.
+                            aria-describedby={`recipe-status-${recipe.id}`}
                             onCheckedChange={() =>
                               handleToggleRecipeCheckbox(recipe.id)
                             }
@@ -653,8 +660,13 @@ function CookingPage() {
                             total: totalItemCount,
                           })}
                         </CardMetadata>
-                        {/* Row 3: stock status — availability here, then health */}
-                        <div className="mx-6 flex items-center gap-1 flex-wrap">
+                        {/* Row 3: stock status — availability here, then health.
+                            The id is referenced by the row-1 checkbox's
+                            aria-describedby; it must stay unique per recipe. */}
+                        <div
+                          id={`recipe-status-${recipe.id}`}
+                          className="mx-6 flex items-center gap-1 flex-wrap"
+                        >
                           <span className="text-xs text-foreground-muted">
                             {t('cooking.recipe.availableHere', {
                               count: availableRecipeItems.length,
