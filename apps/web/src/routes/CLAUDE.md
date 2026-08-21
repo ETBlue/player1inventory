@@ -148,6 +148,22 @@ Row 2 (ItemListToolbar):
 **Item scoping:**
 - Normal vendor: `items.filter(i => (i.vendorIds ?? []).includes(cartVendorId))`
 - No-vendor: `items.filter(i => !(i.vendorIds ?? []).length)`
+- **Location gate (R4):** the vendor/no-vendor filter above is then narrowed to items
+  stocked in the **active location** via `isStockedHere`. `useItems()` joins every global
+  item against the active location's `ItemStock`, so an item assigned to this vendor but
+  not stocked here arrives as ZERO_STOCK (`targetQuantity: 0`, no `stockId`) —
+  indistinguishable from a genuinely inactive item unless `stockId` is checked first. This
+  keeps the page in sync with the `VendorCartCard`'s count (`useVendorCartCounts()`) and
+  the pantry (`getStockedItems`), both of which already exclude not-stocked-here items.
+  Cloud has no Location/`ItemStock` backend, so a cloud item never carries a `stockId`;
+  cloud bypasses this gate entirely (`isCloud || isStockedHere(i)`), matching the same
+  bypass in `useVendorCartCounts()` and the `/shopping` index page.
+- **Active/inactive split (R4):** local mode classifies items with `isInactiveHere` (not
+  a bare `isInactive`) — since `vendorScopedItems` is already stocked-here-filtered above,
+  `isInactiveHere`'s `stockId` check is a no-op here, but reusing it keeps the predicate
+  consistent with the card and the pantry. Cloud mode keeps the pre-existing bare
+  `isInactive` split, since `isInactiveHere` would always read a cloud item as active (no
+  `stockId` ever present).
 
 **Cart:** `useVendorCart(cartVendorId)` — a pure read of the `(active location × vendor)` cart. The cart itself is pre-created by `ActiveLocationProvider`'s `bootstrapCarts`, not lazily on visit.
 
