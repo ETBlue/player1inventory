@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
@@ -376,11 +377,11 @@ function VendorCart() {
           <div className="space-y-px mb-4">
             {activePendingItems.map((item) => renderItemCard(item))}
             {inactivePendingItems.length > 0 && (
-              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+              <ListSectionDivider>
                 {t('shopping.inactiveItems', {
                   count: inactivePendingItems.length,
                 })}
-              </div>
+              </ListSectionDivider>
             )}
             {inactivePendingItems.map((item) => renderItemCard(item))}
           </div>

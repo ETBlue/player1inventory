@@ -1,9 +1,11 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, ArrowUpFromLine, Loader2, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
@@ -34,6 +36,7 @@ interface ShelfDetailViewProps {
 }
 
 export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const isUnsorted = shelfId === 'unsorted'
 
@@ -332,10 +335,11 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               <>
                 {activeDisplayed.map(renderItemCard)}
                 {inactiveDisplayed.length > 0 && (
-                  <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-                    {inactiveDisplayed.length} inactive item
-                    {inactiveDisplayed.length !== 1 ? 's' : ''}
-                  </div>
+                  <ListSectionDivider>
+                    {t('shopping.inactiveItems', {
+                      count: inactiveDisplayed.length,
+                    })}
+                  </ListSectionDivider>
                 )}
                 {inactiveDisplayed.map(renderItemCard)}
               </>
