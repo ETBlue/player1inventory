@@ -29,6 +29,7 @@ describe('Vendor cart page', () => {
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
     await db.vendors.clear()
+    await db.locations.clear()
     sessionStorage.clear()
 
     queryClient = new QueryClient({
@@ -501,5 +502,55 @@ describe('Vendor cart page', () => {
       expect(screen.getByText(/0 packs/i)).toBeInTheDocument()
     })
     expect(screen.queryByText(/2 packs/i)).not.toBeInTheDocument()
+  })
+
+  it('an item not stocked in the active location appears in neither the active nor inactive section (R4)', async () => {
+    // Given the vendor has one item stocked at the active location (My Home)
+    // and one item stocked ONLY at Cabin. useItems() joins every item against
+    // the active location's ItemStock, so the Cabin-only item arrives here as
+    // ZERO_STOCK (targetQuantity: 0, no stockId) — a shape indistinguishable
+    // from a real inactive item unless the page checks stockId first.
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco')
+    await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Firewood',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+
+    // When the user opens the Costco vendor cart at the default active
+    // location (My Home)
+    renderVendorCart(vendor.id)
+
+    // Then the item stocked here (Milk) is shown
+    expect(await screen.findByText('Milk')).toBeInTheDocument()
+
+    // And the item stocked only at Cabin (Firewood) is shown nowhere on the
+    // page — not in the active section, not in the inactive section, not
+    // counted among the "N inactive" pending items
+    expect(screen.queryByText('Firewood')).not.toBeInTheDocument()
   })
 })
