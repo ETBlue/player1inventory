@@ -27,10 +27,10 @@ describe('locale files', () => {
     const twKeys = collectKeys(tw as Record<string, unknown>).sort()
 
     // When comparing their key sets
-    // EN uses _one/_other plural suffixes; TW only uses _other (i18next falls back gracefully)
-    const missingInTw = enKeys.filter(
-      (k) => !twKeys.includes(k) && !k.endsWith('_one'),
-    )
+    // A missing `_one` key in a locale causes i18next to fall back to another
+    // language for count 1 (it does NOT fall back to that locale's own
+    // `_other`) — so both plural forms must be present in every locale.
+    const missingInTw = enKeys.filter((k) => !twKeys.includes(k))
     const missingInEn = twKeys.filter((k) => !enKeys.includes(k))
 
     // Then they are identical
