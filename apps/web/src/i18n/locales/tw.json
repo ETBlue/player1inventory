@@ -93,7 +93,9 @@
     "recipe": {
       "itemCount": "{{count}} / {{total}} 項已勾選",
       "availableHere": "此地點有 {{count}} / {{total}} 項",
+      "emptyCount_one": "{{count}} 項缺貨",
       "emptyCount_other": "{{count}} 項缺貨",
+      "lowStockCount_one": "{{count}} 項偏低",
       "lowStockCount_other": "{{count}} 項偏低",
       "noItems": "食譜裡還沒有任何品項喔。",
       "unavailable": "此地點未庫存"
