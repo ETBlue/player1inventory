@@ -111,7 +111,7 @@ Entity names are displayed in title case using Tailwind's `capitalize` class (`t
 
 **Applies to:** item names, tag names, recipe names — in list cards, detail page headers, name input fields, and tag type dropdowns.
 
-**Vendor names are excluded** — vendors may use intentional casing (e.g. "iHerb", "7-Eleven"). Vendor displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`.
+**Vendor and location names are excluded** — both are user-specified and may use intentional casing (e.g. "iHerb", "7-Eleven", "my Garage"). Their displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`. Location names carry no `capitalize` anywhere — `LocationSwitcher` (both variants and its dropdown) and `LocationList` (row label and drag overlay) all render them as stored.
 
 **Already covered by Badge base class:** tag badges and recipe badges. Vendor badges override with `normal-case`.
 
