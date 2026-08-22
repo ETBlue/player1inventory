@@ -309,7 +309,7 @@ describe('ItemStock operations (Location PR D)', () => {
     expect(joined?.locationId).toBe(other.id)
   })
 
-  it('copy-on-add inherits all fields except packed/unpacked (which start at 0)', async () => {
+  it('copy-on-add inherits the per-location state except packed/unpacked (which start at 0)', async () => {
     // Given an item stocked in the default location with quantities + units
     const item = await createItem({
       name: 'Flour',
@@ -329,13 +329,89 @@ describe('ItemStock operations (Location PR D)', () => {
     // When adding it to another location via copy-on-add
     const copied = await addItemToLocation(item.id, cabin.id)
 
-    // Then all profile fields are inherited but quantities reset to 0
+    // Then the per-location targets are inherited but quantities reset to 0
     expect(copied.targetQuantity).toBe(2000)
     expect(copied.refillThreshold).toBe(500)
-    expect(copied.amountPerPackage).toBe(500)
-    expect(copied.consumeAmount).toBe(100)
     expect(copied.packedQuantity).toBe(0)
     expect(copied.unpackedQuantity).toBe(0)
+
+    // And the configuration is NOT copied onto the row — it is global now, so
+    // the new location reads it off the Item.
+    const raw = copied as unknown as Record<string, unknown>
+    for (const key of [
+      'packageUnit',
+      'measurementUnit',
+      'amountPerPackage',
+      'targetUnit',
+      'consumeAmount',
+      'estimatedDueDays',
+      'expirationThreshold',
+      'expirationMode',
+    ]) {
+      expect(raw).not.toHaveProperty(key)
+    }
+
+    // …and the joined read at the new location still sees those values.
+    const atCabin = await getItem(item.id, cabin.id)
+    expect(atCabin?.amountPerPackage).toBe(500)
+    expect(atCabin?.consumeAmount).toBe(100)
+    expect(atCabin?.packageUnit).toBe('bag')
+    expect(atCabin?.targetUnit).toBe('measurement')
+  })
+
+  // Location INDEPENDENCE of the eight configuration fields. The fixture must
+  // WRITE at one location and READ at another — a single-location fixture
+  // cannot tell this apart from the pre-v16 per-location behaviour.
+  it('user changes a unit at one location and sees it at every other location', async () => {
+    // Given an item stocked in the default location and in a cabin
+    const item = await createItem({
+      name: 'Coffee',
+      tagIds: [],
+      packageUnit: 'bag',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const cabin = await createLocation('Cabin')
+    await addItemToLocation(item.id, cabin.id)
+
+    // When the user edits the configuration on the CABIN page
+    await updateItem(
+      item.id,
+      {
+        packageUnit: 'tin',
+        measurementUnit: 'g',
+        amountPerPackage: 250,
+        targetUnit: 'measurement',
+        consumeAmount: 15,
+        expirationMode: 'days from purchase',
+        estimatedDueDays: 21,
+        expirationThreshold: 3,
+        // …alongside a per-location number, which must NOT travel
+        targetQuantity: 500,
+      },
+      cabin.id,
+    )
+
+    // Then the DEFAULT location reads the same configuration
+    const atHome = await getItem(item.id, DEFAULT_LOCATION_ID)
+    expect(atHome).toMatchObject({
+      packageUnit: 'tin',
+      measurementUnit: 'g',
+      amountPerPackage: 250,
+      targetUnit: 'measurement',
+      consumeAmount: 15,
+      expirationMode: 'days from purchase',
+      estimatedDueDays: 21,
+      expirationThreshold: 3,
+    })
+    // …while the target quantity stayed where it was set
+    expect(atHome?.targetQuantity).toBe(2)
+    const atCabin = await getItem(item.id, cabin.id)
+    expect(atCabin?.targetQuantity).toBe(500)
   })
 
   it('addItemToLocation is a no-op when the item is already stocked there', async () => {

@@ -2,8 +2,11 @@ export const DEFAULT_PACKAGE_UNIT = 'pack'
 
 export type ExpirationMode = 'disabled' | 'date' | 'days from purchase'
 
-// Global item identity. Stock/unit/expiration now live on ItemStock (one per
-// item × location); see the Location feature (PR D — Item/ItemStock split).
+// Global item identity AND stock CONFIGURATION — how the item is packaged,
+// measured, expires and is consumed. None of that varies by location, so it
+// lives here (moved off ItemStock in v16, "global stock settings"). What is
+// genuinely per-location — how much is here, when THIS one expires — stays on
+// ItemStock.
 export interface Item {
   id: string
   name: string
@@ -15,35 +18,18 @@ export interface Item {
   tagIds: string[]
   vendorIds?: string[]
 
-  // Metadata
-  createdAt: Date
-  updatedAt: Date
-}
-
-// Per-(item × location) stocking profile. A (itemId, locationId) pair is unique.
-// An item is "stocked at" a location iff an ItemStock row exists for that pair.
-export interface ItemStock {
-  id: string
-  itemId: string
-  locationId: string
-
-  // Dual-unit tracking
+  // Dual-unit tracking (global configuration)
   packageUnit?: string
   measurementUnit?: string
   amountPerPackage?: number
 
-  // Quantity tracking
+  // Which unit quantities are tracked in (global configuration)
   targetUnit: 'package' | 'measurement'
-  targetQuantity: number
-  refillThreshold: number
-  packedQuantity: number
-  unpackedQuantity: number
 
-  // Consumption
+  // Consumption step size (global configuration)
   consumeAmount: number
 
-  // Expiration
-  dueDate?: Date
+  // Expiration configuration (the due DATE itself is per-location)
   estimatedDueDays?: number
   expirationThreshold?: number // Days before expiration to show warning
   expirationMode?: ExpirationMode
@@ -53,7 +39,33 @@ export interface ItemStock {
   updatedAt: Date
 }
 
-// The stock/unit/expiration fields of an ItemStock, without the join keys or
+// Per-(item × location) stocking STATE. A (itemId, locationId) pair is unique.
+// An item is "stocked at" a location iff an ItemStock row exists for that pair.
+//
+// Configuration (units, packaging, expiration mode, consume amount) is NOT
+// here — it is global and lives on `Item` since v16.
+export interface ItemStock {
+  id: string
+  itemId: string
+  locationId: string
+
+  // Quantity state
+  // `targetQuantity === 0` marks the item inactive AT THIS LOCATION — see
+  // isInactive / isStockedHere / isInactiveHere in lib/quantityUtils.ts.
+  targetQuantity: number
+  refillThreshold: number
+  packedQuantity: number
+  unpackedQuantity: number
+
+  // Expiration state: when the stock in THIS location expires.
+  dueDate?: Date
+
+  // Metadata
+  createdAt: Date
+  updatedAt: Date
+}
+
+// The per-location stock STATE fields of an ItemStock, without the join keys or
 // per-row metadata. Used by quantity/expiration helpers and forms that operate
 // on stock values regardless of which row they came from.
 export type StockFields = Omit<
@@ -61,10 +73,27 @@ export type StockFields = Omit<
   'id' | 'itemId' | 'locationId' | 'createdAt' | 'updatedAt'
 >
 
-// A global Item joined with its active-location ItemStock fields. This is the
-// runtime shape the pantry/shopping/cooking pages consume — the hooks join an
-// Item with its ItemStock for the active location so existing read sites keep
-// reading `item.packedQuantity`, `item.targetQuantity`, etc. unchanged.
+// The global stock CONFIGURATION half — the eight fields that moved off
+// ItemStock onto Item in v16. Quantity/expiration helpers need both halves, so
+// they take `StockFields & StockConfigFields`; a PantryItem satisfies that.
+export type StockConfigFields = Pick<
+  Item,
+  | 'packageUnit'
+  | 'measurementUnit'
+  | 'amountPerPackage'
+  | 'targetUnit'
+  | 'consumeAmount'
+  | 'estimatedDueDays'
+  | 'expirationThreshold'
+  | 'expirationMode'
+>
+
+// A global Item (identity + stock configuration) joined with its
+// active-location ItemStock state. This is the runtime shape the
+// pantry/shopping/cooking pages consume — the hooks join an Item with its
+// ItemStock for the active location so existing read sites keep reading
+// `item.packedQuantity`, `item.targetQuantity`, `item.packageUnit`, etc.
+// unchanged, regardless of which half each field now lives on.
 //
 // `stockId`/`locationId` identify the underlying ItemStock row (for writes).
 // When an item is NOT stocked in the active location, the join yields zeroed

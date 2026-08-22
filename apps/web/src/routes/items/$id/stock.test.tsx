@@ -21,6 +21,19 @@ import {
 import { routeTree } from '@/routeTree.gen'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
+// The eight configuration fields that live on the global Item since v16 — no
+// ItemStock row may carry them.
+const GLOBAL_STOCK_KEYS = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'targetUnit',
+  'consumeAmount',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+] as const
+
 // Cloud-mode override for the "Important 1" regression test below: only
 // useGetItemQuery and useUpdateItemMutation get test-controlled behavior.
 // Every other hook keeps the exact same safe default stub used by the global
@@ -342,39 +355,41 @@ describe('Item stock tab', () => {
   // built by spreading another location's row over it inherits the active
   // location's value for every optional key that row happens to omit — and Save
   // then writes it into the other location's ItemStock.
-  it('shows only the viewed location stock — optional fields absent there stay empty', async () => {
+  it('user sees the same global settings on every location page, but each location’s own due date', async () => {
     const user = userEvent.setup()
 
-    // Given an item whose ACTIVE-location stock has every optional field set
+    // Given an item whose GLOBAL configuration is fully set…
     const cabin = await createLocation('Cabin')
     const office = await createLocation('Office')
-    const item = await createItem({ name: 'Milk', tagIds: [] })
-    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
       packageUnit: 'bottle',
       measurementUnit: 'ml',
       amountPerPackage: 500,
       targetUnit: 'package',
+      consumeAmount: 1,
+      expirationMode: 'date',
+      estimatedDueDays: 30,
+      expirationThreshold: 5,
+    })
+    // …and whose ACTIVE-location row carries its own per-location state
+    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
       targetQuantity: 4,
       refillThreshold: 2,
       packedQuantity: 2,
       unpackedQuantity: 0,
-      consumeAmount: 1,
-      expirationMode: 'date',
       dueDate: new Date('2030-01-02T00:00:00.000Z'),
-      estimatedDueDays: 30,
-      expirationThreshold: 5,
     })
 
-    // …and two other locations whose rows carry only the required fields —
+    // …and two other locations whose rows carry only the required state —
     // the normal shape of any row created before a field was first set
     const baseRow = {
       itemId: item.id,
-      targetUnit: 'package' as const,
       targetQuantity: 4,
       refillThreshold: 2,
       packedQuantity: 1,
       unpackedQuantity: 0,
-      consumeAmount: 1,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -383,12 +398,11 @@ describe('Item stock tab', () => {
       id: crypto.randomUUID(),
       locationId: cabin.id,
     })
-    // The office row sets an expiration date but no warning threshold.
+    // The office row sets its own expiration date.
     await db.itemStocks.add({
       ...baseRow,
       id: crypto.randomUUID(),
       locationId: office.id,
-      expirationMode: 'date',
       dueDate: new Date('2031-06-07T00:00:00.000Z'),
     })
 
@@ -401,16 +415,16 @@ describe('Item stock tab', () => {
       expect(screen.getByLabelText(/^packed/i)).toHaveValue(1)
     })
 
-    // Then none of the active location's optional values show through
-    expect(screen.getByLabelText(/package unit/i)).toHaveValue('')
-    expect(screen.getByLabelText(/measurement unit/i)).toHaveValue('')
-    expect(screen.getByLabelText(/amount per package/i)).toHaveValue(null)
-    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/expires in/i)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/warning in/i)).not.toBeInTheDocument()
+    // Then the global configuration reads the same there — it belongs to the
+    // item, not to a location
+    expect(screen.getByLabelText(/package unit/i)).toHaveValue('bottle')
+    expect(screen.getByLabelText(/measurement unit/i)).toHaveValue('ml')
+    expect(screen.getByLabelText(/amount per package/i)).toHaveValue(500)
+    // …while the due date is genuinely this location's own, and unset here
+    expect(screen.getByLabelText(/expires on/i)).toHaveValue('')
 
-    // And saving this page does not persist the active location's values into
-    // this location's ItemStock
+    // And saving this page writes only per-location state into this
+    // location's ItemStock — never the configuration
     const targetInput = screen.getByLabelText(/target quantity/i)
     await user.clear(targetInput)
     await user.type(targetInput, '6')
@@ -419,49 +433,47 @@ describe('Item stock tab', () => {
     await waitFor(async () => {
       expect((await getItemStock(item.id, cabin.id))?.targetQuantity).toBe(6)
     })
-    const cabinStock = await getItemStock(item.id, cabin.id)
-    expect(cabinStock?.packageUnit).toBeFalsy()
-    expect(cabinStock?.measurementUnit).toBeFalsy()
-    expect(cabinStock?.amountPerPackage).toBeFalsy()
+    const cabinStock = (await getItemStock(item.id, cabin.id)) as unknown as
+      | Record<string, unknown>
+      | undefined
     expect(cabinStock?.dueDate).toBeFalsy()
-    expect(cabinStock?.estimatedDueDays).toBeFalsy()
-    expect(cabinStock?.expirationThreshold).toBeFalsy()
-    expect(cabinStock?.expirationMode).toBe('disabled')
-    // The active location keeps everything it had
+    for (const key of GLOBAL_STOCK_KEYS) {
+      expect(cabinStock).not.toHaveProperty(key)
+    }
+    // The active location keeps its own due date
     const homeStock = await getItemStock(item.id, DEFAULT_LOCATION_ID)
-    expect(homeStock?.packageUnit).toBe('bottle')
     expect(homeStock?.dueDate).toBeInstanceOf(Date)
   })
 
-  it('shows the viewed location own expiry, not the active location threshold', async () => {
+  it('shows the viewed location own expiry date, with the item’s global warning threshold', async () => {
     const user = userEvent.setup()
 
-    // Given the active location has an expiry warning threshold and another
-    // location has an expiry date but no threshold of its own
+    // Given an item with a global expiry warning threshold, stocked in two
+    // locations that each carry their own expiry date
     const office = await createLocation('Office')
-    const item = await createItem({ name: 'Milk', tagIds: [] })
-    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
       targetUnit: 'package',
+      consumeAmount: 1,
+      expirationMode: 'date',
+      expirationThreshold: 5,
+    })
+    await upsertItemStock(item.id, DEFAULT_LOCATION_ID, {
       targetQuantity: 4,
       refillThreshold: 2,
       packedQuantity: 2,
       unpackedQuantity: 0,
-      consumeAmount: 1,
-      expirationMode: 'date',
       dueDate: new Date('2030-01-02T00:00:00.000Z'),
-      expirationThreshold: 5,
     })
     await db.itemStocks.add({
       id: crypto.randomUUID(),
       itemId: item.id,
       locationId: office.id,
-      targetUnit: 'package',
       targetQuantity: 4,
       refillThreshold: 2,
       packedQuantity: 1,
       unpackedQuantity: 0,
-      consumeAmount: 1,
-      expirationMode: 'date',
       dueDate: new Date('2031-06-07T00:00:00.000Z'),
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -473,11 +485,11 @@ describe('Item stock tab', () => {
     // When the user pages to that location
     await user.click(screen.getByRole('tab', { name: 'Office' }))
 
-    // Then it shows its own due date and an empty warning threshold
+    // Then it shows its own due date, and the item's global warning threshold
     await waitFor(() => {
       expect(screen.getByLabelText(/expires on/i)).toHaveValue('2031-06-07')
     })
-    expect(screen.getByLabelText(/warning in/i)).toHaveValue(null)
+    expect(screen.getByLabelText(/warning in/i)).toHaveValue(5)
   })
 
   it('keeps the active location marked while the user views another one', async () => {

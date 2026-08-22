@@ -34,7 +34,13 @@ import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
-import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
+import type {
+  ItemStock,
+  Location,
+  PantryItem,
+  StockConfigFields,
+  StockFields,
+} from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
@@ -91,7 +97,7 @@ function withLocationStock(item: PantryItem, stock: ItemStock): PantryItem {
 // We need a separate type here because `exactOptionalPropertyTypes: true`
 // prevents assigning `undefined` to fields typed as `?: T` on `Partial<Item>`.
 type ItemUpdatePayload = Omit<
-  Partial<StockFields>,
+  Partial<StockFields & StockConfigFields>,
   | 'dueDate'
   | 'estimatedDueDays'
   | 'expirationMode'
@@ -102,7 +108,7 @@ type ItemUpdatePayload = Omit<
 > & {
   dueDate?: Date | undefined
   estimatedDueDays?: number | undefined
-  expirationMode?: StockFields['expirationMode']
+  expirationMode?: StockConfigFields['expirationMode']
   packageUnit?: string | undefined
   measurementUnit?: string | undefined
   amountPerPackage?: number | undefined
@@ -218,7 +224,9 @@ function StockFormPanel({
     // fields to `locationId`'s ItemStock (the active location when omitted).
     await updateItem.mutateAsync({
       id,
-      updates: buildStockUpdates(values) as Partial<StockFields>,
+      updates: buildStockUpdates(values) as Partial<
+        StockFields & StockConfigFields
+      >,
       ...(locationId ? { locationId } : {}),
     })
     setSavedAt((n) => n + 1)

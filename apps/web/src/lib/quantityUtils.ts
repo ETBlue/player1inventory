@@ -1,8 +1,9 @@
-import type { StockFields } from '@/types'
+import type { StockConfigFields, StockFields } from '@/types'
 
-// Quantity/expiration helpers operate on the stock fields, which live on
-// ItemStock (or any object that carries them, e.g. a joined PantryItem).
-type Stock = StockFields
+// Quantity/expiration helpers operate on the whole joined stock shape: the
+// per-location state (StockFields, on ItemStock) plus the global configuration
+// (StockConfigFields, on Item since v16). A joined PantryItem satisfies both.
+type Stock = StockFields & StockConfigFields
 
 function decimalPlaces(n: number): number {
   const s = n.toString()
@@ -34,7 +35,13 @@ export function getCurrentQuantity(item: Stock): number {
  * Returns the total quantity in package units, regardless of targetUnit.
  * For dual-unit items, unpacked measurement quantity is converted to fractional packs.
  */
-export function getPackedTotal(item: Stock): number {
+// Takes the three fields it actually reads rather than a whole Stock, because
+// `amountPerPackage` is global (on the Item) since v16: a caller holding only
+// an ItemStock row has to supply it separately.
+export function getPackedTotal(
+  item: Pick<Stock, 'packedQuantity' | 'unpackedQuantity'> &
+    Partial<Pick<Stock, 'amountPerPackage'>>,
+): number {
   if (item.amountPerPackage && item.amountPerPackage > 0) {
     return item.packedQuantity + item.unpackedQuantity / item.amountPerPackage
   }

@@ -21,36 +21,29 @@ import { db } from './index'
 
 // ── ItemStock helpers ──────────────────────────────────────────────────────
 //
-// Stock now lives on a per-(item × location) ItemStock row. Components consume
-// a joined `PantryItem` (Item + active-location stock); operations expose both
-// the raw ItemStock CRUD and the joined reads.
+// Per-location stock STATE lives on an ItemStock row; stock CONFIGURATION
+// (units, packaging, expiration mode, consume amount) is global and lives on
+// the Item since v16. Components consume a joined `PantryItem`
+// (Item + active-location stock); operations expose both the raw ItemStock CRUD
+// and the joined reads.
 
-// The default stock used when an item has no ItemStock in the requested
+// The default stock state used when an item has no ItemStock in the requested
 // location (so a joined PantryItem still reads sensible zeroed values).
 const ZERO_STOCK: StockFields = {
-  targetUnit: 'package',
   targetQuantity: 0,
   refillThreshold: 0,
   packedQuantity: 0,
   unpackedQuantity: 0,
-  consumeAmount: 1,
 }
 
-// Every field `joinItemStock` copies from an ItemStock onto an Item.
+// Every field `joinItemStock` copies from an ItemStock onto an Item. The eight
+// configuration fields are deliberately absent — they are the Item's own.
 const STOCK_FIELD_KEYS: (keyof StockFields)[] = [
-  'packageUnit',
-  'measurementUnit',
-  'amountPerPackage',
-  'targetUnit',
   'targetQuantity',
   'refillThreshold',
   'packedQuantity',
   'unpackedQuantity',
-  'consumeAmount',
   'dueDate',
-  'estimatedDueDays',
-  'expirationThreshold',
-  'expirationMode',
 ]
 
 // Pull just the stock fields off an object (drops join keys / metadata / undefined).
@@ -72,10 +65,10 @@ function pickStockFields(source: Record<string, unknown>): StockFields {
 // Re-joining a PantryItem with a DIFFERENT location's row without this is a
 // data-correctness bug, not a tidiness one: an ItemStock omits its unset
 // optional keys entirely (see ZERO_STOCK / pickStockFields), so spreading the
-// second row over the first join leaves the FIRST location's packageUnit,
-// measurementUnit, amountPerPackage, dueDate, estimatedDueDays,
-// expirationThreshold and expirationMode showing through — and a form fed that
-// shape saves one location's values into another location's row.
+// second row over the first join leaves the FIRST location's `dueDate` showing
+// through — and a form fed that shape saves one location's expiry into
+// another location's row. (Before v16 the same trap covered the unit and
+// expiration-config keys too; those are global now and are meant to survive.)
 export function stripStockFields(item: PantryItem): Item {
   // Typed as Partial<PantryItem> so the deletes type-check (every key being
   // removed is optional there) and the result still converts to Item.
@@ -148,10 +141,14 @@ export async function upsertItemStock(
   return stock
 }
 
-// Copy-on-add: stock an existing item in a location, inheriting all fields
-// except packed/unpacked quantities (which start at 0). Source row = the active
-// location's stock if present, else the item's most-recently-updated stock.
-// No-op (returns the existing row) if the item is already stocked there.
+// Copy-on-add: stock an existing item in a location, inheriting the per-location
+// stock STATE except packed/unpacked quantities (which start at 0). Source row =
+// the active location's stock if present, else the item's most-recently-updated
+// stock. No-op (returns the existing row) if the item is already stocked there.
+//
+// Since v16 there is nothing to copy for units / packaging / expiration mode /
+// consume amount: those are global Item fields and the new location shares them
+// automatically. Only targetQuantity, refillThreshold and dueDate are inherited.
 export async function addItemToLocation(
   itemId: string,
   locationId: string,
@@ -222,10 +219,16 @@ export async function removeItemFromLocation(
 
 // Item operations
 //
-// CreateItemInput accepts the global item fields plus optional stock fields:
-// existing callers/tests pass a flat object with stock values, which we split
-// into the global Item and an ItemStock for `locationId` (default 'local').
-type CreateItemInput = Omit<Item, 'id' | 'createdAt' | 'updatedAt'> &
+// CreateItemInput accepts the global item fields (identity + stock
+// configuration) plus the optional per-location stock state: existing
+// callers/tests pass one flat object, which we split into the global Item and
+// an ItemStock for `locationId` (default 'local'). `targetUnit`/`consumeAmount`
+// are required on an Item but optional here — they fall back to their defaults.
+type CreateItemInput = Omit<
+  Item,
+  'id' | 'createdAt' | 'updatedAt' | 'targetUnit' | 'consumeAmount'
+> &
+  Partial<Pick<Item, 'targetUnit' | 'consumeAmount'>> &
   Partial<StockFields>
 
 export async function createItem(
@@ -239,20 +242,21 @@ export async function createItem(
     vendorIds,
     wikidataUrl,
     note,
-    // stock fields (split off below)
-    packageUnit: _pu,
-    measurementUnit: _mu,
-    amountPerPackage: _app,
-    targetUnit: _tu,
+    // Global stock configuration
+    packageUnit,
+    measurementUnit,
+    amountPerPackage,
+    targetUnit,
+    consumeAmount,
+    estimatedDueDays,
+    expirationThreshold,
+    expirationMode,
+    // Per-location stock state (written to the ItemStock below)
     targetQuantity: _tq,
     refillThreshold: _rt,
     packedQuantity: _pq,
     unpackedQuantity: _uq,
-    consumeAmount: _ca,
     dueDate: _dd,
-    estimatedDueDays: _edd,
-    expirationThreshold: _et,
-    expirationMode: _em,
     ...rest
   } = input
   void rest
@@ -264,6 +268,14 @@ export async function createItem(
     ...(vendorIds !== undefined ? { vendorIds } : {}),
     ...(wikidataUrl !== undefined ? { wikidataUrl } : {}),
     ...(note !== undefined ? { note } : {}),
+    ...(packageUnit !== undefined ? { packageUnit } : {}),
+    ...(measurementUnit !== undefined ? { measurementUnit } : {}),
+    ...(amountPerPackage !== undefined ? { amountPerPackage } : {}),
+    targetUnit: targetUnit ?? 'package',
+    consumeAmount: consumeAmount ?? 1,
+    ...(estimatedDueDays !== undefined ? { estimatedDueDays } : {}),
+    ...(expirationThreshold !== undefined ? { expirationThreshold } : {}),
+    ...(expirationMode !== undefined ? { expirationMode } : {}),
     createdAt: now,
     updatedAt: now,
   }
@@ -314,30 +326,19 @@ export async function getStockedItems(
   return result
 }
 
-// Update global Item fields and/or the active-location stock. Stock/unit/
-// expiration fields in `updates` are routed to the ItemStock for `locationId`;
-// global fields (name, tagIds, vendorIds, wikidataUrl, note) stay on the Item.
+// Update global Item fields and/or the active-location stock state. The five
+// per-location state fields in `updates` are routed to the ItemStock for
+// `locationId`; everything else — identity (name, tagIds, vendorIds,
+// wikidataUrl, note) AND stock configuration (units, packaging, expiration
+// mode/threshold/days, consume amount) — stays on the Item, where it applies to
+// every location at once.
 export async function updateItem(
   id: string,
   updates: Partial<Omit<Item, 'id' | 'createdAt'>> & Partial<StockFields>,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
   const now = new Date()
-  const stockKeys: (keyof StockFields)[] = [
-    'packageUnit',
-    'measurementUnit',
-    'amountPerPackage',
-    'targetUnit',
-    'targetQuantity',
-    'refillThreshold',
-    'packedQuantity',
-    'unpackedQuantity',
-    'consumeAmount',
-    'dueDate',
-    'estimatedDueDays',
-    'expirationThreshold',
-    'expirationMode',
-  ]
+  const stockKeys: (keyof StockFields)[] = STOCK_FIELD_KEYS
   const stockUpdate: Partial<StockFields> = {}
   const itemUpdate: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(updates)) {
@@ -694,7 +695,17 @@ export async function checkout(
     // start from zeroed stock). This keeps checkout robust even for items not
     // previously stocked here.
     const base = stock ?? (await addItemToLocation(cartItem.itemId, locationId))
-    const finalQuantity = getPackedTotal(base) + cartItem.quantity
+    // `amountPerPackage` is a global Item field since v16 — the stock row alone
+    // cannot convert an unpacked measurement quantity into packs.
+    const item = await db.items.get(cartItem.itemId)
+    const finalQuantity =
+      getPackedTotal({
+        packedQuantity: base.packedQuantity,
+        unpackedQuantity: base.unpackedQuantity,
+        ...(item?.amountPerPackage !== undefined
+          ? { amountPerPackage: item.amountPerPackage }
+          : {}),
+      }) + cartItem.quantity
     await upsertItemStock(cartItem.itemId, locationId, {
       packedQuantity: base.packedQuantity + cartItem.quantity,
     })

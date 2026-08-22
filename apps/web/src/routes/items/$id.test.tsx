@@ -12,6 +12,7 @@ import { db } from '@/db'
 import {
   createItem,
   createRecipe,
+  getItem,
   getItemStock,
   getRecipes,
   upsertItemStock,
@@ -1394,7 +1395,8 @@ describe('Item detail page - expiration field split', () => {
 
     // Then the saved item has estimatedDueDays cleared so mode resolves to 'date' on reload
     await waitFor(async () => {
-      const updated = await getItemStock(item.id)
+      // estimatedDueDays is a GLOBAL Item field since v16.
+      const updated = await getItem(item.id)
       // The item should NOT still have estimatedDueDays set
       expect(updated?.estimatedDueDays).toBeFalsy()
     })
@@ -1557,7 +1559,8 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     // Then NO dialog appears (no affected recipes)
     await waitFor(async () => {
-      const updated = await getItemStock(item.id)
+      // consumeAmount is a GLOBAL Item field since v16.
+      const updated = await getItem(item.id)
       expect(updated?.consumeAmount).toBe(3)
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -1791,7 +1794,8 @@ describe('targetUnit change — recipe adjustment', () => {
     // Then NO dialog appears (defaultAmount 0 is unchanged)
     // calcRecipeDefaultAfterUnitSwitch(0, ...) returns 0 early → 0 === 0 → skip
     await waitFor(async () => {
-      const updated = await getItemStock(item.id)
+      // targetUnit is a GLOBAL Item field since v16.
+      const updated = await getItem(item.id)
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
@@ -1835,7 +1839,8 @@ describe('targetUnit change — recipe adjustment', () => {
 
     // Then NO dialog appears (converted value equals old defaultAmount)
     await waitFor(async () => {
-      const updated = await getItemStock(item.id)
+      // targetUnit is a GLOBAL Item field since v16.
+      const updated = await getItem(item.id)
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
