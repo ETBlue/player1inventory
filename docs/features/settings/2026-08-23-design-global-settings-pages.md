@@ -98,3 +98,64 @@ Per-decision, TDD, with mutation checks:
 Gate after each commit: `pnpm lint`, root `pnpm build` (+ `grep TS6385`), `pnpm build-storybook`, `pnpm check`, `pnpm test --run`.
 
 Final E2E: `pnpm test:e2e --grep "settings|shelves|vendors|recipes|tags|item-management|location|a11y"`. Note the specs live in both `e2e/tests/` and `e2e/tests/settings/`, and `shelves.spec.ts` exists in *both* — a grep built from route names alone misses `vendors-group`/`recipes-group`. Known baseline: 4 pre-existing a11y colour-contrast failures.
+
+---
+
+## Implementation notes (as shipped)
+
+All five decisions landed as designed. Four commits, one per decision pair:
+`193145d5` (D1 + D2), `5e666f17` (D3), `f1e6c2db` (D4), `ddd0d71c` (D5). The
+deviations and surprises worth recording:
+
+**D1 — the two styling gates were the whole risk, and they are now coupled.**
+Rather than sprinkling `showStock &&` over the five sites independently, the
+inactive-derived renderings all read one derived flag,
+`showsInactive = showStock && isInactive(item)`. The severity variant stays a
+separate expression because it also depends on `status`. This is why the card
+cannot half-suppress: there is one place to get the inactive branch wrong, not
+three.
+
+**D2 — implemented exactly as specified.** The `isInactive` import is gone from
+all four routes; each is now two `.filter` passes over the already-sorted list.
+
+**D3 — `catalogOnly` threads through three layers** (`createItem` option →
+`useCreateItem(options)` → `NewItemDialog` prop), defaulting to today's
+behaviour at every one. The catalog-only branch returns
+`joinItemStock(item, undefined, locationId)` — the same zeroed, `stockId`-less
+shape `getAllItems` already produces — so nothing downstream needed a new case.
+
+**D4 — recipe counts are derived from the item side, not `recipe.items.length`.**
+The design did not specify which side to count from. `useRecipeItemCounts()`
+builds a `Set` of the recipe's member ids and filters `items`, which means a
+`RecipeItem` entry pointing at a **deleted** item is silently ignored rather
+than inflating the badge. `recipe.items.length` would have counted it. The tag
+side had no such choice — descendant expansion forces the item-side walk anyway.
+
+**D5 — the mutation named in the brief was a no-op.** "Move Settings back into
+the array" does not change anything observable, because Settings was already
+*last* in the flat 4-entry `navRoutes` — it rendered in the same visual position
+before and after. The real behaviour is (a) DOM order and (b) the separate
+`mt-auto` block that pushes Settings to the bottom of the sidebar regardless of
+content height, so the test asserts both: the link order in the rendered nav
+**and** that the Settings link sits inside its own `mt-auto` container rather
+than in the three-link group. Asserting order alone would stay green against the
+old code.
+
+## Known follow-up — the create/select asymmetry in `NewItemDialog`
+
+`catalogOnly` governs the **create path only**. The dialog's *select-existing*
+path still calls `useAddItemToLocation()`, which stocks the chosen item in the
+active location. So on a Settings assignment tab:
+
+- **Create new** → global item, attached to the entity, stocked **nowhere** ✅
+- **Select existing** → attached to the entity, and **stocked here** ⚠️
+
+Left as-is deliberately. Making select-existing location-neutral is not a
+one-line gate: the combobox's whole option-rendering model is built on the
+stocking assumption — options for items already stocked here render
+`aria-disabled` with an "Already here" annotation and are excluded by
+`isSelectable`, and the exact-match case shows location-naming feedback
+(`items.addDialog.alreadyStockedHere`). On a global page none of that means
+anything, so the fix is a second rendering mode for the combobox, not a flag.
+Flagged here, not fixed. It is also recorded in
+`apps/web/src/routes/settings/CLAUDE.md`.

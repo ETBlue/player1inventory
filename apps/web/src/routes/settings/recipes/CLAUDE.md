@@ -27,6 +27,10 @@ Recipe CRUD at `/settings/recipes`. Recipes group items with per-item default am
 
 **Item assignment UI** (`$id/items.tsx`): Searchable checklist of all items showing current recipe assignments. Saves immediately on checkbox click (no staged state). Typing a name that matches no items reveals a `+ Create "<name>"` row. Each assigned item has a `defaultAmount` stepper (step = `item.consumeAmount`; 0 = optional ingredient).
 
+This tab is a **global** assignment surface: rows carry `showStock={false}`, order is assigned-then-unassigned with no active/inactive split, and the create path passes `catalogOnly` so the new item is stocked in no location. See `settings/CLAUDE.md` for the three rules and the known select-existing asymmetry.
+
+**Map-shaped item counts**: `useRecipeItemCounts()` (`src/hooks/useRecipeItemCounts.ts`) returns `Map<recipeId, number>` for badge lists — used by the shelf filters tab. It counts from the **item** side rather than reading `recipe.items.length`, so `RecipeItem` entries pointing at deleted items do not inflate the count. The per-id `useItemCountByRecipe` remains for single-entity call sites (confirmation dialogs, the recipe list).
+
 **Settings link**: `src/routes/settings/index.tsx` (UtensilsCrossed icon)
 
 **Dirty state**: `src/hooks/useRecipeLayout.tsx` — navigation guard on parent layout applies only to the Info tab (recipe name editing); Items tab has no unsaved state.

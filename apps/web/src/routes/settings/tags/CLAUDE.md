@@ -4,6 +4,8 @@ Tag detail page at `/settings/tags/$id` with Info and Items tabs, mirroring vend
 
 **Tag detail page**: `src/routes/settings/tags/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit tag name, tag type, and parent tag with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current tag assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the vendor Items tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item immediately assigned to this tag; pressing Escape clears the input.
 
+The Items tab is a **global** assignment surface: rows carry `showStock={false}`, order is assigned-then-unassigned with no active/inactive split, and the create path passes `catalogOnly` so the new item is stocked in no location. See `settings/CLAUDE.md` for the three rules and the known select-existing asymmetry.
+
 **Tag badge visual style**: `TagBadge` uses the tint variant (`${tagType.color}-tint`) — light background, colored border, dark text. On the tags list page, each badge is paired with an X (delete) button whose border and icon color match the badge's border color. This uses `TAG_COLOR_BORDER` and `TAG_COLOR_TEXT` lookup tables (static `Record<TagColor, string>` maps) in `src/routes/settings/tags/index.tsx` to avoid dynamic Tailwind class names that won't survive production builds.
 
 **Tag type modification**: Users can change a tag's type in two ways:

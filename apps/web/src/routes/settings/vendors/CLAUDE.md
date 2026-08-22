@@ -24,6 +24,8 @@ Vendor CRUD at `/settings/vendors`. Vendors are separate entities (not tags) use
 
 **Vendor detail page**: `src/routes/settings/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item immediately assigned to this vendor; pressing Escape clears the input.
 
+The Items tab is a **global** assignment surface: rows carry `showStock={false}`, order is assigned-then-unassigned with no active/inactive split, and the create path passes `catalogOnly` so the new item is stocked in no location. See `settings/CLAUDE.md` for the three rules and the known select-existing asymmetry.
+
 **Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout applies only to the Info tab (vendor name editing); the Items tab has no unsaved state.
 
 **Navigation:**
