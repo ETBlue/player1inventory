@@ -54,7 +54,7 @@ export const CreateMode: Story = {
 }
 
 export const InfoSection: Story = {
-  name: 'Info Section (name, wikidata, note)',
+  name: 'Info Section (identity + global stock settings)',
   args: {
     initialValues: editValues,
     sections: ['info'],
@@ -62,7 +62,7 @@ export const InfoSection: Story = {
 }
 
 export const StockSection: Story = {
-  name: 'Stock Section (package unit + quantities)',
+  name: 'Stock Section (per-location quantities)',
   args: {
     initialValues: editValues,
     sections: ['stock'],

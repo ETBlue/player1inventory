@@ -22,26 +22,29 @@ import { Switch } from '@/components/ui/switch'
 import { computePack, computeUnpack, roundToStep } from '@/lib/quantityUtils'
 import type { ExpirationMode } from '@/types'
 
+// The form always holds every value — both sections read from them (the
+// per-location quantity labels need the global units, for instance) — but each
+// section only RENDERS its own half.
 export type ItemFormValues = {
-  // Stock fields (used when sections includes 'stock')
+  // Per-location stock STATE (rendered by the 'stock' section)
   packedQuantity: number
   unpackedQuantity: number
+  targetQuantity: number
+  refillThreshold: number
   dueDate: string
-  estimatedDueDays: string | number
-  // Item Info fields
+  // Item identity (rendered by the 'info' section)
   name: string
   wikidataUrl: string
   note: string
+  // Global stock CONFIGURATION (rendered by the 'info' section since v16)
   packageUnit: string
-  targetQuantity: number
-  refillThreshold: number
   consumeAmount: number
-  expirationMode: ExpirationMode
-  expirationThreshold: string | number
-  // Advanced fields
   targetUnit: 'package' | 'measurement'
   measurementUnit: string
   amountPerPackage: string | number
+  expirationMode: ExpirationMode
+  estimatedDueDays: string | number
+  expirationThreshold: string | number
 }
 
 const DEFAULT_VALUES: ItemFormValues = {
@@ -207,6 +210,12 @@ export function ItemForm({
     setBaseValues({ ...currentValuesRef.current })
   }, [savedAt])
 
+  // Switching the tracked unit rescales every quantity held in it. Since v16
+  // `targetUnit` and `consumeAmount` are global and edited on the Info tab,
+  // where the per-location quantities are not rendered and not submitted — so
+  // in practice only `consumeAmount` is persisted by this conversion. The
+  // quantity conversions stay because the values are still in form state and a
+  // section showing both would need them.
   const handleTargetUnitChange = (checked: boolean) => {
     const amount = Number(amountPerPackage)
     if (amountPerPackage && measurementUnit && amount > 0) {
@@ -315,11 +324,17 @@ export function ItemForm({
                 rounded-sm"
             />
           </div>
-        </div>
-      )}
 
-      {showStock && (
-        <div className="space-y-2">
+          {/* Stock SETTINGS — global to the item. How it is packaged,
+              measured, expires and is consumed does not vary by location, so
+              it lives on the Info tab; the Stock tab holds only the
+              per-location numbers. */}
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
+            <div className="h-px bg-accessory-emphasized" />
+            <h2 className="text-sm font-medium uppercase">Stock Settings</h2>
+            <div className="h-px bg-accessory-emphasized" />
+          </div>
+
           <div>
             <Label htmlFor="packageUnit">Package Unit</Label>
             <Input
@@ -330,6 +345,189 @@ export function ItemForm({
             />
           </div>
 
+          <div>
+            <Label htmlFor="consumeAmount">
+              Amount per Consume{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <Input
+              id="consumeAmount"
+              type="number"
+              step="0.01"
+              min={0.01}
+              value={consumeAmount}
+              onChange={(e) => setConsumeAmount(Number(e.target.value))}
+              required
+              error={consumeAmountError}
+            />
+            <p className="text-xs text-foreground-muted">
+              Amount added/removed per +/- button click. Must be greater than 0.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
+            <div className="h-px bg-accessory-emphasized" />
+            <h2 className="text-sm font-medium uppercase">
+              Advanced Stock Settings
+            </h2>
+            <div className="h-px bg-accessory-emphasized" />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="targetUnit"
+                checked={targetUnit === 'measurement'}
+                onCheckedChange={handleTargetUnitChange}
+              />
+              <Label htmlFor="targetUnit" className="cursor-pointer">
+                Track in measurement{' '}
+                <UnitInline
+                  unit={measurementUnit || undefined}
+                  placeholder="?"
+                />
+              </Label>
+            </div>
+            <p className="text-xs text-foreground-muted">
+              Turn on to enable precise measurement tracking
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="measurementUnit">Measurement Unit</Label>
+              <Input
+                id="measurementUnit"
+                value={measurementUnit}
+                onChange={(e) => setMeasurementUnit(e.target.value)}
+                disabled={targetUnit !== 'measurement'}
+                error={
+                  targetUnit === 'measurement'
+                    ? measurementUnitError
+                    : undefined
+                }
+              />
+              <p className="text-xs text-foreground-muted">
+                Precise unit like g / lb / ml
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="amountPerPackage">
+                Amount per Package
+                {measurementUnit && (
+                  <span className="text-xs font-normal">
+                    {' '}
+                    ({measurementUnit})
+                  </span>
+                )}
+              </Label>
+              <Input
+                id="amountPerPackage"
+                type="number"
+                step="1"
+                min={1}
+                value={amountPerPackage}
+                onChange={(e) => setAmountPerPackage(e.target.value)}
+                disabled={targetUnit !== 'measurement'}
+                error={
+                  targetUnit === 'measurement'
+                    ? amountPerPackageError
+                    : undefined
+                }
+              />
+              <p className="text-xs text-foreground-muted">
+                How many {measurementUnit || '?'} per pack
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="expirationMode">
+              Calculate Expiration based on
+            </Label>
+            <Select
+              value={expirationMode}
+              onValueChange={(value: ExpirationMode) =>
+                setExpirationMode(value)
+              }
+            >
+              <SelectTrigger id="expirationMode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="disabled">
+                  <div className="flex items-center gap-2">
+                    <InfinityIcon className="h-4 w-4" />
+                    <span>No expiration</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="date">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span>Specific Date</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="days from purchase">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span>Days from Purchase</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {expirationMode === 'date' && (
+              <p className="text-xs text-foreground-muted">
+                Set each location&apos;s own expiry date on the Stock tab
+              </p>
+            )}
+          </div>
+
+          {expirationMode !== 'disabled' && (
+            <div className="grid grid-cols-2 gap-4">
+              {expirationMode === 'days from purchase' && (
+                <div>
+                  <Label htmlFor="expirationDueDays">
+                    Expires in{' '}
+                    <span className="text-xs font-normal">(days)</span>
+                  </Label>
+                  <Input
+                    id="expirationDueDays"
+                    type="number"
+                    min={1}
+                    value={estimatedDueDays}
+                    onChange={(e) => setEstimatedDueDays(e.target.value)}
+                  />
+                </div>
+              )}
+              <div>
+                <Label htmlFor="expirationThreshold">
+                  Warning in <span className="text-xs font-normal">(days)</span>
+                </Label>
+                <Input
+                  id="expirationThreshold"
+                  type="number"
+                  min={0}
+                  value={expirationThreshold}
+                  onChange={(e) => setExpirationThreshold(e.target.value)}
+                />
+                <p className="text-xs text-foreground-muted">
+                  Shows warning when about to expire
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showStock && (
+        <div className="space-y-2">
           <div>
             <Label htmlFor="packedQuantity">
               Packed <UnitInline unit={packageUnit || undefined} />
@@ -480,148 +678,9 @@ export function ItemForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            <div>
-              <Label htmlFor="consumeAmount">
-                Amount per Consume{' '}
-                <UnitInline
-                  unit={
-                    targetUnit === 'measurement'
-                      ? measurementUnit || undefined
-                      : packageUnit || undefined
-                  }
-                />
-              </Label>
-              <Input
-                id="consumeAmount"
-                type="number"
-                step="0.01"
-                min={0.01}
-                value={consumeAmount}
-                onChange={(e) => setConsumeAmount(Number(e.target.value))}
-                required
-                error={consumeAmountError}
-              />
-              <p className="text-xs text-foreground-muted">
-                Amount added/removed per +/- button click. Must be greater than
-                0.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-            <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">
-              Advanced Stock Status
-            </h2>
-            <div className="h-px bg-accessory-emphasized" />
-          </div>
-
-          <div>
-            <div className="flex items-center gap-3">
-              <Switch
-                id="targetUnit"
-                checked={targetUnit === 'measurement'}
-                onCheckedChange={handleTargetUnitChange}
-              />
-              <Label htmlFor="targetUnit" className="cursor-pointer">
-                Track in measurement{' '}
-                <UnitInline
-                  unit={measurementUnit || undefined}
-                  placeholder="?"
-                />
-              </Label>
-            </div>
-            <p className="text-xs text-foreground-muted">
-              Turn on to enable precise measurement tracking
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="measurementUnit">Measurement Unit</Label>
-              <Input
-                id="measurementUnit"
-                value={measurementUnit}
-                onChange={(e) => setMeasurementUnit(e.target.value)}
-                disabled={targetUnit !== 'measurement'}
-                error={
-                  targetUnit === 'measurement'
-                    ? measurementUnitError
-                    : undefined
-                }
-              />
-              <p className="text-xs text-foreground-muted">
-                Precise unit like g / lb / ml
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="amountPerPackage">
-                Amount per Package
-                {measurementUnit && (
-                  <span className="text-xs font-normal">
-                    {' '}
-                    ({measurementUnit})
-                  </span>
-                )}
-              </Label>
-              <Input
-                id="amountPerPackage"
-                type="number"
-                step="1"
-                min={1}
-                value={amountPerPackage}
-                onChange={(e) => setAmountPerPackage(e.target.value)}
-                disabled={targetUnit !== 'measurement'}
-                error={
-                  targetUnit === 'measurement'
-                    ? amountPerPackageError
-                    : undefined
-                }
-              />
-              <p className="text-xs text-foreground-muted">
-                How many {measurementUnit || '?'} per pack
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="expirationMode">
-              Calculate Expiration based on
-            </Label>
-            <Select
-              value={expirationMode}
-              onValueChange={(value: ExpirationMode) =>
-                setExpirationMode(value)
-              }
-            >
-              <SelectTrigger id="expirationMode">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="disabled">
-                  <div className="flex items-center gap-2">
-                    <InfinityIcon className="h-4 w-4" />
-                    <span>No expiration</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="date">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>Specific Date</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="days from purchase">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Days from Purchase</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
+          {/* The due date is the one expiration field that is genuinely
+              per-location — "when THIS one expires". The mode that gates it is
+              global and edited on the Info tab. */}
           {expirationMode === 'date' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -632,52 +691,8 @@ export function ItemForm({
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                 />
-              </div>
-              <div>
-                <Label htmlFor="expirationThreshold">
-                  Warning in <span className="text-xs font-normal">(days)</span>
-                </Label>
-                <Input
-                  id="expirationThreshold"
-                  type="number"
-                  min={0}
-                  value={expirationThreshold}
-                  onChange={(e) => setExpirationThreshold(e.target.value)}
-                />
                 <p className="text-xs text-foreground-muted">
-                  Shows warning when about to expire
-                </p>
-              </div>
-            </div>
-          )}
-
-          {expirationMode === 'days from purchase' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="expirationDueDays">
-                  Expires in <span className="text-xs font-normal">(days)</span>
-                </Label>
-                <Input
-                  id="expirationDueDays"
-                  type="number"
-                  min={1}
-                  value={estimatedDueDays}
-                  onChange={(e) => setEstimatedDueDays(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="expirationThreshold">
-                  Warning in <span className="text-xs font-normal">(days)</span>
-                </Label>
-                <Input
-                  id="expirationThreshold"
-                  type="number"
-                  min={0}
-                  value={expirationThreshold}
-                  onChange={(e) => setExpirationThreshold(e.target.value)}
-                />
-                <p className="text-xs text-foreground-muted">
-                  Shows warning when about to expire
+                  When the stock in this location expires
                 </p>
               </div>
             </div>

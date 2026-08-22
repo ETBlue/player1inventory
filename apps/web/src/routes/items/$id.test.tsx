@@ -218,7 +218,9 @@ describe('Item detail page - manual quantity input', () => {
       tagIds: [],
     })
 
-    renderItemDetailPage(item.id)
+    // The measurement settings are global to the item, so they live on
+    // the Info tab, not the per-location Stock tab.
+    renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
@@ -252,7 +254,9 @@ describe('Item detail page - manual quantity input', () => {
       tagIds: [],
     })
 
-    renderItemDetailPage(item.id)
+    // The measurement settings are global to the item, so they live on
+    // the Info tab, not the per-location Stock tab.
+    renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
@@ -268,56 +272,6 @@ describe('Item detail page - manual quantity input', () => {
 
     expect(measurementUnitInput).not.toBeDisabled()
     expect(amountPerPackageInput).not.toBeDisabled()
-  })
-
-  it('unpacked quantity converts when toggling track in measurement', async () => {
-    const user = userEvent.setup()
-
-    // Given an item with measurement tracking ON and unpacked quantity of 250g
-    const item = await createItem({
-      name: 'Flour',
-      packageUnit: 'pack',
-      measurementUnit: 'g',
-      amountPerPackage: 500,
-      targetUnit: 'measurement',
-      targetQuantity: 2000,
-      refillThreshold: 500,
-      packedQuantity: 2,
-      unpackedQuantity: 250,
-      consumeAmount: 100,
-      tagIds: [],
-    })
-
-    renderItemDetailPage(item.id)
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^unpacked/i)).toBeInTheDocument()
-    })
-
-    // Initial unpacked quantity should be 250 (in grams)
-    const unpackedInput = screen.getByLabelText(
-      /^unpacked/i,
-    ) as HTMLInputElement
-    expect(unpackedInput.value).toBe('250')
-
-    // When user toggles track in measurement OFF
-    const trackSwitch = screen.getByRole('switch', {
-      name: /track in measurement/i,
-    })
-    await user.click(trackSwitch)
-
-    // Then unpacked quantity should convert to 0.5 (250g / 500g per pack)
-    await waitFor(() => {
-      expect(unpackedInput.value).toBe('0.5')
-    })
-
-    // When user toggles track in measurement back ON
-    await user.click(trackSwitch)
-
-    // Then unpacked quantity should convert back to 250 (0.5 * 500)
-    await waitFor(() => {
-      expect(unpackedInput.value).toBe('250')
-    })
   })
 
   it('save button disabled when measurement tracking on but fields empty', async () => {
@@ -336,7 +290,9 @@ describe('Item detail page - manual quantity input', () => {
       tagIds: [],
     })
 
-    renderItemDetailPage(item.id)
+    // The measurement settings are global to the item, so they live on
+    // the Info tab, not the per-location Stock tab.
+    renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
@@ -391,7 +347,9 @@ describe('Item detail page - manual quantity input', () => {
       tagIds: [],
     })
 
-    renderItemDetailPage(item.id)
+    // The measurement settings are global to the item, so they live on
+    // the Info tab, not the per-location Stock tab.
+    renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
@@ -1313,7 +1271,7 @@ describe('Item detail page - expiration field split', () => {
 
   const renderItemDetailPage = (itemId: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/stock`],
+      initialEntries: [`/items/${itemId}`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1341,9 +1299,9 @@ describe('Item detail page - expiration field split', () => {
     renderItemDetailPage(item.id)
 
     await waitFor(() => screen.getByText('Milk'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // Then "Expires in (days)" is visible
     expect(screen.getByLabelText(/expires in/i)).toBeInTheDocument()
@@ -1376,9 +1334,9 @@ describe('Item detail page - expiration field split', () => {
 
     renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Cheese'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When user changes expiration mode to "Specific Date"
     const modeSelect = screen.getByRole('combobox', {
@@ -1428,7 +1386,7 @@ describe('consumeAmount change — recipe adjustment', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/stock`],
+      initialEntries: [`/items/${itemId}`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1460,9 +1418,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When user changes consumeAmount from 2 to 3
     const consumeInput = screen.getByLabelText(
@@ -1501,9 +1459,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When changing consumeAmount to 3 and confirming
     const consumeInput = screen.getByLabelText(
@@ -1545,9 +1503,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Salt'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When changing consumeAmount to 3 and saving
     const consumeInput = screen.getByLabelText(
@@ -1588,9 +1546,9 @@ describe('consumeAmount change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Oil'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When changing consumeAmount to 3 and confirming
     const consumeInput = screen.getByLabelText(
@@ -1637,7 +1595,7 @@ describe('targetUnit change — recipe adjustment', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/stock`],
+      initialEntries: [`/items/${itemId}`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -1673,9 +1631,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When user toggles track in measurement OFF (switching to package mode)
     await user.click(
@@ -1728,9 +1686,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Flour'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When user toggles track in measurement ON (switching to measurement mode)
     await user.click(
@@ -1781,9 +1739,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Salt'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When user switches to package mode and saves
     await user.click(
@@ -1827,9 +1785,9 @@ describe('targetUnit change — recipe adjustment', () => {
 
     await renderItemDetailPage(item.id)
     await waitFor(() => screen.getByText('Milk'))
-    // The Stock tab resolves its location list and per-location stock
-    // before rendering a form, so the item name appearing is not enough.
-    await screen.findByLabelText(/target quantity/i)
+    // The Info tab renders once the item resolves; wait for a field that is
+    // part of the global stock settings rather than the item name alone.
+    await screen.findByLabelText(/amount per consume/i)
 
     // When user switches to package mode and saves
     await user.click(

@@ -4,10 +4,21 @@ import { useTranslation } from 'react-i18next'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useDeleteItem, useItem, useUpdateItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
-import type { Item, PantryItem } from '@/types'
+import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
+import type { Item, PantryItem, StockConfigFields } from '@/types'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemInfoTab,
@@ -49,24 +60,91 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
 // tells toUpdateItemInput() (cloud) to send null so the server clears them.
 // We need a separate type here because `exactOptionalPropertyTypes: true`
 // prevents assigning `undefined` to fields typed as `?: T` on `Partial<Item>`.
-type ItemInfoUpdatePayload = Omit<Partial<Item>, 'wikidataUrl' | 'note'> & {
+type ItemInfoUpdatePayload = Omit<
+  Partial<Item>,
+  | 'wikidataUrl'
+  | 'note'
+  | 'packageUnit'
+  | 'measurementUnit'
+  | 'amountPerPackage'
+  | 'estimatedDueDays'
+  | 'expirationThreshold'
+  | 'expirationMode'
+> & {
   wikidataUrl?: string | undefined
   note?: string | undefined
+  packageUnit?: string | undefined
+  measurementUnit?: string | undefined
+  amountPerPackage?: number | undefined
+  estimatedDueDays?: number | undefined
+  expirationThreshold?: number | undefined
+  expirationMode?: StockConfigFields['expirationMode']
 }
 
-// Build the info-only update payload. Stock fields are persisted separately by
-// the Stock tab and are intentionally not included here.
+// Build the Info-tab update payload: the item's identity plus its GLOBAL stock
+// configuration. Per-location state (quantities, targets, this location's due
+// date) is persisted separately by the Stock tab and is intentionally absent.
 function buildInfoUpdates(values: ItemFormValues): ItemInfoUpdatePayload {
-  return {
+  const updates: ItemInfoUpdatePayload = {
     name: values.name,
-    // Assign undefined (not delete) so toUpdateItemInput() sees the key as
-    // present and sends null to the server — intentionally clearing the field
-    // when the user leaves it blank.
-    wikidataUrl: values.wikidataUrl.trim()
-      ? values.wikidataUrl.trim()
-      : undefined,
-    note: values.note.trim() ? values.note : undefined,
+    targetUnit: values.targetUnit,
+    consumeAmount: values.consumeAmount,
+    expirationMode: values.expirationMode,
   }
+
+  // Assign undefined (not delete) so toUpdateItemInput() sees the key as
+  // present and sends null to the server — intentionally clearing the field
+  // when the user leaves it blank.
+  updates.wikidataUrl = values.wikidataUrl.trim()
+    ? values.wikidataUrl.trim()
+    : undefined
+  updates.note = values.note.trim() ? values.note : undefined
+  updates.packageUnit = values.packageUnit ? values.packageUnit : undefined
+  updates.measurementUnit = values.measurementUnit
+    ? values.measurementUnit
+    : undefined
+  updates.amountPerPackage = values.amountPerPackage
+    ? Number(values.amountPerPackage)
+    : undefined
+  updates.expirationThreshold = values.expirationThreshold
+    ? Number(values.expirationThreshold)
+    : undefined
+  // "Expires in N days" only exists in that mode; clear it otherwise. The
+  // per-location `dueDate` is the Stock tab's to clear.
+  updates.estimatedDueDays =
+    values.expirationMode === 'days from purchase' && values.estimatedDueDays
+      ? Number(values.estimatedDueDays)
+      : undefined
+
+  return updates
+}
+
+type Adjustment = {
+  recipeId: string
+  recipeName: string
+  oldAmount: number
+  newAmount: number
+}
+
+function calcNewDefault(oldDefault: number, newConsumeAmount: number): number {
+  if (oldDefault === 0) return 0
+  const nearest = Math.round(oldDefault / newConsumeAmount) * newConsumeAmount
+  return nearest === 0 ? newConsumeAmount : nearest
+}
+
+function calcRecipeDefaultAfterUnitSwitch(
+  oldDefault: number,
+  amountPerPackage: number,
+  newTargetUnit: 'measurement' | 'package',
+  newConsumeAmount: number,
+): number {
+  if (oldDefault === 0) return 0
+  const ratio =
+    newTargetUnit === 'measurement'
+      ? oldDefault * amountPerPackage
+      : oldDefault / amountPerPackage
+  const nearest = Math.round(ratio / newConsumeAmount) * newConsumeAmount
+  return nearest === 0 ? newConsumeAmount : nearest
 }
 
 function ItemInfoTab() {
@@ -79,11 +157,20 @@ function ItemInfoTab() {
   const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
+  const { data: allRecipes } = useRecipes()
+  const updateRecipe = useUpdateRecipe()
+
+  const [pendingAdjustments, setPendingAdjustments] = useState<
+    Adjustment[] | null
+  >(null)
+  const [pendingFormValues, setPendingFormValues] =
+    useState<ItemFormValues | null>(null)
+
   if (!item) return null
 
   const formValues = itemToFormValues(item)
 
-  const handleSubmit = async (values: ItemFormValues) => {
+  const doSave = async (values: ItemFormValues) => {
     // Cast to Partial<Item> — the wider payload type is compatible at runtime;
     // the cast is needed because exactOptionalPropertyTypes disallows undefined on Partial<Item>.
     await updateItem.mutateAsync({
@@ -92,6 +179,98 @@ function ItemInfoTab() {
     })
     setSavedAt((n) => n + 1)
     goBack()
+  }
+
+  // A recipe's `defaultAmount` is stored in the item's own unit and snapped to
+  // its consume amount, so changing either invalidates it. Both are GLOBAL
+  // fields and live on this tab since v16 — this is a global → global rewrite.
+  // (It used to hang off the Stock tab, where one location's edit rescaled
+  // every recipe; that was the defect the field move fixes.)
+  const handleSubmit = async (values: ItemFormValues) => {
+    const oldConsumeAmount = item.consumeAmount ?? 1
+    const newConsumeAmount = values.consumeAmount
+    const targetUnitChanged = item.targetUnit !== values.targetUnit
+
+    const buildAdjustments = (): Adjustment[] => {
+      if (!allRecipes) return []
+      const affectedRecipes = allRecipes.filter((r) =>
+        r.items.some((ri) => ri.itemId === id),
+      )
+      if (targetUnitChanged) {
+        const amountPerPackage = Number(values.amountPerPackage)
+        if (!amountPerPackage || amountPerPackage <= 0) return []
+        return affectedRecipes.flatMap((r) => {
+          const ri = r.items.find((ri) => ri.itemId === id)
+          if (!ri) return []
+          const newDefault = calcRecipeDefaultAfterUnitSwitch(
+            ri.defaultAmount,
+            amountPerPackage,
+            values.targetUnit,
+            newConsumeAmount,
+          )
+          if (newDefault === ri.defaultAmount) return []
+          return [
+            {
+              recipeId: r.id,
+              recipeName: r.name,
+              oldAmount: ri.defaultAmount,
+              newAmount: newDefault,
+            },
+          ]
+        })
+      }
+      // When targetUnit also changed, the unit-switch branch above already snaps
+      // to newConsumeAmount, so a separate consume-amount adjustment is not needed.
+      if (oldConsumeAmount !== newConsumeAmount) {
+        return affectedRecipes.flatMap((r) => {
+          const ri = r.items.find((ri) => ri.itemId === id)
+          if (!ri) return []
+          const newDefault = calcNewDefault(ri.defaultAmount, newConsumeAmount)
+          if (newDefault === ri.defaultAmount) return []
+          return [
+            {
+              recipeId: r.id,
+              recipeName: r.name,
+              oldAmount: ri.defaultAmount,
+              newAmount: newDefault,
+            },
+          ]
+        })
+      }
+      return []
+    }
+
+    const affected = buildAdjustments()
+    if (affected.length > 0) {
+      setPendingFormValues(values)
+      setPendingAdjustments(affected)
+      return
+    }
+
+    await doSave(values)
+  }
+
+  const handleConfirmAdjustments = async () => {
+    if (!pendingFormValues || !pendingAdjustments || !allRecipes) return
+    await doSave(pendingFormValues)
+    for (const adj of pendingAdjustments) {
+      const recipe = allRecipes.find((r) => r.id === adj.recipeId)
+      if (!recipe) continue
+      const newItems = recipe.items.map((ri) =>
+        ri.itemId === id ? { ...ri, defaultAmount: adj.newAmount } : ri,
+      )
+      await updateRecipe.mutateAsync({
+        id: adj.recipeId,
+        updates: { items: newItems },
+      })
+    }
+    setPendingAdjustments(null)
+    setPendingFormValues(null)
+  }
+
+  const handleCancelAdjustments = () => {
+    setPendingAdjustments(null)
+    setPendingFormValues(null)
   }
 
   const handleDelete = async () => {
@@ -113,6 +292,61 @@ function ItemInfoTab() {
         savedAt={savedAt}
         isPending={updateItem.isPending}
       />
+
+      <AlertDialog
+        open={!!pendingAdjustments}
+        onOpenChange={(open) => {
+          if (!open) handleCancelAdjustments()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('items.detail.recipeAdjustDialog.title')}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t('items.detail.recipeAdjustDialog.description', {
+              from: item.consumeAmount,
+              to: pendingFormValues?.consumeAmount,
+            })}
+          </AlertDialogDescription>
+          {pendingAdjustments && (
+            <table className="w-full text-sm mt-2">
+              <thead>
+                <tr className="text-left text-foreground-muted">
+                  <th className="pb-1">
+                    {t('items.detail.recipeAdjustDialog.recipeHeader')}
+                  </th>
+                  <th className="pb-1">
+                    {t('items.detail.recipeAdjustDialog.currentHeader')}
+                  </th>
+                  <th className="pb-1">
+                    {t('items.detail.recipeAdjustDialog.newHeader')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingAdjustments.map((adj) => (
+                  <tr key={adj.recipeId}>
+                    <td className="capitalize">{adj.recipeName}</td>
+                    <td>{adj.oldAmount}</td>
+                    <td>{adj.newAmount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelAdjustments}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAdjustments}>
+              {t('items.detail.recipeAdjustDialog.updateButton')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="max-w-2xl mx-auto">
         <DeleteButton

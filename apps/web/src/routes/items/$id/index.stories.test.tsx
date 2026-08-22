@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { Default, WithInfoFields } = composeStories(stories)
+const { Default, WithInfoFields, WithGlobalStockSettings } =
+  composeStories(stories)
 
 describe('Item detail info tab stories smoke tests', () => {
   it('Default renders the Name info field after setup', async () => {
@@ -17,5 +18,11 @@ describe('Item detail info tab stories smoke tests', () => {
     expect(
       await screen.findByDisplayValue('https://www.wikidata.org/wiki/Q8495'),
     ).toBeInTheDocument()
+  })
+
+  it('WithGlobalStockSettings renders the global measurement settings', async () => {
+    render(<WithGlobalStockSettings />)
+    expect(await screen.findByLabelText(/measurement unit/i)).toHaveValue('ml')
+    expect(screen.getByLabelText(/amount per package/i)).toHaveValue(750)
   })
 })

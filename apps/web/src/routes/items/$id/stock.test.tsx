@@ -15,7 +15,9 @@ import {
   addToCart,
   createItem,
   createLocation,
+  createRecipe,
   getItemStock,
+  getRecipes,
   upsertItemStock,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
@@ -197,6 +199,48 @@ describe('Item stock tab', () => {
       const stock = await getItemStock(item.id)
       expect(stock?.packedQuantity).toBe(5)
     })
+  })
+
+  // The recipe-adjust dialog moved to the Info tab with the global fields that
+  // trigger it. Editing one location's numbers must not rescale every recipe —
+  // that coupling was the defect the field move fixes.
+  it('user editing a per-location quantity is not asked to rescale recipes', async () => {
+    const user = userEvent.setup()
+
+    // Given an item used by a recipe, with a consume amount that a rescale
+    // would visibly change
+    const item = await createItem({
+      name: 'Flour',
+      packageUnit: 'bag',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 2,
+      tagIds: [],
+    })
+    await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 5 }],
+    })
+
+    renderStockTab(item.id)
+    await screen.findByLabelText(/target quantity/i)
+
+    // When the user changes this location's target quantity and saves
+    const targetInput = screen.getByLabelText(/target quantity/i)
+    await user.clear(targetInput)
+    await user.type(targetInput, '9')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then no rescale dialog appears and the recipe amount is untouched
+    await waitFor(async () => {
+      expect((await getItemStock(item.id))?.targetQuantity).toBe(9)
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    const recipes = await getRecipes()
+    expect(recipes[0]?.items[0]?.defaultAmount).toBe(5)
   })
 
   it('saving stock does not clear existing info fields (name/note/wikidata)', async () => {
@@ -415,11 +459,16 @@ describe('Item stock tab', () => {
       expect(screen.getByLabelText(/^packed/i)).toHaveValue(1)
     })
 
-    // Then the global configuration reads the same there — it belongs to the
-    // item, not to a location
-    expect(screen.getByLabelText(/package unit/i)).toHaveValue('bottle')
-    expect(screen.getByLabelText(/measurement unit/i)).toHaveValue('ml')
-    expect(screen.getByLabelText(/amount per package/i)).toHaveValue(500)
+    // Then the item's GLOBAL package unit still labels this location's
+    // quantities — it belongs to the item, not to the location, even though
+    // this location's row carries nothing but numbers
+    expect(screen.getByLabelText(/^packed \(bottle\)$/i)).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(/^target quantity \(bottle\)$/i),
+    ).toBeInTheDocument()
+    // …and the global settings themselves are not editable from here
+    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/measurement unit/i)).not.toBeInTheDocument()
     // …while the due date is genuinely this location's own, and unset here
     expect(screen.getByLabelText(/expires on/i)).toHaveValue('')
 
@@ -445,7 +494,7 @@ describe('Item stock tab', () => {
     expect(homeStock?.dueDate).toBeInstanceOf(Date)
   })
 
-  it('shows the viewed location own expiry date, with the item’s global warning threshold', async () => {
+  it('shows the viewed location’s own expiry date', async () => {
     const user = userEvent.setup()
 
     // Given an item with a global expiry warning threshold, stocked in two
@@ -485,11 +534,12 @@ describe('Item stock tab', () => {
     // When the user pages to that location
     await user.click(screen.getByRole('tab', { name: 'Office' }))
 
-    // Then it shows its own due date, and the item's global warning threshold
+    // Then it shows its own due date
     await waitFor(() => {
       expect(screen.getByLabelText(/expires on/i)).toHaveValue('2031-06-07')
     })
-    expect(screen.getByLabelText(/warning in/i)).toHaveValue(5)
+    // …and the warning threshold, being global, is not editable from here
+    expect(screen.queryByLabelText(/warning in/i)).not.toBeInTheDocument()
   })
 
   it('keeps the active location marked while the user views another one', async () => {
