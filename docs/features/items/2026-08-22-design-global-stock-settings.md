@@ -207,3 +207,63 @@ Final: `pnpm test:e2e --grep "items|cooking|shopping|location|settings|shelves|v
 — build the grep from **spec filenames**, per root `CLAUDE.md`. Capture the
 baseline before changing code; the known pre-existing failures are the 4 a11y
 colour-contrast violations.
+
+## Addendum — per-location quantity conversion on a unit switch (designer ruling, 2026-08-22)
+
+This branch originally shipped the unit switch with a flagged gap: toggling
+"track in measurement" rescaled the global `consumeAmount` and every recipe's
+`defaultAmount`, but left the per-location quantities alone. The Info-tab notes
+above and `routes/items/CLAUDE.md` recorded "no per-location rescale" as the
+intended behaviour, on the grounds that rescaling one location's numbers from a
+global switch would be arbitrary.
+
+The designer then ruled:
+
+> item page > stock tab: when the target unit in item info tab changes, update
+> "unpacked" "target quantity" "refill when below" numbers accordingly
+
+**That is now implemented, and it is well defined precisely because of this
+branch.** `amountPerPackage` moved to the `Item` in v16, so one factor applies
+to every location; while it was per-location there was no single correct
+factor, which is what made the original gap defensible.
+
+### What changed
+
+- **`lib/quantityUtils.ts`** gains `convertTrackedQuantities(quantities,
+  amountPerPackage, newTargetUnit)` — a pure helper beside `roundToStep` /
+  `computePack` / `computeUnpack` / `computeFillToFull`. Package → measurement
+  multiplies, measurement → package divides. Returns `null` when
+  `amountPerPackage` is missing / zero / negative, matching the recipe branch's
+  bail.
+- **`routes/items/$id/index.tsx`** builds one `StockConversion` per stocked
+  location from that row's **own** stored values (never from the form, which
+  only ever holds the active location's numbers) and shows them in the existing
+  confirm dialog before saving. Confirming writes each row via
+  `useUpdateItem({ …, locationId })`; cancelling writes nothing at all.
+
+### Decisions
+
+| Decision | Rationale |
+|---|---|
+| Only `unpackedQuantity`, `targetQuantity`, `refillThreshold` convert | The designer named exactly three fields. `packedQuantity` counts **sealed packages**, which are packages in either mode, so converting it would be wrong. |
+| Previewed, never silent | Rewriting inventory numbers across every location without showing them first is not acceptable. It reuses the dialog that already gathers recipe adjustments; either half alone opens it. |
+| One dialog row per location | Three fields × N locations listed field-by-field is an unreadable wall. Columns are `Location │ Unpacked │ Target Quantity │ Refill When Below`, each cell `before → after`, so the user can see which locations are affected and what happens to each. |
+| No rounding to integers, and **not** `roundToStep` | 500 g at 1000 g per package is 0.5 packages, not 1 — rounding would invent or destroy inventory. The helper only strips IEEE-754 dust (12 significant figures), which is what makes a package → measurement → package round trip return the original values exactly. `ItemForm`'s 3-decimal in-form rounding is deliberately not reused: it doubles 0.0005 to 0.001 and breaks the round trip. It stays where it is because the Info tab never submits those form values. |
+| Rows that would not move are skipped | An all-zero row, or a 1:1 package size, produces no change — listing it would make the user reason about a no-op. |
+| Local mode only | Cloud has no locations and no `ItemStock`; a cloud `Item` carries its stock inline. |
+
+### Tests
+
+- `lib/quantityUtils.test.ts` — both directions, exact round trip (including a
+  fractional `amountPerPackage`), no integer rounding, zeros, and the
+  missing/zero/negative/NaN bail.
+- `routes/items/$id.test.tsx` (`targetUnit change — per-location stock
+  conversion`) — a **three-location** fixture with three *different* sets of
+  numbers, asserting every row converted from its own values; `packedQuantity`
+  untouched everywhere; the dialog previews per-location before → after;
+  cancelling changes nothing; a save that does not touch `targetUnit` converts
+  nothing (negative control); an empty location is neither listed nor written;
+  and no conversion without a usable `amountPerPackage`.
+- Mutation-checked per root `CLAUDE.md`: inverting the conversion direction,
+  removing the float-dust strip, rounding to integers, and converting only the
+  active location each turned the relevant tests red.
