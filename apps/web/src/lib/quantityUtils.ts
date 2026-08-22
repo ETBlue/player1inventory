@@ -180,6 +180,70 @@ export function computeFillToFull(item: {
   return { packedQuantity: item.targetQuantity, unpackedQuantity: 0 }
 }
 
+/**
+ * The three per-location quantities that are expressed in the item's TRACKING
+ * unit, and therefore stop meaning the same thing when that unit changes.
+ *
+ * `packedQuantity` is deliberately NOT one of them: it counts sealed packages,
+ * which are packages whichever unit the item is tracked in.
+ */
+export interface TrackedQuantities {
+  unpackedQuantity: number
+  targetQuantity: number
+  refillThreshold: number
+}
+
+// IEEE-754 dust guard. A single multiply/divide can leave an error in the last
+// couple of significant digits (0.3 * 3 === 0.8999999999999999), which would
+// make a package → measurement → package round trip lose the original value
+// and would surface as junk digits in the Stock tab's inputs. Twelve
+// significant figures is far more precision than any quantity input carries,
+// so this removes only the dust.
+//
+// Deliberately NOT roundToStep() and not the 3-decimal rounding ItemForm uses
+// for its in-form conversion: both are absolute, so they destroy small
+// fractions (0.5 g with 1000 g per package is 0.0005 packages, which 3-decimal
+// rounding doubles to 0.001) and break the round trip. Converting stock must
+// not invent or lose inventory.
+function stripFloatDust(value: number): number {
+  if (!Number.isFinite(value) || value === 0) return value
+  return Number(value.toPrecision(12))
+}
+
+/**
+ * Re-expresses the three tracked quantities of ONE stock row after the item's
+ * global `targetUnit` switches, using the (also global) `amountPerPackage`:
+ * package → measurement multiplies, measurement → package divides.
+ *
+ * Because `amountPerPackage` is global since v16, the same factor applies to
+ * every location — which is what makes converting every ItemStock row of an
+ * item well defined.
+ *
+ * Returns `null` when `amountPerPackage` is unusable (missing, zero, negative
+ * or NaN) — the same bail as the recipe-rescale branch, since without a factor
+ * there is no defensible conversion. Callers must leave the row untouched.
+ */
+export function convertTrackedQuantities(
+  quantities: TrackedQuantities,
+  amountPerPackage: number | undefined,
+  newTargetUnit: 'package' | 'measurement',
+): TrackedQuantities | null {
+  if (!amountPerPackage || amountPerPackage <= 0) return null
+  // Divide rather than multiply by a reciprocal: division is exactly rounded,
+  // whereas 1/amountPerPackage introduces an error before the value is used.
+  const convert = (value: number) =>
+    stripFloatDust(
+      newTargetUnit === 'measurement'
+        ? value * amountPerPackage
+        : value / amountPerPackage,
+    )
+  return {
+    unpackedQuantity: convert(quantities.unpackedQuantity),
+    targetQuantity: convert(quantities.targetQuantity),
+    refillThreshold: convert(quantities.refillThreshold),
+  }
+}
+
 export function consumeItem(item: Stock, amount: number): void {
   if (
     item.targetUnit === 'measurement' &&
