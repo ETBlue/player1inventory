@@ -67,6 +67,9 @@ async function seedCookingData(
         name: 'Test Milk',
         tagIds: [],
         vendorIds: [],
+        // Stock configuration is global to the Item since v16.
+        targetUnit: 'package',
+        consumeAmount: 1,
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })
@@ -76,12 +79,10 @@ async function seedCookingData(
         id: `stock-${milkId}`,
         itemId: milkId,
         locationId: 'local',
-        targetUnit: 'package',
         targetQuantity: 0,
         refillThreshold: 0,
         packedQuantity: 5,
         unpackedQuantity: 0,
-        consumeAmount: 1,
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })

@@ -63,23 +63,33 @@ import type { ExportPayload } from './exportData'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
 
-// Stock/unit/expiration fields that moved from Item onto ItemStock in v15.
-// Pre-v15 backups (and cloud payloads, whose Item still carries stock inline)
-// hold them on the item; the import upgrades those into 'local' ItemStock rows.
-const STOCK_FIELD_KEYS = [
+// The stock CONFIGURATION fields. Global to the item since v16 — a v15 backup
+// carries them on the stock rows and the import collapses them back up.
+const GLOBAL_STOCK_FIELD_KEYS = [
   'packageUnit',
   'measurementUnit',
   'amountPerPackage',
   'targetUnit',
+  'consumeAmount',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+] as const
+
+// The per-(item x location) stock STATE fields.
+const LOCAL_STOCK_FIELD_KEYS = [
   'targetQuantity',
   'refillThreshold',
   'packedQuantity',
   'unpackedQuantity',
-  'consumeAmount',
   'dueDate',
-  'estimatedDueDays',
-  'expirationThreshold',
-  'expirationMode',
+] as const
+
+// Every stock field, in either half. A pre-v15 backup (and a cloud payload,
+// whose Item still carries stock inline) holds all of them on the item.
+const STOCK_FIELD_KEYS = [
+  ...GLOBAL_STOCK_FIELD_KEYS,
+  ...LOCAL_STOCK_FIELD_KEYS,
 ] as const
 
 const DATE_FIELD_KEYS = ['dueDate', 'createdAt', 'updatedAt'] as const
@@ -127,7 +137,8 @@ function deserializeLocation(raw: Record<string, unknown>): Location {
 }
 
 // Build the ItemStock described by a pre-v15 item's inline fields, placed in
-// the target location.
+// the target location. Only the STATE half moves onto the row — since v16 the
+// configuration belongs to the Item and simply stays there.
 function legacyStockFromItem(
   item: Record<string, unknown>,
   locationId: string,
@@ -137,38 +148,91 @@ function legacyStockFromItem(
     itemId: item.id,
     locationId,
     // Defaults, in case an old backup lacks some of the fields.
-    targetUnit: 'package',
     targetQuantity: 0,
     refillThreshold: 0,
     packedQuantity: 0,
     unpackedQuantity: 0,
-    consumeAmount: 1,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   }
-  for (const key of STOCK_FIELD_KEYS) {
+  for (const key of LOCAL_STOCK_FIELD_KEYS) {
     if (item[key] != null) stock[key] = item[key]
   }
   return deserializeItemStock(stock)
 }
 
-// True when an item row still carries its stock inline — the pre-v15 shape. The
-// v15 upgrade (and `upgradeLegacyPayload` below) strips these off the Item, so a
-// fully split item has none of them.
+// True when an item row still carries per-location stock inline — the pre-v15
+// (and cloud) shape. Tested on the STATE half only: since v16 a correctly split
+// item legitimately carries the eight configuration fields, so testing those
+// would read every v16 item as unsplit and synthesise a bogus stock row for
+// every orphan.
 function hasInlineStock(item: Record<string, unknown>): boolean {
-  return STOCK_FIELD_KEYS.some((key) => item[key] != null)
+  return LOCAL_STOCK_FIELD_KEYS.some((key) => item[key] != null)
 }
 
-// Strip the inline stock off one pre-v15 item, returning the split item and the
-// ItemStock the inline fields describe.
+// Strip the inline per-location state off one pre-v15 item, returning the split
+// item (which keeps its global configuration) and the ItemStock the inline
+// state describes.
 function splitLegacyItem(
   raw: Record<string, unknown>,
   locationId: string,
 ): { item: Record<string, unknown>; stock: ItemStock } {
   const stock = legacyStockFromItem(raw, locationId)
   const item = { ...raw }
-  for (const key of STOCK_FIELD_KEYS) delete item[key]
+  for (const key of LOCAL_STOCK_FIELD_KEYS) delete item[key]
   return { item, stock }
+}
+
+// Collapse a v15-shaped payload — configuration on the per-location stock rows
+// — into the v16 shape, applying exactly the rule the Dexie v16 upgrade uses:
+//
+//  1. the DEFAULT location's row wins, if the item is stocked there;
+//  2. otherwise the OLDEST row by `createdAt`, tie-broken by `id`;
+//  3. an item with no rows keeps whatever it already has.
+//
+// Shape-driven and idempotent: a v16 payload has nothing left on its stock rows
+// to collapse, so it passes through untouched.
+function collapseStockConfig(payload: ExportPayload): ExportPayload {
+  const stocks = (payload.itemStocks ?? []) as Array<Record<string, unknown>>
+  const carriesConfig = stocks.some((stock) =>
+    GLOBAL_STOCK_FIELD_KEYS.some((key) => stock[key] !== undefined),
+  )
+  if (!carriesConfig) return payload
+
+  const byItemId = new Map<string, Array<Record<string, unknown>>>()
+  for (const stock of stocks) {
+    const itemId = stock.itemId as string
+    const rows = byItemId.get(itemId)
+    if (rows) rows.push(stock)
+    else byItemId.set(itemId, [stock])
+  }
+
+  const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
+    const rows = byItemId.get(raw.id as string) ?? []
+    const winner =
+      rows.find((row) => row.locationId === DEFAULT_LOCATION_ID) ??
+      [...rows].sort((a, b) => {
+        const at = new Date(a.createdAt as string | Date).getTime() || 0
+        const bt = new Date(b.createdAt as string | Date).getTime() || 0
+        if (at !== bt) return at - bt
+        return (a.id as string) < (b.id as string) ? -1 : 1
+      })[0]
+    if (!winner) return raw
+    const item = { ...raw }
+    for (const key of GLOBAL_STOCK_FIELD_KEYS) {
+      // The item's own value only loses to a row that actually carries the key.
+      if (winner[key] !== undefined) item[key] = winner[key]
+    }
+    return item
+  })
+
+  const itemStocks = stocks.map((stock) => {
+    const row = { ...stock }
+    for (const key of GLOBAL_STOCK_FIELD_KEYS) delete row[key]
+    return row
+  })
+
+  return { ...payload, items, itemStocks }
 }
 
 // Upgrade a pre-v15 backup (or a cloud payload, which keeps stock inline on the
@@ -190,7 +254,9 @@ function upgradeLegacyPayload(
   locationId: string,
 ): ExportPayload {
   if (payload.itemStocks !== undefined) {
-    return upgradeUnsplitItems(payload, locationId)
+    // Already split per location; it may still be v15-shaped (configuration on
+    // the stock rows) and may still hold items that were never split at all.
+    return upgradeUnsplitItems(collapseStockConfig(payload), locationId)
   }
 
   const itemStocks: ItemStock[] = []
@@ -299,14 +365,18 @@ export function flattenPayloadForCloud(
   // itself displays for it (see ZERO_STOCK / joinItemStock in db/operations).
   const items = (payload.items as Array<Record<string, unknown>>).map((raw) => {
     const stock = stockByItemId.get(raw.id as string)
+    // Only the per-location STATE is zeroed: the configuration is the item's
+    // own since v16 and defaulting over it would send 'package'/1 for every
+    // measurement-tracked item. `targetUnit`/`consumeAmount` are non-null in
+    // the cloud input, so they fall back only when the item itself lacks them.
     const item: Record<string, unknown> = {
       ...raw,
-      targetUnit: 'package',
+      targetUnit: raw.targetUnit ?? 'package',
+      consumeAmount: raw.consumeAmount ?? 1,
       targetQuantity: 0,
       refillThreshold: 0,
       packedQuantity: 0,
       unpackedQuantity: 0,
-      consumeAmount: 1,
     }
     if (stock) {
       for (const key of STOCK_FIELD_KEYS) {

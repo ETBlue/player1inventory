@@ -560,12 +560,11 @@ async function seedStockPagerFixture(
       id: 'a11y-pager-stock',
       itemId: A11Y_PAGER_ITEM,
       locationId: 'local',
-      targetUnit: 'package',
+      // Global configuration lives on the Item since v16.
       targetQuantity: 2,
       refillThreshold: 1,
       packedQuantity: 1,
       unpackedQuantity: 0,
-      consumeAmount: 1,
       createdAt: now,
       updatedAt: now,
     },
@@ -636,12 +635,11 @@ async function seedCookingFixture(
     id: `a11y-cooking-stock-${itemId}`,
     itemId,
     locationId,
-    targetUnit: 'package',
+    // Global configuration lives on the Item since v16.
     targetQuantity,
     refillThreshold,
     packedQuantity,
     unpackedQuantity: 0,
-    consumeAmount: 1,
     createdAt: now,
     updatedAt: now,
   })

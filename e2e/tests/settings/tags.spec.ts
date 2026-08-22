@@ -79,6 +79,9 @@ async function seedItem(page: Page, name: string, tagIds: string[] = []): Promis
           name,
           tagIds,
           vendorIds: [],
+          // Stock configuration is global to the Item since v16.
+          targetUnit: 'package',
+          consumeAmount: 0,
           createdAt: new Date(now),
           updatedAt: new Date(now),
         })
@@ -93,12 +96,10 @@ async function seedItem(page: Page, name: string, tagIds: string[] = []): Promis
           id: `stock-${itemId}`,
           itemId,
           locationId: 'local',
-          targetUnit: 'package',
           targetQuantity: 0,
           refillThreshold: 0,
           packedQuantity: 0,
           unpackedQuantity: 0,
-          consumeAmount: 0,
           createdAt: new Date(now),
           updatedAt: new Date(now),
         })
