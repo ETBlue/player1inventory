@@ -82,28 +82,33 @@ describe('v14 → v15 upgrade (Item/ItemStock split)', () => {
     // When the app opens it at version 15
     await db.open()
 
-    // Then the stock lives on an ItemStock row for the default location
+    // Then the per-location STATE lives on an ItemStock row for the default
+    // location. (Opening the app's `db` runs v15 and then v16, so the
+    // configuration half has already moved back onto the Item — see
+    // upgradeV16.test.ts.)
     const stocks = await db.itemStocks.toArray()
     expect(stocks).toHaveLength(1)
     expect(stocks[0]).toMatchObject({
       itemId: 'item-1',
       locationId: 'local',
-      packageUnit: 'bottle',
-      measurementUnit: 'ml',
-      amountPerPackage: 1000,
-      targetUnit: 'package',
       targetQuantity: 4,
       refillThreshold: 1,
       packedQuantity: 3,
       unpackedQuantity: 0.5,
+    })
+    expect(stocks[0]?.dueDate?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
+
+    // And the item row keeps its identity plus the global configuration
+    const item = (await db.items.get('item-1')) as Record<string, unknown>
+    expect(item.name).toBe('Milk')
+    expect(item).toMatchObject({
+      packageUnit: 'bottle',
+      measurementUnit: 'ml',
+      amountPerPackage: 1000,
+      targetUnit: 'package',
       consumeAmount: 250,
       expirationMode: 'date',
     })
-    expect(stocks[0].dueDate?.toISOString()).toBe('2026-03-01T00:00:00.000Z')
-
-    // And the item row keeps only its identity fields
-    const item = (await db.items.get('item-1')) as Record<string, unknown>
-    expect(item.name).toBe('Milk')
     expect(item.packedQuantity).toBeUndefined()
     expect(item.targetQuantity).toBeUndefined()
     expect(item.dueDate).toBeUndefined()

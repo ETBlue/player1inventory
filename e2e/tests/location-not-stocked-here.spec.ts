@@ -97,14 +97,13 @@ function stock(itemId: string, locationId: string): Record<string, unknown> {
     id: `stock-${itemId}-${locationId}`,
     itemId,
     locationId,
-    targetUnit: 'package',
+    // Global configuration lives on the Item since v16.
     targetQuantity: 4,
     refillThreshold: 1,
     // 3 of a target of 4, above the refill threshold — neither empty nor low,
     // so no health badge text competes with the divider's own "N ..." string.
     packedQuantity: 3,
     unpackedQuantity: 0,
-    consumeAmount: 1,
     createdAt: now,
     updatedAt: now,
   }

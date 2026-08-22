@@ -14,6 +14,8 @@ The **item detail Stock tab** is the deliberate exception: it pages across **all
 
 **Cloud mode has no locations.** `Location`/`ItemStock` have no GraphQL backend yet (deferred in PR D): a cloud `Item` carries its stock inline and its carts are keyed bare. Each page's cloud branch therefore keeps its pre-split behaviour, and the two location mutations (`useAddItemToLocation` / `useRemoveItemFromLocation`) **throw** rather than write local rows the cloud UI never reads.
 
+**When cloud gains locations, multi-row writes must become atomic there too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side transaction, not a sequence of Apollo calls. The item unit switch is the live example — see `items/CLAUDE.md`.
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.

@@ -20,20 +20,24 @@ describe('ItemForm stories smoke tests', () => {
     expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument()
   })
 
-  it('InfoSection shows the new note and wikidata fields', () => {
+  it('InfoSection shows the note and wikidata fields plus the global stock settings', () => {
     render(<InfoSection />)
     // Note textarea is rendered in the info section
     expect(screen.getByRole('textbox', { name: /note/i })).toBeInTheDocument()
     expect(
       screen.getByRole('textbox', { name: /wikidata/i }),
     ).toBeInTheDocument()
-    // Package unit lives in the stock section, so it should NOT be here
-    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
+    // Package unit is a GLOBAL setting since v16, so it lives here
+    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
+    // …and the per-location numbers do not
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
   })
 
-  it('StockSection shows the package unit field', () => {
+  it('StockSection shows the per-location quantity fields, not the global settings', () => {
     render(<StockSection />)
-    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/target quantity/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
   })
 
   it('EditMode renders without error', () => {

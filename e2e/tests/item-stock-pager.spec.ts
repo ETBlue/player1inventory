@@ -57,12 +57,12 @@ function stock(
     id,
     itemId: ITEM,
     locationId,
-    targetUnit: 'package',
+    // Configuration (targetUnit / consumeAmount / units) is a global Item
+    // field since v16 — a stock row carries per-location state only.
     targetQuantity: 4,
     refillThreshold: 1,
     packedQuantity,
     unpackedQuantity: 0,
-    consumeAmount: 1,
     createdAt: now,
     updatedAt: now,
   }

@@ -904,6 +904,132 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     expect(stocked[0].packedQuantity).toBe(3)
   })
 
+  // A v15 export carries the eight configuration fields on the STOCK rows.
+  // Import must apply the same collapse rule the v16 Dexie upgrade does.
+  it('user can restore a v15 backup — per-location settings collapse onto the item', async () => {
+    // Given a v15 backup whose stock rows disagree about the configuration
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Milk')],
+      itemStocks: [
+        makeStock('stock-office', 'item-1', 'office', {
+          packageUnit: 'carton',
+          consumeAmount: 5,
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        }),
+        makeStock('stock-home', 'item-1', 'local', {
+          packageUnit: 'bottle',
+          measurementUnit: 'ml',
+          amountPerPackage: 1000,
+          targetUnit: 'measurement',
+          consumeAmount: 250,
+          expirationMode: 'days from purchase',
+          estimatedDueDays: 7,
+          expirationThreshold: 2,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      ],
+      locations: [
+        makeLocation('local', 'My Home', 0),
+        makeLocation('office', 'Office', 1),
+      ],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then the default location's settings win, on the global item
+    expect(await db.items.get('item-1')).toMatchObject({
+      packageUnit: 'bottle',
+      measurementUnit: 'ml',
+      amountPerPackage: 1000,
+      targetUnit: 'measurement',
+      consumeAmount: 250,
+      expirationMode: 'days from purchase',
+      estimatedDueDays: 7,
+      expirationThreshold: 2,
+    })
+
+    // And no stock row carries configuration any more
+    for (const stock of await db.itemStocks.toArray()) {
+      expect(stock).not.toHaveProperty('packageUnit')
+      expect(stock).not.toHaveProperty('consumeAmount')
+      expect(stock).not.toHaveProperty('targetUnit')
+    }
+  })
+
+  it('user can restore a v15 backup of an item stocked nowhere near home — the oldest row wins', async () => {
+    // Given a v15 backup whose item is not stocked at the default location
+    const payload = emptyPayload({
+      items: [makeSplitItem('item-1', 'Flour')],
+      itemStocks: [
+        makeStock('stock-b', 'item-1', 'office', {
+          packageUnit: 'newer-bag',
+          createdAt: new Date('2026-05-05T00:00:00.000Z'),
+        }),
+        makeStock('stock-a', 'item-1', 'cabin', {
+          packageUnit: 'oldest-sack',
+          createdAt: new Date('2025-05-05T00:00:00.000Z'),
+        }),
+      ],
+      locations: [
+        makeLocation('local', 'My Home', 0),
+        makeLocation('cabin', 'Cabin', 1),
+        makeLocation('office', 'Office', 2),
+      ],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then the oldest stock row's settings win
+    expect(await db.items.get('item-1')).toMatchObject({
+      packageUnit: 'oldest-sack',
+    })
+  })
+
+  it('user can restore a v16 backup unchanged — settings already on the item stay put', async () => {
+    // Given a v16 backup: configuration on the item, state on the stock rows
+    const payload = emptyPayload({
+      items: [
+        {
+          ...makeSplitItem('item-1', 'Sugar'),
+          packageUnit: 'jar',
+          targetUnit: 'measurement',
+          measurementUnit: 'g',
+          amountPerPackage: 750,
+          consumeAmount: 25,
+        },
+      ],
+      itemStocks: [
+        {
+          id: 'stock-home',
+          itemId: 'item-1',
+          locationId: 'local',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 3,
+          unpackedQuantity: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      locations: [makeLocation('local', 'My Home', 0)],
+    })
+
+    // When restoring it
+    await importLocalData(payload, 'clear')
+
+    // Then nothing was collapsed away or defaulted over
+    expect(await db.items.get('item-1')).toMatchObject({
+      packageUnit: 'jar',
+      targetUnit: 'measurement',
+      measurementUnit: 'g',
+      amountPerPackage: 750,
+      consumeAmount: 25,
+    })
+    expect((await db.itemStocks.get('stock-home'))?.packedQuantity).toBe(3)
+  })
+
   it('user can restore a legacy (pre-v15) backup — inline stock becomes local stock', async () => {
     // Given a pre-v15 backup whose stock fields still live on the item
     const legacyItem = {
@@ -918,7 +1044,7 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
     // When restoring it
     await importLocalData(payload, 'skip')
 
-    // Then a 'local' ItemStock is synthesised from the inline fields
+    // Then a 'local' ItemStock is synthesised from the inline STATE fields
     const stocks = await db.itemStocks.toArray()
     expect(stocks).toHaveLength(1)
     expect(stocks[0]).toMatchObject({
@@ -926,9 +1052,13 @@ describe('importLocalData — item stock and locations (v15 split)', () => {
       locationId: 'local',
       packedQuantity: 7,
       targetQuantity: 9,
+    })
+    expect(stocks[0]?.dueDate).toBeInstanceOf(Date)
+    // …while the configuration stays on the global item
+    expect(stocks[0]).not.toHaveProperty('packageUnit')
+    expect(await db.items.get('item-1')).toMatchObject({
       packageUnit: 'bottle',
     })
-    expect(stocks[0].dueDate).toBeInstanceOf(Date)
 
     // And the pantry is populated, while the item row no longer carries stock
     const stocked = await getStockedItems('local')
@@ -2158,6 +2288,108 @@ describe('importCloudData — local → cloud stock flattening (v15 split)', () 
     })
     // And the Date dueDate is serialised as an ISO string for GraphQL
     expect(items[0].dueDate).toBe('2026-06-01T00:00:00.000Z')
+  })
+
+  // A cloud Item carries stock inline, so flattening must merge BOTH halves:
+  // the global configuration off the item and the state off the stock row.
+  // The zeroed defaults must not overwrite the item's own configuration.
+  it('user migrating to cloud keeps the item’s global settings alongside the location stock', async () => {
+    // Given a v16 payload: configuration on the item, state on the stock row
+    const payload = emptyPayload({
+      items: [
+        {
+          ...splitItem('item-1', 'Olive Oil'),
+          packageUnit: 'bottle',
+          measurementUnit: 'ml',
+          amountPerPackage: 750,
+          targetUnit: 'measurement',
+          consumeAmount: 15,
+          expirationMode: 'days from purchase',
+          estimatedDueDays: 180,
+          expirationThreshold: 14,
+        },
+      ],
+      itemStocks: [
+        {
+          id: 'stock-home',
+          itemId: 'item-1',
+          locationId: 'local',
+          targetQuantity: 1500,
+          refillThreshold: 250,
+          packedQuantity: 2,
+          unpackedQuantity: 300,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When migrating with 'local' active
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'local',
+    })
+
+    // Then the cloud item carries both halves
+    const items = sentItems(client)
+    expect(items[0]).toMatchObject({
+      id: 'item-1',
+      packageUnit: 'bottle',
+      measurementUnit: 'ml',
+      amountPerPackage: 750,
+      targetUnit: 'measurement',
+      consumeAmount: 15,
+      expirationMode: 'days from purchase',
+      estimatedDueDays: 180,
+      expirationThreshold: 14,
+      targetQuantity: 1500,
+      refillThreshold: 250,
+      packedQuantity: 2,
+      unpackedQuantity: 300,
+    })
+  })
+
+  it('an item not stocked in the active location keeps its global settings, with zeroed state', async () => {
+    // Given Rice's settings are global but it is not stocked where we are
+    const payload = emptyPayload({
+      items: [
+        {
+          ...splitItem('item-2', 'Rice'),
+          packageUnit: 'sack',
+          consumeAmount: 4,
+          targetUnit: 'package',
+        },
+      ],
+      itemStocks: [
+        {
+          id: 'stock-home',
+          itemId: 'item-2',
+          locationId: 'local',
+          targetQuantity: 3,
+          refillThreshold: 1,
+          packedQuantity: 5,
+          unpackedQuantity: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    const client = makeCloudClient()
+
+    // When migrating with 'office' active
+    await importCloudData(payload, 'skip', client as never, {
+      locationId: 'office',
+    })
+
+    // Then the state zeroes out but the configuration survives
+    const items = sentItems(client)
+    expect(items[0]).toMatchObject({
+      id: 'item-2',
+      packageUnit: 'sack',
+      consumeAmount: 4,
+      packedQuantity: 0,
+      targetQuantity: 0,
+    })
   })
 
   it('an item not stocked in the active location is still sent, with zeroed stock', async () => {

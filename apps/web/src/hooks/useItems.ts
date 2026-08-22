@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { UnitSwitchBatchInput } from '@/db/operations'
 import {
   addItemToLocation,
+  applyUnitSwitchBatch,
   createItem,
   deleteItem,
   getAllItems,
@@ -431,6 +433,43 @@ export function useUpdateItem() {
   }
 
   return localMutation
+}
+
+// Commit a unit switch — the Item's configuration, every location's converted
+// quantities, and every recipe amount expressed in the old unit — as ONE Dexie
+// transaction (`applyUnitSwitchBatch`). Doing it as 1 + N + M separate
+// mutations can leave the item on the new unit while some rows still hold
+// old-unit numbers.
+//
+// Local-mode only, like the other location-aware mutations: cloud has no
+// Location or ItemStock, and Apollo has no client-side transaction to borrow.
+// The Info tab keeps its sequential path there rather than fake atomicity.
+export function useApplyUnitSwitch() {
+  const queryClient = useQueryClient()
+  const { mode } = useDataMode()
+  const { activeLocationId } = useActiveLocation()
+
+  return useMutation({
+    mutationFn: (input: UnitSwitchBatchInput) => {
+      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
+      return applyUnitSwitchBatch({
+        ...input,
+        locationId: input.locationId ?? activeLocationId,
+      })
+    },
+    // One pass over every family the transaction touched. Listed in full rather
+    // than relying on prefix matching so a reader can see the coverage: missing
+    // one shows up as a stale screen after a successful save, not as an error.
+    onSuccess: (_, { itemId }) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] })
+      queryClient.invalidateQueries({ queryKey: ['items', itemId] })
+      queryClient.invalidateQueries({ queryKey: ['items', 'countByTag'] })
+      queryClient.invalidateQueries({ queryKey: ['items', 'countByVendor'] })
+      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
+      queryClient.invalidateQueries({ queryKey: ['recipes'] })
+      queryClient.invalidateQueries({ queryKey: ['recipes', 'itemCount'] })
+    },
+  })
 }
 
 export function useDeleteItem() {

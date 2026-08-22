@@ -1,7 +1,10 @@
-import type { ExpirationMode, StockFields } from '@/types'
+import type { ExpirationMode, StockConfigFields, StockFields } from '@/types'
 
 export function inferExpirationMode(
-  item: Pick<StockFields, 'expirationMode' | 'dueDate' | 'estimatedDueDays'>,
+  item: Pick<
+    StockFields & StockConfigFields,
+    'expirationMode' | 'dueDate' | 'estimatedDueDays'
+  >,
 ): ExpirationMode {
   return (
     item.expirationMode ??
@@ -14,7 +17,10 @@ export function inferExpirationMode(
 }
 
 export function computeExpiryDate(
-  item: Pick<StockFields, 'expirationMode' | 'dueDate' | 'estimatedDueDays'>,
+  item: Pick<
+    StockFields & StockConfigFields,
+    'expirationMode' | 'dueDate' | 'estimatedDueDays'
+  >,
   lastPurchaseDate?: Date,
 ): Date | undefined {
   const mode = inferExpirationMode(item)

@@ -247,6 +247,14 @@
         "title": "Delete Item?",
         "description": "Are you sure you want to delete {{name}}? This will permanently remove this item and its history."
       },
+      "unitSwitchDialog": {
+        "title": "Update stock numbers?",
+        "description": "Now tracking in {{unit}}. Unpacked, Target Quantity and Refill When Below convert in every location; packed packages are unchanged.",
+        "locationHeader": "Location",
+        "unpackedHeader": "Unpacked",
+        "targetHeader": "Target Quantity",
+        "refillHeader": "Refill When Below"
+      },
       "recipeAdjustDialog": {
         "title": "Update recipe amounts?",
         "description": "Amount per consume changed from {{from}} to {{to}}. The following recipes will be adjusted:",

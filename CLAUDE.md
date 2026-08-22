@@ -54,7 +54,7 @@ Components never access the database directly — they use Query hooks from `src
 
 ## Local Database & Dexie Schema
 
-> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` migrations, the Item/ItemStock join, and the three cascades.
+> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` / v16 global-stock-settings migrations, the Item/ItemStock join (configuration on `Item`, per-location state on `ItemStock`), and the three cascades.
 
 ## Backend & Prisma Migrations
 

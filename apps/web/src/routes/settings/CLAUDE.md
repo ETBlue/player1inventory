@@ -1,3 +1,16 @@
+### Known gap — the Items tabs still leak location-scoped stock
+
+Settings entities (tags, vendors, recipes, shelves) are **global**, and the four
+`…/$id/items` assignment tabs are meant to be too. They still classify with a bare
+`isInactive()` over `useItems()`, which joins every item against the **active
+location's** `ItemStock` — so an item stocked only elsewhere arrives zeroed and
+reads as inactive on a page that should not know about locations at all.
+
+The v16 field move (stock configuration onto `Item` — see `src/db/CLAUDE.md`) is
+**part 1** of the fix and does not close this: `targetQuantity`, which
+`isInactive` reads, is deliberately still per-location. **Part 2** (issue #247)
+rescopes these pages. The gap is real in the window between the two PRs.
+
 ### Cascade Deletion
 
 Deleting a tag, tag type, or vendor automatically cleans up all item references:

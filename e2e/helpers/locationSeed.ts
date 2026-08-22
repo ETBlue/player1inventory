@@ -95,20 +95,17 @@ export async function splitInlineStock(page: Page): Promise<void> {
           reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
 
+    // Only the per-location STATE moves onto the stock row. The eight
+    // configuration fields (packageUnit, measurementUnit, amountPerPackage,
+    // targetUnit, consumeAmount, estimatedDueDays, expirationThreshold,
+    // expirationMode) are global Item fields since v16 — they stay on the
+    // seeded item, and a copy left on the row would shadow it in the join.
     const STOCK_KEYS = [
-      'packageUnit',
-      'measurementUnit',
-      'amountPerPackage',
-      'targetUnit',
       'targetQuantity',
       'refillThreshold',
       'packedQuantity',
       'unpackedQuantity',
-      'consumeAmount',
       'dueDate',
-      'estimatedDueDays',
-      'expirationThreshold',
-      'expirationMode',
     ]
 
     const items = await getAll('items')
@@ -125,12 +122,10 @@ export async function splitInlineStock(page: Page): Promise<void> {
         id: `stock-${id}`,
         itemId: id,
         locationId,
-        targetUnit: 'package',
         targetQuantity: 0,
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
         createdAt: (item.createdAt as Date) ?? now,
         updatedAt: now,
       }

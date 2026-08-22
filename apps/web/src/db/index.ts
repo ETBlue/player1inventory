@@ -29,6 +29,9 @@ const db = new Dexie('Player1Inventory') as Dexie & {
 }
 
 // Stock/unit/expiration fields that moved from Item onto ItemStock in v15.
+// (Eight of them moved back onto Item in v16 — see GLOBAL_STOCK_FIELD_KEYS.
+//  This list is frozen: it describes the v15 upgrade and must keep describing
+//  a database built only from committed history.)
 const STOCK_FIELD_KEYS = [
   'packageUnit',
   'measurementUnit',
@@ -428,6 +431,101 @@ db.version(15)
           ci.cartId = newId
         })
     }
+  })
+
+// Stock CONFIGURATION fields that move from ItemStock back onto Item in v16.
+// Configuration does not vary by location; only the five remaining ItemStock
+// fields (packedQuantity, unpackedQuantity, targetQuantity, refillThreshold,
+// dueDate) do.
+const GLOBAL_STOCK_FIELD_KEYS = [
+  'packageUnit',
+  'measurementUnit',
+  'amountPerPackage',
+  'targetUnit',
+  'consumeAmount',
+  'estimatedDueDays',
+  'expirationThreshold',
+  'expirationMode',
+] as const
+
+// Version 16: Global stock settings — the eight CONFIGURATION fields move off
+// the per-location ItemStock and onto the global Item. No index changes: none
+// of the eight is indexed in v15's `items` or `itemStocks` store definitions.
+//
+// Collapse rule when an item is stocked in several locations (one value per
+// field must win):
+//  1. the DEFAULT location's row, if the item is stocked there;
+//  2. otherwise the OLDEST row by `createdAt`, tie-broken by `id` so the result
+//     is deterministic (`updatedAt` was rejected — it also moves on quantity
+//     edits, so the winner would be wherever the user last shopped);
+//  3. an item with no rows at all (an orphan) takes the field defaults.
+//
+// Idempotent: a value already on the item is only overwritten by a stock row
+// that still carries that key, so a repeat run over already-stripped rows is a
+// no-op. Depends on nothing that exists only at runtime.
+db.version(16)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade(async (tx) => {
+    const defaultLocationId = DEFAULT_LOCATION_ID
+
+    const stocks = (await tx.table('itemStocks').toArray()) as Array<
+      Record<string, unknown>
+    >
+    const byItemId = new Map<string, Array<Record<string, unknown>>>()
+    for (const stock of stocks) {
+      const itemId = stock.itemId as string
+      const rows = byItemId.get(itemId)
+      if (rows) rows.push(stock)
+      else byItemId.set(itemId, [stock])
+    }
+
+    const items = (await tx.table('items').toArray()) as Array<
+      Record<string, unknown>
+    >
+    for (const item of items) {
+      const rows = byItemId.get(item.id as string) ?? []
+      const winner =
+        rows.find((row) => row.locationId === defaultLocationId) ??
+        [...rows].sort((a, b) => {
+          const at = (a.createdAt as Date | undefined)?.getTime() ?? 0
+          const bt = (b.createdAt as Date | undefined)?.getTime() ?? 0
+          if (at !== bt) return at - bt
+          return (a.id as string) < (b.id as string) ? -1 : 1
+        })[0]
+
+      const update: Record<string, unknown> = {}
+      for (const key of GLOBAL_STOCK_FIELD_KEYS) {
+        // The stock row wins when it still carries the key; otherwise keep what
+        // the item already has (idempotency), otherwise leave it unset.
+        const value = winner?.[key] !== undefined ? winner[key] : item[key]
+        if (value !== undefined) update[key] = value
+      }
+      // The two required fields must end up set even for an orphan.
+      if (update.targetUnit === undefined) update.targetUnit = 'package'
+      if (update.consumeAmount === undefined) update.consumeAmount = 1
+
+      await tx.table('items').update(item.id as string, update)
+    }
+
+    // Strip the configuration off every stock row — it is global now.
+    await tx
+      .table('itemStocks')
+      .toCollection()
+      .modify((stock: Record<string, unknown>) => {
+        for (const key of GLOBAL_STOCK_FIELD_KEYS) delete stock[key]
+      })
   })
 
 // Fresh-DB seed: `on('populate')` fires exactly once, when the database is

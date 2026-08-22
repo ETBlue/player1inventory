@@ -9,8 +9,10 @@ import {
   addToCart,
   createItem,
   createLocation,
+  createRecipe,
   getItem,
   getItemStock,
+  upsertItemStock,
 } from '@/db/operations'
 import { GetRecipesDocument } from '@/generated/graphql'
 import type { PantryItem } from '@/types'
@@ -20,6 +22,7 @@ import { useItemSortData } from './useItemSortData'
 import { useItemStocks } from './useItemStocks'
 import {
   useAddItemToLocation,
+  useApplyUnitSwitch,
   useCartItemCountByItem,
   useCreateItem,
   useDeleteItem,
@@ -31,6 +34,7 @@ import {
   useStockedItems,
   useUpdateItem,
 } from './useItems'
+import { useRecipes } from './useRecipes'
 import { useCartItems } from './useShoppingCart'
 
 const mockUseGetItemQuery = vi.fn()
@@ -58,6 +62,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // Cloud read paths that are `skip`ped in local mode but would still demand
     // an ApolloProvider. Stubbed so local-mode hooks can be rendered here.
     useCartItemsQuery: () => ({ data: undefined, loading: false }),
+    useGetRecipesQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
   }
 })
 
@@ -737,5 +746,115 @@ describe('location mutations refuse to run in cloud mode', () => {
       result.current.mutateAsync({ itemId: item.id }),
     ).rejects.toThrow(/local/i)
     expect(await db.itemStocks.toArray()).toHaveLength(0)
+  })
+})
+
+// A unit switch writes the Item, every location's ItemStock and every affected
+// recipe in ONE transaction — so every family it touched has to be invalidated
+// in one pass. A missed invalidation shows up as a stale screen after a
+// SUCCESSFUL save, never as an error, so it is asserted through the REAL
+// consumer hooks sharing one QueryClient with the mutation rather than by
+// spying on invalidateQueries (which would only prove the call was made).
+describe('useApplyUnitSwitch invalidates every affected query family', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.recipes.clear()
+    await db.locations.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  })
+
+  it('the item, both location stock rows and the recipe all re-resolve after a unit switch', async () => {
+    // Given an item tracked in grams (500 g per pack), stocked in the active
+    // location and a cabin, used by one recipe — one live reader cached per
+    // affected key family
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      {
+        name: 'Flour',
+        tagIds: [],
+        packageUnit: 'pack',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        targetUnit: 'measurement',
+        consumeAmount: 100,
+        targetQuantity: 1000,
+        refillThreshold: 200,
+        unpackedQuantity: 250,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await upsertItemStock(item.id, cabin.id, {
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      unpackedQuantity: 100,
+    })
+    const recipe = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 500 }],
+    })
+
+    const { result } = renderHook(
+      () => ({
+        item: useItem(item.id), // ['items', id, …]
+        stocks: useItemStocks(item.id), // ['itemStocks', …]
+        recipes: useRecipes(), // ['recipes']
+        apply: useApplyUnitSwitch(),
+      }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => {
+      expect(result.current.item.data?.targetUnit).toBe('measurement')
+      expect(result.current.stocks.data).toHaveLength(2)
+      expect(result.current.recipes.data?.[0]?.items[0]?.defaultAmount).toBe(
+        500,
+      )
+    })
+
+    // When the switch to packages is committed
+    await result.current.apply.mutateAsync({
+      itemId: item.id,
+      updates: { targetUnit: 'package', consumeAmount: 1 },
+      stockConversions: [
+        {
+          locationId: DEFAULT_LOCATION_ID,
+          quantities: {
+            unpackedQuantity: 0.5,
+            targetQuantity: 2,
+            refillThreshold: 0.4,
+          },
+        },
+        {
+          locationId: cabin.id,
+          quantities: {
+            unpackedQuantity: 0.2,
+            targetQuantity: 4,
+            refillThreshold: 1,
+          },
+        },
+      ],
+      recipeUpdates: [
+        {
+          recipeId: recipe.id,
+          items: [{ itemId: item.id, defaultAmount: 1 }],
+        },
+      ],
+    })
+
+    // Then every cached reader re-resolves on its own — the screen is not stale
+    await waitFor(() => {
+      // the Item's configuration, joined with the active location's new numbers
+      expect(result.current.item.data?.targetUnit).toBe('package')
+      expect(result.current.item.data?.targetQuantity).toBe(2)
+      // the OTHER location's raw stock row, which only ['itemStocks'] covers
+      expect(
+        result.current.stocks.data?.find((s) => s.locationId === cabin.id)
+          ?.targetQuantity,
+      ).toBe(4)
+      // the recipe amount, which only ['recipes'] covers
+      expect(result.current.recipes.data?.[0]?.items[0]?.defaultAmount).toBe(1)
+    })
   })
 })

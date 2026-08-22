@@ -6,6 +6,7 @@ import {
   computePack,
   computeUnpack,
   consumeItem,
+  convertTrackedQuantities,
   getCurrentQuantity,
   getItemPackUnits,
   getPackedTotal,
@@ -952,5 +953,109 @@ describe('getItemPackUnits', () => {
     }
     // packed = 3 + 250 / 500 = 3.5
     expect(getItemPackUnits(item).packed).toBe(3.5)
+  })
+})
+
+describe('convertTrackedQuantities', () => {
+  it('package → measurement multiplies by amountPerPackage', () => {
+    // Given a row tracked in packages, 500 g per package
+    const before = {
+      unpackedQuantity: 0.5,
+      targetQuantity: 4,
+      refillThreshold: 1,
+    }
+
+    // When the item switches to measurement tracking
+    const after = convertTrackedQuantities(before, 500, 'measurement')
+
+    // Then every tracked quantity is expressed in grams
+    expect(after).toEqual({
+      unpackedQuantity: 250,
+      targetQuantity: 2000,
+      refillThreshold: 500,
+    })
+  })
+
+  it('measurement → package divides by amountPerPackage', () => {
+    // Given a row tracked in grams, 1000 g per package
+    const before = {
+      unpackedQuantity: 500,
+      targetQuantity: 3000,
+      refillThreshold: 250,
+    }
+
+    // When the item switches to package tracking
+    const after = convertTrackedQuantities(before, 1000, 'package')
+
+    // Then 500 g is half a package — NOT rounded up to 1
+    expect(after).toEqual({
+      unpackedQuantity: 0.5,
+      targetQuantity: 3,
+      refillThreshold: 0.25,
+    })
+  })
+
+  it('round trip package → measurement → package returns the original values exactly', () => {
+    // Given values that a naive float conversion would corrupt
+    // (0.3 * 3 === 0.8999999999999999, / 3 === 0.29999999999999993)
+    const original = {
+      unpackedQuantity: 0.3,
+      targetQuantity: 2.7,
+      refillThreshold: 1.1,
+    }
+
+    // When converted to measurement and straight back
+    const measurement = convertTrackedQuantities(original, 3, 'measurement')
+    expect(measurement).not.toBeNull()
+    const roundTripped = convertTrackedQuantities(
+      measurement as typeof original,
+      3,
+      'package',
+    )
+
+    // Then nothing has drifted
+    expect(roundTripped).toEqual(original)
+  })
+
+  it('round trip survives a fractional amountPerPackage', () => {
+    const original = {
+      unpackedQuantity: 1.25,
+      targetQuantity: 10,
+      refillThreshold: 2.5,
+    }
+    const measurement = convertTrackedQuantities(original, 0.7, 'measurement')
+    expect(measurement).not.toBeNull()
+    expect(
+      convertTrackedQuantities(measurement as typeof original, 0.7, 'package'),
+    ).toEqual(original)
+  })
+
+  it('does not round to integers — a sub-package amount stays fractional', () => {
+    // 500 g of a 1000 g package is 0.5 packages; rounding to 1 would invent
+    // half a package of inventory.
+    const after = convertTrackedQuantities(
+      { unpackedQuantity: 500, targetQuantity: 500, refillThreshold: 500 },
+      1000,
+      'package',
+    )
+    expect(after?.unpackedQuantity).toBe(0.5)
+  })
+
+  it('keeps zero at zero in both directions', () => {
+    const zero = {
+      unpackedQuantity: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+    }
+    expect(convertTrackedQuantities(zero, 250, 'measurement')).toEqual(zero)
+    expect(convertTrackedQuantities(zero, 250, 'package')).toEqual(zero)
+  })
+
+  it('returns null when amountPerPackage is missing, zero or negative', () => {
+    const q = { unpackedQuantity: 2, targetQuantity: 4, refillThreshold: 1 }
+    expect(convertTrackedQuantities(q, undefined, 'measurement')).toBeNull()
+    expect(convertTrackedQuantities(q, 0, 'measurement')).toBeNull()
+    expect(convertTrackedQuantities(q, -500, 'measurement')).toBeNull()
+    expect(convertTrackedQuantities(q, Number.NaN, 'package')).toBeNull()
   })
 })

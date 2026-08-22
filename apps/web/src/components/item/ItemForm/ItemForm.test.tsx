@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ItemForm } from '.'
@@ -8,17 +8,73 @@ describe('ItemForm — create mode (no onDirtyChange)', () => {
     // Given an ItemForm in create mode with default sections
     render(<ItemForm onSubmit={vi.fn()} />)
 
-    // Then info fields (Name) are shown and stock fields (Package Unit) are not
+    // Then info fields (Name, and the global stock settings) are shown and
+    // per-location stock fields (Packed) are not
     expect(screen.getByLabelText(/Name/i)).toBeInTheDocument()
-    expect(screen.queryByLabelText(/Package Unit/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Package Unit/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
   })
 
   it('does not render the stock fields unless sections prop includes stock', () => {
     // Given an ItemForm with sections explicitly excluding stock
     render(<ItemForm onSubmit={vi.fn()} sections={['info']} />)
 
-    // Then stock fields (Package Unit) are not shown
-    expect(screen.queryByLabelText(/Package Unit/i)).not.toBeInTheDocument()
+    // Then the per-location stock fields are not shown
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/target quantity/i)).not.toBeInTheDocument()
+  })
+
+  // Moved here from routes/items/$id.test.tsx: since v16 the "track in
+  // measurement" switch is a GLOBAL setting on the Info tab while the
+  // quantities it rescales are per-location on the Stock tab, so no single
+  // route renders both. The component still does, and the conversion is its
+  // behaviour.
+  it('user toggling track in measurement rescales the quantities held in that unit', async () => {
+    const user = userEvent.setup()
+
+    // Given a form showing both halves, tracking in measurement, 250 g unpacked
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={{
+          name: 'Flour',
+          packageUnit: 'pack',
+          measurementUnit: 'g',
+          amountPerPackage: 500,
+          targetUnit: 'measurement',
+          targetQuantity: 2000,
+          refillThreshold: 500,
+          packedQuantity: 2,
+          unpackedQuantity: 250,
+          consumeAmount: 100,
+        }}
+      />,
+    )
+
+    const unpackedInput = screen.getByLabelText(
+      /^unpacked/i,
+    ) as HTMLInputElement
+    expect(unpackedInput.value).toBe('250')
+
+    // When the user turns measurement tracking OFF
+    const trackSwitch = screen.getByRole('switch', {
+      name: /track in measurement/i,
+    })
+    await user.click(trackSwitch)
+
+    // Then the unpacked quantity converts to packs (250 g / 500 g per pack)
+    await waitFor(() => {
+      expect(unpackedInput.value).toBe('0.5')
+    })
+
+    // When the user turns it back ON
+    await user.click(trackSwitch)
+
+    // Then it converts back (0.5 × 500)
+    await waitFor(() => {
+      expect(unpackedInput.value).toBe('250')
+    })
   })
 
   it('submit button is enabled when name is filled and form is valid', async () => {
@@ -98,20 +154,20 @@ describe('ItemForm — info fields (wikidataUrl, note)', () => {
     expect(screen.getByRole('textbox', { name: /note/i })).toBeInTheDocument()
   })
 
-  it('renders packageUnit in the stock section, not the info-only section', () => {
+  it('renders packageUnit in the info section, not the per-location stock section', () => {
     // Given an info-only render
     const { rerender } = render(
       <ItemForm onSubmit={vi.fn()} sections={['info']} />,
     )
 
-    // Then packageUnit is NOT present in the info section
-    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
+    // Then packageUnit IS present — it is a global setting since v16
+    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
 
-    // When the stock section is rendered
+    // When only the per-location stock section is rendered
     rerender(<ItemForm onSubmit={vi.fn()} sections={['stock']} />)
 
-    // Then packageUnit IS present in the stock section
-    expect(screen.getByLabelText(/package unit/i)).toBeInTheDocument()
+    // Then packageUnit is NOT there — it does not vary by location
+    expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
   })
 
   it('allows an empty wikidataUrl without showing a validation error', () => {
