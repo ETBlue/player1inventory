@@ -11,6 +11,7 @@ import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import type { Item } from '@/types'
 
 const meta = {
   title: 'Pages/Cooking',
@@ -457,3 +458,177 @@ function SortByCountStory() {
 }
 
 export const SortByCount: Story = { render: () => <SortByCountStory /> }
+
+// ── Stock status stories ───────────────────────────────────────────────────
+// The recipe card's third row reports how many of a recipe's items are stocked
+// in the active location, plus the health of those that are.
+
+// Stocks an item in the active ('local') location with explicit levels.
+const stockedHere = (
+  name: string,
+  stock: {
+    targetQuantity: number
+    refillThreshold: number
+    packedQuantity: number
+  },
+) =>
+  createItem({
+    name,
+    targetUnit: 'package',
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    tagIds: [],
+    ...stock,
+  })
+
+// Creates a global item whose only stock row lives in ANOTHER location, so the
+// cooking page (scoped to 'local') sees it as not stocked here.
+const stockedElsewhere = async (name: string): Promise<Item> => {
+  const now = new Date()
+  const id = crypto.randomUUID()
+  const item: Item = { id, name, tagIds: [], createdAt: now, updatedAt: now }
+  await db.items.put(item)
+  await db.itemStocks.put({
+    id: `stock-${id}`,
+    itemId: id,
+    locationId: 'loc-elsewhere',
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: now,
+    updatedAt: now,
+  })
+  return item
+}
+
+// Story 9: every item stocked here and healthy — "2 / 2 here", no health counts
+function StockStatusHealthyStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const beef = await stockedHere('Beef Chuck', {
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 4,
+        })
+        const carrot = await stockedHere('Carrot', {
+          targetQuantity: 6,
+          refillThreshold: 2,
+          packedQuantity: 6,
+        })
+        await createRecipe({
+          name: 'Beef Stew',
+          items: [
+            { itemId: beef.id, defaultAmount: 1 },
+            { itemId: carrot.id, defaultAmount: 2 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const StockStatusHealthy: Story = {
+  render: () => <StockStatusHealthyStory />,
+}
+
+// Story 10: partly stocked here — "3 / 5 here · 1 empty · 1 low stock"
+function StockStatusPartialStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const pancetta = await stockedHere('Pancetta', {
+          targetQuantity: 4,
+          refillThreshold: 2,
+          packedQuantity: 0,
+        })
+        const pecorino = await stockedHere('Pecorino Romano', {
+          targetQuantity: 4,
+          refillThreshold: 2,
+          packedQuantity: 2,
+        })
+        const spaghetti = await stockedHere('Spaghetti', {
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 4,
+        })
+        const eggs = await stockedElsewhere('Eggs')
+        const pepper = await stockedElsewhere('Black Pepper')
+        await createRecipe({
+          name: 'Pasta Carbonara',
+          items: [
+            { itemId: pancetta.id, defaultAmount: 1 },
+            { itemId: pecorino.id, defaultAmount: 1 },
+            { itemId: spaghetti.id, defaultAmount: 1 },
+            { itemId: eggs.id, defaultAmount: 2 },
+            { itemId: pepper.id, defaultAmount: 1 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const StockStatusPartial: Story = {
+  render: () => <StockStatusPartialStory />,
+}
+
+// Story 11: nothing stocked here — "0 / 2 here", dimmed card, disabled checkbox
+function StockStatusUnavailableStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const paste = await stockedElsewhere('Red Curry Paste')
+        const coconut = await stockedElsewhere('Coconut Milk')
+        await createRecipe({
+          name: 'Thai Curry',
+          items: [
+            { itemId: paste.id, defaultAmount: 1 },
+            { itemId: coconut.id, defaultAmount: 1 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const StockStatusUnavailable: Story = {
+  render: () => <StockStatusUnavailableStory />,
+}
+
+// Story 12: the split list — a recipe stocked here on top, one with nothing
+// stocked here below the "N not stocked here" divider (still disabled).
+function NotStockedHereSplitStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const beef = await stockedHere('Beef Chuck', {
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 4,
+        })
+        await createRecipe({
+          name: 'Beef Stew',
+          items: [{ itemId: beef.id, defaultAmount: 1 }],
+        })
+
+        const paste = await stockedElsewhere('Red Curry Paste')
+        const coconut = await stockedElsewhere('Coconut Milk')
+        await createRecipe({
+          name: 'Thai Curry',
+          items: [
+            { itemId: paste.id, defaultAmount: 1 },
+            { itemId: coconut.id, defaultAmount: 1 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const NotStockedHereSplit: Story = {
+  render: () => <NotStockedHereSplitStory />,
+}

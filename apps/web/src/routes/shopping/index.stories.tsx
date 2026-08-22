@@ -8,7 +8,12 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { addToCart, createItem, createVendor } from '@/db/operations'
+import {
+  addToCart,
+  createItem,
+  createLocation,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -172,4 +177,62 @@ export const WithVendors: Story = {
 
 export const WithVendorCarts: Story = {
   render: () => <WithVendorCartsStory />,
+}
+
+// The split list — a vendor stocked in the active location on top, then the
+// "N not stocked here" divider, then a vendor whose only item lives in another
+// location and the (here-empty) no-vendor bucket.
+function WithNotStockedHereStory() {
+  return (
+    <ShoppingIndexStory
+      setup={async () => {
+        const costco = await createVendor('Costco')
+        await createItem({
+          name: 'Milk',
+          tagIds: [],
+          vendorIds: [costco.id],
+          targetUnit: 'package',
+          targetQuantity: 4,
+          refillThreshold: 2,
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+
+        const cabin = await createLocation('Cabin')
+        const cabinSupply = await createVendor('Cabin Supply')
+        await createItem(
+          {
+            name: 'Firewood',
+            tagIds: [],
+            vendorIds: [cabinSupply.id],
+            targetUnit: 'package',
+            targetQuantity: 6,
+            refillThreshold: 2,
+            packedQuantity: 4,
+            unpackedQuantity: 0,
+            consumeAmount: 1,
+          },
+          cabin.id,
+        )
+        await createItem(
+          {
+            name: 'Kindling',
+            tagIds: [],
+            targetUnit: 'package',
+            targetQuantity: 2,
+            refillThreshold: 1,
+            packedQuantity: 1,
+            unpackedQuantity: 0,
+            consumeAmount: 1,
+          },
+          cabin.id,
+        )
+      }}
+    />
+  )
+}
+
+export const WithNotStockedHere: Story = {
+  render: () => <WithNotStockedHereStory />,
 }

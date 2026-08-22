@@ -86,9 +86,7 @@ function LocationRow({
 
         <CardTitle className="flex items-center gap-2 truncate">
           <MapPin className="h-4 w-4 shrink-0 text-foreground-muted" />
-          <span className="font-medium capitalize truncate">
-            {location.name}
-          </span>
+          <span className="font-medium truncate">{location.name}</span>
           {isDefault && (
             <span className="text-xs font-normal text-foreground-muted">
               {t('settings.locations.defaultHint')}
@@ -208,9 +206,7 @@ export function LocationList({
         {activeLocation && (
           <div className="flex items-center gap-2 px-3 py-2 bg-background-surface border border-border rounded-md shadow-lg opacity-90">
             <GripVertical className="h-4 w-4 text-foreground-muted" />
-            <span className="text-sm font-medium capitalize">
-              {activeLocation.name}
-            </span>
+            <span className="text-sm font-medium">{activeLocation.name}</span>
           </div>
         )}
       </DragOverlay>

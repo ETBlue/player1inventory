@@ -4,11 +4,16 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { addToCart, createItem, createVendor } from '@/db/operations'
+import {
+  addToCart,
+  createItem,
+  createLocation,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
@@ -24,6 +29,7 @@ describe('Vendor cart page', () => {
     await db.shoppingCarts.clear()
     await db.cartItems.clear()
     await db.vendors.clear()
+    await db.locations.clear()
     sessionStorage.clear()
 
     queryClient = new QueryClient({
@@ -444,5 +450,116 @@ describe('Vendor cart page', () => {
         screen.queryByText(/abandon this shopping trip/i),
       ).not.toBeInTheDocument()
     })
+  })
+
+  it('user can see the active-location switcher in the cart toolbar', async () => {
+    // Given a vendor exists
+    const vendor = await createVendor('Costco')
+
+    // When user navigates to the vendor cart
+    renderVendorCart(vendor.id)
+
+    // Then the location switcher trigger is rendered in the toolbar.
+    // Scoped to <main>: the desktop Sidebar mounts its own switcher, and jsdom
+    // loads no CSS so the toolbar's `lg:hidden` copy is in the DOM too.
+    const main = await screen.findByRole('main')
+    await waitFor(() =>
+      expect(
+        within(main).getByRole('button', { name: /switch location/i }),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it('switching the active location shows the target location cart, not the previous one', async () => {
+    // Given a second location exists, and the vendor cart at the default
+    // location ("My Home") already has a checked item
+    await createLocation('Office')
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      vendorIds: [vendor.id],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 2)
+
+    // When user navigates to the vendor cart
+    renderVendorCart(vendor.id)
+
+    // Then the cart shows 2 packs (My Home's cart)
+    await screen.findByText(/2 packs/i)
+
+    // When the user switches the active location to "Office" from the toolbar
+    // switcher (scoped to <main> — the Sidebar mounts one too)
+    const switcherTrigger = within(await screen.findByRole('main')).getByRole(
+      'button',
+      { name: /switch location/i },
+    )
+    await userEvent.click(switcherTrigger)
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Office' }),
+    )
+
+    // Then the cart re-reads cleanly: it shows Office's fresh (empty) cart,
+    // not stale rows carried over from My Home
+    await waitFor(() => {
+      expect(screen.getByText(/0 packs/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/2 packs/i)).not.toBeInTheDocument()
+  })
+
+  it('an item not stocked in the active location appears in neither the active nor inactive section (R4)', async () => {
+    // Given the vendor has one item stocked at the active location (My Home)
+    // and one item stocked ONLY at Cabin. useItems() joins every item against
+    // the active location's ItemStock, so the Cabin-only item arrives here as
+    // ZERO_STOCK (targetQuantity: 0, no stockId) — a shape indistinguishable
+    // from a real inactive item unless the page checks stockId first.
+    const cabin = await createLocation('Cabin')
+    const vendor = await createVendor('Costco')
+    await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Firewood',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      cabin.id,
+    )
+
+    // When the user opens the Costco vendor cart at the default active
+    // location (My Home)
+    renderVendorCart(vendor.id)
+
+    // Then the item stocked here (Milk) is shown
+    expect(await screen.findByText('Milk')).toBeInTheDocument()
+
+    // And the item stocked only at Cabin (Firewood) is shown nowhere on the
+    // page — not in the active section, not in the inactive section, not
+    // counted among the "N inactive" pending items
+    expect(screen.queryByText('Firewood')).not.toBeInTheDocument()
   })
 })

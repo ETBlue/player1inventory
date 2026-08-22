@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import {
   createItem,
+  createLocation,
   createRecipe,
   createShelf,
   createVendor,
@@ -164,6 +165,31 @@ function ShelfGroupViewStory() {
         itemIds: [item.id],
       })
 
+      // A shelf whose only item is stocked in another location, so the story
+      // shows the split state: it sinks below the "N not stocked here" divider
+      // together with the (here-empty) Unsorted bucket.
+      const cabin = await createLocation('Cabin')
+      const firewood = await createItem(
+        {
+          name: 'Firewood',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 6,
+          refillThreshold: 2,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        },
+        cabin.id,
+      )
+
+      await createShelf({
+        name: 'woodpile',
+        type: 'selection',
+        order: 1,
+        itemIds: [firewood.id],
+      })
+
       setReady(true)
     }
     setup()
@@ -213,6 +239,41 @@ function VendorGroupViewStory() {
         unpackedQuantity: 0,
         consumeAmount: 1,
       })
+
+      // A vendor whose only item is stocked in another location, plus an
+      // unfiled item that lives only there too — so the story shows the split
+      // state: both sink below the "N not stocked here" divider.
+      const cabin = await createLocation('Cabin')
+      const cabinSupply = await createVendor('Cabin Supply')
+
+      await createItem(
+        {
+          name: 'Firewood',
+          tagIds: [],
+          vendorIds: [cabinSupply.id],
+          targetUnit: 'package',
+          targetQuantity: 6,
+          refillThreshold: 2,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        },
+        cabin.id,
+      )
+
+      await createItem(
+        {
+          name: 'Kindling',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        },
+        cabin.id,
+      )
 
       setReady(true)
     }
@@ -264,6 +325,43 @@ function RecipeGroupViewStory() {
       await createRecipe({
         name: 'Pasta Carbonara',
         items: [{ itemId: item.id, defaultAmount: 1 }],
+      })
+
+      // A recipe built only from an item stocked in another location, plus an
+      // item in no recipe that lives only there too — so the story shows the
+      // split state: both sink below the "N not stocked here" divider.
+      const cabin = await createLocation('Cabin')
+      const beans = await createItem(
+        {
+          name: 'Beans',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        },
+        cabin.id,
+      )
+
+      await createItem(
+        {
+          name: 'Kindling',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 2,
+          refillThreshold: 1,
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        },
+        cabin.id,
+      )
+
+      await createRecipe({
+        name: 'Campfire Stew',
+        items: [{ itemId: beans.id, defaultAmount: 1 }],
       })
 
       setReady(true)

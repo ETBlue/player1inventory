@@ -1,6 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { CookingPot, Settings, ShoppingCart, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { cn } from '@/lib/utils'
 
 const navRoutes = [
@@ -32,6 +33,13 @@ export function Sidebar() {
       className="hidden lg:flex flex-col w-56 min-h-[100cqh] bg-background-surface border-r border-accessory-default"
     >
       <h1 className="px-5 py-4 font-rosario">{t('appName')}</h1>
+      {/* Desktop home for the active-location selector. The page toolbars mount
+          the compact variant with `lg:hidden`, so exactly one is visible at any
+          width. Fullscreen pages return null above and have no switcher — same
+          as today. */}
+      <div className="px-2 pb-3">
+        <LocationSwitcher variant="full" />
+      </div>
       <div className="flex flex-col gap-1 px-2">
         {navRoutes.map(({ to, key, icon: Icon }) => {
           const label = t(`navigation.${key}`)

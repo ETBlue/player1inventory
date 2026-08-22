@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
@@ -33,6 +34,9 @@ import {
   consumeItem,
   getCurrentQuantity,
   getPackedTotal,
+  isEmptyStock,
+  isLowStock,
+  isStockedHere,
   roundToStep,
 } from '@/lib/quantityUtils'
 
@@ -111,9 +115,7 @@ function CookingPage() {
   // there and every item counts as available (pre-split behaviour).
   const availableItemIds = useMemo(
     () =>
-      new Set(
-        (isCloud ? items : items.filter((i) => i.stockId)).map((i) => i.id),
-      ),
+      new Set((isCloud ? items : items.filter(isStockedHere)).map((i) => i.id)),
     [items, isCloud],
   )
   const isItemAvailable = (itemId: string) => availableItemIds.has(itemId)
@@ -155,6 +157,27 @@ function CookingPage() {
         return titleMatch || itemMatch
       })
     : sortedRecipes
+
+  // The set of recipe items stocked in the active location — the same value
+  // that drives the card's availability line and its disabled state.
+  const getAvailableRecipeItems = (recipe: (typeof recipes)[number]) =>
+    recipe.items.filter((ri) => isItemAvailable(ri.itemId))
+
+  // A recipe with nothing stocked here sinks below the divider. It stays
+  // visible and stays disabled — position and interactivity are independent
+  // axes, so this changes only where the card sits.
+  //
+  // Cloud has no Location/ItemStock backend, so no cloud item carries a
+  // stockId; a "not stocked here" section would be meaningless without
+  // locations and the partition is skipped there entirely.
+  //
+  // Partitioning with two filters rather than a sort key: filter preserves
+  // relative order, so the user's chosen sort survives within each half instead
+  // of being overridden by a stocked-ness primary key.
+  const isRecipeUnstockedHere = (recipe: (typeof recipes)[number]) =>
+    !isCloud && getAvailableRecipeItems(recipe).length === 0
+  const stockedRecipes = displayRecipes.filter((r) => !isRecipeUnstockedHere(r))
+  const unstockedRecipes = displayRecipes.filter(isRecipeUnstockedHere)
 
   const getSearchMatchedItemIds = (
     recipe: (typeof recipes)[0],
@@ -438,11 +461,251 @@ function CookingPage() {
     .filter(([, set]) => set.size > 0)
     .reduce((sum, [recipeId]) => sum + (sessionServings.get(recipeId) ?? 1), 0)
 
+  const renderRecipeCard = (recipe: (typeof recipes)[number]) => {
+    const searchMatchedItemIds = getSearchMatchedItemIds(recipe)
+    const isExpanded = searchMatchedItemIds
+      ? true
+      : expandedRecipeIds.has(recipe.id)
+    const recipeAmounts = sessionAmounts.get(recipe.id)
+    const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
+    const totalItemCount = recipe.items.length
+
+    // Tri-state for recipe checkbox — based on default items (defaultAmount > 0);
+    // falls back to all items when none have a default amount. Items not
+    // stocked in the active location are unavailable and excluded.
+    const availableRecipeItems = getAvailableRecipeItems(recipe)
+    const defaultItemIds = new Set(
+      availableRecipeItems
+        .filter((ri) => ri.defaultAmount > 0)
+        .map((ri) => ri.itemId),
+    )
+    const effectiveItemIds =
+      defaultItemIds.size > 0
+        ? defaultItemIds
+        : new Set(availableRecipeItems.map((ri) => ri.itemId))
+    const checkedEffectiveCount = [
+      ...(checkedItemIds.get(recipe.id) ?? new Set()),
+    ].filter((id) => effectiveItemIds.has(id)).length
+    const recipeCheckState: boolean | 'indeterminate' =
+      effectiveItemIds.size === 0
+        ? false
+        : checkedEffectiveCount === 0
+          ? false
+          : checkedEffectiveCount === effectiveItemIds.size
+            ? true
+            : 'indeterminate'
+
+    // Stock status line — health is computed over the items that are
+    // actually available here, so an item stocked only elsewhere is
+    // absent from the counts rather than reported as empty (its
+    // ZERO_STOCK join would otherwise read as inactive).
+    const availablePantryItems = availableRecipeItems
+      .map((ri) => items.find((i) => i.id === ri.itemId))
+      .filter((i): i is (typeof items)[number] => i !== undefined)
+    const emptyCount = availablePantryItems.filter(isEmptyStock).length
+    const lowStockCount = availablePantryItems.filter(isLowStock).length
+    // Nothing stocked here means the checkbox can only ever be a
+    // no-op, so it is disabled rather than silently inert. Expanding
+    // and the name link stay live so the user can see why.
+    const isRecipeUnavailable = availableRecipeItems.length === 0
+
+    return (
+      <React.Fragment key={recipe.id}>
+        <div className={recipeCheckState ? 'bg-background-surface' : ''}>
+          <Card
+            className={`relative mr-28 ${isRecipeUnavailable ? 'opacity-80' : ''}`}
+          >
+            <CardContent>
+              {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id={`recipe-${recipe.id}`}
+                  checked={recipeCheckState}
+                  disabled={isRecipeUnavailable}
+                  // Points at the Row 3 status line so a screen
+                  // reader announces WHY a disabled recipe is
+                  // disabled ("0 / 2 here") instead of just
+                  // "checkbox, disabled" — the association a sighted
+                  // user makes spatially. No axe or Biome rule covers
+                  // this, so it has to be wired by hand.
+                  aria-describedby={`recipe-status-${recipe.id}`}
+                  onCheckedChange={() => handleToggleRecipeCheckbox(recipe.id)}
+                  aria-label={recipe.name}
+                />
+                {/* Name: navigates to recipe detail */}
+                <CardTitle className="truncate flex-1">
+                  <Link
+                    to="/settings/recipes/$id"
+                    params={{ id: recipe.id }}
+                    className="font-medium hover:underline capitalize"
+                  >
+                    {highlight(recipe.name, q)}
+                  </Link>
+                </CardTitle>
+                {/* Chevron: toggles expand/collapse */}
+                <Button
+                  size="icon-sm"
+                  variant="neutral-ghost"
+                  className="shrink-0 -m-2"
+                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
+                  onClick={() => handleToggleExpand(recipe.id)}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronLeft className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {/* Serving stepper — always reserved, empty when no items checked */}
+              {recipeCheckState !== false && (
+                <div className="flex items-center items-stretch absolute -right-26 top-1.5">
+                  <Button
+                    variant="neutral-outline"
+                    className="rounded-tr-none rounded-br-none"
+                    size="icon"
+                    aria-label="Decrease servings"
+                    onClick={() => handleAdjustServings(recipe.id, -1)}
+                    disabled={(sessionServings.get(recipe.id) ?? 1) <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
+                    {sessionServings.get(recipe.id) ?? 1}
+                  </span>
+                  <Button
+                    variant="neutral-outline"
+                    className="rounded-tl-none rounded-bl-none"
+                    size="icon"
+                    aria-label="Increase servings"
+                    onClick={() => handleAdjustServings(recipe.id, 1)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Row 2: subtitle */}
+              <CardMetadata className="mx-6">
+                {t('cooking.recipe.itemCount', {
+                  count: checkedCount,
+                  total: totalItemCount,
+                })}
+              </CardMetadata>
+              {/* Row 3: stock status — availability here, then health.
+                            The id is referenced by the row-1 checkbox's
+                            aria-describedby; it must stay unique per recipe. */}
+              <div
+                id={`recipe-status-${recipe.id}`}
+                className="mx-6 flex items-center gap-1 flex-wrap"
+              >
+                <span className="text-xs text-foreground-muted">
+                  {t('cooking.recipe.availableHere', {
+                    count: availableRecipeItems.length,
+                    total: totalItemCount,
+                  })}
+                </span>
+                {emptyCount > 0 && (
+                  <>
+                    <span className="text-xs text-foreground-muted">·</span>
+                    <span className="text-xs text-status-error-foreground">
+                      {t('cooking.recipe.emptyCount', {
+                        count: emptyCount,
+                      })}
+                    </span>
+                  </>
+                )}
+                {lowStockCount > 0 && (
+                  <>
+                    <span className="text-xs text-foreground-muted">·</span>
+                    <span className="text-xs text-status-warning-foreground">
+                      {t('cooking.recipe.lowStockCount', {
+                        count: lowStockCount,
+                      })}
+                    </span>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        {isExpanded && (
+          <div className="space-y-px">
+            {recipe.items.length === 0 && (
+              <p className="text-sm text-foreground-muted px-4">
+                {t('cooking.recipe.noItems')}
+              </p>
+            )}
+            {[...recipe.items]
+              .sort((a, b) => {
+                const dateA = expiryDates?.get(a.itemId)
+                const dateB = expiryDates?.get(b.itemId)
+                if (!dateA && !dateB) return 0
+                if (!dateA) return 1
+                if (!dateB) return -1
+                return dateA.getTime() - dateB.getTime()
+              })
+              .filter((ri) =>
+                searchMatchedItemIds
+                  ? searchMatchedItemIds.has(ri.itemId)
+                  : true,
+              )
+              .map((ri) => {
+                const item = items.find((i) => i.id === ri.itemId)
+                if (!item) return null
+                const itemTags = tags.filter((t) => item.tagIds.includes(t.id))
+                const amount = recipeAmounts?.get(ri.itemId) ?? ri.defaultAmount
+                const available = isItemAvailable(ri.itemId)
+                const isItemChecked =
+                  available &&
+                  (checkedItemIds.get(recipe.id)?.has(ri.itemId) ?? false)
+
+                return (
+                  <div
+                    key={ri.itemId}
+                    className={isItemChecked ? 'bg-background-surface' : ''}
+                  >
+                    <div className={available ? '' : 'opacity-50'}>
+                      <ItemCard
+                        item={item}
+                        tags={itemTags}
+                        tagTypes={tagTypes}
+                        mode="cooking"
+                        showTags={false}
+                        showTagSummary={false}
+                        isChecked={isItemChecked}
+                        disabled={!available}
+                        onCheckboxToggle={() =>
+                          handleToggleItem(recipe.id, ri.itemId)
+                        }
+                        controlAmount={amount}
+                        onAmountChange={(delta) =>
+                          handleAdjustAmount(recipe.id, ri.itemId, delta)
+                        }
+                        highlightedName={
+                          q ? highlight(item.name, q) : undefined
+                        }
+                      />
+                    </div>
+                    {!available && (
+                      <p className="px-4 pb-1 text-xs text-foreground-muted">
+                        {t('cooking.recipe.unavailable')}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+          </div>
+        )}
+      </React.Fragment>
+    )
+  }
+
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar className="justify-between">
-          <LocationSwitcher />
+          <LocationSwitcher className="lg:hidden" />
           <span className="flex-1">
             {t('cooking.toolbar.servingCount', { count: totalServings })}
           </span>
@@ -515,207 +778,15 @@ function CookingPage() {
           </div>
         ) : (
           <div className="space-y-px mb-4">
-            {displayRecipes.map((recipe) => {
-              const searchMatchedItemIds = getSearchMatchedItemIds(recipe)
-              const isExpanded = searchMatchedItemIds
-                ? true
-                : expandedRecipeIds.has(recipe.id)
-              const recipeAmounts = sessionAmounts.get(recipe.id)
-              const checkedCount = checkedItemIds.get(recipe.id)?.size ?? 0
-              const totalItemCount = recipe.items.length
-
-              // Tri-state for recipe checkbox — based on default items (defaultAmount > 0);
-              // falls back to all items when none have a default amount. Items not
-              // stocked in the active location are unavailable and excluded.
-              const availableRecipeItems = recipe.items.filter((ri) =>
-                isItemAvailable(ri.itemId),
-              )
-              const defaultItemIds = new Set(
-                availableRecipeItems
-                  .filter((ri) => ri.defaultAmount > 0)
-                  .map((ri) => ri.itemId),
-              )
-              const effectiveItemIds =
-                defaultItemIds.size > 0
-                  ? defaultItemIds
-                  : new Set(availableRecipeItems.map((ri) => ri.itemId))
-              const checkedEffectiveCount = [
-                ...(checkedItemIds.get(recipe.id) ?? new Set()),
-              ].filter((id) => effectiveItemIds.has(id)).length
-              const recipeCheckState: boolean | 'indeterminate' =
-                effectiveItemIds.size === 0
-                  ? false
-                  : checkedEffectiveCount === 0
-                    ? false
-                    : checkedEffectiveCount === effectiveItemIds.size
-                      ? true
-                      : 'indeterminate'
-
-              return (
-                <React.Fragment key={recipe.id}>
-                  <div
-                    className={recipeCheckState ? 'bg-background-surface' : ''}
-                  >
-                    <Card className="relative mr-28">
-                      <CardContent>
-                        {/* Row 1: checkbox | [name button] | [chevron button] | [serving stepper] */}
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id={`recipe-${recipe.id}`}
-                            checked={recipeCheckState}
-                            onCheckedChange={() =>
-                              handleToggleRecipeCheckbox(recipe.id)
-                            }
-                            aria-label={recipe.name}
-                          />
-                          {/* Name: navigates to recipe detail */}
-                          <CardTitle className="truncate flex-1">
-                            <Link
-                              to="/settings/recipes/$id"
-                              params={{ id: recipe.id }}
-                              className="font-medium hover:underline capitalize"
-                            >
-                              {highlight(recipe.name, q)}
-                            </Link>
-                          </CardTitle>
-                          {/* Chevron: toggles expand/collapse */}
-                          <Button
-                            size="icon-sm"
-                            variant="neutral-ghost"
-                            className="shrink-0 -m-2"
-                            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${recipe.name}`}
-                            onClick={() => handleToggleExpand(recipe.id)}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronLeft className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                        {/* Serving stepper — always reserved, empty when no items checked */}
-                        {recipeCheckState !== false && (
-                          <div className="flex items-center items-stretch absolute -right-26 top-1.5">
-                            <Button
-                              variant="neutral-outline"
-                              className="rounded-tr-none rounded-br-none"
-                              size="icon"
-                              aria-label="Decrease servings"
-                              onClick={() =>
-                                handleAdjustServings(recipe.id, -1)
-                              }
-                              disabled={
-                                (sessionServings.get(recipe.id) ?? 1) <= 1
-                              }
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="flex items-center justify-center text-sm text-center w-[2rem] border-b border-t border-accessory-emphasized">
-                              {sessionServings.get(recipe.id) ?? 1}
-                            </span>
-                            <Button
-                              variant="neutral-outline"
-                              className="rounded-tl-none rounded-bl-none"
-                              size="icon"
-                              aria-label="Increase servings"
-                              onClick={() => handleAdjustServings(recipe.id, 1)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-
-                        {/* Row 2: subtitle */}
-                        <CardMetadata className="mx-6">
-                          {t('cooking.recipe.itemCount', {
-                            count: checkedCount,
-                            total: totalItemCount,
-                          })}
-                        </CardMetadata>
-                      </CardContent>
-                    </Card>
-                  </div>
-                  {isExpanded && (
-                    <div className="space-y-px">
-                      {recipe.items.length === 0 && (
-                        <p className="text-sm text-foreground-muted px-4">
-                          {t('cooking.recipe.noItems')}
-                        </p>
-                      )}
-                      {[...recipe.items]
-                        .sort((a, b) => {
-                          const dateA = expiryDates?.get(a.itemId)
-                          const dateB = expiryDates?.get(b.itemId)
-                          if (!dateA && !dateB) return 0
-                          if (!dateA) return 1
-                          if (!dateB) return -1
-                          return dateA.getTime() - dateB.getTime()
-                        })
-                        .filter((ri) =>
-                          searchMatchedItemIds
-                            ? searchMatchedItemIds.has(ri.itemId)
-                            : true,
-                        )
-                        .map((ri) => {
-                          const item = items.find((i) => i.id === ri.itemId)
-                          if (!item) return null
-                          const itemTags = tags.filter((t) =>
-                            item.tagIds.includes(t.id),
-                          )
-                          const amount =
-                            recipeAmounts?.get(ri.itemId) ?? ri.defaultAmount
-                          const available = isItemAvailable(ri.itemId)
-                          const isItemChecked =
-                            available &&
-                            (checkedItemIds.get(recipe.id)?.has(ri.itemId) ??
-                              false)
-
-                          return (
-                            <div
-                              key={ri.itemId}
-                              className={
-                                isItemChecked ? 'bg-background-surface' : ''
-                              }
-                            >
-                              <div className={available ? '' : 'opacity-50'}>
-                                <ItemCard
-                                  item={item}
-                                  tags={itemTags}
-                                  tagTypes={tagTypes}
-                                  mode="cooking"
-                                  showTags={false}
-                                  showTagSummary={false}
-                                  isChecked={isItemChecked}
-                                  disabled={!available}
-                                  onCheckboxToggle={() =>
-                                    handleToggleItem(recipe.id, ri.itemId)
-                                  }
-                                  controlAmount={amount}
-                                  onAmountChange={(delta) =>
-                                    handleAdjustAmount(
-                                      recipe.id,
-                                      ri.itemId,
-                                      delta,
-                                    )
-                                  }
-                                  highlightedName={
-                                    q ? highlight(item.name, q) : undefined
-                                  }
-                                />
-                              </div>
-                              {!available && (
-                                <p className="px-4 pb-1 text-xs text-foreground-muted">
-                                  {t('cooking.recipe.unavailable')}
-                                </p>
-                              )}
-                            </div>
-                          )
-                        })}
-                    </div>
-                  )}
-                </React.Fragment>
-              )
-            })}
+            {stockedRecipes.map(renderRecipeCard)}
+            {unstockedRecipes.length > 0 && (
+              <ListSectionDivider>
+                {t('common.notStockedHere', {
+                  count: unstockedRecipes.length,
+                })}
+              </ListSectionDivider>
+            )}
+            {unstockedRecipes.map(renderRecipeCard)}
           </div>
         )}
       </div>

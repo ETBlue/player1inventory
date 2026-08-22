@@ -49,3 +49,25 @@ export const SingleItem: Story = {
     onClick: () => {},
   },
 }
+
+export const WithInactiveCount: Story = {
+  args: {
+    vendorName: 'Costco',
+    checkedCount: 1,
+    totalQuantity: 2,
+    availableCount: 4,
+    inactiveCount: 2,
+    onClick: () => {},
+  },
+}
+
+export const WithoutInactiveCount: Story = {
+  args: {
+    vendorName: 'Costco',
+    checkedCount: 1,
+    totalQuantity: 2,
+    availableCount: 4,
+    inactiveCount: 0,
+    onClick: () => {},
+  },
+}

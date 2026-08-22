@@ -106,12 +106,19 @@ test('user can see expiration badge updated after checkout without manual refres
           req.onerror = () => reject(req.error)
         })
 
+        // Resolve on transaction COMMIT, not on request success — request
+        // success fires while the transaction is still open, and the
+        // navigation that follows a seed can abort an open transaction and
+        // silently discard its rows.
         const put = (storeName: string, record: object) =>
           new Promise<void>((resolve, reject) => {
             const tx = db.transaction(storeName, 'readwrite')
-            const req = tx.objectStore(storeName).put(record)
-            req.onsuccess = () => resolve()
-            req.onerror = () => reject(req.error)
+            tx.objectStore(storeName).put(record)
+            tx.oncomplete = () => resolve()
+            tx.onerror = () =>
+              reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+            tx.onabort = () =>
+              reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
           })
 
         const now = new Date()
@@ -196,12 +203,19 @@ test('user can checkout items from shopping cart', async ({ page, baseURL }) => 
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
+    // Resolve on transaction COMMIT, not on request success — request
+    // success fires while the transaction is still open, and the navigation
+    // that follows a seed can abort an open transaction and silently discard
+    // its rows.
     const put = (storeName: string, record: object) =>
       new Promise<void>((resolve, reject) => {
         const tx = db.transaction(storeName, 'readwrite')
-        const req = tx.objectStore(storeName).put(record)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
+        tx.objectStore(storeName).put(record)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
       })
     const now = new Date()
     await put('items', {
@@ -255,12 +269,19 @@ test('user can see vendor cart cards on the shopping page', async ({ page, baseU
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
+    // Resolve on transaction COMMIT, not on request success — request
+    // success fires while the transaction is still open, and the navigation
+    // that follows a seed can abort an open transaction and silently discard
+    // its rows.
     const put = (store: string, record: object) =>
       new Promise<void>((resolve, reject) => {
         const tx = db.transaction(store, 'readwrite')
-        const req = tx.objectStore(store).put(record)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
+        tx.objectStore(store).put(record)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
     const now = new Date()
     await put('vendors', { id: vendorAId, name: 'Costco E2E', createdAt: now, updatedAt: now })
@@ -304,12 +325,19 @@ test('user can navigate into a vendor cart and back to the list', async ({ page,
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
+    // Resolve on transaction COMMIT, not on request success — request
+    // success fires while the transaction is still open, and the navigation
+    // that follows a seed can abort an open transaction and silently discard
+    // its rows.
     const put = (store: string, record: object) =>
       new Promise<void>((resolve, reject) => {
         const tx = db.transaction(store, 'readwrite')
-        const req = tx.objectStore(store).put(record)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
+        tx.objectStore(store).put(record)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
     const now = new Date()
     await put('vendors', { id: vendorId, name: 'Nav Vendor E2E', createdAt: now, updatedAt: now })
@@ -357,12 +385,19 @@ test('user can checkout from a vendor cart without affecting another vendor cart
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
+    // Resolve on transaction COMMIT, not on request success — request
+    // success fires while the transaction is still open, and the navigation
+    // that follows a seed can abort an open transaction and silently discard
+    // its rows.
     const put = (store: string, record: object) =>
       new Promise<void>((resolve, reject) => {
         const tx = db.transaction(store, 'readwrite')
-        const req = tx.objectStore(store).put(record)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error)
+        tx.objectStore(store).put(record)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction failed for "${store}"`))
+        tx.onabort = () =>
+          reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${store}"`))
       })
     const now = new Date()
     await put('vendors', { id: vendorAId, name: 'Checkout Vendor A', createdAt: now, updatedAt: now })

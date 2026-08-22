@@ -6,6 +6,7 @@ import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ViewToggle } from '@/components/shared/ViewToggle'
@@ -202,7 +203,7 @@ export function PantryListView() {
           recipes={recipes}
           leading={
             <>
-              <LocationSwitcher />
+              <LocationSwitcher className="lg:hidden" />
               <ViewToggle
                 current="list"
                 onChange={(view) => {
@@ -280,10 +281,9 @@ export function PantryListView() {
             ))}
 
             {inactiveItems.length > 0 && (
-              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
-                {inactiveItems.length} inactive item
-                {inactiveItems.length !== 1 ? 's' : ''}
-              </div>
+              <ListSectionDivider>
+                {t('shopping.inactiveItems', { count: inactiveItems.length })}
+              </ListSectionDivider>
             )}
 
             {inactiveItems.map((item) => (

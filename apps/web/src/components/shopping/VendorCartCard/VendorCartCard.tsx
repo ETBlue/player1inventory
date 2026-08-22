@@ -10,6 +10,7 @@ interface VendorCartCardProps {
   checkedCount: number
   totalQuantity: number
   availableCount: number
+  inactiveCount?: number
   onClick: () => void
 }
 
@@ -19,6 +20,7 @@ export function VendorCartCard({
   checkedCount,
   totalQuantity,
   availableCount,
+  inactiveCount = 0,
   onClick,
 }: VendorCartCardProps) {
   const { t } = useTranslation()
@@ -45,6 +47,11 @@ export function VendorCartCard({
             t('shopping.cartCard.inVendor', {
               count: availableCount,
             }),
+            inactiveCount > 0
+              ? t('shopping.cartCard.inactive', {
+                  count: inactiveCount,
+                })
+              : null,
             checkedCount > 0
               ? t('shopping.cartCard.inCart', {
                   count: checkedCount,

@@ -9,6 +9,8 @@ import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
+import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -34,13 +36,14 @@ import {
   useVendorCart,
   useVendors,
 } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { isInactive } from '@/lib/quantityUtils'
+import { isInactive, isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { PantryItem } from '@/types'
 
@@ -56,6 +59,8 @@ function VendorCart() {
     vendorIdParam === 'no-vendor' ? null : vendorIdParam
 
   const { data: items = [], isLoading, refetch: refetchItems } = useItems()
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -119,10 +124,22 @@ function VendorCart() {
     purchaseDates: allPurchaseDates,
   } = useItemSortData(items)
 
-  const vendorScopedItems: PantryItem[] =
+  // R4: scope this page to items stocked in the active location, matching
+  // both the vendor cart card and the pantry (getStockedItems). useItems()
+  // joins every global item against the active location's ItemStock, so an
+  // item not stocked here arrives as ZERO_STOCK (targetQuantity: 0, no
+  // stockId) — indistinguishable from a real inactive item unless stockId is
+  // checked. An item with no ItemStock row here has nothing to check out
+  // against, so listing it on this page was always the anomaly.
+  //
+  // Cloud has no Location/ItemStock backend, so a cloud item never carries a
+  // stockId — cloud bypasses the location gate entirely, matching the same
+  // bypass in useVendorCartCounts() and the shopping index page.
+  const vendorScopedItems: PantryItem[] = (
     cartVendorId === null
       ? items.filter((i) => !(i.vendorIds ?? []).length)
       : items.filter((i) => (i.vendorIds ?? []).includes(cartVendorId))
+  ).filter((i) => isCloud || isStockedHere(i))
 
   const searchedItems = vendorScopedItems.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
@@ -158,10 +175,23 @@ function VendorCart() {
     sortDirection,
   )
 
-  const activeCartItems = cartSectionItems.filter((item) => !isInactive(item))
-  const inactiveCartItems = cartSectionItems.filter((item) => isInactive(item))
-  const activePendingItems = pendingItems.filter((item) => !isInactive(item))
-  const inactivePendingItems = pendingItems.filter((item) => isInactive(item))
+  // Local mode: vendorScopedItems is already filtered to stocked-here items
+  // (above), so isInactiveHere's stockId check is a no-op here and this is
+  // equivalent to isInactive — reusing isInactiveHere keeps the predicate
+  // consistent with the card and the pantry rather than reintroducing a bare
+  // isInactive check. Cloud items never carry a stockId (no ItemStock
+  // backend), so isInactiveHere would always read them as active; cloud
+  // keeps the pre-existing bare isInactive split instead.
+  const isInactiveForDisplay = (item: PantryItem) =>
+    isCloud ? isInactive(item) : isInactiveHere(item)
+  const activeCartItems = cartSectionItems.filter(
+    (item) => !isInactiveForDisplay(item),
+  )
+  const inactiveCartItems = cartSectionItems.filter(isInactiveForDisplay)
+  const activePendingItems = pendingItems.filter(
+    (item) => !isInactiveForDisplay(item),
+  )
+  const inactivePendingItems = pendingItems.filter(isInactiveForDisplay)
 
   const cartTotal = cartItems
     .filter((ci) => {
@@ -244,6 +274,7 @@ function VendorCart() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
+          <LocationSwitcher className="lg:hidden" />
           <Button
             size="icon"
             variant="neutral-ghost"
@@ -346,11 +377,11 @@ function VendorCart() {
           <div className="space-y-px mb-4">
             {activePendingItems.map((item) => renderItemCard(item))}
             {inactivePendingItems.length > 0 && (
-              <div className="bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm">
+              <ListSectionDivider>
                 {t('shopping.inactiveItems', {
                   count: inactivePendingItems.length,
                 })}
-              </div>
+              </ListSectionDivider>
             )}
             {inactivePendingItems.map((item) => renderItemCard(item))}
           </div>

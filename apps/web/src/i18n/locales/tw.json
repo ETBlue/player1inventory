@@ -28,7 +28,9 @@
     "search": "搜尋",
     "tags": "標籤",
     "relations": "關聯",
-    "filters": "篩選條件"
+    "filters": "篩選條件",
+    "notStockedHere_one": "此據點無庫存的 {{count}} 項",
+    "notStockedHere_other": "此據點無庫存的 {{count}} 項"
   },
   "shopping": {
     "title": "購物",
@@ -45,6 +47,8 @@
       "packsChecked_other": "共 {{count}} 件",
       "inVendor_one": "{{count}} 個品項",
       "inVendor_other": "{{count}} 個品項",
+      "inactive_one": "暫時沒在用的 {{count}} 項",
+      "inactive_other": "暫時沒在用的 {{count}} 項",
       "inCart": "{{count}} 採購中"
     },
     "toolbar": {
@@ -90,6 +94,11 @@
     },
     "recipe": {
       "itemCount": "{{count}} / {{total}} 項已勾選",
+      "availableHere": "此地點有 {{count}} / {{total}} 項",
+      "emptyCount_one": "{{count}} 項缺貨",
+      "emptyCount_other": "{{count}} 項缺貨",
+      "lowStockCount_one": "{{count}} 項偏低",
+      "lowStockCount_other": "{{count}} 項偏低",
       "noItems": "食譜裡還沒有任何品項喔。",
       "unavailable": "此地點未庫存"
     },
@@ -314,6 +323,7 @@
         "newButton": "新增標籤類型",
         "editTitle": "編輯標籤類型",
         "deleteTitle": "刪除標籤類型？",
+        "deleteWithTags_one": "即將刪除「{{name}}」與底下的 {{count}} 個標籤，並移除標籤與品項的關聯。",
         "deleteWithTags_other": "即將刪除「{{name}}」與底下的 {{count}} 個標籤，並移除標籤與品項的關聯。",
         "deleteNoTags": "「{{name}}」底下沒有任何標籤，可以安心刪除。"
       },
@@ -328,6 +338,7 @@
         "parentNone": "無（最上層）",
         "deleteAriaLabel": "刪除「{{name}}」",
         "deleteTitle": "刪除標籤？",
+        "deleteWithItems_one": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
         "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
         "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
         "deleteParentTitle": "此標籤有子標籤",
@@ -365,6 +376,7 @@
       "itemCount_other": "{{count}} 個品項",
       "deleteAriaLabel": "刪除「{{name}}」",
       "deleteTitle": "刪除供應商？",
+      "deleteWithItems_one": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
       "deleteWithItems_other": "即將移除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
       "deleteNoItems": "「{{name}}」沒有關聯到任何品項，可以安心刪除。",
       "notFound": "查無此供應商",
@@ -411,6 +423,7 @@
       "itemCount_other": "{{count}} 個品項",
       "deleteAriaLabel": "刪除「{{name}}」",
       "deleteTitle": "刪除食譜？",
+      "deleteWithItems_one": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
       "deleteWithItems_other": "即將刪除「{{name}}」，並移除它與 {{count}} 個品項的關聯。",
       "deleteNoItems": "即將刪除「{{name}}」，此食譜沒有關聯到任何品項，可以安心刪除。",
       "notFound": "查無此食譜",

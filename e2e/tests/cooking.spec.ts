@@ -68,12 +68,19 @@ async function seedDatabase(
         req.onerror = () => reject(req.error)
       })
 
+      // Resolve on transaction COMMIT, not on request success — see the same
+      // helper in item-logs.spec.ts for why. Request success fires with the
+      // transaction still open, so the following navigation can abort it and
+      // silently discard the seeded rows.
       const put = (storeName: string, record: object) =>
         new Promise<void>((resolve, reject) => {
           const tx = db.transaction(storeName, 'readwrite')
-          const req = tx.objectStore(storeName).put(record)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
+          tx.objectStore(storeName).put(record)
+          tx.oncomplete = () => resolve()
+          tx.onerror = () =>
+            reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+          tx.onabort = () =>
+            reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
         })
 
       await put('items', {

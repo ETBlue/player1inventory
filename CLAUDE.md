@@ -111,7 +111,7 @@ Entity names are displayed in title case using Tailwind's `capitalize` class (`t
 
 **Applies to:** item names, tag names, recipe names — in list cards, detail page headers, name input fields, and tag type dropdowns.
 
-**Vendor names are excluded** — vendors may use intentional casing (e.g. "iHerb", "7-Eleven"). Vendor displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`.
+**Vendor and location names are excluded** — both are user-specified and may use intentional casing (e.g. "iHerb", "7-Eleven", "my Garage"). Their displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`. Location names carry no `capitalize` anywhere — `LocationSwitcher` (both variants and its dropdown) and `LocationList` (row label and drag overlay) all render them as stored.
 
 **Already covered by Badge base class:** tag badges and recipe badges. Vendor badges override with `normal-case`.
 
@@ -200,6 +200,8 @@ pnpm test:e2e --grep "<feature-areas>|a11y"
 ```
 
 Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, `cooking`, `items`, `tags`, `vendors`, `settings`). Combine multiple areas with a pipe: `--grep "shopping|tags"`. Always append `|a11y` to include the axe-playwright accessibility scan on every branch finish. Playwright's `webServer` config handles server startup automatically.
+
+**Derive `<feature-areas>` from spec FILE names, not route names** — `ls e2e/tests/` and pick the specs that cover what you touched. A grep built from route names alone silently skips specs whose filename does not contain them: `shelves.spec.ts`, `vendors-group.spec.ts` and `recipes-group.spec.ts` all cover the pantry page (`/`) yet match none of the example areas above, which is how two broken tests in `shelves.spec.ts` sat undetected across several branches. **When pantry group views are touched, the list must include `shelves|vendors-group|recipes-group`.**
 
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
@@ -468,6 +470,18 @@ export class CookingPage {
 
 1. **UI-driven** (default): Navigate through the app to create test data. Use for simple setup (1–5 steps).
 2. **`page.evaluate()` seeding**: Seed IndexedDB directly for complex multi-entity setup. Navigate to `/` first so Dexie initialises the schema, then open `indexedDB.open('Player1Inventory')` and use `readwrite` transactions. Use when UI setup would require 10+ steps (e.g. creating items + linking them to a recipe).
+
+**Always resolve a seed write on `tx.oncomplete`, never on `request.onsuccess`.** `IDBRequest`'s success event fires while the transaction is still open, so a helper that resolves there reports success for a write that has not committed — and the navigation which follows every seed destroys the document, aborting the open transaction and silently discarding those rows. The page then renders an empty state and the test fails much later, as an unexplained locator timeout, only on slow runs. Reject on `tx.onerror` and `tx.onabort` too:
+
+```ts
+await new Promise<void>((resolve, reject) => {
+  const tx = db.transaction(store, 'readwrite')
+  for (const row of rows) tx.objectStore(store).put(row)
+  tx.oncomplete = () => resolve()
+  tx.onerror = () => reject(tx.error)
+  tx.onabort = () => reject(tx.error)
+})
+```
 
 **`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
 

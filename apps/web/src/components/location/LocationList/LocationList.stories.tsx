@@ -52,3 +52,18 @@ export const MultipleLocations: Story = {
     locations: [defaultLocation, office, beachHouse],
   },
 }
+
+/**
+ * Location names are user-specified, so they render exactly as stored — the
+ * same exception vendor names get. No `capitalize`, so intentional casing like
+ * "iHerb pantry" and a lowercase leading word in "my Garage" both survive.
+ */
+export const MixedCaseNames: Story = {
+  args: {
+    locations: [
+      defaultLocation,
+      { ...office, id: 'loc-garage', name: 'my Garage' },
+      { ...beachHouse, id: 'loc-iherb', name: 'iHerb pantry' },
+    ],
+  },
+}

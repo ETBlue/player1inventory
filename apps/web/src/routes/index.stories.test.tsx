@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
@@ -13,6 +13,20 @@ const {
   VendorDetailView,
   RecipeDetailView,
 } = composeStories(stories)
+
+// These stories mount the whole routeTree, so the desktop Sidebar's
+// full-variant LocationSwitcher sits in the DOM next to the page toolbar's
+// `lg:hidden` copy — jsdom loads no CSS, so both are present and an unscoped
+// query matches two elements. Scope to <main> to assert on the toolbar copy,
+// which is what these tests are about.
+async function expectToolbarSwitcher() {
+  const main = await screen.findByRole('main')
+  await waitFor(() =>
+    expect(
+      within(main).getByRole('button', { name: /switch location/i }),
+    ).toBeInTheDocument(),
+  )
+}
 
 describe('Pantry index stories smoke tests', () => {
   it('Default renders without error', async () => {
@@ -43,9 +57,7 @@ describe('Pantry index stories smoke tests', () => {
 
   it('ShelfGroupView mounts the LocationSwitcher', async () => {
     render(<ShelfGroupView />)
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    await expectToolbarSwitcher()
   })
 
   it('VendorGroupView renders with a vendor card', async () => {
@@ -62,9 +74,7 @@ describe('Pantry index stories smoke tests', () => {
 
   it('VendorGroupView mounts the LocationSwitcher', async () => {
     render(<VendorGroupView />)
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    await expectToolbarSwitcher()
   })
 
   it('RecipeGroupView renders with a recipe card', async () => {
@@ -81,9 +91,7 @@ describe('Pantry index stories smoke tests', () => {
 
   it('RecipeGroupView mounts the LocationSwitcher', async () => {
     render(<RecipeGroupView />)
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    await expectToolbarSwitcher()
   })
 
   it('ShelfDetailView renders the seeded item', async () => {
@@ -93,9 +101,7 @@ describe('Pantry index stories smoke tests', () => {
 
   it('ShelfDetailView mounts the LocationSwitcher', async () => {
     render(<ShelfDetailView />)
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    await expectToolbarSwitcher()
   })
 
   it('VendorDetailView renders the seeded item', async () => {
@@ -105,9 +111,7 @@ describe('Pantry index stories smoke tests', () => {
 
   it('VendorDetailView mounts the LocationSwitcher', async () => {
     render(<VendorDetailView />)
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    await expectToolbarSwitcher()
   })
 
   it('RecipeDetailView renders the seeded item', async () => {
@@ -118,8 +122,6 @@ describe('Pantry index stories smoke tests', () => {
 
   it('RecipeDetailView mounts the LocationSwitcher', async () => {
     render(<RecipeDetailView />)
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    await expectToolbarSwitcher()
   })
 })

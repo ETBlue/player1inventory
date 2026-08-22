@@ -39,7 +39,10 @@ async function seedLocations() {
   })
 }
 
-function renderSwitcher() {
+function renderSwitcher(props?: {
+  variant?: 'compact' | 'full'
+  className?: string
+}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -49,7 +52,7 @@ function renderSwitcher() {
     path: '/',
     component: () => (
       <ActiveLocationProvider>
-        <LocationSwitcher />
+        <LocationSwitcher {...props} />
       </ActiveLocationProvider>
     ),
   })
@@ -145,6 +148,18 @@ describe('LocationSwitcher', () => {
     })
   })
 
+  it('user can pass a className that merges onto the compact trigger', async () => {
+    // Given the compact variant rendered with a responsive utility class
+    renderSwitcher({ className: 'lg:hidden' })
+
+    // Then the class lands on the trigger alongside the component's own classes
+    const trigger = await screen.findByRole('button', {
+      name: /switch location/i,
+    })
+    expect(trigger).toHaveClass('lg:hidden')
+    expect(trigger).toHaveClass('flex-shrink-0')
+  })
+
   it('"Manage" navigates to /settings/locations', async () => {
     // Given the switcher is open
     const user = userEvent.setup()
@@ -163,5 +178,75 @@ describe('LocationSwitcher', () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/settings/locations')
     })
+  })
+})
+
+describe('LocationSwitcher variant="full"', () => {
+  beforeEach(async () => {
+    await seedLocations()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  })
+
+  it('user sees the full location name, not the initial', async () => {
+    // Given the full (sidebar) variant is rendered
+    renderSwitcher({ variant: 'full' })
+
+    // Then the trigger shows the whole name
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /switch location/i }),
+      ).toHaveTextContent('My Home')
+    })
+  })
+
+  it('renders the location name as stored, with no capitalize class', async () => {
+    // Given a location whose stored name is lowercase
+    await db.locations.update(DEFAULT_LOCATION_ID, { name: 'my home' })
+    renderSwitcher({ variant: 'full' })
+
+    // Then the label keeps the stored casing and carries no capitalize class
+    const label = await screen.findByText('my home')
+    expect(label.className).not.toMatch(/capitalize/)
+  })
+
+  it('user can open the same menu and set the active location', async () => {
+    // Given the full variant is open
+    const user = userEvent.setup()
+    renderSwitcher({ variant: 'full' })
+    const trigger = await screen.findByRole('button', {
+      name: /switch location/i,
+    })
+    await user.click(trigger)
+
+    // Then the menu lists every location plus the Manage entry
+    expect(
+      await screen.findByRole('menuitem', { name: 'Office' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /manage locations/i }),
+    ).toBeInTheDocument()
+
+    // When the user selects "Office"
+    await user.click(screen.getByRole('menuitem', { name: 'Office' }))
+
+    // Then the trigger shows the new full name and the choice is persisted
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /switch location/i }),
+      ).toHaveTextContent('Office')
+    })
+    expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe('loc-office')
+  })
+
+  it('user can pass a className that merges onto the full trigger', async () => {
+    // Given the full variant rendered with an extra class
+    renderSwitcher({ variant: 'full', className: 'mt-4' })
+
+    // Then the class lands on the trigger, which is full-width
+    const trigger = await screen.findByRole('button', {
+      name: /switch location/i,
+    })
+    expect(trigger).toHaveClass('mt-4')
+    expect(trigger).toHaveClass('w-full')
   })
 })

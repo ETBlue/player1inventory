@@ -45,12 +45,22 @@ async function seedCookingData(
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
+      // Resolve on transaction COMMIT, not on request success. IDBRequest's
+      // success event fires while the transaction is still open, so a seed
+      // that resolves there reports success for a write that has not landed
+      // yet — and the navigation that follows destroys the document, aborting
+      // the still-open transaction and silently discarding the rows. The last
+      // store written is the one that loses (see `tx.oncomplete` usage in
+      // a11y.spec.ts / vendors-group.spec.ts, which already do this).
       const put = (storeName: string, record: object) =>
         new Promise<void>((resolve, reject) => {
           const tx = db.transaction(storeName, 'readwrite')
-          const req = tx.objectStore(storeName).put(record)
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
+          tx.objectStore(storeName).put(record)
+          tx.oncomplete = () => resolve()
+          tx.onerror = () =>
+            reject(tx.error ?? new Error(`IndexedDB transaction failed for "${storeName}"`))
+          tx.onabort = () =>
+            reject(tx.error ?? new Error(`IndexedDB transaction aborted for "${storeName}"`))
         })
       await put('items', {
         id: milkId,

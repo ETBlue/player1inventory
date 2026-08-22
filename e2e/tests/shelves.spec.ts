@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { splitInlineStock } from '../helpers/locationSeed'
 
 test.beforeEach(async ({ page }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
@@ -118,6 +119,12 @@ test('user sees out-of-stock and low-stock badges on shelf cards', async ({ page
     { shelfId, outOfStockItemId, lowStockItemId, okItemId, now },
   )
 
+  // Location PR D: split the inline stock fields into the itemStocks store so the
+  // app (which reads stock per location) sees the seeded quantities. Without
+  // this the seeded items are stocked nowhere and the shelf card reads 0/0 —
+  // the same step vendors-group.spec.ts and recipes-group.spec.ts already take.
+  await splitInlineStock(page)
+
   // When: navigate to the shelves group-by view
   await page.goto('/?groupBy=shelf')
 
@@ -195,6 +202,12 @@ test('user sees packed progress label on shelf card', async ({ page }) => {
     },
     { shelfId, itemAId, itemBId, now },
   )
+
+  // Location PR D: split the inline stock fields into the itemStocks store so the
+  // app (which reads stock per location) sees the seeded quantities. Without
+  // this the seeded items are stocked nowhere and the shelf card reads 0/0 —
+  // the same step vendors-group.spec.ts and recipes-group.spec.ts already take.
+  await splitInlineStock(page)
 
   // When: navigate to the shelves group-by view
   await page.goto('/?groupBy=shelf')

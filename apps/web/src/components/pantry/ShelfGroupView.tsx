@@ -3,6 +3,7 @@ import { Lock, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { GroupByToggle } from '@/components/shared/GroupByToggle'
 import { GroupCard } from '@/components/shared/GroupCard'
+import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -13,9 +14,10 @@ import { useShelvesQuery, useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
 import {
-  getCurrentQuantity,
   getItemPackUnits,
+  isEmptyStock,
   isInactive,
+  isLowStock,
 } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
@@ -57,40 +59,21 @@ export function ShelfGroupView() {
     )
   }
 
-  const getItemCount = (shelfId: string): number => {
-    if (!items || !shelves) return 0
-
-    const shelf = shelves.find((s) => s.id === shelfId)
-    if (!shelf) return 0
-
-    if (shelf.type === 'selection') {
-      return shelf.itemIds?.length ?? 0
-    }
-
-    const { filterConfig } = shelf
-    if (!filterConfig) return items.length
-
-    return (items ?? []).filter((item) =>
-      matchesFilterConfig(item, filterConfig, recipes, tags),
-    ).length
-  }
+  // Counts the shelf's items in the ACTIVE LOCATION, by reusing the resolved
+  // list rather than re-deriving one. A selection shelf's raw `itemIds` is
+  // location-blind: it includes items stocked only elsewhere, so counting it
+  // advertised a total the card's own health counts (all `getShelfItems`-based)
+  // never agreed with — and let a shelf sit below the "not stocked here"
+  // divider still showing a non-zero count.
+  const getItemCount = (shelfId: string): number =>
+    getShelfItems(shelfId).length
 
   const getOutOfStockCount = (shelfId: string): number => {
-    return getShelfItems(shelfId).filter(
-      (item) =>
-        !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold,
-    ).length
+    return getShelfItems(shelfId).filter(isEmptyStock).length
   }
 
   const getLowStockCount = (shelfId: string): number => {
-    return getShelfItems(shelfId).filter((item) => {
-      const qty = getCurrentQuantity(item)
-      return (
-        !isInactive(item) &&
-        item.refillThreshold > 0 &&
-        qty === item.refillThreshold
-      )
-    }).length
+    return getShelfItems(shelfId).filter(isLowStock).length
   }
 
   const getActiveCount = (shelfId: string): number => {
@@ -141,20 +124,10 @@ export function ShelfGroupView() {
   const getUnsortedCount = (): number => getUnsortedItems().length
 
   const getUnsortedOutOfStockCount = (): number =>
-    getUnsortedItems().filter(
-      (item) =>
-        !isInactive(item) && getCurrentQuantity(item) < item.refillThreshold,
-    ).length
+    getUnsortedItems().filter(isEmptyStock).length
 
   const getUnsortedLowStockCount = (): number =>
-    getUnsortedItems().filter((item) => {
-      const qty = getCurrentQuantity(item)
-      return (
-        !isInactive(item) &&
-        item.refillThreshold > 0 &&
-        qty === item.refillThreshold
-      )
-    }).length
+    getUnsortedItems().filter(isLowStock).length
 
   const getUnsortedActiveCount = (): number =>
     getUnsortedItems().filter((item) => !isInactive(item)).length
@@ -180,7 +153,7 @@ export function ShelfGroupView() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
-            <LocationSwitcher />
+            <LocationSwitcher className="lg:hidden" />
             <ViewToggle current="group" onChange={() => {}} />
             <GroupByToggle current="shelf" onChange={() => {}} />
             <div className="flex-1" />
@@ -207,11 +180,62 @@ export function ShelfGroupView() {
 
   const sortedShelves = [...(shelves ?? [])].sort((a, b) => a.order - b.order)
 
+  // A shelf is "stocked here" when at least one of its items has stock in the
+  // active location. `getShelfItems` resolves against `useStockedItems()`,
+  // which is already location-scoped (and falls back to the full list in cloud
+  // mode), so an empty resolved list is the signal — no stockId guard or cloud
+  // bypass belongs here.
+  //
+  // Partitioning with two filters rather than a sort: filter preserves relative
+  // order, so the user's `order` sort survives within each half instead of
+  // being overridden by a stocked-ness primary key.
+  const isShelfStockedHere = (shelf: Shelf) =>
+    getShelfItems(shelf.id).length > 0
+  const stockedShelves = sortedShelves.filter(isShelfStockedHere)
+  const unstockedShelves = sortedShelves.filter((s) => !isShelfStockedHere(s))
+
+  // The Unsorted bucket is never hidden (it is the only route to items on no
+  // shelf), but it does participate in the partition: with nothing here it
+  // sinks below the divider rather than disappearing.
+  const unsortedCount = getUnsortedCount()
+  const unsortedSinks = unsortedCount === 0
+  const unstockedGroupCount = unstockedShelves.length + (unsortedSinks ? 1 : 0)
+
+  const renderShelfList = (list: Shelf[]) => (
+    <ShelfList
+      shelves={list}
+      onShelfClick={handleShelfClick}
+      getItemCount={getItemCount}
+      getOutOfStockCount={getOutOfStockCount}
+      getLowStockCount={getLowStockCount}
+      getActiveCount={getActiveCount}
+      getPackTotals={getShelfPackTotals}
+    />
+  )
+
+  const renderUnsortedCard = () => {
+    const unsortedPackTotals = getUnsortedPackTotals()
+    return (
+      <GroupCard
+        name="Unsorted"
+        icon={<Lock className="h-4 w-4 text-foreground-muted" />}
+        itemCount={unsortedCount}
+        outOfStockCount={getUnsortedOutOfStockCount()}
+        lowStockCount={getUnsortedLowStockCount()}
+        activeCount={getUnsortedActiveCount()}
+        onClick={handleUnsortedClick}
+        totalPackedQuantity={unsortedPackTotals.totalPacked}
+        totalTargetInPacks={unsortedPackTotals.totalTarget}
+        totalRefillInPacks={unsortedPackTotals.totalRefill}
+      />
+    )
+  }
+
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
-          <LocationSwitcher />
+          <LocationSwitcher className="lg:hidden" />
           <ViewToggle
             current="group"
             onChange={(view) => {
@@ -248,32 +272,15 @@ export function ShelfGroupView() {
         </Toolbar>
       </div>
       <div className="overflow-y-auto flex flex-col gap-px">
-        <ShelfList
-          shelves={sortedShelves}
-          onShelfClick={handleShelfClick}
-          getItemCount={getItemCount}
-          getOutOfStockCount={getOutOfStockCount}
-          getLowStockCount={getLowStockCount}
-          getActiveCount={getActiveCount}
-          getPackTotals={getShelfPackTotals}
-        />
-        {(() => {
-          const unsortedPackTotals = getUnsortedPackTotals()
-          return (
-            <GroupCard
-              name="Unsorted"
-              icon={<Lock className="h-4 w-4 text-foreground-muted" />}
-              itemCount={getUnsortedCount()}
-              outOfStockCount={getUnsortedOutOfStockCount()}
-              lowStockCount={getUnsortedLowStockCount()}
-              activeCount={getUnsortedActiveCount()}
-              onClick={handleUnsortedClick}
-              totalPackedQuantity={unsortedPackTotals.totalPacked}
-              totalTargetInPacks={unsortedPackTotals.totalTarget}
-              totalRefillInPacks={unsortedPackTotals.totalRefill}
-            />
-          )
-        })()}
+        {renderShelfList(stockedShelves)}
+        {!unsortedSinks && renderUnsortedCard()}
+        {unstockedGroupCount > 0 && (
+          <ListSectionDivider>
+            {t('common.notStockedHere', { count: unstockedGroupCount })}
+          </ListSectionDivider>
+        )}
+        {renderShelfList(unstockedShelves)}
+        {unsortedSinks && renderUnsortedCard()}
       </div>
     </div>
   )

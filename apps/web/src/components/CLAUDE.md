@@ -5,7 +5,7 @@
 ```
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
-  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, GroupByToggle, GroupCard, LayoutInnerPages, LoadingSpinner, Toolbar, ViewToggle
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, GroupByToggle, GroupCard, LayoutInnerPages, ListSectionDivider, LoadingSpinner, Toolbar, ViewToggle
   pantry/         — pantry group-by views: PantryListView, ShelfGroupView, ShelfDetailView, VendorGroupView, VendorDetailView, RecipeGroupView, RecipeDetailView
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, NewItemDialog, QuickUpdateDialog
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
@@ -28,7 +28,7 @@ One-time structural components that appear once in the app shell.
 
 **`Navigation`** (`src/components/global/Navigation/index.tsx`) — mobile-only bottom navigation bar (`lg:hidden`). Renders 4 nav links (Pantry, Shopping, Cooking, Settings) in a `grid-cols-4` row. Hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). On fullscreen pages the component renders `null` — no padding is added to the page.
 
-**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation. Shows "Player 1 Inventory" header and 4 nav links with icon + label side-by-side. Active: `text-importance-primary-background bg-background-elevated`.
+**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation (returns `null`, so fullscreen pages have no switcher either). Top to bottom: "Player 1 Inventory" `<h1>`, the `LocationSwitcher` with `variant="full"` (desktop home of the active-location selector — the page toolbars carry the `lg:hidden` compact copy), then 4 nav links with icon + label side-by-side. Active: `text-importance-primary-background bg-background-elevated`.
 
 ## Shared Components
 
@@ -46,11 +46,36 @@ Reusable across multiple features and pages.
 
 **`ViewToggle`** (`src/components/shared/ViewToggle/index.tsx`) — toggle control for switching between list and group views. Used on the pantry page toolbar; clicking "group" navigates to `/?groupBy=<stored>` and clicking "list" navigates to `/`.
 
-**`LocationSwitcher`** (`src/components/shared/LocationSwitcher/LocationSwitcher.tsx`) — global active-location selector. No props. Icon-sized trigger showing the active location name's **uppercase first letter**; clicking opens a dropdown listing all locations by `order` (active one marked with a Check) plus a trailing "Manage locations" item navigating to `/settings/locations`. Reads/writes the active location via `useActiveLocation`; lists locations via `useLocations`. Mounted at the **left** (leading position) of every pantry view (`PantryListView`, all three group views, all three detail views), the shopping index (`/shopping` `Toolbar`), and cooking (`/cooking` `Toolbar`) toolbars. In the group views it leads the `Toolbar` before `ViewToggle`/`GroupByToggle`; in the detail views and the flat list it occupies the first slot of the `ItemListToolbar` `leading` group. **INERT (PR B):** selecting a location only updates + persists the active-location state and trigger label — it does NOT scope or change any displayed data (scoping arrives in PR D). Location names render as-stored (vendor-name display rule); the single-letter trigger uppercases the first character. **Provider requirement:** calls `useActiveLocation()`, which throws outside `ActiveLocationProvider`. The provider is mounted in `__root.tsx`, so any test/story rendering these views through the full `routeTree` is covered automatically; isolated renders must wrap with `ActiveLocationProvider`.
+**`LocationSwitcher`** (`src/components/shared/LocationSwitcher/LocationSwitcher.tsx`) — global active-location selector. Props: `variant?: 'compact' | 'full'` (default `'compact'`), `className?` (merged onto the trigger). Both variants share **one** `DropdownMenu` — only the trigger differs; do not fork the component. The dropdown lists all locations by `order` (active one marked with a Check) plus a trailing "Manage locations" item navigating to `/settings/locations`. Reads/writes the active location via `useActiveLocation`; lists locations via `useLocations`.
+
+- **`compact`** — icon-sized trigger showing the active location name's **uppercase first letter**.
+- **`full`** — full-width trigger: leading `MapPin`, the location **name** (truncating), trailing `ChevronDown`. Sized for the sidebar's `px-2` column.
+
+**Mounted twice, and exactly one copy is visible at any width:**
+
+| Breakpoint | Sidebar (`hidden lg:flex`) | Page toolbar |
+| --- | --- | --- |
+| `< lg` | not rendered | `compact`, visible |
+| `>= lg` | `full`, visible | `compact` + `lg:hidden` → `display:none` |
+
+The desktop copy lives in `Sidebar`, between the `<h1>` app title and the nav links. The mobile copy sits at the **left** (leading position) of every pantry view (`PantryListView`, all three group views, all three detail views), both shopping pages (`/shopping` index and `/shopping/$vendorId` cart page `Toolbar`s), and cooking (`/cooking` `Toolbar`) — each passing `className="lg:hidden"` **directly on the component** (not a wrapper `<div>`, which would change the flex layout and shift the adjacent back-button spacing). In the group views it leads the `Toolbar` before `ViewToggle`/`GroupByToggle`; in the detail views and the flat list it occupies the first slot of the `ItemListToolbar` `leading` group; on the cart page it is the first child of `Toolbar`, left of the back button. Fullscreen pages (`/items/*`, `/onboarding`, `/settings/{tags,vendors,recipes,shelves}*`) have no sidebar and no toolbar switcher — unchanged.
+
+**LIVE (PR D):** selecting a location updates + persists the active-location state and trigger label, and re-scopes every stock-bearing page — pantry item lists, shopping carts, and cooking availability all read off the active location and refetch when it changes. Location names render as-stored (vendor-name display rule) in the menu and in the `full` trigger — no `capitalize`; only the single-letter `compact` trigger uppercases.
+
+**⚠️ Testing hazard — duplicate accessible name in jsdom.** `lg:hidden` is `display:none` at runtime, so at a real desktop viewport only one trigger is in the a11y tree and Playwright's role queries match exactly one. **jsdom loads no CSS**, so any test rendering `Layout` + a page (i.e. anything mounting the full `routeTree`) has **both** triggers in the DOM, and an unscoped `getByRole`/`getByLabelText` for `/switch location/i` throws a strict-mode "found multiple" error. Scope the query — `within(screen.getByRole('main'))` for the toolbar copy, `within(nav)` for the sidebar copy — rather than weakening the assertion. The same collision hits `/settings/locations`, which is **not** a fullscreen page: its list and the sidebar trigger both render the active location's name.
+
+**Provider requirement:** calls `useActiveLocation()`, which throws outside `ActiveLocationProvider`. The provider is mounted in `__root.tsx`, so any test/story rendering these views through the full `routeTree` is covered automatically; isolated renders must wrap with `ActiveLocationProvider`.
 
 **`GroupByToggle`** (`src/components/shared/GroupByToggle/index.tsx`) — segmented button group for switching between shelf, vendor, and recipe groupings on the pantry group views. Props: `current: PantryGroupBy`, `onChange: (groupBy: PantryGroupBy) => void`. Renders three icon buttons (ShelvingUnit / Store / ChefHat) with `aria-pressed` for the active selection. Used in all three group-view toolbars (`ShelfGroupView`, `VendorGroupView`, `RecipeGroupView`).
 
 **`GroupCard`** (`src/components/shared/GroupCard/index.tsx`) — clickable card row representing one group (shelf, vendor, or recipe) in a group-by list. Shows the group name, item count, stock status (out-of-stock / low-stock rendered as colored text spans with `·` separators), and an `ItemProgressBar` for packed totals across all items in the group. Props: `name`, `icon?`, `itemCount`, `onClick`, `outOfStockCount?`, `lowStockCount?`, `activeCount?`, `totalPackedQuantity?`, `totalTargetInPacks?`, `totalRefillInPacks?`, `nameClassName?` (defaults to `'capitalize'`; pass `'normal-case'` for vendor names).
+
+**`ListSectionDivider`** (`src/components/shared/ListSectionDivider/ListSectionDivider.tsx`) — full-width label splitting a list into sections. One prop, `children`, which must be an **already-translated** label — the component never calls `t`. Renders `bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm`. Ten call sites in two roles:
+
+- **"N inactive items"** (`shopping.inactiveItems`) — `PantryListView`, `ShelfDetailView`, `VendorDetailView`, `RecipeDetailView`, and `src/routes/shopping/$vendorId.tsx`.
+- **"N not stocked here"** (`common.notStockedHere`) — the five partitioned group lists: `ShelfGroupView`, `VendorGroupView`, `RecipeGroupView`, `src/routes/shopping/index.tsx`, `src/routes/cooking.tsx`.
+
+Extracted from five byte-identical copy-pasted rows, four of which (the pantry views) hardcoded English plus a hand-rolled `{n !== 1 ? 's' : ''}` plural that no locale could override — a live bug in the Chinese UI. `ShelfDetailView`'s differently-styled "Not in this shelf" row is deliberately **not** one of these.
 
 ## Pantry Components
 
@@ -69,6 +94,8 @@ View components rendered by the pantry home page (`/`) depending on the `?groupB
 **`RecipeGroupView`** (`src/components/pantry/RecipeGroupView.tsx`) — group-by-recipe overview showing one `GroupCard` per recipe (plus a "Not added to recipe" card with a `Lock` icon for items not in any recipe). Toolbar: `LocationSwitcher` (leading), `ViewToggle`, `GroupByToggle`, and a "Manage recipes" link (`settings.recipes.manage`) to `/settings/recipes`.
 
 **`RecipeDetailView`** (`src/components/pantry/RecipeDetailView.tsx`) — item list scoped to one recipe (`?id=<recipeId>` or `'unsorted'`). Toolbar `leading` slot: `LocationSwitcher` then a back button (returns to `/?groupBy=recipe`); plus sort and search controls.
+
+**Shared stock-health predicates.** All three group views derive their `outOfStockCount` / `lowStockCount` from `isEmptyStock` / `isLowStock` in `src/lib/quantityUtils.ts` — do not re-inline the comparisons. `isEmptyStock` is quantity **below** `refillThreshold`; `isLowStock` is quantity **exactly at** a non-zero `refillThreshold`; both return `false` for inactive items (`targetQuantity === 0`). The cooking recipe card (`src/routes/cooking.tsx`) uses the same two predicates, so a change to what "empty" means lands everywhere at once.
 
 ## Item Components
 
@@ -129,7 +156,7 @@ Self-contained card components for the settings page. Each lives in `src/compone
 
 ## Shopping Components
 
-**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + item count description), trailing flex row (optional packs `Badge` + `ChevronRight`). The packs `Badge` (`neutral-outline` variant) is shown only when `totalQuantity > 0`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support.
+**`VendorCartCard`** (`src/components/shopping/VendorCartCard/VendorCartCard.tsx`) — clickable card for the `/shopping` index page showing a vendor's cart status. Props: `vendorName: string`, `isNoVendor?: boolean`, `checkedCount: number`, `totalQuantity: number`, `availableCount: number`, `inactiveCount?: number` (default 0), `onClick: () => void`. Layout: grid with `Store` icon, `CardHeader` (vendor name + item count description), trailing flex row (optional packs `Badge` + `ChevronRight`). The metadata line joins up to three clauses with ` · `: `availableCount` (always shown), an "N inactive" clause shown only when `inactiveCount > 0`, and an "N in cart" clause shown only when `checkedCount > 0`. The packs `Badge` (`neutral-outline` variant) is shown only when `totalQuantity > 0`. Vendor name uses `capitalize`; `isNoVendor={true}` applies `normal-case` instead (preserves casing like "iHerb"). Entire card is `role="button"` with keyboard support. `availableCount`/`inactiveCount` come from `useVendorCartCounts()` (location-scoped — see `apps/web/src/hooks/CLAUDE.md`).
 
 ## Shelf Components
 

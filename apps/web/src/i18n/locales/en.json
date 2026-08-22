@@ -28,7 +28,9 @@
     "search": "Search",
     "tags": "Tags",
     "relations": "Relations",
-    "filters": "Filters"
+    "filters": "Filters",
+    "notStockedHere_one": "{{count}} not stocked here",
+    "notStockedHere_other": "{{count}} not stocked here"
   },
   "shopping": {
     "title": "Shopping",
@@ -45,6 +47,8 @@
       "packsChecked_other": "{{count}} packs",
       "inVendor_one": "{{count}} item",
       "inVendor_other": "{{count}} items",
+      "inactive_one": "{{count}} inactive",
+      "inactive_other": "{{count}} inactive",
       "inCart": "{{count}} in cart"
     },
     "toolbar": {
@@ -90,6 +94,11 @@
     },
     "recipe": {
       "itemCount": "{{count}} / {{total}} selected",
+      "availableHere": "{{count}} / {{total}} here",
+      "emptyCount_one": "{{count}} empty",
+      "emptyCount_other": "{{count}} empty",
+      "lowStockCount_one": "{{count}} low stock",
+      "lowStockCount_other": "{{count}} low stock",
       "noItems": "No items in this recipe.",
       "unavailable": "Not stocked in this location"
     },
