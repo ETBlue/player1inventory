@@ -49,11 +49,18 @@ describe('Settings locations page', () => {
     )
   }
 
+  // /settings/locations is not a fullscreen page, so the desktop Sidebar mounts
+  // its full-variant LocationSwitcher — which also renders the active location's
+  // name. Scope name lookups to <main> so they hit the list, not the sidebar.
+  const inMain = () => within(screen.getByRole('main'))
+
   it('user can create a location', async () => {
     // Given the locations page is open
     renderPage()
     const user = userEvent.setup()
-    await waitFor(() => expect(screen.getByText('My Home')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(inMain().getByText('My Home')).toBeInTheDocument(),
+    )
 
     // When the user opens the add dialog, types a name, and submits
     await user.click(screen.getByRole('button', { name: /add location/i }))
@@ -111,7 +118,9 @@ describe('Settings locations page', () => {
     renderPage()
 
     // Then the default location is shown but has no delete button
-    await waitFor(() => expect(screen.getByText('My Home')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(inMain().getByText('My Home')).toBeInTheDocument(),
+    )
     expect(
       screen.queryByRole('button', { name: /delete my home/i }),
     ).not.toBeInTheDocument()

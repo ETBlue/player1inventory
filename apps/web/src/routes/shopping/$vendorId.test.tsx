@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -459,10 +459,15 @@ describe('Vendor cart page', () => {
     // When user navigates to the vendor cart
     renderVendorCart(vendor.id)
 
-    // Then the location switcher trigger is rendered in the toolbar
-    expect(
-      await screen.findByRole('button', { name: /switch location/i }),
-    ).toBeInTheDocument()
+    // Then the location switcher trigger is rendered in the toolbar.
+    // Scoped to <main>: the desktop Sidebar mounts its own switcher, and jsdom
+    // loads no CSS so the toolbar's `lg:hidden` copy is in the DOM too.
+    const main = await screen.findByRole('main')
+    await waitFor(() =>
+      expect(
+        within(main).getByRole('button', { name: /switch location/i }),
+      ).toBeInTheDocument(),
+    )
   })
 
   it('switching the active location shows the target location cart, not the previous one', async () => {
@@ -489,12 +494,16 @@ describe('Vendor cart page', () => {
     // Then the cart shows 2 packs (My Home's cart)
     await screen.findByText(/2 packs/i)
 
-    // When the user switches the active location to "Office"
-    const switcherTrigger = await screen.findByRole('button', {
-      name: /switch location/i,
-    })
+    // When the user switches the active location to "Office" from the toolbar
+    // switcher (scoped to <main> — the Sidebar mounts one too)
+    const switcherTrigger = within(await screen.findByRole('main')).getByRole(
+      'button',
+      { name: /switch location/i },
+    )
     await userEvent.click(switcherTrigger)
-    await userEvent.click(await screen.findByText('Office'))
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Office' }),
+    )
 
     // Then the cart re-reads cleanly: it shows Office's fresh (empty) cart,
     // not stale rows carried over from My Home

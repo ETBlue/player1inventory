@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -624,12 +624,17 @@ describe('Shopping index page', () => {
     // not the 1 stocked only at Cabin (Firewood)
     expect(await screen.findByText(/3 items/)).toBeInTheDocument()
 
-    // When the user switches the active location to Cabin via the real UI
-    const switcherTrigger = await screen.findByRole('button', {
-      name: /switch location/i,
-    })
+    // When the user switches the active location to Cabin via the real UI.
+    // Scoped to <main>: the desktop Sidebar mounts a switcher too, and jsdom
+    // loads no CSS so the toolbar's `lg:hidden` copy is also in the DOM.
+    const switcherTrigger = within(await screen.findByRole('main')).getByRole(
+      'button',
+      { name: /switch location/i },
+    )
     await userEvent.click(switcherTrigger)
-    await userEvent.click(await screen.findByText('Cabin'))
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Cabin' }),
+    )
 
     // Then the card re-reads and now shows only the 1 item stocked at Cabin
     // (Firewood) — the 3-item figure from My Home is gone
