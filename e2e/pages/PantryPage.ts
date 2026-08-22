@@ -32,4 +32,27 @@ export class PantryPage {
     // Match the heading element which is unique per item
     return this.page.getByRole('heading', { name, level: 3 })
   }
+
+  async navigateToGroupBy(groupBy: 'shelf' | 'vendor' | 'recipe') {
+    // Group-by views are selected by the `groupBy` search param on the pantry
+    // route (src/routes/index.tsx — dispatches to ShelfGroupView /
+    // VendorGroupView / RecipeGroupView)
+    await this.page.goto(`/?groupBy=${groupBy}`)
+  }
+
+  getGroupCard(name: string): Locator {
+    // GroupCard's clickable body: role="button" aria-label={name}
+    // (src/components/shared/GroupCard/GroupCard.tsx:56-57).
+    // The unfiled buckets carry literal names: "Unsorted" (shelf group-by,
+    // ShelfGroupView.tsx:217), "No vendor" (VendorGroupView.tsx:113) and
+    // "Not added to recipe" (RecipeGroupView.tsx:123).
+    return this.page.getByRole('button', { name, exact: true })
+  }
+
+  getNotStockedHereDivider(): Locator {
+    // ListSectionDivider carrying t('common.notStockedHere') — "{{count}} not
+    // stocked here" (src/components/pantry/ShelfGroupView.tsx:279,
+    // VendorGroupView.tsx:206, RecipeGroupView.tsx:216)
+    return this.page.getByText(/\d+ not stocked here/)
+  }
 }

@@ -53,6 +53,13 @@ export class ShoppingPage {
     await this.page.getByLabel(`Remove ${name}`).waitFor({ state: 'visible' })
   }
 
+  getNotStockedHereDivider(): Locator {
+    // ListSectionDivider carrying t('common.notStockedHere') — "{{count}} not
+    // stocked here"; separates vendors with something stocked in the active
+    // location from those with nothing (src/routes/shopping/index.tsx:288-292)
+    return this.page.getByText(/\d+ not stocked here/)
+  }
+
   async clickDone() {
     // Toolbar "Done" button — visible when cart has items
     // Text: "Done" with Check icon (src/routes/shopping/$vendorId.tsx)

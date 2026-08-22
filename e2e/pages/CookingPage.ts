@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 export class CookingPage {
   readonly page: Page
@@ -15,6 +15,20 @@ export class CookingPage {
     // Recipe-level checkbox: aria-label={recipe.name}, role="checkbox" (src/routes/cooking.tsx:438)
     // Use getByRole to avoid strict-mode conflict with the "Expand {name}" button
     await this.page.getByRole('checkbox', { name }).click()
+  }
+
+  getRecipeCheckbox(name: string): Locator {
+    // Recipe-level checkbox: aria-label={recipe.name}, role="checkbox", and
+    // `disabled` when nothing in the recipe is stocked in the active location
+    // (src/routes/cooking.tsx:521-534)
+    return this.page.getByRole('checkbox', { name, exact: true })
+  }
+
+  getNotStockedHereDivider(): Locator {
+    // ListSectionDivider carrying t('common.notStockedHere') — "{{count}} not
+    // stocked here"; recipes with nothing stocked in the active location sink
+    // below it (src/routes/cooking.tsx:782-788)
+    return this.page.getByText(/\d+ not stocked here/)
   }
 
   async expandRecipe(name: string) {
