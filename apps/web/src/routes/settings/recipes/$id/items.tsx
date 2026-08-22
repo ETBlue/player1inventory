@@ -3,10 +3,9 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
-import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
-import { useItems, useTags, useTagTypes } from '@/hooks'
+import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -32,6 +31,10 @@ function RecipeItemsTab() {
   const { data: items = [], isLoading } = useItems()
   const { data: recipe } = useRecipe(recipeId)
   const updateRecipe = useUpdateRecipe()
+  // catalogOnly: this page edits a global item↔recipe relation, so a new
+  // item goes into the catalog and is stocked in no location (D3). This tab
+  // creates directly rather than through a dialog, so it opts in here.
+  const createItem = useCreateItem({ catalogOnly: true })
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -65,8 +68,6 @@ function RecipeItemsTab() {
   }, [allRecipes])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-  const [newItemDialogOpen, setNewItemDialogOpen] = useState(false)
-  const [newItemInitialName, setNewItemInitialName] = useState('')
 
   const recipeItems = recipe?.items ?? []
 
@@ -186,23 +187,35 @@ function RecipeItemsTab() {
     })
   }
 
-  const handleCreateFromSearch = (name: string) => {
-    setNewItemInitialName(name)
-    setNewItemDialogOpen(true)
-  }
-
-  const handleNewItemSuccess = async (item: import('@/types').PantryItem) => {
-    // onSuccess also fires on the select-existing path (not just create), so
-    // an item may already be assigned to this recipe — guard against duplicating it.
-    if (isAssigned(item.id)) return
-    const newRecipeItems = [
-      ...recipeItems,
-      { itemId: item.id, defaultAmount: item.consumeAmount },
-    ]
-    await updateRecipe.mutateAsync({
-      id: recipeId,
-      updates: { items: newRecipeItems },
-    })
+  // Create-from-search creates the item inline — no dialog, matching the
+  // shelves tab: create the global item, then attach it to this entity.
+  const handleCreateFromSearch = async () => {
+    const trimmed = search.trim()
+    if (!trimmed) return
+    try {
+      const newItem = await createItem.mutateAsync({
+        name: trimmed,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+      if (!newItem) return
+      const newRecipeItems = [
+        ...recipeItems,
+        { itemId: newItem.id, defaultAmount: newItem.consumeAmount },
+      ]
+      await updateRecipe.mutateAsync({
+        id: recipeId,
+        updates: { items: newRecipeItems },
+      })
+    } catch {
+      // input stays populated for retry
+    }
   }
 
   const handleToggle = async (itemId: string, consumeAmount: number) => {
@@ -274,7 +287,7 @@ function RecipeItemsTab() {
         recipes={allRecipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
-        isCreating={updateRecipe.isPending}
+        isCreating={createItem.isPending || updateRecipe.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -357,15 +370,6 @@ function RecipeItemsTab() {
             No items match the current filters.
           </p>
         )}
-      {/* catalogOnly: this page edits a global item↔recipe relation, so a new
-          item goes into the catalog and is stocked in no location (D3). */}
-      <NewItemDialog
-        open={newItemDialogOpen}
-        onOpenChange={setNewItemDialogOpen}
-        initialName={newItemInitialName}
-        onSuccess={handleNewItemSuccess}
-        catalogOnly
-      />
     </div>
   )
 }

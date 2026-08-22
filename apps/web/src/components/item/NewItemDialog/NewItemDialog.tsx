@@ -30,19 +30,6 @@ interface NewItemDialogProps {
    * pass this and handle navigation themselves.
    */
   onSuccess?: (item: PantryItem) => void
-  /**
-   * Create-path only: create the new item in the global catalog without
-   * stocking it in the active location. Opt-in, defaulting to `false` — the
-   * pantry's Add flow (`components/pantry/PantryListView.tsx`) shares this
-   * dialog and must keep stocking here, so this can never become the default.
-   *
-   * The Settings assignment tabs (tags / vendors / recipes) pass it: they edit
-   * a global item↔entity relation and must not write location-scoped stock.
-   *
-   * Does NOT affect the select-existing path, which still stocks the chosen
-   * item here via `useAddItemToLocation()` — see `handleSelectExisting`.
-   */
-  catalogOnly?: boolean
 }
 
 // The "Add" dialog is a searchable combobox over all items the user can access.
@@ -54,7 +41,6 @@ export function NewItemDialog({
   onOpenChange,
   initialName = '',
   onSuccess,
-  catalogOnly = false,
 }: NewItemDialogProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -66,7 +52,7 @@ export function NewItemDialog({
   // already-here/disabled (PR D review 2.1).
   const isLocal = mode === 'local'
   const { activeLocation } = useActiveLocation()
-  const createItem = useCreateItem({ catalogOnly })
+  const createItem = useCreateItem()
   const addItemToLocation = useAddItemToLocation()
   // The full accessible catalog: every global Item joined with active-location
   // stock. `stockId` is undefined when the item is not stocked here yet.

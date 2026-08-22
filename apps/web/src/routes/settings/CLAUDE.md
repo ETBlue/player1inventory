@@ -28,22 +28,29 @@ Three rules, all four tabs alike
 3. **Create-from-search creates globally and stocks nowhere.** Typing a name
    that matches nothing offers `+ Create "<name>"`; the new item lands in the
    catalog attached to this entity, with **no `ItemStock` row in any location**.
-   The tags/vendors/recipes tabs get this by passing `catalogOnly` to
-   `NewItemDialog`; the shelves tab bypasses the dialog and passes
-   `useCreateItem({ catalogOnly: true })` at its own call site. It is opt-in
-   rather than the default because the pantry's Add flow shares the same dialog
-   and must keep stocking here. The created item is an intentional **orphan** —
-   already a supported state: `getAllItems` surfaces it with `ZERO_STOCK` and no
-   `stockId`, `getStockedItems` (and therefore the pantry) excludes it, and the
-   Add combobox finds it.
+   **All four tabs create inline — none of them opens a dialog.** Each holds its
+   own `useCreateItem({ catalogOnly: true })` and its `handleCreateFromSearch`
+   creates the global item, then writes the relation (tags/vendors append to the
+   item's `tagIds`/`vendorIds`, recipes append a `RecipeItem`, shelves append to
+   `shelf.itemIds`), wrapped in a `try/catch` that leaves the search input
+   populated for retry. `catalogOnly` stays opt-in on the hook because the
+   pantry's Add flow (`NewItemDialog`) must keep stocking here. The created item
+   is an intentional **orphan** — already a supported state: `getAllItems`
+   surfaces it with `ZERO_STOCK` and no `stockId`, `getStockedItems` (and
+   therefore the pantry) excludes it, and the Add combobox finds it.
 
-**Known follow-up (not fixed):** `NewItemDialog`'s *select-existing* path still
-stocks the chosen item in the active location via `useAddItemToLocation()`, so on
-a Settings tab **create-new stocks nowhere while select-existing stocks here**.
-`catalogOnly` deliberately governs the create path only. Closing the gap also
-means reworking the combobox's `aria-disabled` "already here" rendering and
-`isSelectable`, which are built on the same stocking assumption. Recorded in the
-design doc (`docs/features/settings/2026-08-23-design-global-settings-pages.md`).
+   Field values are identical on all four tabs except one **pre-existing
+   divergence**: shelves creates with `consumeAmount: 0`, the other three with
+   `consumeAmount: 1` (the value the dialog's create path used, preserved when
+   the dialog was removed). Not reconciled deliberately — pick one only with a
+   designer ruling.
+
+**The select-existing asymmetry is closed.** Until the tags/vendors/recipes tabs
+went inline they mounted `NewItemDialog`, whose *select-existing* path stocks the
+chosen item in the active location via `useAddItemToLocation()` — the one
+remaining way a Settings page wrote location state. Removing the dialog removed
+that path, so no Settings tab reads or writes `ItemStock` any more. The pantry's
+Add dialog still stocks on select-existing, which is correct there.
 
 ### Shelf filters tab shows global counts
 

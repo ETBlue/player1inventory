@@ -3,10 +3,9 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
-import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
-import { useItems, useTagTypes, useUpdateItem } from '@/hooks'
+import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -33,6 +32,10 @@ function TagItemsTab() {
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const updateItem = useUpdateItem()
+  // catalogOnly: this page edits a global item↔tag relation, so a new item
+  // goes into the catalog and is stocked in no location (D3). This tab
+  // creates directly rather than through a dialog, so it opts in here.
+  const createItem = useCreateItem({ catalogOnly: true })
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
 
@@ -63,8 +66,6 @@ function TagItemsTab() {
   }, [isLoading, restoreScroll])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-  const [newItemDialogOpen, setNewItemDialogOpen] = useState(false)
-  const [newItemInitialName, setNewItemInitialName] = useState('')
 
   const tagMap = useMemo(
     () => Object.fromEntries(tags.map((t) => [t.id, t])),
@@ -190,19 +191,33 @@ function TagItemsTab() {
   const unassignedItems = sortedItems.filter((item) => !isAssigned(item.tagIds))
   const filteredItems = [...assignedItems, ...unassignedItems]
 
-  const handleCreateFromSearch = (name: string) => {
-    setNewItemInitialName(name)
-    setNewItemDialogOpen(true)
-  }
-
-  const handleNewItemSuccess = async (item: import('@/types').Item) => {
-    // onSuccess also fires on the select-existing path (not just create), so
-    // an item may already carry this tag — guard against duplicating it.
-    if ((item.tagIds ?? []).includes(tagId)) return
-    await updateItem.mutateAsync({
-      id: item.id,
-      updates: { tagIds: [...(item.tagIds ?? []), tagId] },
-    })
+  // Create-from-search creates the item inline — no dialog, matching the
+  // shelves tab: create the global item, then attach it to this entity.
+  const handleCreateFromSearch = async () => {
+    const trimmed = search.trim()
+    if (!trimmed) return
+    try {
+      const newItem = await createItem.mutateAsync({
+        name: trimmed,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+      if (!newItem) return
+      // The item was just created with `tagIds: []`, so appending this tag is
+      // exactly a single-element array.
+      await updateItem.mutateAsync({
+        id: newItem.id,
+        updates: { tagIds: [tagId] },
+      })
+    } catch {
+      // input stays populated for retry
+    }
   }
 
   return (
@@ -219,6 +234,7 @@ function TagItemsTab() {
         recipes={recipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
+        isCreating={createItem.isPending || updateItem.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -292,15 +308,6 @@ function TagItemsTab() {
             {t('settings.tags.items.emptyFiltered')}
           </p>
         )}
-      {/* catalogOnly: this page edits a global item↔tag relation, so a new
-          item goes into the catalog and is stocked in no location (D3). */}
-      <NewItemDialog
-        open={newItemDialogOpen}
-        onOpenChange={setNewItemDialogOpen}
-        initialName={newItemInitialName}
-        onSuccess={handleNewItemSuccess}
-        catalogOnly
-      />
     </div>
   )
 }

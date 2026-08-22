@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -226,24 +226,14 @@ describe('Tag Detail - Items Tab', () => {
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
-    // Then the NewItemDialog opens pre-filled with "Butter"
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    // When user submits the dialog
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
-
-    // Then the item is created and assigned to the tag
+    // Then the item is created and assigned to the tag, with no intermediate
+    // dialog — this tab creates inline, exactly like the shelves tab
     await waitFor(async () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
       expect(butter?.tagIds).toContain(tag.id)
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('user can create an item globally without stocking it in any location', async () => {
@@ -257,7 +247,7 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
-    // When user creates "Butter" through the dialog
+    // When user creates "Butter" from the search box
     await user.click(
       await screen.findByRole('button', { name: /toggle search/i }),
     )
@@ -266,14 +256,6 @@ describe('Tag Detail - Items Tab', () => {
     })
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
 
     // Then the global Item exists and carries the tag
     await waitFor(async () => {
@@ -358,24 +340,13 @@ describe('Tag Detail - Items Tab', () => {
     })
     await user.click(screen.getByRole('button', { name: /create item/i }))
 
-    // Then the NewItemDialog opens
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    // When user submits the dialog
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
-
-    // Then Butter is created and assigned to the tag
+    // Then Butter is created and assigned to the tag, with no dialog in between
     await waitFor(async () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
       expect(butter?.tagIds).toContain(tag.id)
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('user can clear the search by pressing Escape', async () => {
@@ -640,7 +611,7 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
-  it('user sees the new item in the list after creating from search via dialog', async () => {
+  it('user sees the new item in the list after creating from search', async () => {
     // Given a tag with no items matching "brand new item"
     const tagType = await createTagType({
       name: 'Category',
@@ -670,26 +641,22 @@ describe('Tag Detail - Items Tab', () => {
       ).toBeInTheDocument()
     })
 
-    // When user clicks the create button (opens dialog)
+    // When user clicks the create button
     await user.click(screen.getByRole('button', { name: /create item/i }))
-
-    // Then the dialog opens pre-filled with the search term
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    // When user submits the dialog
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
 
     // Then the new item is created and assigned to the tag
     await waitFor(async () => {
       const items = await db.items.toArray()
       const newItem = items.find((i) => i.name === 'brand new item')
       expect(newItem?.tagIds).toContain(tag.id)
+    })
+
+    // And the search input still holds the query, so the row is visible
+    expect(screen.getByPlaceholderText(/search items/i)).toHaveValue(
+      'brand new item',
+    )
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove brand new item')).toBeInTheDocument()
     })
   })
 
@@ -740,9 +707,12 @@ describe('Tag Detail - Items Tab', () => {
     expect(screen.queryByTestId('tag-badge-Vegetables')).not.toBeInTheDocument()
   })
 
-  it('user does not duplicate the tag when selecting an already-assigned item via the dialog', async () => {
-    // Given a tag and an item already assigned to it but not yet stocked in
-    // the active location (selectable in the dialog's combobox)
+  it('user cannot create a duplicate of an assigned item that is stocked elsewhere', async () => {
+    // Given a tag and an item already assigned to it but stocked ONLY at
+    // another location. useItems() surfaces it anyway (zeroed, no stockId),
+    // so the exact-name check must see it — otherwise create-from-search
+    // would mint a second "Butter". Replaces the old select-existing
+    // duplication guard, which lost its subject when the dialog was removed.
     const tagType = await createTagType({
       name: 'Category',
       color: TagColor.blue,
@@ -757,42 +727,26 @@ describe('Tag Detail - Items Tab', () => {
     renderItemsTab(tag.id)
     const user = userEvent.setup()
 
-    // When user opens the search panel, types a name with no exact catalog
-    // match to reveal the create-item button, opens the dialog, then within
-    // the dialog searches for and selects the already-assigned "Butter"
+    // When user types the existing name and presses Enter
     await user.click(
       await screen.findByRole('button', { name: /toggle search/i }),
     )
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
-    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /create item/i }),
-      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Remove Butter')).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /create item/i }))
+    await user.keyboard('{Enter}')
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    const dialog = screen.getByRole('dialog')
-    const dialogInput = within(dialog).getByRole('combobox', {
-      name: /name/i,
-    })
-    await user.clear(dialogInput)
-    await user.type(dialogInput, 'Butter')
-    await user.click(
-      await within(dialog).findByRole('option', { name: /butter/i }),
-    )
-
-    // Then the tag is not duplicated on the item
-    await waitFor(async () => {
-      const updated = await db.items.get(item.id)
-      expect(updated?.tagIds.filter((id) => id === tag.id)).toHaveLength(1)
-    })
+    // Then no create affordance is offered and nothing is written
+    expect(
+      screen.queryByRole('button', { name: /create item/i }),
+    ).not.toBeInTheDocument()
+    expect(await db.items.count()).toBe(1)
+    const updated = await db.items.get(item.id)
+    expect(updated?.tagIds.filter((id) => id === tag.id)).toHaveLength(1)
   })
 
   it('user sees assigned items name-sorted regardless of the active location stock', async () => {

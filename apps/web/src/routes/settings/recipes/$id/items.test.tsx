@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -225,19 +225,9 @@ describe('Recipe Detail - Items Tab', () => {
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
 
-    // Then the NewItemDialog opens pre-filled with "Butter"
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    // When user submits the dialog
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
-
-    // Then the item is created and added to the recipe
+    // Then the item is created and added to the recipe with its consumeAmount
+    // as the default amount, and no intermediate dialog — this tab creates
+    // inline, like the shelves tab
     await waitFor(async () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
@@ -247,7 +237,9 @@ describe('Recipe Detail - Items Tab', () => {
         (ri) => ri.itemId === butter?.id,
       )
       expect(recipeItem).toBeDefined()
+      expect(recipeItem?.defaultAmount).toBe(1)
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('user can create an item globally without stocking it in any location', async () => {
@@ -258,7 +250,7 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
-    // When user creates "Butter" through the dialog
+    // When user creates "Butter" from the search box
     await user.click(
       await screen.findByRole('button', { name: /toggle search/i }),
     )
@@ -267,14 +259,6 @@ describe('Recipe Detail - Items Tab', () => {
     })
     await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await user.keyboard('{Enter}')
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
 
     // Then the global Item exists and is attached to the recipe
     await waitFor(async () => {
@@ -354,19 +338,7 @@ describe('Recipe Detail - Items Tab', () => {
     })
     await user.click(screen.getByRole('button', { name: /create item/i }))
 
-    // Then the NewItemDialog opens
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    // When user submits the dialog
-    await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
-        name: /create/i,
-      }),
-    )
-
-    // Then Butter is created and added to the recipe
+    // Then Butter is created and added to the recipe, with no dialog
     await waitFor(async () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
@@ -376,11 +348,15 @@ describe('Recipe Detail - Items Tab', () => {
         true,
       )
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('user does not duplicate the recipe-item when selecting an already-assigned item via the dialog', async () => {
-    // Given a recipe and an item already assigned to it but not yet stocked
-    // in the active location (selectable in the dialog's combobox)
+  it('user cannot create a duplicate of an assigned item that is stocked elsewhere', async () => {
+    // Given a recipe and an item already assigned to it but stocked ONLY at
+    // another location. useItems() surfaces it anyway (zeroed, no stockId),
+    // so the exact-name check must see it — otherwise create-from-search
+    // would mint a second "Butter". Replaces the old select-existing
+    // duplication guard, which lost its subject when the dialog was removed.
     const recipe = await makeRecipe('Baking')
     const item = await createItem(
       {
@@ -404,44 +380,28 @@ describe('Recipe Detail - Items Tab', () => {
     renderItemsTab(recipe.id)
     const user = userEvent.setup()
 
-    // When user opens the search panel, types a name with no exact catalog
-    // match to reveal the create-item button, opens the dialog, then within
-    // the dialog searches for and selects the already-assigned "Butter"
+    // When user types the existing name and presses Enter
     await user.click(
       await screen.findByRole('button', { name: /toggle search/i }),
     )
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
     })
-    await user.type(screen.getByPlaceholderText(/search items/i), 'xyz')
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /create item/i }),
-      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Remove Butter')).toBeInTheDocument()
     })
-    await user.click(screen.getByRole('button', { name: /create item/i }))
+    await user.keyboard('{Enter}')
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-
-    const dialog = screen.getByRole('dialog')
-    const dialogInput = within(dialog).getByRole('combobox', {
-      name: /name/i,
-    })
-    await user.clear(dialogInput)
-    await user.type(dialogInput, 'Butter')
-    await user.click(
-      await within(dialog).findByRole('option', { name: /butter/i }),
-    )
-
-    // Then the recipe-item entry is not duplicated
-    await waitFor(async () => {
-      const updatedRecipe = await db.recipes.get(recipe.id)
-      expect(
-        updatedRecipe?.items.filter((ri) => ri.itemId === item.id),
-      ).toHaveLength(1)
-    })
+    // Then no create affordance is offered and nothing is written
+    expect(
+      screen.queryByRole('button', { name: /create item/i }),
+    ).not.toBeInTheDocument()
+    expect(await db.items.count()).toBe(1)
+    const updatedRecipe = await db.recipes.get(recipe.id)
+    expect(
+      updatedRecipe?.items.filter((ri) => ri.itemId === item.id),
+    ).toHaveLength(1)
   })
 
   it('user search is not cleared after creating an item', async () => {

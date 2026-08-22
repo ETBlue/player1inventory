@@ -26,13 +26,7 @@ type Story = StoryObj<typeof meta>
 // Seeds a small catalog: some items stocked in the active ('local') location
 // and some only existing globally (not stocked here) so the combobox shows both
 // selectable and already-stocked rows.
-function DialogHarness({
-  initialName,
-  catalogOnly = false,
-}: {
-  initialName?: string
-  catalogOnly?: boolean
-}) {
+function DialogHarness({ initialName }: { initialName?: string }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
@@ -89,7 +83,6 @@ function DialogHarness({
           open
           onOpenChange={() => {}}
           {...(initialName ? { initialName } : {})}
-          catalogOnly={catalogOnly}
           onSuccess={(item) => console.log('Added/created item:', item)}
         />
       </ActiveLocationProvider>
@@ -124,15 +117,6 @@ export const MatchingExisting: Story = {
 // Query with no catalog match — the "Create" option + package-unit field appear.
 export const CreateNew: Story = {
   render: () => <DialogHarness initialName="Sparkling Water" />,
-}
-
-// How the Settings assignment tabs (shelves / vendors / recipes / tags) mount
-// the dialog: `catalogOnly` makes Create write the global Item only, with no
-// ItemStock in any location (D3). Visually identical to CreateNew — the
-// difference is what the Create button writes, which the story's smoke test
-// asserts against Dexie.
-export const CatalogOnlyCreate: Story = {
-  render: () => <DialogHarness initialName="Sparkling Water" catalogOnly />,
 }
 
 // Query exactly matches an item already stocked here ("Milk") — the sole

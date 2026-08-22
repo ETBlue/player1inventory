@@ -1,8 +1,6 @@
 import { composeStories } from '@storybook/react'
 import { render, screen } from '@testing-library/react'
-import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { db } from '@/db'
 import * as stories from './NewItemDialog.stories'
 
 // composeStories doesn't run a story's own `beforeEach` (see
@@ -12,7 +10,6 @@ const {
   Default,
   MatchingExisting,
   CreateNew,
-  CatalogOnlyCreate,
   AlreadyStockedExactMatch,
   CloudMode,
   CloudExactMatch,
@@ -74,26 +71,6 @@ describe('NewItemDialog stories smoke tests', () => {
     expect(
       await screen.findByRole('option', { name: /create .*sparkling water/i }),
     ).toBeInTheDocument()
-  })
-
-  it('CatalogOnlyCreate creates the item without stocking it anywhere', async () => {
-    const user = userEvent.setup()
-    render(<CatalogOnlyCreate />)
-
-    // The Create affordance is present, exactly as in CreateNew…
-    const createButton = await screen.findByRole('button', {
-      name: /create .*sparkling water/i,
-    })
-    // …but it writes only the global Item. The harness seeds two stocked
-    // items, so assert the stock count is unchanged rather than zero.
-    const stocksBefore = await db.itemStocks.count()
-    await user.click(createButton)
-
-    await vi.waitFor(async () => {
-      const items = await db.items.toArray()
-      expect(items.some((i) => i.name === 'Sparkling Water')).toBe(true)
-    })
-    expect(await db.itemStocks.count()).toBe(stocksBefore)
   })
 
   it('AlreadyStockedExactMatch shows inline feedback naming the item and location', async () => {

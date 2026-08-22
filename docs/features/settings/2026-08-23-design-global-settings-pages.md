@@ -124,6 +124,22 @@ behaviour at every one. The catalog-only branch returns
 `joinItemStock(item, undefined, locationId)` — the same zeroed, `stockId`-less
 shape `getAllItems` already produces — so nothing downstream needed a new case.
 
+**D3, revised (designer follow-up on the same branch): only two layers now.**
+The designer asked for the new-item dialog to go from the tags, vendors and
+recipes tabs so that item creation matches the shelves tab. All four
+`…/items` tabs therefore hold their own `useCreateItem({ catalogOnly: true })`
+and create inline: create the global `Item`, then write the relation, inside a
+`try/catch` that leaves the search input populated for retry. `NewItemDialog`
+lost its `catalogOnly` prop — with no callers left it was not independently
+verifiable — and the pantry Add button is now the dialog's only mount.
+`createItem`'s option and `useCreateItem`'s option both stay.
+
+Field values are preserved rather than unified: the three converted tabs create
+with `consumeAmount: 1` (the dialog's create-path value) and recipes still
+derives `defaultAmount` from the new item's `consumeAmount`. The shelves tab's
+`consumeAmount: 0` is a **pre-existing** divergence and was deliberately left
+alone.
+
 **D4 — recipe counts are derived from the item side, not `recipe.items.length`.**
 The design did not specify which side to count from. `useRecipeItemCounts()`
 builds a `Set` of the recipe's member ids and filters `items`, which means a
@@ -141,23 +157,29 @@ content height, so the test asserts both: the link order in the rendered nav
 than in the three-link group. Asserting order alone would stay green against the
 old code.
 
-## Known follow-up — the create/select asymmetry in `NewItemDialog`
+## Closed follow-up — the create/select asymmetry in `NewItemDialog`
 
-`catalogOnly` governs the **create path only**. The dialog's *select-existing*
-path still calls `useAddItemToLocation()`, which stocks the chosen item in the
-active location. So on a Settings assignment tab:
+The gap recorded here was: `catalogOnly` governed the **create path only**, so
+on a Settings assignment tab *create new* stocked nowhere while
+*select existing* stocked the chosen item in the active location via
+`useAddItemToLocation()`. The planned fix — a second, location-neutral
+rendering mode for the combobox, since its `aria-disabled` "already here"
+rendering, `isSelectable` and `items.addDialog.alreadyStockedHere` feedback are
+all built on the stocking assumption — was flagged and not attempted.
 
-- **Create new** → global item, attached to the entity, stocked **nowhere** ✅
-- **Select existing** → attached to the entity, and **stocked here** ⚠️
+**It is now closed, by removal rather than by that rework.** Following the
+designer's request that tags / vendors / recipes create items the way the
+shelves tab does, those three tabs no longer mount `NewItemDialog` at all. With
+the dialog gone, its select-existing path is gone with it, and no Settings page
+reads or writes `ItemStock` any more:
 
-Left as-is deliberately. Making select-existing location-neutral is not a
-one-line gate: the combobox's whole option-rendering model is built on the
-stocking assumption — options for items already stocked here render
-`aria-disabled` with an "Already here" annotation and are excluded by
-`isSelectable`, and the exact-match case shows location-naming feedback
-(`items.addDialog.alreadyStockedHere`). On a global page none of that means
-anything, so the fix is a second rendering mode for the combobox, not a flag.
-Flagged here, not fixed. It is also recorded in
+- **Create new** (all four tabs) → global item, attached to the entity, stocked
+  **nowhere** ✅
+- **Select existing** → no longer reachable from a Settings tab ✅
+
+The pantry's Add dialog keeps stocking on both paths, which is correct there and
+is guarded by `src/routes/index.test.tsx` ("user can create an item from the
+pantry and it is stocked in the active location"). Recorded in
 `apps/web/src/routes/settings/CLAUDE.md`.
 
 ## E2E outcome
