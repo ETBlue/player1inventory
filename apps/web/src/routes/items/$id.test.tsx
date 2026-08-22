@@ -5,15 +5,23 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
   createItem,
+  createLocation,
   createRecipe,
   getItem,
   getItemStock,
+  getItemStocks,
   getRecipes,
   upsertItemStock,
 } from '@/db/operations'
@@ -1749,14 +1757,21 @@ describe('targetUnit change — recipe adjustment', () => {
     )
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then NO dialog appears (defaultAmount 0 is unchanged)
-    // calcRecipeDefaultAfterUnitSwitch(0, ...) returns 0 early → 0 === 0 → skip
+    // Then the confirm dialog lists NO recipe — calcRecipeDefaultAfterUnitSwitch(0, …)
+    // returns 0 early, so 0 === 0 and Soup is skipped. It still appears,
+    // because the switch converts this location's stock quantities.
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).queryByText('Soup')).not.toBeInTheDocument()
+
+    // And confirming saves the unit and leaves the recipe amount at 0
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
     await waitFor(async () => {
       // targetUnit is a GLOBAL Item field since v16.
       const updated = await getItem(item.id)
       expect(updated?.targetUnit).toBe('package')
     })
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    const recipes = await getRecipes()
+    expect(recipes[0]?.items[0]?.defaultAmount).toBe(0)
   })
 
   it('user can switch unit mode without a dialog when converted defaultAmount is unchanged', async () => {
@@ -1802,6 +1817,346 @@ describe('targetUnit change — recipe adjustment', () => {
       expect(updated?.targetUnit).toBe('package')
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+})
+
+// The designer's ruling (2026-08-22): switching the item's global tracking unit
+// must re-express the three per-location quantities that are held in that unit
+// — unpacked, target quantity, refill-when-below — in EVERY location. It is
+// well defined only because `amountPerPackage` became global in v16, so one
+// factor applies everywhere. `packedQuantity` counts sealed packages and is
+// never converted.
+describe('targetUnit change — per-location stock conversion', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.recipes.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    // Keep the undeletable default location ('My Home'); drop extras.
+    await db.locations.where('id').notEqual(DEFAULT_LOCATION_ID).delete()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderInfoTab = async (itemId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    return router
+  }
+
+  // Three locations with three DIFFERENT sets of numbers: one location cannot
+  // tell a real conversion from a no-op, and identical numbers cannot tell
+  // "converted each row" from "copied one row over the others".
+  const seedThreeLocations = async () => {
+    const cabin = await createLocation('Cabin')
+    const office = await createLocation('Office')
+    const item = await createItem({
+      name: 'Flour',
+      tagIds: [],
+      packageUnit: 'pack',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      consumeAmount: 100,
+      targetQuantity: 1000,
+      refillThreshold: 200,
+      packedQuantity: 2,
+      unpackedQuantity: 250,
+    })
+    await upsertItemStock(item.id, cabin.id, {
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 1,
+      unpackedQuantity: 100,
+    })
+    await upsertItemStock(item.id, office.id, {
+      targetQuantity: 500,
+      refillThreshold: 250,
+      packedQuantity: 3,
+      unpackedQuantity: 50,
+    })
+    return { item, cabin, office }
+  }
+
+  const stockByLocation = async (itemId: string) => {
+    const rows = await getItemStocks(itemId)
+    return new Map(rows.map((r) => [r.locationId, r]))
+  }
+
+  it('user switching the tracking unit converts the quantities in every location', async () => {
+    const user = userEvent.setup()
+
+    // Given an item tracked in grams (500 g per pack) stocked in three
+    // locations, each holding different amounts
+    const { item, cabin, office } = await seedThreeLocations()
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user switches tracking to packages and saves
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a confirm dialog previews the change for all three locations
+    const dialog = await screen.findByRole('alertdialog')
+    expect(
+      within(dialog).getByText(/update stock numbers/i),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText('My Home')).toBeInTheDocument()
+    expect(within(dialog).getByText('Cabin')).toBeInTheDocument()
+    expect(within(dialog).getByText('Office')).toBeInTheDocument()
+    // …each with its OWN before → after numbers, read off its own row
+    const rowFor = (name: string) =>
+      within(dialog).getByText(name).closest('tr') as HTMLElement
+    // My Home: 250 g unpacked → 0.5 packs, 1000 g target → 2 packs
+    expect(within(rowFor('My Home')).getByText('250 → 0.5')).toBeInTheDocument()
+    expect(within(rowFor('My Home')).getByText('1000 → 2')).toBeInTheDocument()
+    expect(within(rowFor('Cabin')).getByText('100 → 0.2')).toBeInTheDocument()
+    expect(within(rowFor('Cabin')).getByText('2000 → 4')).toBeInTheDocument()
+    expect(within(rowFor('Office')).getByText('50 → 0.1')).toBeInTheDocument()
+    expect(within(rowFor('Office')).getByText('500 → 1')).toBeInTheDocument()
+
+    // When the user confirms
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then every location's three tracked quantities are divided by 500 —
+    // each from its OWN stored values, not copied from one another
+    await waitFor(async () => {
+      const rows = await stockByLocation(item.id)
+      expect(rows.get(DEFAULT_LOCATION_ID)?.unpackedQuantity).toBe(0.5)
+      expect(rows.get(cabin.id)?.unpackedQuantity).toBe(0.2)
+      expect(rows.get(office.id)?.unpackedQuantity).toBe(0.1)
+    })
+
+    const rows = await stockByLocation(item.id)
+    expect(rows.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      unpackedQuantity: 0.5,
+      targetQuantity: 2,
+      refillThreshold: 0.4,
+    })
+    expect(rows.get(cabin.id)).toMatchObject({
+      unpackedQuantity: 0.2,
+      targetQuantity: 4,
+      refillThreshold: 1,
+    })
+    expect(rows.get(office.id)).toMatchObject({
+      unpackedQuantity: 0.1,
+      targetQuantity: 1,
+      refillThreshold: 0.5,
+    })
+
+    // And the item itself now tracks in packages
+    expect((await getItem(item.id))?.targetUnit).toBe('package')
+  })
+
+  it('packed quantity is untouched by the switch in every location', async () => {
+    const user = userEvent.setup()
+
+    // Given the same three stocked locations, each with a different packed count
+    const { item, cabin, office } = await seedThreeLocations()
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user switches to packages and confirms
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    await screen.findByRole('alertdialog')
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then packedQuantity is unchanged everywhere — it counts sealed packages,
+    // which are packages whichever unit the item is tracked in
+    await waitFor(async () => {
+      expect(
+        (await stockByLocation(item.id)).get(DEFAULT_LOCATION_ID)
+          ?.targetQuantity,
+      ).toBe(2)
+    })
+    const rows = await stockByLocation(item.id)
+    expect(rows.get(DEFAULT_LOCATION_ID)?.packedQuantity).toBe(2)
+    expect(rows.get(cabin.id)?.packedQuantity).toBe(1)
+    expect(rows.get(office.id)?.packedQuantity).toBe(3)
+  })
+
+  it('user can cancel the dialog and no location is changed', async () => {
+    const user = userEvent.setup()
+
+    // Given the same three stocked locations
+    const { item, cabin, office } = await seedThreeLocations()
+    const before = await stockByLocation(item.id)
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user switches the unit, saves, then cancels the preview
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    await screen.findByRole('alertdialog')
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+    // Then the dialog closes and nothing was written — not the item's unit,
+    // and not one number in any location
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+    expect((await getItem(item.id))?.targetUnit).toBe('measurement')
+    const after = await stockByLocation(item.id)
+    for (const locationId of [DEFAULT_LOCATION_ID, cabin.id, office.id]) {
+      expect(after.get(locationId)).toMatchObject({
+        unpackedQuantity: before.get(locationId)?.unpackedQuantity,
+        targetQuantity: before.get(locationId)?.targetQuantity,
+        refillThreshold: before.get(locationId)?.refillThreshold,
+        packedQuantity: before.get(locationId)?.packedQuantity,
+      })
+    }
+  })
+
+  // Negative control: green by construction while the feature is intact, and
+  // the guard against a save of any kind rewriting inventory.
+  it('saving without changing the tracking unit converts nothing', async () => {
+    const user = userEvent.setup()
+
+    // Given the same three stocked locations
+    const { item, cabin, office } = await seedThreeLocations()
+    const before = await stockByLocation(item.id)
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user edits only the name and saves
+    const nameInput = screen.getByLabelText(/^name$/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Bread Flour')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then no dialog appears and every quantity is exactly as it was
+    await waitFor(async () => {
+      expect((await getItem(item.id))?.name).toBe('Bread Flour')
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    const after = await stockByLocation(item.id)
+    for (const locationId of [DEFAULT_LOCATION_ID, cabin.id, office.id]) {
+      expect(after.get(locationId)).toMatchObject({
+        unpackedQuantity: before.get(locationId)?.unpackedQuantity,
+        targetQuantity: before.get(locationId)?.targetQuantity,
+        refillThreshold: before.get(locationId)?.refillThreshold,
+      })
+    }
+  })
+
+  it('a location holding nothing is left alone and not listed', async () => {
+    const user = userEvent.setup()
+
+    // Given one location with stock and one that is stocked but empty
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({
+      name: 'Rice',
+      tagIds: [],
+      packageUnit: 'bag',
+      measurementUnit: 'g',
+      amountPerPackage: 1000,
+      targetUnit: 'measurement',
+      consumeAmount: 100,
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 1,
+      unpackedQuantity: 300,
+    })
+    await upsertItemStock(item.id, cabin.id, {
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user switches to packages and saves
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then only the location whose numbers actually move is previewed
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('My Home')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Cabin')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // And the empty location stays at zero rather than being written to
+    await waitFor(async () => {
+      const rows = await stockByLocation(item.id)
+      expect(rows.get(DEFAULT_LOCATION_ID)?.unpackedQuantity).toBe(0.3)
+    })
+    const rows = await stockByLocation(item.id)
+    expect(rows.get(cabin.id)).toMatchObject({
+      unpackedQuantity: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+    })
+  })
+
+  it('nothing converts when the item has no usable amount per package', async () => {
+    const user = userEvent.setup()
+
+    // Given an item tracked in measurement with no amount per package — there
+    // is no factor, so no conversion is defensible (same bail as the recipe
+    // rescale)
+    const item = await createItem({
+      name: 'Loose Tea',
+      tagIds: [],
+      packageUnit: 'tin',
+      measurementUnit: 'g',
+      targetUnit: 'measurement',
+      consumeAmount: 5,
+      targetQuantity: 200,
+      refillThreshold: 50,
+      packedQuantity: 1,
+      unpackedQuantity: 75,
+    })
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user switches to packages and saves
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the unit change saves with no dialog and no quantity is touched
+    await waitFor(async () => {
+      expect((await getItem(item.id))?.targetUnit).toBe('package')
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(
+      (await stockByLocation(item.id)).get(DEFAULT_LOCATION_ID),
+    ).toMatchObject({
+      unpackedQuantity: 75,
+      targetQuantity: 200,
+      refillThreshold: 50,
+    })
   })
 })
 

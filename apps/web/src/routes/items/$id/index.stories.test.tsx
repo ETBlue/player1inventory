@@ -3,8 +3,12 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { Default, WithInfoFields, WithGlobalStockSettings } =
-  composeStories(stories)
+const {
+  Default,
+  WithInfoFields,
+  WithGlobalStockSettings,
+  StockedInThreeLocations,
+} = composeStories(stories)
 
 describe('Item detail info tab stories smoke tests', () => {
   it('Default renders the Name info field after setup', async () => {
@@ -24,5 +28,12 @@ describe('Item detail info tab stories smoke tests', () => {
     render(<WithGlobalStockSettings />)
     expect(await screen.findByLabelText(/measurement unit/i)).toHaveValue('ml')
     expect(screen.getByLabelText(/amount per package/i)).toHaveValue(750)
+  })
+
+  it('StockedInThreeLocations renders the measurement tracking switch', async () => {
+    render(<StockedInThreeLocations />)
+    expect(
+      await screen.findByRole('switch', { name: /track in measurement/i }),
+    ).toBeChecked()
   })
 })
