@@ -337,7 +337,18 @@ export async function updateItem(
   updates: Partial<Omit<Item, 'id' | 'createdAt'>> & Partial<StockFields>,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
-  const now = new Date()
+  await writeItemUpdate(id, updates, locationId, new Date())
+}
+
+// The field-routing half of `updateItem`, factored out so the transactional
+// batch below splits fields identically instead of re-deriving the rule. Awaits
+// only Dexie promises, so it is safe to call from inside a transaction.
+async function writeItemUpdate(
+  id: string,
+  updates: Partial<Omit<Item, 'id' | 'createdAt'>> & Partial<StockFields>,
+  locationId: string,
+  now: Date,
+): Promise<void> {
   const stockKeys: (keyof StockFields)[] = STOCK_FIELD_KEYS
   const stockUpdate: Partial<StockFields> = {}
   const itemUpdate: Record<string, unknown> = {}
@@ -357,6 +368,71 @@ export async function updateItem(
     // upsert so a not-yet-stocked item still records the change for this location
     await upsertItemStock(id, locationId, stockUpdate)
   }
+}
+
+// Everything one unit switch rewrites, in the order it is written.
+//
+// Nothing here is computed inside the transaction: a Dexie transaction is
+// zone-scoped, and awaiting a foreign (non-Dexie) promise inside it can detach
+// the zone so later writes commit OUTSIDE the transaction — exactly the
+// partial-commit this operation exists to prevent. The caller does all the
+// arithmetic (conversion factors, recipe amounts) and hands over finished rows.
+export type UnitSwitchBatchInput = {
+  itemId: string
+  // The Item's own update — identity plus the global stock configuration.
+  // Routed by field exactly as `updateItem` does, so a per-location state field
+  // slipped in here still lands on `locationId`'s stock row.
+  updates: Partial<Omit<Item, 'id' | 'createdAt'>> & Partial<StockFields>
+  // Which location `updates`' per-location fields (if any) belong to.
+  locationId?: string
+  // One entry per stocked location whose tracked quantities the switch moves.
+  // The factor (`amountPerPackage`) is global, so every location converts —
+  // see `convertTrackedQuantities`.
+  stockConversions: Array<{
+    locationId: string
+    quantities: Partial<StockFields>
+  }>
+  // One entry per recipe whose `defaultAmount` for this item is expressed in
+  // the old unit. `items` is the FULL replacement array, already rewritten.
+  recipeUpdates: Array<{ recipeId: string; items: RecipeItem[] }>
+}
+
+// Commit a unit switch as one atomic write.
+//
+// A switch touches three kinds of row — the Item's configuration, one ItemStock
+// per location holding quantities expressed in the old unit, and one recipe per
+// `defaultAmount` expressed in it. Written separately, a failure partway leaves
+// the item on the NEW unit while some locations and recipes still hold OLD-unit
+// numbers: mixed units, silently, with no error surfaced. This is inventory
+// data, so it is all-or-nothing.
+//
+// Every table touched must be declared — touching an undeclared table throws at
+// runtime, not compile time.
+export async function applyUnitSwitchBatch(
+  input: UnitSwitchBatchInput,
+): Promise<void> {
+  const locationId = input.locationId ?? DEFAULT_LOCATION_ID
+  const now = new Date()
+  await db.transaction(
+    'rw',
+    [db.items, db.itemStocks, db.recipes],
+    async () => {
+      await writeItemUpdate(input.itemId, input.updates, locationId, now)
+      for (const conversion of input.stockConversions) {
+        await upsertItemStock(
+          input.itemId,
+          conversion.locationId,
+          conversion.quantities,
+        )
+      }
+      for (const update of input.recipeUpdates) {
+        await db.recipes.update(update.recipeId, {
+          items: update.items,
+          updatedAt: now,
+        })
+      }
+    },
+  )
 }
 
 export async function deleteItem(id: string): Promise<void> {

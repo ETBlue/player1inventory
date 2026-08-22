@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TagColor } from '../types'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '../types'
 import { db } from './index'
@@ -7,6 +7,7 @@ import {
   addInventoryLog,
   addItemToLocation,
   addToCart,
+  applyUnitSwitchBatch,
   checkout,
   createItem,
   createLocation,
@@ -62,6 +63,7 @@ import {
   updateShelf,
   updateTag,
   updateVendor,
+  upsertItemStock,
 } from './operations'
 
 // Cart ids are location-scoped (`${locationId}:${vendorId|'no-vendor'}`) since
@@ -2391,5 +2393,214 @@ describe('locations', () => {
     // Then the stored order reflects the new sequence
     const locations = await getLocations()
     expect(locations.map((l) => l.name)).toEqual(['C', 'A', 'B'])
+  })
+})
+
+// A unit switch rewrites the Item, one ItemStock per location and one recipe
+// per affected `defaultAmount`. Written separately, a failure partway leaves
+// the item on the NEW unit while some rows still hold OLD-unit numbers — mixed
+// units, silently. These tests exist for the rollback, not the happy path.
+describe('applyUnitSwitchBatch', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.recipes.clear()
+    await db.locations.clear()
+  })
+
+  // Three locations holding three DIFFERENT sets of numbers and two recipes
+  // with two different amounts. One of each cannot tell a rollback from a lucky
+  // write order, and identical numbers cannot tell "restored" from "overwritten
+  // with a neighbour's values".
+  const seedUnitSwitch = async () => {
+    const home = await createLocation('Home')
+    const cabin = await createLocation('Cabin')
+    const office = await createLocation('Office')
+    const item = await createItem(
+      {
+        name: 'Flour',
+        tagIds: [],
+        packageUnit: 'pack',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        targetUnit: 'measurement',
+        consumeAmount: 100,
+        targetQuantity: 1000,
+        refillThreshold: 200,
+        packedQuantity: 2,
+        unpackedQuantity: 250,
+      },
+      home.id,
+    )
+    await upsertItemStock(item.id, cabin.id, {
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 1,
+      unpackedQuantity: 100,
+    })
+    await upsertItemStock(item.id, office.id, {
+      targetQuantity: 500,
+      refillThreshold: 250,
+      packedQuantity: 3,
+      unpackedQuantity: 50,
+    })
+    const bread = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 500 }],
+    })
+    const cake = await createRecipe({
+      name: 'Cake',
+      items: [{ itemId: item.id, defaultAmount: 200 }],
+    })
+    return { item, home, cabin, office, bread, cake }
+  }
+
+  // The measurement -> package switch at 500 g per pack, precomputed exactly as
+  // the Info tab precomputes it before the transaction opens.
+  const switchToPackages = (
+    seed: Awaited<ReturnType<typeof seedUnitSwitch>>,
+  ) => ({
+    itemId: seed.item.id,
+    locationId: seed.home.id,
+    updates: { targetUnit: 'package' as const, consumeAmount: 1 },
+    stockConversions: [
+      {
+        locationId: seed.home.id,
+        quantities: {
+          unpackedQuantity: 0.5,
+          targetQuantity: 2,
+          refillThreshold: 0.4,
+        },
+      },
+      {
+        locationId: seed.cabin.id,
+        quantities: {
+          unpackedQuantity: 0.2,
+          targetQuantity: 4,
+          refillThreshold: 1,
+        },
+      },
+      {
+        locationId: seed.office.id,
+        quantities: {
+          unpackedQuantity: 0.1,
+          targetQuantity: 1,
+          refillThreshold: 0.5,
+        },
+      },
+    ],
+    recipeUpdates: [
+      {
+        recipeId: seed.bread.id,
+        items: [{ itemId: seed.item.id, defaultAmount: 1 }],
+      },
+      {
+        recipeId: seed.cake.id,
+        items: [{ itemId: seed.item.id, defaultAmount: 1 }],
+      },
+    ],
+  })
+
+  const stockByLocation = async (itemId: string) =>
+    new Map((await getItemStocks(itemId)).map((s) => [s.locationId, s]))
+
+  it('user switching the unit gets the item, every location and every recipe written', async () => {
+    // Given an item tracked in grams, stocked in three locations, used by two
+    // recipes
+    const seed = await seedUnitSwitch()
+
+    // When the switch to packages is committed
+    await applyUnitSwitchBatch(switchToPackages(seed))
+
+    // Then all three write groups landed
+    const item = await getItem(seed.item.id, seed.home.id)
+    expect(item?.targetUnit).toBe('package')
+    expect(item?.consumeAmount).toBe(1)
+
+    const stocks = await stockByLocation(seed.item.id)
+    expect(stocks.get(seed.home.id)).toMatchObject({
+      unpackedQuantity: 0.5,
+      targetQuantity: 2,
+      refillThreshold: 0.4,
+    })
+    expect(stocks.get(seed.cabin.id)).toMatchObject({
+      unpackedQuantity: 0.2,
+      targetQuantity: 4,
+      refillThreshold: 1,
+    })
+    expect(stocks.get(seed.office.id)).toMatchObject({
+      unpackedQuantity: 0.1,
+      targetQuantity: 1,
+      refillThreshold: 0.5,
+    })
+
+    const recipes = await getRecipes()
+    expect(recipes.find((r) => r.id === seed.bread.id)?.items[0]).toMatchObject(
+      {
+        defaultAmount: 1,
+      },
+    )
+    expect(recipes.find((r) => r.id === seed.cake.id)?.items[0]).toMatchObject({
+      defaultAmount: 1,
+    })
+  })
+
+  it('user loses nothing when a write fails partway — the whole switch rolls back', async () => {
+    // Given the same fixture, and a recipe write that fails on the SECOND
+    // recipe: by then the item, all three stock rows and one recipe have
+    // already been written inside the transaction
+    const seed = await seedUnitSwitch()
+    const realUpdate = db.recipes.update.bind(db.recipes)
+    let recipeWrites = 0
+    const spy = vi.spyOn(db.recipes, 'update').mockImplementation(((
+      ...args: unknown[]
+    ) => {
+      recipeWrites += 1
+      if (recipeWrites === 2) throw new Error('recipe write failed')
+      return (realUpdate as (...a: unknown[]) => unknown)(...args)
+    }) as unknown as typeof db.recipes.update)
+
+    // When the switch is committed
+    await expect(applyUnitSwitchBatch(switchToPackages(seed))).rejects.toThrow()
+    expect(recipeWrites).toBe(2)
+    spy.mockRestore()
+
+    // Then NOTHING committed — the item is still on the old unit...
+    const item = await getItem(seed.item.id, seed.home.id)
+    expect(item?.targetUnit).toBe('measurement')
+    expect(item?.consumeAmount).toBe(100)
+
+    // ...every location still holds its own old-unit quantities...
+    const stocks = await stockByLocation(seed.item.id)
+    expect(stocks.get(seed.home.id)).toMatchObject({
+      unpackedQuantity: 250,
+      targetQuantity: 1000,
+      refillThreshold: 200,
+      packedQuantity: 2,
+    })
+    expect(stocks.get(seed.cabin.id)).toMatchObject({
+      unpackedQuantity: 100,
+      targetQuantity: 2000,
+      refillThreshold: 500,
+      packedQuantity: 1,
+    })
+    expect(stocks.get(seed.office.id)).toMatchObject({
+      unpackedQuantity: 50,
+      targetQuantity: 500,
+      refillThreshold: 250,
+      packedQuantity: 3,
+    })
+
+    // ...and both recipes still hold their old amounts, including the one whose
+    // write succeeded before the failure
+    const recipes = await getRecipes()
+    expect(recipes.find((r) => r.id === seed.bread.id)?.items[0]).toMatchObject(
+      {
+        defaultAmount: 500,
+      },
+    )
+    expect(recipes.find((r) => r.id === seed.cake.id)?.items[0]).toMatchObject({
+      defaultAmount: 200,
+    })
   })
 })

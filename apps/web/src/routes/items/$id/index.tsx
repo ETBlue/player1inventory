@@ -14,7 +14,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useDeleteItem, useItem, useUpdateItem } from '@/hooks'
+import {
+  useApplyUnitSwitch,
+  useDeleteItem,
+  useItem,
+  useUpdateItem,
+} from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useItemLayout } from '@/hooks/useItemLayout'
@@ -192,6 +197,9 @@ function ItemInfoTab() {
 
   const { data: allRecipes } = useRecipes()
   const updateRecipe = useUpdateRecipe()
+  // Local mode's atomic unit switch: one Dexie transaction over the item, every
+  // location's stock and every affected recipe.
+  const applyUnitSwitch = useApplyUnitSwitch()
 
   // Every location's stock row for this item, plus the locations to name and
   // order them by. Local-mode data: cloud has no locations and no ItemStock (a
@@ -349,28 +357,60 @@ function ItemInfoTab() {
   // Writes in dependency order — the item's own configuration first, then the
   // per-location rows and the recipe amounts that are expressed in it — and
   // navigates away only once every write has landed.
+  //
+  // In local mode all three groups go through ONE Dexie transaction. They are
+  // not independent edits: a failure partway would leave the item on the new
+  // unit while some locations and recipes still hold old-unit numbers — mixed
+  // units, silently, with nothing surfaced to the user.
   const handleConfirmAdjustments = async () => {
     if (!pending) return
-    await persistInfo(pending.values)
 
-    for (const conversion of pending.conversions) {
-      await updateItem.mutateAsync({
-        id,
-        updates: conversion.after as Partial<StockFields>,
-        locationId: conversion.locationId,
-      })
-    }
-
-    for (const adj of pending.adjustments) {
+    // Resolved up front, outside any transaction: the Dexie batch must be
+    // handed finished rows (see applyUnitSwitchBatch on why it may not await
+    // anything of its own).
+    const recipeUpdates = pending.adjustments.flatMap((adj) => {
       const recipe = allRecipes?.find((r) => r.id === adj.recipeId)
-      if (!recipe) continue
-      const newItems = recipe.items.map((ri) =>
-        ri.itemId === id ? { ...ri, defaultAmount: adj.newAmount } : ri,
-      )
-      await updateRecipe.mutateAsync({
-        id: adj.recipeId,
-        updates: { items: newItems },
+      if (!recipe) return []
+      return [
+        {
+          recipeId: adj.recipeId,
+          items: recipe.items.map((ri) =>
+            ri.itemId === id ? { ...ri, defaultAmount: adj.newAmount } : ri,
+          ),
+        },
+      ]
+    })
+
+    if (isLocal) {
+      await applyUnitSwitch.mutateAsync({
+        itemId: id,
+        updates: buildInfoUpdates(pending.values) as Partial<Item>,
+        stockConversions: pending.conversions.map((conversion) => ({
+          locationId: conversion.locationId,
+          quantities: conversion.after as Partial<StockFields>,
+        })),
+        recipeUpdates,
       })
+    } else {
+      // Cloud stays sequential. There is no client-side transaction to borrow:
+      // each Apollo mutation is its own server round-trip, so wrapping them
+      // would fake an atomicity that does not exist. It is also the smaller
+      // exposure today — cloud has no Location or ItemStock, so
+      // `buildStockConversions` yields nothing and only the item and recipe
+      // writes run.
+      //
+      // When cloud gains locations, this must NOT stay a sequence of Apollo
+      // calls: the item update, the per-location stock conversions and the
+      // recipe rewrites need one combined GraphQL mutation wrapping all three
+      // in a single server-side transaction, the cloud counterpart of
+      // `applyUnitSwitchBatch`.
+      await persistInfo(pending.values)
+      for (const update of recipeUpdates) {
+        await updateRecipe.mutateAsync({
+          id: update.recipeId,
+          updates: { items: update.items },
+        })
+      }
     }
 
     setPending(null)
