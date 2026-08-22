@@ -23,6 +23,7 @@ describe('Recipe Detail - Items Tab', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.recipes.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
@@ -491,48 +492,49 @@ describe('Recipe Detail - Items Tab', () => {
     expect(noodlesIdx).toBeLessThan(tomatoIdx)
   })
 
-  it('user sees inactive assigned items after active assigned items', async () => {
-    // Given a recipe with two assigned items: active Zucchini and inactive Apple
-    const activeItem = await createItem({
-      name: 'Zucchini',
-      targetUnit: 'package',
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-      vendorIds: [],
-    })
-    const inactiveItem = await createItem({
-      name: 'Apple',
-      targetUnit: 'package',
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-      vendorIds: [],
-    })
+  it('user sees assigned items name-sorted regardless of the active location stock', async () => {
+    // Given a recipe with two assigned items — Zucchini stocked here, and
+    // Apple stocked ONLY at another location. useItems() joins the active
+    // location, so Apple arrives as ZERO_STOCK with no stockId: the documented
+    // stockId trap (lib/quantityUtils.ts). Under the old four-bucket sort a
+    // bare isInactive() therefore sank Apple below Zucchini.
+    const stockedHere = await makeItem('Zucchini')
+    const stockedElsewhere = await createItem(
+      {
+        name: 'Apple',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    // And an unassigned item that sorts first alphabetically
+    await makeItem('Almond')
     const recipe = await makeRecipe('Salad', [
-      { itemId: activeItem.id, defaultAmount: 1 },
-      { itemId: inactiveItem.id, defaultAmount: 1 },
+      { itemId: stockedHere.id, defaultAmount: 1 },
+      { itemId: stockedElsewhere.id, defaultAmount: 1 },
     ])
 
     renderItemsTab(recipe.id)
 
-    // Then active Zucchini appears before inactive Apple despite Z > A alphabetically
+    // Then both assigned items come first, name-sorted — Apple is a normal
+    // row despite not being stocked here — and the unassigned item follows
     await waitFor(() => {
-      expect(screen.getByLabelText('Remove Zucchini')).toBeInTheDocument()
       expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
     })
 
-    const links = screen.getAllByRole('link', { name: /zucchini|apple/i })
+    const links = screen.getAllByRole('link', {
+      name: /zucchini|apple|almond/i,
+    })
     const names = links.map((el) => el.textContent?.trim() ?? '')
-    const zucchiniIdx = names.findIndex((n) => /zucchini/i.test(n))
-    const appleIdx = names.findIndex((n) => /apple/i.test(n))
-    expect(zucchiniIdx).toBeLessThan(appleIdx)
+    expect(names[0]).toMatch(/apple/i)
+    expect(names[1]).toMatch(/zucchini/i)
+    expect(names[2]).toMatch(/almond/i)
   })
 
   it('user can see sort and filter toolbar controls', async () => {

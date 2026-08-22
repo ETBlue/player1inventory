@@ -23,6 +23,7 @@ describe('Vendor Detail - Items Tab', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.vendors.clear()
@@ -415,35 +416,46 @@ describe('Vendor Detail - Items Tab', () => {
     })
   })
 
-  it('user sees active assigned items before inactive assigned items', async () => {
-    // Given: a vendor with two assigned items — Zucchini (active, Z=last alphabetically)
-    // and Apple (inactive, A=first alphabetically)
+  it('user sees assigned items name-sorted regardless of the active location stock', async () => {
+    // Given: a vendor with two assigned items — Zucchini stocked here, and
+    // Apple stocked ONLY at another location. useItems() joins the active
+    // location, so Apple arrives as ZERO_STOCK with no stockId: the documented
+    // stockId trap (lib/quantityUtils.ts). Under the old four-bucket sort a
+    // bare isInactive() therefore sank Apple below Zucchini.
     const vendor = await createVendor('Supermart')
-    // Active assigned: Zucchini (would sort last alphabetically)
     await makeItem('Zucchini', [vendor.id])
-    // Inactive assigned: Apple (would sort first alphabetically, but inactive)
-    await createItem({
-      name: 'Apple',
-      targetUnit: 'package',
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-      vendorIds: [vendor.id],
-    })
+    await createItem(
+      {
+        name: 'Apple',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [vendor.id],
+      },
+      'loc-other',
+    )
+    // And an unassigned item that sorts first alphabetically
+    await makeItem('Almond')
 
     // When: user views the items tab (default sort: name asc)
     renderItemsTab(vendor.id)
 
-    // Then: Zucchini (active assigned) appears before Apple (inactive assigned)
+    // Then: both assigned items come first, name-sorted — Apple is a normal
+    // row despite not being stocked here — and the unassigned item follows
     await waitFor(() => {
-      const links = screen.getAllByRole('link', { name: /zucchini|apple/i })
-      const names = links.map((el) => el.textContent?.trim() ?? '')
-      expect(names[0]).toMatch(/zucchini/i)
-      expect(names[1]).toMatch(/apple/i)
+      expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
     })
+    const links = screen.getAllByRole('link', {
+      name: /zucchini|apple|almond/i,
+    })
+    const names = links.map((el) => el.textContent?.trim() ?? '')
+    expect(names[0]).toMatch(/apple/i)
+    expect(names[1]).toMatch(/zucchini/i)
+    expect(names[2]).toMatch(/almond/i)
   })
 
   it('user can sort items by name', async () => {

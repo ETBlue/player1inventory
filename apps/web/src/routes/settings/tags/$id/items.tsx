@@ -19,7 +19,6 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -181,23 +180,14 @@ function TagItemsTab() {
     sortBy,
     sortDirection,
   )
-  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
-  const assignedItems = [
-    ...sortedItems.filter(
-      (item) => isAssigned(item.tagIds) && !isInactive(item),
-    ),
-    ...sortedItems.filter(
-      (item) => isAssigned(item.tagIds) && isInactive(item),
-    ),
-  ]
-  const unassignedItems = [
-    ...sortedItems.filter(
-      (item) => !isAssigned(item.tagIds) && !isInactive(item),
-    ),
-    ...sortedItems.filter(
-      (item) => !isAssigned(item.tagIds) && isInactive(item),
-    ),
-  ]
+  // Two-bucket ordering: assigned before unassigned, each keeping the sort
+  // order. There is deliberately no active/inactive split — "inactive" is
+  // targetQuantity === 0, a per-location fact, and this page edits a global
+  // item↔tag relation. Worse, useItems() joins the ACTIVE location, so an
+  // item stocked only elsewhere arrives zeroed and a bare isInactive() would
+  // sink it (the stockId trap in lib/quantityUtils.ts).
+  const assignedItems = sortedItems.filter((item) => isAssigned(item.tagIds))
+  const unassignedItems = sortedItems.filter((item) => !isAssigned(item.tagIds))
   const filteredItems = [...assignedItems, ...unassignedItems]
 
   const handleCreateFromSearch = (name: string) => {
@@ -270,6 +260,10 @@ function TagItemsTab() {
                     showTags={false}
                     showTagSummary={false}
                     showExpiration={false}
+                    // Global tag↔item assignment page: never show the active
+                    // location's stock (quantity, unit, bar, severity tint,
+                    // inactive dimming).
+                    showStock={false}
                     vendors={vendorMap.get(item.id) ?? []}
                     recipes={recipeMap.get(item.id) ?? []}
                     onTagClick={handleTagClick}

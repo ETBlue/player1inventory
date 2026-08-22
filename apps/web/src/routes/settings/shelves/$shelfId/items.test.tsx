@@ -16,6 +16,7 @@ describe('Shelf Detail - Items Tab', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.shelves.clear()
     await db.inventoryLogs.clear()
     queryClient = new QueryClient({
@@ -204,5 +205,52 @@ describe('Shelf Detail - Items Tab', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Remove brand new item')).toBeInTheDocument()
     })
+  })
+
+  it('user sees assigned items name-sorted regardless of the active location stock', async () => {
+    // Given a selection shelf with two assigned items — Zucchini stocked here,
+    // and Apple stocked ONLY at another location. useItems() joins the active
+    // location, so Apple arrives as ZERO_STOCK with no stockId: the documented
+    // stockId trap (lib/quantityUtils.ts). Under the old four-bucket sort a
+    // bare isInactive() therefore sank Apple below Zucchini.
+    const stockedHere = await makeItem('Zucchini')
+    const stockedElsewhere = await createItem(
+      {
+        name: 'Apple',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    // And an unassigned item that sorts first alphabetically
+    await makeItem('Almond')
+    const shelf = await createShelf({
+      name: 'Fridge',
+      type: 'selection',
+      order: 0,
+      itemIds: [stockedHere.id, stockedElsewhere.id],
+    })
+
+    // When: user views the items tab (default sort: name asc)
+    renderItemsTab(shelf.id)
+
+    // Then both assigned items come first, name-sorted — Apple is a normal
+    // row despite not being stocked here — and the unassigned item follows
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
+    })
+    const links = screen.getAllByRole('link', {
+      name: /zucchini|apple|almond/i,
+    })
+    const names = links.map((el) => el.textContent?.trim() ?? '')
+    expect(names[0]).toMatch(/apple/i)
+    expect(names[1]).toMatch(/zucchini/i)
+    expect(names[2]).toMatch(/almond/i)
   })
 })

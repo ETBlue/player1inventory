@@ -22,6 +22,7 @@ describe('Tag Detail - Items Tab', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -754,39 +755,50 @@ describe('Tag Detail - Items Tab', () => {
     })
   })
 
-  it('user can see active assigned items before inactive assigned items', async () => {
-    // Given a tag with two assigned items — Apple (inactive, A sorts first) and Zucchini (active, Z sorts last)
+  it('user sees assigned items name-sorted regardless of the active location stock', async () => {
+    // Given a tag with two assigned items — Zucchini stocked here, and Apple
+    // stocked ONLY at another location. useItems() joins the active location,
+    // so Apple arrives as ZERO_STOCK with no stockId: the documented stockId
+    // trap (lib/quantityUtils.ts). Under the old four-bucket sort a bare
+    // isInactive() therefore sank Apple below Zucchini.
     const tagType = await createTagType({
       name: 'Category',
       color: TagColor.blue,
     })
     const tag = await createTag({ name: 'Dairy', typeId: tagType.id })
 
-    // Active assigned: Zucchini (Z sorts LAST alphabetically — should float above inactive Apple)
     await makeItem('Zucchini', [tag.id])
-
-    // Inactive assigned: Apple (A sorts FIRST alphabetically — should sink below active Zucchini)
-    await createItem({
-      name: 'Apple',
-      tagIds: [tag.id],
-      targetUnit: 'package',
-      targetQuantity: 0, // inactive
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 0,
-      vendorIds: [],
-    })
+    await createItem(
+      {
+        name: 'Apple',
+        tagIds: [tag.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    // And an unassigned item that sorts first alphabetically
+    await makeItem('Almond')
 
     // When: user views items tab (default sort: name asc)
     renderItemsTab(tag.id)
 
-    // Then: Zucchini (active) appears before Apple (inactive) despite Z > A alphabetically
+    // Then: both assigned items come first, name-sorted — Apple is a normal
+    // row despite not being stocked here — and the unassigned item follows
     await waitFor(() => {
-      const links = screen.getAllByRole('link', { name: /zucchini|apple/i })
-      const names = links.map((el) => el.textContent?.trim() ?? '')
-      expect(names[0]).toMatch(/zucchini/i)
-      expect(names[1]).toMatch(/apple/i)
+      expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
     })
+    const links = screen.getAllByRole('link', {
+      name: /zucchini|apple|almond/i,
+    })
+    const names = links.map((el) => el.textContent?.trim() ?? '')
+    expect(names[0]).toMatch(/apple/i)
+    expect(names[1]).toMatch(/zucchini/i)
+    expect(names[2]).toMatch(/almond/i)
   })
 })
