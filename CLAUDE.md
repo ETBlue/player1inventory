@@ -177,7 +177,7 @@ When the user reports a bug (post-implementation or otherwise), treat it as **su
    - Commit 2: completed bug doc
 7. **Create a PR** — only if this is a standalone fix branch; skip if already inside a feature worktree/branch
 
-This applies even when the fix seems obvious. The test serves as a regression guard and the doc enables future tracing.
+This applies even when the fix seems obvious. The test serves as a regression guard and the doc enables future tracing. Confirm the test actually *is* a guard — see **Proving a Test Works (Mutation Check)** below.
 
 ### Verification Gate
 
@@ -436,6 +436,45 @@ it('user can create an item', async () => {
 ```
 
 **Unit tests** - Keep simple naming (existing style is fine)
+
+### Proving a Test Works (Mutation Check)
+
+A green test proves the test passes. It does **not** prove the test would catch a
+regression — and that is the only reason the test exists. Before claiming a behaviour
+is covered:
+
+1. Delete or invert that behaviour in the **source**
+2. Re-run the test — it must go **RED**
+3. Restore, and confirm green again
+
+If the test stays green, the test is wrong, not the mutation. Fix the test.
+
+**The failure is almost always the fixture, not the assertion.** A fixture that cannot
+distinguish the right implementation from a wrong one passes against both. Location
+scoping is the canonical example in this repo:
+
+```ts
+// VACUOUS — passes against code that ignores location entirely
+// Given 3 items, all stocked in the active location
+expect(card).toHaveTextContent('3 in vendor')
+```
+
+With one location, "count items stocked here" and "count every item" return the same
+number. **Every location-scoped test needs a fixture stocked only at *another*
+location** — see the `stockId` trap in `apps/web/src/lib/quantityUtils.ts`.
+
+**Negative controls legitimately stay green.** "No divider renders when every group is
+stocked here" *should* pass when the partition is deleted — removing code does not add
+a divider. Those are fine, but they are not evidence. Name them as such rather than
+counting them toward coverage.
+
+**Report which mutations you ran and that each went red.** "I added tests" and "I
+verified these tests fail without the behaviour" are different claims; only the second
+one means anything.
+
+**Why this is a rule here:** PR D shipped four tests that kept passing after the
+behaviour they nominally covered was deleted. A vacuous test is worse than no test — it
+is a no-test that reports as covered, so nobody looks there again.
 
 ### A11y Testing
 
