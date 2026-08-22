@@ -250,6 +250,47 @@ describe('Recipe Detail - Items Tab', () => {
     })
   })
 
+  it('user can create an item globally without stocking it in any location', async () => {
+    // Given a recipe with no items. This tab edits a global item↔recipe
+    // relation, so creating from search must not touch location-scoped
+    // stock (D3).
+    const recipe = await makeRecipe('Baking')
+    renderItemsTab(recipe.id)
+    const user = userEvent.setup()
+
+    // When user creates "Butter" through the dialog
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /create/i,
+      }),
+    )
+
+    // Then the global Item exists and is attached to the recipe
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      const butter = items.find((i) => i.name === 'Butter')
+      expect(butter).toBeDefined()
+      const updatedRecipe = await db.recipes.get(recipe.id)
+      expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
+        true,
+      )
+    })
+
+    // And no ItemStock row was written, in the active location or any other
+    expect(await db.itemStocks.count()).toBe(0)
+  })
+
   it('user sees create button when search has text and no exact item match', async () => {
     // Given a recipe with one item named "Milk"
     const recipe = await makeRecipe('Pasta')

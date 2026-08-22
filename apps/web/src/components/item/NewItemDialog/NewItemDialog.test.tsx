@@ -87,6 +87,38 @@ describe('NewItemDialog', () => {
     ).toBeDefined()
   })
 
+  it('user can create a catalog-only item that is stocked nowhere', async () => {
+    // Given the dialog is open in catalogOnly mode (the Settings assignment
+    // tabs, which edit a global item↔entity relation)
+    const user = userEvent.setup()
+    const onSuccess = vi.fn()
+    renderDialog(
+      <NewItemDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        catalogOnly
+        onSuccess={onSuccess}
+      />,
+    )
+
+    // When the user types a name with no catalog match and clicks Create
+    await user.type(
+      await screen.findByRole('combobox', { name: /name/i }),
+      'Milk',
+    )
+    await user.click(await screen.findByRole('button', { name: /create/i }))
+
+    // Then the global item is persisted and handed to the caller
+    await vi.waitFor(() => {
+      expect(onSuccess).toHaveBeenCalled()
+    })
+    const milk = (await db.items.toArray()).find((i) => i.name === 'Milk')
+    expect(milk).toBeDefined()
+
+    // And no ItemStock row exists, in the active location or any other
+    expect(await db.itemStocks.count()).toBe(0)
+  })
+
   it('user can select an existing not-yet-stocked item to add it here', async () => {
     // Given a global item that is NOT stocked in the active location
     const created = await createItem(

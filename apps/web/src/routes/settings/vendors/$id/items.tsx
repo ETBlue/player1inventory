@@ -295,11 +295,14 @@ function VendorItemsTab() {
             No items match the current filters.
           </p>
         )}
+      {/* catalogOnly: this page edits a global item↔vendor relation, so a new
+          item goes into the catalog and is stocked in no location (D3). */}
       <NewItemDialog
         open={newItemDialogOpen}
         onOpenChange={setNewItemDialogOpen}
         initialName={newItemInitialName}
         onSuccess={handleNewItemSuccess}
+        catalogOnly
       />
     </div>
   )

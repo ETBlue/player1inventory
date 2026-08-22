@@ -231,9 +231,26 @@ type CreateItemInput = Omit<
   Partial<Pick<Item, 'targetUnit' | 'consumeAmount'>> &
   Partial<StockFields>
 
+export interface CreateItemOptions {
+  /**
+   * Create the item in the global catalog only, skipping the per-location
+   * `ItemStock` write. Opt-in: omitted or `false` keeps the historic
+   * behaviour of stocking the new item in `locationId`.
+   *
+   * Used by the Settings assignment tabs (shelves/vendors/recipes/tags),
+   * which edit a global item↔entity relation and must not write
+   * location-scoped stock. The result is an intentional orphan — in the
+   * catalog, attached to the entity, stocked nowhere. `getAllItems` already
+   * surfaces such items with `ZERO_STOCK` and no `stockId`; `getStockedItems`
+   * (the pantry) excludes them.
+   */
+  catalogOnly?: boolean
+}
+
 export async function createItem(
   input: CreateItemInput,
   locationId: string = DEFAULT_LOCATION_ID,
+  options: CreateItemOptions = {},
 ): Promise<PantryItem> {
   const now = new Date()
   const {
@@ -280,6 +297,13 @@ export async function createItem(
     updatedAt: now,
   }
   await db.items.add(item)
+
+  // Catalog-only create: no ItemStock anywhere. The join below with an
+  // undefined stock yields the same zeroed, stockId-less shape `getAllItems`
+  // already produces for items not stocked in the requested location.
+  if (options.catalogOnly) {
+    return joinItemStock(item, undefined, locationId)
+  }
 
   const stock = await upsertItemStock(
     item.id,

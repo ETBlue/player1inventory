@@ -93,6 +93,38 @@ describe('Shelf Detail - Items Tab', () => {
     })
   })
 
+  it('user can create an item globally without stocking it in any location', async () => {
+    // Given: a selection shelf with no items. This tab edits a global
+    // item↔shelf relation, so creating from search must not touch
+    // location-scoped stock (D3).
+    const shelf = await makeShelf()
+    renderItemsTab(shelf.id)
+    const user = userEvent.setup()
+
+    // When: user creates "Butter" from the search box
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await user.keyboard('{Enter}')
+
+    // Then: the global Item exists and is attached to the shelf
+    let butterId: string | undefined
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      butterId = items.find((i) => i.name === 'Butter')?.id
+      expect(butterId).toBeDefined()
+      const updatedShelf = await db.shelves.get(shelf.id)
+      expect(updatedShelf?.itemIds).toContain(butterId)
+    })
+
+    // And: no ItemStock row was written, in the active location or any other
+    expect(await db.itemStocks.count()).toBe(0)
+  })
+
   it('user sees create button when search has text and no exact item match', async () => {
     // Given: a selection shelf with one item named "Milk"
     const shelf = await makeShelf()

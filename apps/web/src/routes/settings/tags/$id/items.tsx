@@ -292,11 +292,14 @@ function TagItemsTab() {
             {t('settings.tags.items.emptyFiltered')}
           </p>
         )}
+      {/* catalogOnly: this page edits a global item↔tag relation, so a new
+          item goes into the catalog and is stocked in no location (D3). */}
       <NewItemDialog
         open={newItemDialogOpen}
         onOpenChange={setNewItemDialogOpen}
         initialName={newItemInitialName}
         onSuccess={handleNewItemSuccess}
+        catalogOnly
       />
     </div>
   )

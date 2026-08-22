@@ -31,7 +31,10 @@ function ShelfItemsTab() {
   const { shelfId } = Route.useParams()
   const { data: shelf } = useShelfQuery(shelfId)
   const updateShelf = useUpdateShelfMutation()
-  const createItem = useCreateItem()
+  // catalogOnly: this page edits a global item↔shelf relation, so a new item
+  // goes into the catalog and is stocked in no location (D3). This tab
+  // bypasses NewItemDialog and creates directly, so it opts in here instead.
+  const createItem = useCreateItem({ catalogOnly: true })
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
