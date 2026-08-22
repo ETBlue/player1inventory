@@ -5,7 +5,7 @@
 ```
 src/components/
   global/         — one-time structural components: Layout, Navigation, Sidebar, PostLoginMigrationDialog
-  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, GroupByToggle, GroupCard, LayoutInnerPages, LoadingSpinner, Toolbar, ViewToggle
+  shared/         — reusable across features: AddNameDialog, DeleteButton, EmptyState, FilterStatus, GroupByToggle, GroupCard, LayoutInnerPages, ListSectionDivider, LoadingSpinner, Toolbar, ViewToggle
   pantry/         — pantry group-by views: PantryListView, ShelfGroupView, ShelfDetailView, VendorGroupView, VendorDetailView, RecipeGroupView, RecipeDetailView
   item/           — item-specific: ItemCard, ItemFilters, ItemForm, ItemListToolbar, ItemProgressBar, NewItemDialog, QuickUpdateDialog
   tag/            — tag-specific: ColorSelect, EditTagTypeDialog, TagBadge, TagInfoForm, TagTypeDropdown, TagTypeInfoForm
@@ -69,6 +69,13 @@ The desktop copy lives in `Sidebar`, between the `<h1>` app title and the nav li
 **`GroupByToggle`** (`src/components/shared/GroupByToggle/index.tsx`) — segmented button group for switching between shelf, vendor, and recipe groupings on the pantry group views. Props: `current: PantryGroupBy`, `onChange: (groupBy: PantryGroupBy) => void`. Renders three icon buttons (ShelvingUnit / Store / ChefHat) with `aria-pressed` for the active selection. Used in all three group-view toolbars (`ShelfGroupView`, `VendorGroupView`, `RecipeGroupView`).
 
 **`GroupCard`** (`src/components/shared/GroupCard/index.tsx`) — clickable card row representing one group (shelf, vendor, or recipe) in a group-by list. Shows the group name, item count, stock status (out-of-stock / low-stock rendered as colored text spans with `·` separators), and an `ItemProgressBar` for packed totals across all items in the group. Props: `name`, `icon?`, `itemCount`, `onClick`, `outOfStockCount?`, `lowStockCount?`, `activeCount?`, `totalPackedQuantity?`, `totalTargetInPacks?`, `totalRefillInPacks?`, `nameClassName?` (defaults to `'capitalize'`; pass `'normal-case'` for vendor names).
+
+**`ListSectionDivider`** (`src/components/shared/ListSectionDivider/ListSectionDivider.tsx`) — full-width label splitting a list into sections. One prop, `children`, which must be an **already-translated** label — the component never calls `t`. Renders `bg-background-surface px-3 py-2 text-foreground-muted text-center text-sm`. Ten call sites in two roles:
+
+- **"N inactive items"** (`shopping.inactiveItems`) — `PantryListView`, `ShelfDetailView`, `VendorDetailView`, `RecipeDetailView`, and `src/routes/shopping/$vendorId.tsx`.
+- **"N not stocked here"** (`common.notStockedHere`) — the five partitioned group lists: `ShelfGroupView`, `VendorGroupView`, `RecipeGroupView`, `src/routes/shopping/index.tsx`, `src/routes/cooking.tsx`.
+
+Extracted from five byte-identical copy-pasted rows, four of which (the pantry views) hardcoded English plus a hand-rolled `{n !== 1 ? 's' : ''}` plural that no locale could override — a live bug in the Chinese UI. `ShelfDetailView`'s differently-styled "Not in this shelf" row is deliberately **not** one of these.
 
 ## Pantry Components
 

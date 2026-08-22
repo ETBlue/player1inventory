@@ -201,6 +201,8 @@ pnpm test:e2e --grep "<feature-areas>|a11y"
 
 Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, `cooking`, `items`, `tags`, `vendors`, `settings`). Combine multiple areas with a pipe: `--grep "shopping|tags"`. Always append `|a11y` to include the axe-playwright accessibility scan on every branch finish. Playwright's `webServer` config handles server startup automatically.
 
+**Derive `<feature-areas>` from spec FILE names, not route names** — `ls e2e/tests/` and pick the specs that cover what you touched. A grep built from route names alone silently skips specs whose filename does not contain them: `shelves.spec.ts`, `vendors-group.spec.ts` and `recipes-group.spec.ts` all cover the pantry page (`/`) yet match none of the example areas above, which is how two broken tests in `shelves.spec.ts` sat undetected across several branches. **When pantry group views are touched, the list must include `shelves|vendors-group|recipes-group`.**
+
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
 - The root `pnpm build` must pass its `tsc` type-check for **both** `apps/web` and `apps/server` — a clean `pnpm test` / `pnpm check` / `pnpm build-storybook` is **not** a substitute and does not catch type errors

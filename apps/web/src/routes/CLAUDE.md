@@ -20,6 +20,21 @@ The pantry home page (`src/routes/index.tsx`) supports two display modes and thr
 
 **Active-location scoping (PR D):** All seven pantry views read `useStockedItems()` (not `useItems()`), so the pantry shows **only items stocked in the active location** (those with an `ItemStock` row there); switching the active location via the `LocationSwitcher` re-scopes the list, and sorting/filtering operate on that scoped set. The **Add button** opens `NewItemDialog`, a combobox over the **full** catalog (`useItems()`) — selecting an existing item stocks it here via copy-on-add, creating a new one stocks it here. Shopping carts and cooking are likewise active-location-scoped (see their sections).
 
+**Groups with nothing stocked here sink below a divider (they are never hidden).** In all three group views a group whose item count is 0 — nothing stocked in the active location — still renders, but below a `ListSectionDivider` labelled `common.notStockedHere` ("N not stocked here"). It replaces an earlier "hide at zero" behaviour on the same branch: a group that vanished gave no way to tell "empty *here*" from "gone". The shopping vendor list and the cooking recipe list apply the same rule (see their sections).
+
+The partition runs **after** the existing sort, as two `.filter` passes, so order is preserved *within* each half and never overridden by a stocked-ness primary key — the shelf `order` sort in particular.
+
+The predicate is simply `getItemCount(…) === 0` — **no `stockId` guard and no cloud bypass belong here.** These views read `useStockedItems()`, which is already location-scoped and already falls back to the full list in cloud mode, so an empty group *is* the signal. This is the opposite of shopping and cooking, which read `useItems()` and therefore do need an explicit `stockId` check plus an `isCloud` bypass. (`ShelfGroupView` partitions on `getShelfItems(id).length`, which its `getItemCount` now delegates to — a selection shelf's raw `itemIds` is location-blind and counted items stocked elsewhere.)
+
+The unfiled pseudo-cards split sink from hide:
+
+| Card | At zero |
+| --- | --- |
+| `Unsorted` (shelf) | always renders — it is the only route to items on no shelf — and sinks below the divider |
+| `No vendor` / `Not added to recipe` | hidden when nothing is unfiled **anywhere**; rendered below the divider when unfiled items exist but none are stocked here |
+
+Telling those two cases apart needs the global catalog, which `useStockedItems()` cannot see — that is the **only** reason `VendorGroupView` and `RecipeGroupView` also run a `useItems()` query.
+
 **URL search params** (validated by `validateSearch` on the route):
 - `?groupBy` — `'shelf'` | `'vendor'` | `'recipe'` — switches to group view; absent = flat list view
 - `?id` — entity ID for drill-down detail within a group view (e.g. `/?groupBy=shelf&id=<shelfId>`)

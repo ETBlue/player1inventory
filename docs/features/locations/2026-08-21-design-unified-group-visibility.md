@@ -112,6 +112,17 @@ four rows becoming translatable.
 
 ## Task 2 — the partition helper
 
+> **As built: `hasStockHere` was never shipped.** It was written in `e1ce18b6`
+> and deleted again in `96327c65` before the branch landed, because it ended up
+> with no production caller: every one of the five surfaces already had a
+> location-scoped count of its own and inlines its own predicate against it —
+> the pantry views on `useStockedItems()` list lengths, shopping on
+> `useVendorCartCounts()`, cooking on `availableRecipeItems.length`. Shipping it
+> would have been dead code. `isStockedHere` (which the spec below builds on)
+> does exist in `lib/quantityUtils.ts`; `hasStockHere` does not — do not go
+> looking for it. The spec below is kept as written so the reasoning stays
+> legible.
+
 Add to `lib/quantityUtils.ts`, beside `isStockedHere`:
 
 ```ts
@@ -198,6 +209,11 @@ This is the one judgement call in the design; the designer was invited to
 overrule it in favour of "keep hiding" and did not.
 
 **Commit 2** — the partition helper and all five surfaces, with tests and stories.
+
+> **As built:** this shipped as three commits, not one — `91184539` (extract
+> `ListSectionDivider` + the plural fix, i.e. Task 1), `e1ce18b6` (the three
+> pantry group views) and `96327c65` (shopping + cooking, and the deletion of
+> `hasStockHere`).
 
 ## i18n
 

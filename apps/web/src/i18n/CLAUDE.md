@@ -59,13 +59,15 @@ const { t } = useTranslation()
 2. Add the same key with TW translation to `src/i18n/locales/tw.json`
 3. The parity test (`src/i18n/locales/locales.test.ts`) will fail if keys don't match — this is intentional
 
+**Plural keys need both forms in every locale.** A counted string must ship `<key>_one` **and** `<key>_other` in `en.json` *and* `tw.json` — even where the two forms are byte-identical (as they are throughout TW). A missing `_one` does **not** fall back to that locale's own `_other`; i18next falls back to another *language*, so a TW user sees English at count 1. The parity test enforces this, since `_one`/`_other` are ordinary leaf keys to it.
+
 **Locale-aware onboarding:** On first app launch (empty IndexedDB), `__root.tsx` detects all three data stores are empty and redirects to `/onboarding`. The onboarding flow (Phase B) lets the user choose a language before selecting template items/vendors, then calls `useOnboardingSetup` to bulk-create the data in the chosen language. `seedDefaultData` in `src/db/operations.ts` still exists for testing and manual seeding but is no longer called automatically from `db.on('populate')`.
 
 **Settings UI:** Language selector card in `/settings` with Globe icon and Select dropdown (Auto/English/繁體中文). Positioned between Theme and Tags cards.
 
 **Page-by-page string extraction:** Translated pages so far: settings main page (title, theme, tags/vendors/recipes nav cards, language selector); settings tags pages (tags list, tag detail layout, tag info tab, tag items tab); settings vendors pages (vendor list, vendor detail layout, vendor info tab, VendorCard, VendorInfoForm); settings recipes pages (recipe list, recipe detail layout, recipe info tab, RecipeCard, RecipeInfoForm); shopping page (toolbar, vendor filter, dialogs, log notes); cooking page (toolbar, recipe cards, dialogs, log notes) + CookingControlBar (sort labels, aria-labels, search placeholder); shared item components: ItemListToolbar (sort, direction, tags/filters/search controls, search input, create button), ItemFilters (vendors/recipes/edit-tags buttons, clear and manage actions), TagTypeDropdown (clear action); item detail tabs ($id.tsx layout, $id/index.tsx stock tab, $id/tags.tsx, $id/vendors.tsx, $id/recipes.tsx, $id/log.tsx). All other pages still use hardcoded English strings — they will be migrated page-by-page in follow-up PRs. Missing keys fall back to English automatically.
 
-**Common i18n keys:** `common.*` covers `cancel`, `delete`, `deleting`, `nameLabel`, `save`, `saving`, `discard`, `goBack`, `unsavedTitle`, `unsavedDescription`, `done`, `back`, `confirm`, `add`, `edit`, `clear`, `manage`, `asc`, `desc`, `search`, `tags`, `filters` — reuse these instead of adding entity-specific duplicates.
+**Common i18n keys:** `common.*` covers `cancel`, `delete`, `deleting`, `nameLabel`, `save`, `saving`, `discard`, `goBack`, `unsavedTitle`, `unsavedDescription`, `done`, `back`, `confirm`, `add`, `edit`, `clear`, `manage`, `asc`, `desc`, `search`, `tags`, `filters`, `notStockedHere` (plural, the group-list divider label) — reuse these instead of adding entity-specific duplicates.
 
 **Dynamic inventory log descriptions (`logKey`/`logParams` pattern):**
 
