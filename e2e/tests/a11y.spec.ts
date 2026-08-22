@@ -149,6 +149,37 @@ test('user can view pantry page without accessibility violations', async ({ page
   await checkA11y(page, undefined, AXE_OPTIONS)
 })
 
+// Desktop sidebar LocationSwitcher (variant="full").
+// Every desktop scan in this file runs at 1280×720 and so already includes the
+// sidebar switcher — but none of them *proves* it was on screen, so a regression
+// that dropped it would leave them all green. This test asserts the trigger is
+// visible first, then scans, pinning the coverage.
+//
+// It deliberately does NOT scan with the dropdown open: Radix's modal portal
+// marks the rest of the page `aria-hidden` and renders the menu outside every
+// landmark, which trips `aria-hidden-focus`, `landmark-one-main`, `region` and
+// `page-has-heading-one`. Those are Radix `DropdownMenu` artifacts shared by
+// every menu in the app, not anything specific to this component, and chasing
+// them here would just add a fifth known failure to this file.
+test('user can view the desktop sidebar location switcher without accessibility violations', async ({
+  page,
+}) => {
+  // Given the pantry page at a desktop viewport, where the sidebar switcher shows
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Sidebar navigation' })
+      .getByRole('button', { name: /switch location/i }),
+  ).toBeVisible()
+
+  // When axe scans the page with the switcher present
+  await injectAxe(page)
+
+  // Then there should be no violations
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
 // Shopping page (/shopping)
 test('user can view shopping page without accessibility violations', async ({ page }) => {
   // Given the user navigates to the shopping page

@@ -133,7 +133,7 @@ export function VendorGroupView() {
       <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
         <div>
           <Toolbar>
-            <LocationSwitcher />
+            <LocationSwitcher className="lg:hidden" />
             <ViewToggle current="group" onChange={() => {}} />
             <GroupByToggle current="vendor" onChange={() => {}} />
             <div className="flex-1" />
@@ -162,7 +162,7 @@ export function VendorGroupView() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar>
-          <LocationSwitcher />
+          <LocationSwitcher className="lg:hidden" />
           <ViewToggle
             current="group"
             onChange={(view) => {

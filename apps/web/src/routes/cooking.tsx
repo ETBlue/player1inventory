@@ -705,7 +705,7 @@ function CookingPage() {
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <Toolbar className="justify-between">
-          <LocationSwitcher />
+          <LocationSwitcher className="lg:hidden" />
           <span className="flex-1">
             {t('cooking.toolbar.servingCount', { count: totalServings })}
           </span>

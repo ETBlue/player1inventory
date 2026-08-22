@@ -160,7 +160,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
             <>
               {/* Leftmost, ahead of the back button — the placement every
                   other toolbar uses (shopping, cooking, pantry group views). */}
-              <LocationSwitcher />
+              <LocationSwitcher className="lg:hidden" />
               <Button
                 variant="neutral-ghost"
                 size="icon"

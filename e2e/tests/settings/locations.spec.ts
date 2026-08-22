@@ -4,6 +4,10 @@ import { CLOUD_WEB_URL } from '../../constants'
 // Locations are local-first with NO cloud GraphQL backend yet (PR A). The page
 // must still render in both modes (covered by a11y.spec.ts), but the CRUD flows
 // only operate against local Dexie, so the functional tests are local-only.
+//
+// Name lookups are scoped to <main>: /settings/locations is not a fullscreen
+// page, so at Playwright's default (desktop) viewport the sidebar's
+// LocationSwitcher also renders the active location's name.
 
 test.beforeEach(async ({ page }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
@@ -45,7 +49,7 @@ test('user can create a location', async ({ page, baseURL }) => {
   // Given the locations settings page is open (default "My Home" seeded on first open)
   await page.goto('/settings/locations')
   // Default location is undeletable and visible
-  await expect(page.getByText('My Home')).toBeVisible()
+  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // When the user adds a location named "Office"
   // Add button aria-label: settings.locations.addLabel = "Add location" (src/routes/settings/locations/index.tsx)
@@ -63,7 +67,7 @@ test('user can rename a location', async ({ page, baseURL }) => {
   test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
 
   await page.goto('/settings/locations')
-  await expect(page.getByText('My Home')).toBeVisible()
+  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Given a location "Office" exists
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -88,7 +92,7 @@ test('user can delete a non-default location', async ({ page, baseURL }) => {
   test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
 
   await page.goto('/settings/locations')
-  await expect(page.getByText('My Home')).toBeVisible()
+  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Given a location "Office" exists
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -114,7 +118,7 @@ test('the default location cannot be deleted', async ({ page, baseURL }) => {
 
   // Given the locations page with only the default location
   await page.goto('/settings/locations')
-  await expect(page.getByText('My Home')).toBeVisible()
+  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Then there is no delete control for the default location
   await expect(
@@ -126,7 +130,7 @@ test('user can reorder locations', async ({ page, baseURL }) => {
   test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
 
   await page.goto('/settings/locations')
-  await expect(page.getByText('My Home')).toBeVisible()
+  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
   // Given two extra locations exist: "Office" then "Cabin"
   await page.getByRole('button', { name: 'Add location' }).click()

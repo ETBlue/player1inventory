@@ -203,7 +203,7 @@ export function PantryListView() {
           recipes={recipes}
           leading={
             <>
-              <LocationSwitcher />
+              <LocationSwitcher className="lg:hidden" />
               <ViewToggle
                 current="list"
                 onChange={(view) => {

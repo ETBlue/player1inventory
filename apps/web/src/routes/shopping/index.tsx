@@ -219,7 +219,7 @@ function ShoppingIndex() {
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
-        <LocationSwitcher />
+        <LocationSwitcher className="lg:hidden" />
         <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

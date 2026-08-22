@@ -1,6 +1,8 @@
 ### Active-Location Scoping
 
-One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under `active-location-id`, defaulting to `DEFAULT_LOCATION_ID = 'local'`) and switched from the `LocationSwitcher` mounted on the pantry, shopping, and cooking toolbars. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
+One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under `active-location-id`, defaulting to `DEFAULT_LOCATION_ID = 'local'`) and switched from the `LocationSwitcher`. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
+
+**Where the switcher lives depends on the breakpoint.** At `lg+` it is in the desktop `Sidebar` (`variant="full"`, showing the location name); below `lg` there is no sidebar and it stays in the pantry/shopping/cooking page toolbars (`variant="compact"`, the single-letter glyph, each site passing `className="lg:hidden"`). Exactly one copy is visible at any width, and the set of pages that have a switcher is unchanged. See `components/CLAUDE.md` for the jsdom duplicate-accessible-name hazard this creates in tests.
 
 | Page | What the active location decides |
 | --- | --- |
@@ -40,7 +42,7 @@ groupBy=recipe, id present → RecipeDetailView  (items in one recipe)
 - When switching group-by: writes `setStoredGroupBy(g)` before navigating
 
 **Toolbar controls (group views):**
-- `LocationSwitcher` — leading; global active-location selector (inert in PR B). Mounted on every pantry view (group + detail + flat list)
+- `LocationSwitcher` — leading; global active-location selector. Mounted on every pantry view (group + detail + flat list) with `className="lg:hidden"` — at `lg+` the sidebar copy takes over
 - `ViewToggle` — switches between list and group views
 - `GroupByToggle` — switches between shelf / vendor / recipe groupings (three icon buttons)
 - "Manage X" button — entity-specific label ("Manage shelves" / "Manage vendors" / "Manage recipes" via `settings.{shelves,vendors,recipes}.manage`) links to `/settings/shelves`, `/settings/vendors`, or `/settings/recipes` depending on current group-by. Icon-only on mobile (`hidden lg:inline` for the text)
@@ -139,7 +141,7 @@ Row 1 (single combined toolbar):
 ```
 [LocationSwitcher]  [← Go back]  [Vendor name]  [flex-1]  [N packs in cart]  [✕ Cancel]  [✓ Done]
 ```
-- `LocationSwitcher` — leading, left of the back button (same placement as every other main page's toolbar); switching location re-reads the active-location-scoped cart via `useVendorCart`'s query key, so the page shows the target location's cart rather than stale rows
+- `LocationSwitcher` — leading, left of the back button (same placement as every other main page's toolbar), `lg:hidden` so the sidebar copy takes over on desktop; switching location re-reads the active-location-scoped cart via `useVendorCart`'s query key, so the page shows the target location's cart rather than stale rows
 - Back button: icon-only on mobile, "Go back" text on desktop (`hidden lg:inline`), aria-label `common.goBack`
 - Vendor name: `normal-case` class for vendor names (preserves casing like "iHerb"); plain for "No vendor"
 - Cancel: icon-only on mobile, "Cancel" text on desktop — visible only when `cartItems.length > 0`
