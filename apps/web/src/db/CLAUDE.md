@@ -69,4 +69,11 @@ An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.
 
 Cascades run as sequential awaits rather than one Dexie transaction, consistently across all three.
 
+## Transactional batches
+
+Two operations wrap their writes in a single `db.transaction('rw', …)`. Both must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and neither may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. Callers therefore compute everything first and hand over finished rows.
+
+- **`consumeRecipesBatch`** — cooking's "done": quantities, logs and `lastCookedAt` over `items`, `itemStocks`, `inventoryLogs`, `recipes`.
+- **`applyUnitSwitchBatch`** — the Info tab's unit switch over `items`, `itemStocks`, `recipes`: the `Item`'s configuration, one `ItemStock` per location whose tracked quantities the switch moves, and one recipe per `defaultAmount` expressed in the old unit. As separate writes a failure partway left the item on the **new** unit while some locations and recipes still held **old**-unit numbers — mixed units, silently. It shares `updateItem`'s field routing via the internal `writeItemUpdate` rather than re-deriving the rule.
+
 > Details of the location-scoped behaviour live with their features: `src/routes/settings/locations/CLAUDE.md` (locations, delete cascade, orphans), `src/routes/items/CLAUDE.md` (the Stock pager and what removal destroys), `src/routes/CLAUDE.md` (active-location scoping).

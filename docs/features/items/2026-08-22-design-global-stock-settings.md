@@ -187,7 +187,12 @@ Update `docs/INDEX.md`.
 - **Part 2** — the Settings assignment pages, create-globally, shelf filter
   badges, sidebar reorder. Separate branch, same issue (#247).
 - **Issue #245** — unblocked by part 2, not fixed here.
-- **Cloud `ItemStock`** — still deferred.
+- **Cloud `ItemStock`** — still deferred. The deferral carries an
+  obligation with it: when cloud gains `Location`/`ItemStock`, the unit
+  switch must be atomic there too, which on that side means **one combined
+  GraphQL mutation** wrapping the item update, the per-location stock
+  conversions and the recipe rewrites in a single server-side transaction —
+  not a sequence of Apollo calls. See the atomicity addendum below.
 
 ## Verification
 
@@ -238,8 +243,9 @@ factor, which is what made the original gap defensible.
 - **`routes/items/$id/index.tsx`** builds one `StockConversion` per stocked
   location from that row's **own** stored values (never from the form, which
   only ever holds the active location's numbers) and shows them in the existing
-  confirm dialog before saving. Confirming writes each row via
-  `useUpdateItem({ …, locationId })`; cancelling writes nothing at all.
+  confirm dialog before saving. Confirming commits every write in one Dexie
+  transaction (see the atomicity addendum below); cancelling writes nothing at
+  all.
 
 ### Decisions
 
@@ -267,3 +273,53 @@ factor, which is what made the original gap defensible.
 - Mutation-checked per root `CLAUDE.md`: inverting the conversion direction,
   removing the float-dust strip, rounding to integers, and converting only the
   active location each turned the relevant tests red.
+
+## Addendum — the unit switch is one atomic write (designer ruling, 2026-08-23)
+
+The conversion above first shipped as **1 + N + M independent writes**: the
+`Item`, then one `updateItem` per location, then one `updateRecipe` per recipe.
+Each was its own Dexie transaction, so a failure partway would leave the item on
+the **new** unit while some locations and recipes still held **old**-unit
+numbers — mixed units, silently, with nothing surfaced to the user. This is
+inventory data; the designer asked for it fixed in this PR rather than deferred.
+
+### What changed
+
+- **`db/operations.ts`** gains `applyUnitSwitchBatch(input)` — the whole switch
+  in one `db.transaction('rw', [db.items, db.itemStocks, db.recipes], …)`,
+  alongside `consumeRecipesBatch`, the other multi-table transactional batch.
+  `updateItem`'s field-routing half is factored out as `writeItemUpdate` so both
+  split fields by the same rule instead of re-deriving it.
+- **`hooks/useItems.ts`** gains `useApplyUnitSwitch()`, which invalidates every
+  family the transaction touched in one pass: `['items']` (+ the per-id and
+  per-tag/vendor count keys), `['itemStocks']`, `['recipes']` (+
+  `['recipes','itemCount']`).
+- **`routes/items/$id/index.tsx`** — `handleConfirmAdjustments` calls that one
+  mutation instead of the three loops.
+
+### Decisions
+
+| Decision | Rationale |
+|---|---|
+| The caller computes everything before the transaction opens | A Dexie transaction is zone-scoped: awaiting a foreign (non-Dexie) promise inside it can detach the zone so later writes commit *outside* the transaction — exactly the partial commit this exists to prevent. The route resolves the recipe item arrays up front and hands over finished rows. |
+| Every touched table is declared | Touching an undeclared table throws at runtime, not compile time. The three are `items`, `itemStocks`, `recipes`. |
+| Cloud keeps its sequential path | Apollo has no client-side transaction, so wrapping the cloud writes would fake an atomicity that does not exist. Cloud also has no `Location`/`ItemStock`, so `buildStockConversions` yields nothing there and only the item and recipe writes run. **When cloud gains locations this must become one combined GraphQL mutation** wrapping all three groups in a server-side transaction — not a sequence of Apollo calls. |
+| Local-mode-only hook, throwing in cloud | Same guard as `useAddItemToLocation` / `useRemoveItemFromLocation`: a wiring mistake fails loudly rather than reporting false success. |
+
+### Tests
+
+- `db/operations.test.ts` (`applyUnitSwitchBatch`) — a fixture with **three**
+  locations holding three *different* sets of numbers and **two** recipes with
+  two different amounts. One test asserts all three write groups land; the other
+  injects a failure on the **second** recipe write — by which point the item,
+  all three stock rows and one recipe have already been written inside the
+  transaction — and asserts **nothing** committed.
+- `hooks/useItems.test.tsx` (`useApplyUnitSwitch invalidates every affected
+  query family`) — asserted through the real consumer hooks (`useItem`,
+  `useItemStocks`, `useRecipes`) sharing one `QueryClient` with the mutation, not
+  by spying on `invalidateQueries`: a missed invalidation shows up as a stale
+  screen after a *successful* save, never as an error.
+- Mutation-checked per root `CLAUDE.md`: removing the transaction wrapper (
+  leaving the writes sequential) turned the rollback test red
+  (`expected 'package' to be 'measurement'`), and dropping the `['recipes']`
+  invalidation turned the staleness assertion red (`expected 500 to be 1`).
