@@ -2,9 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Badge } from '@/components/ui/badge'
+import { useRecipeItemCounts } from '@/hooks/useRecipeItemCounts'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useShelfQuery, useUpdateShelfMutation } from '@/hooks/useShelves'
+import { useTagItemCounts } from '@/hooks/useTagItemCounts'
 import { useTagsWithDepth, useTagTypes } from '@/hooks/useTags'
+import { useVendorItemCounts } from '@/hooks/useVendorItemCounts'
 import { useVendors } from '@/hooks/useVendors'
 
 export const Route = createFileRoute('/settings/shelves/$shelfId/filters')({
@@ -20,6 +23,13 @@ function ShelfFiltersTab() {
   const { data: tagsWithDepth = [] } = useTagsWithDepth()
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
+
+  // Global item counts shown on each badge, so the user can see how many items
+  // a filter option selects. Tag counts include descendants — see
+  // useTagItemCounts.
+  const tagCounts = useTagItemCounts()
+  const vendorCounts = useVendorItemCounts()
+  const recipeCounts = useRecipeItemCounts()
 
   const updateFilterConfig = (patch: {
     tagIds?: string[]
@@ -161,6 +171,7 @@ function ShelfFiltersTab() {
                           onClick={() => toggleTag(tag.id)}
                         >
                           {tag.name}
+                          {` (${tagCounts.get(tag.id) ?? 0})`}
                           {isSelected && <X className="ml-1 h-3 w-3" />}
                         </Badge>
                       </div>
@@ -195,6 +206,7 @@ function ShelfFiltersTab() {
                   onClick={() => toggleVendor(vendor.id)}
                 >
                   {vendor.name}
+                  {` (${vendorCounts.get(vendor.id) ?? 0})`}
                   {isSelected && <X className="ml-1 h-3 w-3" />}
                 </Badge>
               )
@@ -225,6 +237,7 @@ function ShelfFiltersTab() {
                   onClick={() => toggleRecipe(recipe.id)}
                 >
                   {recipe.name}
+                  {` (${recipeCounts.get(recipe.id) ?? 0})`}
                   {isSelected && <X className="ml-1 h-3 w-3" />}
                 </Badge>
               )
