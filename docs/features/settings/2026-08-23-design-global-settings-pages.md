@@ -159,3 +159,39 @@ stocking assumption — options for items already stocked here render
 anything, so the fix is a second rendering mode for the combobox, not a flag.
 Flagged here, not fixed. It is also recorded in
 `apps/web/src/routes/settings/CLAUDE.md`.
+
+## E2E outcome
+
+`pnpm test:e2e --grep "settings|shelves|vendors|recipes|tags|item-management|location|a11y"`
+selects **179 tests in 16 files** — both `shelves.spec.ts` copies,
+`vendors-group`, `recipes-group` and the new `settings-global-pages.spec.ts`.
+
+Final: **172 passed, 4 failed, 3 skipped**. The 4 failures are the known
+baseline (a11y colour contrast on shelves, vendor group-by, recipe group-by and
+shelves-on-mobile); the 3 skips are pre-existing `test.skip`s. `[cloud]` specs
+did **not** skip — a backend was up on :4001, so both projects ran.
+
+Two things the gate turned up:
+
+**A pre-existing break inherited from part 1.** `item-management.spec.ts` :172
+and :194 were timing out in *both* projects on
+`locator('#expirationMode')`. Part 1 moved the expiration mode, "expires in N
+days" and threshold fields to the Info tab, but `ItemPage.selectExpirationMode`
+still called `ensureStockTab()`. Fixed on the spec side (the source is correct):
+`ItemPage` gains `ensureInfoTab()`, and the specific-date spec now saves the
+global mode before hopping to the Stock tab for this location's due date.
+
+**Two new specs**, in `e2e/tests/settings-global-pages.spec.ts` (local project
+only — cloud has neither `ItemStock` nor locations, and its `testMatch` lists
+specs explicitly), covering the two user-visible outcomes that had unit coverage
+but nothing end to end:
+
+- *no location stock on a settings items tab* — the pantry half is a control
+  proving the fixture really carries stock. Mutation: dropping
+  `showStock={false}` from the tags tab turns it red.
+- *Settings pinned below the location-aware links* — asserts order **and the
+  measured layout gap**. Order alone is vacuous here for the reason recorded
+  under D5 above, and real layout is exactly what jsdom denies the unit test.
+  Mutation: folding Settings back into `navRoutes` and deleting the `mt-auto`
+  block turns it red — the gap collapses from ~600px to the 4px `gap-1` — while
+  the order assertion above it still passes.
