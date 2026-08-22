@@ -28,7 +28,9 @@ One-time structural components that appear once in the app shell.
 
 **`Navigation`** (`src/components/global/Navigation/index.tsx`) — mobile-only bottom navigation bar (`lg:hidden`). Renders 4 nav links (Pantry, Shopping, Cooking, Settings) in a `grid-cols-4` row. Hidden on fullscreen pages (`/items/*`, `/settings/tags*`, `/settings/vendors*`, `/settings/recipes*`). On fullscreen pages the component renders `null` — no padding is added to the page.
 
-**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation (returns `null`, so fullscreen pages have no switcher either). Top to bottom: "Player 1 Inventory" `<h1>`, the `LocationSwitcher` with `variant="full"` (desktop home of the active-location selector — the page toolbars carry the `lg:hidden` compact copy), then 4 nav links with icon + label side-by-side. Active: `text-importance-primary-background bg-background-elevated`.
+**`Sidebar`** (`src/components/global/Sidebar/index.tsx`) — desktop-only left sidebar (`hidden lg:flex flex-col w-56`). Same fullscreen-page suppression as Navigation (returns `null`, so fullscreen pages have no switcher either). Top to bottom: "Player 1 Inventory" `<h1>`, the `LocationSwitcher` with `variant="full"` (desktop home of the active-location selector — the page toolbars carry the `lg:hidden` compact copy), then the 3 **location-aware** nav links (Pantry, Shopping, Cooking) with icon + label side-by-side. Active: `text-importance-primary-background bg-background-elevated`.
+
+**Settings is pinned to the bottom**, in its own block (`mt-auto`) below the three — it is global, not location-aware, so it is deliberately kept away from the switcher and the routes the switcher scopes. Both blocks share one link renderer, so the pinned Settings link keeps identical styling, icon and active-state logic (`startsWith('/settings')`, so it stays active on subpages). The mobile `Navigation` bar intentionally does **not** mirror this — the rationale is desktop-sidebar spatial separation and the bottom bar has no switcher adjacency to fix.
 
 ## Shared Components
 

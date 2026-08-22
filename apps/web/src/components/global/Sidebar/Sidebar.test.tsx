@@ -102,6 +102,34 @@ describe('Sidebar', () => {
     ).toBeTruthy()
   })
 
+  it('user sees Settings pinned to the bottom, below the location-aware links', async () => {
+    // Given a normal page
+    renderSidebar('/')
+    const nav = await screen.findByRole('navigation', {
+      name: 'Sidebar navigation',
+    })
+
+    // When the nav links are read in DOM order
+    const links = within(nav).getAllByRole('link')
+    const labels = links.map((link) => link.textContent?.trim())
+
+    // Then Pantry is still first and Settings is last. DOM order is asserted
+    // rather than the pinning class alone, so a Settings link that is visually
+    // last but not last in the tree still fails.
+    expect(labels).toEqual(['Pantry', 'Shopping', 'Cooking', 'Settings'])
+
+    // And Settings lives in its own block, separated from the three
+    // location-aware links and pushed to the bottom of the flex column.
+    const settingsLink = links[links.length - 1]
+    const pantryLink = links[0]
+    const settingsBlock = settingsLink.parentElement
+    expect(settingsBlock).not.toBe(pantryLink.parentElement)
+    // jsdom applies no layout, so "pinned to the bottom" is only observable as
+    // the auto top margin on the block that holds the Settings link — checked
+    // together with the DOM-order assertion above, never on its own.
+    expect(settingsBlock).toHaveClass('mt-auto')
+  })
+
   it('renders no switcher on a fullscreen page, where there is no sidebar', async () => {
     // Given a fullscreen page (the Sidebar returns null there)
     renderSidebar('/settings/vendors')
