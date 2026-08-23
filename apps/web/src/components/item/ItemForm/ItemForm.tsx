@@ -334,8 +334,11 @@ export function ItemForm({
   const consumeAmountError =
     consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
 
-  // `consumeAmount === 0` is the create default (6302ee97) and means "no step
-  // size configured yet" — NOT a step of 1. Fabricating the 1 silently rounded
+  // `consumeAmount === 0` means "no step size configured" — NOT a step of 1.
+  // It is no longer the create default (that reverted to 1 on 2026-08-24), but
+  // it is still reachable: a caller may pass an explicit 0, a backup may
+  // restore one, and items created while the 0 default was live still carry
+  // it. So the honest handling stays. Fabricating the 1 silently rounded
   // an unconfigured item's Unpacked quantity to whole numbers. HTML rejects
   // `step={0}`, so "no step" is spelled `step="any"`: the field accepts what
   // the user typed instead of snapping to a unit they never chose. The Info
@@ -347,8 +350,9 @@ export function ItemForm({
   // four validated fields live in the info section, so a sections={['stock']}
   // form (the item detail Stock tab) has no validated field on screen at all —
   // gating its Save on them left the button permanently disabled with no error
-  // text and no field to fix it in, e.g. for any item still carrying the
-  // create default of consumeAmount 0.
+  // text and no field to fix it in — for any item carrying consumeAmount 0, and
+  // equally for `nameError`, which no default can rule out. Still required
+  // after the create default became 1: it closes the hole, not one trigger.
   const hasFieldError =
     showInfo &&
     !!(

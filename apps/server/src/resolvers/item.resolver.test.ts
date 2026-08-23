@@ -137,7 +137,7 @@ describe('Item resolvers', () => {
     expect(created.vendorIds).toEqual([])
   })
 
-  it('user can create an item with consumeAmount 0 when the input omits it', async () => {
+  it('user can create an item with consumeAmount 1 when the input omits it', async () => {
     // Given Prisma create returns whatever it is handed
     const item = makeItem({ name: 'Milk' })
     mockPrisma.item.create.mockResolvedValue(item)
@@ -151,7 +151,32 @@ describe('Item resolvers', () => {
       { input: { name: 'Milk' } },
     )
 
-    // Then the resolver persists 0, matching the local-mode default
+    // Then the resolver persists 1, matching the local-mode default (designer
+    // ruling 2026-08-24) — a new cloud item is valid by nature too
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.item.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ consumeAmount: 1 }),
+      }),
+    )
+  })
+
+  it('user can create an item with consumeAmount 0 when 0 is supplied explicitly', async () => {
+    // Given Prisma create returns whatever it is handed
+    const item = makeItem({ name: 'Flour' })
+    mockPrisma.item.create.mockResolvedValue(item)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
+
+    // When user creates an item deliberately asking for "no step size"
+    const result = await execOp(
+      `mutation CreateItem($input: CreateItemInput!) {
+        createItem(input: $input) { id }
+      }`,
+      { input: { name: 'Flour', consumeAmount: 0 } },
+    )
+
+    // Then the 0 survives — the default is applied with `??`, not `||`, so an
+    // explicit "no step size" is not silently rewritten to 1
     expect(result?.errors).toBeUndefined()
     expect(mockPrisma.item.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -174,7 +199,7 @@ describe('Item resolvers', () => {
       { input: { name: 'Rice', consumeAmount: 0.5 } },
     )
 
-    // Then the supplied value wins over the 0 default
+    // Then the supplied value wins over the 1 default
     expect(result?.errors).toBeUndefined()
     expect(mockPrisma.item.create).toHaveBeenCalledWith(
       expect.objectContaining({

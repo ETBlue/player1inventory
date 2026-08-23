@@ -52,10 +52,12 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
     targetUnit: item.targetUnit,
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
-    // 0 means "no step size configured yet" and is shown as stored — the
-    // fabricated 1 made an unconfigured item look set up. (`??` never fires
-    // here anyway: `consumeAmount` is a required number on `Item`, backfilled
-    // for every pre-v16 row by the v16 upgrade and defaulted to 0 by
+    // 0 means "no step size configured" and is shown as stored — the
+    // fabricated 1 made an unconfigured item look set up. New items no longer
+    // start at 0 (the default became 1 on 2026-08-24), but an explicit 0, an
+    // imported 0 or an item created while that default was live still reaches
+    // here. (`??` never fires: `consumeAmount` is a required number on `Item`,
+    // backfilled for every pre-v16 row by the v16 upgrade and always set by
     // `createItem`.)
     consumeAmount: item.consumeAmount ?? 0,
     // Read explicit expirationMode; fall back to inference for items created

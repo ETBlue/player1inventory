@@ -343,9 +343,9 @@ describe('Recipe Detail - Items Tab', () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
       expect(butter).toBeDefined()
-      // And it is created unconfigured: consumeAmount 0, the single default
+      // And it is created valid: consumeAmount 1, the single default
       // shared by every interactive create path (local and cloud).
-      expect(butter?.consumeAmount).toBe(0)
+      expect(butter?.consumeAmount).toBe(1)
       const updatedRecipe = await db.recipes.get(recipe.id)
       expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
         true,

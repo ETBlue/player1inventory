@@ -125,6 +125,9 @@ export function useOnboardingSetup() {
           .map((key) => tagIdByKey.get(key))
           .filter((id): id is string => id !== undefined)
 
+        // No `consumeAmount` here on purpose: `createItem` owns the default
+        // (1), so passing a literal would fork it into a second place to keep
+        // in sync. Same reason no other create caller passes one.
         await createItem({
           name,
           tagIds,
@@ -133,7 +136,6 @@ export function useOnboardingSetup() {
           refillThreshold: 0,
           packedQuantity: 0,
           unpackedQuantity: 0,
-          consumeAmount: 1,
         })
         createdCount++
         reportProgress()

@@ -2369,7 +2369,12 @@ describe('Item detail page - toolbar tabs', () => {
 // required number on Item, and `??` never fires for 0), but it read as though
 // an unconfigured item were worth a step of 1, which is exactly the lie the
 // form then told with `consumeAmount || 1`. The route now passes 0 through.
-describe('Item detail form — an unset consume amount is displayed honestly', () => {
+//
+// (From commit a203c204.) `consumeAmount: 0` means "no step size" and is shown as
+// stored — nothing may fabricate a 1 for it. 0 stopped being the create default
+// on 2026-08-24, so both fixtures set it EXPLICITLY; they must keep doing so, or
+// they would create consumeAmount-1 items and pin nothing.
+describe('Item detail form — a consume amount of 0 is displayed honestly', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
@@ -2394,10 +2399,14 @@ describe('Item detail form — an unset consume amount is displayed honestly', (
     )
   }
 
-  it('user sees 0 in Amount per Consume for an item that has never been configured', async () => {
-    // Given an item created the way the app creates one — no consumeAmount, so
-    // it takes the create default of 0
-    const item = await createItem({ name: 'Milk', tagIds: [] })
+  it('user sees 0 in Amount per Consume for an item whose consume amount is 0', async () => {
+    // Given an item whose consumeAmount is 0 — set explicitly here, but equally
+    // reachable via an import or an item created while 0 was the default
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      consumeAmount: 0,
+    })
     expect((await getItem(item.id))?.consumeAmount).toBe(0)
 
     // When the user opens the Info tab
@@ -2413,8 +2422,12 @@ describe('Item detail form — an unset consume amount is displayed honestly', (
   it('user editing Unpacked for such an item is not rounded to a whole unit', async () => {
     const user = userEvent.setup()
 
-    // Given the same unconfigured item, opened on the Stock tab
-    const item = await createItem({ name: 'Milk', tagIds: [] })
+    // Given the same 0-consume-amount item, opened on the Stock tab
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      consumeAmount: 0,
+    })
     renderItemDetailPage(`/items/${item.id}/stock`)
     const unpackedInput = (await screen.findByLabelText(
       /^unpacked/i,

@@ -201,19 +201,24 @@ describe('Item stock tab', () => {
     })
   })
 
-  // Regression: every other save-path test above seeds an explicit
-  // `consumeAmount: 1`, which is exactly why none of them caught this. Since
-  // 6302ee97 a freshly created item carries `consumeAmount: 0`, and the form's
-  // "Must be greater than 0." error gated Save for the WHOLE form — including
-  // this tab, which renders neither that field nor its message. Save was
-  // permanently dead, clicking it only blurred the input, and nothing
-  // persisted. The fixture must therefore omit consumeAmount.
-  it('user can save stock for a brand-new item whose consume amount is still unset', async () => {
+  // The regression guard for commit 2fe372a1: `hasFieldError` gated the Stock
+  // tab's Save on info-only fields this tab never renders, so an item whose
+  // consumeAmount is 0 could not have its stock saved at all — no error text,
+  // no field to fix it in. Independent of what `createItem` defaults to: 0 was
+  // the create default when the bug was found (6302ee97) and is merely one way
+  // to reach it, so the fixture now sets 0 EXPLICITLY. It must keep doing so —
+  // dropping it would make this test create a consumeAmount-1 item and pin
+  // nothing at all.
+  it('user can save stock for an item whose consume amount is 0', async () => {
     const user = userEvent.setup()
 
-    // Given an item created the way the app creates one — no consumeAmount, so
-    // it takes the create default of 0
-    const item = await createItem({ name: 'Milk', tagIds: [] })
+    // Given an item whose consumeAmount is 0 — explicitly set here, but equally
+    // reachable via an import or an item created while 0 was the default
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      consumeAmount: 0,
+    })
     expect((await db.items.get(item.id))?.consumeAmount).toBe(0)
 
     renderStockTab(item.id)

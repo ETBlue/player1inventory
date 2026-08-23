@@ -96,14 +96,15 @@ describe('Item operations', () => {
     expect(item.createdAt).toBeInstanceOf(Date)
   })
 
-  it('user creates an item with consumeAmount 0 when the input omits it', async () => {
+  it('user creates an item with consumeAmount 1 when the input omits it', async () => {
     // Given create input with no consumeAmount (every interactive create path)
     const item = await createItem({ name: 'Milk', tagIds: [], vendorIds: [] })
 
-    // Then the amount-per-consume default is 0, not 1 — a brand-new item is
-    // deliberately left unconfigured so ItemForm flags it as needing setup.
-    expect(item.consumeAmount).toBe(0)
-    expect((await db.items.get(item.id))?.consumeAmount).toBe(0)
+    // Then the amount-per-consume default is 1, not 0 (designer ruling
+    // 2026-08-24) — a brand-new item is valid by nature and never opens on
+    // ItemForm's "Must be greater than 0." error.
+    expect(item.consumeAmount).toBe(1)
+    expect((await db.items.get(item.id))?.consumeAmount).toBe(1)
   })
 
   it('user creates an item with an explicit consumeAmount when one is supplied', async () => {
@@ -115,8 +116,23 @@ describe('Item operations', () => {
       consumeAmount: 0.5,
     })
 
-    // Then the supplied value wins over the 0 default
+    // Then the supplied value wins over the 1 default
     expect(item.consumeAmount).toBe(0.5)
+  })
+
+  it('user creates an item with consumeAmount 0 when 0 is supplied explicitly', async () => {
+    // Given create input that deliberately asks for "no step size"
+    const item = await createItem({
+      name: 'Flour',
+      tagIds: [],
+      vendorIds: [],
+      consumeAmount: 0,
+    })
+
+    // Then the 0 survives — the default is applied with `??`, not `||`, so an
+    // explicit "no step size" is not silently rewritten to 1
+    expect(item.consumeAmount).toBe(0)
+    expect((await db.items.get(item.id))?.consumeAmount).toBe(0)
   })
 
   it('stocks a newly created item in the target location by default', async () => {

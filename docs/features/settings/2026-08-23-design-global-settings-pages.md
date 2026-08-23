@@ -267,3 +267,47 @@ but nothing end to end:
   Mutation: folding Settings back into `navRoutes` and deleting the `mt-auto`
   block turns it red — the gap collapses from ~600px to the 4px `gap-1` — while
   the order assertion above it still passes.
+
+---
+
+## Addendum — 2026-08-24: the create default reverted to 1
+
+*This section is appended, not a rewrite: everything above records what was
+designed and shipped on 2026-08-23 and stays as the historical record.*
+
+The designer reversed the `consumeAmount: 0` create default described under
+"Why 0" above, one day after shipping it, having hit the resulting validation in
+practice:
+
+> the default consume amount for all new items used to be 0. after facing the
+> validation issues here, now I changed my mind. I would like the default
+> consume amount to be 1. (1) make sure the default amount for new items is
+> handled in 1 place (backend or Dexie operations) rather than scattered in
+> frontend calls (2) change the value from 0 to 1, so all new items have a valid
+> consume amount by nature
+
+**What changed:** `consumeAmount ?? 0` → `?? 1` in `createItem`
+(`apps/web/src/db/operations.ts`) and `numOr(rest.consumeAmount) ?? 0` → `?? 1`
+in the cloud `createItem` resolver
+(`apps/server/src/resolvers/item.resolver.ts`). Two sites because local and
+cloud cannot share code — that is the minimum, not a scattering.
+
+**What did NOT change, and why:**
+
+- **The centralisation itself** — reconciling by *deletion* so no create call
+  site passes `consumeAmount` — was the correct half of this design and is
+  reinforced, not undone. `useOnboardingSetup` was the last create caller still
+  passing a literal (`consumeAmount: 1`, redundant at the new default) and it
+  was removed too.
+- **`ItemForm`'s `consumeAmount > 0` validation.** 0 remains a legal stored
+  value — set explicitly, restored from a backup, or carried by an item created
+  during the 24 hours the 0 default was live — and still means "no step size",
+  displayed honestly (`step="any"`, no blur rounding).
+- **The recipes tab's `defaultAmount: newItem.consumeAmount || 1`.** Redundant
+  for a new item now, still load-bearing for a 0 arriving from anywhere else.
+
+**Test consequence.** Fixtures that relied on `createItem({ name, tagIds })`
+producing a 0 now set `consumeAmount: 0` explicitly, so they keep testing what
+they were written to test. The one test that *pinned* the old behaviour —
+`ItemForm.test.tsx`, "shows the consume amount error for a brand-new item" —
+was inverted rather than deleted: it now asserts a brand-new item is valid.

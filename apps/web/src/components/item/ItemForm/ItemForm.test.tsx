@@ -303,20 +303,28 @@ describe('ItemForm — validation errors on page load', () => {
     expect(screen.getByText('Must be greater than 0.')).toBeInTheDocument()
   })
 
-  it('shows the consume amount error for a brand-new item, flagging it as unconfigured', async () => {
-    // Given the form opened on a freshly created item, which now carries
-    // consumeAmount 0 by default (both local and cloud create paths)
+  // The inverse of the pin added by 6302ee97, which asserted a brand-new item
+  // OPENS in an error state. The designer reversed that on 2026-08-24 after
+  // hitting the validation in practice: both create paths now default to 1, so
+  // a new item must be valid by nature. Keeping the old assertion would have
+  // pinned the behaviour the ruling removed.
+  it('shows no consume amount error for a brand-new item, which is valid by nature', async () => {
+    // Given the form opened on a freshly created item, which carries the
+    // create default of consumeAmount 1 (both local and cloud create paths —
+    // pinned at source in db/operations.test.ts and item.resolver.test.ts)
     render(
       <ItemForm
         onSubmit={vi.fn()}
         sections={['stock', 'info']}
-        initialValues={{ consumeAmount: 0 }}
+        initialValues={{ name: 'Milk', consumeAmount: 1 }}
       />,
     )
 
-    // Then the Info tab opens in an error state. This is deliberate, not a
-    // bug: the validation is the signal that the item still needs setting up.
-    expect(screen.getByText('Must be greater than 0.')).toBeInTheDocument()
+    // Then the Info tab opens clean — no validation to clear before saving
+    expect(
+      screen.queryByText('Must be greater than 0.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/amount per consume/i)).toHaveValue(1)
   })
 
   it('does not show the old single validation message below the submit button', async () => {
@@ -483,8 +491,9 @@ describe('ItemForm — stock-only sections ignore info-only validation', () => {
     unpackedQuantity: 0,
     targetQuantity: 3,
     refillThreshold: 1,
-    // The create default since 6302ee97 — invalid on the Info tab by design,
-    // but the Stock tab neither renders nor submits it.
+    // Explicitly 0 — invalid on the Info tab, but the Stock tab neither
+    // renders nor submits it. Not a default: this must stay explicit, or the
+    // fixture would stop exercising the gate at all.
     consumeAmount: 0,
     // Name is likewise info-only and empty here; neither error may reach Save.
     name: '',
@@ -701,13 +710,15 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
   })
 })
 
-// `consumeAmount === 0` is the create default since 6302ee97 and means "no
-// step size configured yet", not "a step of 1". The form used to fabricate the
-// 1 (`consumeAmount || 1`) for the three quantity `step` attributes and for
-// Unpacked's blur normalizer, which silently rounded an unconfigured item's
-// Unpacked quantity to whole numbers. The Info tab's "Must be greater than 0."
-// error is the intended "needs setting up" signal instead.
-describe('ItemForm — an unset consume amount is no step, not a step of 1', () => {
+// `consumeAmount === 0` means "no step size", not "a step of 1". It stopped
+// being the create default on 2026-08-24 but stays reachable (set explicitly,
+// restored from a backup, or carried by an item created while 0 was the
+// default), so this behaviour is unchanged — the fixture below sets 0
+// explicitly rather than relying on any default. The form used to fabricate
+// the 1 (`consumeAmount || 1`) for the three quantity `step` attributes and
+// for Unpacked's blur normalizer, which silently rounded such an item's
+// Unpacked quantity to whole numbers.
+describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () => {
   const unsetValues = {
     packedQuantity: 0,
     unpackedQuantity: 0,

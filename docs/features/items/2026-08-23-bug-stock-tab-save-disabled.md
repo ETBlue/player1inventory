@@ -202,3 +202,36 @@ shelves / vendor group-by / recipe group-by / mobile shelves — pages that rend
 ## PR / Commit
 
 2fe372a1 — fix(items): stop the Stock tab swallowing the first keystroke
+
+---
+
+## Follow-up — 2026-08-24: the create default became 1
+
+The designer reversed the `consumeAmount: 0` create default from `6302ee97`
+(see `docs/features/settings/2026-08-23-design-global-settings-pages.md`,
+addendum) after hitting its validation in practice. Both create paths now
+default to **1**, so a freshly created item is valid on arrival.
+
+**Cause 2's fix is still required — this is not a substitute for it.** The 0
+default was only the most *common* trigger, never the hole itself. The hole is
+that `hasFieldError` gated Save on fields the active `sections` never render,
+and it stays reachable without any 0 default:
+
+- **`nameError`** gates the Stock tab's Save for any item with a blank name —
+  the latent third case already recorded above, which no `consumeAmount`
+  default can rule out
+- **`consumeAmount: 0` is still a legal stored value** — set explicitly,
+  restored from a backup, or carried by any item created during the 24 hours
+  the 0 default was live
+- the same applies to `measurementUnitError` / `amountPerPackageError`
+
+Do not relax the `showInfo &&` gate on the strength of the new default.
+
+**Cause 1 (the raw-text number inputs) is entirely independent** of what the
+default is — it fires on any field showing `0`, which `packedQuantity`,
+`targetQuantity` and `refillThreshold` all routinely do.
+
+**Test impact.** The regression guard named above was renamed to *"user can save
+stock for an item whose consume amount is 0"* and its fixture now passes
+`consumeAmount: 0` **explicitly**. Leaving it to the default would have made it
+create a `consumeAmount: 1` item and quietly pin nothing at all.
