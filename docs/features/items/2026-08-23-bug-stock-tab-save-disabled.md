@@ -235,3 +235,21 @@ default is — it fires on any field showing `0`, which `packedQuantity`,
 stock for an item whose consume amount is 0"* and its fixture now passes
 `consumeAmount: 0` **explicitly**. Leaving it to the default would have made it
 create a `consumeAmount: 1` item and quietly pin nothing at all.
+
+## Deferred — cloud rows from the 0-default window
+
+**Not done, deliberately (2026-08-24): cloud has no real users yet.**
+
+Local mode repairs its interim `consumeAmount: 0` rows in Dexie **v17**. Cloud
+has no counterpart: the resolver mirrored the same 0 default over the same
+window and always sends an explicit value, so Postgres's `@default(1)` never
+applied and those items hold a real `0`. Cloud renders the same `ItemForm`, so
+they show "Must be greater than 0." identically and cannot be saved until
+edited by hand.
+
+The full repair — the SQL, why it needs no `createdAt` scoping, why it must
+**not** become a `CHECK` constraint, and the coupling to `ItemForm`'s
+`consumeAmount > 0` validation — is written up in
+`apps/server/prisma/CLAUDE.md`, under "Deferred data repair: cloud items with
+`consumeAmount = 0`". Do it before cloud has real users; it is cheap now and
+expensive once the database is shared with people.
