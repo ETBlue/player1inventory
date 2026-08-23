@@ -528,6 +528,64 @@ db.version(16)
       })
   })
 
+// Version 17: Backfill `consumeAmount: 0` → 1 on every item.
+//
+// Why: for roughly 24 hours (6302ee97, 2026-08-23 → 9e323fa6, 2026-08-24) both
+// create paths defaulted a new item's `consumeAmount` to 0, meaning
+// "unconfigured" — deliberately, so ItemForm's `consumeAmount > 0` validation
+// would flag the item as needing setup. The designer reversed that ruling on
+// 2026-08-24 (a new item must be valid by nature) and the default went back to
+// 1, but the validation stayed. Every item created during that window is
+// therefore stuck showing "Must be greater than 0." until edited by hand. This
+// backfills them to the same 1 the create paths now use, and that v16 already
+// treats as the canonical fallback (its orphan default and its undefined
+// backfill are both 1).
+//
+// Scope: ONLY `consumeAmount`, and only where it is exactly 0 or not a finite
+// number. A missing value is reachable — a restored backup whose item and whose
+// winning stock row both lack the key keeps it unset (lib/importData.ts) —
+// non-finite is not reachable through the form (`numericInputProps` refuses
+// anything `Number.isFinite` rejects) but costs nothing to cover. Every other
+// value is left alone, fractional ones included: 0.5 is a legitimate step size,
+// not an unconfigured marker.
+//
+// No index change — `consumeAmount` is not indexed — so the stores definition
+// is v16's, restated as every other no-index-change version in this file does.
+//
+// Idempotent: a second pass sees 1, not 0, and does nothing.
+db.version(17)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('items')
+      .toCollection()
+      .modify((item: Record<string, unknown>) => {
+        const value = item.consumeAmount
+        // Keep any real, configured step size — negative included: nothing in
+        // the app can write one, so it is not this migration's to guess at.
+        if (
+          typeof value === 'number' &&
+          Number.isFinite(value) &&
+          value !== 0
+        ) {
+          return
+        }
+        item.consumeAmount = 1
+      }),
+  )
+
 // Fresh-DB seed: `on('populate')` fires exactly once, when the database is
 // first created at the latest version (brand-new users). The version upgrade
 // fns above do NOT run in that case, so the default location is seeded here.
