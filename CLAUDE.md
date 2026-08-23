@@ -11,9 +11,11 @@ Player 1 Inventory — a grocery and pantry management app. Designed by ETBlue.
 ```bash
 pnpm dev          # Start development server (Vite)
 pnpm build        # Build for production
-pnpm test         # Run tests (Vitest)
-pnpm test:watch   # Run tests in watch mode
-pnpm test:ui      # Run tests with UI browser interface
+pnpm test         # Run ALL tests — web + server (Vitest)
+pnpm test:web     # Run web tests only
+pnpm test:server  # Run server tests only
+pnpm test:watch   # Run web tests in watch mode
+pnpm test:ui      # Run web tests with UI browser interface
 pnpm test:e2e      # Run E2E tests with Playwright (headless)
 pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
@@ -189,22 +191,32 @@ pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen 
 (cd apps/web && pnpm build-storybook)
 (cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
-(cd apps/web && pnpm test --run)                 # web unit/integration suite
-pnpm test:server                                 # server suite — NOT covered by any of the above
+pnpm test                                        # BOTH suites — web + server, run from the repo root
 ```
 
-**`pnpm test` is web-only — the server suite needs its own command.** The root script is
-`pnpm --filter web test`, so `apps/web`'s tests are the only ones it runs. `apps/server`
-has a separate suite reachable only via `pnpm test:server` (or `pnpm test:all`, which runs
-both). The root `pnpm build` type-checks the server but never executes its tests, so a
-resolver can be logically broken and still pass every other command in this list. **Any
-branch touching `apps/server` must run `pnpm test:server` explicitly.**
+**`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
+every workspace package that defines a `test` script — today `apps/web` (~1700 tests) and
+`apps/server` (~100). Both are `vitest run`, so the root command is non-interactive and
+never drops into watch mode. Packages without a `test` script (`apps/design`, `packages/types`)
+are skipped silently.
 
-**Known-failing server baseline (as of 2026-08-23):** 3 tests fail on `main` —
-`purge.resolver.test.ts` (2) and `import.resolver.test.ts` (1), all
-`AssertionError: expected [ { …(4) } ] to be undefined`. They predate the gap being found
-and are unrelated to any current work. Treat exactly those 3 as the accepted baseline the
-way the 4 a11y colour-contrast failures are for E2E; anything beyond them is yours.
+There is **no separate server command to remember** — that was the bug. Narrower scripts
+still exist for the fast path when you know what you touched:
+
+| Script | Scope |
+|---|---|
+| `pnpm test` | both suites — **use this in the gate** |
+| `pnpm test:web` | `apps/web` only (~50s) |
+| `pnpm test:server` | `apps/server` only (~2s) |
+
+Run the whole thing from the repo root, not `(cd apps/web && …)` — a web-only run cannot
+fail on a broken resolver. The root `pnpm build` type-checks `apps/server` but never
+executes its tests, and lint / Biome / build-storybook do not touch it at all, so before
+this was wired up a resolver could be logically broken and still pass every other command
+in the gate. That is exactly how three failing purge tests sat on `main` unnoticed (issue
+#250 — see `docs/global/bugs/2026-08-24-bug-purge-mocks-missing-shelf.md`).
+
+`.husky/pre-push` also runs `pnpm test`, so pushing now exercises both suites too.
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 

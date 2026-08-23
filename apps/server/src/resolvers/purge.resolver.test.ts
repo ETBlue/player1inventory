@@ -19,6 +19,7 @@ vi.mock('../lib/prisma.js', () => ({
     tag: { deleteMany: vi.fn() },
     tagType: { deleteMany: vi.fn() },
     vendor: { deleteMany: vi.fn() },
+    shelf: { deleteMany: vi.fn() },
     $transaction: vi.fn(),
   },
 }))
@@ -37,6 +38,7 @@ const p = prisma as unknown as {
   tag: { deleteMany: ReturnType<typeof vi.fn> }
   tagType: { deleteMany: ReturnType<typeof vi.fn> }
   vendor: { deleteMany: ReturnType<typeof vi.fn> }
+  shelf: { deleteMany: ReturnType<typeof vi.fn> }
   $transaction: ReturnType<typeof vi.fn>
 }
 
@@ -59,7 +61,7 @@ beforeEach(() => {
 
 const PURGE_MUTATION = `mutation {
   purgeUserData {
-    items tags tagTypes vendors recipes carts cartItems inventoryLogs
+    items tags tagTypes vendors recipes carts cartItems inventoryLogs shelves
   }
 }`
 
@@ -80,6 +82,7 @@ describe('purgeUserData resolver', () => {
       { count: 4 },  // tags
       { count: 2 },  // tagTypes
       { count: 1 },  // vendors
+      { count: 6 },  // shelves
     ])
 
     // When user calls purgeUserData
@@ -101,13 +104,17 @@ describe('purgeUserData resolver', () => {
       expect(data.tags).toBe(4)
       expect(data.tagTypes).toBe(2)
       expect(data.vendors).toBe(1)
+      expect(data.shelves).toBe(6)
     }
+    // And every user-owned table was asked to delete this user's rows —
+    // shelves included (see purge-coverage.test.ts and issue #250)
+    expect(p.shelf.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_purge_test' } })
   })
 
   it('returns zero counts when user has no data', async () => {
     // Given everything returns 0
     p.$transaction.mockResolvedValue(
-      Array(11).fill({ count: 0 })
+      Array(12).fill({ count: 0 })
     )
 
     // When purging
@@ -123,6 +130,7 @@ describe('purgeUserData resolver', () => {
       const data = response.body.singleResult.data?.purgeUserData as Record<string, number>
       expect(data.items).toBe(0)
       expect(data.tags).toBe(0)
+      expect(data.shelves).toBe(0)
     }
   })
 

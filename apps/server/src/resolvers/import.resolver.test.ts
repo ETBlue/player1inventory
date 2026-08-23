@@ -70,6 +70,11 @@ vi.mock('../lib/prisma.js', () => ({
       upsert: vi.fn(),
       deleteMany: vi.fn(),
     },
+    shelf: {
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }))
@@ -131,6 +136,11 @@ const p = prisma as unknown as {
   cartItem: {
     findUnique: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  shelf: {
+    findMany: ReturnType<typeof vi.fn>
     upsert: ReturnType<typeof vi.fn>
     deleteMany: ReturnType<typeof vi.fn>
   }
@@ -372,7 +382,7 @@ describe('clearAllData', () => {
     p.$transaction.mockResolvedValue([
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
-      { count: 0 }, { count: 0 }, { count: 0 },
+      { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
     ])
 
     // When calling clearAllData
@@ -387,5 +397,8 @@ describe('clearAllData', () => {
       expect(response.body.singleResult.errors).toBeUndefined()
       expect(response.body.singleResult.data?.clearAllData).toBe(true)
     }
+    // And every user-owned table was asked to delete this user's rows —
+    // shelves included (see purge-coverage.test.ts and issue #250)
+    expect(p.shelf.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
   })
 })
