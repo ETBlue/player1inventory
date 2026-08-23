@@ -334,6 +334,15 @@ export function ItemForm({
   const consumeAmountError =
     consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
 
+  // `consumeAmount === 0` is the create default (6302ee97) and means "no step
+  // size configured yet" — NOT a step of 1. Fabricating the 1 silently rounded
+  // an unconfigured item's Unpacked quantity to whole numbers. HTML rejects
+  // `step={0}`, so "no step" is spelled `step="any"`: the field accepts what
+  // the user typed instead of snapping to a unit they never chose. The Info
+  // tab's "Must be greater than 0." error is the signal that it needs setting
+  // up; the quantity fields must not pretend it already is.
+  const quantityStep: number | 'any' = consumeAmount > 0 ? consumeAmount : 'any'
+
   // Only errors the active sections actually RENDER may block submission. All
   // four validated fields live in the info section, so a sections={['stock']}
   // form (the item detail Stock tab) has no validated field on screen at all —
@@ -675,12 +684,14 @@ export function ItemForm({
                 id="unpackedQuantity"
                 type="number"
                 min={0}
-                step={consumeAmount || 1}
+                step={quantityStep}
                 {...numericInputProps(
                   'unpackedQuantity',
                   unpackedQuantity,
                   setUnpackedQuantity,
-                  (n) => roundToStep(n, consumeAmount || 1),
+                  // roundToStep returns the value untouched when the step is
+                  // <= 0, so an unset consume amount rounds nothing.
+                  (n) => roundToStep(n, consumeAmount),
                 )}
               />
               <Button
@@ -734,7 +745,7 @@ export function ItemForm({
                 id="targetQuantity"
                 type="number"
                 min={0}
-                step={targetUnit === 'package' ? 1 : consumeAmount || 1}
+                step={targetUnit === 'package' ? 1 : quantityStep}
                 {...numericInputProps(
                   'targetQuantity',
                   targetQuantity,
@@ -761,7 +772,7 @@ export function ItemForm({
                 id="refillThreshold"
                 type="number"
                 min={0}
-                step={consumeAmount || 1}
+                step={quantityStep}
                 {...numericInputProps(
                   'refillThreshold',
                   refillThreshold,

@@ -52,7 +52,12 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
     targetUnit: item.targetUnit,
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
-    consumeAmount: item.consumeAmount ?? 1,
+    // 0 means "no step size configured yet" and is shown as stored — the
+    // fabricated 1 made an unconfigured item look set up. (`??` never fires
+    // here anyway: `consumeAmount` is a required number on `Item`, backfilled
+    // for every pre-v16 row by the v16 upgrade and defaulted to 0 by
+    // `createItem`.)
+    consumeAmount: item.consumeAmount ?? 0,
     // Read explicit expirationMode; fall back to inference for items created
     // before this field was added (pre-migration existing data).
     expirationMode:
@@ -249,7 +254,7 @@ function ItemInfoTab() {
   // `packedQuantity` is deliberately never converted: it counts sealed
   // packages, which are packages in either mode.
   const handleSubmit = async (values: ItemFormValues) => {
-    const oldConsumeAmount = item.consumeAmount ?? 1
+    const oldConsumeAmount = item.consumeAmount ?? 0
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
 

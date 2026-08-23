@@ -700,3 +700,144 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
     })
   })
 })
+
+// `consumeAmount === 0` is the create default since 6302ee97 and means "no
+// step size configured yet", not "a step of 1". The form used to fabricate the
+// 1 (`consumeAmount || 1`) for the three quantity `step` attributes and for
+// Unpacked's blur normalizer, which silently rounded an unconfigured item's
+// Unpacked quantity to whole numbers. The Info tab's "Must be greater than 0."
+// error is the intended "needs setting up" signal instead.
+describe('ItemForm — an unset consume amount is no step, not a step of 1', () => {
+  const unsetValues = {
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    targetQuantity: 0,
+    refillThreshold: 0,
+    consumeAmount: 0,
+    name: 'Milk',
+  }
+
+  it('user sees the stored 0 in Amount per Consume, not a fabricated 1', () => {
+    // Given a form for an item whose consume amount has never been configured
+    render(
+      <ItemForm
+        initialValues={unsetValues}
+        sections={['info']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // Then the field honestly shows what is stored
+    expect(
+      (screen.getByLabelText(/amount per consume/i) as HTMLInputElement).value,
+    ).toBe('0')
+  })
+
+  it('user sees step="any" on the quantity inputs while the consume amount is unset', () => {
+    // Given a stock form for an item whose consume amount is still 0
+    render(
+      <ItemForm
+        initialValues={unsetValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // Then Unpacked and Refill When Below accept any value rather than
+    // snapping to a whole unit the user never asked for (step={0} is invalid
+    // HTML, so "any" is what "no step" has to be spelled as)
+    expect(screen.getByLabelText(/^unpacked/i)).toHaveAttribute('step', 'any')
+    expect(screen.getByLabelText(/refill when below/i)).toHaveAttribute(
+      'step',
+      'any',
+    )
+  })
+
+  it('user sees step="any" on Target Quantity too when tracking in measurement', () => {
+    // Given an unconfigured item tracked in measurement, where Target Quantity
+    // follows the consume amount rather than whole packages
+    render(
+      <ItemForm
+        initialValues={{
+          ...unsetValues,
+          targetUnit: 'measurement',
+          measurementUnit: 'ml',
+          amountPerPackage: 500,
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // Then it accepts any value as well
+    expect(screen.getByLabelText(/target quantity/i)).toHaveAttribute(
+      'step',
+      'any',
+    )
+  })
+
+  it('user typing a decimal into Unpacked keeps it on blur while the consume amount is unset', async () => {
+    // Given a stock form for an item whose consume amount is still 0
+    const user = userEvent.setup()
+    const handleSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialValues={unsetValues}
+        sections={['stock']}
+        onSubmit={handleSubmit}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+    const unpackedInput = screen.getByLabelText(
+      /^unpacked/i,
+    ) as HTMLInputElement
+
+    // When the user types 2.5 and leaves the field
+    await user.click(unpackedInput)
+    await user.keyboard('{Backspace}2.5')
+    await user.tab()
+
+    // Then it is NOT rounded to 3 — there is no step to round to
+    expect(unpackedInput.value).toBe('2.5')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(2.5)
+  })
+
+  it('user with a real consume amount still gets the step and the blur rounding', async () => {
+    // Control for the case above: a configured item must be unaffected.
+    // Given a stock form whose consume amount is 2
+    const user = userEvent.setup()
+    const handleSubmit = vi.fn()
+    render(
+      <ItemForm
+        initialValues={{ ...unsetValues, consumeAmount: 2 }}
+        sections={['stock']}
+        onSubmit={handleSubmit}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+    const unpackedInput = screen.getByLabelText(
+      /^unpacked/i,
+    ) as HTMLInputElement
+
+    // Then the step is the stored amount, not "any"
+    expect(unpackedInput).toHaveAttribute('step', '2')
+    expect(screen.getByLabelText(/refill when below/i)).toHaveAttribute(
+      'step',
+      '2',
+    )
+
+    // When the user types 2.5 and leaves the field
+    await user.click(unpackedInput)
+    await user.keyboard('{Backspace}2.5')
+    await user.tab()
+
+    // Then it still snaps exactly as it did before
+    expect(unpackedInput.value).toBe('3')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(3)
+  })
+})

@@ -2363,3 +2363,72 @@ describe('Item detail page - toolbar tabs', () => {
     })
   })
 })
+
+// The route builds the form's initialValues from the item. It used to write
+// `item.consumeAmount ?? 1` there — dead on both counts (`consumeAmount` is a
+// required number on Item, and `??` never fires for 0), but it read as though
+// an unconfigured item were worth a step of 1, which is exactly the lie the
+// form then told with `consumeAmount || 1`. The route now passes 0 through.
+describe('Item detail form — an unset consume amount is displayed honestly', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (initialPath: string) => {
+    const history = createMemoryHistory({ initialEntries: [initialPath] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user sees 0 in Amount per Consume for an item that has never been configured', async () => {
+    // Given an item created the way the app creates one — no consumeAmount, so
+    // it takes the create default of 0
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    expect((await getItem(item.id))?.consumeAmount).toBe(0)
+
+    // When the user opens the Info tab
+    renderItemDetailPage(`/items/${item.id}`)
+
+    // Then the field shows what is stored, not a fabricated 1
+    const consumeInput = (await screen.findByLabelText(
+      /amount per consume/i,
+    )) as HTMLInputElement
+    expect(consumeInput.value).toBe('0')
+  })
+
+  it('user editing Unpacked for such an item is not rounded to a whole unit', async () => {
+    const user = userEvent.setup()
+
+    // Given the same unconfigured item, opened on the Stock tab
+    const item = await createItem({ name: 'Milk', tagIds: [] })
+    renderItemDetailPage(`/items/${item.id}/stock`)
+    const unpackedInput = (await screen.findByLabelText(
+      /^unpacked/i,
+    )) as HTMLInputElement
+
+    // Then the input imposes no step at all
+    expect(unpackedInput).toHaveAttribute('step', 'any')
+
+    // When the user types a decimal and leaves the field
+    await user.click(unpackedInput)
+    await user.keyboard('{Backspace}2.5')
+    await user.tab()
+
+    // Then it survives — nothing snapped it to 3
+    expect(unpackedInput.value).toBe('2.5')
+  })
+})
