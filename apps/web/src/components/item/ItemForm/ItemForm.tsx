@@ -47,6 +47,22 @@ export type ItemFormValues = {
   expirationThreshold: string | number
 }
 
+// The five values held as NUMBERS and edited through a `type="number"` input.
+// (`amountPerPackage`, `estimatedDueDays` and `expirationThreshold` are
+// `string | number` and already keep the user's raw text, so they never had
+// this problem.)
+type NumericField =
+  | 'packedQuantity'
+  | 'unpackedQuantity'
+  | 'targetQuantity'
+  | 'refillThreshold'
+  | 'consumeAmount'
+
+// What the user is part-way through typing into one number field: the raw text
+// plus the number that text produced, so a value that moves underneath the
+// draft (Pack/Unpack, the unit switch, a prop-sync reset) invalidates it.
+type NumericDraft = { text: string; value: number }
+
 const DEFAULT_VALUES: ItemFormValues = {
   packedQuantity: 0,
   unpackedQuantity: 0,
@@ -118,6 +134,19 @@ export function ItemForm({
   const [amountPerPackage, setAmountPerPackage] = useState(
     merged.amountPerPackage,
   )
+
+  // A number input that stores a NUMBER cannot represent what the user is
+  // half-way through typing. `Number('') === 0`, so backspacing the last digit
+  // of a field showing 0 produced no state change at all — React then
+  // force-wrote "0" back into the DOM node and put the caret at the end, which
+  // reads as "the field lost focus and swallowed my keystroke". `'2.'` and
+  // `'-'` are unrepresentable for the same reason. So each number field keeps
+  // the user's raw text here while it is being edited, and the numeric state
+  // follows only once that text parses. Nothing else in the form changes: the
+  // submitted payload stays numeric.
+  const [numericDrafts, setNumericDrafts] = useState<
+    Partial<Record<NumericField, NumericDraft>>
+  >({})
 
   const [baseValues, setBaseValues] = useState<ItemFormValues>({ ...merged })
 
@@ -203,6 +232,8 @@ export function ItemForm({
     setMeasurementUnit(next.measurementUnit)
     setAmountPerPackage(next.amountPerPackage)
     setBaseValues({ ...next })
+    // A form reset replaces every value, so no in-progress text may survive it.
+    setNumericDrafts({})
   }, [initialValues])
 
   useEffect(() => {
@@ -228,6 +259,54 @@ export function ItemForm({
     }
     setTargetUnit(checked ? 'measurement' : 'package')
   }
+
+  // `value` / `onChange` / `onBlur` for one number input. Spread it LAST so it
+  // owns those three props.
+  const numericInputProps = (
+    field: NumericField,
+    value: number,
+    setValue: (next: number) => void,
+    // Applied when the field is left, never on a keystroke: rounding a
+    // partially typed decimal destroys it (typing "2.5" used to land on 3
+    // before the "5" was even pressed).
+    normalizeOnBlur?: (n: number) => number,
+  ) => {
+    const draft = numericDrafts[field]
+    // A draft describes exactly one number. If the value moved underneath it,
+    // the number wins.
+    const text = draft && draft.value === value ? draft.text : String(value)
+    return {
+      value: text,
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value
+        const parsed = Number(raw)
+        const isNumber = raw.trim() !== '' && Number.isFinite(parsed)
+        // '', '-' and '.' are not numbers yet: keep the text on screen and
+        // leave the numeric state where it was.
+        setNumericDrafts((prev) => ({
+          ...prev,
+          [field]: { text: raw, value: isNumber ? parsed : value },
+        }))
+        if (isNumber) setValue(parsed)
+      },
+      onBlur: () => {
+        setNumericDrafts((prev) => {
+          if (!(field in prev)) return prev
+          const next = { ...prev }
+          delete next[field]
+          return next
+        })
+        const parsed = Number(text)
+        const resolved =
+          text.trim() !== '' && Number.isFinite(parsed) ? parsed : 0
+        const settled = normalizeOnBlur ? normalizeOnBlur(resolved) : resolved
+        if (settled !== value) setValue(settled)
+      },
+    }
+  }
+
+  const showStock = sections.includes('stock')
+  const showInfo = sections.includes('info')
 
   const nameError = !name.trim() ? 'Name is required.' : undefined
   // Light, non-blocking URL validation: empty is allowed; if present, expect an
@@ -255,12 +334,20 @@ export function ItemForm({
   const consumeAmountError =
     consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
 
-  const hasFieldError = !!(
-    nameError ||
-    measurementUnitError ||
-    amountPerPackageError ||
-    consumeAmountError
-  )
+  // Only errors the active sections actually RENDER may block submission. All
+  // four validated fields live in the info section, so a sections={['stock']}
+  // form (the item detail Stock tab) has no validated field on screen at all —
+  // gating its Save on them left the button permanently disabled with no error
+  // text and no field to fix it in, e.g. for any item still carrying the
+  // create default of consumeAmount 0.
+  const hasFieldError =
+    showInfo &&
+    !!(
+      nameError ||
+      measurementUnitError ||
+      amountPerPackageError ||
+      consumeAmountError
+    )
   const isSubmitDisabled =
     hasFieldError || (onDirtyChange !== undefined && !isDirty) || !!isPending
 
@@ -269,9 +356,6 @@ export function ItemForm({
     if (isSubmitDisabled) return
     onSubmit(currentValuesRef.current)
   }
-
-  const showStock = sections.includes('stock')
-  const showInfo = sections.includes('info')
 
   return (
     <form
@@ -361,10 +445,13 @@ export function ItemForm({
               type="number"
               step="0.01"
               min={0.01}
-              value={consumeAmount}
-              onChange={(e) => setConsumeAmount(Number(e.target.value))}
               required
               error={consumeAmountError}
+              {...numericInputProps(
+                'consumeAmount',
+                consumeAmount,
+                setConsumeAmount,
+              )}
             />
             <p className="text-xs text-foreground-muted">
               Amount added/removed per +/- button click. Must be greater than 0.
@@ -538,8 +625,11 @@ export function ItemForm({
                 type="number"
                 min={0}
                 step={1}
-                value={packedQuantity}
-                onChange={(e) => setPackedQuantity(Number(e.target.value))}
+                {...numericInputProps(
+                  'packedQuantity',
+                  packedQuantity,
+                  setPackedQuantity,
+                )}
               />
               <Button
                 type="button"
@@ -586,12 +676,12 @@ export function ItemForm({
                 type="number"
                 min={0}
                 step={consumeAmount || 1}
-                value={unpackedQuantity}
-                onChange={(e) =>
-                  setUnpackedQuantity(
-                    roundToStep(Number(e.target.value), consumeAmount || 1),
-                  )
-                }
+                {...numericInputProps(
+                  'unpackedQuantity',
+                  unpackedQuantity,
+                  setUnpackedQuantity,
+                  (n) => roundToStep(n, consumeAmount || 1),
+                )}
               />
               <Button
                 type="button"
@@ -645,8 +735,11 @@ export function ItemForm({
                 type="number"
                 min={0}
                 step={targetUnit === 'package' ? 1 : consumeAmount || 1}
-                value={targetQuantity}
-                onChange={(e) => setTargetQuantity(Number(e.target.value))}
+                {...numericInputProps(
+                  'targetQuantity',
+                  targetQuantity,
+                  setTargetQuantity,
+                )}
               />
               <p className="text-xs text-foreground-muted">
                 Item becomes inactive when set to 0
@@ -669,8 +762,11 @@ export function ItemForm({
                 type="number"
                 min={0}
                 step={consumeAmount || 1}
-                value={refillThreshold}
-                onChange={(e) => setRefillThreshold(Number(e.target.value))}
+                {...numericInputProps(
+                  'refillThreshold',
+                  refillThreshold,
+                  setRefillThreshold,
+                )}
               />
               <p className="text-xs text-foreground-muted">
                 Shows warning on low stock
