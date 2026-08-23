@@ -1,3 +1,26 @@
+# git feeds pre-push one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# A deletion (`git push --delete`) has an all-zero local sha and no commits to
+# check, so running the suites there is pure waste — and since root `pnpm test`
+# now covers web + server, that waste is ~50s per branch cleanup.
+#
+# Fail-safe: skip ONLY when refs were read and every one was a deletion. If
+# stdin is empty (hook invoked by hand, or a git that sends nothing), fall
+# through and run the checks.
+saw_ref=0
+has_updates=0
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  saw_ref=1
+  case "$local_sha" in
+    *[!0]*) has_updates=1 ;;
+  esac
+done
+
+if [ "$saw_ref" -eq 1 ] && [ "$has_updates" -eq 0 ]; then
+  echo "pre-push: only ref deletions — nothing to verify, skipping checks"
+  exit 0
+fi
+
 pnpm typecheck
 pnpm lint
 pnpm test
