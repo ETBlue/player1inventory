@@ -2363,3 +2363,85 @@ describe('Item detail page - toolbar tabs', () => {
     })
   })
 })
+
+// The route builds the form's initialValues from the item. It used to write
+// `item.consumeAmount ?? 1` there — dead on both counts (`consumeAmount` is a
+// required number on Item, and `??` never fires for 0), but it read as though
+// an unconfigured item were worth a step of 1, which is exactly the lie the
+// form then told with `consumeAmount || 1`. The route now passes 0 through.
+//
+// (From commit a203c204.) `consumeAmount: 0` means "no step size" and is shown as
+// stored — nothing may fabricate a 1 for it. 0 stopped being the create default
+// on 2026-08-24, so both fixtures set it EXPLICITLY; they must keep doing so, or
+// they would create consumeAmount-1 items and pin nothing.
+describe('Item detail form — a consume amount of 0 is displayed honestly', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderItemDetailPage = (initialPath: string) => {
+    const history = createMemoryHistory({ initialEntries: [initialPath] })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user sees 0 in Amount per Consume for an item whose consume amount is 0', async () => {
+    // Given an item whose consumeAmount is 0 — set explicitly here, but equally
+    // reachable via an import or an item created while 0 was the default
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      consumeAmount: 0,
+    })
+    expect((await getItem(item.id))?.consumeAmount).toBe(0)
+
+    // When the user opens the Info tab
+    renderItemDetailPage(`/items/${item.id}`)
+
+    // Then the field shows what is stored, not a fabricated 1
+    const consumeInput = (await screen.findByLabelText(
+      /amount per consume/i,
+    )) as HTMLInputElement
+    expect(consumeInput.value).toBe('0')
+  })
+
+  it('user editing Unpacked for such an item is not rounded to a whole unit', async () => {
+    const user = userEvent.setup()
+
+    // Given the same 0-consume-amount item, opened on the Stock tab
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      consumeAmount: 0,
+    })
+    renderItemDetailPage(`/items/${item.id}/stock`)
+    const unpackedInput = (await screen.findByLabelText(
+      /^unpacked/i,
+    )) as HTMLInputElement
+
+    // Then the input imposes no step at all
+    expect(unpackedInput).toHaveAttribute('step', 'any')
+
+    // When the user types a decimal and leaves the field
+    await user.click(unpackedInput)
+    await user.keyboard('{Backspace}2.5')
+    await user.tab()
+
+    // Then it survives — nothing snapped it to 3
+    expect(unpackedInput.value).toBe('2.5')
+  })
+})

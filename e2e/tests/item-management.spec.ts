@@ -58,7 +58,13 @@ test('user can create an item', async ({ page }) => {
   // save() waits for navigation to /items/:id — verifies the app redirects after create
   await item.save()
 
-  // Then the item appears in the pantry list
+  // Then it lands on the Info tab already valid: Amount per Consume defaults to
+  // 1 in BOTH modes (designer ruling 2026-08-24), so there is no validation to
+  // clear before the item can be edited and saved again
+  await expect(item.getConsumeAmountInput()).toHaveValue('1')
+  await expect(page.getByText('Must be greater than 0.')).not.toBeVisible()
+
+  // And the item appears in the pantry list
   await pantry.navigateTo()
   await expect(pantry.getItemCard('Test Milk')).toBeVisible()
 })
@@ -96,9 +102,6 @@ test('user can edit an item name', async ({ page }) => {
   await pantry.navigateTo()
   await pantry.getItemCard('Edit Me').click()
   await item.fillName('Edited Name')
-  // A brand-new item has consumeAmount 0 and ItemForm blocks Save until it is
-  // set — that error is the deliberate "still needs setting up" signal.
-  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
   // Then the updated name appears in the pantry
@@ -127,8 +130,6 @@ test('user can persist note and wikidata URL on the Info tab', async ({ page, ba
   const note = 'Buy the 1L carton; lactose-free preferred.'
   await item.fillNote(note)
   await item.fillWikidataUrl(wikidataUrl)
-  // Fresh item: consumeAmount 0 blocks Save until set (see fillConsumeAmount).
-  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
   // Then reopening the Info tab shows both fields persisted
@@ -192,8 +193,6 @@ test('user can set specific-date expiration on an item', async ({ page }) => {
   // discard the unsaved mode, and the per-location "Expires on" field is gated
   // on the saved mode being 'date'.
   await item.selectExpirationMode('Specific Date')
-  // Fresh item: consumeAmount 0 blocks Save until set (see fillConsumeAmount).
-  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
   // And then sets THIS location's own due date and a quantity on the Stock tab
@@ -224,8 +223,6 @@ test('user can set days-from-purchase expiration on an item', async ({ page }) =
   // is one form and one save — no tab hop in between.
   await item.selectExpirationMode('Days from Purchase')
   await item.fillEstimatedDueDays('30')
-  // Fresh item: consumeAmount 0 blocks Save until set (see fillConsumeAmount).
-  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
   // Then revisiting the item's Info tab shows "Days from Purchase" mode persisted
@@ -266,11 +263,8 @@ test('user can quick-update item quantity via dialog', async ({ page }) => {
   await item.fillName('Olive Oil')
   await item.save()
   const itemId = item.getCurrentItemId()
-  // A brand-new item has consumeAmount 0, which ItemForm rejects — and the
-  // Stock tab has no consumeAmount field, so its Save stays disabled until the
-  // Info tab is configured. Set it and save on Info first, then do stock work.
-  await item.fillConsumeAmount('1')
-  await item.saveExisting()
+  // No Info-tab detour needed: the item is created valid (consumeAmount 1), so
+  // the Stock tab can be filled and saved straight away.
 
   // Set targetQuantity and initial packedQuantity on the Stock tab
   // (/items/$id/stock). These fields do not exist in the NewItemDialog.

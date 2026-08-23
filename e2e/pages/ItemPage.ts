@@ -279,18 +279,24 @@ export class ItemPage {
     await this.page.locator('#expirationDueDays').fill(days)
   }
 
-  async fillConsumeAmount(amount: string) {
+  getConsumeAmountInput() {
     // "Amount per Consume" input: id="consumeAmount" — GLOBAL configuration on
     // the Info tab (/items/$id).
     // (src/components/item/ItemForm/ItemForm.tsx, inside the `showInfo` block)
+    return this.page.locator('#consumeAmount')
+  }
+
+  async fillConsumeAmount(amount: string) {
+    // Sets "Amount per Consume" on the Info tab.
     //
-    // Newly created items default to consumeAmount 0 (both local and cloud), and
-    // ItemForm validates `consumeAmount > 0` — deliberately, as the "this item is
-    // brand new and still needs setting up" signal. So the Save button on a fresh
-    // item is disabled until this is filled in, and any test that creates an item
-    // and then saves the form must call this first.
+    // NOTE: this used to be mandatory before saving any freshly created item —
+    // new items defaulted to consumeAmount 0 and ItemForm's `consumeAmount > 0`
+    // validation kept Save disabled. The designer reversed that on 2026-08-24:
+    // both create paths now default to 1, so a new item is valid on arrival and
+    // no test needs this just to unblock Save. Call it only when a test really
+    // wants a specific step size.
     await this.ensureInfoTab()
-    await this.page.locator('#consumeAmount').fill(amount)
+    await this.getConsumeAmountInput().fill(amount)
   }
 
   async fillTargetQuantity(quantity: string) {

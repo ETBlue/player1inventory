@@ -97,11 +97,12 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           refillThreshold: numOr(rest.refillThreshold) ?? 0,
           packedQuantity: numOr(rest.packedQuantity) ?? 0,
           unpackedQuantity: numOr(rest.unpackedQuantity) ?? 0,
-          // Default 0, mirroring local mode's createItem (apps/web/src/db/
-          // operations.ts): a brand-new item is left unconfigured so ItemForm
-          // flags it as needing setup. An explicit 0 from a client already
-          // survives `??`; only the omitted-value default changes here.
-          consumeAmount: numOr(rest.consumeAmount) ?? 0,
+          // Default 1 (designer ruling, 2026-08-24, reversing 6302ee97's 0),
+          // mirroring local mode's createItem (apps/web/src/db/operations.ts):
+          // a brand-new item must be valid by nature, so it never opens on
+          // ItemForm's `consumeAmount > 0` error. An explicit 0 from a client
+          // still survives `??` and still means "no step size".
+          consumeAmount: numOr(rest.consumeAmount) ?? 1,
           name: rest.name,
           packageUnit: strOr(rest.packageUnit),
           measurementUnit: strOr(rest.measurementUnit),

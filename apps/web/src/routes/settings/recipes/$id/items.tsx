@@ -206,9 +206,10 @@ function RecipeItemsTab() {
       if (!newItem) return
       const newRecipeItems = [
         ...recipeItems,
-        // `|| 1` matches handleToggle below: a newly created item has
-        // consumeAmount 0, and defaultAmount 0 means "optional, unchecked" in
-        // cooking — the ingredient would silently do nothing.
+        // `|| 1` matches handleToggle below: an item may carry consumeAmount 0
+        // (explicitly set, imported, or created while 0 was the default), and
+        // defaultAmount 0 means "optional, unchecked" in cooking — the
+        // ingredient would silently do nothing.
         { itemId: newItem.id, defaultAmount: newItem.consumeAmount || 1 },
       ]
       await updateRecipe.mutateAsync({

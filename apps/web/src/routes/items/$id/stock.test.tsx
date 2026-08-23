@@ -201,6 +201,104 @@ describe('Item stock tab', () => {
     })
   })
 
+  // The regression guard for commit 2fe372a1: `hasFieldError` gated the Stock
+  // tab's Save on info-only fields this tab never renders, so an item whose
+  // consumeAmount is 0 could not have its stock saved at all — no error text,
+  // no field to fix it in. Independent of what `createItem` defaults to: 0 was
+  // the create default when the bug was found (6302ee97) and is merely one way
+  // to reach it, so the fixture now sets 0 EXPLICITLY. It must keep doing so —
+  // dropping it would make this test create a consumeAmount-1 item and pin
+  // nothing at all.
+  it('user can save stock for an item whose consume amount is 0', async () => {
+    const user = userEvent.setup()
+
+    // Given an item whose consumeAmount is 0 — explicitly set here, but equally
+    // reachable via an import or an item created while 0 was the default
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      consumeAmount: 0,
+    })
+    expect((await db.items.get(item.id))?.consumeAmount).toBe(0)
+
+    renderStockTab(item.id)
+
+    // When the user types a new packed quantity (no clear first — a
+    // per-keystroke reset or blur would swallow the second character)
+    const packedInput = await screen.findByLabelText(/^packed/i)
+    await user.type(packedInput, '12')
+    expect(packedInput).toHaveFocus()
+
+    // Then the input is not blurred and Save is live
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    expect(saveButton).not.toBeDisabled()
+
+    // When the user saves
+    await user.click(saveButton)
+
+    // Then the change is actually persisted — the user's complaint was that it
+    // was not
+    await waitFor(async () => {
+      expect((await getItemStock(item.id))?.packedQuantity).toBe(12)
+    })
+  })
+
+  // A SHAPE guard for the number-input rewrite, not a guard for the focus bug
+  // itself: the fields now hold the user's raw TEXT while being edited, so the
+  // risk this pins is a string leaking into the payload. Mutation-checked — it
+  // goes red ("expected '7' to be 7") when the form stops resolving that text
+  // back to a number, and it stays green under the plain revert to the old
+  // per-keystroke Number() coercion, because userEvent keeps its own value
+  // buffer and so cannot reproduce the caret jump a real browser shows. The
+  // caret/empty-field behaviour is pinned in ItemForm.test.tsx instead.
+  it('user can retype every stock number from scratch and have them all persist', async () => {
+    const user = userEvent.setup()
+
+    // Given an item stocked with numbers the user wants to replace outright
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderStockTab(item.id)
+    const packedInput = await screen.findByLabelText(/^packed/i)
+
+    // When the user backspaces each field empty and types a new value — the
+    // exact sequence that used to lose the first keystroke on a field showing 0
+    await user.click(packedInput)
+    await user.keyboard('{Backspace}7')
+    expect(packedInput).toHaveValue(7)
+
+    const unpackedInput = screen.getByLabelText(/^unpacked/i)
+    await user.click(unpackedInput)
+    await user.keyboard('{Backspace}3')
+
+    const targetInput = screen.getByLabelText(/target quantity/i)
+    await user.click(targetInput)
+    await user.keyboard('{Backspace}9')
+
+    const refillInput = screen.getByLabelText(/refill when below/i)
+    await user.click(refillInput)
+    await user.keyboard('{Backspace}5')
+
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then every one of them is persisted as a number on this location's row
+    await waitFor(async () => {
+      const stock = await getItemStock(item.id)
+      expect(stock?.packedQuantity).toBe(7)
+      expect(stock?.unpackedQuantity).toBe(3)
+      expect(stock?.targetQuantity).toBe(9)
+      expect(stock?.refillThreshold).toBe(5)
+    })
+  })
   // The recipe-adjust dialog moved to the Info tab with the global fields that
   // trigger it. Editing one location's numbers must not rescale every recipe —
   // that coupling was the defect the field move fixes.

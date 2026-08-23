@@ -82,9 +82,10 @@ describe('NewItemDialog', () => {
     const items = await db.items.toArray()
     const milk = items.find((i) => i.name === 'Milk')
     expect(milk).toBeDefined()
-    // And it is created unconfigured: consumeAmount 0, the single default
-    // shared by every interactive create path (local and cloud).
-    expect(milk?.consumeAmount).toBe(0)
+    // And it is created valid: consumeAmount 1, the single default shared by
+    // every interactive create path (local and cloud). The dialog passes no
+    // `consumeAmount` of its own — `createItem` is the one place that decides.
+    expect(milk?.consumeAmount).toBe(1)
     expect(
       await getItemStock(milk?.id ?? '', DEFAULT_LOCATION_ID),
     ).toBeDefined()

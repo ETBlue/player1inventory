@@ -41,24 +41,31 @@ Three rules, all four tabs alike
 
    Field values are identical on all four tabs, and **none of them passes
    `consumeAmount` at all**. The shelves-vs-others divergence (shelves `0`, the
-   other three `1`) is reconciled at **0**, and reconciled by *deletion*: every
-   interactive create path now omits the field so the single default in
-   `createItem` (`db/operations.ts`) governs, with the cloud resolver
-   (`apps/server/src/resolvers/item.resolver.ts`) defaulting to 0 to match.
+   other three `1`) was reconciled by *deletion*: every interactive create path
+   omits the field so the single default in `createItem` (`db/operations.ts`)
+   governs, with the cloud resolver
+   (`apps/server/src/resolvers/item.resolver.ts`) matching it.
 
-   **Why 0, and why `ItemForm` still rejects it.** A brand-new item is
-   deliberately created *unconfigured*. `ItemForm` validates
-   `consumeAmount > 0`, so opening a freshly created item lands on an Info tab
-   already showing "Must be greater than 0." — that error **is the feature**
-   (designer ruling, 2026-08-23): it is how the user recognises an item that
-   still needs setting up. Do not relax the validation to "fix" it, and do not
-   reintroduce a non-zero create default to silence it.
+   **The default is `1` (designer ruling, 2026-08-24).** It was briefly `0`
+   (ruling of 2026-08-23, commit `6302ee97`): a brand-new item was created
+   *unconfigured* so `ItemForm`'s `consumeAmount > 0` validation opened it on
+   "Must be greater than 0." as a "still needs setting up" signal. Having hit
+   that validation in practice the designer reversed it — a new item must be
+   **valid by nature**, so both defaults are now `1` and a fresh item opens
+   clean. Keep it in exactly those two places; do not reintroduce a literal
+   `consumeAmount` at any call site to express it.
+
+   **`ItemForm`'s `consumeAmount > 0` validation stays** — 0 is still a legal
+   stored value (set explicitly, restored from a backup, or carried by an item
+   created while the 0 default was live) and still means "no step size", shown
+   honestly. See `routes/items/CLAUDE.md`.
 
    One knock-on lives on the recipes tab: it attaches the new item with
    `defaultAmount: newItem.consumeAmount || 1`. `defaultAmount: 0` means
-   "optional, unchecked" in cooking, so without the `|| 1` a freshly created
-   ingredient would silently do nothing. The `|| 1` matches the sibling
-   `handleToggle` path, which already had it.
+   "optional, unchecked" in cooking, so without the `|| 1` an ingredient
+   carrying a 0 would silently do nothing. Redundant for the new default, but
+   still load-bearing for a 0 from any other source. The `|| 1` matches the
+   sibling `handleToggle` path, which already had it.
 
 **The select-existing asymmetry is closed.** Until the tags/vendors/recipes tabs
 went inline they mounted `NewItemDialog`, whose *select-existing* path stocks the

@@ -56,7 +56,10 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
     targetUnit: item.targetUnit,
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
-    consumeAmount: item.consumeAmount ?? 1,
+    // Shown as stored — see the same field in `$id/index.tsx`. 0 means "not
+    // configured", not "a step of 1"; it is no longer the create default but
+    // is still reachable.
+    consumeAmount: item.consumeAmount ?? 0,
     // Read explicit expirationMode; fall back to inference for items created
     // before this field was added (pre-migration existing data).
     expirationMode:

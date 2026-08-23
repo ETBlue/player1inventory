@@ -289,11 +289,14 @@ export async function createItem(
     ...(measurementUnit !== undefined ? { measurementUnit } : {}),
     ...(amountPerPackage !== undefined ? { amountPerPackage } : {}),
     targetUnit: targetUnit ?? 'package',
-    // Default 0, not 1: a newly created item is deliberately left
-    // unconfigured so ItemForm's `consumeAmount > 0` validation flags it as a
-    // brand-new item that still needs setting up. Mirrored by the cloud
-    // resolver (apps/server/src/resolvers/item.resolver.ts createItem).
-    consumeAmount: consumeAmount ?? 0,
+    // Default 1 (designer ruling, 2026-08-24, reversing 6302ee97's 0): a new
+    // item must be valid by nature, so it never opens on ItemForm's
+    // `consumeAmount > 0` error. This is THE default for local mode — no
+    // caller should pass a literal `consumeAmount` just to get it. An explicit
+    // 0 from a caller still survives `??` and still means "no step size"
+    // (see routes/items/CLAUDE.md). Mirrored by the cloud resolver
+    // (apps/server/src/resolvers/item.resolver.ts createItem).
+    consumeAmount: consumeAmount ?? 1,
     ...(estimatedDueDays !== undefined ? { estimatedDueDays } : {}),
     ...(expirationThreshold !== undefined ? { expirationThreshold } : {}),
     ...(expirationMode !== undefined ? { expirationMode } : {}),

@@ -43,3 +43,56 @@ A migration that fails mid-deploy is left in a *failed* state and blocks all lat
 pnpm prisma migrate resolve --rolled-back <migration_name>   # against the prod DB, then redeploy
 ```
 Use `--rolled-back` (not `--applied`) because the failed migration left no partial changes.
+
+## Deferred data repair: cloud items with `consumeAmount = 0`
+
+**Status: deliberately not done (2026-08-24). Do this before cloud has real users.**
+
+For roughly 24 hours (`6302ee97` → `9e323fa6`) `createItem` in
+`src/resolvers/item.resolver.ts` defaulted `consumeAmount` to **0**, meaning
+"unconfigured". The resolver always sends an explicit value, so Prisma's
+`consumeAmount Float @default(1)` never applied — any cloud `Item` created in
+that window holds a genuine `0` in Postgres.
+
+Those rows are **broken, not merely unusual**: `ItemForm` refuses to save
+`consumeAmount <= 0`, so a user cannot save that item's Info tab at all until
+they fix the field by hand. Local mode repairs the equivalent rows in Dexie
+**v17** (`apps/web/src/db/index.ts`); cloud has no counterpart, so the two data
+modes currently diverge.
+
+The repair, when it is time:
+
+```sql
+-- Count first. If this is 0, write no migration at all.
+SELECT count(*) FROM "Item" WHERE "consumeAmount" = 0;
+
+UPDATE "Item" SET "consumeAmount" = 1 WHERE "consumeAmount" = 0;
+```
+
+It is naturally idempotent and depends on no schema object a later migration
+created, so it satisfies the golden rule above trivially. Run it against the
+**dev** Neon endpoint first — dev and prod are different databases (see above),
+and the cloud E2E suite shares dev.
+
+Three things to get right:
+
+- **No `createdAt` scoping.** Tempting, but worse: it would require
+  reconstructing real deploy timestamps (not commit timestamps). Unnecessary
+  anyway — no UI path can produce a `0`, because the form rejects it, so every
+  `0` came from that window or from a direct API call.
+- **Do NOT add a `CHECK` constraint forbidding 0.** The resolver deliberately
+  uses `??`, not `||`, so an explicit `0` from a client is stored on purpose. A
+  constraint would turn that into a 500 rather than a stored value. Keep the
+  repair a one-off `UPDATE`.
+- **This is safe only while `ItemForm` keeps its `consumeAmount > 0`
+  validation.** The two decisions are coupled. Since 2026-08-24 the frontend
+  treats `0` as a *meaningful* "no step size" value — it renders `step="any"`
+  and suppresses rounding (`quantityStep` in `ItemForm.tsx`). `0` is therefore
+  representable but not saveable. If that validation is ever dropped so users
+  can genuinely choose "no step", a blanket `WHERE "consumeAmount" = 0` would
+  be destroying real intent, and this repair must be reconsidered rather than
+  run as written.
+
+Unlike Dexie — one user's browser — this rewrites rows in a **shared,
+multi-user** database. That is the reason it is cheap now (no real users) and
+expensive later.

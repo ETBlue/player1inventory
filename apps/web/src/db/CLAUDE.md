@@ -2,11 +2,11 @@
 
 The local-mode data source. `index.ts` declares the Dexie schema, `operations.ts` holds every read/write. Components never touch Dexie directly — they go through the Query hooks in `src/hooks/` (see `src/hooks/CLAUDE.md`).
 
-**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`.
+**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`.
 
 ## Schema versioning
 
-One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **16**.
+One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **17**.
 
 Rules:
 - **Add a new version; never edit a shipped one.** An upgrade function must be valid on a database built only from committed history.
@@ -49,6 +49,26 @@ Idempotent: a value already on the item is only overwritten by a stock row that 
 
 `lib/importData.ts` applies the **same** collapse rule to a v15-shaped backup, keyed on whether any stock row still carries a configuration field. See "Cascades" below and the importer's own comments.
 
+### v17 — the `consumeAmount: 0` backfill
+
+Every item whose `consumeAmount` is exactly `0` — or not a finite number — becomes `1`. Nothing else moves, and no store or index changes (`consumeAmount` is not indexed), so v17 restates v16's `.stores()` unchanged, as v7 and v11 do.
+
+**Why:** for roughly 24 hours (`6302ee97`, 2026-08-23 → `9e323fa6`, 2026-08-24) both create paths defaulted a new item's `consumeAmount` to `0`, meaning "unconfigured" — deliberately, so `ItemForm`'s `consumeAmount > 0` validation would flag the item as needing setup. The designer reversed that on 2026-08-24 (a new item must be **valid by nature**) and the default went back to `1`, but the validation stayed. Items created inside that window are therefore stuck on "Must be greater than 0." until edited by hand. This is data repair for a specific, dated regression — not general munging.
+
+`1` is the canonical fallback v16 already uses (its orphan default and its undefined-value backfill are both `1`), and the value both create paths now produce.
+
+**What is deliberately NOT touched:**
+
+- **Fractional values.** `0.5` is a legitimate step size; only *exactly* `0` is the unconfigured marker.
+- **Negative values.** Nothing in the app can write one (`numericInputProps` parses through `Number.isFinite`, the form rejects `<= 0`), so guessing at one is out of scope.
+- **A future explicit `0`.** `createItem`'s `?? 1` still lets a caller pass a real `0` meaning "no step size" — v17 is a one-time repair of stored rows, not a floor on the field.
+
+Non-finite is covered even though the form cannot produce it; **missing is genuinely reachable** — a restored backup whose item row and whose winning stock row both lack the key keeps it unset (`lib/importData.ts`).
+
+**`on('populate')` needed no change.** v17 adds no store and seeds no row — it only rewrites existing `items`. A database created fresh at v17 has no items at populate time, and every row written afterwards comes from `createItem`, which defaults `consumeAmount ?? 1`. `upgradeV17.test.ts` asserts that fresh-DB state explicitly rather than assuming it.
+
+**Cloud is NOT covered.** The equivalent Postgres rows can carry a `0` from the same window (the resolver's default moved 1 → 0 → 1 alongside local mode) and no Prisma migration backfills them — see the cloud note under **The Item/ItemStock join** below.
+
 ## The Item/ItemStock join
 
 An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.** Reads join the two: `useItems`/`useItem` return a `PantryItem` (global `Item` + the active location's stock) via `joinItemStock` / `stripStockFields`, both exported from `operations.ts` so the Stock-tab pager re-joins against a different location with the same implementation.
@@ -60,6 +80,8 @@ An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.
 `getStockedItems(locationId)` filters on `ItemStock` (the pantry's data source); `getAllItems()` does not (the Add combobox catalog). That difference is what makes an **orphan** — an item with no stock rows left — invisible in the pantry but still re-addable.
 
 **Cloud mode has no `Location` and no `ItemStock`** (deliberately deferred): a cloud `Item` still carries its stock inline and its carts are keyed bare. Nothing in the cloud path may call the location-scoped operations. v16 *narrows* that divergence rather than widening it — the cloud `Item` (GraphQL type, both its inputs, and the Prisma model) already carried all eight configuration fields, so they now mean the same thing on both sides and only the five state fields remain cloud-inline.
+
+**v17 has no cloud counterpart yet.** `createItem` in `apps/server/src/resolvers/item.resolver.ts` moved `1 → 0 → 1` on the same two commits as local mode, and it always sends an explicit value, so Prisma's `consumeAmount Float @default(1)` never applied — cloud rows created in that window hold a real `0`. Repairing them needs a Prisma data migration (`UPDATE "Item" SET "consumeAmount" = 1 WHERE "consumeAmount" = 0`); it is deliberately not written here, and is the designer's call because it would also overwrite any intentional `0` a client sent.
 
 ## Cascades
 
