@@ -85,6 +85,32 @@ Two couplings to respect:
 - Mobile `Navigation` ordering (D5).
 - Issue #245 itself — unblocked here, not fixed here.
 
+## Deferred — bringing this to cloud mode
+
+Designer requirement, 2026-08-23: *"I would like to bring the same behavior to cloud
+mode in the near future."* Most of it needs no work; one piece does, and it fails
+silently if forgotten.
+
+**Already mode-agnostic — nothing to port.** D1 (`showStock={false}`), D2 (the
+assigned/unassigned ordering) and D4 (the shelf filter counts) all read global data and
+behave identically in both modes. And since no Settings tab mounts `NewItemDialog` any
+more, no Settings surface can stock an item in either mode.
+
+**The one obligation: a catalog-only create path server-side.** Locally the four tabs call
+`useCreateItem({ catalogOnly: true })`, which skips the `ItemStock` write. In cloud that
+flag is currently a harmless **no-op**, because there is no `ItemStock` to skip. The moment
+cloud gains `Location`/`ItemStock`, the GraphQL `createItem` mutation needs the same
+affordance — a flag, or simply not auto-creating a stock row — and the Settings tabs' cloud
+branch must use it.
+
+The hazard is that nothing breaks at the point the backend lands. Cloud would quietly begin
+stocking every Settings-created item in some default location: exactly the bug part 2 fixed
+locally, reintroduced by unrelated work, with no failing test to announce it. Whoever builds
+cloud locations should add the catalog-only path in the same PR.
+
+See `apps/web/src/routes/CLAUDE.md` for the sibling obligation (multi-row writes must become
+one server-side transaction) — both come due together.
+
 ## Test plan
 
 Per-decision, TDD, with mutation checks:

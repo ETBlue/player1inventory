@@ -16,6 +16,14 @@ The **item detail Stock tab** is the deliberate exception: it pages across **all
 
 **When cloud gains locations, multi-row writes must become atomic there too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side transaction, not a sequence of Apollo calls. The item unit switch is the live example — see `items/CLAUDE.md`.
 
+**When cloud gains locations, it also needs a catalog-only create path.** The four Settings
+assignment tabs create items stocked in **no** location, via
+`useCreateItem({ catalogOnly: true })`. In cloud that flag is a no-op today because there is
+no `ItemStock` to skip — so the moment the backend lands, the GraphQL `createItem` mutation
+must gain the same affordance and the tabs' cloud branch must use it. Nothing breaks at that
+point if it is forgotten; cloud simply starts stocking every Settings-created item in a
+default location again, silently. See `settings/CLAUDE.md`.
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.

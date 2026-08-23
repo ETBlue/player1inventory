@@ -67,6 +67,18 @@ remaining way a Settings page wrote location state. Removing the dialog removed
 that path, so no Settings tab reads or writes `ItemStock` any more. The pantry's
 Add dialog still stocks on select-existing, which is correct there.
 
+### Cloud mode owes this a catalog-only create path
+
+The three rules above are mode-agnostic except one detail. `catalogOnly` skips the
+`ItemStock` write; cloud has no `ItemStock`, so the flag is a **no-op** there today and the
+tabs already behave correctly. When cloud gains `Location`/`ItemStock`, the GraphQL
+`createItem` mutation must gain the same affordance and the tabs' cloud branch must pass it.
+
+Forgetting it is silent: no test fails, and cloud quietly resumes stocking every
+Settings-created item in a default location — the exact bug issue #247 part 2 fixed locally.
+Recorded in the design doc's "Deferred" section and in `routes/CLAUDE.md` beside the
+matching transaction-atomicity obligation.
+
 ### Shelf filters tab shows global counts
 
 `settings/shelves/$shelfId/filters.tsx` renders ` (N)` after every tag, vendor
