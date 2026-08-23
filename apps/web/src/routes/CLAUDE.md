@@ -263,7 +263,7 @@ Row 3:            [A / T here · N empty · N low stock]
 
 **Per-item optional ingredients:** Each item in an expanded recipe has its own checkbox. Items with `defaultAmount > 0` start checked when the recipe checkbox is first clicked; items with `defaultAmount === 0` start unchecked. Users can toggle any item. Unchecked items are excluded from consumption.
 
-**Amount adjustment:** Each item card shows ±buttons to adjust the per-serving amount. Step size is `item.consumeAmount`. Amount can be reduced to 0.
+**Amount adjustment:** Each item card shows ±buttons to adjust the per-serving amount. Step size is `item.consumeAmount`, falling back to `1` when it is not `> 0` — a ± increment must be non-zero to be usable, so an unconfigured item still steps by one. (The item detail form deliberately does the opposite: there an unset consume amount yields `step="any"` and no rounding, because a free-text field can simply accept what was typed. See `items/CLAUDE.md`.) Amount can be reduced to 0.
 
 **Consumption calculation:** `totalByItemId[itemId] = servings × sessionAmounts[recipeId][itemId]` for each checked item with amount > 0, summed across all checked recipes.
 

@@ -131,6 +131,8 @@ Two channels, neither of them colour (designer ruling, 2026-08-16 — every dot 
 
 **`QuickUpdateDialog`** (`src/components/item/QuickUpdateDialog/index.ts`) — pantry-page dialog for bulk-editing a single item's packed/unpacked quantities in one submit. Triggered by the calculator icon button on each `ItemCard` in pantry mode. Provides +/− steppers, manual inputs, Pack/Unpack buttons (mirrors item info tab logic via `computePack`/`computeUnpack`), Clear, and Fill to Full actions, with a live progress bar preview. Submits a single mutation with the final `{ packedQuantity, unpackedQuantity }` — never touches `dueDate`. Pack/Unpack/Fill-to-Full logic lives in pure functions in `quantityUtils.ts` (`computePack`, `computeUnpack`, `computeFillToFull`).
 
+**Step size falls back to 1.** The unpacked stepper's `step` is `item.consumeAmount > 0 ? item.consumeAmount : 1` — a `> 0` guard, never `?? 1`, which does not fire for a stored `0` and left `step` at 0: both `+` and `−` became no-ops and the input rendered the invalid `step="0"`. Same form as `cooking.tsx` and the recipe items tab. This is deliberately the **opposite** of `ItemForm`'s `quantityStep` (`consumeAmount > 0 ? consumeAmount : 'any'`, which rounds nothing and leaves the unset consume amount visible as unconfigured) — do not unify them: a `+`/`−` increment must be non-zero to be usable at all, whereas a free-text number field can simply accept what the user typed.
+
 ## Vendor Components
 
 **`NewVendorDialog`** (`src/components/vendor/NewVendorDialog/index.ts`) — dialog for creating a new vendor (name only). Props: `open`, `onOpenChange`, `onSuccess?(vendor)`. On success without `onSuccess`, navigates to the vendor detail page. Used by: vendor list page.

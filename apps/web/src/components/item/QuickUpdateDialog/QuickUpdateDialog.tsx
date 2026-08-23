@@ -58,7 +58,17 @@ export function QuickUpdateDialog({
     }
   }, [isOpen, item.packedQuantity, item.unpackedQuantity])
 
-  const step = item.consumeAmount ?? 1
+  // Guard on `> 0`, not on nullish: `?? 1` does not fire for a stored 0, which
+  // left `step` at 0 and made both +/− a no-op and `step="0"` invalid HTML.
+  // Matches cooking.tsx and the recipe items tab.
+  //
+  // A stepper falls back to 1 where ItemForm deliberately does the opposite
+  // (`quantityStep` → `step="any"`, no rounding, see ItemForm.tsx). That is not
+  // an inconsistency to unify: a +/− increment must be non-zero to be usable at
+  // all, so it needs *some* unit; a free-text number field can simply accept
+  // whatever the user types and leave the unset consume amount visible as the
+  // unconfigured setting it is.
+  const step = item.consumeAmount > 0 ? item.consumeAmount : 1
 
   // Labels — matches item info tab format exactly
   const packedUnit = item.packageUnit || DEFAULT_PACKAGE_UNIT
