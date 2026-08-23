@@ -1520,3 +1520,176 @@ describe('ItemCard - loading states', () => {
     expect(screen.getByLabelText(/Removing Apples/i)).toBeInTheDocument()
   })
 })
+
+describe('ItemCard - showStock', () => {
+  // current = 1, refillThreshold = 2 → status 'error' → the Card gets the
+  // severity tint. This is the fixture that makes the variant gate observable.
+  const lowStockItem: Item = {
+    id: 'item-low-stock',
+    name: 'Bananas',
+    packageUnit: 'bunch',
+    targetUnit: 'package',
+    tagIds: [],
+    targetQuantity: 3,
+    refillThreshold: 2,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  // targetQuantity 0 → isInactive → the dimming and the sr-only "Inactive"
+  // label. This is the fixture that makes the dimming gates observable.
+  const inactiveItem: Item = {
+    ...lowStockItem,
+    id: 'item-inactive-showstock',
+    name: 'Chestnuts',
+    targetQuantity: 0,
+    refillThreshold: 0,
+    packedQuantity: 0,
+  }
+
+  describe('by default (showStock omitted)', () => {
+    it('user can see the quantity text, the unit badge and the progress bar', async () => {
+      // Given an item with stock in the active location
+      // When the card renders with the default showStock
+      const { container } = await renderWithRouter(
+        <ItemCard item={lowStockItem} tags={[]} tagTypes={[]} />,
+      )
+
+      // Then every stock-derived rendering is present
+      expect(screen.getByText('1/3')).toBeInTheDocument()
+      expect(screen.getByText('bunch')).toBeInTheDocument()
+      expect(container.querySelectorAll('[data-segment]').length).toBe(3)
+    })
+
+    it('user can see the severity tint on a low-stock card', async () => {
+      // Given an item below its refill threshold
+      // When the card renders with the default showStock
+      const { container } = await renderWithRouter(
+        <ItemCard item={lowStockItem} tags={[]} tagTypes={[]} />,
+      )
+
+      // Then the whole card is tinted from stock health
+      expect(container.firstElementChild).toHaveClass(
+        'bg-status-error-background-inverse',
+      )
+    })
+
+    it('user can see the dimming and the inactive label on an inactive card', async () => {
+      // Given an inactive item (targetQuantity 0)
+      // When the card renders with the default showStock
+      const { container } = await renderWithRouter(
+        <ItemCard item={inactiveItem} tags={[]} tagTypes={[]} />,
+      )
+
+      // Then the card is dimmed and announces "Inactive" to screen readers
+      expect(container.querySelectorAll('.opacity-80').length).toBe(2)
+      expect(screen.getByText('Inactive')).toBeInTheDocument()
+    })
+  })
+
+  describe('with showStock={false}', () => {
+    it('user cannot see the quantity text', async () => {
+      // Given an item with stock in the active location
+      // When the card renders with showStock={false}
+      await renderWithRouter(
+        <ItemCard
+          item={lowStockItem}
+          tags={[]}
+          tagTypes={[]}
+          showStock={false}
+        />,
+      )
+
+      // Then the location-scoped quantity is not rendered
+      expect(screen.queryByText('1/3')).not.toBeInTheDocument()
+    })
+
+    it('user cannot see the unit badge', async () => {
+      // Given an item with a package unit
+      // When the card renders with showStock={false}
+      await renderWithRouter(
+        <ItemCard
+          item={lowStockItem}
+          tags={[]}
+          tagTypes={[]}
+          showStock={false}
+        />,
+      )
+
+      // Then the unit badge is not rendered
+      expect(screen.queryByText('bunch')).not.toBeInTheDocument()
+    })
+
+    it('user cannot see the progress bar', async () => {
+      // Given an item with stock in the active location
+      // When the card renders with showStock={false}
+      const { container } = await renderWithRouter(
+        <ItemCard
+          item={lowStockItem}
+          tags={[]}
+          tagTypes={[]}
+          showStock={false}
+        />,
+      )
+
+      // Then no progress bar segments are rendered
+      expect(container.querySelectorAll('[data-segment]').length).toBe(0)
+    })
+
+    it('user cannot see the severity tint derived from stock health', async () => {
+      // Given an item below its refill threshold (status 'error')
+      // When the card renders with showStock={false}
+      const { container } = await renderWithRouter(
+        <ItemCard
+          item={lowStockItem}
+          tags={[]}
+          tagTypes={[]}
+          showStock={false}
+        />,
+      )
+
+      // Then the card keeps the neutral default surface
+      const card = container.firstElementChild
+      expect(card).not.toHaveClass('bg-status-error-background-inverse')
+      expect(card).not.toHaveClass('bg-status-warning-background-inverse')
+      expect(card).toHaveClass('bg-background-elevated')
+    })
+
+    it('user cannot see the inactive dimming or the inactive label', async () => {
+      // Given an inactive item (targetQuantity 0 in the active location)
+      // When the card renders with showStock={false}
+      const { container } = await renderWithRouter(
+        <ItemCard
+          item={inactiveItem}
+          tags={[]}
+          tagTypes={[]}
+          showStock={false}
+        />,
+      )
+
+      // Then nothing on the card is dimmed and no "Inactive" label is announced
+      expect(container.querySelectorAll('.opacity-80').length).toBe(0)
+      expect(screen.queryByText('Inactive')).not.toBeInTheDocument()
+    })
+
+    it('user can still see the item name and its tags', async () => {
+      // Given an item carrying a tag
+      // When the card renders with showStock={false}
+      await renderWithRouter(
+        <ItemCard
+          item={{ ...lowStockItem, tagIds: ['tag-1'] }}
+          tags={[{ id: 'tag-1', name: 'Fruit', typeId: 'type-1' }]}
+          tagTypes={[{ id: 'type-1', name: 'Category', color: TagColor.blue }]}
+          showStock={false}
+        />,
+      )
+
+      // Then the global (non-stock) content is untouched
+      expect(screen.getByText('Bananas')).toBeInTheDocument()
+      expect(screen.getByTestId('tag-badge-Fruit')).toBeInTheDocument()
+    })
+  })
+})

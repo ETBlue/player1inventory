@@ -82,6 +82,9 @@ describe('NewItemDialog', () => {
     const items = await db.items.toArray()
     const milk = items.find((i) => i.name === 'Milk')
     expect(milk).toBeDefined()
+    // And it is created unconfigured: consumeAmount 0, the single default
+    // shared by every interactive create path (local and cloud).
+    expect(milk?.consumeAmount).toBe(0)
     expect(
       await getItemStock(milk?.id ?? '', DEFAULT_LOCATION_ID),
     ).toBeDefined()

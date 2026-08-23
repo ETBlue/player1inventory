@@ -87,7 +87,6 @@ function VendorCart() {
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 0,
       })
     } catch {
       // input stays populated for retry

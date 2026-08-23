@@ -184,7 +184,6 @@ export function NewItemDialog({
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
         ...(packageUnit.trim() ? { packageUnit: packageUnit.trim() } : {}),
       })
       if (!item) return

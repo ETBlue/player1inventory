@@ -3,10 +3,9 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
-import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
-import { useItems, useTags, useTagTypes } from '@/hooks'
+import { useCreateItem, useItems, useTags, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipe, useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -18,7 +17,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive, roundToStep } from '@/lib/quantityUtils'
+import { roundToStep } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -32,6 +31,10 @@ function RecipeItemsTab() {
   const { data: items = [], isLoading } = useItems()
   const { data: recipe } = useRecipe(recipeId)
   const updateRecipe = useUpdateRecipe()
+  // catalogOnly: this page edits a global item↔recipe relation, so a new
+  // item goes into the catalog and is stocked in no location (D3). This tab
+  // creates directly rather than through a dialog, so it opts in here.
+  const createItem = useCreateItem({ catalogOnly: true })
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -65,8 +68,6 @@ function RecipeItemsTab() {
   }, [allRecipes])
 
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set())
-  const [newItemDialogOpen, setNewItemDialogOpen] = useState(false)
-  const [newItemInitialName, setNewItemInitialName] = useState('')
 
   const recipeItems = recipe?.items ?? []
 
@@ -151,16 +152,13 @@ function RecipeItemsTab() {
     sortDirection,
   )
 
-  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
-  const sortedAssignedBucket = [
-    ...sortedAssigned.filter((item) => !isInactive(item)),
-    ...sortedAssigned.filter((item) => isInactive(item)),
-  ]
-  const sortedUnassignedBucket = [
-    ...sortedUnassigned.filter((item) => !isInactive(item)),
-    ...sortedUnassigned.filter((item) => isInactive(item)),
-  ]
-  const filteredItems = [...sortedAssignedBucket, ...sortedUnassignedBucket]
+  // Two-bucket ordering: assigned before unassigned, each keeping the sort
+  // order above. There is deliberately no active/inactive split — "inactive"
+  // is targetQuantity === 0, a per-location fact, and this page edits a global
+  // item↔recipe relation. Worse, useItems() joins the ACTIVE location, so an
+  // item stocked only elsewhere arrives zeroed and a bare isInactive() would
+  // sink it (the stockId trap in lib/quantityUtils.ts).
+  const filteredItems = [...sortedAssigned, ...sortedUnassigned]
 
   const activeTagIds = useMemo(
     () => Object.values(filterState).flat(),
@@ -189,23 +187,37 @@ function RecipeItemsTab() {
     })
   }
 
-  const handleCreateFromSearch = (name: string) => {
-    setNewItemInitialName(name)
-    setNewItemDialogOpen(true)
-  }
-
-  const handleNewItemSuccess = async (item: import('@/types').PantryItem) => {
-    // onSuccess also fires on the select-existing path (not just create), so
-    // an item may already be assigned to this recipe — guard against duplicating it.
-    if (isAssigned(item.id)) return
-    const newRecipeItems = [
-      ...recipeItems,
-      { itemId: item.id, defaultAmount: item.consumeAmount },
-    ]
-    await updateRecipe.mutateAsync({
-      id: recipeId,
-      updates: { items: newRecipeItems },
-    })
+  // Create-from-search creates the item inline — no dialog, matching the
+  // shelves tab: create the global item, then attach it to this entity.
+  const handleCreateFromSearch = async () => {
+    const trimmed = search.trim()
+    if (!trimmed) return
+    try {
+      const newItem = await createItem.mutateAsync({
+        name: trimmed,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+      })
+      if (!newItem) return
+      const newRecipeItems = [
+        ...recipeItems,
+        // `|| 1` matches handleToggle below: a newly created item has
+        // consumeAmount 0, and defaultAmount 0 means "optional, unchecked" in
+        // cooking — the ingredient would silently do nothing.
+        { itemId: newItem.id, defaultAmount: newItem.consumeAmount || 1 },
+      ]
+      await updateRecipe.mutateAsync({
+        id: recipeId,
+        updates: { items: newRecipeItems },
+      })
+    } catch {
+      // input stays populated for retry
+    }
   }
 
   const handleToggle = async (itemId: string, consumeAmount: number) => {
@@ -277,7 +289,7 @@ function RecipeItemsTab() {
         recipes={allRecipes}
         onCreateFromSearch={handleCreateFromSearch}
         hasExactMatch={hasExactMatch}
-        isCreating={updateRecipe.isPending}
+        isCreating={createItem.isPending || updateRecipe.isPending}
         className="bg-transparent border-none"
       />
       <div className="h-px bg-accessory-default" />
@@ -290,13 +302,13 @@ function RecipeItemsTab() {
       )}
 
       {[
-        { key: 'assigned', items: sortedAssignedBucket },
-        { key: 'unassigned', items: sortedUnassignedBucket },
+        { key: 'assigned', items: sortedAssigned },
+        { key: 'unassigned', items: sortedUnassigned },
       ].map(({ key, items }) => (
         <Fragment key={key}>
           {key === 'unassigned' &&
-            sortedAssignedBucket.length > 0 &&
-            sortedUnassignedBucket.length > 0 && (
+            sortedAssigned.length > 0 &&
+            sortedUnassigned.length > 0 && (
               <div className="h-px bg-accessory-default" />
             )}
           <div className="space-y-px">
@@ -319,6 +331,10 @@ function RecipeItemsTab() {
                     showTags={false}
                     showTagSummary={false}
                     showExpiration={false}
+                    // Global recipe↔item assignment page: never show the
+                    // active location's stock (quantity, unit, bar, severity
+                    // tint, inactive dimming).
+                    showStock={false}
                     vendors={vendorMap.get(item.id) ?? []}
                     recipes={recipeMap.get(item.id) ?? []}
                     onTagClick={handleTagClick}
@@ -356,12 +372,6 @@ function RecipeItemsTab() {
             No items match the current filters.
           </p>
         )}
-      <NewItemDialog
-        open={newItemDialogOpen}
-        onOpenChange={setNewItemDialogOpen}
-        initialName={newItemInitialName}
-        onSuccess={handleNewItemSuccess}
-      />
     </div>
   )
 }

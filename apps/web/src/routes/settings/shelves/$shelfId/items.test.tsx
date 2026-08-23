@@ -16,6 +16,7 @@ describe('Shelf Detail - Items Tab', () => {
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.shelves.clear()
     await db.inventoryLogs.clear()
     queryClient = new QueryClient({
@@ -80,6 +81,9 @@ describe('Shelf Detail - Items Tab', () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
       expect(butter).toBeDefined()
+      // And it is created unconfigured: consumeAmount 0, the single default
+      // shared by every interactive create path (local and cloud).
+      expect(butter?.consumeAmount).toBe(0)
 
       // And shelf.itemIds includes the new item's id
       const updatedShelf = await db.shelves.get(shelf.id)
@@ -90,6 +94,38 @@ describe('Shelf Detail - Items Tab', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Remove Butter')).toBeChecked()
     })
+  })
+
+  it('user can create an item globally without stocking it in any location', async () => {
+    // Given: a selection shelf with no items. This tab edits a global
+    // item↔shelf relation, so creating from search must not touch
+    // location-scoped stock (D3).
+    const shelf = await makeShelf()
+    renderItemsTab(shelf.id)
+    const user = userEvent.setup()
+
+    // When: user creates "Butter" from the search box
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search items/i)).toBeInTheDocument()
+    })
+    await user.type(screen.getByPlaceholderText(/search items/i), 'Butter')
+    await user.keyboard('{Enter}')
+
+    // Then: the global Item exists and is attached to the shelf
+    let butterId: string | undefined
+    await waitFor(async () => {
+      const items = await db.items.toArray()
+      butterId = items.find((i) => i.name === 'Butter')?.id
+      expect(butterId).toBeDefined()
+      const updatedShelf = await db.shelves.get(shelf.id)
+      expect(updatedShelf?.itemIds).toContain(butterId)
+    })
+
+    // And: no ItemStock row was written, in the active location or any other
+    expect(await db.itemStocks.count()).toBe(0)
   })
 
   it('user sees create button when search has text and no exact item match', async () => {
@@ -204,5 +240,52 @@ describe('Shelf Detail - Items Tab', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Remove brand new item')).toBeInTheDocument()
     })
+  })
+
+  it('user sees assigned items name-sorted regardless of the active location stock', async () => {
+    // Given a selection shelf with two assigned items — Zucchini stocked here,
+    // and Apple stocked ONLY at another location. useItems() joins the active
+    // location, so Apple arrives as ZERO_STOCK with no stockId: the documented
+    // stockId trap (lib/quantityUtils.ts). Under the old four-bucket sort a
+    // bare isInactive() therefore sank Apple below Zucchini.
+    const stockedHere = await makeItem('Zucchini')
+    const stockedElsewhere = await createItem(
+      {
+        name: 'Apple',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+        vendorIds: [],
+      },
+      'loc-other',
+    )
+    // And an unassigned item that sorts first alphabetically
+    await makeItem('Almond')
+    const shelf = await createShelf({
+      name: 'Fridge',
+      type: 'selection',
+      order: 0,
+      itemIds: [stockedHere.id, stockedElsewhere.id],
+    })
+
+    // When: user views the items tab (default sort: name asc)
+    renderItemsTab(shelf.id)
+
+    // Then both assigned items come first, name-sorted — Apple is a normal
+    // row despite not being stocked here — and the unassigned item follows
+    await waitFor(() => {
+      expect(screen.getByLabelText('Remove Apple')).toBeInTheDocument()
+    })
+    const links = screen.getAllByRole('link', {
+      name: /zucchini|apple|almond/i,
+    })
+    const names = links.map((el) => el.textContent?.trim() ?? '')
+    expect(names[0]).toMatch(/apple/i)
+    expect(names[1]).toMatch(/zucchini/i)
+    expect(names[2]).toMatch(/almond/i)
   })
 })

@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
@@ -17,12 +17,14 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { DEFAULT_LOCATION_ID } from '@/types'
 
 describe('Home page filtering integration', () => {
   let queryClient: QueryClient
 
   beforeEach(async () => {
     await db.items.clear()
+    await db.itemStocks.clear()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
@@ -46,6 +48,37 @@ describe('Home page filtering integration', () => {
       </QueryClientProvider>,
     )
   }
+
+  it('user can create an item from the pantry and it is stocked in the active location', async () => {
+    // Given a pantry with one item (an empty catalog sends the app to
+    // onboarding instead). Unlike the Settings assignment tabs (D3), the
+    // pantry's Add flow must keep stocking the new item here — this is the
+    // other half of the opt-in and the reason it is opt-in at all.
+    await createItem({ name: 'Milk', tagIds: [] })
+    renderApp()
+    const user = userEvent.setup()
+
+    // When user opens the Add dialog and creates "Butter"
+    await user.click(await screen.findByRole('button', { name: /add item/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(
+      within(dialog).getByRole('combobox', { name: /name/i }),
+      'Butter',
+    )
+    await user.click(within(dialog).getByRole('button', { name: /create/i }))
+
+    // Then the item is stocked in the active location
+    await waitFor(async () => {
+      const butter = (await db.items.toArray()).find((i) => i.name === 'Butter')
+      expect(butter).toBeDefined()
+      const stocks = await db.itemStocks
+        .where('itemId')
+        .equals(butter?.id ?? '')
+        .toArray()
+      expect(stocks).toHaveLength(1)
+      expect(stocks[0]?.locationId).toBe(DEFAULT_LOCATION_ID)
+    })
+  })
 
   it('user can filter items by selecting tags', async () => {
     // Given items with tags

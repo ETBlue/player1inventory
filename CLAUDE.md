@@ -189,7 +189,22 @@ pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen 
 (cd apps/web && pnpm build-storybook)
 (cd apps/web && pnpm check)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
+(cd apps/web && pnpm test --run)                 # web unit/integration suite
+pnpm test:server                                 # server suite — NOT covered by any of the above
 ```
+
+**`pnpm test` is web-only — the server suite needs its own command.** The root script is
+`pnpm --filter web test`, so `apps/web`'s tests are the only ones it runs. `apps/server`
+has a separate suite reachable only via `pnpm test:server` (or `pnpm test:all`, which runs
+both). The root `pnpm build` type-checks the server but never executes its tests, so a
+resolver can be logically broken and still pass every other command in this list. **Any
+branch touching `apps/server` must run `pnpm test:server` explicitly.**
+
+**Known-failing server baseline (as of 2026-08-23):** 3 tests fail on `main` —
+`purge.resolver.test.ts` (2) and `import.resolver.test.ts` (1), all
+`AssertionError: expected [ { …(4) } ] to be undefined`. They predate the gap being found
+and are unrelated to any current work. Treat exactly those 3 as the accepted baseline the
+way the 4 a11y colour-contrast failures are for E2E; anything beyond them is yours.
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
@@ -207,7 +222,14 @@ Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, 
 - If any command fails → stop and fix all errors before proceeding to the next step
 - The root `pnpm build` must pass its `tsc` type-check for **both** `apps/web` and `apps/server` — a clean `pnpm test` / `pnpm check` / `pnpm build-storybook` is **not** a substitute and does not catch type errors
 - After `pnpm build`, run `grep 'TS6385' /tmp/p1i-build.log` to check for `@deprecated` warnings — any match is a failure even if the build exit code is 0
-- All four commands must pass and `grep` must return no matches before moving on
+- Every command above must pass and `grep` must return no matches before moving on
+- **A very slow `vitest` run is an environment failure, not a code failure.** The web suite
+  normally finishes in well under a minute. If it takes many minutes, reports "Unhandled
+  Errors", or collects fewer test files than usual (e.g. 200 of 206 — files that failed to
+  *load*, not to assert), the machine is starved: check `uptime` for load average before
+  investigating a single failure. The tell is that consecutive runs produce **disjoint**
+  failure sets and each named test passes when run on its own. Do not run the suite
+  concurrently with `pnpm build` or E2E; re-run it alone, and only then believe it.
 - E2E failures on the final phase are a hard stop — fix before finishing the branch; the branch must not be pushed until all E2E tests pass
 
 **Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.

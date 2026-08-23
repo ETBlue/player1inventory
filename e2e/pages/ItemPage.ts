@@ -133,6 +133,24 @@ export class ItemPage {
     }
   }
 
+  async ensureInfoTab() {
+    // The eight GLOBAL stock CONFIGURATION fields — expiration mode, "expires in
+    // N days", the expiration threshold, target/measurement unit, amount per
+    // package, consume amount, package unit — live on the Info index route
+    // (/items/$id) since v16. Only the five genuinely per-location fields
+    // (packed, unpacked, target, refill threshold and that location's own
+    // "Expires on" date) stayed on the Stock tab.
+    // (src/components/item/ItemForm/ItemForm.tsx — the `showInfo` block)
+    //
+    // Navigate only when not already on the Info route — re-navigating would
+    // discard unsaved field edits made by an earlier method call in the same
+    // test. Switching between the Info and Stock tabs unmounts the form, so a
+    // test that edits both halves must save in between.
+    if (!/\/items\/[^/?#]+\/?(?:[?#]|$)/.test(this.page.url())) {
+      await this.page.goto(`/items/${this.getCurrentItemId()}`)
+    }
+  }
+
   getPackedQuantityInput(): Locator {
     // Label text starts with "Packed" (e.g., "Packed (pkg)")
     // Use start-anchor regex to avoid matching the "Unpacked" label.
@@ -231,8 +249,9 @@ export class ItemPage {
     // visible Radix listbox (role="listbox") rather than using getByRole('option') globally.
     //
     // Pattern: click trigger → wait for listbox → click option scoped to listbox
-    // Expiration lives in the Stock tab (src/routes/items/$id/stock.tsx) — ensure we're there.
-    await this.ensureStockTab()
+    // The expiration MODE is global and lives on the Info tab (/items/$id) since
+    // v16 — only this location's "Expires on" date stayed on the Stock tab.
+    await this.ensureInfoTab()
     const trigger = this.page.locator('#expirationMode')
     await trigger.click()
     // Wait for the Radix listbox portal to appear
@@ -253,10 +272,25 @@ export class ItemPage {
 
   async fillEstimatedDueDays(days: string) {
     // "Expires in (days)" input: id="expirationDueDays", type="number"
-    // Stock field — lives on the Stock tab (/items/$id/stock).
-    // Shown when expirationMode === 'days' (src/routes/items/$id/stock.tsx via ItemForm sections={['stock']})
-    await this.ensureStockTab()
+    // GLOBAL configuration — lives on the Info tab (/items/$id) since v16.
+    // Shown when expirationMode === 'days from purchase'
+    // (src/components/item/ItemForm/ItemForm.tsx, inside the `showInfo` block)
+    await this.ensureInfoTab()
     await this.page.locator('#expirationDueDays').fill(days)
+  }
+
+  async fillConsumeAmount(amount: string) {
+    // "Amount per Consume" input: id="consumeAmount" — GLOBAL configuration on
+    // the Info tab (/items/$id).
+    // (src/components/item/ItemForm/ItemForm.tsx, inside the `showInfo` block)
+    //
+    // Newly created items default to consumeAmount 0 (both local and cloud), and
+    // ItemForm validates `consumeAmount > 0` — deliberately, as the "this item is
+    // brand new and still needs setting up" signal. So the Save button on a fresh
+    // item is disabled until this is filled in, and any test that creates an item
+    // and then saves the form must call this first.
+    await this.ensureInfoTab()
+    await this.page.locator('#consumeAmount').fill(amount)
   }
 
   async fillTargetQuantity(quantity: string) {
@@ -276,8 +310,9 @@ export class ItemPage {
 
   getExpirationModeSelector(): Locator {
     // The Select trigger for expiration mode: id="expirationMode", role="combobox".
-    // Stock field — only on /items/$id/stock. Callers must navigate to the stock tab first.
-    // (src/routes/items/$id/stock.tsx via ItemForm sections={['stock']})
+    // GLOBAL configuration — only on the Info route /items/$id since v16.
+    // Callers must be on the Info tab first.
+    // (src/components/item/ItemForm/ItemForm.tsx, inside the `showInfo` block)
     return this.page.locator('#expirationMode')
   }
 }

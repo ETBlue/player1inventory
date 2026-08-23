@@ -73,3 +73,31 @@ export const RecipeUnassigned: Story = {
     onCheckboxToggle: () => console.log('Toggle assignment'),
   },
 }
+
+// mockItem is below its refill threshold, so with the default showStock the
+// card renders the error tint, the quantity, the unit badge and the bar.
+// This is how the four Settings assignment tabs render it: a global
+// item↔entity row with no trace of the active location's stock.
+export const TagAssignmentNoStock: Story = {
+  name: 'Tag assignment — stock hidden (global page)',
+  args: {
+    ...baseArgs,
+    mode: 'tag-assignment',
+    isChecked: false,
+    showStock: false,
+    showTags: false,
+    showTagSummary: false,
+    showExpiration: false,
+    onCheckboxToggle: () => console.log('Toggle assignment'),
+  },
+}
+
+export const InactiveNoStock: Story = {
+  name: 'Tag assignment — inactive item, stock hidden (no dimming)',
+  args: {
+    ...TagAssignmentNoStock.args,
+    // targetQuantity 0 is "inactive" in the active location only — with stock
+    // hidden the row must not be dimmed or labelled inactive.
+    item: { ...mockItem, targetQuantity: 0, refillThreshold: 0 },
+  },
+}

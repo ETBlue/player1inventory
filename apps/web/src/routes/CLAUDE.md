@@ -10,17 +10,25 @@ One app-wide **active location** scopes every stock-bearing page. It is held by 
 | **Shopping** (`/shopping`, `/shopping/$vendorId`) | Which carts exist — carts are per `(location × vendor)`; checkout consumes this location's stock and stamps its logs |
 | **Cooking** (`/cooking`) | Which recipe items are consumable — an item not stocked here is shown unavailable and never consumed |
 
-The **item detail Stock tab** is the deliberate exception: it pages across **all** locations rather than following the active one (it opens there and keeps naming it — the caption calls it the "current location"). See `items/CLAUDE.md`. Settings pages (tags, vendors, recipes, shelves, locations) are location-independent — those entities are global.
+The **item detail Stock tab** is the deliberate exception: it pages across **all** locations rather than following the active one (it opens there and keeps naming it — the caption calls it the "current location"). See `items/CLAUDE.md`. Settings pages (tags, vendors, recipes, shelves, locations) are location-independent — those entities are global, and since issue #247 part 2 their four `…/items` assignment tabs enforce it: no stock rendered (`ItemCard showStock={false}`), no active/inactive bucketing, and create-from-search creates inline via `useCreateItem({ catalogOnly: true })`, writing no `ItemStock`. No Settings tab mounts `NewItemDialog`, so none of them can stock an item here at all. See `settings/CLAUDE.md`. The desktop `Sidebar` mirrors the split spatially — the three location-aware links sit under the switcher, Settings is pinned to the bottom.
 
 **Cloud mode has no locations.** `Location`/`ItemStock` have no GraphQL backend yet (deferred in PR D): a cloud `Item` carries its stock inline and its carts are keyed bare. Each page's cloud branch therefore keeps its pre-split behaviour, and the two location mutations (`useAddItemToLocation` / `useRemoveItemFromLocation`) **throw** rather than write local rows the cloud UI never reads.
 
 **When cloud gains locations, multi-row writes must become atomic there too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side transaction, not a sequence of Apollo calls. The item unit switch is the live example — see `items/CLAUDE.md`.
 
+**When cloud gains locations, it also needs a catalog-only create path.** The four Settings
+assignment tabs create items stocked in **no** location, via
+`useCreateItem({ catalogOnly: true })`. In cloud that flag is a no-op today because there is
+no `ItemStock` to skip — so the moment the backend lands, the GraphQL `createItem` mutation
+must gain the same affordance and the tabs' cloud branch must use it. Nothing breaks at that
+point if it is forgotten; cloud simply starts stocking every Settings-created item in a
+default location again, silently. See `settings/CLAUDE.md`.
+
 ### Pantry Page (`/`)
 
 The pantry home page (`src/routes/index.tsx`) supports two display modes and three group-by views, all controlled by URL search params.
 
-**Active-location scoping (PR D):** All seven pantry views read `useStockedItems()` (not `useItems()`), so the pantry shows **only items stocked in the active location** (those with an `ItemStock` row there); switching the active location via the `LocationSwitcher` re-scopes the list, and sorting/filtering operate on that scoped set. The **Add button** opens `NewItemDialog`, a combobox over the **full** catalog (`useItems()`) — selecting an existing item stocks it here via copy-on-add, creating a new one stocks it here. Shopping carts and cooking are likewise active-location-scoped (see their sections).
+**Active-location scoping (PR D):** All seven pantry views read `useStockedItems()` (not `useItems()`), so the pantry shows **only items stocked in the active location** (those with an `ItemStock` row there); switching the active location via the `LocationSwitcher` re-scopes the list, and sorting/filtering operate on that scoped set. The **Add button** opens `NewItemDialog`, a combobox over the **full** catalog (`useItems()`) — selecting an existing item stocks it here via copy-on-add, creating a new one stocks it here. The pantry is now the dialog's only caller. Shopping carts and cooking are likewise active-location-scoped (see their sections).
 
 **Groups with nothing stocked here sink below a divider (they are never hidden).** In all three group views a group whose item count is 0 — nothing stocked in the active location — still renders, but below a `ListSectionDivider` labelled `common.notStockedHere` ("N not stocked here"). It replaces an earlier "hide at zero" behaviour on the same branch: a group that vanished gave no way to tell "empty *here*" from "gone". The shopping vendor list and the cooking recipe list apply the same rule (see their sections).
 

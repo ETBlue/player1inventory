@@ -58,6 +58,13 @@ interface ItemCardProps {
   activeTagIds?: string[]
   showExpiration?: boolean
   showTagSummary?: boolean
+  // Suppresses every rendering derived from the ACTIVE LOCATION's stock:
+  // the quantity text, the unit badge, the progress bar, the severity card
+  // tint and the inactive dimming. Surfaces that edit global item↔entity
+  // relations (the four Settings assignment tabs) pass false so they never
+  // show one location's state on a global page. The last two are styling
+  // rather than content, and are exactly the ones a partial gate misses.
+  showStock?: boolean
   highlightedName?: React.ReactNode
 }
 
@@ -85,6 +92,7 @@ export function ItemCard({
   activeTagIds,
   showExpiration = true,
   showTagSummary = true,
+  showStock = true,
   highlightedName,
 }: ItemCardProps) {
   const { data: lastPurchase } = useLastPurchaseDate(item.id)
@@ -115,6 +123,11 @@ export function ItemCard({
     console.warn('ItemCard: controlAmount requires onAmountChange to function.')
   }
 
+  // "Inactive" is targetQuantity === 0 — a per-location fact. When stock is
+  // hidden the card must not read as inactive either, so this drives every
+  // inactive-derived rendering rather than isInactive(item) directly.
+  const showsInactive = showStock && isInactive(item)
+
   const [pendingDirection, setPendingDirection] = useState<-1 | 1 | null>(null)
 
   useEffect(() => {
@@ -123,7 +136,9 @@ export function ItemCard({
 
   return (
     <Card
-      variant={isInactive(item) || status === 'ok' ? 'default' : status}
+      variant={
+        !showStock || isInactive(item) || status === 'ok' ? 'default' : status
+      }
       className={cn(
         onCheckboxToggle ? 'ml-10' : '',
         isAmountControllable ? 'mr-28' : '',
@@ -198,7 +213,7 @@ export function ItemCard({
       <CardHeader
         className={cn(
           'flex flex-row items-start justify-between gap-2',
-          isInactive(item) ? 'opacity-80' : '',
+          showsInactive ? 'opacity-80' : '',
         )}
       >
         <Link
@@ -208,31 +223,35 @@ export function ItemCard({
         >
           <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
             <h3 className="truncate capitalize">
-              {isInactive(item) && <span className="sr-only">Inactive </span>}
+              {showsInactive && <span className="sr-only">Inactive </span>}
               {highlightedName ?? item.name}
             </h3>
             <div className="flex-1" />
-            <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
-              {item.unpackedQuantity > 0
-                ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
-                : `${currentQuantity}/${item.targetQuantity}`}
-            </span>
-            <UnitBadge unit={unitLabel} />
+            {showStock && (
+              <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
+                {item.unpackedQuantity > 0
+                  ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
+                  : `${currentQuantity}/${item.targetQuantity}`}
+              </span>
+            )}
+            {showStock && <UnitBadge unit={unitLabel} />}
           </CardTitle>
-          <ItemProgressBar
-            current={currentQuantity}
-            target={item.targetQuantity}
-            status={progressStatus}
-            targetUnit={item.targetUnit}
-            packed={displayPacked}
-            unpacked={item.unpackedQuantity}
-            {...(item.measurementUnit
-              ? { measurementUnit: item.measurementUnit }
-              : {})}
-            {...(item.amountPerPackage
-              ? { amountPerPackage: item.amountPerPackage }
-              : {})}
-          />
+          {showStock && (
+            <ItemProgressBar
+              current={currentQuantity}
+              target={item.targetQuantity}
+              status={progressStatus}
+              targetUnit={item.targetUnit}
+              packed={displayPacked}
+              unpacked={item.unpackedQuantity}
+              {...(item.measurementUnit
+                ? { measurementUnit: item.measurementUnit }
+                : {})}
+              {...(item.amountPerPackage
+                ? { amountPerPackage: item.amountPerPackage }
+                : {})}
+            />
+          )}
         </Link>
         {onQuickUpdate && mode === 'pantry' && (
           <Button
@@ -255,7 +274,7 @@ export function ItemCard({
           ></Button>
         )}
       </CardHeader>
-      <CardContent className={`mt-1 ${isInactive(item) ? 'opacity-80' : ''}`}>
+      <CardContent className={`mt-1 ${showsInactive ? 'opacity-80' : ''}`}>
         <div className="flex items-center gap-1">
           {[
             showExpiration && currentQuantity > 0 && estimatedDueDate

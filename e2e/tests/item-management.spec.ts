@@ -96,6 +96,9 @@ test('user can edit an item name', async ({ page }) => {
   await pantry.navigateTo()
   await pantry.getItemCard('Edit Me').click()
   await item.fillName('Edited Name')
+  // A brand-new item has consumeAmount 0 and ItemForm blocks Save until it is
+  // set — that error is the deliberate "still needs setting up" signal.
+  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
   // Then the updated name appears in the pantry
@@ -124,6 +127,8 @@ test('user can persist note and wikidata URL on the Info tab', async ({ page, ba
   const note = 'Buy the 1L carton; lactose-free preferred.'
   await item.fillNote(note)
   await item.fillWikidataUrl(wikidataUrl)
+  // Fresh item: consumeAmount 0 blocks Save until set (see fillConsumeAmount).
+  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
   // Then reopening the Info tab shows both fields persisted
@@ -179,9 +184,20 @@ test('user can set specific-date expiration on an item', async ({ page }) => {
   await item.fillName('Expiry Date Item')
   // save() navigates to /items/$id
   await item.save()
+  const itemId = item.getCurrentItemId()
 
-  // When user selects "Specific Date" expiration mode and sets a past due date
+  // When user selects "Specific Date" expiration mode on the Info tab — the mode
+  // is GLOBAL configuration since v16 — and saves it. The save has to happen
+  // before moving to the Stock tab: switching tabs unmounts the form and would
+  // discard the unsaved mode, and the per-location "Expires on" field is gated
+  // on the saved mode being 'date'.
   await item.selectExpirationMode('Specific Date')
+  // Fresh item: consumeAmount 0 blocks Save until set (see fillConsumeAmount).
+  await item.fillConsumeAmount('1')
+  await item.saveExisting()
+
+  // And then sets THIS location's own due date and a quantity on the Stock tab
+  await page.goto(`/items/${itemId}/stock`)
   await item.fillExpirationDueDate('2020-01-01')
   await item.fillPackedQuantity('1')
   await item.saveExisting()
@@ -203,14 +219,17 @@ test('user can set days-from-purchase expiration on an item', async ({ page }) =
   await item.save()
   const itemId = item.getCurrentItemId()
 
-  // When user selects "Days from Purchase" mode and enters estimated days
+  // When user selects "Days from Purchase" mode and enters estimated days.
+  // Both are GLOBAL configuration and live on the Info tab since v16, so this
+  // is one form and one save — no tab hop in between.
   await item.selectExpirationMode('Days from Purchase')
   await item.fillEstimatedDueDays('30')
+  // Fresh item: consumeAmount 0 blocks Save until set (see fillConsumeAmount).
+  await item.fillConsumeAmount('1')
   await item.saveExisting()
 
-  // Then revisiting the item's Stock tab shows "Days from Purchase" mode persisted
-  // (expiration moved to /items/$id/stock in the item-detail tab refactor)
-  await page.goto(`/items/${itemId}/stock`)
+  // Then revisiting the item's Info tab shows "Days from Purchase" mode persisted
+  await page.goto(`/items/${itemId}`)
   await expect(item.getExpirationModeSelector()).toContainText('Days from Purchase')
 })
 
@@ -246,8 +265,16 @@ test('user can quick-update item quantity via dialog', async ({ page }) => {
   await pantry.clickAddItem()
   await item.fillName('Olive Oil')
   await item.save()
-  // Set targetQuantity and initial packedQuantity on the detail page (/items/$id)
-  // These fields do not exist in the NewItemDialog — only on the detail form.
+  const itemId = item.getCurrentItemId()
+  // A brand-new item has consumeAmount 0, which ItemForm rejects — and the
+  // Stock tab has no consumeAmount field, so its Save stays disabled until the
+  // Info tab is configured. Set it and save on Info first, then do stock work.
+  await item.fillConsumeAmount('1')
+  await item.saveExisting()
+
+  // Set targetQuantity and initial packedQuantity on the Stock tab
+  // (/items/$id/stock). These fields do not exist in the NewItemDialog.
+  await page.goto(`/items/${itemId}/stock`)
   await item.fillTargetQuantity('5')
   await item.fillPackedQuantity('2')
   await item.saveExisting()

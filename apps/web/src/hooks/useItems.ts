@@ -35,7 +35,17 @@ import { useDataMode } from './useDataMode'
 
 // In local mode, item create/update accept the global Item fields plus stock
 // fields (split into the active-location ItemStock by the operations layer).
-type ItemMutationInput = Omit<Item, 'id' | 'createdAt' | 'updatedAt'> &
+//
+// `consumeAmount` is optional here even though it is required on an `Item`,
+// mirroring the operations layer's own `CreateItemInput`: no interactive create
+// path supplies it, so the single default (0, in both `db/operations.ts` and the
+// cloud `createItem` resolver) decides it. GraphQL's `CreateItemInput` already
+// has it optional, so the cloud branch needs no change.
+type ItemMutationInput = Omit<
+  Item,
+  'id' | 'createdAt' | 'updatedAt' | 'consumeAmount'
+> &
+  Partial<Pick<Item, 'consumeAmount'>> &
   Partial<StockFields>
 
 // Map frontend Item (without id/timestamps) to the GraphQL CreateItemInput shape.
@@ -250,14 +260,22 @@ export function useLastPurchaseDate(itemId: string) {
   return localQuery
 }
 
-export function useCreateItem() {
+/**
+ * @param options.catalogOnly Create the item in the global catalog only,
+ * without writing an `ItemStock` in the active location. Opt-in — omitting it
+ * keeps the historic behaviour (stock the new item here), which is what the
+ * pantry's Add flow needs. Only the Settings assignment tabs pass `true`.
+ * No-op in cloud mode, which has no `ItemStock` backend.
+ */
+export function useCreateItem(options?: { catalogOnly?: boolean }) {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  const catalogOnly = options?.catalogOnly ?? false
 
   const localMutation = useMutation({
     mutationFn: (input: ItemMutationInput) =>
-      createItem(input, activeLocationId),
+      createItem(input, activeLocationId, { catalogOnly }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
     },

@@ -19,7 +19,6 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -32,7 +31,10 @@ function ShelfItemsTab() {
   const { shelfId } = Route.useParams()
   const { data: shelf } = useShelfQuery(shelfId)
   const updateShelf = useUpdateShelfMutation()
-  const createItem = useCreateItem()
+  // catalogOnly: this page edits a global item↔shelf relation, so a new item
+  // goes into the catalog and is stocked in no location (D3). This tab
+  // bypasses NewItemDialog and creates directly, so it opts in here instead.
+  const createItem = useCreateItem({ catalogOnly: true })
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -164,7 +166,6 @@ function ShelfItemsTab() {
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 0,
       })
       if (!newItem) return
       const currentIds = shelf.itemIds ?? []
@@ -214,15 +215,14 @@ function ShelfItemsTab() {
     sortDirection,
   )
 
-  // Four-bucket ordering: assigned before unassigned, active before inactive within each group
-  const assignedItems = [
-    ...sortedItems.filter((item) => isAssigned(item.id) && !isInactive(item)),
-    ...sortedItems.filter((item) => isAssigned(item.id) && isInactive(item)),
-  ]
-  const unassignedItems = [
-    ...sortedItems.filter((item) => !isAssigned(item.id) && !isInactive(item)),
-    ...sortedItems.filter((item) => !isAssigned(item.id) && isInactive(item)),
-  ]
+  // Two-bucket ordering: assigned before unassigned, each keeping the sort
+  // order. There is deliberately no active/inactive split — "inactive" is
+  // targetQuantity === 0, a per-location fact, and this page edits a global
+  // item↔shelf relation. Worse, useItems() joins the ACTIVE location, so an
+  // item stocked only elsewhere arrives zeroed and a bare isInactive() would
+  // sink it (the stockId trap in lib/quantityUtils.ts).
+  const assignedItems = sortedItems.filter((item) => isAssigned(item.id))
+  const unassignedItems = sortedItems.filter((item) => !isAssigned(item.id))
   const filteredItems = [...assignedItems, ...unassignedItems]
 
   return (
@@ -283,6 +283,10 @@ function ShelfItemsTab() {
                     showTags={false}
                     showTagSummary={false}
                     showExpiration={false}
+                    // Global shelf↔item assignment page: never show the active
+                    // location's stock (quantity, unit, bar, severity tint,
+                    // inactive dimming).
+                    showStock={false}
                     vendors={vendorMap.get(item.id) ?? []}
                     recipes={recipeMap.get(item.id) ?? []}
                     onTagClick={handleTagClick}

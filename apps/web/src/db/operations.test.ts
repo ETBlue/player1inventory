@@ -96,6 +96,62 @@ describe('Item operations', () => {
     expect(item.createdAt).toBeInstanceOf(Date)
   })
 
+  it('user creates an item with consumeAmount 0 when the input omits it', async () => {
+    // Given create input with no consumeAmount (every interactive create path)
+    const item = await createItem({ name: 'Milk', tagIds: [], vendorIds: [] })
+
+    // Then the amount-per-consume default is 0, not 1 — a brand-new item is
+    // deliberately left unconfigured so ItemForm flags it as needing setup.
+    expect(item.consumeAmount).toBe(0)
+    expect((await db.items.get(item.id))?.consumeAmount).toBe(0)
+  })
+
+  it('user creates an item with an explicit consumeAmount when one is supplied', async () => {
+    // Given create input that does supply consumeAmount
+    const item = await createItem({
+      name: 'Rice',
+      tagIds: [],
+      vendorIds: [],
+      consumeAmount: 0.5,
+    })
+
+    // Then the supplied value wins over the 0 default
+    expect(item.consumeAmount).toBe(0.5)
+  })
+
+  it('stocks a newly created item in the target location by default', async () => {
+    // Given no options argument (every pre-D3 caller)
+    const item = await createItem(
+      { name: 'Milk', tagIds: [], vendorIds: [] },
+      DEFAULT_LOCATION_ID,
+    )
+
+    // Then an ItemStock row exists in that location and the join carries it
+    const stocks = await db.itemStocks.where('itemId').equals(item.id).toArray()
+    expect(stocks).toHaveLength(1)
+    expect(stocks[0]?.locationId).toBe(DEFAULT_LOCATION_ID)
+    expect(item.stockId).toBe(stocks[0]?.id)
+  })
+
+  it('user can create an item in the catalog without stocking it anywhere', async () => {
+    // Given the catalogOnly option
+    const item = await createItem(
+      { name: 'Butter', tagIds: [], vendorIds: [] },
+      DEFAULT_LOCATION_ID,
+      { catalogOnly: true },
+    )
+
+    // Then the global Item exists
+    expect(await db.items.get(item.id)).toBeDefined()
+
+    // And no ItemStock row was written, in any location
+    expect(await db.itemStocks.where('itemId').equals(item.id).count()).toBe(0)
+
+    // And the returned join is the documented orphan shape: zeroed, no stockId
+    expect(item.stockId).toBeUndefined()
+    expect(item.packedQuantity).toBe(0)
+  })
+
   it('creates item with dual-unit tracking', async () => {
     const item = await createItem({
       name: 'Milk',
