@@ -39,11 +39,26 @@ Three rules, all four tabs alike
    surfaces it with `ZERO_STOCK` and no `stockId`, `getStockedItems` (and
    therefore the pantry) excludes it, and the Add combobox finds it.
 
-   Field values are identical on all four tabs except one **pre-existing
-   divergence**: shelves creates with `consumeAmount: 0`, the other three with
-   `consumeAmount: 1` (the value the dialog's create path used, preserved when
-   the dialog was removed). Not reconciled deliberately — pick one only with a
-   designer ruling.
+   Field values are identical on all four tabs, and **none of them passes
+   `consumeAmount` at all**. The shelves-vs-others divergence (shelves `0`, the
+   other three `1`) is reconciled at **0**, and reconciled by *deletion*: every
+   interactive create path now omits the field so the single default in
+   `createItem` (`db/operations.ts`) governs, with the cloud resolver
+   (`apps/server/src/resolvers/item.resolver.ts`) defaulting to 0 to match.
+
+   **Why 0, and why `ItemForm` still rejects it.** A brand-new item is
+   deliberately created *unconfigured*. `ItemForm` validates
+   `consumeAmount > 0`, so opening a freshly created item lands on an Info tab
+   already showing "Must be greater than 0." — that error **is the feature**
+   (designer ruling, 2026-08-23): it is how the user recognises an item that
+   still needs setting up. Do not relax the validation to "fix" it, and do not
+   reintroduce a non-zero create default to silence it.
+
+   One knock-on lives on the recipes tab: it attaches the new item with
+   `defaultAmount: newItem.consumeAmount || 1`. `defaultAmount: 0` means
+   "optional, unchecked" in cooking, so without the `|| 1` a freshly created
+   ingredient would silently do nothing. The `|| 1` matches the sibling
+   `handleToggle` path, which already had it.
 
 **The select-existing asymmetry is closed.** Until the tags/vendors/recipes tabs
 went inline they mounted `NewItemDialog`, whose *select-existing* path stocks the

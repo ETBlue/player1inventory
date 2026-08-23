@@ -169,7 +169,6 @@ function VendorItemsTab() {
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
       })
       if (!newItem) return
       // The item was just created with `vendorIds: []`, so appending this

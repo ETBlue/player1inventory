@@ -289,7 +289,11 @@ export async function createItem(
     ...(measurementUnit !== undefined ? { measurementUnit } : {}),
     ...(amountPerPackage !== undefined ? { amountPerPackage } : {}),
     targetUnit: targetUnit ?? 'package',
-    consumeAmount: consumeAmount ?? 1,
+    // Default 0, not 1: a newly created item is deliberately left
+    // unconfigured so ItemForm's `consumeAmount > 0` validation flags it as a
+    // brand-new item that still needs setting up. Mirrored by the cloud
+    // resolver (apps/server/src/resolvers/item.resolver.ts createItem).
+    consumeAmount: consumeAmount ?? 0,
     ...(estimatedDueDays !== undefined ? { estimatedDueDays } : {}),
     ...(expirationThreshold !== undefined ? { expirationThreshold } : {}),
     ...(expirationMode !== undefined ? { expirationMode } : {}),

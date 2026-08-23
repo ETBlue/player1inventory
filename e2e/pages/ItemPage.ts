@@ -279,6 +279,20 @@ export class ItemPage {
     await this.page.locator('#expirationDueDays').fill(days)
   }
 
+  async fillConsumeAmount(amount: string) {
+    // "Amount per Consume" input: id="consumeAmount" — GLOBAL configuration on
+    // the Info tab (/items/$id).
+    // (src/components/item/ItemForm/ItemForm.tsx, inside the `showInfo` block)
+    //
+    // Newly created items default to consumeAmount 0 (both local and cloud), and
+    // ItemForm validates `consumeAmount > 0` — deliberately, as the "this item is
+    // brand new and still needs setting up" signal. So the Save button on a fresh
+    // item is disabled until this is filled in, and any test that creates an item
+    // and then saves the form must call this first.
+    await this.ensureInfoTab()
+    await this.page.locator('#consumeAmount').fill(amount)
+  }
+
   async fillTargetQuantity(quantity: string) {
     // Target Quantity input: id="targetQuantity" — Stock field on /items/$id/stock.
     // (src/routes/items/$id/stock.tsx via ItemForm sections={['stock']})

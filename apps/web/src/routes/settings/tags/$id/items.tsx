@@ -206,7 +206,6 @@ function TagItemsTab() {
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
       })
       if (!newItem) return
       // The item was just created with `tagIds: []`, so appending this tag is

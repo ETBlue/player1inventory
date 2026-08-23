@@ -303,6 +303,22 @@ describe('ItemForm — validation errors on page load', () => {
     expect(screen.getByText('Must be greater than 0.')).toBeInTheDocument()
   })
 
+  it('shows the consume amount error for a brand-new item, flagging it as unconfigured', async () => {
+    // Given the form opened on a freshly created item, which now carries
+    // consumeAmount 0 by default (both local and cloud create paths)
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['stock', 'info']}
+        initialValues={{ consumeAmount: 0 }}
+      />,
+    )
+
+    // Then the Info tab opens in an error state. This is deliberate, not a
+    // bug: the validation is the signal that the item still needs setting up.
+    expect(screen.getByText('Must be greater than 0.')).toBeInTheDocument()
+  })
+
   it('does not show the old single validation message below the submit button', async () => {
     // Given an ItemForm with measurement tracking on but no units
     const user = userEvent.setup()

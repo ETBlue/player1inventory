@@ -343,10 +343,20 @@ describe('Recipe Detail - Items Tab', () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
       expect(butter).toBeDefined()
+      // And it is created unconfigured: consumeAmount 0, the single default
+      // shared by every interactive create path (local and cloud).
+      expect(butter?.consumeAmount).toBe(0)
       const updatedRecipe = await db.recipes.get(recipe.id)
       expect(updatedRecipe?.items.some((ri) => ri.itemId === butter?.id)).toBe(
         true,
       )
+      // And the recipe link still gets a usable amount: defaultAmount 0 would
+      // mean "optional, unchecked" in cooking, so the create path falls back
+      // to 1 exactly like the toggle path does.
+      const recipeItem = updatedRecipe?.items.find(
+        (ri) => ri.itemId === butter?.id,
+      )
+      expect(recipeItem?.defaultAmount).toBe(1)
     })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })

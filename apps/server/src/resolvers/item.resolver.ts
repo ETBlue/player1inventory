@@ -97,7 +97,11 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           refillThreshold: numOr(rest.refillThreshold) ?? 0,
           packedQuantity: numOr(rest.packedQuantity) ?? 0,
           unpackedQuantity: numOr(rest.unpackedQuantity) ?? 0,
-          consumeAmount: numOr(rest.consumeAmount) ?? 1,
+          // Default 0, mirroring local mode's createItem (apps/web/src/db/
+          // operations.ts): a brand-new item is left unconfigured so ItemForm
+          // flags it as needing setup. An explicit 0 from a client already
+          // survives `??`; only the omitted-value default changes here.
+          consumeAmount: numOr(rest.consumeAmount) ?? 0,
           name: rest.name,
           packageUnit: strOr(rest.packageUnit),
           measurementUnit: strOr(rest.measurementUnit),

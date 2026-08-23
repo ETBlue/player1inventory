@@ -166,7 +166,6 @@ function ShelfItemsTab() {
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 0,
       })
       if (!newItem) return
       const currentIds = shelf.itemIds ?? []

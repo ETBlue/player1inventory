@@ -78,7 +78,7 @@ function makeItem(overrides: Partial<{
     refillThreshold: 0,
     packedQuantity: 0,
     unpackedQuantity: 0,
-    consumeAmount: 1,
+    consumeAmount: 0,
     dueDate: null,
     estimatedDueDays: null,
     expirationThreshold: null,
@@ -135,6 +135,52 @@ describe('Item resolvers', () => {
     expect(created.id).toBe('item_1')
     expect(created.tagIds).toEqual([])
     expect(created.vendorIds).toEqual([])
+  })
+
+  it('user can create an item with consumeAmount 0 when the input omits it', async () => {
+    // Given Prisma create returns whatever it is handed
+    const item = makeItem({ name: 'Milk' })
+    mockPrisma.item.create.mockResolvedValue(item)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
+
+    // When user creates an item without supplying consumeAmount
+    const result = await execOp(
+      `mutation CreateItem($input: CreateItemInput!) {
+        createItem(input: $input) { id }
+      }`,
+      { input: { name: 'Milk' } },
+    )
+
+    // Then the resolver persists 0, matching the local-mode default
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.item.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ consumeAmount: 0 }),
+      }),
+    )
+  })
+
+  it('user can create an item with an explicit consumeAmount when one is supplied', async () => {
+    // Given Prisma create returns whatever it is handed
+    const item = makeItem({ name: 'Rice' })
+    mockPrisma.item.create.mockResolvedValue(item)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
+
+    // When user creates an item that does supply consumeAmount
+    const result = await execOp(
+      `mutation CreateItem($input: CreateItemInput!) {
+        createItem(input: $input) { id }
+      }`,
+      { input: { name: 'Rice', consumeAmount: 0.5 } },
+    )
+
+    // Then the supplied value wins over the 0 default
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.item.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ consumeAmount: 0.5 }),
+      }),
+    )
   })
 
   it('user can create an item with tagIds and vendorIds', async () => {

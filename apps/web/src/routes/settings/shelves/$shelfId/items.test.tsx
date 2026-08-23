@@ -81,6 +81,9 @@ describe('Shelf Detail - Items Tab', () => {
       const items = await db.items.toArray()
       const butter = items.find((i) => i.name === 'Butter')
       expect(butter).toBeDefined()
+      // And it is created unconfigured: consumeAmount 0, the single default
+      // shared by every interactive create path (local and cloud).
+      expect(butter?.consumeAmount).toBe(0)
 
       // And shelf.itemIds includes the new item's id
       const updatedShelf = await db.shelves.get(shelf.id)

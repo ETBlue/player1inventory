@@ -134,11 +134,35 @@ lost its `catalogOnly` prop — with no callers left it was not independently
 verifiable — and the pantry Add button is now the dialog's only mount.
 `createItem`'s option and `useCreateItem`'s option both stay.
 
-Field values are preserved rather than unified: the three converted tabs create
-with `consumeAmount: 1` (the dialog's create-path value) and recipes still
-derives `defaultAmount` from the new item's `consumeAmount`. The shelves tab's
-`consumeAmount: 0` is a **pre-existing** divergence and was deliberately left
-alone.
+Field values were initially preserved rather than unified: the three converted
+tabs created with `consumeAmount: 1` (the dialog's create-path value) while the
+shelves tab used `0` — a pre-existing divergence left alone at the time.
+
+**D3a — reconciled at 0 (designer ruling, 2026-08-23).** Every newly created
+item now gets `consumeAmount: 0`, in **both** modes, and it is reconciled by
+deletion: no interactive create path passes the field, so exactly two defaults
+decide it — `createItem` in `apps/web/src/db/operations.ts` for local mode and
+`createItem` in `apps/server/src/resolvers/item.resolver.ts` for cloud. The
+literals were removed from `NewItemDialog`, all four `…/items` tabs,
+`ShelfDetailView` and `shopping/$vendorId`. Left untouched, because they are not
+"new blank item" paths: the onboarding template seeds (`TemplateItemsBrowser`,
+`useOnboardingSetup`) carry authored amounts, `lib/importData.ts` restores stored
+values, the Dexie v15/v16 backfills in `db/index.ts` fix up *pre-existing* rows,
+and the server's `updateItem` is an edit.
+
+**Why 0, when `ItemForm` rejects it.** The rejection is the point. `ItemForm`
+validates `consumeAmount > 0`, so a brand-new item opens its Info tab already
+showing "Must be greater than 0." The designer asked for that error to stay
+exactly as it is: it is the signal that the item is new and still needs setting
+up. Previously an item silently arrived with a plausible-looking `1` that the
+user had never chosen. The validation is now pinned by its own test
+(`ItemForm.test.tsx`, "shows the consume amount error for a brand-new item") so
+a future reader cannot mistake it for a bug and "fix" it.
+
+The one place 0 could not be passed through is the recipes tab, which attaches
+the new item to the recipe. `defaultAmount: 0` means "optional, unchecked" in
+cooking, so the create path uses `newItem.consumeAmount || 1` — the same
+fallback its sibling `handleToggle` already had.
 
 **D4 — recipe counts are derived from the item side, not `recipe.items.length`.**
 The design did not specify which side to count from. `useRecipeItemCounts()`

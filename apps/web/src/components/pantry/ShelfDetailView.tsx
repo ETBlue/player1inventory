@@ -212,7 +212,6 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
       refillThreshold: 0,
       packedQuantity: 0,
       unpackedQuantity: 0,
-      consumeAmount: 0,
     })
     if (shelf?.type === 'selection' && newItem?.id) {
       const currentIds = shelf.itemIds ?? []
