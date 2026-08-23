@@ -9,7 +9,7 @@ Status key: ✅ Implemented · 🔲 Pending · 🔄 In Progress · ⚠️ Partia
 | Area | Status | Notes |
 |------|--------|-------|
 | [a11y](global/a11y/) | ✅ Implemented | Plan 1 (critical/high fixes), Plan 2 (keyboard/motion), Plan 3 (visual verification) — all done |
-| [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent |
+| [ai-sop](global/ai-sop/) | 🔄 Active | SOP evolves continuously; commit-splitting, verification-gate recent — server suite now folded into root `pnpm test` (issues #250/#251) |
 | [app-setup](global/app-setup/) | ✅ Implemented | Storybook, pnpm, initial design all done |
 | [backend](global/backend/) | 🔲 Pending | Monorepo + Items + TagType/Tag + Vendor + Recipe done; shopping cart cloud backend done; **deferred:** post-login IndexedDB → MongoDB migration (see `global/backend/2026-03-27-post-login-migration.md`); seamless offline ↔ online migration with conflict UI 🔲 Pending (see `global/backend/2026-04-04-seamless-offline-online-migration-design.md`) |
 | [design-system](global/design-system/) | ✅ Implemented | Tokens, theme, typography, button variants all done; OKLCH color conversion complete — Phase A (HSL→OKLCH) and Phase B (WCAG AA calibration) done (see `global/design-system/2026-04-05-oklch-colors.md`) |
