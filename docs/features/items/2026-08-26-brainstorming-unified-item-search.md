@@ -112,8 +112,12 @@ Given verbatim, lightly reformatted:
   alongside inline search.
 - **Phasing into three PRs** (see spec) rather than one large change.
 
-## Status at handoff
+## Status
 
-The design was presented in full and **approval was not yet given** — the session
-was checkpointed for context before ETBlue responded. The spec is written on the
-assumption it is directionally right; re-confirm before implementing.
+**Design confirmed by ETBlue on 2026-08-26.** Brainstorming is closed; the next
+step is the `writing-plans` skill against the spec, starting with PR A.
+
+Three points were settled after the initial presentation, in this order:
+Settings assignment tabs out of scope → every bucket-2 row on a filter shelf is
+actionable (correcting an error carried over from a rejected option) → the
+per-tag-type picker, then extended to vendors and recipes.

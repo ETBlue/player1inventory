@@ -3,7 +3,8 @@
 **Date:** 2026-08-26
 **Issue:** #245 (filed as a cart-page duplicate-`Item` bug; scope widened here)
 **Branch:** `feature/unified-item-search`
-**Status:** 🔲 Pending — design presented, **approval not yet given**
+**Status:** ✅ **Design approved by ETBlue 2026-08-26.** Not yet implemented —
+next step is `writing-plans` for PR A. Do not re-litigate the decisions below.
 **Brainstorming log:** `2026-08-26-brainstorming-unified-item-search.md`
 
 ## Problem
