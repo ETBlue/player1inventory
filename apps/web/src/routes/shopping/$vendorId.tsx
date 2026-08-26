@@ -3,11 +3,19 @@ import {
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router'
-import { ArrowLeft, Check, Loader2, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  ArrowUpFromLine,
+  Check,
+  Loader2,
+  Plus,
+  X,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
@@ -24,6 +32,7 @@ import {
 import { Button } from '@/components/ui/button'
 import {
   useAbandonCart,
+  useAddItemToLocation,
   useAddToCart,
   useCartItems,
   useCheckout,
@@ -33,10 +42,13 @@ import {
   useTags,
   useTagTypes,
   useUpdateCartItem,
+  useUpdateItem,
   useVendorCart,
   useVendors,
 } from '@/hooks'
+import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { useItemSearchTail } from '@/hooks/useItemSearchTail'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -75,6 +87,11 @@ function VendorCart() {
   const vendor = vendors.find((v) => v.id === cartVendorId)
 
   const createItem = useCreateItem()
+  const { activeLocation } = useActiveLocation()
+  const updateItem = useUpdateItem()
+  const addItemToLocation = useAddItemToLocation()
+  // One tail mutation at a time — see ItemSearchTailAction.pendingItemId.
+  const [tailPendingId, setTailPendingId] = useState<string | null>(null)
 
   const handleCreateFromSearch = async (query: string) => {
     try {
@@ -134,18 +151,40 @@ function VendorCart() {
   // Cloud has no Location/ItemStock backend, so a cloud item never carries a
   // stockId — cloud bypasses the location gate entirely, matching the same
   // bypass in useVendorCartCounts() and the shopping index page.
-  const vendorScopedItems: PantryItem[] = (
-    cartVendorId === null
-      ? items.filter((i) => !(i.vendorIds ?? []).length)
-      : items.filter((i) => (i.vendorIds ?? []).includes(cartVendorId))
-  ).filter((i) => isCloud || isStockedHere(i))
+  //
+  // Memoized because its identity feeds `inGroupIds` below, which is a
+  // dependency of the search tail's derivation.
+  const vendorScopedItems: PantryItem[] = useMemo(
+    () =>
+      (cartVendorId === null
+        ? items.filter((i) => !(i.vendorIds ?? []).length)
+        : items.filter((i) => (i.vendorIds ?? []).includes(cartVendorId))
+      ).filter((i) => isCloud || isStockedHere(i)),
+    [items, cartVendorId, isCloud],
+  )
 
   const searchedItems = vendorScopedItems.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
   )
-  const hasExactMatch = searchedItems.some(
-    (item) => item.name.toLowerCase() === search.trim().toLowerCase(),
+
+  // The ids this page ALREADY renders — already location-scoped. An item
+  // carrying this vendor but stocked elsewhere is deliberately absent, so the
+  // tail sees it as "not stocked here" and one press promotes it straight into
+  // the list above (no vendor step left to take — it already has the vendor).
+  const inGroupIds = useMemo(
+    () => new Set(vendorScopedItems.map((i) => i.id)),
+    [vendorScopedItems],
   )
+
+  const {
+    inLocation: tailInLocation,
+    notStockedHere: tailNotStockedHere,
+    // #245: the create affordance must key off the GLOBAL catalog, not the
+    // twice-filtered visible set. Searching for an item that exists but is
+    // stocked elsewhere used to look empty and offer Create — which minted a
+    // duplicate global Item that then followed the user to every location.
+    hasExactGlobalMatch,
+  } = useItemSearchTail({ inGroupIds, query: search })
 
   const tagFiltered = filterItems(vendorScopedItems, filterState, tags)
   const filteredItems = filterItemsByRecipes(
@@ -173,6 +212,106 @@ function VendorCart() {
     sortBy,
     sortDirection,
   )
+
+  // The page's sort applies to the tail too — the tail is part of this list,
+  // not a separate widget. `useItemSortData(items)` above covers every global
+  // item, so the maps already carry the not-stocked-here rows.
+  const sortTail = (list: PantryItem[]) =>
+    sortItems(
+      list,
+      allQuantities ?? new Map(),
+      allExpiryDates ?? new Map(),
+      allPurchaseDates ?? new Map(),
+      sortBy,
+      sortDirection,
+    )
+  const sortedTailInLocation = sortTail(tailInLocation)
+  const sortedTailNotStockedHere = sortTail(tailNotStockedHere)
+
+  const clearTailPending = () => setTailPendingId(null)
+
+  // Bucket 2's action on a real vendor cart. The no-vendor cart gets a NOTE
+  // instead (see `renderVendorsNote` below): its group is "items with no
+  // vendor at all", so an "apply" there would mean stripping every vendor from
+  // the item — destructive, not additive, and the opposite of every other
+  // bucket-2 action in the feature.
+  function handleApplyVendor(item: PantryItem) {
+    if (!cartVendorId) return
+    setTailPendingId(item.id)
+    updateItem.mutate(
+      {
+        id: item.id,
+        updates: { vendorIds: [...(item.vendorIds ?? []), cartVendorId] },
+      },
+      { onSuccess: clearTailPending, onError: clearTailPending },
+    )
+  }
+
+  // Bucket 3's action — and ONLY this. It deliberately does not also apply the
+  // vendor: stocking an item at a location should be prudent and explicit, not
+  // achieved by accident. The row relocates to bucket 2, where the vendor is a
+  // second, separate press.
+  function handleAddToLocation(item: PantryItem) {
+    setTailPendingId(item.id)
+    addItemToLocation.mutate(
+      { itemId: item.id },
+      { onSuccess: clearTailPending, onError: clearTailPending },
+    )
+  }
+
+  // The no-vendor cart's bucket 2 is inert but never silent: each row says
+  // which vendor groups already hold the item. Vendor names render as stored
+  // (`normal-case`) — they are user-specified and may use intentional casing.
+  const renderVendorsNote = (item: PantryItem) => (
+    <span className="normal-case">
+      {t('items.searchTail.inVendors', {
+        vendors: vendors
+          .filter((v) => (item.vendorIds ?? []).includes(v.id))
+          .map((v) => v.name)
+          .join(', '),
+      })}
+    </span>
+  )
+
+  // Local-mode only (useAddItemToLocation throws in cloud), and gated on the
+  // active location resolving because its name is in the button label — the
+  // same guard NewItemDialog applies for the same reason.
+  const canAddToLocation = !isCloud && !!activeLocation
+  // Bucket 2's action/note is gated the same way below: the no-vendor cart
+  // always gets `groupNote`, but a real vendor cart only gets `groupAction`
+  // once `vendor` has resolved — its name is in the button label, and a
+  // vendor.name of '' would render "Apply " while pressing it appends a
+  // nonexistent id. This mirrors `canAddToLocation` above. Keep this in sync
+  // with the spread on <ItemSearchTail> below, or the empty state can be
+  // wrongly suppressed/shown.
+  const showTailApplyVendor = cartVendorId === null || !!vendor
+  const renderedTailCount =
+    (showTailApplyVendor ? sortedTailInLocation.length : 0) +
+    (canAddToLocation ? sortedTailNotStockedHere.length : 0)
+
+  // Tail rows are not cart rows: no checkbox, and for a not-stocked-here item
+  // no stock rendering at all — its joined stock is ZERO_STOCK, so a quantity,
+  // progress bar or inactive dimming would report a location it is not in.
+  //
+  // No `mode` prop — deliberately left at the 'pantry' default. `mode="shopping"`
+  // would set isAmountControllable, which (a) trips ItemCard's dev warning
+  // "controlAmount requires onAmountChange" on every tail row, since no
+  // onAmountChange is passed here, and (b) reserves a `mr-28` right inset for
+  // amount controls that can never render on a tail row (they require
+  // isChecked). In ItemSearchTail's layout the action button sits outside the
+  // card, so that lane would just be dead space. Do not add it back in PRs B/C.
+  function renderTailItemCard(item: PantryItem) {
+    return (
+      <ItemCard
+        item={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        tagTypes={tagTypes}
+        showTags={false}
+        showTagSummary={false}
+        showStock={isCloud || isStockedHere(item)}
+      />
+    )
+  }
 
   // Local mode: vendorScopedItems is already filtered to stocked-here items
   // (above), so isInactiveHere's stockId check is a no-op here and this is
@@ -344,7 +483,7 @@ function VendorCart() {
           items={vendorScopedItems}
           recipes={recipes}
           onCreateFromSearch={handleCreateFromSearch}
-          hasExactMatch={hasExactMatch}
+          hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
         />
 
@@ -386,7 +525,42 @@ function VendorCart() {
           </div>
         )}
 
+        {search.trim() && (
+          <ItemSearchTail
+            inLocationItems={sortedTailInLocation}
+            notStockedHereItems={sortedTailNotStockedHere}
+            renderItem={renderTailItemCard}
+            {...(cartVendorId === null
+              ? { groupNote: renderVendorsNote }
+              : vendor
+                ? {
+                    groupAction: {
+                      label: t('items.searchTail.applyVendor', {
+                        vendor: vendor.name,
+                      }),
+                      onAction: handleApplyVendor,
+                      pendingItemId: tailPendingId,
+                      icon: <ArrowUpFromLine />,
+                    },
+                  }
+                : {})}
+            {...(canAddToLocation
+              ? {
+                  addToLocationAction: {
+                    label: t('items.searchTail.addToLocation', {
+                      location: activeLocation?.name ?? '',
+                    }),
+                    onAction: handleAddToLocation,
+                    pendingItemId: tailPendingId,
+                    icon: <Plus />,
+                  },
+                }
+              : {})}
+          />
+        )}
+
         {displayItems.length === 0 &&
+          renderedTailCount === 0 &&
           (vendorScopedItems.length === 0 ? (
             <EmptyState
               title={t('shopping.empty.title')}

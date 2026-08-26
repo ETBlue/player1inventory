@@ -3,8 +3,13 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './$vendorId.stories'
 
-const { Default, WithCartItems, WithNoVendorCart, WithMultipleLocations } =
-  composeStories(stories)
+const {
+  Default,
+  WithCartItems,
+  WithNoVendorCart,
+  WithMultipleLocations,
+  WithSearchTail,
+} = composeStories(stories)
 
 describe('ShoppingVendorCart page stories smoke tests', () => {
   it('Default renders vendor name or back button', async () => {
@@ -35,5 +40,19 @@ describe('ShoppingVendorCart page stories smoke tests', () => {
         within(main).getByRole('button', { name: /switch location/i }),
       ).toBeInTheDocument(),
     )
+  })
+
+  it('WithSearchTail renders both tail sections with their row actions', async () => {
+    render(<WithSearchTail />)
+
+    expect(await screen.findByText(/not in this list/i)).toBeInTheDocument()
+    expect(screen.getByText(/not stocked here/i)).toBeInTheDocument()
+
+    expect(
+      screen.getByRole('button', { name: 'Apply Costco: Milk Chocolate' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
   })
 })

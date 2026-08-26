@@ -54,7 +54,7 @@ interface ItemListToolbarProps {
   // Search/create callbacks — triggered when search has no exact name match
   onSearchSubmit?: (query: string) => void
   onCreateFromSearch?: (query: string) => void
-  hasExactMatch?: boolean // pass true when searchedItems contains an exact case-insensitive match
+  hasExactMatch?: boolean // pass true when the GLOBAL catalog contains an exact case-insensitive match — NOT the visible/filtered list (see #245)
   vendors?: Vendor[]
   recipes?: Recipe[]
   hideVendorFilter?: boolean

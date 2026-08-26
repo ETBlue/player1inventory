@@ -71,4 +71,34 @@ export class ShoppingPage {
     // Confirm button text: "Confirm" scoped inside alertdialog
     await this.page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click()
   }
+
+  async searchInCart(vendorId: string, query: string) {
+    // The cart page reads its search from ?q= (useUrlSearchAndFilters), and
+    // ItemListToolbar opens the search row whenever it is non-empty — far more
+    // robust than driving the collapse toggle.
+    await this.page.goto(
+      `/shopping/${vendorId}?q=${encodeURIComponent(query)}`,
+      { waitUntil: 'networkidle' },
+    )
+  }
+
+  getNotInThisListDivider(): Locator {
+    // ListSectionDivider carrying t('common.notInThisList') — "{{count}} not in
+    // this list"; ItemSearchTail's in-location section
+    // (src/components/item/ItemSearchTail/ItemSearchTail.tsx)
+    return this.page.getByText(/\d+ not in this list/)
+  }
+
+  getTailActionButton(action: string, itemName: string): Locator {
+    // Every row's button carries the same visible label, so the accessible
+    // name is t('items.searchTail.rowAction') = "{{action}}: {{name}}"
+    // (src/components/item/ItemSearchTail/ItemSearchTail.tsx)
+    return this.page.getByRole('button', { name: `${action}: ${itemName}` })
+  }
+
+  getCreateItemButton(): Locator {
+    // aria-label={t('itemListToolbar.createItem')} — "Create item"
+    // (src/components/item/ItemListToolbar/ItemListToolbar.tsx)
+    return this.page.getByRole('button', { name: 'Create item' })
+  }
 }

@@ -254,6 +254,78 @@ function WithNoVendorCartStory() {
   )
 }
 
+function WithSearchTailStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [vendorId, setVendorId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+      const vendor = await createVendor('Costco')
+      // A second location — this is what makes "not stocked here" possible:
+      // Milk Powder below is stocked ONLY there, never at DEFAULT_LOCATION_ID.
+      const office = await createLocation('Office')
+
+      const stock = {
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+
+      // Carries the vendor AND is stocked here → the cart's own list
+      // (section 1 of the page).
+      await createItem(
+        { name: 'Milk', tagIds: [], vendorIds: [vendor.id], ...stock },
+        DEFAULT_LOCATION_ID,
+      )
+
+      // Stocked here but carries no vendor → "not in this list", with an
+      // Apply Costco button.
+      await createItem(
+        { name: 'Milk Chocolate', tagIds: [], vendorIds: [], ...stock },
+        DEFAULT_LOCATION_ID,
+      )
+
+      // Exists globally but stocked ONLY at the Office → "not stocked
+      // here", with an Add to My Home button.
+      await createItem(
+        { name: 'Milk Powder', tagIds: [], vendorIds: [], ...stock },
+        office.id,
+      )
+
+      setVendorId(vendor.id)
+    }
+    setup()
+  }, [])
+
+  if (!vendorId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/shopping/${vendorId}?q=milk`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <DefaultStory />,
 }
@@ -268,4 +340,8 @@ export const WithNoVendorCart: Story = {
 
 export const WithMultipleLocations: Story = {
   render: () => <WithMultipleLocationsStory />,
+}
+
+export const WithSearchTail: Story = {
+  render: () => <WithSearchTailStory />,
 }
