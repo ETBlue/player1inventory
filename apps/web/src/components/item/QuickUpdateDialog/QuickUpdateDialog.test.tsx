@@ -469,3 +469,21 @@ describe('QuickUpdateDialog — Update button covers all four values', () => {
     expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled()
   })
 })
+
+describe('QuickUpdateDialog — title', () => {
+  it('user sees the item name title-cased and the rest of the title not', () => {
+    // Given the dialog is open for an item
+    renderDialog(makeItem())
+
+    // When the title renders — the leading word is translated, the name is not
+    const title = screen.getByRole('heading', { name: 'Update Yogurt (plain)' })
+
+    // Then `capitalize` wraps ONLY the name (repo Name Display Convention);
+    // interpolating the name into one translated string and moving the class
+    // onto the whole title would title-case the translated word too.
+    expect(title.className).not.toContain('capitalize')
+    expect(title.querySelector('.capitalize')).toHaveTextContent(
+      'Yogurt (plain)',
+    )
+  })
+})

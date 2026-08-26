@@ -157,6 +157,31 @@
     "controlBar": {
       "expandAll": "Expand All",
       "collapseAll": "Collapse All"
+    },
+    "quickUpdate": {
+      "title": "Update",
+      "packedLabel": "Packed",
+      "packedField": "Packed ({{unit}})",
+      "decreasePacked": "Decrease packed",
+      "increasePacked": "Increase packed",
+      "unpack": "Unpack",
+      "unpackedLabel": "Unpacked",
+      "unpackedField": "Unpacked ({{unit}})",
+      "decreaseUnpacked": "Decrease unpacked",
+      "increaseUnpacked": "Increase unpacked",
+      "pack": "Pack",
+      "fillToFull": "Fill to Full",
+      "targetLabel": "Target",
+      "targetField": "Target quantity ({{unit}})",
+      "decreaseTarget": "Decrease target quantity",
+      "increaseTarget": "Increase target quantity",
+      "targetHint": "Inactive when 0",
+      "refillLabel": "Refill ≤",
+      "refillField": "Refill threshold ({{unit}})",
+      "decreaseRefill": "Decrease refill threshold",
+      "increaseRefill": "Increase refill threshold",
+      "refillHint": "Warns on low stock",
+      "submit": "Update"
     }
   },
   "navigation": {

@@ -7,6 +7,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { UnitBadge } from '@/components/shared/UnitBadge'
 import { Button } from '@/components/ui/button'
@@ -48,6 +49,7 @@ export function QuickUpdateDialog({
   onClose,
   onSubmit,
 }: QuickUpdateDialogProps) {
+  const { t } = useTranslation()
   const [localPacked, setLocalPacked] = useState(item.packedQuantity)
   const [localUnpacked, setLocalUnpacked] = useState(item.unpackedQuantity)
   const [localTarget, setLocalTarget] = useState(item.targetQuantity)
@@ -88,12 +90,20 @@ export function QuickUpdateDialog({
     item.targetUnit === 'measurement'
       ? item.measurementUnit
       : item.packageUnit || DEFAULT_PACKAGE_UNIT
-  const packedAriaLabel = `Packed (${packedUnit})`
-  const unpackedAriaLabel = `Unpacked (${unpackedUnit})`
+  const packedAriaLabel = t('pantry.quickUpdate.packedField', {
+    unit: packedUnit,
+  })
+  const unpackedAriaLabel = t('pantry.quickUpdate.unpackedField', {
+    unit: unpackedUnit,
+  })
   // Target and refill are stored in the item's TRACKING unit — the same unit
   // the unpacked row uses, not the package unit.
-  const targetAriaLabel = `Target quantity (${unpackedUnit})`
-  const refillAriaLabel = `Refill threshold (${unpackedUnit})`
+  const targetAriaLabel = t('pantry.quickUpdate.targetField', {
+    unit: unpackedUnit,
+  })
+  const refillAriaLabel = t('pantry.quickUpdate.refillField', {
+    unit: unpackedUnit,
+  })
 
   // Stock-settings steps mirror ItemForm's `step` values for the same two
   // fields: the target counts whole packages in package mode
@@ -210,7 +220,8 @@ export function QuickUpdateDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            Update <span className="capitalize">{item.name}</span>
+            {t('pantry.quickUpdate.title')}{' '}
+            <span className="capitalize">{item.name}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -218,14 +229,15 @@ export function QuickUpdateDialog({
           <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
             {/* Packed row — label format matches item info tab */}
             <span className="text-sm text-foreground-muted shrink-0">
-              Packed <span className="text-xs font-normal">({packedUnit})</span>
+              {t('pantry.quickUpdate.packedLabel')}{' '}
+              <span className="text-xs font-normal">({packedUnit})</span>
             </span>
             <div className="flex items-center gap-0">
               <Button
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
-                aria-label="Decrease packed"
+                aria-label={t('pantry.quickUpdate.decreasePacked')}
                 disabled={localPacked === 0 || isPending}
                 onClick={() => setLocalPacked((v) => Math.max(0, v - 1))}
                 icon={<Minus className="h-4 w-4" />}
@@ -250,7 +262,7 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
-                aria-label="Increase packed"
+                aria-label={t('pantry.quickUpdate.increasePacked')}
                 disabled={isPending}
                 onClick={() => setLocalPacked((v) => v + 1)}
                 icon={<Plus className="h-4 w-4" />}
@@ -265,12 +277,12 @@ export function QuickUpdateDialog({
               onClick={handleUnpack}
               icon={<PackageOpen />}
             >
-              Unpack
+              {t('pantry.quickUpdate.unpack')}
             </Button>
 
             {/* Unpacked row — label format matches item info tab */}
             <span className="text-sm text-foreground-muted shrink-0">
-              Unpacked{' '}
+              {t('pantry.quickUpdate.unpackedLabel')}{' '}
               <span className="text-xs font-normal">({unpackedUnit})</span>
             </span>
             <div className="flex items-center gap-0">
@@ -278,7 +290,7 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
-                aria-label="Decrease unpacked"
+                aria-label={t('pantry.quickUpdate.decreaseUnpacked')}
                 disabled={localUnpacked === 0 || isPending}
                 onClick={() =>
                   setLocalUnpacked((v) =>
@@ -315,7 +327,7 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
-                aria-label="Increase unpacked"
+                aria-label={t('pantry.quickUpdate.increaseUnpacked')}
                 disabled={isPending}
                 onClick={() =>
                   setLocalUnpacked((v) => roundToStep(v + step, step))
@@ -332,7 +344,7 @@ export function QuickUpdateDialog({
               onClick={handlePack}
               icon={<Package />}
             >
-              Pack
+              {t('pantry.quickUpdate.pack')}
             </Button>
           </div>
 
@@ -341,7 +353,7 @@ export function QuickUpdateDialog({
             <Button
               variant="neutral-outline"
               size="icon-sm"
-              aria-label="Clear"
+              aria-label={t('common.clear')}
               disabled={isPending || isAtZero}
               onClick={() => {
                 setLocalPacked(0)
@@ -373,7 +385,7 @@ export function QuickUpdateDialog({
             <Button
               variant="neutral-outline"
               size="icon-sm"
-              aria-label="Fill to Full"
+              aria-label={t('pantry.quickUpdate.fillToFull')}
               disabled={isPending || isAtFull}
               onClick={() => {
                 setLocalPacked(fillToFullState.packedQuantity)
@@ -390,7 +402,7 @@ export function QuickUpdateDialog({
           <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
             {/* Target row */}
             <span className="text-sm text-foreground-muted shrink-0">
-              Target{' '}
+              {t('pantry.quickUpdate.targetLabel')}{' '}
               <span className="text-xs font-normal">({unpackedUnit})</span>
             </span>
             <div className="flex items-center gap-0">
@@ -398,7 +410,7 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
-                aria-label="Decrease target quantity"
+                aria-label={t('pantry.quickUpdate.decreaseTarget')}
                 disabled={localTarget === 0 || isPending}
                 onClick={() =>
                   setLocalTarget((v) => bumpTarget(v, -targetStep))
@@ -433,19 +445,19 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
-                aria-label="Increase target quantity"
+                aria-label={t('pantry.quickUpdate.increaseTarget')}
                 disabled={isPending}
                 onClick={() => setLocalTarget((v) => bumpTarget(v, targetStep))}
                 icon={<Plus className="h-4 w-4" />}
               />
             </div>
             <span className="text-xs text-foreground-muted">
-              Inactive when 0
+              {t('pantry.quickUpdate.targetHint')}
             </span>
 
             {/* Refill row */}
             <span className="text-sm text-foreground-muted shrink-0">
-              Refill ≤{' '}
+              {t('pantry.quickUpdate.refillLabel')}{' '}
               <span className="text-xs font-normal">({unpackedUnit})</span>
             </span>
             <div className="flex items-center gap-0">
@@ -453,7 +465,7 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
-                aria-label="Decrease refill threshold"
+                aria-label={t('pantry.quickUpdate.decreaseRefill')}
                 disabled={localRefill === 0 || isPending}
                 onClick={() => setLocalRefill((v) => bumpRefill(v, -step))}
                 icon={<Minus className="h-4 w-4" />}
@@ -486,14 +498,14 @@ export function QuickUpdateDialog({
                 variant="neutral-outline"
                 size="icon-sm"
                 className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
-                aria-label="Increase refill threshold"
+                aria-label={t('pantry.quickUpdate.increaseRefill')}
                 disabled={isPending}
                 onClick={() => setLocalRefill((v) => bumpRefill(v, step))}
                 icon={<Plus className="h-4 w-4" />}
               />
             </div>
             <span className="text-xs text-foreground-muted">
-              Warns on low stock
+              {t('pantry.quickUpdate.refillHint')}
             </span>
           </div>
         </DialogMain>
@@ -504,14 +516,14 @@ export function QuickUpdateDialog({
             onClick={onClose}
             disabled={isPending}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             isLoading={isPending}
             disabled={isPending || isUntouched}
             onClick={handleSubmit}
           >
-            Update
+            {t('pantry.quickUpdate.submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

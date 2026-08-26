@@ -157,6 +157,31 @@
     "controlBar": {
       "expandAll": "展開全部",
       "collapseAll": "收合全部"
+    },
+    "quickUpdate": {
+      "title": "更新",
+      "packedLabel": "未拆封",
+      "packedField": "未拆封（{{unit}}）",
+      "decreasePacked": "減少未拆封數量",
+      "increasePacked": "增加未拆封數量",
+      "unpack": "拆封",
+      "unpackedLabel": "已拆封",
+      "unpackedField": "已拆封（{{unit}}）",
+      "decreaseUnpacked": "減少已拆封數量",
+      "increaseUnpacked": "增加已拆封數量",
+      "pack": "打包",
+      "fillToFull": "補滿",
+      "targetLabel": "目標",
+      "targetField": "目標數量（{{unit}}）",
+      "decreaseTarget": "減少目標數量",
+      "increaseTarget": "增加目標數量",
+      "targetHint": "0 表示暫時不用",
+      "refillLabel": "補貨 ≤",
+      "refillField": "補貨門檻（{{unit}}）",
+      "decreaseRefill": "減少補貨門檻",
+      "increaseRefill": "增加補貨門檻",
+      "refillHint": "庫存偏低時提醒",
+      "submit": "更新"
     }
   },
   "navigation": {
