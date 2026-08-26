@@ -317,7 +317,7 @@ export function ItemForm({
   const showStock = sections.includes('stock')
   const showInfo = sections.includes('info')
 
-  const nameError = !name.trim() ? 'Name is required.' : undefined
+  const nameError = !name.trim() ? t('items.form.name.error') : undefined
   // Light, non-blocking URL validation: empty is allowed; if present, expect an
   // http(s):// URL. Does not contribute to hasFieldError (submission stays open).
   const isValidHttpUrl = (value: string) => {
@@ -334,14 +334,14 @@ export function ItemForm({
       : undefined
   const measurementUnitError =
     targetUnit === 'measurement' && !measurementUnit
-      ? 'Measurement unit is required.'
+      ? t('items.form.measurementUnit.error')
       : undefined
   const amountPerPackageError =
     targetUnit === 'measurement' && !amountPerPackage
-      ? 'Amount per package is required.'
+      ? t('items.form.amountPerPackage.error')
       : undefined
   const consumeAmountError =
-    consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
+    consumeAmount <= 0 ? t('validation.positiveNumber') : undefined
 
   // `consumeAmount === 0` means "no step size configured" — NOT a step of 1.
   // It is no longer the create default (that reverted to 1 on 2026-08-24), but
@@ -440,7 +440,7 @@ export function ItemForm({
       {showInfo && (
         <div className="space-y-2">
           <div>
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{t('common.nameLabel')}</Label>
             <Input
               id="name"
               value={name}
@@ -489,23 +489,27 @@ export function ItemForm({
               per-location numbers. */}
           <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
             <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">Stock Settings</h2>
+            <h2 className="text-sm font-medium uppercase">
+              {t('items.form.stockSettingsHeading')}
+            </h2>
             <div className="h-px bg-accessory-emphasized" />
           </div>
 
           <div>
-            <Label htmlFor="packageUnit">Package Unit</Label>
+            <Label htmlFor="packageUnit">
+              {t('items.form.packageUnit.label')}
+            </Label>
             <Input
               id="packageUnit"
               value={packageUnit}
-              placeholder="default: pack"
+              placeholder={t('items.form.packageUnit.placeholder')}
               onChange={(e) => setPackageUnit(e.target.value)}
             />
           </div>
 
           <div>
             <Label htmlFor="consumeAmount">
-              Amount per Consume{' '}
+              {t('items.form.consumeAmount.label')}{' '}
               <UnitInline
                 unit={
                   targetUnit === 'measurement'
@@ -528,14 +532,14 @@ export function ItemForm({
               )}
             />
             <p className="text-xs text-foreground-muted">
-              Amount added/removed per +/- button click. Must be greater than 0.
+              {t('items.form.consumeAmount.hint')}
             </p>
           </div>
 
           <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
             <div className="h-px bg-accessory-emphasized" />
             <h2 className="text-sm font-medium uppercase">
-              Advanced Stock Settings
+              {t('items.form.advancedStockSettingsHeading')}
             </h2>
             <div className="h-px bg-accessory-emphasized" />
           </div>
@@ -548,7 +552,7 @@ export function ItemForm({
                 onCheckedChange={handleTargetUnitChange}
               />
               <Label htmlFor="targetUnit" className="cursor-pointer">
-                Track in measurement{' '}
+                {t('items.form.trackInMeasurement.label')}{' '}
                 <UnitInline
                   unit={measurementUnit || undefined}
                   placeholder="?"
@@ -556,13 +560,15 @@ export function ItemForm({
               </Label>
             </div>
             <p className="text-xs text-foreground-muted">
-              Turn on to enable precise measurement tracking
+              {t('items.form.trackInMeasurement.hint')}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="measurementUnit">Measurement Unit</Label>
+              <Label htmlFor="measurementUnit">
+                {t('items.form.measurementUnit.label')}
+              </Label>
               <Input
                 id="measurementUnit"
                 value={measurementUnit}
@@ -575,13 +581,13 @@ export function ItemForm({
                 }
               />
               <p className="text-xs text-foreground-muted">
-                Precise unit like g / lb / ml
+                {t('items.form.measurementUnit.hint')}
               </p>
             </div>
 
             <div>
               <Label htmlFor="amountPerPackage">
-                Amount per Package
+                {t('items.form.amountPerPackage.label')}
                 {measurementUnit && (
                   <span className="text-xs font-normal">
                     {' '}
@@ -604,14 +610,16 @@ export function ItemForm({
                 }
               />
               <p className="text-xs text-foreground-muted">
-                How many {measurementUnit || '?'} per pack
+                {t('items.form.amountPerPackage.hint', {
+                  unit: measurementUnit || '?',
+                })}
               </p>
             </div>
           </div>
 
           <div>
             <Label htmlFor="expirationMode">
-              Calculate Expiration based on
+              {t('items.form.expirationMode.label')}
             </Label>
             <Select
               value={expirationMode}
@@ -626,26 +634,30 @@ export function ItemForm({
                 <SelectItem value="disabled">
                   <div className="flex items-center gap-2">
                     <InfinityIcon className="h-4 w-4" />
-                    <span>No expiration</span>
+                    <span>
+                      {t('items.form.expirationMode.options.disabled')}
+                    </span>
                   </div>
                 </SelectItem>
                 <SelectItem value="date">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    <span>Specific Date</span>
+                    <span>{t('items.form.expirationMode.options.date')}</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="days from purchase">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    <span>Days from Purchase</span>
+                    <span>
+                      {t('items.form.expirationMode.options.daysFromPurchase')}
+                    </span>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
             {expirationMode === 'date' && (
               <p className="text-xs text-foreground-muted">
-                Set each location&apos;s own expiry date on the Stock tab
+                {t('items.form.expirationMode.dateHint')}
               </p>
             )}
           </div>
@@ -655,8 +667,10 @@ export function ItemForm({
               {expirationMode === 'days from purchase' && (
                 <div>
                   <Label htmlFor="expirationDueDays">
-                    Expires in{' '}
-                    <span className="text-xs font-normal">(days)</span>
+                    {t('items.form.estimatedDueDays.label')}{' '}
+                    <span className="text-xs font-normal">
+                      {t('items.form.daysUnit')}
+                    </span>
                   </Label>
                   <Input
                     id="expirationDueDays"
@@ -669,7 +683,10 @@ export function ItemForm({
               )}
               <div>
                 <Label htmlFor="expirationThreshold">
-                  Warning in <span className="text-xs font-normal">(days)</span>
+                  {t('items.form.expirationThreshold.label')}{' '}
+                  <span className="text-xs font-normal">
+                    {t('items.form.daysUnit')}
+                  </span>
                 </Label>
                 <Input
                   id="expirationThreshold"
@@ -679,7 +696,7 @@ export function ItemForm({
                   onChange={(e) => setExpirationThreshold(e.target.value)}
                 />
                 <p className="text-xs text-foreground-muted">
-                  Shows warning when about to expire
+                  {t('items.form.expirationThreshold.hint')}
                 </p>
               </div>
             </div>
@@ -691,7 +708,7 @@ export function ItemForm({
         <div className="space-y-2">
           <div>
             <Label htmlFor="targetQuantity">
-              Target Quantity{' '}
+              {t('items.form.targetQuantity.label')}{' '}
               <UnitInline
                 unit={
                   targetUnit === 'measurement'
@@ -705,8 +722,8 @@ export function ItemForm({
               onStep={setTargetQuantity}
               step={targetUnit === 'package' ? 1 : stepperStep}
               round={normalizeTargetStep}
-              decreaseLabel="Decrease Target"
-              increaseLabel="Increase Target"
+              decreaseLabel={t('items.form.targetQuantity.decrease')}
+              increaseLabel={t('items.form.targetQuantity.increase')}
               disabled={isPending}
               inputProps={{
                 id: 'targetQuantity',
@@ -720,13 +737,13 @@ export function ItemForm({
               }}
             />
             <p className="text-xs text-foreground-muted">
-              Item becomes inactive when set to 0
+              {t('items.form.targetQuantity.hint')}
             </p>
           </div>
 
           <div>
             <Label htmlFor="refillThreshold">
-              Refill When Below{' '}
+              {t('items.form.refillThreshold.label')}{' '}
               <UnitInline
                 unit={
                   targetUnit === 'measurement'
@@ -740,8 +757,8 @@ export function ItemForm({
               onStep={setRefillThreshold}
               step={stepperStep}
               round={(n) => roundToStep(n, stepperStep)}
-              decreaseLabel="Decrease Refill"
-              increaseLabel="Increase Refill"
+              decreaseLabel={t('items.form.refillThreshold.decrease')}
+              increaseLabel={t('items.form.refillThreshold.increase')}
               disabled={isPending}
               inputProps={{
                 id: 'refillThreshold',
@@ -755,21 +772,22 @@ export function ItemForm({
               }}
             />
             <p className="text-xs text-foreground-muted">
-              Shows warning on low stock
+              {t('items.form.refillThreshold.hint')}
             </p>
           </div>
 
           <div>
             <Label htmlFor="packedQuantity">
-              Packed <UnitInline unit={packageUnit || undefined} />
+              {t('items.form.packedQuantity.label')}{' '}
+              <UnitInline unit={packageUnit || undefined} />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
               <QuantityStepper
                 value={packedQuantity}
                 onStep={setPackedQuantity}
                 step={1}
-                decreaseLabel="Decrease Packed"
-                increaseLabel="Increase Packed"
+                decreaseLabel={t('items.form.packedQuantity.decrease')}
+                increaseLabel={t('items.form.packedQuantity.increase')}
                 disabled={isPending}
                 inputProps={{
                   id: 'packedQuantity',
@@ -802,17 +820,17 @@ export function ItemForm({
                 }}
               >
                 <PackageOpen />
-                Unpack
+                {t('items.form.unpack')}
               </Button>
             </div>
             <p className="text-xs text-foreground-muted">
-              Number of whole packages in stock
+              {t('items.form.packedQuantity.hint')}
             </p>
           </div>
 
           <div>
             <Label htmlFor="unpackedQuantity">
-              Unpacked{' '}
+              {t('items.form.unpackedQuantity.label')}{' '}
               <UnitInline
                 unit={
                   targetUnit === 'measurement'
@@ -827,8 +845,8 @@ export function ItemForm({
                 onStep={setUnpackedQuantity}
                 step={stepperStep}
                 round={(n) => roundToStep(n, stepperStep)}
-                decreaseLabel="Decrease Unpacked"
-                increaseLabel="Increase Unpacked"
+                decreaseLabel={t('items.form.unpackedQuantity.decrease')}
+                increaseLabel={t('items.form.unpackedQuantity.increase')}
                 disabled={isPending}
                 inputProps={{
                   id: 'unpackedQuantity',
@@ -871,11 +889,11 @@ export function ItemForm({
                 }}
               >
                 <Package />
-                Pack
+                {t('items.form.pack')}
               </Button>
             </div>
             <p className="text-xs text-foreground-muted">
-              Loose amount from opened package(s)
+              {t('items.form.unpackedQuantity.hint')}
             </p>
           </div>
 
@@ -902,8 +920,8 @@ export function ItemForm({
             }}
             clearDisabled={isPending || isStockAtZero}
             fillDisabled={isPending || isStockAtFull}
-            clearLabel="Clear"
-            fillLabel="Fill to Full"
+            clearLabel={t('common.clear')}
+            fillLabel={t('common.fillToFull')}
           />
 
           {/* The due date is the one expiration field that is genuinely
@@ -912,7 +930,9 @@ export function ItemForm({
           {expirationMode === 'date' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="expirationDueDate">Expires on</Label>
+                <Label htmlFor="expirationDueDate">
+                  {t('items.form.expirationDueDate.label')}
+                </Label>
                 <Input
                   id="expirationDueDate"
                   type="date"
@@ -920,7 +940,7 @@ export function ItemForm({
                   onChange={(e) => setDueDate(e.target.value)}
                 />
                 <p className="text-xs text-foreground-muted">
-                  When the stock in this location expires
+                  {t('items.form.expirationDueDate.hint')}
                 </p>
               </div>
             </div>

@@ -22,6 +22,7 @@
     "add": "新增",
     "skipToMainContent": "跳至主要內容",
     "clear": "清除",
+    "fillToFull": "補滿",
     "manage": "管理",
     "asc": "升冪",
     "desc": "降冪",
@@ -170,7 +171,6 @@
       "decreaseUnpacked": "減少已開封數量",
       "increaseUnpacked": "增加已開封數量",
       "pack": "打包",
-      "fillToFull": "補滿",
       "targetLabel": "目標",
       "targetField": "目標數量（{{unit}}）",
       "decreaseTarget": "減少目標數量",
@@ -263,6 +263,82 @@
       "note": {
         "label": "備註",
         "placeholder": "自由輸入備註或連結"
+      }
+    },
+    "form": {
+      "name": {
+        "error": "名稱為必填。"
+      },
+      "stockSettingsHeading": "庫存設定",
+      "advancedStockSettingsHeading": "進階庫存設定",
+      "packageUnit": {
+        "label": "包裝單位",
+        "placeholder": "預設：包"
+      },
+      "consumeAmount": {
+        "label": "每次消耗量",
+        "hint": "每次按下 +/- 按鈕增減的量，必須大於 0。"
+      },
+      "trackInMeasurement": {
+        "label": "以計量單位追蹤",
+        "hint": "開啟後可精確追蹤計量單位"
+      },
+      "measurementUnit": {
+        "label": "計量單位",
+        "hint": "精確單位，例如 g / lb / ml",
+        "error": "計量單位為必填。"
+      },
+      "amountPerPackage": {
+        "label": "每包容量",
+        "hint": "每包有多少 {{unit}}",
+        "error": "每包容量為必填。"
+      },
+      "expirationMode": {
+        "label": "依據以下方式計算到期日",
+        "options": {
+          "disabled": "沒有到期日",
+          "date": "指定日期",
+          "daysFromPurchase": "購入後天數"
+        },
+        "dateHint": "各據點的到期日可在庫存分頁個別設定"
+      },
+      "daysUnit": "（天）",
+      "estimatedDueDays": {
+        "label": "到期於"
+      },
+      "expirationThreshold": {
+        "label": "提前提醒",
+        "hint": "即將到期時顯示警示"
+      },
+      "targetQuantity": {
+        "label": "目標數量",
+        "hint": "設為 0 時，這個品項會變成非使用中",
+        "decrease": "減少目標",
+        "increase": "增加目標"
+      },
+      "refillThreshold": {
+        "label": "低於此數補貨",
+        "hint": "庫存偏低時顯示警示",
+        "decrease": "減少補貨",
+        "increase": "增加補貨"
+      },
+      "packedQuantity": {
+        "label": "未開封",
+        "hint": "庫存中完整包裝的數量",
+        "decrease": "減少未開封",
+        "increase": "增加未開封"
+      },
+      "unpackedQuantity": {
+        "label": "已開封",
+        "hint": "已拆封包裝中的散裝量",
+        "decrease": "減少已開封",
+        "increase": "增加已開封"
+      },
+      "unpack": "開封",
+      "pack": "打包",
+      "expirationDueDate": {
+        "label": "到期日",
+        "hint": "這個據點的庫存到期時間"
       }
     },
     "detail": {

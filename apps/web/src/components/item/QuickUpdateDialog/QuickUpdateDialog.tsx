@@ -408,7 +408,7 @@ export function QuickUpdateDialog({
             clearDisabled={isPending || isAtZero}
             fillDisabled={isPending || isAtFull}
             clearLabel={t('common.clear')}
-            fillLabel={t('pantry.quickUpdate.fillToFull')}
+            fillLabel={t('common.fillToFull')}
           />
         </DialogMain>
 

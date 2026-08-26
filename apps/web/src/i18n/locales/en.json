@@ -22,6 +22,7 @@
     "add": "Add",
     "skipToMainContent": "Skip to main content",
     "clear": "Clear",
+    "fillToFull": "Fill to Full",
     "manage": "Manage",
     "asc": "Asc",
     "desc": "Desc",
@@ -170,7 +171,6 @@
       "decreaseUnpacked": "Decrease unpacked",
       "increaseUnpacked": "Increase unpacked",
       "pack": "Pack",
-      "fillToFull": "Fill to Full",
       "targetLabel": "Target",
       "targetField": "Target quantity ({{unit}})",
       "decreaseTarget": "Decrease target quantity",
@@ -263,6 +263,82 @@
       "note": {
         "label": "Note",
         "placeholder": "Free-text notes or links"
+      }
+    },
+    "form": {
+      "name": {
+        "error": "Name is required."
+      },
+      "stockSettingsHeading": "Stock Settings",
+      "advancedStockSettingsHeading": "Advanced Stock Settings",
+      "packageUnit": {
+        "label": "Package Unit",
+        "placeholder": "default: pack"
+      },
+      "consumeAmount": {
+        "label": "Amount per Consume",
+        "hint": "Amount added/removed per +/- button click. Must be greater than 0."
+      },
+      "trackInMeasurement": {
+        "label": "Track in measurement",
+        "hint": "Turn on to enable precise measurement tracking"
+      },
+      "measurementUnit": {
+        "label": "Measurement Unit",
+        "hint": "Precise unit like g / lb / ml",
+        "error": "Measurement unit is required."
+      },
+      "amountPerPackage": {
+        "label": "Amount per Package",
+        "hint": "How many {{unit}} per pack",
+        "error": "Amount per package is required."
+      },
+      "expirationMode": {
+        "label": "Calculate Expiration based on",
+        "options": {
+          "disabled": "No expiration",
+          "date": "Specific Date",
+          "daysFromPurchase": "Days from Purchase"
+        },
+        "dateHint": "Set each location's own expiry date on the Stock tab"
+      },
+      "daysUnit": "(days)",
+      "estimatedDueDays": {
+        "label": "Expires in"
+      },
+      "expirationThreshold": {
+        "label": "Warning in",
+        "hint": "Shows warning when about to expire"
+      },
+      "targetQuantity": {
+        "label": "Target Quantity",
+        "hint": "Item becomes inactive when set to 0",
+        "decrease": "Decrease Target",
+        "increase": "Increase Target"
+      },
+      "refillThreshold": {
+        "label": "Refill When Below",
+        "hint": "Shows warning on low stock",
+        "decrease": "Decrease Refill",
+        "increase": "Increase Refill"
+      },
+      "packedQuantity": {
+        "label": "Packed",
+        "hint": "Number of whole packages in stock",
+        "decrease": "Decrease Packed",
+        "increase": "Increase Packed"
+      },
+      "unpackedQuantity": {
+        "label": "Unpacked",
+        "hint": "Loose amount from opened package(s)",
+        "decrease": "Decrease Unpacked",
+        "increase": "Increase Unpacked"
+      },
+      "unpack": "Unpack",
+      "pack": "Pack",
+      "expirationDueDate": {
+        "label": "Expires on",
+        "hint": "When the stock in this location expires"
       }
     },
     "detail": {
