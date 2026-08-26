@@ -178,9 +178,11 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   )
 
   // Tail rows can fall outside `allItems` (stocked-here items) — bucket 3 is
-  // exactly the items NOT stocked here — so vendors/recipes can't come from
-  // the `vendorMap`/`recipeMap` below, which are only keyed over `allItems`.
-  // Computed directly per row instead (mirrors PantryListView's tail card).
+  // exactly the items NOT stocked here — so vendor badges can't come from the
+  // `vendorMap` below, which is only keyed over `allItems`. Computed directly
+  // per row instead (mirrors PantryListView's tail card). `recipeMap` doesn't
+  // have this problem — like PantryListView's, it's built from the global
+  // `recipes` list, not from `allItems`, so it already covers bucket-3 items.
   function renderTailItemCard(item: PantryItem) {
     return (
       <ItemCard
@@ -188,9 +190,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         tagTypes={tagTypes}
         vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
-        recipes={recipes.filter((r) =>
-          r.items.some((ri) => ri.itemId === item.id),
-        )}
+        recipes={recipeMap.get(item.id) ?? []}
         showTags={isTagsVisible}
         showStock={isCloud || isStockedHere(item)}
       />
