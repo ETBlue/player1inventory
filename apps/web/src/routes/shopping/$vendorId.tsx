@@ -277,25 +277,38 @@ function VendorCart() {
   // active location resolving because its name is in the button label — the
   // same guard NewItemDialog applies for the same reason.
   const canAddToLocation = !isCloud && !!activeLocation
-  // Bucket 2 renders on BOTH cart kinds — with a button on a vendor cart, with
-  // a note on the no-vendor one — so it always counts toward the tail.
+  // Bucket 2's action/note is gated the same way below: the no-vendor cart
+  // always gets `groupNote`, but a real vendor cart only gets `groupAction`
+  // once `vendor` has resolved — its name is in the button label, and a
+  // vendor.name of '' would render "Apply " while pressing it appends a
+  // nonexistent id. This mirrors `canAddToLocation` above. Keep this in sync
+  // with the spread on <ItemSearchTail> below, or the empty state can be
+  // wrongly suppressed/shown.
+  const showTailApplyVendor = cartVendorId === null || !!vendor
   const renderedTailCount =
-    sortedTailInLocation.length +
+    (showTailApplyVendor ? sortedTailInLocation.length : 0) +
     (canAddToLocation ? sortedTailNotStockedHere.length : 0)
 
   // Tail rows are not cart rows: no checkbox, and for a not-stocked-here item
   // no stock rendering at all — its joined stock is ZERO_STOCK, so a quantity,
   // progress bar or inactive dimming would report a location it is not in.
+  //
+  // No `mode` prop — deliberately left at the 'pantry' default. `mode="shopping"`
+  // would set isAmountControllable, which (a) trips ItemCard's dev warning
+  // "controlAmount requires onAmountChange" on every tail row, since no
+  // onAmountChange is passed here, and (b) reserves a `mr-28` right inset for
+  // amount controls that can never render on a tail row (they require
+  // isChecked). In ItemSearchTail's layout the action button sits outside the
+  // card, so that lane would just be dead space. Do not add it back in PRs B/C.
   function renderTailItemCard(item: PantryItem) {
     return (
       <ItemCard
         item={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         tagTypes={tagTypes}
-        mode="shopping"
         showTags={false}
         showTagSummary={false}
-        showStock={isStockedHere(item)}
+        showStock={isCloud || isStockedHere(item)}
       />
     )
   }
@@ -517,18 +530,20 @@ function VendorCart() {
             inLocationItems={sortedTailInLocation}
             notStockedHereItems={sortedTailNotStockedHere}
             renderItem={renderTailItemCard}
-            {...(cartVendorId
-              ? {
-                  groupAction: {
-                    label: t('items.searchTail.applyVendor', {
-                      vendor: vendor?.name ?? '',
-                    }),
-                    onAction: handleApplyVendor,
-                    pendingItemId: tailPendingId,
-                    icon: <ArrowUpFromLine />,
-                  },
-                }
-              : { groupNote: renderVendorsNote })}
+            {...(cartVendorId === null
+              ? { groupNote: renderVendorsNote }
+              : vendor
+                ? {
+                    groupAction: {
+                      label: t('items.searchTail.applyVendor', {
+                        vendor: vendor.name,
+                      }),
+                      onAction: handleApplyVendor,
+                      pendingItemId: tailPendingId,
+                      icon: <ArrowUpFromLine />,
+                    },
+                  }
+                : {})}
             {...(canAddToLocation
               ? {
                   addToLocationAction: {
