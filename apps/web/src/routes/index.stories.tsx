@@ -504,6 +504,77 @@ function ShelfDetailViewStory() {
   )
 }
 
+function ShelfDetailViewSearchTailStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [shelfId, setShelfId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const stock = {
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+
+      // A second location — Milk Powder below is stocked ONLY there, never
+      // at the default location this story renders.
+      const office = await createLocation('Office')
+
+      // Stocked here, but not yet a shelf member → "not in this list", with
+      // an "Add to shelf" button.
+      await createItem({ name: 'Milk', tagIds: [], ...stock })
+
+      // Exists globally but stocked ONLY at the Office → "not stocked here",
+      // with an "Add to My Home" button.
+      await createItem(
+        { name: 'Milk Powder', tagIds: [], vendorIds: [], ...stock },
+        office.id,
+      )
+
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+
+      setShelfId(shelf.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !shelfId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=shelf&id=${shelfId}&q=milk`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 function VendorDetailViewStory() {
   const [queryClient] = useState(
     () =>
@@ -640,6 +711,10 @@ export const RecipeGroupView: Story = {
 
 export const ShelfDetailView: Story = {
   render: () => <ShelfDetailViewStory />,
+}
+
+export const ShelfDetailViewSearchTail: Story = {
+  render: () => <ShelfDetailViewSearchTailStory />,
 }
 
 export const VendorDetailView: Story = {
