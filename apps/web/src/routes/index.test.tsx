@@ -8,9 +8,10 @@ import {
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import {
   createItem,
+  createLocation,
   createRecipe,
   createTag,
   createTagType,
@@ -30,12 +31,15 @@ describe('Home page filtering integration', () => {
     await db.inventoryLogs.clear()
     await db.vendors.clear()
     await db.recipes.clear()
+    await db.locations.clear()
     sessionStorage.clear()
     localStorage.clear()
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+
+    await ensureDefaultLocationRow()
   })
 
   const renderApp = () => {
@@ -828,6 +832,170 @@ describe('Home page filtering integration', () => {
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
       expect(badge.className).toContain('bg-tag-blue-background-inverse')
+    })
+  })
+
+  describe('search tail (unified item search)', () => {
+    // THE FIXTURE IS THE TEST. Every case below needs an item stocked ONLY at
+    // a second location — with one location, "stocked here" and "exists"
+    // return the same set, and every assertion here passes against an
+    // implementation that ignores location entirely.
+    const stockFields = {
+      targetUnit: 'package' as const,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+
+    const openSearch = async (
+      user: ReturnType<typeof userEvent.setup>,
+      query: string,
+    ) => {
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        query,
+      )
+    }
+
+    it('user can see an item stocked only at another location under "not stocked here"', async () => {
+      // Given Eggs is stocked here, and Milk is stocked ONLY at the Office
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then it is offered under the not-stocked-here divider, not the main
+      // list — the flat pantry has no bucket 2, so this is the only tail
+      // section it ever shows
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
+    })
+
+    it('"Add to My Home" moves the item directly into the main list (no bucket-2 step on the flat pantry)', async () => {
+      // Given Eggs is stocked here, and Milk is stocked ONLY at the Office
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+      await openSearch(user, 'milk')
+
+      // When the user presses "Add to My Home"
+      const addButton = await screen.findByRole('button', {
+        name: 'Add to My Home: Milk',
+      })
+      await user.click(addButton)
+
+      // Then Milk moves straight into the main list — inGroupIds is every
+      // stocked-here item, so bucket 1 IS bucket 2 and there is no separate
+      // "not in this list" step to pass through first
+      await waitFor(() => {
+        expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      })
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user is not offered Create for a name that exists globally but is not stocked here (#245)', async () => {
+      // Given Eggs is stocked here, and Milk exists globally, stocked only
+      // at the Office
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+
+      // When the user types its exact name
+      await openSearch(user, 'Milk')
+
+      // Then Create is suppressed — pressing it would mint a second global
+      // Item that then follows the user to every location
+      await screen.findByText('1 not stocked here')
+      expect(
+        screen.queryByRole('button', { name: 'Create item' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user is still offered Create when no global item matches', async () => {
+      // Given nothing in the catalog matches
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+
+      // When the user searches a brand-new name
+      await openSearch(user, 'Zucchini')
+
+      // Then Create is offered
+      expect(
+        await screen.findByRole('button', { name: 'Create item' }),
+      ).toBeInTheDocument()
+    })
+
+    it('an active tag filter that excludes a stocked-here item does not push it into the tail', async () => {
+      // Given a Vegetables tag, Milk stocked here WITHOUT that tag (so a
+      // tag-filtered "page's own list" would wrongly exclude it), and Milk
+      // Substitute stocked only at the Office — a genuine bucket-3 candidate
+      // proving the tail still works correctly alongside an active filter
+      const categoryType = await createTagType({
+        name: 'Category',
+        color: 'blue',
+      })
+      const vegTag = await createTag({
+        typeId: categoryType.id,
+        name: 'Vegetables',
+      })
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Milk Substitute', tagIds: [], ...stockFields },
+        office.id,
+      )
+
+      // When the user loads the pantry with the Vegetables filter active and
+      // searches "milk" (search bypasses the tag filter for the main list —
+      // see "user can search all items even when vendor filter is active")
+      const history = createMemoryHistory({
+        initialEntries: [`/?f_${categoryType.id}=${vegTag.id}`],
+      })
+      const router = createRouter({ routeTree, history })
+      const user = userEvent.setup()
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      )
+      await openSearch(user, 'milk')
+
+      // Then Milk stays visible in the main list — it is not swallowed by
+      // inGroupIds excluding it due to the active filter — while Milk
+      // Substitute is still correctly offered under "not stocked here"
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Milk Substitute' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
     })
   })
 })

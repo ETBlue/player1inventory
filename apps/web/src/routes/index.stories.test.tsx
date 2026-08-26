@@ -6,6 +6,7 @@ import * as stories from './index.stories'
 const {
   Default,
   WithItems,
+  WithSearchTail,
   ShelfGroupView,
   VendorGroupView,
   RecipeGroupView,
@@ -46,6 +47,14 @@ describe('Pantry index stories smoke tests', () => {
   it('WithItems renders seeded items', async () => {
     render(<WithItems />)
     expect(await screen.findByText(/milk/i)).toBeInTheDocument()
+  })
+
+  it('WithSearchTail shows the not-stocked-here section for a search match', async () => {
+    render(<WithSearchTail />)
+    expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
   })
 
   it('ShelfGroupView renders the manage shelves link', async () => {

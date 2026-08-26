@@ -133,6 +133,66 @@ function WithItemsStory() {
   )
 }
 
+function WithSearchTailStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      // A second location — this is what makes "not stocked here" possible:
+      // Milk Powder below is stocked ONLY there, never at the default
+      // location this story renders.
+      const office = await createLocation('Office')
+
+      const stock = {
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+
+      // Stocked here → the pantry's own list.
+      await createItem({ name: 'Milk', tagIds: [], ...stock })
+
+      // Exists globally but stocked ONLY at the Office → "not stocked
+      // here", with an "Add to My Home" button.
+      await createItem(
+        { name: 'Milk Powder', tagIds: [], vendorIds: [], ...stock },
+        office.id,
+      )
+
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/?q=milk'] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 function ShelfGroupViewStory() {
   const [queryClient] = useState(
     () =>
@@ -560,6 +620,10 @@ export const Default: Story = {
 
 export const WithItems: Story = {
   render: () => <WithItemsStory />,
+}
+
+export const WithSearchTail: Story = {
+  render: () => <WithSearchTailStory />,
 }
 
 export const ShelfGroupView: Story = {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { NewItemDialog } from '@/components/item/NewItemDialog'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
@@ -12,6 +13,8 @@ import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
+import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
@@ -24,10 +27,10 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive } from '@/lib/quantityUtils'
+import { isInactive, isStockedHere } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import { getStoredGroupBy, setPantryView } from '@/lib/viewPreference'
-import type { Recipe, StockFields, Vendor } from '@/types'
+import type { PantryItem, Recipe, StockFields, Vendor } from '@/types'
 
 export function PantryListView() {
   const { t } = useTranslation()
@@ -39,6 +42,8 @@ export function PantryListView() {
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const updateItem = useUpdateItem()
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
@@ -107,9 +112,6 @@ export function PantryListView() {
 
   const searchedItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase()),
-  )
-  const hasExactMatch = searchedItems.some(
-    (item) => item.name.toLowerCase() === search.trim().toLowerCase(),
   )
 
   const tagFiltered = filterItems(items, filterState, tags)
@@ -180,6 +182,58 @@ export function PantryListView() {
     toggleRecipeId(recipeId)
   }
 
+  // The ids the pantry ALREADY renders — deliberately the FULL stocked-here
+  // set (`items`, from useStockedItems()), NOT the filtered/sorted display
+  // list. Bucket 1 is every item stocked in the active location, so bucket 2
+  // (stocked here, absent from the page's list) is empty by construction —
+  // which is why this page passes neither `groupAction` nor `groupNote`
+  // below. Sourcing this from a filtered variable (e.g. the tag/vendor
+  // filtered list) would wrongly exclude a stocked-here item the user has
+  // filtered out, landing it in bucket 2 where — with no groupAction/
+  // groupNote — it would render nowhere at all.
+  const inGroupIds = useMemo(() => new Set(items.map((i) => i.id)), [items])
+
+  // Tail rows can include items outside the pantry's own `items` (stocked
+  // here) array — bucket 3 is exactly the items NOT stocked here — so their
+  // vendor badges can't come from `vendorMap`, which is only keyed over
+  // `items`. Computed directly per row instead; these lists are always small
+  // while a search is active. `recipeMap` doesn't have this problem — it's
+  // already built from the global `recipes` list, not from `items`.
+  function renderTailItemCard(item: PantryItem) {
+    return (
+      <ItemCard
+        item={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        tagTypes={tagTypes}
+        showTags={isTagsVisible}
+        vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
+        recipes={recipeMap.get(item.id) ?? []}
+        activeVendorIds={selectedVendorIds}
+        activeRecipeIds={selectedRecipeIds}
+        activeTagIds={activeTagIds}
+        showStock={isCloud || isStockedHere(item)}
+        onTagClick={handleTagClick}
+        onVendorClick={handleVendorClick}
+        onRecipeClick={handleRecipeClick}
+      />
+    )
+  }
+
+  const { tailProps, hasTail, hasExactGlobalMatch } = useItemSearchTailWiring({
+    inGroupIds,
+    query: search,
+    renderItem: renderTailItemCard,
+    sortTail: (list) =>
+      sortItems(
+        list,
+        allQuantities ?? new Map(),
+        allExpiryDates ?? new Map(),
+        allPurchaseDates ?? new Map(),
+        sortBy,
+        sortDirection,
+      ),
+  })
+
   if (isLoading) {
     return <LoadingSpinner />
   }
@@ -198,7 +252,7 @@ export function PantryListView() {
           items={items}
           className="border-b"
           onCreateFromSearch={handleCreateFromSearch}
-          hasExactMatch={hasExactMatch}
+          hasExactMatch={hasExactGlobalMatch}
           vendors={vendors}
           recipes={recipes}
           leading={
@@ -251,7 +305,7 @@ export function PantryListView() {
               {t('pantry.empty.createButton')}
             </Button>
           </div>
-        ) : sortedItems.length === 0 ? (
+        ) : sortedItems.length === 0 && !hasTail ? (
           <div className="text-center py-12 text-foreground-muted">
             <p>No items match the current filters.</p>
             <p className="text-sm mt-1">
@@ -305,6 +359,8 @@ export function PantryListView() {
                 onRecipeClick={handleRecipeClick}
               />
             ))}
+
+            {search.trim() && <ItemSearchTail {...tailProps} />}
           </div>
         )}
         {quickUpdateItem && (
