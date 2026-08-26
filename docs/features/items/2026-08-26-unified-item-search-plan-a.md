@@ -1176,7 +1176,7 @@ Then append this nested describe inside `describe('Vendor cart page', ...)`:
 - [ ] **Step 3: Run the tests and verify they fail**
 
 Run: `(cd apps/web && pnpm vitest run "src/routes/shopping/\$vendorId.test.tsx")`
-Expected: FAIL — the six new tests cannot find the dividers or the action buttons. The pre-existing tests in the file must still pass.
+Expected: FAIL — the eight new tests cannot find the dividers or the action buttons. The pre-existing tests in the file must still pass.
 
 - [ ] **Step 4: Wire the cart page**
 

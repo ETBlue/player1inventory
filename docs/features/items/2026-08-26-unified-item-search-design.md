@@ -3,8 +3,10 @@
 **Date:** 2026-08-26
 **Issue:** #245 (filed as a cart-page duplicate-`Item` bug; scope widened here)
 **Branch:** `feature/unified-item-search`
-**Status:** ✅ **Design approved by ETBlue 2026-08-26.** Not yet implemented —
-next step is `writing-plans` for PR A. Do not re-litigate the decisions below.
+**Status:** ✅ **Design approved by ETBlue 2026-08-26.** **PR A shipped** (shared
+hook + `ItemSearchTail` + cart page — closes #245); see
+`2026-08-26-unified-item-search-plan-a.md`. PRs B (flat pantry + shelf detail)
+and C (vendor + recipe detail) remain. Do not re-litigate the decisions below.
 **Brainstorming log:** `2026-08-26-brainstorming-unified-item-search.md`
 
 ## Problem
@@ -175,7 +177,7 @@ too much for one change:
 
 | PR | Scope |
 |---|---|
-| **A** | shared hook + `ItemSearchTail` component + cart page — **closes #245** |
+| **A** ✅ | shared hook + `ItemSearchTail` component + cart page — **closes #245** |
 | **B** | flat pantry + shelf detail (incl. deleting the off-convention block) |
 | **C** | vendor detail + recipe detail |
 
@@ -225,3 +227,15 @@ Resolved 2026-08-26:
   #247 part 2.)
 - **Bucket 2 ordering** — no longer a question: every bucket-2 row is actionable
   on every surface, so there are no inert rows to sort around. Page sort stands.
+- **The no-vendor cart renders all three sections, with an inert middle one** —
+  ruled by ETBlue. Order: vendorless-stocked-here (the cart's own list), then
+  vendored-stocked-here, then global. The middle section carries **explanatory
+  text naming the vendor groups that hold the item**, not a button: joining
+  this group would mean *stripping* every vendor from the item — destructive,
+  not additive. Bucket 3 is unrestricted (`Add to {location}` is
+  group-agnostic); after that press the item lands in section 1 if vendorless
+  or section 2 if vendored, which falls out of the existing predicates.
+- **In-group-but-not-stocked-here going straight from bucket 3 to bucket 1** is
+  confirmed correct (ETBlue, 2026-08-26). It is a consequence of the
+  `inGroupIds` contract — callers pass the ids the page ALREADY renders, which
+  are already location-scoped — not a special case anyone has to code.
