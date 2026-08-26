@@ -181,6 +181,37 @@ too much for one change:
 | **B** | flat pantry + shelf detail (incl. deleting the off-convention block) |
 | **C** | vendor detail + recipe detail |
 
+### Carried forward from PR A's review — start PR B with these
+
+1. **Open PR B by extracting the tail wiring, not by making a fifth copy.** Roughly
+   45 of the ~180 lines PR A added to `routes/shopping/$vendorId.tsx` are
+   view-agnostic: `sortTail`, the `tailPendingId` single-flight and its clear
+   callback, `handleAddToLocation`, `canAddToLocation`, the `addToLocationAction`
+   descriptor, and `renderTailItemCard`. Only `groupAction` / `groupNote` genuinely
+   differ per view. A `useItemSearchTailWiring({ inGroupIds, query, groupAction })`
+   returning `{ tailProps, renderedCount }` collapses all of it, and the existing
+   `renderItem` prop already lets each page keep its own card configuration.
+   Deliberately **not** done in PR A: one caller is the wrong moment to abstract.
+2. **Fold the visibility predicate into that extraction.** The page's
+   `renderedTailCount` re-derives `ItemSearchTail`'s own "is this section visible"
+   logic. The two agree today, and PR A's re-review proved it, but that is a second
+   source of truth about to be copied four more times. Export a
+   `hasVisibleTail(props)` from the component module and have both the component and
+   every page call it.
+3. **`useItemSearchTail` calls `useItems()` unconditionally**, even for a blank
+   query. The cart page already called it, so PR A pays nothing — but the four
+   pantry surfaces read `useStockedItems()` (a different query key), so each gains a
+   full `getAllItems()` read per visit, searching or not. Decide deliberately in PR
+   B's plan: accept it (one IndexedDB read, likely fine) or let the hook take
+   `items` as a parameter.
+4. **`renderTailItemCard` deliberately passes no `mode`.** `mode="shopping"` makes
+   `ItemCard` treat the row as amount-controllable, which warns when
+   `onAmountChange` is absent and reserves a 7rem `mr-28` lane for controls a tail
+   row can never render. Do not add it back.
+5. **No test covers the "vendor not yet resolved / deleted vendor" window** that
+   PR A's `vendor` gate guards; it was verified by inspection. Worth a test when
+   PR B touches this wiring.
+
 ## Testing
 
 **Mutation checks are mandatory** (see root `CLAUDE.md`, "Proving a Test Works").
