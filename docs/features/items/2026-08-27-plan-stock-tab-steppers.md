@@ -259,3 +259,33 @@ Mutation check: change one EN value, confirm a test goes red, restore.
    - `apps/web/src/i18n/CLAUDE.md` — add `ItemForm` to the migrated list.
    - `docs/INDEX.md` — update the items / quick-update-dialog rows.
    - This plan file — mark it done.
+
+---
+
+## Task 5: Share the progress-row derivation
+
+*Added 2026-08-27 by controller ruling after Task 2's review — see the ledger.*
+
+`ItemForm.tsx` and `QuickUpdateDialog.tsx` now compute the progress row's
+display values with identical code: `current` (total, measurement-aware),
+the display-packed value, `unitLabel`, `quantityLabel`, the status
+(`isInactive` → `'inactive'`, else `getStockStatus`), and the
+`isAtZero` / `isAtFull` disabled flags. Task 1 deliberately left these in the
+callers to keep `StockProgressRow` presentational; the result is a duplicated
+logic block in two files, which the repo's review rubric treats as a defect.
+
+Extract them into **one pure function** in `apps/web/src/lib/quantityUtils.ts` —
+no React, no hook — taking the stock configuration plus the four live values and
+returning the derived display fields. Both callers use it; neither keeps a local
+copy of any formula it returns.
+
+Constraints:
+
+- **Neither surface's rendered output may change.** `QuickUpdateDialog.test.tsx`,
+  `QuickUpdateDialog.stories.test.tsx` and `ItemForm.test.tsx` must all pass
+  unmodified. Editing an assertion means the extraction changed behaviour.
+- `StockProgressRow` stays presentational — it does not call the new function.
+- Unit-test the function directly in `quantityUtils.test.ts`, covering both
+  `package` and `measurement` modes, the `unpacked > 0` label branch, the
+  inactive status, and `isAtFull` against a measurement item with a conversion
+  rate. Mutation-check each.
