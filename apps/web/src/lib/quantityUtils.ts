@@ -405,13 +405,19 @@ export function getStockPreview(
   const { packedQuantity, unpackedQuantity, targetQuantity, refillThreshold } =
     values
 
+  // `amountPerPackage && amountPerPackage > 0` (not bare truthiness): 0 means
+  // "no conversion rate" in this file's convention — see computeFillToFull's
+  // identical guard above. Multiplying packed by a zero rate would not
+  // produce a meaningful reading, so a measurement item with
+  // amountPerPackage 0 falls through to the plain packed+unpacked sum, same
+  // as package mode.
   const current =
-    targetUnit === 'measurement' && amountPerPackage
+    targetUnit === 'measurement' && amountPerPackage && amountPerPackage > 0
       ? packedQuantity * amountPerPackage + unpackedQuantity
       : packedQuantity + unpackedQuantity
 
   const displayPacked =
-    targetUnit === 'measurement' && amountPerPackage
+    targetUnit === 'measurement' && amountPerPackage && amountPerPackage > 0
       ? packedQuantity * amountPerPackage
       : packedQuantity
 

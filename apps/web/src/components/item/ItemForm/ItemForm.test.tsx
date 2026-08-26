@@ -1139,6 +1139,40 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
     expect(screen.getByLabelText(/^packed/i)).toHaveValue(6)
   })
 
+  it('amountPerPackage of "0" (string) is treated as no conversion rate, not multiplied in', () => {
+    // Given a measurement item whose amountPerPackage is the string '0' —
+    // reachable from the Info tab, which only rejects an EMPTY value (see
+    // amountPerPackageError), not zero. refillThreshold sits strictly
+    // between the two possible readings (2 = packed*0 + unpacked, the
+    // pre-refactor bug; 5 = packed + unpacked, the ruled-correct reading)
+    // so the wrong reading flips the status, not just an internal number.
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 3,
+          unpackedQuantity: 2,
+          targetQuantity: 10,
+          refillThreshold: 3,
+          consumeAmount: 1,
+          targetUnit: 'measurement',
+          measurementUnit: 'g',
+          amountPerPackage: '0',
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // Then the preview reads current = 3 + 2 = 5 (above the threshold of 3,
+    // "ok"), not packedQuantity * 0 + unpackedQuantity = 2 (below it, "error")
+    expect(progressStatus()).toBe('ok')
+    // And the packed half of the label is the raw packed count (3), not
+    // packed * 0 (0)
+    expect(screen.getByText('3 (+2) / 10')).toBeInTheDocument()
+  })
+
   it('Clear resets Packed and Unpacked to 0 and marks the form dirty', async () => {
     const user = userEvent.setup()
     const handleDirtyChange = vi.fn()

@@ -375,7 +375,11 @@ export function ItemForm({
       targetUnit,
       measurementUnit,
       packageUnit,
-      ...(amountPerPackage
+      // `> 0`, not bare truthiness: the raw string '0' is truthy but its
+      // coerced number isn't — the caller-side test and getStockPreview's
+      // internal test must agree, or a measurement item saved with
+      // amountPerPackage 0 sees one behaviour here and another inside.
+      ...(Number(amountPerPackage) > 0
         ? { amountPerPackage: Number(amountPerPackage) }
         : {}),
       consumeAmount,

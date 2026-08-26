@@ -1099,6 +1099,51 @@ describe('getStockPreview', () => {
     expect(result.unitLabel).toBe('g')
   })
 
+  it('measurement mode with amountPerPackage 0 treats it as "no conversion rate" and sums packed + unpacked', () => {
+    // amountPerPackage: 0 is reachable from ItemForm's string field ('0'
+    // passes its validation, which only rejects empty). 0 must not be read
+    // as a real conversion rate — see computeFillToFull's matching
+    // `amountPerPackage && amountPerPackage > 0` convention.
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: 0,
+        consumeAmount: 1,
+      },
+      {
+        packedQuantity: 3,
+        unpackedQuantity: 2,
+        targetQuantity: 10,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.current).toBe(5)
+    expect(result.displayPacked).toBe(3)
+  })
+
+  it('measurement mode with a negative amountPerPackage also falls back to no conversion rate', () => {
+    // A negative rate is truthy (bare `amountPerPackage &&` would accept it)
+    // but not `> 0` — this is the fixture that actually distinguishes the
+    // two guard forms, since 0 is falsy under both and can't.
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: -5,
+        consumeAmount: 1,
+      },
+      {
+        packedQuantity: 3,
+        unpackedQuantity: 2,
+        targetQuantity: 10,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.current).toBe(5)
+    expect(result.displayPacked).toBe(3)
+  })
+
   it('quantityLabel shows the "packed (+unpacked) / target" form when unpacked > 0', () => {
     const result = getStockPreview(
       {
