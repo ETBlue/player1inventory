@@ -212,6 +212,15 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // System shelves and the `unsorted` pseudo-shelf get neither — they already
   // have no add path (handleAddToSelectionShelf used to early-return for
   // them), and inventing one is out of scope here.
+  //
+  // No `sortTail` is passed here, unlike the cart page and PantryListView —
+  // so the tail renders in name order while this shelf's own list obeys the
+  // user's chosen sort. This is a DELIBERATE, DEFERRED gap, not an oversight:
+  // `useItemSortData` above is keyed only over `allItems` (stocked-here
+  // items), so a bucket-3 row (not stocked here) would sort against an absent
+  // map entry. Fixing it properly means widening that sort-data source, which
+  // is a behaviour change deserving its own review — out of scope for this
+  // pass.
   const { tailProps, hasExactGlobalMatch } = useItemSearchTailWiring({
     inGroupIds: inShelfItemIds,
     query: search,
