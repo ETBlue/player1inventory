@@ -16,8 +16,7 @@ import {
   computeFillToFull,
   computePack,
   computeUnpack,
-  getStockStatus,
-  isInactive,
+  getStockPreview,
   roundToStep,
 } from '@/lib/quantityUtils'
 import type { PantryItem } from '@/types'
@@ -107,47 +106,42 @@ export function QuickUpdateDialog({
     item.targetUnit === 'package' ? value : roundToStep(value, step)
   const normalizeRefill = (value: number) => roundToStep(value, step)
 
-  // Progress display values
-  const localDisplayPacked =
-    item.targetUnit === 'measurement' && item.amountPerPackage
-      ? localPacked * item.amountPerPackage
-      : localPacked
-
-  const localTotal =
-    item.targetUnit === 'measurement' && item.amountPerPackage
-      ? localPacked * item.amountPerPackage + localUnpacked
-      : localPacked + localUnpacked
-
-  // Every display below reads the LOCAL target/refill, never the stored ones,
-  // so the preview follows what has been typed but not yet saved.
-  const localStatus = getStockStatus(localTotal, localRefill)
-  const localProgressStatus = isInactive({
-    ...item,
-    targetQuantity: localTarget,
-  })
-    ? 'inactive'
-    : localStatus
-
-  // Text label below progress bar
-  const unitLabel =
-    item.targetUnit === 'measurement' && item.measurementUnit
-      ? item.measurementUnit
-      : (item.packageUnit ?? 'unit')
-
-  const quantityLabel =
-    localUnpacked > 0
-      ? `${localDisplayPacked} (+${localUnpacked}) / ${localTarget}`
-      : `${localTotal} / ${localTarget}`
-
-  const isAtZero = localPacked === 0 && localUnpacked === 0
-  // Fill to Full aims at the target currently in the input, not the stored one.
+  // Progress display values — every display below reads the LOCAL
+  // target/refill, never the stored ones, so the preview follows what has
+  // been typed but not yet saved.
+  const preview = getStockPreview(
+    {
+      targetUnit: item.targetUnit,
+      ...(item.measurementUnit
+        ? { measurementUnit: item.measurementUnit }
+        : {}),
+      ...(item.packageUnit ? { packageUnit: item.packageUnit } : {}),
+      ...(item.amountPerPackage
+        ? { amountPerPackage: item.amountPerPackage }
+        : {}),
+      consumeAmount: item.consumeAmount,
+    },
+    {
+      packedQuantity: localPacked,
+      unpackedQuantity: localUnpacked,
+      targetQuantity: localTarget,
+      refillThreshold: localRefill,
+    },
+  )
+  const localDisplayPacked = preview.displayPacked
+  const localTotal = preview.current
+  const localProgressStatus = preview.status
+  const unitLabel = preview.unitLabel
+  const quantityLabel = preview.quantityLabel
+  const isAtZero = preview.isAtZero
+  const isAtFull = preview.isAtFull
+  // Fill to Full aims at the target currently in the input, not the stored
+  // one — computed separately (not read off `preview`) because `onFill`
+  // below needs the destination quantities, not just whether they're reached.
   const fillToFullState = computeFillToFull({
     ...item,
     targetQuantity: localTarget,
   })
-  const isAtFull =
-    localPacked === fillToFullState.packedQuantity &&
-    localUnpacked === fillToFullState.unpackedQuantity
   const isUntouched =
     localPacked === item.packedQuantity &&
     localUnpacked === item.unpackedQuantity &&

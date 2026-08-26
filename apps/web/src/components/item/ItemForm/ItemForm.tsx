@@ -25,8 +25,7 @@ import {
   computeFillToFull,
   computePack,
   computeUnpack,
-  getStockStatus,
-  isInactive,
+  getStockPreview,
   roundToStep,
 } from '@/lib/quantityUtils'
 import type { ExpirationMode } from '@/types'
@@ -368,44 +367,43 @@ export function ItemForm({
     targetUnit === 'package' ? value : roundToStep(value, stepperStep)
 
   // Progress row preview — mirrors QuickUpdateDialog's live computations
-  // exactly, but reads ItemForm's own in-progress state instead of a saved
-  // PantryItem, so raising/lowering a field updates the preview immediately.
-  const currentStockQuantity =
-    targetUnit === 'measurement' && amountPerPackage
-      ? packedQuantity * Number(amountPerPackage) + unpackedQuantity
-      : packedQuantity + unpackedQuantity
-
-  const displayPackedQuantity =
-    targetUnit === 'measurement' && amountPerPackage
-      ? packedQuantity * Number(amountPerPackage)
-      : packedQuantity
-
-  const stockStatus = isInactive({ targetQuantity })
-    ? 'inactive'
-    : getStockStatus(currentStockQuantity, refillThreshold)
-
-  const progressUnitLabel =
-    targetUnit === 'measurement' && measurementUnit
-      ? measurementUnit
-      : (packageUnit ?? 'unit')
-
-  const progressQuantityLabel =
-    unpackedQuantity > 0
-      ? `${displayPackedQuantity} (+${unpackedQuantity}) / ${targetQuantity}`
-      : `${currentStockQuantity} / ${targetQuantity}`
+  // exactly (both call `getStockPreview`), but reads ItemForm's own
+  // in-progress state instead of a saved PantryItem, so raising/lowering a
+  // field updates the preview immediately.
+  const preview = getStockPreview(
+    {
+      targetUnit,
+      measurementUnit,
+      packageUnit,
+      ...(amountPerPackage
+        ? { amountPerPackage: Number(amountPerPackage) }
+        : {}),
+      consumeAmount,
+    },
+    {
+      packedQuantity,
+      unpackedQuantity,
+      targetQuantity,
+      refillThreshold,
+    },
+  )
+  const currentStockQuantity = preview.current
+  const displayPackedQuantity = preview.displayPacked
+  const stockStatus = preview.status
+  const progressUnitLabel = preview.unitLabel
+  const progressQuantityLabel = preview.quantityLabel
+  const isStockAtZero = preview.isAtZero
+  const isStockAtFull = preview.isAtFull
 
   // Fill to Full aims at the target currently in the input, not a saved one —
-  // the same live-preview rule QuickUpdateDialog follows.
+  // computed separately (not read off `preview`) because the `onFill` handler
+  // below needs the destination quantities, not just whether they're reached.
   const fillToFullState = computeFillToFull({
     targetUnit,
     targetQuantity,
     consumeAmount,
     ...(amountPerPackage ? { amountPerPackage: Number(amountPerPackage) } : {}),
   })
-  const isStockAtZero = packedQuantity === 0 && unpackedQuantity === 0
-  const isStockAtFull =
-    packedQuantity === fillToFullState.packedQuantity &&
-    unpackedQuantity === fillToFullState.unpackedQuantity
 
   // Only errors the active sections actually RENDER may block submission. All
   // four validated fields live in the info section, so a sections={['stock']}
