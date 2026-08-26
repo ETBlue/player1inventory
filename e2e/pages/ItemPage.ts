@@ -306,6 +306,29 @@ export class ItemPage {
     await this.page.locator('#targetQuantity').fill(quantity)
   }
 
+  getTargetQuantityInput(): Locator {
+    // Target Quantity input: id="targetQuantity", label "Target Quantity" —
+    // per-location Stock field on /items/$id/stock.
+    // (src/components/item/ItemForm/ItemForm.tsx:738-755 via sections={['stock']})
+    // Callers must navigate to the stock tab first (e.g. await item.navigateToStockTab()).
+    return this.page.locator('#targetQuantity')
+  }
+
+  getRefillThresholdInput(): Locator {
+    // Refill threshold input: id="refillThreshold", label "Refill When Below" —
+    // per-location Stock field on /items/$id/stock.
+    // (src/components/item/ItemForm/ItemForm.tsx:765-782 via sections={['stock']})
+    // Callers must navigate to the stock tab first (e.g. await item.navigateToStockTab()).
+    return this.page.locator('#refillThreshold')
+  }
+
+  async fillRefillThreshold(quantity: string) {
+    // Refill threshold input: id="refillThreshold" — Stock field on /items/$id/stock.
+    // (src/routes/items/$id/stock.tsx via ItemForm sections={['stock']})
+    await this.ensureStockTab()
+    await this.getRefillThresholdInput().fill(quantity)
+  }
+
   async fillPackedQuantity(quantity: string) {
     // Packed quantity input: id="packedQuantity", in Stock section.
     // Lives on the Stock tab (/items/$id/stock), not on /items/$id or /items/new.

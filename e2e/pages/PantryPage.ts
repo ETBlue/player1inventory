@@ -49,6 +49,54 @@ export class PantryPage {
     return this.page.getByRole('button', { name, exact: true })
   }
 
+  getQuickUpdateDialog(): Locator {
+    // QuickUpdateDialog renders inside a Radix Dialog — role="dialog"
+    // (src/components/item/QuickUpdateDialog/QuickUpdateDialog.tsx)
+    return this.page.getByRole('dialog')
+  }
+
+  getQuickUpdateTargetInput(): Locator {
+    // Stock-settings row, Target stepper input:
+    // aria-label={`Target quantity (${unpackedUnit})`} — the unit suffix varies per
+    // item (package unit or measurement unit), so match the stable prefix.
+    // (src/components/item/QuickUpdateDialog/QuickUpdateDialog.tsx — targetAriaLabel)
+    return this.getQuickUpdateDialog().getByRole('spinbutton', {
+      name: /^Target quantity/,
+    })
+  }
+
+  getQuickUpdateRefillInput(): Locator {
+    // Stock-settings row, Refill stepper input:
+    // aria-label={`Refill threshold (${unpackedUnit})`}
+    // (src/components/item/QuickUpdateDialog/QuickUpdateDialog.tsx — refillAriaLabel)
+    return this.getQuickUpdateDialog().getByRole('spinbutton', {
+      name: /^Refill threshold/,
+    })
+  }
+
+  async clickQuickUpdateStepper(
+    control:
+      | 'Decrease target quantity'
+      | 'Increase target quantity'
+      | 'Decrease refill threshold'
+      | 'Increase refill threshold',
+  ) {
+    // Stock-settings +/- buttons carry these exact aria-labels
+    // (src/components/item/QuickUpdateDialog/QuickUpdateDialog.tsx — the
+    // "Stock settings" grid below the progress bar)
+    await this.getQuickUpdateDialog()
+      .getByRole('button', { name: control })
+      .click()
+  }
+
+  async submitQuickUpdate() {
+    // Dialog footer submit button, label "Update" — disabled while the local
+    // values are untouched (src/components/item/QuickUpdateDialog/QuickUpdateDialog.tsx)
+    await this.getQuickUpdateDialog()
+      .getByRole('button', { name: 'Update', exact: true })
+      .click()
+  }
+
   getNotStockedHereDivider(): Locator {
     // ListSectionDivider carrying t('common.notStockedHere') — "{{count}} not
     // stocked here" (src/components/pantry/ShelfGroupView.tsx:279,

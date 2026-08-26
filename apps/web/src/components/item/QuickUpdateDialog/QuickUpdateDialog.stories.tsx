@@ -82,3 +82,31 @@ export const WithUnpacked: Story = {
     isOpen: true,
   },
 }
+
+export const Inactive: Story = {
+  name: 'Inactive — Target 0',
+  args: {
+    item: {
+      ...mockItem,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+    },
+    isOpen: true,
+  },
+}
+
+export const NearRefillThreshold: Story = {
+  name: 'Near Refill Threshold — Fractional Steps',
+  args: {
+    // Measurement item with consumeAmount 0.25: the Target and Refill steppers
+    // move in fractions of a litre, not whole bottles.
+    item: {
+      ...mockDualUnitItem,
+      packedQuantity: 0,
+      unpackedQuantity: 0.5,
+    },
+    isOpen: true,
+  },
+}

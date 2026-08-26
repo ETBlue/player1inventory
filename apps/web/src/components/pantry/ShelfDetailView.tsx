@@ -406,12 +406,22 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           item={quickUpdateItem}
           isOpen={true}
           onClose={() => setQuickUpdateItemId(null)}
-          onSubmit={async ({ packedQuantity, unpackedQuantity }) => {
+          onSubmit={async ({
+            packedQuantity,
+            unpackedQuantity,
+            targetQuantity,
+            refillThreshold,
+          }) => {
             setPendingItemIds((prev) => new Set(prev).add(quickUpdateItem.id))
             try {
               await updateItem.mutateAsync({
                 id: quickUpdateItem.id,
-                updates: { packedQuantity, unpackedQuantity },
+                updates: {
+                  packedQuantity,
+                  unpackedQuantity,
+                  targetQuantity,
+                  refillThreshold,
+                },
               })
               setQuickUpdateItemId(null)
             } finally {
