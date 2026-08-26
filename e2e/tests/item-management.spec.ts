@@ -62,7 +62,17 @@ test('user can create an item', async ({ page }) => {
   // 1 in BOTH modes (designer ruling 2026-08-24), so there is no validation to
   // clear before the item can be edited and saved again
   await expect(item.getConsumeAmountInput()).toHaveValue('1')
-  await expect(page.getByText('Must be greater than 0.')).not.toBeVisible()
+  // `exact: true` is load-bearing. The validation error is its own <p>, rendered
+  // by Input's `error` prop (src/components/ui/input.tsx) and reading exactly
+  // "Must be greater than 0." (ItemForm.tsx:335). The always-visible helper
+  // paragraph under the same field ends with that same sentence — "Amount
+  // added/removed per +/- button click. Must be greater than 0."
+  // (ItemForm.tsx:470) — so a substring match hits the helper and the assertion
+  // can never fail. `exact` compares an element's ENTIRE trimmed text, which the
+  // longer helper string can never equal.
+  await expect(
+    page.getByText('Must be greater than 0.', { exact: true }),
+  ).toHaveCount(0)
 
   // And the item appears in the pantry list
   await pantry.navigateTo()
