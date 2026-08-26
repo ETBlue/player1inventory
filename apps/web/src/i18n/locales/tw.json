@@ -282,9 +282,9 @@
       },
       "unitSwitchDialog": {
         "title": "更新庫存數字？",
-        "description": "改為以 {{unit}} 計算。所有據點的未拆封數量、目標數量與補貨門檻都會換算；已拆封包數不變。",
+        "description": "改為以 {{unit}} 計算。所有據點的已拆封數量、目標數量與補貨門檻都會換算；未拆封包數不變。",
         "locationHeader": "據點",
-        "unpackedHeader": "未拆封",
+        "unpackedHeader": "已拆封",
         "targetHeader": "目標數量",
         "refillHeader": "低於此數補貨"
       },
