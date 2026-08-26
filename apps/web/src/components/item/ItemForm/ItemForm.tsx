@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { QuantityStepper } from '@/components/item/QuantityStepper'
+import { StockProgressRow } from '@/components/item/StockProgressRow'
 import { UnitInline } from '@/components/shared/UnitInline'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +21,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { computePack, computeUnpack, roundToStep } from '@/lib/quantityUtils'
+import {
+  computeFillToFull,
+  computePack,
+  computeUnpack,
+  getStockStatus,
+  isInactive,
+  roundToStep,
+} from '@/lib/quantityUtils'
 import type { ExpirationMode } from '@/types'
 
 // The form always holds every value — both sections read from them (the
@@ -346,6 +355,58 @@ export function ItemForm({
   // up; the quantity fields must not pretend it already is.
   const quantityStep: number | 'any' = consumeAmount > 0 ? consumeAmount : 'any'
 
+  // The +/- STEPPER buttons take a different fallback than quantityStep above:
+  // a +/- increment must be non-zero to do anything, so an unconfigured
+  // consumeAmount falls back to 1 here rather than to "any". This mirrors
+  // QuickUpdateDialog's `step` (see its comment) and is a deliberate split,
+  // not an inconsistency to unify — quantityStep still drives the <input>
+  // element's own `step` attribute and blur rounding below, unchanged; only
+  // the QuantityStepper's button clicks and its `round` normalizer take this
+  // fallback-to-1 value.
+  const stepperStep = consumeAmount > 0 ? consumeAmount : 1
+  const normalizeTargetStep = (value: number) =>
+    targetUnit === 'package' ? value : roundToStep(value, stepperStep)
+
+  // Progress row preview — mirrors QuickUpdateDialog's live computations
+  // exactly, but reads ItemForm's own in-progress state instead of a saved
+  // PantryItem, so raising/lowering a field updates the preview immediately.
+  const currentStockQuantity =
+    targetUnit === 'measurement' && amountPerPackage
+      ? packedQuantity * Number(amountPerPackage) + unpackedQuantity
+      : packedQuantity + unpackedQuantity
+
+  const displayPackedQuantity =
+    targetUnit === 'measurement' && amountPerPackage
+      ? packedQuantity * Number(amountPerPackage)
+      : packedQuantity
+
+  const stockStatus = isInactive({ targetQuantity })
+    ? 'inactive'
+    : getStockStatus(currentStockQuantity, refillThreshold)
+
+  const progressUnitLabel =
+    targetUnit === 'measurement' && measurementUnit
+      ? measurementUnit
+      : (packageUnit ?? 'unit')
+
+  const progressQuantityLabel =
+    unpackedQuantity > 0
+      ? `${displayPackedQuantity} (+${unpackedQuantity}) / ${targetQuantity}`
+      : `${currentStockQuantity} / ${targetQuantity}`
+
+  // Fill to Full aims at the target currently in the input, not a saved one —
+  // the same live-preview rule QuickUpdateDialog follows.
+  const fillToFullState = computeFillToFull({
+    targetUnit,
+    targetQuantity,
+    consumeAmount,
+    ...(amountPerPackage ? { amountPerPackage: Number(amountPerPackage) } : {}),
+  })
+  const isStockAtZero = packedQuantity === 0 && unpackedQuantity === 0
+  const isStockAtFull =
+    packedQuantity === fillToFullState.packedQuantity &&
+    unpackedQuantity === fillToFullState.unpackedQuantity
+
   // Only errors the active sections actually RENDER may block submission. All
   // four validated fields live in the info section, so a sections={['stock']}
   // form (the item detail Stock tab) has no validated field on screen at all —
@@ -629,20 +690,97 @@ export function ItemForm({
       {showStock && (
         <div className="space-y-2">
           <div>
+            <Label htmlFor="targetQuantity">
+              Target Quantity{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <QuantityStepper
+              value={targetQuantity}
+              onStep={setTargetQuantity}
+              step={targetUnit === 'package' ? 1 : stepperStep}
+              round={normalizeTargetStep}
+              decreaseLabel="Decrease Target"
+              increaseLabel="Increase Target"
+              disabled={isPending}
+              inputProps={{
+                id: 'targetQuantity',
+                step: targetUnit === 'package' ? 1 : quantityStep,
+                className: undefined,
+                ...numericInputProps(
+                  'targetQuantity',
+                  targetQuantity,
+                  setTargetQuantity,
+                ),
+              }}
+            />
+            <p className="text-xs text-foreground-muted">
+              Item becomes inactive when set to 0
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="refillThreshold">
+              Refill When Below{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <QuantityStepper
+              value={refillThreshold}
+              onStep={setRefillThreshold}
+              step={stepperStep}
+              round={(n) => roundToStep(n, stepperStep)}
+              decreaseLabel="Decrease Refill"
+              increaseLabel="Increase Refill"
+              disabled={isPending}
+              inputProps={{
+                id: 'refillThreshold',
+                step: quantityStep,
+                className: undefined,
+                ...numericInputProps(
+                  'refillThreshold',
+                  refillThreshold,
+                  setRefillThreshold,
+                ),
+              }}
+            />
+            <p className="text-xs text-foreground-muted">
+              Shows warning on low stock
+            </p>
+          </div>
+
+          <div>
             <Label htmlFor="packedQuantity">
               Packed <UnitInline unit={packageUnit || undefined} />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
-              <Input
-                id="packedQuantity"
-                type="number"
-                min={0}
+              <QuantityStepper
+                value={packedQuantity}
+                onStep={setPackedQuantity}
                 step={1}
-                {...numericInputProps(
-                  'packedQuantity',
-                  packedQuantity,
-                  setPackedQuantity,
-                )}
+                decreaseLabel="Decrease Packed"
+                increaseLabel="Increase Packed"
+                disabled={isPending}
+                inputProps={{
+                  id: 'packedQuantity',
+                  step: 1,
+                  className: undefined,
+                  ...numericInputProps(
+                    'packedQuantity',
+                    packedQuantity,
+                    setPackedQuantity,
+                  ),
+                }}
               />
               <Button
                 type="button"
@@ -684,19 +822,27 @@ export function ItemForm({
               />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
-              <Input
-                id="unpackedQuantity"
-                type="number"
-                min={0}
-                step={quantityStep}
-                {...numericInputProps(
-                  'unpackedQuantity',
-                  unpackedQuantity,
-                  setUnpackedQuantity,
-                  // roundToStep returns the value untouched when the step is
-                  // <= 0, so an unset consume amount rounds nothing.
-                  (n) => roundToStep(n, consumeAmount),
-                )}
+              <QuantityStepper
+                value={unpackedQuantity}
+                onStep={setUnpackedQuantity}
+                step={stepperStep}
+                round={(n) => roundToStep(n, stepperStep)}
+                decreaseLabel="Decrease Unpacked"
+                increaseLabel="Increase Unpacked"
+                disabled={isPending}
+                inputProps={{
+                  id: 'unpackedQuantity',
+                  step: quantityStep,
+                  className: undefined,
+                  ...numericInputProps(
+                    'unpackedQuantity',
+                    unpackedQuantity,
+                    setUnpackedQuantity,
+                    // roundToStep returns the value untouched when the step is
+                    // <= 0, so an unset consume amount rounds nothing.
+                    (n) => roundToStep(n, consumeAmount),
+                  ),
+                }}
               />
               <Button
                 type="button"
@@ -733,61 +879,32 @@ export function ItemForm({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="targetQuantity">
-                Target Quantity{' '}
-                <UnitInline
-                  unit={
-                    targetUnit === 'measurement'
-                      ? measurementUnit || undefined
-                      : packageUnit || undefined
-                  }
-                />
-              </Label>
-              <Input
-                id="targetQuantity"
-                type="number"
-                min={0}
-                step={targetUnit === 'package' ? 1 : quantityStep}
-                {...numericInputProps(
-                  'targetQuantity',
-                  targetQuantity,
-                  setTargetQuantity,
-                )}
-              />
-              <p className="text-xs text-foreground-muted">
-                Item becomes inactive when set to 0
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="refillThreshold">
-                Refill When Below{' '}
-                <UnitInline
-                  unit={
-                    targetUnit === 'measurement'
-                      ? measurementUnit || undefined
-                      : packageUnit || undefined
-                  }
-                />
-              </Label>
-              <Input
-                id="refillThreshold"
-                type="number"
-                min={0}
-                step={quantityStep}
-                {...numericInputProps(
-                  'refillThreshold',
-                  refillThreshold,
-                  setRefillThreshold,
-                )}
-              />
-              <p className="text-xs text-foreground-muted">
-                Shows warning on low stock
-              </p>
-            </div>
-          </div>
+          <StockProgressRow
+            quantityLabel={progressQuantityLabel}
+            unitLabel={progressUnitLabel}
+            current={currentStockQuantity}
+            target={targetQuantity}
+            status={stockStatus}
+            targetUnit={targetUnit}
+            packed={displayPackedQuantity}
+            unpacked={unpackedQuantity}
+            {...(measurementUnit ? { measurementUnit } : {})}
+            {...(amountPerPackage
+              ? { amountPerPackage: Number(amountPerPackage) }
+              : {})}
+            onClear={() => {
+              setPackedQuantity(0)
+              setUnpackedQuantity(0)
+            }}
+            onFill={() => {
+              setPackedQuantity(fillToFullState.packedQuantity)
+              setUnpackedQuantity(fillToFullState.unpackedQuantity)
+            }}
+            clearDisabled={isPending || isStockAtZero}
+            fillDisabled={isPending || isStockAtFull}
+            clearLabel="Clear"
+            fillLabel="Fill to Full"
+          />
 
           {/* The due date is the one expiration field that is genuinely
               per-location — "when THIS one expires". The mode that gates it is

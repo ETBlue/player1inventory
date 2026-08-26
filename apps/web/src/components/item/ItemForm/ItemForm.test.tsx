@@ -852,3 +852,316 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
     expect(handleSubmit.mock.calls[0][0].unpackedQuantity).toBe(3)
   })
 })
+
+// Task 2: the Stock tab now renders each of the four fields through the
+// shared QuantityStepper, reordered to Target → Refill → Packed → Unpacked,
+// with a StockProgressRow (Clear · bar · label · Fill to Full) previewing the
+// live, not-yet-saved form state below them.
+describe('ItemForm — stock tab field order', () => {
+  it('renders the four stock fields in Target, Refill, Packed, Unpacked order', () => {
+    // Given a stock-only form (no "Expires on" row to interleave)
+    const { container } = render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 1,
+          unpackedQuantity: 1,
+          targetQuantity: 4,
+          refillThreshold: 1,
+          consumeAmount: 1,
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // Then the four field labels appear in the Constraint-7 order
+    const fieldIds = Array.from(container.querySelectorAll('label'))
+      .map((label) => label.getAttribute('for'))
+      .filter((id): id is string => id !== null)
+    expect(fieldIds).toEqual([
+      'targetQuantity',
+      'refillThreshold',
+      'packedQuantity',
+      'unpackedQuantity',
+    ])
+  })
+})
+
+describe('ItemForm — stock tab steppers step by the Constraint-4 increment', () => {
+  // Package-unit fixture: consumeAmount is 2 but NOT 1, so a stepper that
+  // used the wrong step (e.g. Packed moving by consumeAmount, or Target
+  // moving by consumeAmount instead of 1 in package mode) is caught rather
+  // than accidentally matching.
+  const packageValues = {
+    packedQuantity: 2,
+    unpackedQuantity: 3,
+    targetQuantity: 4,
+    refillThreshold: 1,
+    consumeAmount: 2,
+    packageUnit: 'pack',
+    targetUnit: 'package' as const,
+    name: 'Milk',
+  }
+
+  it('user steps Packed by 1 always, even when consumeAmount is 2', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={packageValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Increase Packed' }))
+    expect(screen.getByLabelText(/^packed/i)).toHaveValue(3)
+  })
+
+  it('user steps Target by 1 in package mode, not by consumeAmount', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={packageValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Increase Target' }))
+    expect(screen.getByLabelText(/target quantity/i)).toHaveValue(5)
+  })
+
+  it('user steps Refill and Unpacked by consumeAmount in package mode', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={packageValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Increase Refill' }))
+    expect(screen.getByLabelText(/refill when below/i)).toHaveValue(3)
+
+    await user.click(screen.getByRole('button', { name: 'Increase Unpacked' }))
+    expect(screen.getByLabelText(/^unpacked/i)).toHaveValue(5)
+  })
+
+  // Measurement-unit fixture: the discriminating case for Target, which steps
+  // by 1 in package mode but by consumeAmount here — a fixture where
+  // consumeAmount happened to be 1 would prove nothing about this branch.
+  const measurementValues = {
+    packedQuantity: 1,
+    unpackedQuantity: 2,
+    targetQuantity: 5,
+    refillThreshold: 1,
+    consumeAmount: 0.5,
+    packageUnit: 'pack',
+    targetUnit: 'measurement' as const,
+    measurementUnit: 'L',
+    amountPerPackage: 3,
+    name: 'Milk',
+  }
+
+  it('user steps Target by consumeAmount in measurement mode', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={measurementValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Increase Target' }))
+    expect(screen.getByLabelText(/target quantity/i)).toHaveValue(5.5)
+  })
+
+  it('user steps Packed by 1 and Refill/Unpacked by consumeAmount in measurement mode', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={measurementValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Increase Packed' }))
+    expect(screen.getByLabelText(/^packed/i)).toHaveValue(2)
+
+    await user.click(screen.getByRole('button', { name: 'Increase Refill' }))
+    expect(screen.getByLabelText(/refill when below/i)).toHaveValue(1.5)
+
+    await user.click(screen.getByRole('button', { name: 'Increase Unpacked' }))
+    expect(screen.getByLabelText(/^unpacked/i)).toHaveValue(2.5)
+  })
+})
+
+describe('ItemForm — stock tab steppers clamp at 0', () => {
+  const zeroedValues = {
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    targetQuantity: 0,
+    refillThreshold: 0,
+    consumeAmount: 1,
+    name: 'Milk',
+  }
+
+  it('all four − buttons are disabled when their field is already 0', () => {
+    render(
+      <ItemForm
+        initialValues={zeroedValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    for (const label of [
+      'Decrease Target',
+      'Decrease Refill',
+      'Decrease Packed',
+      'Decrease Unpacked',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeDisabled()
+    }
+  })
+
+  it('user cannot push a field below 0 by clicking − repeatedly', async () => {
+    // Given Refill at 1 with a step of 2 — a step that overshot the clamp
+    // (rather than snapping to it) would land on a negative number
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={{
+          ...zeroedValues,
+          refillThreshold: 1,
+          consumeAmount: 2,
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Decrease Refill' }))
+    expect(screen.getByLabelText(/refill when below/i)).toHaveValue(0)
+    expect(
+      screen.getByRole('button', { name: 'Decrease Refill' }),
+    ).toBeDisabled()
+  })
+})
+
+describe('ItemForm — stock tab progress row previews live form state', () => {
+  const STATUS_CLASSES = {
+    ok: 'bg-status-ok-background-muted',
+    warning: 'bg-status-warning-background-muted',
+    error: 'bg-status-error-background-muted',
+    inactive: 'bg-status-inactive-background-muted',
+  } as const
+
+  const progressStatus = (): string | null => {
+    for (const [status, className] of Object.entries(STATUS_CLASSES)) {
+      if (document.body.querySelector(`.${className}`)) return status
+    }
+    return null
+  }
+
+  it('raising the refill threshold above the current total flips the status', async () => {
+    // Given 2 packed / 0 unpacked against a refill threshold of 1 — healthy
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+          targetQuantity: 4,
+          refillThreshold: 1,
+          consumeAmount: 1,
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+    expect(progressStatus()).toBe('ok')
+
+    // When the user raises the refill threshold to meet the current total,
+    // without saving
+    await user.click(screen.getByRole('button', { name: 'Increase Refill' }))
+
+    // Then the preview warns immediately, from the live (unsaved) form state
+    expect(screen.getByLabelText(/refill when below/i)).toHaveValue(2)
+    expect(progressStatus()).toBe('warning')
+  })
+
+  it('Fill to Full targets the form field the user just edited, not the saved target', async () => {
+    // Given an item saved with a target of 4, everything empty
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          targetQuantity: 4,
+          refillThreshold: 1,
+          consumeAmount: 1,
+          packageUnit: 'pack',
+          targetUnit: 'package',
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // When the user raises the target to 6 (not yet saved) and presses Fill
+    // to Full
+    const targetInput = screen.getByLabelText(/target quantity/i)
+    await user.clear(targetInput)
+    await user.type(targetInput, '6')
+    await user.tab()
+    await user.click(screen.getByRole('button', { name: 'Fill to Full' }))
+
+    // Then Packed fills to the EDITED target (6), not the originally saved
+    // one (4)
+    expect(screen.getByLabelText(/^packed/i)).toHaveValue(6)
+  })
+
+  it('Clear resets Packed and Unpacked to 0 and marks the form dirty', async () => {
+    const user = userEvent.setup()
+    const handleDirtyChange = vi.fn()
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 2,
+          unpackedQuantity: 3,
+          targetQuantity: 4,
+          refillThreshold: 1,
+          consumeAmount: 1,
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={handleDirtyChange}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+
+    expect(screen.getByLabelText(/^packed/i)).toHaveValue(0)
+    expect(screen.getByLabelText(/^unpacked/i)).toHaveValue(0)
+    expect(handleDirtyChange).toHaveBeenCalledWith(true)
+  })
+})

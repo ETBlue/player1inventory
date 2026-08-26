@@ -338,7 +338,13 @@ export function addItem(
   }
 }
 
-export function isInactive(item: Stock): boolean {
+// Widened to `Pick<Stock, 'targetQuantity'>` rather than the full `Stock`: the
+// only field this reads is targetQuantity, and a caller previewing a live
+// (not-yet-saved) target — ItemForm's Stock tab progress row — wants to pass
+// just that value without assembling an object satisfying every other Stock
+// field. Any full Stock value (PantryItem, etc.) still satisfies the narrower
+// type, so every existing caller is unaffected.
+export function isInactive(item: Pick<Stock, 'targetQuantity'>): boolean {
   return item.targetQuantity === 0
 }
 
