@@ -338,7 +338,7 @@ test('user can quick-update target and refill threshold via dialog', async ({
   await pantry.clickQuickUpdateStepper('Increase target quantity')
   await expect(pantry.getQuickUpdateTargetInput()).toHaveValue('6')
 
-  // And types a new Refill ≤ value directly
+  // And types a new Refill below value directly
   await pantry.getQuickUpdateRefillInput().fill('3')
   await expect(pantry.getQuickUpdateRefillInput()).toHaveValue('3')
 

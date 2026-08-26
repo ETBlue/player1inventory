@@ -346,60 +346,12 @@ export function QuickUpdateDialog({
             >
               {t('pantry.quickUpdate.pack')}
             </Button>
-          </div>
 
-          {/* Progress bar + clear/fill actions */}
-          <div className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
-            <Button
-              variant="neutral-outline"
-              size="icon-sm"
-              aria-label={t('common.clear')}
-              disabled={isPending || isAtZero}
-              onClick={() => {
-                setLocalPacked(0)
-                setLocalUnpacked(0)
-              }}
-              icon={<ArrowLeftToLine />}
-            />
-            <div className="space-y-1">
-              <div className="flex gap-1 items-baseline text-xs text-right text-foreground-muted">
-                <span className="flex-1" />
-                <span>{quantityLabel}</span>
-                <UnitBadge unit={unitLabel} />
-              </div>
-              <ItemProgressBar
-                current={localTotal}
-                target={localTarget}
-                status={localProgressStatus}
-                targetUnit={item.targetUnit}
-                packed={localDisplayPacked}
-                unpacked={localUnpacked}
-                {...(item.measurementUnit
-                  ? { measurementUnit: item.measurementUnit }
-                  : {})}
-                {...(item.amountPerPackage
-                  ? { amountPerPackage: item.amountPerPackage }
-                  : {})}
-              />
-            </div>
-            <Button
-              variant="neutral-outline"
-              size="icon-sm"
-              aria-label={t('pantry.quickUpdate.fillToFull')}
-              disabled={isPending || isAtFull}
-              onClick={() => {
-                setLocalPacked(fillToFullState.packedQuantity)
-                setLocalUnpacked(fillToFullState.unpackedQuantity)
-              }}
-              icon={<ArrowRightToLine />}
-            />
-          </div>
-
-          {/* Stock settings — the same per-location target/refill pair the item
-              form owns, editable here so a low-stock warning can be tuned from
-              the pantry list. Row shape mirrors the Packed/Unpacked rows above:
-              label, joined stepper, then a hint where Unpack/Pack sit. */}
-          <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
+            {/* Stock settings — the same per-location target/refill pair the item
+                form owns, editable here so a low-stock warning can be tuned from
+                the pantry list. Shares the Packed/Unpacked grid above rather than
+                opening a second one, so all four steppers line up in one column:
+                label, joined stepper, then a hint where Unpack/Pack sit. */}
             {/* Target row */}
             <span className="text-sm text-foreground-muted shrink-0">
               {t('pantry.quickUpdate.targetLabel')}{' '}
@@ -507,6 +459,53 @@ export function QuickUpdateDialog({
             <span className="text-xs text-foreground-muted">
               {t('pantry.quickUpdate.refillHint')}
             </span>
+          </div>
+
+          {/* Progress bar + clear/fill actions */}
+          <div className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+            <Button
+              variant="neutral-outline"
+              size="icon-sm"
+              aria-label={t('common.clear')}
+              disabled={isPending || isAtZero}
+              onClick={() => {
+                setLocalPacked(0)
+                setLocalUnpacked(0)
+              }}
+              icon={<ArrowLeftToLine />}
+            />
+            <div className="space-y-1">
+              <div className="flex gap-1 items-baseline text-xs text-right text-foreground-muted">
+                <span className="flex-1" />
+                <span>{quantityLabel}</span>
+                <UnitBadge unit={unitLabel} />
+              </div>
+              <ItemProgressBar
+                current={localTotal}
+                target={localTarget}
+                status={localProgressStatus}
+                targetUnit={item.targetUnit}
+                packed={localDisplayPacked}
+                unpacked={localUnpacked}
+                {...(item.measurementUnit
+                  ? { measurementUnit: item.measurementUnit }
+                  : {})}
+                {...(item.amountPerPackage
+                  ? { amountPerPackage: item.amountPerPackage }
+                  : {})}
+              />
+            </div>
+            <Button
+              variant="neutral-outline"
+              size="icon-sm"
+              aria-label={t('pantry.quickUpdate.fillToFull')}
+              disabled={isPending || isAtFull}
+              onClick={() => {
+                setLocalPacked(fillToFullState.packedQuantity)
+                setLocalUnpacked(fillToFullState.unpackedQuantity)
+              }}
+              icon={<ArrowRightToLine />}
+            />
           </div>
         </DialogMain>
 

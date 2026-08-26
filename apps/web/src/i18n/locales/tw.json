@@ -176,7 +176,7 @@
       "decreaseTarget": "減少目標數量",
       "increaseTarget": "增加目標數量",
       "targetHint": "0 表示暫時不用",
-      "refillLabel": "補貨 ≤",
+      "refillLabel": "補貨門檻",
       "refillField": "補貨門檻（{{unit}}）",
       "decreaseRefill": "減少補貨門檻",
       "increaseRefill": "增加補貨門檻",

@@ -487,3 +487,59 @@ describe('QuickUpdateDialog — title', () => {
     )
   })
 })
+
+describe('QuickUpdateDialog — stock settings layout', () => {
+  it('user reads the Target and Refill rows above the progress bar', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the four stepper inputs and the progress-bar row are located.
+    // Fill to Full is the trailing control of the progress-bar row, so it
+    // stands in for the row itself.
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+    const order: Node[] = [
+      packedInput(),
+      unpackedInput(),
+      targetInput(),
+      refillInput(),
+      fillToFull,
+    ]
+
+    // Then each element precedes the next in document order — the stock
+    // settings sit between the Unpacked row and the progress bar, so the
+    // inputs driving the live preview are read before the preview itself.
+    for (let i = 0; i < order.length - 1; i++) {
+      const current = order[i] as Node
+      const next = order[i + 1] as Node
+      expect(
+        current.compareDocumentPosition(next) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    }
+  })
+
+  it('user sees all four steppers share one grid so their columns line up', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the grid ancestor of the first and last stepper is resolved
+    const packedGrid = packedInput().closest('.grid')
+    const refillGrid = refillInput().closest('.grid')
+
+    // Then it is the SAME element — two adjacent grids would size their
+    // columns independently and the steppers would not align
+    expect(packedGrid).not.toBeNull()
+    expect(refillGrid).toBe(packedGrid)
+  })
+
+  it('user sees the shortened row labels for the two stock settings', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the label column renders
+    // Then the visible labels read "Target" and "Refill below" — the longer
+    // strings the item form uses would widen the shared label column
+    expect(screen.getByText('Target')).toBeInTheDocument()
+    expect(screen.getByText('Refill below')).toBeInTheDocument()
+  })
+})

@@ -85,3 +85,24 @@ along.
 - Classified as a **bounded** change under the brainstorming skill: an existing
   dialog, existing fields, existing mutation path. No design doc or
   implementation plan — the design was agreed in chat and implemented directly.
+
+---
+
+## Addendum — 2026-08-27 (after first review of the shipped dialog)
+
+Two changes to what is recorded above, decided after seeing the rows in place.
+The Q&A is left as written — it is the record of the original session, not of
+the final layout.
+
+- **Label:** "Refill ≤" became **"Refill below"** (TW: 補貨 ≤ → 補貨門檻). The
+  maths symbol read as a filter operator rather than a setting. Only the visible
+  row label changed; the control `aria-label`s ("Refill threshold ({{unit}})",
+  "Increase/Decrease refill threshold") are unchanged, as E2E page objects and
+  unit tests bind to those exact strings.
+- **Position:** the Target / Refill below rows moved **above** the progress bar,
+  directly under Packed/Unpacked, and were **merged into that same grid** rather
+  than opening a second one. Two adjacent `grid-cols-[auto_auto_auto]` grids
+  size their columns independently, so once the blocks touched their steppers no
+  longer lined up. In the merged four-row grid the third column carries the
+  Unpack/Pack buttons on the first two rows and the muted hints on the last two.
+  Document order is now pinned by a test in `QuickUpdateDialog.test.tsx`.
