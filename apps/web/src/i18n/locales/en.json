@@ -30,7 +30,9 @@
     "relations": "Relations",
     "filters": "Filters",
     "notStockedHere_one": "{{count}} not stocked here",
-    "notStockedHere_other": "{{count}} not stocked here"
+    "notStockedHere_other": "{{count}} not stocked here",
+    "notInThisList_one": "{{count}} not in this list",
+    "notInThisList_other": "{{count}} not in this list"
   },
   "shopping": {
     "title": "Shopping",
@@ -176,6 +178,9 @@
       "alreadyExists": "An item named {{name}} already exists.",
       "packageUnitLabel": "Package unit",
       "packageUnitPlaceholder": "e.g. bottle, kg"
+    },
+    "searchTail": {
+      "rowAction": "{{action}}: {{name}}"
     },
     "tags": {
       "empty": {

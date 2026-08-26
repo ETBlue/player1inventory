@@ -30,7 +30,9 @@
     "relations": "關聯",
     "filters": "篩選條件",
     "notStockedHere_one": "此據點無庫存的 {{count}} 項",
-    "notStockedHere_other": "此據點無庫存的 {{count}} 項"
+    "notStockedHere_other": "此據點無庫存的 {{count}} 項",
+    "notInThisList_one": "不在此清單的 {{count}} 項",
+    "notInThisList_other": "不在此清單的 {{count}} 項"
   },
   "shopping": {
     "title": "購物",
@@ -176,6 +178,9 @@
       "alreadyExists": "已有名為「{{name}}」的品項。",
       "packageUnitLabel": "包裝單位",
       "packageUnitPlaceholder": "例如：瓶、公斤"
+    },
+    "searchTail": {
+      "rowAction": "{{action}}:{{name}}"
     },
     "tags": {
       "empty": {
