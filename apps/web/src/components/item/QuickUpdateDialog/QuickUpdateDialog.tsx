@@ -227,6 +227,120 @@ export function QuickUpdateDialog({
 
         <DialogMain className="space-y-4">
           <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
+            {/* Stock settings — the same per-location target/refill pair the item
+                form owns, editable here so a low-stock warning can be tuned from
+                the pantry list. Shares one grid with the Packed/Unpacked rows
+                below rather than opening a second one, so all four steppers line
+                up in one column: label, joined stepper, then a muted hint on
+                these two rows and Unpack/Pack on the two below. */}
+            {/* Target row */}
+            <span className="text-sm text-foreground-muted shrink-0">
+              {t('pantry.quickUpdate.targetLabel')}{' '}
+              <span className="text-xs font-normal">({unpackedUnit})</span>
+            </span>
+            <div className="flex items-center gap-0">
+              <Button
+                variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
+                aria-label={t('pantry.quickUpdate.decreaseTarget')}
+                disabled={localTarget === 0 || isPending}
+                onClick={() =>
+                  setLocalTarget((v) => bumpTarget(v, -targetStep))
+                }
+                icon={<Minus className="h-4 w-4" />}
+              />
+              <Input
+                type="number"
+                min="0"
+                step={targetStep}
+                aria-label={targetAriaLabel}
+                className="h-7 rounded-none text-right"
+                value={localTarget}
+                disabled={isPending}
+                onChange={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalTarget(
+                    Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
+                  )
+                }}
+                onBlur={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalTarget(
+                    Math.max(
+                      0,
+                      Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
+                    ),
+                  )
+                }}
+              />
+              <Button
+                variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
+                aria-label={t('pantry.quickUpdate.increaseTarget')}
+                disabled={isPending}
+                onClick={() => setLocalTarget((v) => bumpTarget(v, targetStep))}
+                icon={<Plus className="h-4 w-4" />}
+              />
+            </div>
+            <span className="text-xs text-foreground-muted">
+              {t('pantry.quickUpdate.targetHint')}
+            </span>
+
+            {/* Refill row */}
+            <span className="text-sm text-foreground-muted shrink-0">
+              {t('pantry.quickUpdate.refillLabel')}{' '}
+              <span className="text-xs font-normal">({unpackedUnit})</span>
+            </span>
+            <div className="flex items-center gap-0">
+              <Button
+                variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
+                aria-label={t('pantry.quickUpdate.decreaseRefill')}
+                disabled={localRefill === 0 || isPending}
+                onClick={() => setLocalRefill((v) => bumpRefill(v, -step))}
+                icon={<Minus className="h-4 w-4" />}
+              />
+              <Input
+                type="number"
+                min="0"
+                step={step}
+                aria-label={refillAriaLabel}
+                className="h-7 rounded-none text-right"
+                value={localRefill}
+                disabled={isPending}
+                onChange={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalRefill(
+                    Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
+                  )
+                }}
+                onBlur={(e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalRefill(
+                    Math.max(
+                      0,
+                      Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
+                    ),
+                  )
+                }}
+              />
+              <Button
+                variant="neutral-outline"
+                size="icon-sm"
+                className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
+                aria-label={t('pantry.quickUpdate.increaseRefill')}
+                disabled={isPending}
+                onClick={() => setLocalRefill((v) => bumpRefill(v, step))}
+                icon={<Plus className="h-4 w-4" />}
+              />
+            </div>
+            <span className="text-xs text-foreground-muted">
+              {t('pantry.quickUpdate.refillHint')}
+            </span>
+
             {/* Packed row — label format matches item info tab */}
             <span className="text-sm text-foreground-muted shrink-0">
               {t('pantry.quickUpdate.packedLabel')}{' '}
@@ -346,119 +460,6 @@ export function QuickUpdateDialog({
             >
               {t('pantry.quickUpdate.pack')}
             </Button>
-
-            {/* Stock settings — the same per-location target/refill pair the item
-                form owns, editable here so a low-stock warning can be tuned from
-                the pantry list. Shares the Packed/Unpacked grid above rather than
-                opening a second one, so all four steppers line up in one column:
-                label, joined stepper, then a hint where Unpack/Pack sit. */}
-            {/* Target row */}
-            <span className="text-sm text-foreground-muted shrink-0">
-              {t('pantry.quickUpdate.targetLabel')}{' '}
-              <span className="text-xs font-normal">({unpackedUnit})</span>
-            </span>
-            <div className="flex items-center gap-0">
-              <Button
-                variant="neutral-outline"
-                size="icon-sm"
-                className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
-                aria-label={t('pantry.quickUpdate.decreaseTarget')}
-                disabled={localTarget === 0 || isPending}
-                onClick={() =>
-                  setLocalTarget((v) => bumpTarget(v, -targetStep))
-                }
-                icon={<Minus className="h-4 w-4" />}
-              />
-              <Input
-                type="number"
-                min="0"
-                step={targetStep}
-                aria-label={targetAriaLabel}
-                className="h-7 rounded-none text-right"
-                value={localTarget}
-                disabled={isPending}
-                onChange={(e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalTarget(
-                    Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
-                  )
-                }}
-                onBlur={(e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalTarget(
-                    Math.max(
-                      0,
-                      Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
-                    ),
-                  )
-                }}
-              />
-              <Button
-                variant="neutral-outline"
-                size="icon-sm"
-                className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
-                aria-label={t('pantry.quickUpdate.increaseTarget')}
-                disabled={isPending}
-                onClick={() => setLocalTarget((v) => bumpTarget(v, targetStep))}
-                icon={<Plus className="h-4 w-4" />}
-              />
-            </div>
-            <span className="text-xs text-foreground-muted">
-              {t('pantry.quickUpdate.targetHint')}
-            </span>
-
-            {/* Refill row */}
-            <span className="text-sm text-foreground-muted shrink-0">
-              {t('pantry.quickUpdate.refillLabel')}{' '}
-              <span className="text-xs font-normal">({unpackedUnit})</span>
-            </span>
-            <div className="flex items-center gap-0">
-              <Button
-                variant="neutral-outline"
-                size="icon-sm"
-                className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
-                aria-label={t('pantry.quickUpdate.decreaseRefill')}
-                disabled={localRefill === 0 || isPending}
-                onClick={() => setLocalRefill((v) => bumpRefill(v, -step))}
-                icon={<Minus className="h-4 w-4" />}
-              />
-              <Input
-                type="number"
-                min="0"
-                step={step}
-                aria-label={refillAriaLabel}
-                className="h-7 rounded-none text-right"
-                value={localRefill}
-                disabled={isPending}
-                onChange={(e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalRefill(
-                    Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
-                  )
-                }}
-                onBlur={(e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalRefill(
-                    Math.max(
-                      0,
-                      Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
-                    ),
-                  )
-                }}
-              />
-              <Button
-                variant="neutral-outline"
-                size="icon-sm"
-                className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
-                aria-label={t('pantry.quickUpdate.increaseRefill')}
-                disabled={isPending}
-                onClick={() => setLocalRefill((v) => bumpRefill(v, step))}
-                icon={<Plus className="h-4 w-4" />}
-              />
-            </div>
-            <span className="text-xs text-foreground-muted">
-              {t('pantry.quickUpdate.refillHint')}
-            </span>
           </div>
 
           {/* Progress bar + clear/fill actions */}

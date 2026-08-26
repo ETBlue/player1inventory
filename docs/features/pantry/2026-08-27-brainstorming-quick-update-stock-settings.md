@@ -90,7 +90,7 @@ along.
 
 ## Addendum — 2026-08-27 (after first review of the shipped dialog)
 
-Two changes to what is recorded above, decided after seeing the rows in place.
+Three changes to what is recorded above, decided after seeing the rows in place.
 The Q&A is left as written — it is the record of the original session, not of
 the final layout.
 
@@ -103,6 +103,11 @@ the final layout.
   directly under Packed/Unpacked, and were **merged into that same grid** rather
   than opening a second one. Two adjacent `grid-cols-[auto_auto_auto]` grids
   size their columns independently, so once the blocks touched their steppers no
-  longer lined up. In the merged four-row grid the third column carries the
-  Unpack/Pack buttons on the first two rows and the muted hints on the last two.
-  Document order is now pinned by a test in `QuickUpdateDialog.test.tsx`.
+  longer lined up. Document order is now pinned by a test in
+  `QuickUpdateDialog.test.tsx`.
+- **Order within the grid:** the pair then moved again, to the **top** — the
+  grid now reads Target, Refill below, Packed, Unpacked, with the progress bar
+  still last. The two settings are what the bar is measured against, so they are
+  read before the quantities they judge. The third column swapped with them: it
+  carries the muted hints on the first two rows and the Unpack/Pack buttons on
+  the last two.
