@@ -107,7 +107,7 @@ export function ItemForm({
   onSubmit,
   onDirtyChange,
   savedAt,
-  submitLabel = 'Save',
+  submitLabel,
   isPending = false,
 }: ItemFormProps) {
   const { t } = useTranslation()
@@ -955,7 +955,7 @@ export function ItemForm({
           isLoading={!!isPending}
           className="w-full"
         >
-          {submitLabel}
+          {submitLabel ?? t('common.save')}
         </Button>
       </div>
     </form>
