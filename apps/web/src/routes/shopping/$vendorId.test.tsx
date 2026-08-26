@@ -7,7 +7,7 @@ import {
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import {
   addToCart,
   createItem,
@@ -35,11 +35,17 @@ describe('Vendor cart page', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+
+    await ensureDefaultLocationRow()
   })
 
-  const renderVendorCart = (vendorId: string) => {
+  const renderVendorCart = (vendorId: string, query?: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/shopping/${vendorId}`],
+      initialEntries: [
+        query
+          ? `/shopping/${vendorId}?q=${encodeURIComponent(query)}`
+          : `/shopping/${vendorId}`,
+      ],
     })
     const router = createRouter({
       routeTree,
@@ -561,5 +567,187 @@ describe('Vendor cart page', () => {
     // page — not in the active section, not in the inactive section, not
     // counted among the "N inactive" pending items
     expect(screen.queryByText('Firewood')).not.toBeInTheDocument()
+  })
+
+  describe('search tail (unified item search)', () => {
+    // THE FIXTURE IS THE TEST. Every case below needs an item stocked ONLY at
+    // a second location — with one location, "stocked here" and "exists"
+    // return the same set, and every assertion here passes against an
+    // implementation that ignores location entirely.
+    const stockFields = {
+      targetUnit: 'package' as const,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+
+    it('user can see an item stocked only at another location under "not stocked here"', async () => {
+      // Given Milk carries this vendor but is stocked only at the Office
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Milk', tagIds: [], vendorIds: [vendor.id], ...stockFields },
+        office.id,
+      )
+
+      // When the user searches for it in the Costco cart at My Home
+      renderVendorCart(vendor.id, 'milk')
+
+      // Then it is offered under the not-stocked-here divider rather than
+      // vanishing behind an empty state
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
+      expect(screen.queryByText('No items yet')).not.toBeInTheDocument()
+    })
+
+    it('user is not offered Create for a name that exists globally but is not stocked here (#245)', async () => {
+      // Given Milk exists globally, stocked only at the Office
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Milk', tagIds: [], vendorIds: [vendor.id], ...stockFields },
+        office.id,
+      )
+
+      // When the user types its exact name
+      renderVendorCart(vendor.id, 'Milk')
+
+      // Then Create is suppressed — pressing it would mint a second global
+      // Item that then follows the user to every location
+      await screen.findByText('1 not stocked here')
+      expect(
+        screen.queryByRole('button', { name: 'Create item' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user is still offered Create when no global item matches', async () => {
+      // Given nothing in the catalog matches
+      const vendor = await createVendor('Costco')
+
+      // When the user searches a brand-new name
+      renderVendorCart(vendor.id, 'Zucchini')
+
+      // Then Create is offered
+      expect(
+        await screen.findByRole('button', { name: 'Create item' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user can add a not-stocked-here item to the active location, and it does NOT also get the vendor', async () => {
+      // Given Bread exists globally with NO vendor, stocked only at the Office
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Bread', tagIds: [], vendorIds: [], ...stockFields },
+        office.id,
+      )
+
+      // When the user searches for it and presses "Add to My Home"
+      renderVendorCart(vendor.id, 'bread')
+      const addButton = await screen.findByRole('button', {
+        name: 'Add to My Home: Bread',
+      })
+      await userEvent.click(addButton)
+
+      // Then it moves up into the in-location section — stocked here, but
+      // still not carrying this vendor. Applying the vendor is a SECOND press.
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Apply Costco: Bread' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user can apply the vendor to an item stocked here but not in this cart', async () => {
+      // Given Bread is stocked HERE but carries no vendor
+      const vendor = await createVendor('Costco')
+      await createItem(
+        { name: 'Bread', tagIds: [], vendorIds: [], ...stockFields },
+        DEFAULT_LOCATION_ID,
+      )
+
+      // When the user searches for it and presses "Apply Costco"
+      renderVendorCart(vendor.id, 'bread')
+      const applyButton = await screen.findByRole('button', {
+        name: 'Apply Costco: Bread',
+      })
+      await userEvent.click(applyButton)
+
+      // Then it joins the cart's pending list and leaves the tail
+      await waitFor(() => {
+        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      })
+      expect(
+        screen.getByRole('checkbox', { name: /bread/i }),
+      ).toBeInTheDocument()
+    })
+
+    it('user sees which vendor groups hold an item, not an action, on the no-vendor cart', async () => {
+      // Given Bread is stocked here and carries a vendor, so it is outside the
+      // no-vendor cart's list
+      const vendor = await createVendor('Costco')
+      await createItem(
+        { name: 'Bread', tagIds: [], vendorIds: [vendor.id], ...stockFields },
+        DEFAULT_LOCATION_ID,
+      )
+
+      // When the user searches for it on the no-vendor cart
+      renderVendorCart('no-vendor', 'bread')
+
+      // Then the row renders with an explanation instead of a button —
+      // "joining" this group would mean stripping every vendor from the item
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('In Costco')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /Apply/ }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user can stock a VENDORED item from the no-vendor cart and it lands in the not-in-this-list section', async () => {
+      // Given Milk carries a vendor and is stocked only at the Office
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Milk', tagIds: [], vendorIds: [vendor.id], ...stockFields },
+        office.id,
+      )
+
+      // When the user stocks it here from the no-vendor cart
+      renderVendorCart('no-vendor', 'milk')
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Add to My Home: Milk' }),
+      )
+
+      // Then it moves out of the global section into the vendored one, where
+      // it explains itself — it belongs to Costco, not to this cart
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('In Costco')).toBeInTheDocument()
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+    })
+
+    it('user can stock a VENDORLESS item from the no-vendor cart and it lands in the cart list itself', async () => {
+      // Given Salt carries no vendor and is stocked only at the Office
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Salt', tagIds: [], vendorIds: [], ...stockFields },
+        office.id,
+      )
+
+      // When the user stocks it here from the no-vendor cart
+      renderVendorCart('no-vendor', 'salt')
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Add to My Home: Salt' }),
+      )
+
+      // Then it goes straight into the cart's own list — it is vendorless, so
+      // this cart IS its group and there is no second step to take
+      expect(
+        await screen.findByRole('checkbox', { name: /salt/i }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+    })
   })
 })

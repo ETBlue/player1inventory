@@ -206,6 +206,12 @@ Row 2 (ItemListToolbar):
 
 **Abandon:** After abandoning → navigate to `/shopping`.
 
+**Search grows a two-section tail (unified item search, PR A).** While `?q=` is non-empty the cart page renders `ItemSearchTail` below its own list: "N not in this list" (stocked in the active location, does not carry this vendor → `Apply {vendor}`, which appends the vendor id and drops the item into the cart's pending list) then "N not stocked here" (exists in the global catalog with no `ItemStock` here → `Add to {location}`, which stocks it via `useAddItemToLocation` and **nothing else**). The second action deliberately does not also apply the vendor: the row relocates into the section above, where the vendor is a separate press — stocking an item at a location is meant to be prudent and explicit rather than accidental. The empty state is suppressed whenever the tail has rows, so a search that used to look empty now shows what actually exists. **`hasExactMatch` on the toolbar reads the GLOBAL catalog** (`useItemSearchTail`'s `hasExactGlobalMatch`), not the vendor∩location-filtered visible set — that is the #245 fix: create-from-search keyed off the visible set would mint a second global `Item` for a name that already existed elsewhere, and a duplicate global `Item` follows the user to every location.
+
+**The `no-vendor` cart renders all three sections, and its middle one is inert.** Its group is "items with no vendor at all", so a group action there would have to *strip* every vendor from the item — destructive, not additive. Section 2 therefore passes `groupNote` instead of `groupAction`: each row renders `t('items.searchTail.inVendors')` naming the vendor groups that already hold the item (`normal-case`, per the vendor-name display rule) rather than a button. Section 3 is unrestricted — `Add to {location}` is group-agnostic — and after that press the item lands in section 1 if it is vendorless or section 2 if it carries vendors, which falls out of the existing predicates with no extra branch.
+
+Cloud mode renders only the first section (one isolated `isCloud` bypass in `useItemSearchTail`; `useAddItemToLocation` throws there). Pantry surfaces gain the same tail in PRs B and C.
+
 **Files:**
 - `src/routes/shopping/$vendorId.tsx` — vendor cart page
 - `src/routes/shopping/$vendorId.test.tsx` — integration tests

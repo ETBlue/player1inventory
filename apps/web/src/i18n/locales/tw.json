@@ -180,7 +180,10 @@
       "packageUnitPlaceholder": "例如：瓶、公斤"
     },
     "searchTail": {
-      "rowAction": "{{action}}:{{name}}"
+      "rowAction": "{{action}}:{{name}}",
+      "addToLocation": "加入{{location}}",
+      "applyVendor": "套用{{vendor}}",
+      "inVendors": "屬於 {{vendors}}"
     },
     "tags": {
       "empty": {
