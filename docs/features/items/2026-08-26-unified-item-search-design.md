@@ -5,8 +5,14 @@
 **Branch:** `feature/unified-item-search`
 **Status:** ✅ **Design approved by ETBlue 2026-08-26.** **PR A shipped** (shared
 hook + `ItemSearchTail` + cart page — closes #245); see
-`2026-08-26-unified-item-search-plan-a.md`. PRs B (flat pantry + shelf detail)
-and C (vendor + recipe detail) remain. Do not re-litigate the decisions below.
+`2026-08-26-unified-item-search-plan-a.md`. **PR B shipped** (tail-wiring
+extraction + flat pantry + selection shelves — see
+`2026-08-27-unified-item-search-plan-b.md`); the original three-PR phasing
+below is superseded by a **four-PR split** (ETBlue, 2026-08-27): the
+filter-shelf per-axis picker split out of PR B into its own PR D, since it is
+net-new UI spanning two non-atomic mutation targets. PR C (vendor + recipe
+detail) and PR D (filter-shelf per-axis picker) remain — see "Phasing" below.
+Do not re-litigate the decisions below.
 **Brainstorming log:** `2026-08-26-brainstorming-unified-item-search.md`
 
 ## Problem
@@ -22,15 +28,15 @@ follows the user to *every* location, including the one where the original lives
 The narrow fix (check global names, suppress the create button) trades a
 duplicate for a dead end: a screen that knows the item exists and offers nothing.
 
-## Current state (verified by reading the code, 2026-08-26)
+## Current state (verified by reading the code, 2026-08-26; PR A/B rows updated post-ship)
 
 | Surface | items source | search scope | tail section | create-from-search |
 |---|---|---|---|---|
-| Pantry flat (`PantryListView`) | `useStockedItems` | stocked-here | — | opens `NewItemDialog` — **already correct** |
-| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | hand-rolled "Not in this shelf" | inline `createItem` + add to shelf |
-| Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | — | — |
-| Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | — | — |
-| Cart (`shopping/$vendorId`) | `useItems` + `isStockedHere` | vendor ∩ here | — | inline `createItem` ← **#245** |
+| Pantry flat (`PantryListView`) | `useStockedItems` | stocked-here | ✅ **shipped PR B** — bucket 3 only (`ItemSearchTail`) | opens `NewItemDialog` — **already correct** |
+| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B** — `ItemSearchTail` (selection: `groupAction`; filter: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
+| Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | — (PR C) | — |
+| Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | — (PR C) | — |
+| Cart (`shopping/$vendorId`) | `useItems` + `isStockedHere` | vendor ∩ here | ✅ **shipped PR A** — `ItemSearchTail` | inline `createItem` ← **#245**, fixed |
 
 Key existing pieces this design builds on, rather than inventing:
 
@@ -42,9 +48,10 @@ Key existing pieces this design builds on, rather than inventing:
   (`"{{count}} not stocked here"` / `"此據點無庫存的 {{count}} 項"`) is the
   established shared idiom, already used by the pantry group views, the shopping
   vendor list and the cooking recipe list.
-- **`ShelfDetailView`'s "Not in this shelf"** is a hand-rolled
-  `<p className="text-xs …">`, **not** a `ListSectionDivider` — already
-  off-convention, and folded into the shared component by this work.
+- **`ShelfDetailView`'s "Not in this shelf"** was a hand-rolled
+  `<p className="text-xs …">`, **not** a `ListSectionDivider` — off-convention,
+  and folded into the shared `ItemSearchTail` component by PR B (the block and
+  its `outsideShelfSearchMatches` memo are deleted).
 - **`useAddItemToLocation`** — copy-on-add, no-op-safe if already stocked,
   throws in cloud mode (`LOCAL_ONLY_LOCATION_MUTATION`).
 
@@ -172,16 +179,30 @@ not rewritten.
 
 ## Phasing
 
-Three independently shippable PRs — 5 surfaces × 3 buckets × 6 action variants is
-too much for one change:
+Four independently shippable PRs — 5 surfaces × 3 buckets × 6 action variants is
+too much for one change. The original three-PR split below was revised
+(ETBlue, 2026-08-27) once PR B's planning showed the filter-shelf per-axis
+picker was, on its own, roughly as large as the rest of PR B combined — it is
+net-new UI needing one sub-picker per tag *type*, and spans two non-atomic
+mutation targets (`useUpdateItem` for tags/vendors, `useUpdateRecipe` for
+recipe membership). It is split out into its own PR D:
 
-| PR | Scope |
-|---|---|
-| **A** ✅ | shared hook + `ItemSearchTail` component + cart page — **closes #245** |
-| **B** | flat pantry + shelf detail (incl. deleting the off-convention block) |
-| **C** | vendor detail + recipe detail |
+| PR | Scope | Status |
+|---|---|---|
+| **A** | shared hook + `ItemSearchTail` component + cart page — **closes #245** | ✅ merged (#256) |
+| **B** | tail-wiring extraction (`useItemSearchTailWiring`) + flat pantry (bucket 3 only) + shelf detail's **selection** shelves (incl. deleting the off-convention "Not in this shelf" block); filter shelves get an inert `groupNote` as an interim step | ✅ shipped |
+| **C** | vendor detail + recipe detail | not planned yet |
+| **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | not planned yet |
+
+See `2026-08-27-unified-item-search-plan-b.md` for PR B's own scope-decision
+record and implementation detail.
 
 ### Carried forward from PR A's review — start PR B with these
+
+**All five items below are done as of PR B's ship.** Kept for the historical
+record; see `hooks/CLAUDE.md` and `components/CLAUDE.md` for where the
+resulting hook and `hasVisibleTail` export are documented, and
+`2026-08-27-unified-item-search-plan-b.md` for the task-by-task record.
 
 1. **Open PR B by extracting the tail wiring, not by making a fifth copy.** Roughly
    45 of the ~180 lines PR A added to `routes/shopping/$vendorId.tsx` are
