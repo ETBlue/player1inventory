@@ -953,6 +953,52 @@ describe('Home page filtering integration', () => {
       ).toBeInTheDocument()
     })
 
+    it('user can see bucket 3 on a location with nothing stocked here yet (the empty-pantry CTA does not eat the tail)', async () => {
+      // Given NOTHING is stocked at the active location — a brand-new
+      // location — and Milk is stocked ONLY at the Office. This is the
+      // fixture shape no other pantry test in this file uses: every other
+      // one seeds a stocked-here item first, which is exactly how the
+      // `items.length === 0` empty-pantry branch short-circuiting ahead of
+      // `!hasTail` survived four reviews.
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then bucket 3 still renders — the empty-pantry CTA must not win
+      // ahead of the tail just because nothing is stocked here
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
+      expect(
+        screen.queryByText(/your pantry is empty/i),
+      ).not.toBeInTheDocument()
+    })
+
+    it('the empty-pantry CTA still renders on a location with nothing stocked when the search box is empty', async () => {
+      // Given NOTHING is stocked at the active location, and Milk is stocked
+      // ONLY at the Office — same fixture as above, but the search box stays
+      // blank, so the tail must be empty and the CTA must NOT regress
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+
+      // Then the original "create your first item" CTA still shows — this is
+      // the behaviour the `items.length === 0` branch exists for, and the
+      // fix must not disturb it
+      expect(
+        await screen.findByText(/your pantry is empty/i),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Create item' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Milk')).not.toBeInTheDocument()
+    })
+
     it('an active tag filter that excludes a stocked-here item does not push it into the tail', async () => {
       // NEGATIVE CONTROL, not a pinned dimension of `inGroupIds`: on the flat
       // pantry `inGroupIds` sourced from the tag/vendor-filtered list instead

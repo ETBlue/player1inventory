@@ -293,7 +293,7 @@ export function PantryListView() {
         data-testid="pantry-scroll"
         className="overflow-y-auto [container-type:size]"
       >
-        {items.length === 0 ? (
+        {items.length === 0 && !hasTail ? (
           <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
             <div>
               <p>{t('pantry.empty.title')}</p>
