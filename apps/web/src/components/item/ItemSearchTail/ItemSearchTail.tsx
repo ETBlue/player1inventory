@@ -17,7 +17,7 @@ export interface ItemSearchTailAction {
   icon?: ReactNode
 }
 
-interface ItemSearchTailProps {
+export interface ItemSearchTailProps {
   /** Bucket 2 — stocked here, absent from the page's list. */
   inLocationItems: PantryItem[]
   /** Bucket 3 — exists globally, not stocked here. */
@@ -44,6 +44,18 @@ interface ItemSearchTailProps {
   addToLocationAction?: ItemSearchTailAction
 }
 
+// Whether either tail section has anything to show — computed once so the
+// component's early return and any caller that needs to know in advance
+// (e.g. to suppress its own empty state) share exactly one derivation.
+export function hasVisibleTail(props: ItemSearchTailProps): boolean {
+  const showInLocation =
+    (!!props.groupAction || !!props.groupNote) &&
+    props.inLocationItems.length > 0
+  const showNotStockedHere =
+    !!props.addToLocationAction && props.notStockedHereItems.length > 0
+  return showInLocation || showNotStockedHere
+}
+
 // The two tail sections beneath a location-scoped item list while searching.
 //
 // The sections are ordered and labelled to make the two-step gate structural:
@@ -52,15 +64,18 @@ interface ItemSearchTailProps {
 // where the group action lives as a SECOND, separate press. Stocking an item
 // at a location should be prudent and explicit, not something a single press
 // achieves by accident.
-export function ItemSearchTail({
-  inLocationItems,
-  notStockedHereItems,
-  renderItem,
-  groupAction,
-  groupNote,
-  addToLocationAction,
-}: ItemSearchTailProps) {
+export function ItemSearchTail(props: ItemSearchTailProps) {
+  const {
+    inLocationItems,
+    notStockedHereItems,
+    renderItem,
+    groupAction,
+    groupNote,
+    addToLocationAction,
+  } = props
   const { t } = useTranslation()
+
+  if (!hasVisibleTail(props)) return null
 
   // Each section is "on" only when it has both rows to show and a way to act
   // on them. Deriving that once — rather than testing it in the boolean and
@@ -72,8 +87,6 @@ export function ItemSearchTail({
       : null
   const showInLocation =
     (!!groupAction || !!groupNote) && inLocationItems.length > 0
-
-  if (!showInLocation && !notStockedHereAction) return null
 
   const actionButton = (item: PantryItem, action: ItemSearchTailAction) => (
     <Button

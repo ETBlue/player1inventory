@@ -749,5 +749,39 @@ describe('Vendor cart page', () => {
       expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
       expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
     })
+
+    it('shows bucket 3 normally but no action or partial label for bucket 2 when the vendor cannot be resolved (deleted-vendor window, carry-forward #5)', async () => {
+      // Given "Wheat Bread" is stocked here with no vendor (a bucket-2
+      // candidate — it would need the group action to join this vendor) and
+      // "Wheat Crackers" exists globally, stocked only at the Office (a
+      // bucket-3 candidate, unaffected by vendor resolution)
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Wheat Bread', tagIds: [], vendorIds: [], ...stockFields },
+        DEFAULT_LOCATION_ID,
+      )
+      await createItem(
+        { name: 'Wheat Crackers', tagIds: [], vendorIds: [], ...stockFields },
+        office.id,
+      )
+
+      // When the user opens a cart for a vendor id that resolves to no
+      // vendor — e.g. it was deleted after the URL was linked
+      renderVendorCart('deleted-vendor-id', 'wheat')
+
+      // Then bucket 3 still renders normally
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Wheat Crackers' }),
+      ).toBeInTheDocument()
+
+      // But bucket 2 renders no action button and no broken partial "Apply "
+      // label — the group cannot be joined without a resolved vendor name
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /^Apply /i }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText(/^Apply /)).not.toBeInTheDocument()
+    })
   })
 })
