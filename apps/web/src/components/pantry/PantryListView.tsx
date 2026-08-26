@@ -188,9 +188,12 @@ export function PantryListView() {
   // (stocked here, absent from the page's list) is empty by construction —
   // which is why this page passes neither `groupAction` nor `groupNote`
   // below. Sourcing this from a filtered variable (e.g. the tag/vendor
-  // filtered list) would wrongly exclude a stocked-here item the user has
-  // filtered out, landing it in bucket 2 where — with no groupAction/
-  // groupNote — it would render nowhere at all.
+  // filtered list) would wrongly land a filtered-out stocked-here item in
+  // bucket 2 instead of bucket 1 — but NOT render it nowhere: while a search
+  // is active, `searchedItems` above is built from the full `items` and
+  // bypasses the filters entirely, so the item would still show in the main
+  // list. Only the TAIL would omit it (bucket 2 is unreachable here — no
+  // groupAction/groupNote — so it would just silently vanish from the tail).
   const inGroupIds = useMemo(() => new Set(items.map((i) => i.id)), [items])
 
   // Tail rows can include items outside the pantry's own `items` (stocked

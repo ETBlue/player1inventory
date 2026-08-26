@@ -34,6 +34,7 @@ describe('Home page filtering integration', () => {
     await db.vendors.clear()
     await db.recipes.clear()
     await db.locations.clear()
+    await db.shelves.clear()
     sessionStorage.clear()
     localStorage.clear()
 
@@ -953,6 +954,17 @@ describe('Home page filtering integration', () => {
     })
 
     it('an active tag filter that excludes a stocked-here item does not push it into the tail', async () => {
+      // NEGATIVE CONTROL, not a pinned dimension of `inGroupIds`: on the flat
+      // pantry `inGroupIds` sourced from the tag/vendor-filtered list instead
+      // of the full stocked-here `items` set is an EQUIVALENT MUTANT here —
+      // this page passes neither `groupAction` nor `groupNote`, so bucket 2
+      // never renders regardless of `inGroupIds` membership, and this test
+      // stays green either way (see task-2-report.md, "equivalent mutant"
+      // analysis). What this test actually guards is that Milk stays visible
+      // in the MAIN list under an active filter (the `searchedItems` bypass
+      // below) — a real, currently-passing assertion, just not proof that
+      // `inGroupIds` reads the right variable.
+      //
       // Given a Vegetables tag, Milk stocked here WITHOUT that tag (so a
       // tag-filtered "page's own list" would wrongly exclude it), and Milk
       // Substitute stocked only at the Office — a genuine bucket-3 candidate
@@ -1227,6 +1239,55 @@ describe('Home page filtering integration', () => {
       expect(
         screen.getByRole('button', { name: 'Add to My Home: Chips' }),
       ).toBeInTheDocument()
+    })
+
+    it('system shelf: renders no bucket-2 section (no "Add to shelf" button, no filter note), while bucket 3 still renders "Add to {location}"', async () => {
+      // Given a system shelf (no add path exists for these — the ternary
+      // chain in ShelfDetailView falls through both `groupAction`'s
+      // `type === 'selection'` guard and `groupNote`'s `type === 'filter'`
+      // guard, landing on neither): Frozen Peas stocked ONLY at the Office
+      // (a bucket-3 candidate) and Frozen Corn stocked HERE but NOT a member
+      // of the shelf (a bucket-2 candidate — if this were a selection shelf
+      // it would render under "not in this list" with an "Add to shelf"
+      // button; if a filter shelf, under the inert note instead)
+      const shelf = await createShelf({
+        name: 'System Shelf',
+        type: 'system',
+        order: 0,
+        itemIds: [],
+      })
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Frozen Peas', tagIds: [], ...stockFields },
+        office.id,
+      )
+      await createItem({ name: 'Frozen Corn', tagIds: [], ...stockFields })
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'System Shelf', level: 1 })
+      await openSearch(user, 'frozen')
+
+      // Then bucket 3 still renders — Add to {location} is group-agnostic
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Frozen Peas' }),
+      ).toBeInTheDocument()
+
+      // And bucket 2 is fully suppressed — Frozen Corn (the bucket-2
+      // candidate) renders NOWHERE at all, not even inertly: no "not in
+      // this list" divider, no "Add to shelf" button, no filter note, and
+      // no heading for it anywhere on the page
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /add to shelf/i }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByText("Doesn't match this shelf's filters"),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Frozen Corn' }),
+      ).not.toBeInTheDocument()
     })
 
     describe('per-row single-flight', () => {

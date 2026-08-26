@@ -82,7 +82,7 @@ export function useItemSearchTailWiring({
 
   // Wraps a caller's async onAction with the pending-id bookkeeping, so the
   // caller cannot forget it and every action clears the same way regardless
-  // of outcome — the mutation hook itself owns surfacing the error.
+  // of outcome.
   const wrapAction = (
     action: ItemSearchTailGroupAction,
   ): ItemSearchTailAction => ({
@@ -94,7 +94,11 @@ export function useItemSearchTailWiring({
       try {
         await action.onAction(item)
       } catch {
-        // the mutation hook owns surfacing; pending must clear regardless
+        // Swallowed — there is no MutationCache-level onError, no global
+        // error boundary, and no toast in this app, so nothing surfaces this
+        // failure to the user. Behaviour matches pre-refactor
+        // (`onError: clearTailPending` also only cleared pending). Pending
+        // must still clear on every path so the row doesn't spin forever.
       } finally {
         setPendingItemId(null)
       }
