@@ -62,9 +62,15 @@
 | `docs/features/items/2026-08-26-unified-item-search-design.md` | Mark PR A shipped. |
 | `docs/INDEX.md` | Add the feature row. |
 
-**Decided without asking — easy to veto** (the design doc did not cover it):
+**The no-vendor cart (ETBlue's ruling, 2026-08-26 — the design doc did not cover it):**
 
-**The no-vendor cart (`/shopping/no-vendor`) renders only the not-stocked-here section.** Its group is "items with no vendor at all", so the bucket-2 action would have to *strip* every vendor from an item — destructive, not additive, and the opposite of every other bucket-2 action. Bucket 2 is therefore suppressed there (`groupAction` omitted). Bucket 3 is **not** restricted: its action (`Add to {location}`) is group-agnostic, so a global item that is not stocked here stays findable and addable from the no-vendor cart exactly as it is everywhere else.
+The `no-vendor` cart renders **all three sections**, in this order:
+
+1. **vendorless, stocked here** — the cart's own list (bucket 1), unchanged
+2. **vendored, stocked here** — bucket 2, rendered as an **inert row with explanatory text naming the vendor groups that hold the item** (e.g. "In Costco, iHerb"). No action button: joining this group would mean *stripping* every vendor from the item — destructive, not additive, and the opposite of every other bucket-2 action.
+3. **not stocked here** — bucket 3, with the ordinary `Add to {location}`. Not restricted in any way: the action is group-agnostic. Once pressed, the item lands in section 1 if it is vendorless, or section 2 if it carries vendors — which falls out of the existing predicates with no extra code.
+
+This is why `ItemSearchTail` carries a `groupNote` slot alongside `groupAction`: a section-2 row is either actionable or explained, never inert-and-silent.
 
 ---
 
@@ -469,10 +475,11 @@ git commit -m "feat(items): add useItemSearchTail for location-aware search tail
     notStockedHereItems: PantryItem[]
     renderItem: (item: PantryItem) => ReactNode
     groupAction?: ItemSearchTailAction
+    groupNote?: (item: PantryItem) => ReactNode
     addToLocationAction?: ItemSearchTailAction
   }): ReactNode
   ```
-  Task 3 constructs both action descriptors.
+  Task 3 constructs both action descriptors **and** the `groupNote` renderer (the no-vendor cart).
 
 - [ ] **Step 1: Add the i18n keys**
 
@@ -521,7 +528,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import * as stories from './ItemSearchTail.stories'
 
-const { BothSections, InLocationOnly, NotStockedHereOnly, Pending } =
+const { BothSections, GroupNote, InLocationOnly, NotStockedHereOnly, Pending } =
   composeStories(stories)
 
 describe('ItemSearchTail stories smoke tests', () => {
@@ -547,6 +554,20 @@ describe('ItemSearchTail stories smoke tests', () => {
     render(<NotStockedHereOnly />)
     expect(screen.getByText('2 not stocked here')).toBeInTheDocument()
     expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+  })
+
+  it('GroupNote renders the section with explanatory text and no group button', () => {
+    render(<GroupNote />)
+    // The section still renders — the item IS here, just filed elsewhere
+    expect(screen.getByText('1 not in this list')).toBeInTheDocument()
+    expect(screen.getByText('In Costco')).toBeInTheDocument()
+    // ...but it is not actionable, and only bucket 3's buttons exist
+    expect(
+      screen.queryByRole('button', { name: /Bread/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
   })
 
   it('Pending disables every action button in the section', () => {
@@ -603,12 +624,18 @@ interface ItemSearchTailProps {
   notStockedHereItems: PantryItem[]
   /** The caller's own card renderer, so each page keeps its card configuration. */
   renderItem: (item: PantryItem) => ReactNode
-  /**
-   * Bucket 2's action. OMIT to suppress the whole section — the only correct
-   * choice on a page whose group has no additive action (the no-vendor cart,
-   * where "apply" would mean stripping every vendor from the item).
-   */
+  /** Bucket 2's action button. */
   groupAction?: ItemSearchTailAction
+  /**
+   * Bucket 2's fallback when the group cannot be joined by a press — renders
+   * inert explanatory text in the button's place, so the row still says WHY it
+   * is not actionable rather than sitting there silently. The no-vendor cart
+   * uses it to name the vendor groups holding the item, because "join this
+   * group" there would mean stripping every vendor from it.
+   *
+   * Ignored when `groupAction` is also set; pass exactly one.
+   */
+  groupNote?: (item: PantryItem) => ReactNode
   /**
    * Bucket 3's action. OMIT to suppress the section: cloud mode (no
    * `ItemStock` backend — `useAddItemToLocation` throws there), or while the
@@ -630,48 +657,67 @@ export function ItemSearchTail({
   notStockedHereItems,
   renderItem,
   groupAction,
+  groupNote,
   addToLocationAction,
 }: ItemSearchTailProps) {
   const { t } = useTranslation()
 
-  const showInLocation = !!groupAction && inLocationItems.length > 0
+  const showInLocation =
+    (!!groupAction || !!groupNote) && inLocationItems.length > 0
   const showNotStockedHere =
     !!addToLocationAction && notStockedHereItems.length > 0
 
   if (!showInLocation && !showNotStockedHere) return null
 
-  const renderRow = (item: PantryItem, action: ItemSearchTailAction) => (
+  const actionButton = (item: PantryItem, action: ItemSearchTailAction) => (
+    <Button
+      size="sm"
+      variant="neutral-outline"
+      className="mx-2 shrink-0"
+      // Every row's button carries the same visible label, so the accessible
+      // name has to name the row too — otherwise the whole section is a pile
+      // of identically-named buttons to a screen reader and to a role query.
+      aria-label={t('items.searchTail.rowAction', {
+        action: action.label,
+        name: item.name,
+      })}
+      disabled={!!action.pendingItemId}
+      isLoading={action.pendingItemId === item.id}
+      {...(action.icon ? { icon: action.icon } : {})}
+      onClick={() => action.onAction(item)}
+    >
+      {action.label}
+    </Button>
+  )
+
+  const renderRow = (item: PantryItem, trailing: ReactNode) => (
     <div key={item.id} className="flex items-center bg-background-surface">
       <div className="min-w-0 flex-1">{renderItem(item)}</div>
-      <Button
-        size="sm"
-        variant="neutral-outline"
-        className="mx-2 shrink-0"
-        // Every row's button carries the same visible label, so the accessible
-        // name has to name the row too — otherwise the whole section is a pile
-        // of identically-named buttons to a screen reader and to a role query.
-        aria-label={t('items.searchTail.rowAction', {
-          action: action.label,
-          name: item.name,
-        })}
-        disabled={!!action.pendingItemId}
-        isLoading={action.pendingItemId === item.id}
-        {...(action.icon ? { icon: action.icon } : {})}
-        onClick={() => action.onAction(item)}
-      >
-        {action.label}
-      </Button>
+      {trailing}
     </div>
   )
 
   return (
     <div className="space-y-px">
-      {showInLocation && groupAction && (
+      {showInLocation && (
         <>
           <ListSectionDivider>
             {t('common.notInThisList', { count: inLocationItems.length })}
           </ListSectionDivider>
-          {inLocationItems.map((item) => renderRow(item, groupAction))}
+          {inLocationItems.map((item) =>
+            renderRow(
+              item,
+              groupAction ? (
+                actionButton(item, groupAction)
+              ) : (
+                // Not actionable — but never silent. The note says which other
+                // group already holds the item, so the row explains itself.
+                <span className="mx-3 shrink-0 text-foreground-muted text-xs">
+                  {groupNote?.(item)}
+                </span>
+              ),
+            ),
+          )}
         </>
       )}
       {showNotStockedHere && addToLocationAction && (
@@ -680,7 +726,7 @@ export function ItemSearchTail({
             {t('common.notStockedHere', { count: notStockedHereItems.length })}
           </ListSectionDivider>
           {notStockedHereItems.map((item) =>
-            renderRow(item, addToLocationAction),
+            renderRow(item, actionButton(item, addToLocationAction)),
           )}
         </>
       )}
@@ -783,7 +829,18 @@ export const InLocationOnly: Story = {
   },
 }
 
-// The no-vendor cart: the group has no additive action, so bucket 2 is off.
+// The no-vendor cart: the group cannot be joined by a press (that would mean
+// stripping every vendor from the item), so the row explains itself instead.
+export const GroupNote: Story = {
+  args: {
+    inLocationItems: [bread],
+    notStockedHereItems: [milkPowder, oatMilk],
+    groupNote: () => <span className="normal-case">In Costco</span>,
+    addToLocationAction: { label: 'Add to My Home', onAction: () => {} },
+  },
+}
+
+// Neither a group action nor a note: section 2 is suppressed entirely.
 export const NotStockedHereOnly: Story = {
   args: {
     inLocationItems: [bread],
@@ -809,16 +866,17 @@ export const Pending: Story = {
 - [ ] **Step 7: Run the smoke tests and verify they pass**
 
 Run: `(cd apps/web && pnpm vitest run src/components/item/ItemSearchTail)`
-Expected: PASS — 5 tests.
+Expected: PASS — 6 tests.
 
 - [ ] **Step 8: Run the mutation checks**
 
 | # | Mutation in `ItemSearchTail.tsx` | Test that must go RED |
 |---|---|---|
-| 1 | Change `showInLocation` to `inLocationItems.length > 0` (drop the `!!groupAction` guard) | `NotStockedHereOnly omits the not-in-this-list divider` |
+| 1 | Change `showInLocation` to `inLocationItems.length > 0` (drop the `groupAction`/`groupNote` guard) | `NotStockedHereOnly omits the not-in-this-list divider` |
 | 2 | Change `showNotStockedHere` to `notStockedHereItems.length > 0` | `InLocationOnly omits the not-stocked-here divider` |
 | 3 | Replace the `aria-label` with `action.label` alone | `BothSections renders both dividers...` (strict-mode duplicate-name error) |
 | 4 | Drop `disabled={!!action.pendingItemId}` | `Pending disables every action button in the section` |
+| 5 | Render nothing in place of the `groupNote?.(item)` span | `GroupNote renders the section with explanatory text` |
 
 Restore after each; report each red.
 
@@ -833,7 +891,7 @@ In `apps/web/src/components/CLAUDE.md`, in the `ListSectionDivider` entry, chang
 In the same file, in the **Item Components** section, add:
 
 ```md
-**`ItemSearchTail`** (`src/components/item/ItemSearchTail/ItemSearchTail.tsx`) — the two tail sections beneath a location-scoped item list while searching: "N not in this list" (stocked in the active location, absent from this page's list) then "N not stocked here" (exists globally, no `ItemStock` here). Props: `inLocationItems`, `notStockedHereItems`, `renderItem` (the caller's own card renderer, so each page keeps its card configuration), plus two optional `ItemSearchTailAction` descriptors — `groupAction` for the first section and `addToLocationAction` for the second. Each descriptor is `{ label (already translated), onAction, pendingItemId?, icon? }`; the row whose id matches `pendingItemId` spins and every button in that section disables. **Omitting an action suppresses its whole section** — `addToLocationAction` is omitted in cloud mode (no `ItemStock` backend; `useAddItemToLocation` throws) and while the active location is still resolving, and `groupAction` is omitted where the group has no additive action (the no-vendor cart, where "apply" would mean stripping every vendor). Renders `null` when both sections are suppressed or empty. Every row button's accessible name is `t('items.searchTail.rowAction')` = `"{{action}}: {{name}}"` — the visible labels are identical down a section, so the row must be named too. The ordering **is** the two-step gate: the lower section's only action stocks the item here, which moves the row up to where the group action lives as a separate, second press. Data comes from `useItemSearchTail` (`src/hooks/CLAUDE.md`). Fed by `src/routes/shopping/$vendorId.tsx` (PR A); the pantry views follow in PRs B and C.
+**`ItemSearchTail`** (`src/components/item/ItemSearchTail/ItemSearchTail.tsx`) — the two tail sections beneath a location-scoped item list while searching: "N not in this list" (stocked in the active location, absent from this page's list) then "N not stocked here" (exists globally, no `ItemStock` here). Props: `inLocationItems`, `notStockedHereItems`, `renderItem` (the caller's own card renderer, so each page keeps its card configuration), plus two optional `ItemSearchTailAction` descriptors — `groupAction` for the first section and `addToLocationAction` for the second — and `groupNote`. Each action descriptor is `{ label (already translated), onAction, pendingItemId?, icon? }`; the row whose id matches `pendingItemId` spins and every button in that section disables. **`groupNote: (item) => ReactNode` is section 1's fallback when the group cannot be joined by a press**: it renders inert explanatory text where the button would go, so the row still says *why* rather than sitting there silently — the no-vendor cart passes it to name the vendor groups already holding the item, because "join this group" there would mean stripping every vendor. Pass exactly one of `groupAction` / `groupNote`; the action wins if both arrive. **Omitting both suppresses section 1**, and omitting `addToLocationAction` suppresses section 2 — that is how cloud mode (no `ItemStock` backend; `useAddItemToLocation` throws) and a still-resolving active location switch it off. Renders `null` when both sections are suppressed or empty. Every row button's accessible name is `t('items.searchTail.rowAction')` = `"{{action}}: {{name}}"` — the visible labels are identical down a section, so the row must be named too. The ordering **is** the two-step gate: the lower section's only action stocks the item here, which moves the row up to where the group action lives as a separate, second press. Data comes from `useItemSearchTail` (`src/hooks/CLAUDE.md`). Fed by `src/routes/shopping/$vendorId.tsx` (PR A); the pantry views follow in PRs B and C.
 ```
 
 In `apps/web/src/i18n/CLAUDE.md`, in the **Common i18n keys** paragraph, change `` `notStockedHere` (plural, the group-list divider label) `` to:
@@ -875,7 +933,8 @@ In `apps/web/src/i18n/locales/en.json`, inside `"items"."searchTail"`:
     "searchTail": {
       "rowAction": "{{action}}: {{name}}",
       "addToLocation": "Add to {{location}}",
-      "applyVendor": "Apply {{vendor}}"
+      "applyVendor": "Apply {{vendor}}",
+      "inVendors": "In {{vendors}}"
     },
 ```
 
@@ -885,9 +944,14 @@ In `apps/web/src/i18n/locales/tw.json`:
     "searchTail": {
       "rowAction": "{{action}}:{{name}}",
       "addToLocation": "加入{{location}}",
-      "applyVendor": "套用{{vendor}}"
+      "applyVendor": "套用{{vendor}}",
+      "inVendors": "屬於 {{vendors}}"
     },
 ```
+
+`inVendors` is the no-vendor cart's `groupNote` text. The vendor names it
+interpolates are rendered `normal-case` by the caller (vendor names are
+user-specified and may use intentional casing, e.g. "iHerb").
 
 - [ ] **Step 2: Write the failing route tests**
 
@@ -1041,7 +1105,7 @@ Then append this nested describe inside `describe('Vendor cart page', ...)`:
       ).toBeInTheDocument()
     })
 
-    it('user sees no in-list section on the no-vendor cart', async () => {
+    it('user sees which vendor groups hold an item, not an action, on the no-vendor cart', async () => {
       // Given Bread is stocked here and carries a vendor, so it is outside the
       // no-vendor cart's list
       const vendor = await createVendor('Costco')
@@ -1053,14 +1117,58 @@ Then append this nested describe inside `describe('Vendor cart page', ...)`:
       // When the user searches for it on the no-vendor cart
       renderVendorCart('no-vendor', 'bread')
 
-      // Then no group action is offered — "apply no vendor" would mean
-      // stripping every vendor from the item: destructive, not additive
-      await waitFor(() => {
-        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
-      })
+      // Then the row renders with an explanation instead of a button —
+      // "joining" this group would mean stripping every vendor from the item
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('In Costco')).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /Apply/ }),
       ).not.toBeInTheDocument()
+    })
+
+    it('user can stock a VENDORED item from the no-vendor cart and it lands in the not-in-this-list section', async () => {
+      // Given Milk carries a vendor and is stocked only at the Office
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Milk', tagIds: [], vendorIds: [vendor.id], ...stockFields },
+        office.id,
+      )
+
+      // When the user stocks it here from the no-vendor cart
+      renderVendorCart('no-vendor', 'milk')
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Add to My Home: Milk' }),
+      )
+
+      // Then it moves out of the global section into the vendored one, where
+      // it explains itself — it belongs to Costco, not to this cart
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('In Costco')).toBeInTheDocument()
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+    })
+
+    it('user can stock a VENDORLESS item from the no-vendor cart and it lands in the cart list itself', async () => {
+      // Given Salt carries no vendor and is stocked only at the Office
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Salt', tagIds: [], vendorIds: [], ...stockFields },
+        office.id,
+      )
+
+      // When the user stocks it here from the no-vendor cart
+      renderVendorCart('no-vendor', 'salt')
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Add to My Home: Salt' }),
+      )
+
+      // Then it goes straight into the cart's own list — it is vendorless, so
+      // this cart IS its group and there is no second step to take
+      expect(
+        await screen.findByRole('checkbox', { name: /salt/i }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
     })
   })
 ```
@@ -1179,10 +1287,11 @@ import { useItemSearchTail } from '@/hooks/useItemSearchTail'
 
   const clearTailPending = () => setTailPendingId(null)
 
-  // Bucket 2's action. Suppressed on the no-vendor cart (see the render
-  // below): its group is "items with no vendor at all", so an "apply" there
-  // would mean stripping every vendor from the item — destructive, not
-  // additive, and the opposite of every other bucket-2 action in the feature.
+  // Bucket 2's action on a real vendor cart. The no-vendor cart gets a NOTE
+  // instead (see `renderVendorsNote` below): its group is "items with no
+  // vendor at all", so an "apply" there would mean stripping every vendor from
+  // the item — destructive, not additive, and the opposite of every other
+  // bucket-2 action in the feature.
   function handleApplyVendor(item: PantryItem) {
     if (!cartVendorId) return
     setTailPendingId(item.id)
@@ -1207,12 +1316,28 @@ import { useItemSearchTail } from '@/hooks/useItemSearchTail'
     )
   }
 
+  // The no-vendor cart's bucket 2 is inert but never silent: each row says
+  // which vendor groups already hold the item. Vendor names render as stored
+  // (`normal-case`) — they are user-specified and may use intentional casing.
+  const renderVendorsNote = (item: PantryItem) => (
+    <span className="normal-case">
+      {t('items.searchTail.inVendors', {
+        vendors: vendors
+          .filter((v) => (item.vendorIds ?? []).includes(v.id))
+          .map((v) => v.name)
+          .join(', '),
+      })}
+    </span>
+  )
+
   // Local-mode only (useAddItemToLocation throws in cloud), and gated on the
   // active location resolving because its name is in the button label — the
   // same guard NewItemDialog applies for the same reason.
   const canAddToLocation = !isCloud && !!activeLocation
+  // Bucket 2 renders on BOTH cart kinds — with a button on a vendor cart, with
+  // a note on the no-vendor one — so it always counts toward the tail.
   const renderedTailCount =
-    (cartVendorId ? sortedTailInLocation.length : 0) +
+    sortedTailInLocation.length +
     (canAddToLocation ? sortedTailNotStockedHere.length : 0)
 
   // Tail rows are not cart rows: no checkbox, and for a not-stocked-here item
@@ -1258,7 +1383,7 @@ import { useItemSearchTail } from '@/hooks/useItemSearchTail'
                     icon: <ArrowUpFromLine />,
                   },
                 }
-              : {})}
+              : { groupNote: renderVendorsNote })}
             {...(canAddToLocation
               ? {
                   addToLocationAction: {
@@ -1285,7 +1410,7 @@ import { useItemSearchTail } from '@/hooks/useItemSearchTail'
 - [ ] **Step 5: Run the tests and verify they pass**
 
 Run: `(cd apps/web && pnpm vitest run "src/routes/shopping/\$vendorId.test.tsx")`
-Expected: PASS — all pre-existing tests plus the six new ones.
+Expected: PASS — all pre-existing tests plus the eight new ones.
 
 - [ ] **Step 6: Run the mutation checks**
 
@@ -1293,9 +1418,10 @@ Expected: PASS — all pre-existing tests plus the six new ones.
 |---|---|---|
 | 1 | Revert `hasExactMatch={hasExactGlobalMatch}` to the old `searchedItems.some(...)` value | `user is not offered Create for a name that exists globally but is not stocked here (#245)` |
 | 2 | Make `handleAddToLocation` also apply the vendor (add an `updateItem.mutate` for `vendorIds`) | `...it does NOT also get the vendor` — one press must not reach the cart |
-| 3 | Remove the `{...(cartVendorId ? {groupAction…} : {})}` guard so `groupAction` is always passed | `user sees no in-list section on the no-vendor cart` |
-| 4 | Delete the whole `{search.trim() && <ItemSearchTail …/>}` block | `user can see an item stocked only at another location...` |
-| 5 | Drop `renderedTailCount === 0` from the empty-state gate | `user can see an item stocked only at another location...` (its `queryByText('No items yet')` assertion) |
+| 3 | Pass `groupAction` unconditionally (drop the `cartVendorId` ternary, so the no-vendor cart gets a button) | `user sees which vendor groups hold an item, not an action, on the no-vendor cart` |
+| 4 | Make `renderVendorsNote` return `null` | same test — the row must explain itself, not go silent |
+| 5 | Delete the whole `{search.trim() && <ItemSearchTail …/>}` block | `user can see an item stocked only at another location...` |
+| 6 | Drop `renderedTailCount === 0` from the empty-state gate | `user can see an item stocked only at another location...` (its `queryByText('No items yet')` assertion) |
 
 Restore after each; report each red.
 
@@ -1304,7 +1430,11 @@ Restore after each; report each red.
 In `apps/web/src/routes/CLAUDE.md`, in the shopping cart-page section, add:
 
 ```md
-**Search grows a two-section tail (unified item search, PR A).** While `?q=` is non-empty the cart page renders `ItemSearchTail` below its own list: "N not in this list" (stocked in the active location, does not carry this vendor → `Apply {vendor}`, which appends the vendor id and drops the item into the cart's pending list) then "N not stocked here" (exists in the global catalog with no `ItemStock` here → `Add to {location}`, which stocks it via `useAddItemToLocation` and **nothing else**). The second action deliberately does not also apply the vendor: the row relocates into the section above, where the vendor is a separate press — stocking an item at a location is meant to be prudent and explicit rather than accidental. The empty state is suppressed whenever the tail has rows, so a search that used to look empty now shows what actually exists. **`hasExactMatch` on the toolbar reads the GLOBAL catalog** (`useItemSearchTail`'s `hasExactGlobalMatch`), not the vendor∩location-filtered visible set — that is the #245 fix: create-from-search keyed off the visible set would mint a second global `Item` for a name that already existed elsewhere, and a duplicate global `Item` follows the user to every location. The `no-vendor` cart renders only the second section — its group is "items with no vendor at all", so a group action there would have to *strip* every vendor from the item. Cloud mode renders only the first section (one isolated `isCloud` bypass in `useItemSearchTail`; `useAddItemToLocation` throws there). Pantry surfaces gain the same tail in PRs B and C.
+**Search grows a two-section tail (unified item search, PR A).** While `?q=` is non-empty the cart page renders `ItemSearchTail` below its own list: "N not in this list" (stocked in the active location, does not carry this vendor → `Apply {vendor}`, which appends the vendor id and drops the item into the cart's pending list) then "N not stocked here" (exists in the global catalog with no `ItemStock` here → `Add to {location}`, which stocks it via `useAddItemToLocation` and **nothing else**). The second action deliberately does not also apply the vendor: the row relocates into the section above, where the vendor is a separate press — stocking an item at a location is meant to be prudent and explicit rather than accidental. The empty state is suppressed whenever the tail has rows, so a search that used to look empty now shows what actually exists. **`hasExactMatch` on the toolbar reads the GLOBAL catalog** (`useItemSearchTail`'s `hasExactGlobalMatch`), not the vendor∩location-filtered visible set — that is the #245 fix: create-from-search keyed off the visible set would mint a second global `Item` for a name that already existed elsewhere, and a duplicate global `Item` follows the user to every location.
+
+**The `no-vendor` cart renders all three sections, and its middle one is inert.** Its group is "items with no vendor at all", so a group action there would have to *strip* every vendor from the item — destructive, not additive. Section 2 therefore passes `groupNote` instead of `groupAction`: each row renders `t('items.searchTail.inVendors')` naming the vendor groups that already hold the item (`normal-case`, per the vendor-name display rule) rather than a button. Section 3 is unrestricted — `Add to {location}` is group-agnostic — and after that press the item lands in section 1 if it is vendorless or section 2 if it carries vendors, which falls out of the existing predicates with no extra branch.
+
+Cloud mode renders only the first section (one isolated `isCloud` bypass in `useItemSearchTail`; `useAddItemToLocation` throws there). Pantry surfaces gain the same tail in PRs B and C.
 ```
 
 - [ ] **Step 8: Run the verification gate**
@@ -1537,6 +1667,30 @@ test('user can create an item when nothing in the catalog matches', async ({
   // Then Create is offered — suppressing it here would be a dead end
   await expect(shopping.getCreateItemButton()).toBeVisible()
 })
+
+test('user stocking a vendored item from the no-vendor cart sees it filed under its vendor', async ({
+  page,
+}) => {
+  const shopping = new ShoppingPage(page)
+
+  // Given Milk carries Costco and is stocked only at the Office
+  // When the user searches for it on the no-vendor cart
+  await shopping.searchInCart('no-vendor', 'milk')
+
+  // Then it is offered under "not stocked here"
+  await expect(shopping.getNotStockedHereDivider()).toBeVisible()
+
+  // When the user stocks it here
+  await shopping.getTailActionButton('Add to My Home', 'Milk').click()
+
+  // Then it moves into the middle section, which explains where it went
+  // rather than offering an action — joining THIS group would mean stripping
+  // Costco off the item
+  await expect(shopping.getNotInThisListDivider()).toBeVisible()
+  await expect(page.getByText('In Costco')).toBeVisible()
+  await expect(shopping.getNotStockedHereDivider()).toHaveCount(0)
+  await expect(shopping.getTailActionButton('Apply', 'Milk')).toHaveCount(0)
+})
 ```
 
 - [ ] **Step 3: Run the E2E specs**
@@ -1562,14 +1716,21 @@ and C (vendor + recipe detail) remain. Do not re-litigate the decisions below.
 
 In the **Phasing** table, change `| **A** |` to `| **A** ✅ |`.
 
-Add to the **Open items → Decided without asking** list:
+Add to the **Resolved 2026-08-26** list:
 
 ```md
-5. The **no-vendor cart renders only the not-stocked-here section** — its group
-   is "items with no vendor at all", so a group action there would have to
-   *strip* every vendor from the item: destructive, not additive, and the
-   opposite of every other bucket-2 action. Bucket 3 is unrestricted there,
-   since `Add to {location}` is group-agnostic.
+- **The no-vendor cart renders all three sections, with an inert middle one** —
+  ruled by ETBlue. Order: vendorless-stocked-here (the cart's own list), then
+  vendored-stocked-here, then global. The middle section carries **explanatory
+  text naming the vendor groups that hold the item**, not a button: joining
+  this group would mean *stripping* every vendor from the item — destructive,
+  not additive. Bucket 3 is unrestricted (`Add to {location}` is
+  group-agnostic); after that press the item lands in section 1 if vendorless
+  or section 2 if vendored, which falls out of the existing predicates.
+- **In-group-but-not-stocked-here going straight from bucket 3 to bucket 1** is
+  confirmed correct (ETBlue, 2026-08-26). It is a consequence of the
+  `inGroupIds` contract — callers pass the ids the page ALREADY renders, which
+  are already location-scoped — not a special case anyone has to code.
 ```
 
 - [ ] **Step 5: Add the INDEX.md row**
@@ -1604,6 +1765,7 @@ git commit -m "test(shopping): cover the unified item search tail end to end"
 | "flat pantry needs no special case" | Falls out of the `inGroupIds` contract — no code needed; PR B exercises it |
 | The two-step gate | Task 2's ordering comment; Task 3 mutation #2 + the second E2E test |
 | Actions table (cart row: `Apply {vendor}`) | Task 3 Step 4g |
+| No-vendor cart: three sections, inert middle one (ETBlue 2026-08-26) | Task 2's `groupNote` slot; Task 3 Step 4g's `renderVendorsNote` + three route tests + one E2E test |
 | Bucket 3 always `Add to {location}` | Task 3 Step 4i |
 | Filter shelves / the per-axis picker | **PR B** — out of scope here (no shelf surface in PR A) |
 | Empty result → create (the #245 fix) | Task 1's `hasExactGlobalMatch`; Task 3 Step 4h + mutation #1 |
