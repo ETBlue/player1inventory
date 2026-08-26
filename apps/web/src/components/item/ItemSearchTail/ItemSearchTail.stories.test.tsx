@@ -47,8 +47,14 @@ describe('ItemSearchTail stories smoke tests', () => {
 
   it('Pending disables every action button in the section', () => {
     render(<Pending />)
+    // The pending row itself — Button would disable this one anyway via its
+    // internal `isLoading || disabled`, so it cannot prove the prop works...
     expect(
       screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeDisabled()
+    // ...the SIBLING is the one that proves it: nothing else disables it.
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Oat Milk' }),
     ).toBeDisabled()
   })
 

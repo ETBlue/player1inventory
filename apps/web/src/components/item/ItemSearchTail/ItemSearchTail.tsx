@@ -62,12 +62,18 @@ export function ItemSearchTail({
 }: ItemSearchTailProps) {
   const { t } = useTranslation()
 
+  // Each section is "on" only when it has both rows to show and a way to act
+  // on them. Deriving that once — rather than testing it in the boolean and
+  // again in the JSX — keeps the answer in a single place, and lets the
+  // derived value carry the non-undefined action into the render.
+  const notStockedHereAction =
+    addToLocationAction && notStockedHereItems.length > 0
+      ? addToLocationAction
+      : null
   const showInLocation =
     (!!groupAction || !!groupNote) && inLocationItems.length > 0
-  const showNotStockedHere =
-    !!addToLocationAction && notStockedHereItems.length > 0
 
-  if (!showInLocation && !showNotStockedHere) return null
+  if (!showInLocation && !notStockedHereAction) return null
 
   const actionButton = (item: PantryItem, action: ItemSearchTailAction) => (
     <Button
@@ -120,13 +126,13 @@ export function ItemSearchTail({
           )}
         </>
       )}
-      {showNotStockedHere && addToLocationAction && (
+      {notStockedHereAction && (
         <>
           <ListSectionDivider>
             {t('common.notStockedHere', { count: notStockedHereItems.length })}
           </ListSectionDivider>
           {notStockedHereItems.map((item) =>
-            renderRow(item, actionButton(item, addToLocationAction)),
+            renderRow(item, actionButton(item, notStockedHereAction)),
           )}
         </>
       )}
