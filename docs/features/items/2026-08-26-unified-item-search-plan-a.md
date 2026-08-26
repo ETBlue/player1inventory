@@ -1527,7 +1527,12 @@ const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home"
 const OFFICE = 'office-loc'
 const COSTCO = 'vendor-costco'
 
-const now = new Date().toISOString()
+// A real Date, NOT an ISO string. Playwright serializes Dates through
+// `page.evaluate` intact, and `addItemToLocation` calls `.getTime()` on a
+// stock row's `updatedAt` when picking a source row to copy from — a string
+// there throws mid-click, which is exactly what the "Add to My Home" presses
+// below exercise. Every existing seed spec passes Dates for the same reason.
+const now = new Date()
 
 test.beforeEach(async ({ page }) => {
   // Prevent the empty-data redirect to /onboarding so tests can navigate freely.
@@ -1689,7 +1694,11 @@ test('user stocking a vendored item from the no-vendor cart sees it filed under 
   await expect(shopping.getNotInThisListDivider()).toBeVisible()
   await expect(page.getByText('In Costco')).toBeVisible()
   await expect(shopping.getNotStockedHereDivider()).toHaveCount(0)
-  await expect(shopping.getTailActionButton('Apply', 'Milk')).toHaveCount(0)
+  // The label must be the REAL one a vendor cart would render — asserting a
+  // count of 0 against a name no button ever carries proves nothing.
+  await expect(
+    shopping.getTailActionButton('Apply Costco', 'Milk'),
+  ).toHaveCount(0)
 })
 ```
 
