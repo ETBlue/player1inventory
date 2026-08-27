@@ -506,6 +506,30 @@ describe('importLocalData', () => {
     expect(cartItems.map((c) => c.id)).toContain('ci-1')
   })
 
+  it('user can import a cart whose lastPurchasedAt is epoch millis', async () => {
+    // Given a backup exported from cloud while `Cart.lastPurchasedAt` shipped as
+    // epoch millis — the digit-string form, not ISO 8601
+    const payload = legacyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      shoppingCarts: [
+        { ...makeShoppingCart('no-vendor'), lastPurchasedAt: '1787827334343' },
+      ],
+      cartItems: [],
+    })
+
+    // When importing
+    await importLocalData(payload, 'skip')
+
+    // Then lastPurchasedAt lands as a valid Date, not an Invalid Date
+    const carts = await db.shoppingCarts.toArray()
+    expect(carts).toHaveLength(1)
+    expect(carts[0].lastPurchasedAt).toBeInstanceOf(Date)
+    expect(Number.isNaN((carts[0].lastPurchasedAt as Date).getTime())).toBe(
+      false,
+    )
+    expect((carts[0].lastPurchasedAt as Date).getTime()).toBe(1787827334343)
+  })
+
   it('user can import and skip conflicting entities', async () => {
     // Given a database with an existing item
     await db.items.add(makeItem('item-1', 'Milk'))
@@ -1629,6 +1653,28 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.id).toBe('cart-1')
     // lastPurchasedAt (the only optional permanent-cart field) is converted to ISO
     expect(result.lastPurchasedAt).toBe('2026-03-01T10:00:00.000Z')
+  })
+
+  it('toShoppingCartInput normalizes an epoch-millis lastPurchasedAt to ISO', () => {
+    // Given a cart out of a backup exported while the cloud shipped
+    // `lastPurchasedAt` as epoch millis (no `Cart` type resolver on the server)
+    const rawCart = { id: 'cart-1', lastPurchasedAt: '1787827334343' }
+
+    // When mapping it back to ShoppingCartInput for bulkUpsertShoppingCarts
+    const result = toShoppingCartInput(rawCart)
+
+    // Then it is ISO 8601, not the digit-string — the server does
+    // `new Date(lastPurchasedAt)` on it, which would otherwise be an Invalid
+    // Date and fail the Prisma write
+    expect(result.lastPurchasedAt).toBe(new Date(1787827334343).toISOString())
+  })
+
+  it('toShoppingCartInput drops an unparseable lastPurchasedAt', () => {
+    const result = toShoppingCartInput({
+      id: 'cart-1',
+      lastPurchasedAt: 'nope',
+    })
+    expect(result).not.toHaveProperty('lastPurchasedAt')
   })
 
   it('toCartItemInput strips server-only fields', () => {

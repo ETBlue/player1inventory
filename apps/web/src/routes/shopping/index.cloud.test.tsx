@@ -112,8 +112,8 @@ describe('Shopping index page — cloud mode', () => {
     vi.clearAllMocks()
   })
 
-  const renderShoppingIndex = () => {
-    const history = createMemoryHistory({ initialEntries: ['/shopping'] })
+  const renderShoppingIndex = (initialEntry = '/shopping') => {
+    const history = createMemoryHistory({ initialEntries: [initialEntry] })
     const router = createRouter({
       routeTree,
       history,
@@ -181,5 +181,42 @@ describe('Shopping index page — cloud mode', () => {
     // inactive segment anywhere on the page.
     expect(await screen.findByText(/2 items · 1 in cart/)).toBeInTheDocument()
     expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+  })
+
+  it('user can sort vendor cards by last purchased in cloud mode', async () => {
+    // Given two cloud vendors whose bare-id carts carry different
+    // lastPurchasedAt values, seeded so the alphabetically FIRST vendor is the
+    // one purchased LONGEST ago — a comparator that returns 0 for every pair
+    // leaves them in this (wrong) order, so this test cannot pass vacuously.
+    const ALPHA_VENDOR = { id: 'vendor-alpha', name: 'Alpha Mart' }
+    const ZETA_VENDOR = { id: 'vendor-zeta', name: 'Zeta Mart' }
+    mockUseGetVendorsQuery.mockReturnValue({
+      ...emptyQuery,
+      data: { vendors: [ALPHA_VENDOR, ZETA_VENDOR] },
+    })
+    // Bare cart ids again — no `${locationId}:` prefix in the cloud.
+    mockUseAllCartsQuery.mockReturnValue({
+      ...emptyQuery,
+      data: {
+        allCarts: [
+          { id: ALPHA_VENDOR.id, lastPurchasedAt: '2025-01-01T00:00:00.000Z' },
+          { id: ZETA_VENDOR.id, lastPurchasedAt: '2025-06-01T00:00:00.000Z' },
+          { id: 'no-vendor', lastPurchasedAt: null },
+        ],
+      },
+    })
+    mockUseAllCartItemsQuery.mockReturnValue({
+      ...emptyQuery,
+      data: { allCartItems: [] },
+    })
+
+    renderShoppingIndex('/shopping?sort=recent&dir=desc')
+
+    // Then the more recently purchased vendor (Zeta) renders above Alpha
+    const zeta = await screen.findByText(/zeta mart/i)
+    const alpha = await screen.findByText(/alpha mart/i)
+    expect(zeta.compareDocumentPosition(alpha)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
   })
 })

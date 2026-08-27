@@ -149,7 +149,7 @@ Two-level route structure (mirrors `items/` pattern):
 Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownMenu + direction toggle in the top toolbar.
 
 **Sort options** (persisted in `?sort` + `?dir` URL params):
-- `'recent'` (default desc): sorted by most recent `completedAt` across all completed carts per vendor, via `useLastPurchasedByVendor()` — vendors with no completed carts sort to the bottom
+- `'recent'` (default desc): sorted by each vendor cart's `lastPurchasedAt` (stamped on checkout), via `useLastPurchasedByVendor()` — vendors never checked out sort to the bottom (`?? 0`). **That hook is dual-mode.** Local mode reads Dexie's carts for the active location and keys the map by `parseCartId`'s `vendorId`. Cloud mode derives the map from the same `AllCarts` Apollo query `useAllActiveCarts()` already runs — no extra round trip, and `useCheckout()`'s `refetchQueries` already lists `AllCartsDocument`, so a cloud checkout re-sorts the list without any invalidation of its own. **Cloud cart ids are bare** (`'no-vendor'` / `<vendorId>`), so the cloud branch keys on `cart.id` directly and maps `'no-vendor'` → `null` — running `parseCartId` (or prefixing the active location) there yields keys no vendor id matches, and the comparator silently degrades to a no-op
 - `'alpha'`: alphabetical by vendor name
 - `'count'`: total available items descending, scoped to the active location (matches the card's displayed count — see `useVendorCartCounts()` below)
 

@@ -204,6 +204,33 @@ describe('deserializeCart', () => {
     expect(result.lastPurchasedAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
   })
 
+  it('converts an epoch-millis lastPurchasedAt string to Date', () => {
+    // Given a cart as the cloud shipped it while `Cart.lastPurchasedAt` had no
+    // type resolver: epoch millis as a digit-string, not ISO 8601. Every backup
+    // exported in that window still carries this shape.
+    const raw = { id: 'vendor-1', lastPurchasedAt: '1787827334343' }
+
+    // When deserializing
+    const result = deserializeCart(raw)
+
+    // Then it is a valid Date at that instant — never an Invalid Date, whose
+    // NaN getTime() silently defeats the shopping page's last-purchased sort
+    expect(result.lastPurchasedAt).toBeInstanceOf(Date)
+    expect(Number.isNaN((result.lastPurchasedAt as Date).getTime())).toBe(false)
+    expect((result.lastPurchasedAt as Date).getTime()).toBe(1787827334343)
+  })
+
+  it('passes an existing Date through unchanged', () => {
+    const date = new Date('2026-01-01T00:00:00.000Z')
+    const result = deserializeCart({ id: 'vendor-1', lastPurchasedAt: date })
+    expect(result.lastPurchasedAt).toEqual(date)
+  })
+
+  it('never emits an Invalid Date for an unparseable lastPurchasedAt', () => {
+    const result = deserializeCart({ id: 'vendor-1', lastPurchasedAt: 'nope' })
+    expect(result.lastPurchasedAt).toBeUndefined()
+  })
+
   it('leaves lastPurchasedAt undefined when absent', () => {
     const raw = { id: 'vendor-1' }
     const result = deserializeCart(raw)

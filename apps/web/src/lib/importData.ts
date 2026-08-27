@@ -58,7 +58,7 @@ import type {
   Vendor,
 } from '@/types'
 import { DEFAULT_LOCATION_ID } from '@/types'
-import { deserializeRecipe } from './deserialization'
+import { deserializeRecipe, parseWireDate } from './deserialization'
 import type { ExportPayload } from './exportData'
 
 export type ImportStrategy = 'skip' | 'replace' | 'clear'
@@ -493,10 +493,12 @@ function pickLocationId(
 // written back into the `shoppingCarts: 'id'` store.
 function deserializeImportedCart(cart: Record<string, unknown>): ShoppingCart {
   const result: ShoppingCart = { id: cart.id as string }
-  const raw = cart.lastPurchasedAt
-  if (raw != null) {
-    result.lastPurchasedAt = raw instanceof Date ? raw : new Date(raw as string)
-  }
+  // `parseWireDate` handles both an ISO string and the epoch-millis
+  // digit-string that cloud backups exported between Jun 10 2026 and the
+  // restoration of the server's `Cart` type resolver still carry — plain
+  // `new Date(digits)` makes an Invalid Date out of the latter.
+  const lastPurchasedAt = parseWireDate(cart.lastPurchasedAt)
+  if (lastPurchasedAt) result.lastPurchasedAt = lastPurchasedAt
   return result
 }
 
@@ -629,10 +631,11 @@ export function toInventoryLogInput(log: Record<string, unknown>) {
 // Old backups that still carry those stale fields are tolerated — only the
 // permitted fields are mapped through.
 export function toShoppingCartInput(cart: Record<string, unknown>) {
-  const lastPurchasedAt =
-    cart.lastPurchasedAt instanceof Date
-      ? cart.lastPurchasedAt.toISOString()
-      : ((cart.lastPurchasedAt as string | null | undefined) ?? undefined)
+  // Always normalize to ISO. A backup exported while the cloud shipped
+  // `lastPurchasedAt` as epoch millis carries a digit-string, and passing that
+  // through verbatim makes `bulkUpsertShoppingCarts` run `new Date(digits)` →
+  // Invalid Date → Prisma write error. An unparseable value is dropped.
+  const lastPurchasedAt = parseWireDate(cart.lastPurchasedAt)?.toISOString()
   return {
     id: cart.id as string,
     ...(lastPurchasedAt != null ? { lastPurchasedAt } : {}),

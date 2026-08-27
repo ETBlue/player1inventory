@@ -534,7 +534,7 @@ export function useLastPurchasedByVendor() {
   const isCloud = mode === 'cloud'
   const { activeLocationId } = useActiveLocation()
 
-  return useQuery({
+  const local = useQuery({
     queryKey: [
       'cart',
       'last-purchased-by-vendor',
@@ -543,4 +543,33 @@ export function useLastPurchasedByVendor() {
     queryFn: () => getLastPurchasedByVendor(activeLocationId),
     enabled: !isCloud,
   })
+
+  // Same query useAllActiveCarts runs, so Apollo serves it from cache — no
+  // extra round trip — and checkout's refetchQueries already lists AllCarts,
+  // so the map refreshes on checkout without invalidation of its own.
+  const cloud = useAllCartsQuery({ skip: !isCloud })
+
+  if (isCloud) {
+    // Cloud cart ids are **bare** (`'no-vendor'` / `<vendorId>`) — there is no
+    // `${locationId}:` prefix to parse, so `parseCartId` must not be used here
+    // (see the note in routes/shopping/index.tsx).
+    const map = new Map<string | null, Date | null>()
+    for (const cart of cloud.data?.allCarts ?? []) {
+      const { lastPurchasedAt } = deserializeCart(
+        cart as Record<string, unknown>,
+      )
+      map.set(cart.id === 'no-vendor' ? null : cart.id, lastPurchasedAt ?? null)
+    }
+    return {
+      data: map,
+      isLoading: cloud.loading,
+      isError: !!cloud.error,
+    }
+  }
+
+  return {
+    data: local.data,
+    isLoading: local.isPending ?? false,
+    isError: local.isError,
+  }
 }
