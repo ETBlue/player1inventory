@@ -164,6 +164,82 @@ test.describe('items stock tab — number input editing', () => {
       .toBe(5)
   })
 
+  // Task 2 rebuilt Target Quantity and Refill When Below onto the shared
+  // QuantityStepper (+/- buttons around the input), replacing the old
+  // grid-cols-2 pair of plain number inputs. This is the round-trip guard for
+  // that rebuild: it drives the buttons (not the keyboard), saves, and
+  // re-navigates to a fresh mount of the tab so the assertion reads values
+  // the loader pulled back off IndexedDB — not values still sitting in the
+  // component's already-correct in-memory state. A stepper whose `onStep`
+  // got disconnected from its input, or a submit that dropped the field,
+  // would still show the right number on screen right up until save; only
+  // the reload would catch it.
+  test('user can adjust Target and Refill with the +/- steppers and have them persist through save and reload', async ({
+    page,
+    baseURL,
+  }) => {
+    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+
+    // Given Milk is stocked at My Home with Target and Refill both at 0
+    await seedFixture(page)
+    const form = new StockFormPage(page)
+    await form.navigateTo(ITEM)
+
+    const targetInput = form.getTargetInput()
+    const refillInput = form.getRefillInput()
+    await expect(targetInput).toHaveValue('0')
+    await expect(refillInput).toHaveValue('0')
+
+    // And the '-' buttons are disabled at 0 (the QuantityStepper clamp)
+    await expect(form.getTargetDecreaseButton()).toBeDisabled()
+    await expect(form.getRefillDecreaseButton()).toBeDisabled()
+
+    // When the user clicks Increase Target three times and Decrease Target once
+    await form.getTargetIncreaseButton().click()
+    await form.getTargetIncreaseButton().click()
+    await form.getTargetIncreaseButton().click()
+    await form.getTargetDecreaseButton().click()
+
+    // Then Target reads 2 — proving the buttons drive the field's value
+    await expect(targetInput).toHaveValue('2')
+
+    // When the user clicks Increase Refill twice
+    await form.getRefillIncreaseButton().click()
+    await form.getRefillIncreaseButton().click()
+
+    // Then Refill reads 2, and the '-' button is enabled again now the value moved off 0
+    await expect(refillInput).toHaveValue('2')
+    await expect(form.getRefillDecreaseButton()).toBeEnabled()
+
+    // And the form is dirty, so Save is offered
+    await expect(form.getSaveButton()).toBeEnabled()
+
+    // When the user saves
+    const beforeSaveUrl = page.url()
+    await form.save()
+    await page.waitForURL((url) => url.toString() !== beforeSaveUrl, {
+      timeout: 10000,
+    })
+
+    // Then the new quantities are persisted to this location's stock row —
+    // not merely reflected on screen
+    await expect
+      .poll(async () => {
+        const stocks = await readRows(page, 'itemStocks')
+        const stock = stocks.find((s) => s.locationId === HOME)
+        return { target: stock?.targetQuantity, refill: stock?.refillThreshold }
+      })
+      .toEqual({ target: 2, refill: 2 })
+
+    // When the Stock tab is freshly re-navigated to (a new mount, reading
+    // whatever the loader pulls back off IndexedDB)
+    await form.navigateTo(ITEM)
+
+    // Then it shows the persisted values — the round trip through save held
+    await expect(form.getTargetInput()).toHaveValue('2')
+    await expect(form.getRefillInput()).toHaveValue('2')
+  })
+
   test('user can type a decimal into Unpacked without it being rounded mid-keystroke', async ({
     page,
     baseURL,
