@@ -134,3 +134,40 @@ no longer reads last — it reads **first**, on both `QuickUpdateDialog` and
   previous addendum is superseded by this one.
 - Document order is re-pinned by tests in `QuickUpdateDialog.test.tsx` and
   `ItemForm.test.tsx`.
+
+## Addendum — 2026-08-27 (Expires on added; the 2026-05-31 exclusion reversed)
+
+A fifth change: the pantry dialog now also renders the per-location due date,
+reversing the original decision recorded in
+`2026-05-31-brainstorming-quick-update-dialog.md` that "manual updates from the
+pantry quick-update dialog should NOT affect `dueDate`." A short forward-pointer
+note was added at the end of that file rather than editing its Q&A — the same
+convention this document already follows for its own history.
+
+- **Gate:** the field renders only when `item.expirationMode === 'date'` — the
+  same global gate `ItemForm`'s Stock tab uses. An item in `'days from purchase'`
+  or `'disabled'` mode never sees it, exactly as before.
+- **Position:** last, after the four-row stepper grid, at full width — the
+  pantry-page mirror of the Stock tab's own last block (see the addendum
+  immediately above: "the Stock tab now renders progress bar, then the four
+  fields, then 'Expires on'").
+- **Payload:** `onSubmit` widens again, to
+  `{ packedQuantity, unpackedQuantity, targetQuantity, refillThreshold, dueDate? }`.
+  The `dueDate` key is present only when the field is rendered (mode ===
+  `'date'`) — `toUpdateItemInput()` (cloud) and `writeItemUpdate()` /
+  `upsertItemStock()` (local) both read a key's *absence* as "leave alone" and
+  its *presence*, even as `undefined`, as "clear it," so an unconditional key
+  would have wiped the stored date on every Update press for an item in another
+  mode. All four pantry views now forward the dialog's `onSubmit` object as-is
+  (cast to `Partial<StockFields>`) rather than re-destructuring named fields, so
+  this conditional presence survives the forward untouched.
+- **i18n:** the label/hint strings already existed as
+  `items.form.expirationDueDate.label` / `.hint` for `ItemForm`'s copy of this
+  field. Rather than duplicate them under a second `pantry.quickUpdate.*` pair,
+  both keys were promoted to `common.expiresOn` / `common.expiresOnHint` and
+  both callers now point at the promoted pair — see `i18n/CLAUDE.md`.
+- Covered by a new describe block in `QuickUpdateDialog.test.tsx` (render gate,
+  stored value, edit, clear, `isUntouched`, and the no-`dueDate`-key case for a
+  non-date-mode item) plus one new test per pantry view test file proving the
+  forward survives the view layer, and a new `WithExpirationDate` story +
+  smoke-test pair.
