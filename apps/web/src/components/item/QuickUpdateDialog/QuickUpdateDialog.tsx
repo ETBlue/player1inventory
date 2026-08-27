@@ -208,6 +208,36 @@ export function QuickUpdateDialog({
         </DialogHeader>
 
         <DialogMain className="space-y-4">
+          {/* Progress bar + clear/fill actions */}
+          <StockProgressRow
+            quantityLabel={quantityLabel}
+            unitLabel={unitLabel}
+            current={localTotal}
+            target={localTarget}
+            status={localProgressStatus}
+            targetUnit={item.targetUnit}
+            packed={localDisplayPacked}
+            unpacked={localUnpacked}
+            {...(item.measurementUnit
+              ? { measurementUnit: item.measurementUnit }
+              : {})}
+            {...(item.amountPerPackage
+              ? { amountPerPackage: item.amountPerPackage }
+              : {})}
+            onClear={() => {
+              setLocalPacked(0)
+              setLocalUnpacked(0)
+            }}
+            onFill={() => {
+              setLocalPacked(fillToFullState.packedQuantity)
+              setLocalUnpacked(fillToFullState.unpackedQuantity)
+            }}
+            clearDisabled={isPending || isAtZero}
+            fillDisabled={isPending || isAtFull}
+            clearLabel={t('common.clear')}
+            fillLabel={t('common.fillToFull')}
+          />
+
           <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
             {/* Stock settings — the same per-location target/refill pair the item
                 form owns, editable here so a low-stock warning can be tuned from
@@ -374,36 +404,6 @@ export function QuickUpdateDialog({
               {t('pantry.quickUpdate.pack')}
             </Button>
           </div>
-
-          {/* Progress bar + clear/fill actions */}
-          <StockProgressRow
-            quantityLabel={quantityLabel}
-            unitLabel={unitLabel}
-            current={localTotal}
-            target={localTarget}
-            status={localProgressStatus}
-            targetUnit={item.targetUnit}
-            packed={localDisplayPacked}
-            unpacked={localUnpacked}
-            {...(item.measurementUnit
-              ? { measurementUnit: item.measurementUnit }
-              : {})}
-            {...(item.amountPerPackage
-              ? { amountPerPackage: item.amountPerPackage }
-              : {})}
-            onClear={() => {
-              setLocalPacked(0)
-              setLocalUnpacked(0)
-            }}
-            onFill={() => {
-              setLocalPacked(fillToFullState.packedQuantity)
-              setLocalUnpacked(fillToFullState.unpackedQuantity)
-            }}
-            clearDisabled={isPending || isAtZero}
-            fillDisabled={isPending || isAtFull}
-            clearLabel={t('common.clear')}
-            fillLabel={t('common.fillToFull')}
-          />
         </DialogMain>
 
         <DialogFooter>

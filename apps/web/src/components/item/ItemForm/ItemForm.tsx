@@ -713,6 +713,33 @@ export function ItemForm({
 
       {showStock && (
         <div className="space-y-2">
+          <StockProgressRow
+            quantityLabel={progressQuantityLabel}
+            unitLabel={progressUnitLabel}
+            current={currentStockQuantity}
+            target={targetQuantity}
+            status={stockStatus}
+            targetUnit={targetUnit}
+            packed={displayPackedQuantity}
+            unpacked={unpackedQuantity}
+            {...(measurementUnit ? { measurementUnit } : {})}
+            {...(amountPerPackage
+              ? { amountPerPackage: Number(amountPerPackage) }
+              : {})}
+            onClear={() => {
+              setPackedQuantity(0)
+              setUnpackedQuantity(0)
+            }}
+            onFill={() => {
+              setPackedQuantity(fillToFullState.packedQuantity)
+              setUnpackedQuantity(fillToFullState.unpackedQuantity)
+            }}
+            clearDisabled={isPending || isStockAtZero}
+            fillDisabled={isPending || isStockAtFull}
+            clearLabel={t('common.clear')}
+            fillLabel={t('common.fillToFull')}
+          />
+
           <div>
             <Label htmlFor="targetQuantity">
               {t('items.form.targetQuantity.label')}{' '}
@@ -903,33 +930,6 @@ export function ItemForm({
               {t('items.form.unpackedQuantity.hint')}
             </p>
           </div>
-
-          <StockProgressRow
-            quantityLabel={progressQuantityLabel}
-            unitLabel={progressUnitLabel}
-            current={currentStockQuantity}
-            target={targetQuantity}
-            status={stockStatus}
-            targetUnit={targetUnit}
-            packed={displayPackedQuantity}
-            unpacked={unpackedQuantity}
-            {...(measurementUnit ? { measurementUnit } : {})}
-            {...(amountPerPackage
-              ? { amountPerPackage: Number(amountPerPackage) }
-              : {})}
-            onClear={() => {
-              setPackedQuantity(0)
-              setUnpackedQuantity(0)
-            }}
-            onFill={() => {
-              setPackedQuantity(fillToFullState.packedQuantity)
-              setUnpackedQuantity(fillToFullState.unpackedQuantity)
-            }}
-            clearDisabled={isPending || isStockAtZero}
-            fillDisabled={isPending || isStockAtFull}
-            clearLabel={t('common.clear')}
-            fillLabel={t('common.fillToFull')}
-          />
 
           {/* The due date is the one expiration field that is genuinely
               per-location — "when THIS one expires". The mode that gates it is

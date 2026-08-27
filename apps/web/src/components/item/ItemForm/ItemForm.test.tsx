@@ -861,7 +861,7 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
 // Task 2: the Stock tab now renders each of the four fields through the
 // shared QuantityStepper, reordered to Target → Refill → Packed → Unpacked,
 // with a StockProgressRow (Clear · bar · label · Fill to Full) previewing the
-// live, not-yet-saved form state below them.
+// live, not-yet-saved form state above them.
 describe('ItemForm — stock tab field order', () => {
   it('renders the four stock fields in Target, Refill, Packed, Unpacked order', () => {
     // Given a stock-only form (no "Expires on" row to interleave)
@@ -891,6 +891,39 @@ describe('ItemForm — stock tab field order', () => {
       'packedQuantity',
       'unpackedQuantity',
     ])
+  })
+
+  it('renders the progress row above the four stock fields', () => {
+    // Given a stock-only form. Fill to Full is the trailing control of the
+    // progress row, so it stands in for the row itself.
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 1,
+          unpackedQuantity: 1,
+          targetQuantity: 4,
+          refillThreshold: 1,
+          consumeAmount: 1,
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // When the progress row's Fill to Full button and the Target field are
+    // located
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+    const targetInput = screen.getByRole('spinbutton', {
+      name: /target quantity/i,
+    })
+
+    // Then the progress row precedes the field, in document order
+    expect(
+      fillToFull.compareDocumentPosition(targetInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 })
 

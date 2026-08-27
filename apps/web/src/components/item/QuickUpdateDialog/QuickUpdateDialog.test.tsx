@@ -489,7 +489,7 @@ describe('QuickUpdateDialog — title', () => {
 })
 
 describe('QuickUpdateDialog — stock settings layout', () => {
-  it('user reads the Target and Refill rows above the quantity rows', () => {
+  it('user reads the progress bar above the Target/Refill/Packed/Unpacked rows', () => {
     // Given the dialog is open
     renderDialog(makeItem())
 
@@ -498,16 +498,16 @@ describe('QuickUpdateDialog — stock settings layout', () => {
     // stands in for the row itself.
     const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
     const order: Node[] = [
+      fillToFull,
       targetInput(),
       refillInput(),
       packedInput(),
       unpackedInput(),
-      fillToFull,
     ]
 
-    // Then each element precedes the next in document order — the two stock
-    // settings lead the grid, the Packed/Unpacked quantities follow, and the
-    // progress bar reading all four of them comes last.
+    // Then each element precedes the next in document order — the progress
+    // bar reading all four values comes first, then the two stock settings
+    // lead the grid, with the Packed/Unpacked quantities following.
     for (let i = 0; i < order.length - 1; i++) {
       const current = order[i] as Node
       const next = order[i + 1] as Node
