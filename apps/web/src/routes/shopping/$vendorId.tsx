@@ -43,6 +43,7 @@ import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
@@ -64,6 +65,7 @@ function VendorCart() {
   const { data: items = [], isLoading, refetch: refetchItems } = useItems()
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
+  const showStock = useShowStock()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
   const { data: vendors = [] } = useVendors()
@@ -236,7 +238,7 @@ function VendorCart() {
         tagTypes={tagTypes}
         showTags={false}
         showTagSummary={false}
-        showStock={isCloud || isStockedHere(item)}
+        showStock={showStock(item)}
       />
     )
   }

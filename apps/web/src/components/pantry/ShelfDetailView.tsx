@@ -11,7 +11,6 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -20,6 +19,7 @@ import {
   useShelvesQuery,
   useUpdateShelfMutation,
 } from '@/hooks/useShelves'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -29,7 +29,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive, isStockedHere } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { PantryItem, StockFields } from '@/types'
@@ -57,8 +57,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const updateShelf = useUpdateShelfMutation()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
+  const showStock = useShowStock()
 
   const {
     sortBy: localSortBy,
@@ -192,7 +191,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
         vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
         recipes={recipeMap.get(item.id) ?? []}
         showTags={isTagsVisible}
-        showStock={isCloud || isStockedHere(item)}
+        showStock={showStock(item)}
       />
     )
   }

@@ -13,11 +13,11 @@ import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ViewToggle } from '@/components/shared/ViewToggle'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -27,7 +27,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive, isStockedHere } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import { getStoredGroupBy, setPantryView } from '@/lib/viewPreference'
 import type { PantryItem, Recipe, StockFields, Vendor } from '@/types'
@@ -42,8 +42,7 @@ export function PantryListView() {
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
   const updateItem = useUpdateItem()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
+  const showStock = useShowStock()
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
@@ -214,7 +213,7 @@ export function PantryListView() {
         activeVendorIds={selectedVendorIds}
         activeRecipeIds={selectedRecipeIds}
         activeTagIds={activeTagIds}
-        showStock={isCloud || isStockedHere(item)}
+        showStock={showStock(item)}
         onTagClick={handleTagClick}
         onVendorClick={handleVendorClick}
         onRecipeClick={handleRecipeClick}
