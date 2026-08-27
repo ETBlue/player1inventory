@@ -135,6 +135,39 @@ faithfully reproduces whatever the list rows do. Recorded here so that the "tail
 match list rows" parity argument, which is the correct argument for the tail, does not
 quietly become the reason the underlying map is never filled in.
 
+## Deferred — the tail's group action re-enables before its refetch lands
+
+Surfaced by the Task 3 review. `useUpdateRecipe`'s local `onSuccess`
+(`hooks/useRecipes.ts:152-156`) calls `queryClient.invalidateQueries(...)` three times but
+**returns nothing**, so TanStack Query does not await the refetch: `mutateAsync` resolves
+as soon as the Dexie write is done. `useItemSearchTailWiring` clears its `pendingItemId`
+in a `finally` immediately after that await
+(`useItemSearchTailWiring.tsx:105-106`), and `ItemSearchTail` gates every row with
+`disabled={!!action.pendingItemId}` (`ItemSearchTail.tsx:103`) — so the whole tail
+re-enables while `recipe` in `RecipeDetailView` may still be the pre-write value. Two
+presses inside that window both build `[...recipe.items, …]` from the same stale array,
+and the second write drops the first item.
+
+Three surfaces carry the same lost-update shape, all of them **local mode only**:
+
+| Surface | Mutation | Array read back stale | Re-entrancy guard |
+| --- | --- | --- | --- |
+| `RecipeDetailView` (PR C, Task 3) | `useUpdateRecipe` | `recipe.items` | one global `pendingItemId`, cleared on `mutateAsync` resolve |
+| `ShelfDetailView` (PR B) | `useUpdateShelf` (`useShelves.ts:171-174`) | `shelf.itemIds` | same — identical wiring hook |
+| `settings/recipes/$id/items.tsx` | `useUpdateRecipe` | `recipeItems` | per-item `savingItemIds`, so two presses on **different** items still race |
+
+The **cloud** path is immune on the recipe surfaces: it passes `awaitRefetchQueries: true`
+(`useRecipes.ts:194`, `:214`), so the Apollo promise does not resolve until the refetch
+has.
+
+The window is narrow — an IndexedDB read on an already-warm cache, between the button
+re-enabling and the next paint — so it is near-unreachable by hand, and no shipped
+behaviour is known to hit it. Not fixed here for that reason, and because the fix is not
+PR C's to make: `return queryClient.invalidateQueries({ queryKey: ['recipes'] })` in
+`useUpdateRecipe`'s `onSuccess` closes both recipe surfaces at once, and the identical
+one-liner in `useUpdateShelf` closes the shelf one. That is a hooks-layer change
+deserving its own test rather than riding along in a tail-wiring PR.
+
 ## File structure
 
 **New**
