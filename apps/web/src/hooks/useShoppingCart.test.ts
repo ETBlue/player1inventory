@@ -8,6 +8,7 @@ import {
   useActiveCart,
   useAddToCart,
   useCheckout,
+  useLastPurchasedByVendor,
   useRemoveFromCart,
   useUpdateCartItem,
 } from './useShoppingCart'
@@ -33,6 +34,11 @@ const mockAbandonCartFn = vi
   .fn()
   .mockResolvedValue({ data: { abandonCart: { id: 'cart-1' } } })
 const mockUseActiveCartQuery = vi.fn()
+const mockUseAllCartsQuery = vi.fn().mockReturnValue({
+  data: undefined,
+  loading: false,
+  error: undefined,
+})
 const mockAddToCartFn = vi
   .fn()
   .mockResolvedValue({ data: { addToCart: { id: 'ci-1' } } })
@@ -48,6 +54,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   return {
     ...original,
     useActiveCartQuery: () => mockUseActiveCartQuery(),
+    useAllCartsQuery: () => mockUseAllCartsQuery(),
     useCartItemsQuery: () => ({
       data: undefined,
       loading: false,
@@ -102,6 +109,47 @@ describe('useActiveCart (cloud mode)', () => {
     expect((cart?.lastPurchasedAt as Date).getTime()).toBe(
       new Date('2026-01-15T10:00:00.000Z').getTime(),
     )
+  })
+})
+
+// ─── useLastPurchasedByVendor ─────────────────────────────────────────────────
+
+describe('useLastPurchasedByVendor (cloud mode)', () => {
+  it('user can sort by last purchased in cloud mode — the map is keyed by bare cart id', async () => {
+    // Given cloud carts as the server returns them: **bare** ids
+    // (`'no-vendor'` / `<vendorId>`), with ISO lastPurchasedAt strings
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseAllCartsQuery.mockReturnValue({
+      data: {
+        allCarts: [
+          { id: 'no-vendor', lastPurchasedAt: '2026-02-02T00:00:00.000Z' },
+          { id: 'vendor-1', lastPurchasedAt: '2026-01-15T10:00:00.000Z' },
+          { id: 'vendor-2', lastPurchasedAt: null },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    // When the hook runs in cloud mode
+    const { result } = renderHook(() => useLastPurchasedByVendor(), {
+      wrapper: createWrapper(),
+    })
+
+    // Then each vendor id maps to its cart's lastPurchasedAt as a Date
+    await waitFor(() => expect(result.current.data?.size).toBe(3))
+    const map = result.current.data as Map<string | null, Date | null>
+    expect(map.get('vendor-1')).toBeInstanceOf(Date)
+    expect((map.get('vendor-1') as Date).getTime()).toBe(
+      new Date('2026-01-15T10:00:00.000Z').getTime(),
+    )
+    // And the no-vendor cart is keyed by `null`, not by the string 'no-vendor'
+    expect(map.has('no-vendor')).toBe(false)
+    expect((map.get(null) as Date).getTime()).toBe(
+      new Date('2026-02-02T00:00:00.000Z').getTime(),
+    )
+    // And a never-purchased cart maps to null
+    expect(map.get('vendor-2')).toBeNull()
   })
 })
 
