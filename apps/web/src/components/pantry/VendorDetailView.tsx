@@ -137,10 +137,17 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   }
 
   // Bucket 2's action on a real vendor page: pressing it APPENDS this vendor
-  // to the item's vendorIds. The dedup check is a defensive no-op — bucket 2
-  // is by construction items outside `inGroupIds` (== the items carrying this
-  // vendor and stocked here) — kept for the same reason the shelf view keeps
-  // its own.
+  // to the item's vendorIds. The dedup check is LOAD-BEARING, not decorative:
+  // it fires during the `useItems` / `useStockedItems` refetch skew, when an
+  // item already carrying this vendor briefly renders in bucket 2 with a live
+  // button. `inGroupIds` is derived from `useStockedItems()` (query key
+  // `['items', 'stocked', {locationId}]`) while the tail's buckets come from
+  // `useItems()` (`['items', {locationId}]`) — two separate cache entries that
+  // a mutation invalidates together but which refetch INDEPENDENTLY. In the
+  // window where `useItems` has landed and `useStockedItems` has not, the item
+  // is stocked-here per the tail (so: bucket 2) yet absent from the stale
+  // `inGroupIds` (so: still offered the action). Pressing it again without
+  // this guard appends a DUPLICATE vendor id. Do not "clean it up".
   async function handleApplyVendor(item: PantryItem) {
     if (isUnsorted || !vendor) return
     if ((item.vendorIds ?? []).includes(vendor.id)) return
@@ -188,7 +195,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   // simply absent for that render. A still-loading `useVendors()` is NOT one
   // of those cases: the `<LoadingSpinner />` below returns before any tail is
   // rendered.
-  const { tailProps } = useItemSearchTailWiring({
+  const { tailProps, hasTail } = useItemSearchTailWiring({
     inGroupIds,
     query: search,
     renderItem: renderTailItemCard,
@@ -299,7 +306,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!trimmedSearch && sortedItems.length === 0 && (
+          {!hasTail && sortedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">

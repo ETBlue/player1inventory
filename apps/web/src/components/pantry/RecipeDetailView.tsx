@@ -151,9 +151,18 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // Bucket 2's action on a real recipe page. Membership lives on the RECIPE
   // (`Recipe.items: RecipeItem[]`), not on the item, so this appends a
   // `RecipeItem` and writes the whole array back — the shape
-  // `settings/recipes/$id/items.tsx` already uses. The dedup check is a
-  // defensive no-op (bucket 2 is by construction the items OUTSIDE
-  // `inGroupIds`), kept for the same reason the sibling views keep theirs.
+  // `settings/recipes/$id/items.tsx` already uses. The dedup check is
+  // LOAD-BEARING, and more so here than on any sibling view: it fires during
+  // the `useItems` / `useStockedItems` refetch skew, when an item already in
+  // this recipe briefly renders in bucket 2 with a live button. `inGroupIds`
+  // is derived from `useStockedItems()` (query key `['items', 'stocked',
+  // {locationId}]`) while the tail's buckets come from `useItems()`
+  // (`['items', {locationId}]`) — two separate cache entries that a mutation
+  // invalidates together but which refetch INDEPENDENTLY, so the tail can see
+  // the item as stocked-here (bucket 2) while the stale `inGroupIds` still
+  // omits it (action still offered). Pressing it again without this guard
+  // appends a SECOND `RecipeItem` with the same `itemId`, which cooking then
+  // double-counts as an ingredient. Do not "clean it up".
   async function handleAddToRecipe(item: PantryItem) {
     if (isUnsorted || !recipe) return
     if (recipe.items.some((ri) => ri.itemId === item.id)) return
@@ -207,7 +216,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // `recipe.items` to append to, so bucket 2 is simply absent for that
   // render. A still-loading `useRecipes()` is NOT one of those cases: the
   // `<LoadingSpinner />` below returns before any tail is rendered.
-  const { tailProps } = useItemSearchTailWiring({
+  const { tailProps, hasTail } = useItemSearchTailWiring({
     inGroupIds,
     query: search,
     renderItem: renderTailItemCard,
@@ -327,7 +336,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!trimmedSearch && sortedItems.length === 0 && (
+          {!hasTail && sortedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">

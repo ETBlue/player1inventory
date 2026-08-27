@@ -198,9 +198,17 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
   // Bucket 2's action, selection shelves only: pressing it appends the item
   // to the shelf's itemIds. The dedup check is the same "already-present"
-  // guard `handleAddToSelectionShelf` used to run before this hook took over
-  // — kept as a defensive no-op, since bucket 2 is by construction items NOT
-  // already in `inShelfItemIds` (== the shelf's stocked-here itemIds).
+  // guard `handleAddToSelectionShelf` used to run before this hook took over,
+  // and it is LOAD-BEARING, not a defensive no-op: it fires during the
+  // `useItems` / `useStockedItems` refetch skew, when an item already on this
+  // shelf briefly renders in bucket 2 with a live button. `inShelfItemIds` is
+  // derived from `useStockedItems()` (query key `['items', 'stocked',
+  // {locationId}]`) while the tail's buckets come from `useItems()`
+  // (`['items', {locationId}]`) — two separate cache entries that a mutation
+  // invalidates together but which refetch INDEPENDENTLY, so the tail can see
+  // the item as stocked-here (bucket 2) while the stale `inShelfItemIds`
+  // still omits it. Pressing it again without this guard appends a DUPLICATE
+  // id to `itemIds`. Do not "clean it up".
   //
   // Filter shelves get `groupNote` instead: PR D's swap point. The design's
   // end state is a per-axis picker (one tag per tag type, one vendor, one
@@ -220,7 +228,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // map entry. Fixing it properly means widening that sort-data source, which
   // is a behaviour change deserving its own review — out of scope for this
   // pass.
-  const { tailProps, hasExactGlobalMatch } = useItemSearchTailWiring({
+  const { tailProps, hasTail, hasExactGlobalMatch } = useItemSearchTailWiring({
     inGroupIds: inShelfItemIds,
     query: search,
     renderItem: renderTailItemCard,
@@ -403,7 +411,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!trimmedSearch && sortedInShelfItems.length === 0 && (
+          {!hasTail && sortedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">

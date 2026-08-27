@@ -1109,6 +1109,41 @@ describe('Home page filtering integration', () => {
       ).not.toBeInTheDocument()
     })
 
+    it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
+      // Given a selection shelf with no items and NOTHING stocked at the
+      // active location — the entire catalog lives at the Office. Both
+      // halves matter: an empty shelf AND an empty active location are what
+      // make `sortedInShelfItems` empty while a search is live.
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then the tail is empty...
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // ...and the content pane is NOT blank: with no tail to suppress it,
+      // the empty state renders. This view carried the same `!trimmedSearch`
+      // shape as the two PR C views, so it blanked identically.
+      expect(await screen.findByText('No items')).toBeInTheDocument()
+      expect(
+        screen.getByText('Search to add items to this shelf'),
+      ).toBeInTheDocument()
+    })
+
     it('the two-step gate: "Add to {location}" does not also add the item to the shelf, a second "Add to shelf" press does', async () => {
       // Given a selection shelf with no items yet, and Milk stocked only at
       // the Office
@@ -1442,10 +1477,48 @@ describe('Home page filtering integration', () => {
         screen.getByRole('button', { name: 'Add to My Home: Milk' }),
       ).toBeInTheDocument()
 
-      // And the empty state is gone — it is gated on `!trimmedSearch`, so it
-      // no longer renders BESIDE the tail (these are sibling `&&` blocks, not
-      // a ternary)
+      // And the empty state is gone — it is gated on `!hasTail`, so a tail
+      // with rows suppresses it while the two remain sibling `&&` blocks,
+      // not a ternary
       expect(screen.queryByText('No items')).not.toBeInTheDocument()
+
+      // And the bucket-3 row shows NO stock figures: `useShowStock` gates
+      // them off for an item with no ItemStock here, because
+      // `joinItemStock()` hands such a row zeroed quantities and rendering
+      // those as if they were real stock is a lie. `itemDefaults` targets 2,
+      // so an ungated row would read "0/2" and carry a UnitBadge.
+      expect(screen.queryByText('0/2')).not.toBeInTheDocument()
+      expect(document.querySelectorAll('[data-unit-badge]')).toHaveLength(0)
+    })
+
+    it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
+      // Given a vendor with no items and NOTHING stocked at the active
+      // location — the entire catalog lives at the Office. Both halves
+      // matter: an empty group AND an empty active location are what make
+      // `sortedItems` empty while a search is live.
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
+
+      renderVendorDetail(vendor.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then the tail is empty...
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // ...and the content pane is NOT blank: with no tail to suppress it,
+      // the empty state renders. Gating this on `!trimmedSearch` instead of
+      // `!hasTail` regressed the merge base, which rendered "No items" here.
+      expect(await screen.findByText('No items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No items are assigned to this vendor'),
+      ).toBeInTheDocument()
     })
 
     it('the two-step gate: "Add to {location}" stocks the item without applying the vendor, and a second "Apply {vendor}" press applies it', async () => {
@@ -1689,10 +1762,48 @@ describe('Home page filtering integration', () => {
         screen.getByRole('button', { name: 'Add to My Home: Milk' }),
       ).toBeInTheDocument()
 
-      // And the empty state is gone — it is gated on `!trimmedSearch`, so it
-      // no longer renders BESIDE the tail (these are sibling `&&` blocks, not
-      // a ternary)
+      // And the empty state is gone — it is gated on `!hasTail`, so a tail
+      // with rows suppresses it while the two remain sibling `&&` blocks,
+      // not a ternary
       expect(screen.queryByText('No items')).not.toBeInTheDocument()
+
+      // And the bucket-3 row shows NO stock figures: `useShowStock` gates
+      // them off for an item with no ItemStock here, because
+      // `joinItemStock()` hands such a row zeroed quantities and rendering
+      // those as if they were real stock is a lie. `itemDefaults` targets 2,
+      // so an ungated row would read "0/2" and carry a UnitBadge.
+      expect(screen.queryByText('0/2')).not.toBeInTheDocument()
+      expect(document.querySelectorAll('[data-unit-badge]')).toHaveLength(0)
+    })
+
+    it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
+      // Given a recipe with no items and NOTHING stocked at the active
+      // location — the entire catalog lives at the Office. Both halves
+      // matter: an empty group AND an empty active location are what make
+      // `sortedItems` empty while a search is live.
+      const recipe = await createRecipe({ name: 'Pasta' })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
+
+      renderRecipeDetail(recipe.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Pasta', level: 1 })
+
+      // When the user searches for a string NO item matches, anywhere
+      await openSearch(user, 'zzz')
+      expect(screen.getByPlaceholderText(/search items/i)).toHaveValue('zzz')
+
+      // Then the tail is empty...
+      expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+
+      // ...and the content pane is NOT blank: with no tail to suppress it,
+      // the empty state renders. Gating this on `!trimmedSearch` instead of
+      // `!hasTail` regressed the merge base, which rendered "No items" here.
+      expect(await screen.findByText('No items')).toBeInTheDocument()
+      expect(
+        screen.getByText('No items are assigned to this recipe'),
+      ).toBeInTheDocument()
     })
 
     it('the two-step gate: "Add to {location}" stocks the item without adding it to the recipe, and a second "Add to recipe" press adds it', async () => {
