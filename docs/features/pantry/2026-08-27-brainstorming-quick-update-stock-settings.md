@@ -171,3 +171,32 @@ convention this document already follows for its own history.
   non-date-mode item) plus one new test per pantry view test file proving the
   forward survives the view layer, and a new `WithExpirationDate` story +
   smoke-test pair.
+
+## Addendum — 2026-08-27 (Expires on joins the four-row grid)
+
+A sixth change, superseding this addendum's own "Position" bullet above:
+"Expires on" no longer sits in its own full-width block after the grid — it is
+now the **fifth row of the same `grid-cols-[auto_auto_auto]` grid** as Target,
+Refill below, Packed, and Unpacked, on `QuickUpdateDialog` only. `ItemForm`'s
+Stock tab is unchanged — its "Expires on" field still renders as its own
+full-width block after its four fields.
+
+- **Why:** the field has its own label and hint, exactly like Target and
+  Refill below — rendering it outside the grid left its label and input
+  unaligned with the column the four rows above establish, for no reason
+  other than it being added later.
+- **Structure:** the conditional block is a fragment (`<>…</>`), not a
+  wrapping `<div>` — inside a grid, a wrapper element becomes a single grid
+  item and collapses the three cells into one column, which is exactly the
+  misalignment this change removes. The label reuses `Label` (for the
+  `htmlFor`/`id` association `common.expiresOn`/`quickUpdateDueDate` already
+  had) styled with the same classes as the other rows' label spans; the hint
+  reuses the same muted `text-xs` span class as the Target/Refill hints. The
+  `Input`'s own `id`, `value`/`onChange`, `type="date"`, and the gate on
+  `item.expirationMode === 'date'` are all unchanged.
+- **What did not change:** the gate, the payload's conditional `dueDate` key,
+  the i18n keys, and every other behaviour recorded in the addendum above —
+  this was a pure layout move.
+- The shared-grid test in `QuickUpdateDialog.test.tsx` was extended to also
+  assert the due date input's grid ancestor is the same element as the
+  steppers', rather than adding a second, disconnected test.
