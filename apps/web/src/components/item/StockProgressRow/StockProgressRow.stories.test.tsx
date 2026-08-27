@@ -21,6 +21,21 @@ describe('StockProgressRow stories smoke tests', () => {
     expect(screen.getByRole('button', { name: 'Fill to Full' })).toBeEnabled()
   })
 
+  // Regression guard for the "stepper submits the enclosing form" bug (Task 4
+  // / Minor 7 of the 2026-08-27 review) — StockProgressRow's Clear/Fill
+  // buttons have the same hazard as QuantityStepper's: an untyped <button>
+  // inside ItemForm's real <form> defaults to type="submit".
+  it('Clear and Fill to Full are both type="button"', () => {
+    render(<Ok />)
+    expect(screen.getByRole('button', { name: 'Clear' })).toHaveAttribute(
+      'type',
+      'button',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Fill to Full' }),
+    ).toHaveAttribute('type', 'button')
+  })
+
   it('Low renders the warning status fill', () => {
     const { container } = render(<Low />)
     expect(container.querySelector(`.${STATUS_CLASSES.warning}`)).not.toBeNull()

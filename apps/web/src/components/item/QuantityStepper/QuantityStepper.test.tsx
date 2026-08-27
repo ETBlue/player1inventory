@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { QuantityStepper } from './QuantityStepper'
 
 // The component owns no state — value/onStep are controlled from outside, so
@@ -173,6 +174,35 @@ describe('QuantityStepper', () => {
     expect(increaseButton()).toHaveClass('h-8', 'w-8')
     expect(input()).toHaveClass('h-8')
     expect(input()).not.toHaveClass('h-7')
+  })
+
+  // Regression guard for the "stepper submits the enclosing form" bug found
+  // in E2E (Task 4 / Minor 7 of the 2026-08-27 review): both buttons must be
+  // type="button", or an untyped <button> inside a real <form> defaults to
+  // type="submit" and a stepper click fires the form's native submit event.
+  it('both stepper buttons are type="button"', () => {
+    render(<Harness initial={2} step={1} />)
+
+    expect(decreaseButton()).toHaveAttribute('type', 'button')
+    expect(increaseButton()).toHaveAttribute('type', 'button')
+  })
+
+  it('user clicking a stepper button inside a form does not submit it', async () => {
+    // Given a stepper rendered inside a real <form>, the way ItemForm does
+    const user = userEvent.setup()
+    const handleSubmit = vi.fn((e: FormEvent) => e.preventDefault())
+    render(
+      <form onSubmit={handleSubmit}>
+        <Harness initial={2} step={1} />
+      </form>,
+    )
+
+    // When the user clicks + and then −
+    await user.click(increaseButton())
+    await user.click(decreaseButton())
+
+    // Then the form's submit handler is never called
+    expect(handleSubmit).not.toHaveBeenCalled()
   })
 
   it('user sees the decrease/increase aria-labels the caller passed', () => {
