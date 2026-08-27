@@ -84,6 +84,30 @@ user's sort. Carry the same explanatory comment to both call sites so the incons
 stated rather than silent. Widening the sort-data source stays deferred — it is now a
 three-surface debt and should be its own change.
 
+## Deferred — a location-scope predicate for the four filter call sites
+
+Surfaced by the Task 1 review. `useShowStock` folds the **display gate** written out at
+three call sites — all three were `showStock={isCloud || isStockedHere(item)}` on an
+`ItemCard`, and Tasks 2-3 make it a clean 3-of-3 extraction (five sites once wired).
+
+The *same* location-scoping predicate is also written out at **four other call sites**
+which are filters, not display gates, and which Task 1 correctly left alone:
+
+- `apps/web/src/hooks/useVendorCartCounts.ts:29` — `isCloud ? items : items.filter(isStockedHere)`
+- `apps/web/src/routes/cooking.tsx:118` — same shape, inside a `Set` construction
+- `apps/web/src/routes/shopping/index.tsx:126` — `noVendorItems.filter(isStockedHere)`
+- `apps/web/src/routes/shopping/$vendorId.tsx:152` — `.filter((i) => isCloud || isStockedHere(i))`
+
+Do **not** fold these into `useShowStock`. Only one of the four (`$vendorId.tsx:152`) sits
+in a file that already calls the hook, so folding it in alone would trade a clean 3-of-3
+extraction for a 1-of-4, under a name that reads as nonsense at a filter
+(`.filter(showStock)` — the caller is selecting rows, not deciding whether to show stock
+figures on one).
+
+The real follow-up is a **separate** predicate for the location-scope concern — e.g.
+`useIsStockedInActiveLocation()`, same cloud bypass, named for what a filter is asking —
+adopted at all four sites in one change. That is its own PR; not PR C.
+
 ## File structure
 
 **New**
@@ -112,11 +136,14 @@ is written out at `PantryListView.tsx:217`, `ShelfDetailView.tsx:195` and
 Add `apps/web/src/hooks/useShowStock.ts` exporting `useShowStock(): (item: { stockId?: string }) => boolean`,
 reading `useDataMode()` once and returning a `useCallback`-stable predicate
 `isCloud || isStockedHere(item)`. Export it from the `hooks/index.ts` barrel (both
-tail hooks already are), but **import it at call sites via the deep specifier**
-`@/hooks/useShowStock` — that is what `PantryListView.tsx:17` and `ShelfDetailView.tsx:15`
-do for the wiring hook, and it matters: the two detail-view test files mock the whole
-`@/hooks` barrel (`VendorDetailView.test.tsx:14-22`), so a barrel import would be
-swallowed by that mock while a deep import runs for real.
+tail hooks already are), and **import it at call sites via the deep specifier**
+`@/hooks/useShowStock` — purely to match the local convention: that is what
+`PantryListView.tsx:17` and `ShelfDetailView.tsx:15` already do for the wiring hook,
+which the barrel also re-exports. Nothing forces it. (An earlier draft of this plan
+claimed a barrel import would be swallowed by the detail-view tests' `vi.mock('@/hooks')`.
+That is false — all four pantry test files use a **partial** mock
+(`{ ...await importOriginal(), useUpdateItem: … }`, e.g. `VendorDetailView.test.tsx:16-22`),
+so `useShowStock` passes through from `actual` and a barrel import would run for real.)
 
 Adopt it at all three existing sites. **Zero behaviour change** — the existing suite is
 the guard, and the diff at each site is one expression.
