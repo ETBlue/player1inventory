@@ -95,7 +95,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useUpdateRecipeLastCookedAtMutation: mutationStub,
     useConsumeRecipesMutation: mutationStub,
     useItemCountByRecipeQuery: queryStub,
-    useActiveCartQuery: queryStub,
     useCartItemsQuery: queryStub,
     useAddToCartMutation: mutationStub,
     useUpdateCartItemMutation: mutationStub,

@@ -17,7 +17,6 @@ import {
   CartItemsDocument,
   GetItemsDocument,
   useAbandonCartMutation,
-  useActiveCartQuery,
   useAddToCartMutation,
   useAllCartsQuery,
   useCartItemsQuery,
@@ -30,39 +29,6 @@ import { deserializeCart } from '@/lib/deserialization'
 import type { CartItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
-
-export function useActiveCart() {
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
-  const { activeLocationId } = useActiveLocation()
-
-  const local = useQuery({
-    queryKey: ['cart', 'active', { locationId: activeLocationId }],
-    // getCart is a pure read now — it may resolve `undefined` if the cart
-    // hasn't been bootstrapped for this location yet. TanStack Query forbids
-    // a queryFn resolving to `undefined`, so coalesce to `null`.
-    queryFn: () => getCart(null, activeLocationId).then((cart) => cart ?? null),
-    enabled: !isCloud,
-  })
-
-  const cloud = useActiveCartQuery({ skip: !isCloud })
-
-  if (isCloud) {
-    return {
-      data: cloud.data?.activeCart
-        ? deserializeCart(cloud.data.activeCart as Record<string, unknown>)
-        : undefined,
-      isLoading: cloud.loading,
-      isError: !!cloud.error,
-    }
-  }
-
-  return {
-    data: local.data,
-    isLoading: local.isPending ?? false,
-    isError: local.isError,
-  }
-}
 
 export function useCartItems(cartId: string | undefined) {
   const { mode } = useDataMode()
@@ -463,8 +429,9 @@ export function useVendorCart(vendorId: string | null) {
 
   const local = useQuery({
     queryKey: ['cart', 'vendor', vendorId, { locationId: activeLocationId }],
-    // See useActiveCart above: coalesce to `null` since getCart is a pure
-    // read and TanStack Query forbids a queryFn resolving to `undefined`.
+    // getCart is a pure read now — it may resolve `undefined` if the cart
+    // hasn't been bootstrapped for this location yet. TanStack Query forbids
+    // a queryFn resolving to `undefined`, so coalesce to `null`.
     queryFn: () =>
       getCart(vendorId, activeLocationId).then((cart) => cart ?? null),
     enabled: !isCloud,
