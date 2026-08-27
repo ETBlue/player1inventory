@@ -108,6 +108,33 @@ The real follow-up is a **separate** predicate for the location-scope concern �
 `useIsStockedInActiveLocation()`, same cloud bypass, named for what a filter is asking —
 adopted at all four sites in one change. That is its own PR; not PR C.
 
+## Deferred — a search matching nothing on an empty group renders a blank pane
+
+Surfaced by the Task 2 review. The empty state on all three detail views is gated
+`!trimmedSearch` (this plan's own prescription, and byte-for-byte what
+`ShelfDetailView.tsx:406-417` already shipped in PR B), so a group with no items plus a
+query that matches nothing globally renders an empty list, an empty tail, and no empty
+state at all — a blank pane with no explanation. Not a Task 2 defect: the wiring behaves
+exactly as specified, and the shelf view has the same hole today. But it is now a real gap
+on **three** surfaces rather than one, which is worth recording.
+
+The fix needs no new derivation: `useItemSearchTailWiring` already returns `hasTail`
+(`hasVisibleTail(tailProps)` — the same boolean the component uses for its own early
+return), so a searching-and-found-nothing state is `!hasTail && displayedItems.length === 0`.
+Applying it to all three views at once is the change; not PR C.
+
+## Deferred — `VendorDetailView`'s recipe map is always empty
+
+`VendorDetailView.tsx` builds `new Map<string, []>()` and passes `recipeMap.get(item.id) ??
+[]` to every `ItemCard`, on list rows and tail rows alike. The relations toggle on that
+page therefore can never show recipe badges, for any item. Its three sibling views build a
+real map from `useRecipes()`.
+
+Pre-existing and squarely outside PR C's scope — PR C only wires the tail, and the tail
+faithfully reproduces whatever the list rows do. Recorded here so that the "tail rows must
+match list rows" parity argument, which is the correct argument for the tail, does not
+quietly become the reason the underlying map is never filled in.
+
 ## File structure
 
 **New**
