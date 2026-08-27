@@ -426,13 +426,14 @@ export function useUpdateItem() {
     // captured from the render closure — re-enabling against a stale array
     // drops one of two quick presses.
     //
-    // Two keys, not six: invalidation matches by PREFIX, so `['items']`
-    // already covers `['items', id]`, the two count keys, and BOTH item list
-    // queries — `useItems` (`['items', {locationId}]`) and `useStockedItems`
-    // (`['items', 'stocked', {locationId}]`). `['itemStocks']` is a separate
-    // family and must be awaited alongside: stock fields are written to an
-    // ItemStock row, which the raw-stock readers (`useItemStock` /
-    // `useItemStocks`, behind the Stock pager) read back.
+    // Two keys, not the five this replaced: invalidation matches by PREFIX,
+    // so `['items']` already covers `['items', id]`, the two count keys, and
+    // BOTH item list queries — `useItems` (`['items', {locationId}]`) and
+    // `useStockedItems` (`['items', 'stocked', {locationId}]`).
+    // `['itemStocks']` is a separate family and must be awaited alongside:
+    // stock fields are written to an ItemStock row, which the raw-stock
+    // readers (`useItemStock` / `useItemStocks`, behind the Stock pager)
+    // read back.
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ['items'] }),

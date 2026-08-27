@@ -126,9 +126,13 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   // badges are still computed per row from the full `vendors` list, for the
   // same reason: a map keyed over `allItems` cannot serve tail rows.
   //
-  // Defined HERE, above `renderTailItemCard`, and deliberately ahead of the
-  // `isLoading` early return below — that renderer is passed into the tail
-  // wiring before the gate runs.
+  // Defined HERE, above the `isLoading` early return below, because it is a
+  // `useMemo`: Rules of Hooks require it to run on every render, so it cannot
+  // sit after a conditional return. `ShelfDetailView` builds the same map as a
+  // plain `const` *below* its early return (`ShelfDetailView.tsx:326`) and its
+  // `renderTailItemCard` closes over it fine — the renderer is only ever
+  // CALLED during JSX render, after that line. Memoization is the only reason
+  // the placement differs.
   const recipeMap = useMemo(() => {
     const map = new Map<string, Recipe[]>()
     for (const recipe of recipes) {

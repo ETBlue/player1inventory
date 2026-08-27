@@ -159,10 +159,13 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // The tail's OWN press no longer opens that window: `useUpdateRecipe`'s
   // local `onSuccess` RETURNS its `['recipes']` invalidation, so `mutateAsync`
   // resolves only once `recipe.items` has refetched, and the wiring hook
-  // re-enables the rows against fresh data. What the guard still covers is
-  // every path that does NOT await that refetch — `mutate` call sites, cloud
-  // mode, and any concurrent write (another surface, another tab) landing
-  // between this render and the press.
+  // re-enables the rows against fresh data. Cloud is NOT an exception here —
+  // both of `useUpdateRecipe`'s cloud branches pass `awaitRefetchQueries: true`
+  // (`useRecipes.ts:199,219`), unlike the shelf and item hooks. What the guard
+  // still covers is every path that does NOT await that refetch — `mutate`
+  // call sites, whose continuation runs without awaiting the returned promise
+  // (e.g. `items/$id/relation/recipes.tsx:45`) — and any concurrent write
+  // (another surface, another tab) landing between this render and the press.
   async function handleAddToRecipe(item: PantryItem) {
     if (isUnsorted || !recipe) return
     if (recipe.items.some((ri) => ri.itemId === item.id)) return

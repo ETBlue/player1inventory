@@ -101,6 +101,16 @@ items whose name order and sort order differ, asserted under a non-name sort. **
 remove `sortTail`, confirm RED — a fixture where name order and sort order coincide cannot
 distinguish the two and would be vacuous.
 
+**Divergence as implemented (`e763fa1c`) — the tests sort by `name`/`desc`, NOT a non-name
+field.** The plan's "non-name sort" instruction is wrong for bucket 3 and was deliberately not
+followed. A bucket-3 row has no `ItemStock` here, so it carries `ZERO_STOCK` and appears in
+none of `useItemSortData`'s three maps: under `stock`, `purchased` and `expiring` every
+bucket-3 row **ties** with every other one and `sortItems` leaves the section in its incoming
+name order. A non-name fixture would therefore pass with `sortTail` removed — exactly the
+vacuous test the mutation check exists to catch. `name` descending is the only field that can
+discriminate two bucket-3 rows, so all three tests use it, and each was mutation-checked:
+removing `sortTail` from one view reddens that view's test alone.
+
 ---
 
 ## Task 3 — the group action re-enables before its refetch lands
@@ -130,8 +140,22 @@ bucket-3 → bucket-2 promotion has the same re-enable shape.
 ### Blast radius — state it, do not hide it
 
 ~14 `await …mutateAsync(` sites across `useUpdateItem` (11 call sites), `useUpdateRecipe` (5)
-and `useUpdateShelfMutation` (4). `mutate`-only sites are unaffected — TanStack awaits
-`onSuccess` only on the `mutateAsync` path. The survey found **no test that would break**:
+and `useUpdateShelfMutation` (4).
+
+**Correction (post-implementation review).** The original plan claimed "`mutate`-only sites are
+unaffected — TanStack awaits `onSuccess` only on the `mutateAsync` path". That is **false**, and
+it was verified against the installed `@tanstack/query-core@5.90.20`: `mutation.js:123` awaits
+`options.onSuccess` *before* dispatching success, and `react-query@5.90.20/useMutation.js:31-40`
+shows `mutate` is `mutateAsync(...).catch(noop)` — the same function. `mutate` sites do not await
+the result, but their `isPending` and their per-call `{ onSuccess }` are still deferred until the
+refetch lands. Three surfaces see it, benignly:
+`settings/shelves/$shelfId/index.tsx` (`goBack()` after the `['shelves']` refetch; Save spinner
+held until then), `items/$id/relation/vendors.tsx` and `items/$id/relation/recipes.tsx` (per-badge
+spinners driven by `isPending`). Each now settles against fresh data, so the change is an
+improvement — but the risk assessment below was written on the wrong premise. See
+`apps/web/src/hooks/CLAUDE.md` for the corrected version.
+
+The survey found **no test that would break**:
 no `useFakeTimers` anywhere in `apps/web/src`; the four view tests mock these hooks entirely;
 the cloud-branch tests never reach `localMutation`; and `useItems.test.tsx:525-562` already
 wraps its assertion in `waitFor`, so awaiting makes it pass sooner.
@@ -155,6 +179,14 @@ but the comments' stated scenario narrows. **Update all three so they stay liter
 **Tests:** a test asserting the group action's button is disabled until the refetch lands, on
 one surface. **Mutation:** drop the `return`, confirm RED. If it stays green the test is
 timing-blind and is not pinning the fix.
+
+**As implemented — two of the four returns are guarded, two are not.**
+`RecipeDetailView.test.tsx` (gate on `getRecipes`) pins `useUpdateRecipe`; the post-review pass
+added `ShelfDetailView.test.tsx` (gate on `getShelf`, the `queryFn` behind `['shelves', id]`)
+to pin `useUpdateShelfMutation`. Both were mutation-checked: dropping the `return` reddens the
+"still disabled" assertion. **`useUpdateItem` and `useAddItemToLocation` have no guard** —
+dropping either `return` leaves the whole web suite green. Recorded in
+`apps/web/src/hooks/CLAUDE.md` so the shared paragraph is not read as covering all four.
 
 ---
 
