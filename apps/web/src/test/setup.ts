@@ -187,11 +187,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
-    useActiveCartQuery: () => ({
-      data: undefined,
-      loading: false,
-      error: undefined,
-    }),
     useCartItemsQuery: () => ({
       data: undefined,
       loading: false,

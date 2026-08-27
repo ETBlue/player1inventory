@@ -8,7 +8,7 @@ export class ShoppingPage {
   }
 
   async navigateTo() {
-    // networkidle ensures initial GraphQL queries (activeCart, items) have resolved
+    // networkidle ensures initial GraphQL queries (allCarts, items) have resolved
     // before any interaction, preventing clicks on an uninitialized cart
     await this.page.goto('/shopping', { waitUntil: 'networkidle' })
   }

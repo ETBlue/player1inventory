@@ -6,15 +6,6 @@ import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
-    activeCart: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
-      let cart = await prisma.cart.findUnique({ where: { id: 'no-vendor' } })
-      if (!cart) {
-        cart = await prisma.cart.create({ data: { id: 'no-vendor', userId } })
-      }
-      return cart as unknown as Cart
-    },
-
     vendorCart: async (_, { vendorId = null }, ctx) => {
       const userId = requireAuth(ctx)
       const cartId = vendorId ?? 'no-vendor'

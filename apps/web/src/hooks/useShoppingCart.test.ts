@@ -5,12 +5,12 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   useAbandonCart,
-  useActiveCart,
   useAddToCart,
   useCheckout,
   useLastPurchasedByVendor,
   useRemoveFromCart,
   useUpdateCartItem,
+  useVendorCart,
 } from './useShoppingCart'
 
 vi.mock('@/db/operations', async (importOriginal) => {
@@ -33,7 +33,7 @@ const mockCloudCheckout = vi.fn().mockResolvedValue({
 const mockAbandonCartFn = vi
   .fn()
   .mockResolvedValue({ data: { abandonCart: { id: 'cart-1' } } })
-const mockUseActiveCartQuery = vi.fn()
+const mockUseVendorCartQuery = vi.fn()
 const mockUseAllCartsQuery = vi.fn().mockReturnValue({
   data: undefined,
   loading: false,
@@ -53,8 +53,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
-    useActiveCartQuery: () => mockUseActiveCartQuery(),
     useAllCartsQuery: () => mockUseAllCartsQuery(),
+    useVendorCartQuery: () => mockUseVendorCartQuery(),
     useCartItemsQuery: () => ({
       data: undefined,
       loading: false,
@@ -83,16 +83,16 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-// ─── useActiveCart ────────────────────────────────────────────────────────────
+// ─── useVendorCart ────────────────────────────────────────────────────────────
 
-describe('useActiveCart (cloud mode)', () => {
+describe('useVendorCart (cloud mode)', () => {
   it('deserializes lastPurchasedAt to Date in cloud mode', async () => {
     // Given the wire format the server sends: ISO 8601, produced by the `Cart`
     // type resolver in apps/server/src/resolvers/cart.resolver.ts
     localStorage.setItem('data-mode', 'cloud')
-    mockUseActiveCartQuery.mockReturnValue({
+    mockUseVendorCartQuery.mockReturnValue({
       data: {
-        activeCart: {
+        vendorCart: {
           id: 'vendor-1',
           lastPurchasedAt: '2026-01-15T10:00:00.000Z',
         },
@@ -101,7 +101,7 @@ describe('useActiveCart (cloud mode)', () => {
       error: undefined,
     })
 
-    const { result } = renderHook(() => useActiveCart(), {
+    const { result } = renderHook(() => useVendorCart('vendor-1'), {
       wrapper: createWrapper(),
     })
 
@@ -119,15 +119,15 @@ describe('useActiveCart (cloud mode)', () => {
     // thing that breaks if that regresses again — a plain `new Date()` on this
     // yields an Invalid Date whose NaN getTime() kills the sort silently.
     localStorage.setItem('data-mode', 'cloud')
-    mockUseActiveCartQuery.mockReturnValue({
+    mockUseVendorCartQuery.mockReturnValue({
       data: {
-        activeCart: { id: 'vendor-1', lastPurchasedAt: '1787827334343' },
+        vendorCart: { id: 'vendor-1', lastPurchasedAt: '1787827334343' },
       },
       loading: false,
       error: undefined,
     })
 
-    const { result } = renderHook(() => useActiveCart(), {
+    const { result } = renderHook(() => useVendorCart('vendor-1'), {
       wrapper: createWrapper(),
     })
 
