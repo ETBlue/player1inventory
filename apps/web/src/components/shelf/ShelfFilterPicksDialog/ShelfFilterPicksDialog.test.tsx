@@ -167,4 +167,81 @@ describe('ShelfFilterPicksDialog', () => {
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
+
+  it('keeps in-progress picks when axes re-renders as a new array of equal content', async () => {
+    // Given a pick made against the initial axes array
+    const { rerender } = render(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[tagAxis]}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'Frozen' }))
+    expect(screen.getByRole('radio', { name: 'Frozen' })).toBeChecked()
+
+    // When the caller re-renders with a structurally-identical but
+    // referentially-different `axes` array (e.g. recomputed inline in JSX on an
+    // unrelated re-render, exactly how ShelfDetailView calls this component)
+    const equalContentAxes: FilterAxis = {
+      ...tagAxis,
+      options: tagAxis.options.map((option) => ({ ...option })),
+    }
+    rerender(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[equalContentAxes]}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // Then the user's pick survives — it was not wiped by the new array reference
+    expect(screen.getByRole('radio', { name: 'Frozen' })).toBeChecked()
+  })
+
+  it('resets picks when the axes actually change content, even under the same axis key', async () => {
+    // Given a pick made against a two-option axis
+    const { rerender } = render(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[tagAxis]}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'Frozen' }))
+    expect(screen.getByRole('radio', { name: 'Frozen' })).toBeChecked()
+
+    // When the same axis KEY reappears with genuinely different options — its old
+    // pick ('frozen') no longer names any current option
+    const changedAxis: FilterAxis = {
+      key: tagAxis.key,
+      kind: 'tag',
+      typeName: 'Category',
+      options: [{ id: 'canned', name: 'Canned' }],
+    }
+    rerender(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[changedAxis]}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // Then the stale pick is gone and the new single-option axis is freshly
+    // pre-selected — not left showing the old ('frozen') value unchecked while
+    // Add is wrongly enabled by a pick that names no current option.
+    expect(screen.getByRole('radio', { name: 'Canned' })).toBeChecked()
+  })
 })
