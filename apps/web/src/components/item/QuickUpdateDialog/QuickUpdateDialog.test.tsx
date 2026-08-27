@@ -490,13 +490,15 @@ describe('QuickUpdateDialog — title', () => {
 })
 
 describe('QuickUpdateDialog — stock settings layout', () => {
-  it('user reads the progress bar above the Target/Refill/Packed/Unpacked rows', () => {
-    // Given the dialog is open
-    renderDialog(makeItem())
+  it('user reads the progress bar above the Target/Refill/Packed/Unpacked/Expires-on rows', () => {
+    // Given the dialog is open for a date-mode item, so all five grid rows render
+    renderDialog(
+      makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
+    )
 
-    // When the four stepper inputs and the progress-bar row are located.
-    // Fill to Full is the trailing control of the progress-bar row, so it
-    // stands in for the row itself.
+    // When the four stepper inputs, the due date input, and the progress-bar
+    // row are located. Fill to Full is the trailing control of the
+    // progress-bar row, so it stands in for the row itself.
     const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
     const order: Node[] = [
       fillToFull,
@@ -504,11 +506,13 @@ describe('QuickUpdateDialog — stock settings layout', () => {
       refillInput(),
       packedInput(),
       unpackedInput(),
+      screen.getByLabelText(/expires on/i),
     ]
 
     // Then each element precedes the next in document order — the progress
     // bar reading all four values comes first, then the two stock settings
-    // lead the grid, with the Packed/Unpacked quantities following.
+    // lead the grid, then the Packed/Unpacked quantities, then Expires on
+    // last.
     for (let i = 0; i < order.length - 1; i++) {
       const current = order[i] as Node
       const next = order[i + 1] as Node
@@ -531,6 +535,21 @@ describe('QuickUpdateDialog — stock settings layout', () => {
     // columns independently and the steppers would not align
     expect(packedGrid).not.toBeNull()
     expect(refillGrid).toBe(packedGrid)
+  })
+
+  it('user sees the Expires on row join the same grid as the four steppers', () => {
+    // Given a date-mode item, so the Expires on row renders
+    renderDialog(makeItem({ expirationMode: 'date' }))
+
+    // When the grid ancestor of the due date input is resolved
+    const packedGrid = packedInput().closest('.grid')
+    const dueDateGrid = screen.getByLabelText(/expires on/i).closest('.grid')
+
+    // Then it is the SAME grid as the four steppers — a wrapping element
+    // around the row would put it in a grid of its own (or none at all)
+    // and break the column alignment this row exists to achieve
+    expect(dueDateGrid).not.toBeNull()
+    expect(dueDateGrid).toBe(packedGrid)
   })
 
   it('user sees the shortened row labels for the two stock settings', () => {

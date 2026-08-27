@@ -431,29 +431,37 @@ export function QuickUpdateDialog({
             >
               {t('pantry.quickUpdate.pack')}
             </Button>
-          </div>
 
-          {/* The due date is the one expiration field that is genuinely
-              per-location — "when THIS one expires". The mode that gates it is
-              global (set on the Info tab) and is read here, never written.
-              Mirrors the same block in ItemForm's Stock tab. */}
-          {item.expirationMode === 'date' && (
-            <div>
-              <Label htmlFor="quickUpdateDueDate">
-                {t('common.expiresOn')}
-              </Label>
-              <Input
-                id="quickUpdateDueDate"
-                type="date"
-                value={localDueDate}
-                onChange={(e) => setLocalDueDate(e.target.value)}
-                disabled={isPending}
-              />
-              <p className="text-xs text-foreground-muted">
-                {t('common.expiresOnHint')}
-              </p>
-            </div>
-          )}
+            {/* Expires on row — the due date is the one expiration field
+                that is genuinely per-location — "when THIS one expires".
+                The mode that gates it is global (set on the Info tab) and is
+                read here, never written. Mirrors the same block in
+                ItemForm's Stock tab. Joins the same grid as the four rows
+                above (a fragment, not a wrapping element, so the three
+                cells land in their own grid columns rather than as one
+                item) so its label/hint line up with Target/Refill/Packed/
+                Unpacked. */}
+            {item.expirationMode === 'date' && (
+              <>
+                <Label
+                  htmlFor="quickUpdateDueDate"
+                  className="text-sm text-foreground-muted shrink-0"
+                >
+                  {t('common.expiresOn')}
+                </Label>
+                <Input
+                  id="quickUpdateDueDate"
+                  type="date"
+                  value={localDueDate}
+                  onChange={(e) => setLocalDueDate(e.target.value)}
+                  disabled={isPending}
+                />
+                <span className="text-xs text-foreground-muted">
+                  {t('common.expiresOnHint')}
+                </span>
+              </>
+            )}
+          </div>
         </DialogMain>
 
         <DialogFooter>
