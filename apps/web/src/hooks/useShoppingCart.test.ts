@@ -86,7 +86,9 @@ afterEach(() => {
 // ─── useActiveCart ────────────────────────────────────────────────────────────
 
 describe('useActiveCart (cloud mode)', () => {
-  it('deserializes ISO lastPurchasedAt string to Date in cloud mode', async () => {
+  it('deserializes lastPurchasedAt to Date in cloud mode', async () => {
+    // Given the wire format the server sends: ISO 8601, produced by the `Cart`
+    // type resolver in apps/server/src/resolvers/cart.resolver.ts
     localStorage.setItem('data-mode', 'cloud')
     mockUseActiveCartQuery.mockReturnValue({
       data: {
@@ -110,21 +112,49 @@ describe('useActiveCart (cloud mode)', () => {
       new Date('2026-01-15T10:00:00.000Z').getTime(),
     )
   })
+
+  it('deserializes a legacy epoch-millis lastPurchasedAt to Date in cloud mode', async () => {
+    // Given the wire format the server sent while `Cart.lastPurchasedAt` had no
+    // type resolver: epoch millis as a digit-string. The client must not be the
+    // thing that breaks if that regresses again — a plain `new Date()` on this
+    // yields an Invalid Date whose NaN getTime() kills the sort silently.
+    localStorage.setItem('data-mode', 'cloud')
+    mockUseActiveCartQuery.mockReturnValue({
+      data: {
+        activeCart: { id: 'vendor-1', lastPurchasedAt: '1787827334343' },
+      },
+      loading: false,
+      error: undefined,
+    })
+
+    const { result } = renderHook(() => useActiveCart(), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.data).toBeDefined())
+    const cart = result.current.data as { lastPurchasedAt: unknown } | undefined
+    expect(cart?.lastPurchasedAt).toBeInstanceOf(Date)
+    expect((cart?.lastPurchasedAt as Date).getTime()).toBe(1787827334343)
+  })
 })
 
 // ─── useLastPurchasedByVendor ─────────────────────────────────────────────────
 
 describe('useLastPurchasedByVendor (cloud mode)', () => {
   it('user can sort by last purchased in cloud mode — the map is keyed by bare cart id', async () => {
-    // Given cloud carts as the server returns them: **bare** ids
-    // (`'no-vendor'` / `<vendorId>`), with ISO lastPurchasedAt strings
+    // Given cloud carts with **bare** ids (`'no-vendor'` / `<vendorId>`), in
+    // both lastPurchasedAt wire formats: ISO 8601 (what the server's `Cart`
+    // type resolver sends) and the epoch-millis digit-string it sent while that
+    // resolver was missing — backups from that window still carry the latter.
     localStorage.setItem('data-mode', 'cloud')
+    const vendor3Millis = new Date('2026-03-03T00:00:00.000Z').getTime()
     mockUseAllCartsQuery.mockReturnValue({
       data: {
         allCarts: [
           { id: 'no-vendor', lastPurchasedAt: '2026-02-02T00:00:00.000Z' },
           { id: 'vendor-1', lastPurchasedAt: '2026-01-15T10:00:00.000Z' },
           { id: 'vendor-2', lastPurchasedAt: null },
+          { id: 'vendor-3', lastPurchasedAt: String(vendor3Millis) },
         ],
       },
       loading: false,
@@ -137,7 +167,7 @@ describe('useLastPurchasedByVendor (cloud mode)', () => {
     })
 
     // Then each vendor id maps to its cart's lastPurchasedAt as a Date
-    await waitFor(() => expect(result.current.data?.size).toBe(3))
+    await waitFor(() => expect(result.current.data?.size).toBe(4))
     const map = result.current.data as Map<string | null, Date | null>
     expect(map.get('vendor-1')).toBeInstanceOf(Date)
     expect((map.get('vendor-1') as Date).getTime()).toBe(
@@ -150,6 +180,10 @@ describe('useLastPurchasedByVendor (cloud mode)', () => {
     )
     // And a never-purchased cart maps to null
     expect(map.get('vendor-2')).toBeNull()
+    // And an epoch-millis cart is a real Date, not an Invalid Date — the sort
+    // comparator does `getTime()` on these, and NaN makes `sort` a no-op
+    expect(map.get('vendor-3')).toBeInstanceOf(Date)
+    expect((map.get('vendor-3') as Date).getTime()).toBe(vendor3Millis)
   })
 })
 
