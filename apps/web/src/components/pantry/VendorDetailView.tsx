@@ -156,16 +156,21 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
 
   // Bucket 2's action on a real vendor page: pressing it APPENDS this vendor
   // to the item's vendorIds. The dedup check is LOAD-BEARING, not decorative:
-  // it fires during the `useItems` / `useStockedItems` refetch skew, when an
-  // item already carrying this vendor briefly renders in bucket 2 with a live
-  // button. `inGroupIds` is derived from `useStockedItems()` (query key
-  // `['items', 'stocked', {locationId}]`) while the tail's buckets come from
-  // `useItems()` (`['items', {locationId}]`) — two separate cache entries that
-  // a mutation invalidates together but which refetch INDEPENDENTLY. In the
-  // window where `useItems` has landed and `useStockedItems` has not, the item
-  // is stocked-here per the tail (so: bucket 2) yet absent from the stale
-  // `inGroupIds` (so: still offered the action). Pressing it again without
-  // this guard appends a DUPLICATE vendor id. Do not "clean it up".
+  // any time an item already carrying this vendor renders in bucket 2 with a
+  // live button, a second press appends a DUPLICATE vendor id. Do not "clean
+  // it up".
+  //
+  // The tail's OWN press no longer opens that window: `useUpdateItem`'s local
+  // `onSuccess` RETURNS its `['items']` + `['itemStocks']` invalidations, and
+  // `['items']` covers BOTH item lists by prefix — `useStockedItems()`
+  // (`['items', 'stocked', {locationId}]`), which feeds `inGroupIds`, and
+  // `useItems()` (`['items', {locationId}]`), which feeds the tail's buckets —
+  // so `mutateAsync` resolves only once the two have resettled together and
+  // the wiring hook re-enables the rows against fresh data. What the guard
+  // still covers is every path that does NOT await that refetch: `mutate` call
+  // sites, cloud mode (whose `useUpdateItem` does not pass
+  // `awaitRefetchQueries`), and any concurrent write from another surface or
+  // tab landing between this render and the press.
   async function handleApplyVendor(item: PantryItem) {
     if (isUnsorted || !vendor) return
     if ((item.vendorIds ?? []).includes(vendor.id)) return

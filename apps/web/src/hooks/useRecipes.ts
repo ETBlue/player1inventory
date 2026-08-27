@@ -149,11 +149,16 @@ export function useUpdateRecipe() {
       id: string
       updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
     }) => updateRecipe(id, updates),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['recipes'] })
-      queryClient.invalidateQueries({ queryKey: ['recipes', id] })
-      queryClient.invalidateQueries({ queryKey: ['recipes', 'itemCount'] })
-    },
+    // RETURNED, not fire-and-forget (almost every other `onSuccess` in
+    // `hooks/` still is): `mutateAsync` awaits what `onSuccess` returns, so
+    // returning the invalidation makes the caller's `await` resolve only once
+    // the refetch has landed. The search tail's group action re-enables every
+    // row in a `finally` after that await (`useItemSearchTailWiring`) while
+    // appending to a `recipe.items` array captured from the render closure —
+    // re-enabling against a stale array drops one of two quick presses.
+    // One key is enough: invalidation matches by PREFIX, so `['recipes']`
+    // already covers `['recipes', id]` and `['recipes', 'itemCount']`.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recipes'] }),
   })
 
   const [cloudUpdate, { loading: cloudUpdateLoading }] =

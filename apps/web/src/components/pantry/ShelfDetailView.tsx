@@ -199,16 +199,17 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // Bucket 2's action, selection shelves only: pressing it appends the item
   // to the shelf's itemIds. The dedup check is the same "already-present"
   // guard `handleAddToSelectionShelf` used to run before this hook took over,
-  // and it is LOAD-BEARING, not a defensive no-op: it fires during the
-  // `useItems` / `useStockedItems` refetch skew, when an item already on this
-  // shelf briefly renders in bucket 2 with a live button. `inShelfItemIds` is
-  // derived from `useStockedItems()` (query key `['items', 'stocked',
-  // {locationId}]`) while the tail's buckets come from `useItems()`
-  // (`['items', {locationId}]`) — two separate cache entries that a mutation
-  // invalidates together but which refetch INDEPENDENTLY, so the tail can see
-  // the item as stocked-here (bucket 2) while the stale `inShelfItemIds`
-  // still omits it. Pressing it again without this guard appends a DUPLICATE
-  // id to `itemIds`. Do not "clean it up".
+  // and it is LOAD-BEARING, not a defensive no-op: any time an item already on
+  // this shelf renders in bucket 2 with a live button, a second press appends
+  // a DUPLICATE id to `itemIds`. Do not "clean it up".
+  //
+  // The tail's OWN press no longer opens that window: `useUpdateShelfMutation`'s
+  // local `onSuccess` RETURNS its `['shelves']` invalidation, so `mutateAsync`
+  // resolves only once `shelf.itemIds` has refetched, and the wiring hook
+  // re-enables the rows against fresh data. What the guard still covers is
+  // every path that does NOT await that refetch — `mutate` call sites, cloud
+  // mode, and any concurrent write (another surface, another tab) landing
+  // between this render and the press.
   //
   // Filter shelves get `groupNote` instead: PR D's swap point. The design's
   // end state is a per-axis picker (one tag per tag type, one vendor, one

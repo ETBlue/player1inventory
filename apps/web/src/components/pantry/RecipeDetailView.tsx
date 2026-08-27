@@ -151,17 +151,18 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // (`Recipe.items: RecipeItem[]`), not on the item, so this appends a
   // `RecipeItem` and writes the whole array back — the shape
   // `settings/recipes/$id/items.tsx` already uses. The dedup check is
-  // LOAD-BEARING, and more so here than on any sibling view: it fires during
-  // the `useItems` / `useStockedItems` refetch skew, when an item already in
-  // this recipe briefly renders in bucket 2 with a live button. `inGroupIds`
-  // is derived from `useStockedItems()` (query key `['items', 'stocked',
-  // {locationId}]`) while the tail's buckets come from `useItems()`
-  // (`['items', {locationId}]`) — two separate cache entries that a mutation
-  // invalidates together but which refetch INDEPENDENTLY, so the tail can see
-  // the item as stocked-here (bucket 2) while the stale `inGroupIds` still
-  // omits it (action still offered). Pressing it again without this guard
-  // appends a SECOND `RecipeItem` with the same `itemId`, which cooking then
-  // double-counts as an ingredient. Do not "clean it up".
+  // LOAD-BEARING, not decorative: any time an item already in this recipe
+  // renders in bucket 2 with a live button, a second press appends a SECOND
+  // `RecipeItem` with the same `itemId`, which cooking then double-counts as
+  // an ingredient. Do not "clean it up".
+  //
+  // The tail's OWN press no longer opens that window: `useUpdateRecipe`'s
+  // local `onSuccess` RETURNS its `['recipes']` invalidation, so `mutateAsync`
+  // resolves only once `recipe.items` has refetched, and the wiring hook
+  // re-enables the rows against fresh data. What the guard still covers is
+  // every path that does NOT await that refetch — `mutate` call sites, cloud
+  // mode, and any concurrent write (another surface, another tab) landing
+  // between this render and the press.
   async function handleAddToRecipe(item: PantryItem) {
     if (isUnsorted || !recipe) return
     if (recipe.items.some((ri) => ri.itemId === item.id)) return

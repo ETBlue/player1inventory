@@ -1,4 +1,18 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -18,6 +32,33 @@ vi.mock('@/hooks', async (importOriginal) => {
   return {
     ...actual,
     useUpdateItem: () => ({ mutateAsync, mutate: vi.fn(), isPending: false }),
+  }
+})
+
+// A gate on `getRecipes` — the query behind `useRecipes()`, which is where the
+// view reads `recipe.items` from. Holding a REFETCH open (the gate stays off
+// until a test turns it on, so the initial load is untouched) is what makes
+// "the invalidation has not landed yet" an observable state rather than a
+// millisecond nobody can assert on.
+const { recipesGate } = vi.hoisted(() => ({
+  recipesGate: {
+    hold: false,
+    release: null as null | (() => void),
+  },
+}))
+
+vi.mock('@/db/operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/db/operations')>()
+  return {
+    ...actual,
+    getRecipes: async () => {
+      if (recipesGate.hold) {
+        await new Promise<void>((resolve) => {
+          recipesGate.release = resolve
+        })
+      }
+      return actual.getRecipes()
+    },
   }
 })
 
@@ -148,5 +189,92 @@ describe('RecipeDetailView quick update', () => {
       id: milk.id,
       updates: { ...STORED, dueDate: new Date('2026-10-15') },
     })
+  })
+})
+
+// Renders the view with a search already in the URL, so the tail is on without
+// driving the toolbar's search toggle. `renderWithRouter` is pinned to '/'.
+const renderSearching = async (recipeId: string, query: string) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  const Wrapper = () => (
+    <QueryClientProvider client={queryClient}>
+      <RecipeDetailView recipeId={recipeId} />
+    </QueryClientProvider>
+  )
+  const rootRoute = createRootRoute({ component: Wrapper })
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({
+      initialEntries: [`/?q=${encodeURIComponent(query)}`],
+    }),
+  })
+  render(<RouterProvider router={router} />)
+  await router.load()
+}
+
+describe('RecipeDetailView search tail', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.shelves.clear()
+    await db.recipes.clear()
+    await db.vendors.clear()
+    await db.locations.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    localStorage.clear()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    recipesGate.hold = false
+    recipesGate.release = null
+  })
+
+  it('user cannot press the group action again until its refetch lands', async () => {
+    // Given an empty recipe and Milk stocked here — so Milk is a bucket-2 row
+    // carrying a live "Add to recipe" button
+    const milk = await stockMilk()
+    const recipe = await createRecipe({ name: 'Pancakes', items: [] })
+    await renderSearching(recipe.id, 'Milk')
+
+    const label = 'Add to recipe: Milk'
+    expect(await screen.findByRole('button', { name: label })).toBeEnabled()
+
+    // When the user presses it while the `['recipes']` refetch is held open
+    recipesGate.hold = true
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: label }))
+    })
+    // The write has committed and `onSuccess` has fired — the refetch it kicked
+    // off is now sitting on the gate.
+    await waitFor(() => expect(recipesGate.release).not.toBeNull())
+    // Everything already resolvable resolves. Without the returned
+    // invalidation, THIS is where `mutateAsync` settles and the wiring hook's
+    // `finally` re-enables the row against a `recipe.items` that still has no
+    // Milk in it — which is the regression this test exists to catch.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Then the button is still disabled — the mutation has not resolved,
+    // because the list it feeds has not caught up yet
+    expect(screen.getByRole('button', { name: label })).toBeDisabled()
+    expect((await db.recipes.get(recipe.id))?.items).toHaveLength(1)
+
+    // When the refetch lands
+    await act(async () => {
+      recipesGate.release?.()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Then Milk has moved out of the tail and into the recipe's own list
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
+    })
+    expect(
+      screen.getByRole('button', { name: `Update quantity of ${milk.name}` }),
+    ).toBeInTheDocument()
   })
 })

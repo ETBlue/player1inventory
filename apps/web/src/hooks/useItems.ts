@@ -338,10 +338,19 @@ export function useAddItemToLocation() {
       if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
       return addItemToLocation(itemId, locationId ?? activeLocationId)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['items'] })
-      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
-    },
+    // RETURNED, not fire-and-forget, for the same reason as `useUpdateItem`
+    // below: `mutateAsync` awaits what `onSuccess` returns, and the search
+    // tail's bucket-3 "Add to <location>" action re-enables every row in a
+    // `finally` after that await (`useItemSearchTailWiring`). Without this the
+    // row re-enables while the just-stocked item is still absent from the
+    // refetched lists, so it has not yet been promoted out of bucket 3.
+    // `['items']` covers every `['items', …]` key by PREFIX; `['itemStocks']`
+    // is a separate family.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['items'] }),
+        queryClient.invalidateQueries({ queryKey: ['itemStocks'] }),
+      ]),
   })
 }
 
@@ -409,16 +418,26 @@ export function useUpdateItem() {
   const localMutation = useMutation({
     mutationFn: ({ id, updates, locationId }: ItemUpdateVars) =>
       updateItem(id, updates, locationId ?? activeLocationId),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['items'] })
-      queryClient.invalidateQueries({ queryKey: ['items', id] })
-      queryClient.invalidateQueries({ queryKey: ['items', 'countByTag'] })
-      queryClient.invalidateQueries({ queryKey: ['items', 'countByVendor'] })
-      // Stock fields are written to an ItemStock row, so the raw-stock readers
-      // (`useItemStock`/`useItemStocks`, which the Stock pager reads to build
-      // each location's page) must re-resolve too.
-      queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
-    },
+    // RETURNED, not fire-and-forget: `mutateAsync` awaits what `onSuccess`
+    // returns, so returning the invalidations makes the caller's `await`
+    // resolve only once both refetches have landed. The search tail's group
+    // action re-enables every row in a `finally` after that await
+    // (`useItemSearchTailWiring`) while appending to an `item.vendorIds` array
+    // captured from the render closure — re-enabling against a stale array
+    // drops one of two quick presses.
+    //
+    // Two keys, not six: invalidation matches by PREFIX, so `['items']`
+    // already covers `['items', id]`, the two count keys, and BOTH item list
+    // queries — `useItems` (`['items', {locationId}]`) and `useStockedItems`
+    // (`['items', 'stocked', {locationId}]`). `['itemStocks']` is a separate
+    // family and must be awaited alongside: stock fields are written to an
+    // ItemStock row, which the raw-stock readers (`useItemStock` /
+    // `useItemStocks`, behind the Stock pager) read back.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['items'] }),
+        queryClient.invalidateQueries({ queryKey: ['itemStocks'] }),
+      ]),
   })
 
   const [cloudUpdate, { loading: cloudUpdateLoading }] = useUpdateItemMutation({
