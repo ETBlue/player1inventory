@@ -1101,6 +1101,14 @@ describe('Home page filtering integration', () => {
       expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
       expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
 
+      // And the empty state is gone — the shelf holds no items, so its count
+      // is 0 and the block is reached; only the `!hasTail` guard suppresses
+      // it. Without that guard "No items / Search to add items to this shelf"
+      // renders directly beneath the tail row offering exactly such an item —
+      // PR B's original defect. This assertion is what pins the guard: the
+      // sibling vendor and recipe tail tests carry the same one.
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+
       // And Create is suppressed — the toolbar's hasExactMatch reads the
       // GLOBAL catalog (hasExactGlobalMatch), not the shelf's own
       // (twice-filtered) visible list, matching the #245 fix
@@ -1485,9 +1493,13 @@ describe('Home page filtering integration', () => {
       // And the bucket-3 row shows NO stock figures: `useShowStock` gates
       // them off for an item with no ItemStock here, because
       // `joinItemStock()` hands such a row zeroed quantities and rendering
-      // those as if they were real stock is a lie. `itemDefaults` targets 2,
-      // so an ungated row would read "0/2" and carry a UnitBadge.
-      expect(screen.queryByText('0/2')).not.toBeInTheDocument()
+      // those as if they were real stock is a lie. The literal is "0/0", not
+      // "0/2": the ROW's quantities are zeroed, not just its on-hand count —
+      // `joinItemStock()` falls back to ZERO_STOCK (`db/operations.ts`),
+      // whose `targetQuantity` is 0, so the denominator an ungated row would
+      // print is 0 too. `itemDefaults`' target of 2 lives on the Office
+      // ItemStock and never reaches this row.
+      expect(screen.queryByText('0/0')).not.toBeInTheDocument()
       expect(document.querySelectorAll('[data-unit-badge]')).toHaveLength(0)
     })
 
@@ -1770,9 +1782,13 @@ describe('Home page filtering integration', () => {
       // And the bucket-3 row shows NO stock figures: `useShowStock` gates
       // them off for an item with no ItemStock here, because
       // `joinItemStock()` hands such a row zeroed quantities and rendering
-      // those as if they were real stock is a lie. `itemDefaults` targets 2,
-      // so an ungated row would read "0/2" and carry a UnitBadge.
-      expect(screen.queryByText('0/2')).not.toBeInTheDocument()
+      // those as if they were real stock is a lie. The literal is "0/0", not
+      // "0/2": the ROW's quantities are zeroed, not just its on-hand count —
+      // `joinItemStock()` falls back to ZERO_STOCK (`db/operations.ts`),
+      // whose `targetQuantity` is 0, so the denominator an ungated row would
+      // print is 0 too. `itemDefaults`' target of 2 lives on the Office
+      // ItemStock and never reaches this row.
+      expect(screen.queryByText('0/0')).not.toBeInTheDocument()
       expect(document.querySelectorAll('[data-unit-badge]')).toHaveLength(0)
     })
 
