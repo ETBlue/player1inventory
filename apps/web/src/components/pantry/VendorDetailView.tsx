@@ -1,16 +1,19 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, ArrowUpFromLine, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -34,6 +37,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   const { data: tagTypes = [] } = useTagTypes()
 
   const updateItem = useUpdateItem()
+  const showStock = useShowStock()
 
   const {
     sortBy: localSortBy,
@@ -92,6 +96,111 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
     )
   }, [sortedItems, trimmedSearch])
 
+  // Sourced from `inScopeItems`, the PRE-search location-scoped list, because
+  // that is what `inGroupIds` is DEFINED to be — `hooks/CLAUDE.md` on
+  // `useItemSearchTail`: "must be the page's own already-location-scoped
+  // list". Reading it off a post-search value is wrong by contract, whether or
+  // not a test can observe the difference.
+  //
+  // Today it cannot: swapping in `displayedItems` is an equivalent mutant
+  // here, since the tail only ever consults `inGroupIds` for items whose name
+  // matches the query and `displayedItems` narrows these same items (via
+  // `sortedItems`, a reorder) by exactly that same name match and nothing
+  // else — so the two sets agree on every id the tail can ask
+  // about. That is an accident of the current derivation, not a licence.
+  const inGroupIds = useMemo(
+    () => new Set(inScopeItems.map((i) => i.id)),
+    [inScopeItems],
+  )
+
+  // This view shows no recipe badges at all (an always-empty map, kept for
+  // parity with `renderItemCard` below so a tail row is configured exactly
+  // like a list row). Vendor badges are computed per row from the full
+  // `vendors` list, exactly as `renderItemCard` does — which is what a tail
+  // row needs: bucket 3 is by construction the items NOT stocked here, so
+  // they fall outside `allItems` and any map keyed over it would leave them
+  // badge-less.
+  const recipeMap = new Map<string, []>()
+
+  function renderTailItemCard(item: PantryItem) {
+    return (
+      <ItemCard
+        item={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        tagTypes={tagTypes}
+        vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
+        recipes={recipeMap.get(item.id) ?? []}
+        showTags={isTagsVisible}
+        showStock={showStock(item)}
+      />
+    )
+  }
+
+  // Bucket 2's action on a real vendor page: pressing it APPENDS this vendor
+  // to the item's vendorIds. The dedup check is a defensive no-op — bucket 2
+  // is by construction items outside `inGroupIds` (== the items carrying this
+  // vendor and stocked here) — kept for the same reason the shelf view keeps
+  // its own.
+  async function handleApplyVendor(item: PantryItem) {
+    if (isUnsorted || !vendor) return
+    if ((item.vendorIds ?? []).includes(vendor.id)) return
+    await updateItem.mutateAsync({
+      id: item.id,
+      updates: { vendorIds: [...(item.vendorIds ?? []), vendor.id] },
+    })
+  }
+
+  // The "No vendor" page's bucket 2 is inert but never silent: its group is
+  // "items with NO vendor at all", so an action there would have to STRIP
+  // every vendor — destructive, the opposite of every other bucket-2 action.
+  // Each row says which vendor groups already hold the item instead, the same
+  // shape the no-vendor cart uses (`shopping/$vendorId.tsx`). Vendor names
+  // render as stored (`normal-case`) — vendors are excluded from the app's
+  // title-case convention.
+  const renderVendorsNote = (item: PantryItem) => (
+    <span className="normal-case">
+      {t('items.searchTail.inVendors', {
+        vendors: vendors
+          .filter((v) => (item.vendorIds ?? []).includes(v.id))
+          .map((v) => v.name)
+          .join(', '),
+      })}
+    </span>
+  )
+
+  // No `sortTail` is passed here, unlike the cart page and PantryListView —
+  // so the tail renders in name order while this vendor's own list obeys the
+  // user's chosen sort. This is a DELIBERATE, DEFERRED gap, not an oversight:
+  // `useItemSortData` above is keyed only over `allItems` (stocked-here
+  // items), so a bucket-3 row (not stocked here) would sort against an absent
+  // map entry. Fixing it properly means widening that sort-data source, which
+  // is a behaviour change deserving its own review — out of scope for this
+  // pass. Same limitation, same wording, as `ShelfDetailView`.
+  //
+  // `query` is the RAW search value: `useItemSearchTail` trims internally.
+  //
+  // The unresolved-vendor window gets NEITHER descriptor: when `vendorId` is
+  // a real id but the vendor is absent from `useVendors()` — deleted, the
+  // only way to get here, since a still-loading `useVendors()` returns the
+  // `<LoadingSpinner />` below before any tail renders — its name is in the
+  // button label and pressing it would append a nonexistent id, so bucket 2
+  // is simply absent for that render.
+  const { tailProps } = useItemSearchTailWiring({
+    inGroupIds,
+    query: search,
+    renderItem: renderTailItemCard,
+    ...(!isUnsorted && vendor
+      ? {
+          groupAction: {
+            label: t('items.searchTail.applyVendor', { vendor: vendor.name }),
+            onAction: handleApplyVendor,
+            icon: <ArrowUpFromLine />,
+          },
+        }
+      : {}),
+    ...(isUnsorted ? { groupNote: renderVendorsNote } : {}),
+  })
+
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     setSortBy(field)
     setSortDirection(dir)
@@ -104,8 +213,6 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   }
 
   const title = isUnsorted ? 'No vendor' : (vendor?.name ?? 'Vendor')
-
-  const recipeMap = new Map<string, []>()
 
   const renderItemCard = (item: PantryItem) => (
     <ItemCard
@@ -186,7 +293,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
             </ListSectionDivider>
           )}
           {inactiveDisplayed.map(renderItemCard)}
-          {sortedItems.length === 0 && (
+
+          {trimmedSearch && <ItemSearchTail {...tailProps} />}
+
+          {!trimmedSearch && sortedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">

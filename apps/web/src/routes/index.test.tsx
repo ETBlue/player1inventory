@@ -1417,4 +1417,270 @@ describe('Home page filtering integration', () => {
       })
     })
   })
+
+  describe('vendor detail search tail (unified item search)', () => {
+    // THE FIXTURE IS THE TEST — with a single location "stocked here" and
+    // "every item" are the same set, so every case below stocks its probe
+    // item ONLY at a second location.
+    //
+    // NOT covered here, and deliberately so: sourcing `inGroupIds` from
+    // `displayedItems` instead of `inScopeItems` is an EQUIVALENT MUTANT on
+    // this view (see the comment at that call site in `VendorDetailView.tsx`)
+    // — this page's only narrowing is the same name match the tail already
+    // applies, so the two sets agree on every id the tail can consult. No
+    // fixture can distinguish them; adding one would be a vacuous test.
+    const stockFields = {
+      targetUnit: 'package' as const,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+
+    const openSearch = async (
+      user: ReturnType<typeof userEvent.setup>,
+      query: string,
+    ) => {
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        query,
+      )
+    }
+
+    const renderVendorDetail = (vendorId: string) => {
+      const history = createMemoryHistory({
+        initialEntries: [`/?groupBy=vendor&id=${vendorId}`],
+      })
+      const router = createRouter({ routeTree, history })
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      )
+    }
+
+    it('user can see a globally-existing item that is not stocked here under "not stocked here"', async () => {
+      // Given a vendor with no items, and Milk stocked ONLY at the Office —
+      // nothing at all is stocked at the active location, PR B's bug class
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderVendorDetail(vendor.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then it is offered under "not stocked here", with the location action
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk' }),
+      ).toBeInTheDocument()
+
+      // And the empty state is gone — it is gated on `!trimmedSearch`, so it
+      // no longer renders BESIDE the tail (these are sibling `&&` blocks, not
+      // a ternary)
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+    })
+
+    it('the two-step gate: "Add to {location}" stocks the item without applying the vendor, and a second "Apply {vendor}" press applies it', async () => {
+      // Given a vendor with no items, and Milk stocked ONLY at the Office and
+      // carrying NO vendor
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      const milk = await createItem(
+        { name: 'Milk', tagIds: [], ...stockFields },
+        office.id,
+      )
+
+      renderVendorDetail(vendor.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+      await openSearch(user, 'milk')
+
+      // When the user presses "Add to My Home" (bucket 3)
+      await user.click(
+        await screen.findByRole('button', { name: 'Add to My Home: Milk' }),
+      )
+
+      // Then the row moves to bucket 2 — and, read straight off the DATABASE
+      // rather than off where the row now sits, Milk is stocked HERE but has
+      // NOT been given the vendor. Row position cannot prove this: a row that
+      // relocates says nothing about which mutations ran.
+      const applyButton = await screen.findByRole('button', {
+        name: 'Apply Costco: Milk',
+      })
+      const stocksAfterFirstPress = await db.itemStocks
+        .where('itemId')
+        .equals(milk.id)
+        .toArray()
+      expect(stocksAfterFirstPress.map((s) => s.locationId)).toContain(
+        DEFAULT_LOCATION_ID,
+      )
+      const milkAfterFirstPress = await db.items.get(milk.id)
+      expect(milkAfterFirstPress?.vendorIds ?? []).not.toContain(vendor.id)
+
+      // When the user presses "Apply Costco" (the second, separate press)
+      await user.click(applyButton)
+
+      // Then the vendor is applied and both tail sections clear
+      await waitFor(async () => {
+        const milkAfterSecondPress = await db.items.get(milk.id)
+        expect(milkAfterSecondPress?.vendorIds ?? []).toContain(vendor.id)
+      })
+      await waitFor(() => {
+        expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      })
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user can see a stocked-here item that lacks the vendor under "not in this list", while the page\'s own items stay out of the tail', async () => {
+      // Given Costco and three items that all match "milk":
+      //   Milk Powder     — stocked HERE, carries Costco → the page's own list
+      //   Milk            — stocked HERE, no vendor      → bucket 2
+      //   Milk Substitute — carries Costco but stocked ONLY at the Office, so
+      //                     it is absent from this location-scoped page and
+      //                     belongs in bucket 3, NOT bucket 2 (there is no
+      //                     vendor left to grant it)
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem({
+        name: 'Milk Powder',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        ...stockFields,
+      })
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      await createItem(
+        {
+          name: 'Milk Substitute',
+          tagIds: [],
+          vendorIds: [vendor.id],
+          ...stockFields,
+        },
+        office.id,
+      )
+
+      renderVendorDetail(vendor.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+
+      // When the user searches for "milk" on this vendor's page
+      await openSearch(user, 'milk')
+
+      // Then exactly ONE row sits in each tail bucket — Milk Powder, which
+      // the page already renders, is subtracted from both
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Apply Costco: Milk' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk Substitute' }),
+      ).toBeInTheDocument()
+
+      // And neither tail row offers the other bucket's action
+      expect(
+        screen.queryByRole('button', { name: 'Add to My Home: Milk' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Apply Costco: Milk Substitute' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /apply costco: milk powder/i }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('the "No vendor" page renders an inert note naming the vendors that hold the item, and no button', async () => {
+      // Given the unsorted ("No vendor") page: Milk stocked HERE carrying
+      // Costco — so it is excluded from this group by MEMBERSHIP, not by
+      // location — plus Milk Water stocked ONLY at the Office, the
+      // location-scoping probe
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem({
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        ...stockFields,
+      })
+      await createItem(
+        { name: 'Milk Water', tagIds: [], ...stockFields },
+        office.id,
+      )
+
+      renderVendorDetail('unsorted')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'No vendor', level: 1 })
+
+      // When the user searches for "milk" on the "No vendor" page
+      await openSearch(user, 'milk')
+
+      // Then bucket 2 renders the inert note — joining "items with NO vendor"
+      // would mean STRIPPING every vendor, so there is deliberately no button
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('In Costco')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /apply/i }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /: Milk$/ }),
+      ).not.toBeInTheDocument()
+
+      // And bucket 3 is unaffected — "Add to {location}" is group-agnostic
+      expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk Water' }),
+      ).toBeInTheDocument()
+    })
+
+    it('the unresolved-vendor window renders neither a group action nor a note', async () => {
+      // Given a vendorId that resolves to no vendor at all — deleted; a
+      // still-loading `useVendors()` renders a spinner instead of any tail,
+      // so it never reaches this state: Milk stocked HERE without the vendor
+      // (a bucket-2 candidate) and Milk Water stocked ONLY at the Office (a
+      // bucket-3 candidate)
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      await createItem(
+        { name: 'Milk Water', tagIds: [], ...stockFields },
+        office.id,
+      )
+
+      renderVendorDetail('deleted-vendor-id')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Vendor', level: 1 })
+
+      // When the user searches for "milk" on the unresolved vendor's page
+      await openSearch(user, 'milk')
+
+      // Then bucket 3 still renders — it does not depend on the vendor
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk Water' }),
+      ).toBeInTheDocument()
+
+      // And bucket 2 is fully suppressed: no divider, no apply button, no
+      // note, and no row for Milk anywhere — its label would name a vendor
+      // that does not exist and pressing it would append a nonexistent id
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /^apply/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText(/^In /)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Milk' }),
+      ).not.toBeInTheDocument()
+    })
+  })
 })
