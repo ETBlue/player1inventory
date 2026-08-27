@@ -12,7 +12,6 @@ import {
   updateCartItem,
 } from '@/db/operations'
 import {
-  ActiveCartDocument,
   AllCartItemsDocument,
   AllCartsDocument,
   CartItemsDocument,
@@ -331,7 +330,6 @@ export function useCheckout() {
             ...(logParams ? { logParams } : {}),
           },
           refetchQueries: [
-            { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
             'VendorCart',
@@ -378,7 +376,6 @@ export function useCheckout() {
             ...(logParams ? { logParams } : {}),
           },
           refetchQueries: [
-            { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             { query: GetItemsDocument },
             'VendorCart',
@@ -431,7 +428,6 @@ export function useAbandonCart() {
         cloudAbandonCart({
           variables: { cartId },
           refetchQueries: [
-            { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             'VendorCart',
             { query: AllCartsDocument },
@@ -447,7 +443,6 @@ export function useAbandonCart() {
         cloudAbandonCart({
           variables: { cartId },
           refetchQueries: [
-            { query: ActiveCartDocument },
             { query: CartItemsDocument, variables: { cartId } },
             'VendorCart',
             { query: AllCartsDocument },
