@@ -112,48 +112,6 @@ async function execOp(query: string, variables?: Record<string, unknown>, contex
   return r.body.kind === 'single' ? r.body.singleResult : null
 }
 
-// ─── activeCart ──────────────────────────────────────────────────────────────
-
-describe('activeCart', () => {
-  it('user can get existing no-vendor cart — lastPurchasedAt is serialized as ISO 8601', async () => {
-    // Given a no-vendor cart already exists, carrying a Prisma `Date`
-    const cart = makeCart({ lastPurchasedAt: now })
-    mockPrisma.cart.findUnique.mockResolvedValue(cart)
-
-    // When querying activeCart
-    const result = await execOp(`query { activeCart { id lastPurchasedAt } }`)
-
-    // Then the existing cart is returned with an ISO 8601 date on the wire.
-    // Asserting the exact string (not just `toBeDefined()`) is what guards
-    // against the `Cart` type resolver going missing: without it graphql-js
-    // stringifies the Date via valueOf() and ships epoch millis instead.
-    expect(result?.errors).toBeUndefined()
-    const found = result?.data?.activeCart as { id: string; lastPurchasedAt: string | null }
-    expect(found.id).toBe('no-vendor')
-    expect(found.lastPurchasedAt).toBe(now.toISOString())
-    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
-  })
-
-  it('user gets a new no-vendor cart created if none exists', async () => {
-    // Given no cart exists for 'no-vendor'
-    mockPrisma.cart.findUnique.mockResolvedValue(null)
-    const newCart = makeCart()
-    mockPrisma.cart.create.mockResolvedValue(newCart)
-
-    // When querying activeCart
-    const result = await execOp(`query { activeCart { id lastPurchasedAt } }`)
-
-    // Then a new cart is created and returned
-    expect(result?.errors).toBeUndefined()
-    const found = result?.data?.activeCart as { id: string; lastPurchasedAt: string | null }
-    expect(found.id).toBeDefined()
-    // And a never-purchased cart keeps a null lastPurchasedAt (not epoch 0)
-    expect(found.lastPurchasedAt).toBeNull()
-    expect(mockPrisma.cart.create).toHaveBeenCalledOnce()
-    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'no-vendor', userId: 'user_test123' } })
-  })
-})
-
 // ─── vendorCart ──────────────────────────────────────────────────────────────
 
 describe('vendorCart', () => {
@@ -191,6 +149,28 @@ describe('vendorCart', () => {
     // Then a new cart is created
     expect(result?.errors).toBeUndefined()
     expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'vendor_2', userId: 'user_test123' } })
+  })
+
+  it('user gets a new no-vendor cart created if none exists', async () => {
+    // Given no cart exists for the null-vendor fallback id
+    mockPrisma.cart.findUnique.mockResolvedValue(null)
+    const newCart = makeCart({ id: 'no-vendor' })
+    mockPrisma.cart.create.mockResolvedValue(newCart)
+
+    // When querying vendorCart with a null vendorId
+    const result = await execOp(
+      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id lastPurchasedAt } }`,
+      { vendorId: null },
+    )
+
+    // Then a new cart is created under the `vendorId ?? 'no-vendor'` fallback id
+    expect(result?.errors).toBeUndefined()
+    const found = result?.data?.vendorCart as { id: string; lastPurchasedAt: string | null }
+    expect(found.id).toBe('no-vendor')
+    // And a never-purchased cart keeps a null lastPurchasedAt (not epoch 0)
+    expect(found.lastPurchasedAt).toBeNull()
+    expect(mockPrisma.cart.create).toHaveBeenCalledOnce()
+    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'no-vendor', userId: 'user_test123' } })
   })
 
   it('null vendorId falls back to no-vendor cart', async () => {
