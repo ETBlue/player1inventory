@@ -196,14 +196,9 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     </span>
   )
 
-  // No `sortTail` is passed here, unlike the cart page and PantryListView —
-  // so the tail renders in name order while this recipe's own list obeys the
-  // user's chosen sort. This is a DELIBERATE, DEFERRED gap, not an oversight:
-  // `useItemSortData` above is keyed only over `allItems` (stocked-here
-  // items), so a bucket-3 row (not stocked here) would sort against an absent
-  // map entry. Fixing it properly means widening that sort-data source, which
-  // is a behaviour change deserving its own review — out of scope for this
-  // pass. Same limitation, same wording, as `ShelfDetailView`.
+  // `sortTail` hands both tail sections the page's own sort. Bucket-3 rows
+  // carry no entry in the sort maps, which `sortItems` handles explicitly —
+  // same accepted residual, and same reasoning, as `ShelfDetailView`.
   //
   // `query` is the RAW search value: `useItemSearchTail` trims internally.
   //
@@ -219,6 +214,15 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     inGroupIds,
     query: search,
     renderItem: renderTailItemCard,
+    sortTail: (list) =>
+      sortItems(
+        list,
+        quantities ?? new Map(),
+        expiryDates ?? new Map(),
+        purchaseDates ?? new Map(),
+        sortBy,
+        sortDirection,
+      ),
     ...(!isUnsorted && recipe
       ? {
           groupAction: {

@@ -220,18 +220,38 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // have no add path (handleAddToSelectionShelf used to early-return for
   // them), and inventing one is out of scope here.
   //
-  // No `sortTail` is passed here, unlike the cart page and PantryListView —
-  // so the tail renders in name order while this shelf's own list obeys the
-  // user's chosen sort. This is a DELIBERATE, DEFERRED gap, not an oversight:
-  // `useItemSortData` above is keyed only over `allItems` (stocked-here
-  // items), so a bucket-3 row (not stocked here) would sort against an absent
-  // map entry. Fixing it properly means widening that sort-data source, which
-  // is a behaviour change deserving its own review — out of scope for this
-  // pass.
+  // `sortTail` hands BOTH tail sections the same sort the page's own list
+  // uses, so a search result no longer flips to name order mid-page.
+  //
+  // Residual, accepted: a bucket-3 row is not stocked here, so it carries
+  // ZERO_STOCK and has no entry in any of the three sort maps (they are keyed
+  // over `allItems`, i.e. stocked-here items). `sortItems` handles every one
+  // of those absences explicitly — `?? 0`, `?? null`, `undefined` — so nothing
+  // breaks, but under `stock`, `purchased` and `expiring` every bucket-3 row
+  // then compares EQUAL to every other, and the section keeps the tail's own
+  // name order. Only `name` actually reorders bucket 3. Bucket 2 IS stocked
+  // here, so it is in the maps and sorts fully by every field.
+  //
+  // That residual is the shipped behaviour on the flat pantry already:
+  // `PantryListView` passes `sortTail` while feeding `useItemSortData` from
+  // `useStockedItems()` — the identical shape. Widening the sort-data source
+  // to cover the tail is the expensive alternative and is deliberately not
+  // taken: its expiry and purchase maps do one Dexie read per item and embed
+  // a `join(',')` of the whole input list in their cache keys, so widening
+  // busts both caches and multiplies the queries.
   const { tailProps, hasTail, hasExactGlobalMatch } = useItemSearchTailWiring({
     inGroupIds: inShelfItemIds,
     query: search,
     renderItem: renderTailItemCard,
+    sortTail: (list) =>
+      sortItems(
+        list,
+        quantities ?? new Map(),
+        expiryDates ?? new Map(),
+        purchaseDates ?? new Map(),
+        sortBy,
+        sortDirection,
+      ),
     ...(shelf?.type === 'selection'
       ? {
           groupAction: {

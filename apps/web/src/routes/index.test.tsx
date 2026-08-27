@@ -1078,6 +1078,67 @@ describe('Home page filtering integration', () => {
       )
     }
 
+    it("user sees bucket-3 tail rows in the shelf's chosen sort order, not name order", async () => {
+      // Given the shelf's sort preference is name/DESCENDING, and two items
+      // that both match "milk" but are stocked ONLY at the Office — so both
+      // land in bucket 3.
+      //
+      // THE FIXTURE IS THE TEST, part two. Name order and sort order must
+      // DIFFER or the assertion cannot tell `sortTail` from its absence:
+      // `useItemSearchTail` already hands both buckets to the caller in
+      // name-ASCENDING order, so Almond-before-Zucchini is what renders with
+      // no `sortTail` at all. Only a `sortTail` that actually applies this
+      // page's sort flips them.
+      //
+      // `name` is also the ONE field that can discriminate two bucket-3 rows,
+      // which is why the fixture drives the direction rather than the field.
+      // A bucket-3 row is not stocked here, so `joinItemStock` hands it
+      // ZERO_STOCK and it has no entry in any of the three sort maps (all
+      // keyed over stocked-here `allItems`): under `stock` both rows resolve
+      // to quantity 0 / target 0 / threshold 0 and tie, and under `purchased`
+      // and `expiring` `sortItems` returns 0 outright for a pair of missing
+      // dates. A fixture built on those three would be vacuous. Bucket 2 IS
+      // in the maps and sorts by every field — see the call-site comment in
+      // `ShelfDetailView.tsx`.
+      localStorage.setItem(
+        'shelf-detail-sort-prefs',
+        JSON.stringify({ sortBy: 'name', sortDirection: 'desc' }),
+      )
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Almond Milk', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+      await createItem(
+        { name: 'Zucchini Milk', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+
+      // When the user searches for milk
+      await openSearch(user, 'milk')
+      expect(await screen.findByText('2 not stocked here')).toBeInTheDocument()
+
+      // Then the two bucket-3 rows render in the chosen DESCENDING order —
+      // asserted as a SEQUENCE, not as presence
+      const rows = await screen.findAllByRole('button', {
+        name: /^Add to My Home:/,
+      })
+      expect(rows.map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Add to My Home: Zucchini Milk',
+        'Add to My Home: Almond Milk',
+      ])
+    })
+
     it('selection shelf: an item stocked only at another location lands under "not stocked here"', async () => {
       // Given a selection shelf with no items yet, and Milk stocked ONLY at
       // the Office
@@ -1465,6 +1526,47 @@ describe('Home page filtering integration', () => {
       )
     }
 
+    it("user sees bucket-3 tail rows in the vendor page's chosen sort order, not name order", async () => {
+      // Given the vendor page's sort preference is name/DESCENDING, and two
+      // items that both match "milk" but are stocked ONLY at the Office — so
+      // both land in bucket 3, whose default order is name-ASCENDING. The
+      // fixture's two orders therefore disagree, which is the only way the
+      // assertion can distinguish `sortTail` from its absence. See the shelf
+      // sibling of this test for why `name` is the one field that can
+      // discriminate two bucket-3 rows.
+      localStorage.setItem(
+        'vendor-detail-sort-prefs',
+        JSON.stringify({ sortBy: 'name', sortDirection: 'desc' }),
+      )
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Almond Milk', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+      await createItem(
+        { name: 'Zucchini Milk', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+
+      renderVendorDetail(vendor.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+
+      // When the user searches for milk
+      await openSearch(user, 'milk')
+      expect(await screen.findByText('2 not stocked here')).toBeInTheDocument()
+
+      // Then the two bucket-3 rows render in the chosen DESCENDING order
+      const rows = await screen.findAllByRole('button', {
+        name: /^Add to My Home:/,
+      })
+      expect(rows.map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Add to My Home: Zucchini Milk',
+        'Add to My Home: Almond Milk',
+      ])
+    })
+
     it('user can see recipe badges on both a list row and a bucket-3 tail row', async () => {
       // Given the vendor Costco and two items that both match "milk":
       //   Milk Powder     — stocked HERE, carries Costco, held by Pasta
@@ -1815,6 +1917,47 @@ describe('Home page filtering integration', () => {
         </QueryClientProvider>,
       )
     }
+
+    it("user sees bucket-3 tail rows in the recipe page's chosen sort order, not name order", async () => {
+      // Given the recipe page's sort preference is name/DESCENDING, and two
+      // items that both match "milk" but are stocked ONLY at the Office — so
+      // both land in bucket 3, whose default order is name-ASCENDING. The
+      // fixture's two orders therefore disagree, which is the only way the
+      // assertion can distinguish `sortTail` from its absence. See the shelf
+      // sibling of this test for why `name` is the one field that can
+      // discriminate two bucket-3 rows.
+      localStorage.setItem(
+        'recipe-detail-sort-prefs',
+        JSON.stringify({ sortBy: 'name', sortDirection: 'desc' }),
+      )
+      const recipe = await createRecipe({ name: 'Pasta' })
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Almond Milk', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+      await createItem(
+        { name: 'Zucchini Milk', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+
+      renderRecipeDetail(recipe.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Pasta', level: 1 })
+
+      // When the user searches for milk
+      await openSearch(user, 'milk')
+      expect(await screen.findByText('2 not stocked here')).toBeInTheDocument()
+
+      // Then the two bucket-3 rows render in the chosen DESCENDING order
+      const rows = await screen.findAllByRole('button', {
+        name: /^Add to My Home:/,
+      })
+      expect(rows.map((b) => b.getAttribute('aria-label'))).toEqual([
+        'Add to My Home: Zucchini Milk',
+        'Add to My Home: Almond Milk',
+      ])
+    })
 
     it('user can see a globally-existing item that is not stocked here under "not stocked here"', async () => {
       // Given a recipe with no items, and Milk stocked ONLY at the Office —
