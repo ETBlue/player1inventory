@@ -14,7 +14,7 @@ import {
   within,
 } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
@@ -60,6 +60,16 @@ vi.mock('@/db/operations', async (importOriginal) => {
       return actual.getRecipes()
     },
   }
+})
+
+// The gate is module-level shared state, and the search-tail test below leaves
+// `hold` true when it ends. Reset it globally rather than inside that describe:
+// a test appended in ANY describe — or a reorder — would otherwise block on its
+// first `getRecipes` and time out for a reason nobody would guess.
+afterEach(() => {
+  recipesGate.hold = false
+  recipesGate.release?.()
+  recipesGate.release = null
 })
 
 // The stored values are deliberately different from the submitted ones, and all

@@ -1,6 +1,20 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createShelf } from '@/db/operations'
 import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
@@ -19,6 +33,46 @@ vi.mock('@/hooks', async (importOriginal) => {
     ...actual,
     useUpdateItem: () => ({ mutateAsync, mutate: vi.fn(), isPending: false }),
   }
+})
+
+// A gate on `getShelf` — the query behind `useShelfQuery()`, which is where the
+// view reads `shelf.itemIds` from. NOT `listShelves`: that one backs
+// `['shelves']`, which the same prefix invalidation also matches, but gating it
+// would leave `['shelves', id]` free to refetch — so `shelf.itemIds` would
+// already be fresh and Milk would have left the tail before the assertion could
+// look at it. Holding a REFETCH open (the gate stays off until a test turns it
+// on, so the initial load is untouched) is what makes "the invalidation has not
+// landed yet" an observable state rather than a millisecond nobody can assert
+// on.
+const { shelfGate } = vi.hoisted(() => ({
+  shelfGate: {
+    hold: false,
+    release: null as null | (() => void),
+  },
+}))
+
+vi.mock('@/db/operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/db/operations')>()
+  return {
+    ...actual,
+    getShelf: async (id: string) => {
+      if (shelfGate.hold) {
+        await new Promise<void>((resolve) => {
+          shelfGate.release = resolve
+        })
+      }
+      return actual.getShelf(id)
+    },
+  }
+})
+
+// The gate is module-level shared state, so a test that finishes with `hold`
+// still true would hang the NEXT test's first `getShelf` — in this file or in
+// any describe added below — with a timeout nobody would trace back to here.
+afterEach(() => {
+  shelfGate.hold = false
+  shelfGate.release?.()
+  shelfGate.release = null
 })
 
 // The stored values are deliberately different from the submitted ones, and all
@@ -152,5 +206,97 @@ describe('ShelfDetailView quick update', () => {
       id: milk.id,
       updates: { ...STORED, dueDate: new Date('2026-10-15') },
     })
+  })
+})
+
+// Renders the view with a search already in the URL, so the tail is on without
+// driving the toolbar's search toggle. `renderWithRouter` is pinned to '/'.
+const renderSearching = async (shelfId: string, query: string) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  const Wrapper = () => (
+    <QueryClientProvider client={queryClient}>
+      <ShelfDetailView shelfId={shelfId} />
+    </QueryClientProvider>
+  )
+  const rootRoute = createRootRoute({ component: Wrapper })
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({
+      initialEntries: [`/?q=${encodeURIComponent(query)}`],
+    }),
+  })
+  render(<RouterProvider router={router} />)
+  await router.load()
+}
+
+describe('ShelfDetailView search tail', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.shelves.clear()
+    await db.recipes.clear()
+    await db.vendors.clear()
+    await db.locations.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    localStorage.clear()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    shelfGate.hold = false
+    shelfGate.release = null
+  })
+
+  it('user cannot press the group action again until its refetch lands', async () => {
+    // Given an empty selection shelf and Milk stocked here — so Milk is a
+    // bucket-2 row carrying a live "Add to shelf" button
+    const milk = await stockMilk()
+    const shelf = await createShelf({
+      name: 'Fridge',
+      type: 'selection',
+      order: 0,
+      itemIds: [],
+    })
+    await renderSearching(shelf.id, 'Milk')
+
+    const label = 'Add to shelf: Milk'
+    expect(await screen.findByRole('button', { name: label })).toBeEnabled()
+
+    // When the user presses it while the `['shelves', id]` refetch is held open
+    shelfGate.hold = true
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: label }))
+    })
+    // The write has committed and `onSuccess` has fired — the refetch it kicked
+    // off is now sitting on the gate.
+    await waitFor(() => expect(shelfGate.release).not.toBeNull())
+    // Everything already resolvable resolves. Without the returned
+    // invalidation, THIS is where `mutateAsync` settles and the wiring hook's
+    // `finally` re-enables the row against a `shelf.itemIds` that still has no
+    // Milk in it — which is the regression this test exists to catch.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Then the button is still disabled — the mutation has not resolved,
+    // because the list it feeds has not caught up yet
+    expect(screen.getByRole('button', { name: label })).toBeDisabled()
+    expect((await db.shelves.get(shelf.id))?.itemIds).toEqual([milk.id])
+
+    // When the refetch lands
+    await act(async () => {
+      shelfGate.release?.()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    // Then Milk has moved out of the tail and into the shelf's own list
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
+    })
+    expect(
+      screen.getByRole('button', { name: `Update quantity of ${milk.name}` }),
+    ).toBeInTheDocument()
   })
 })
