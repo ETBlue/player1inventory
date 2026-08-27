@@ -11,7 +11,6 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -20,6 +19,7 @@ import {
   useShelvesQuery,
   useUpdateShelfMutation,
 } from '@/hooks/useShelves'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -29,7 +29,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive, isStockedHere } from '@/lib/quantityUtils'
+import { isInactive } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { PantryItem, StockFields } from '@/types'
@@ -57,8 +57,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const updateShelf = useUpdateShelfMutation()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
+  const showStock = useShowStock()
 
   const {
     sortBy: localSortBy,
@@ -192,16 +191,25 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
         vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
         recipes={recipeMap.get(item.id) ?? []}
         showTags={isTagsVisible}
-        showStock={isCloud || isStockedHere(item)}
+        showStock={showStock(item)}
       />
     )
   }
 
   // Bucket 2's action, selection shelves only: pressing it appends the item
   // to the shelf's itemIds. The dedup check is the same "already-present"
-  // guard `handleAddToSelectionShelf` used to run before this hook took over
-  // — kept as a defensive no-op, since bucket 2 is by construction items NOT
-  // already in `inShelfItemIds` (== the shelf's stocked-here itemIds).
+  // guard `handleAddToSelectionShelf` used to run before this hook took over,
+  // and it is LOAD-BEARING, not a defensive no-op: any time an item already on
+  // this shelf renders in bucket 2 with a live button, a second press appends
+  // a DUPLICATE id to `itemIds`. Do not "clean it up".
+  //
+  // The tail's OWN press no longer opens that window: `useUpdateShelfMutation`'s
+  // local `onSuccess` RETURNS its `['shelves']` invalidation, so `mutateAsync`
+  // resolves only once `shelf.itemIds` has refetched, and the wiring hook
+  // re-enables the rows against fresh data. What the guard still covers is
+  // every path that does NOT await that refetch — `mutate` call sites, cloud
+  // mode, and any concurrent write (another surface, another tab) landing
+  // between this render and the press.
   //
   // Filter shelves get `groupNote` instead: PR D's swap point. The design's
   // end state is a per-axis picker (one tag per tag type, one vendor, one
@@ -213,18 +221,38 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // have no add path (handleAddToSelectionShelf used to early-return for
   // them), and inventing one is out of scope here.
   //
-  // No `sortTail` is passed here, unlike the cart page and PantryListView —
-  // so the tail renders in name order while this shelf's own list obeys the
-  // user's chosen sort. This is a DELIBERATE, DEFERRED gap, not an oversight:
-  // `useItemSortData` above is keyed only over `allItems` (stocked-here
-  // items), so a bucket-3 row (not stocked here) would sort against an absent
-  // map entry. Fixing it properly means widening that sort-data source, which
-  // is a behaviour change deserving its own review — out of scope for this
-  // pass.
-  const { tailProps, hasExactGlobalMatch } = useItemSearchTailWiring({
+  // `sortTail` hands BOTH tail sections the same sort the page's own list
+  // uses, so a search result no longer flips to name order mid-page.
+  //
+  // Residual, accepted: a bucket-3 row is not stocked here, so it carries
+  // ZERO_STOCK and has no entry in any of the three sort maps (they are keyed
+  // over `allItems`, i.e. stocked-here items). `sortItems` handles every one
+  // of those absences explicitly — `?? 0`, `?? null`, `undefined` — so nothing
+  // breaks, but under `stock`, `purchased` and `expiring` every bucket-3 row
+  // then compares EQUAL to every other, and the section keeps the tail's own
+  // name order. Only `name` actually reorders bucket 3. Bucket 2 IS stocked
+  // here, so it is in the maps and sorts fully by every field.
+  //
+  // That residual is the shipped behaviour on the flat pantry already:
+  // `PantryListView` passes `sortTail` while feeding `useItemSortData` from
+  // `useStockedItems()` — the identical shape. Widening the sort-data source
+  // to cover the tail is the expensive alternative and is deliberately not
+  // taken: its expiry and purchase maps do one Dexie read per item and embed
+  // a `join(',')` of the whole input list in their cache keys, so widening
+  // busts both caches and multiplies the queries.
+  const { tailProps, hasTail, hasExactGlobalMatch } = useItemSearchTailWiring({
     inGroupIds: inShelfItemIds,
     query: search,
     renderItem: renderTailItemCard,
+    sortTail: (list) =>
+      sortItems(
+        list,
+        quantities ?? new Map(),
+        expiryDates ?? new Map(),
+        purchaseDates ?? new Map(),
+        sortBy,
+        sortDirection,
+      ),
     ...(shelf?.type === 'selection'
       ? {
           groupAction: {
@@ -404,7 +432,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
 
           {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
-          {!trimmedSearch && sortedInShelfItems.length === 0 && (
+          {!hasTail && sortedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">

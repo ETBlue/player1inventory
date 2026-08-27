@@ -130,6 +130,22 @@ export class PantryPage {
     return this.page.getByRole('button', { name: `${action}: ${itemName}` })
   }
 
+  getDetailHeading(name: string): Locator {
+    // The <h1> in a detail view's toolbar `leading` slot, carrying the
+    // group's own name: `vendor?.name ?? 'Vendor'`
+    // (src/components/pantry/VendorDetailView.tsx:218,266) and
+    // `recipe?.name ?? 'Recipe'`
+    // (src/components/pantry/RecipeDetailView.tsx:237,292 — capitalized by
+    // CSS only, so the accessible name is the stored casing).
+    //
+    // Worth asserting before any tail assertion: `?id=` is passed through
+    // `validateSearch` as an arbitrary string with no existence check, so a
+    // wrong id renders the FALLBACK title, resolves no vendor/recipe, and
+    // suppresses the group action entirely — the tail spec would then fail on
+    // a missing button and say nothing about why.
+    return this.page.getByRole('heading', { name, level: 1, exact: true })
+  }
+
   getCreateItemButton(): Locator {
     // aria-label={t('itemListToolbar.createItem')} — "Create item"
     // (src/components/item/ItemListToolbar/index.tsx)

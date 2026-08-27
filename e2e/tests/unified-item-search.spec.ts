@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { seedRows } from '../helpers/locationSeed'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
@@ -310,4 +310,144 @@ test('filter shelf shows an inert note with no button for an item that does not 
   await expect(
     page.getByRole('button', { name: /bread/i }),
   ).toHaveCount(0)
+})
+
+// Unified item search, PR C — the same tail wired onto vendor detail and
+// recipe detail, the last two of the five surfaces.
+//
+// Both specs probe with MILK POWDER rather than the fixture's Milk, and that
+// is deliberate: Milk already carries Costco, so stocking it here would drop
+// it straight into the Costco page's own list in ONE press — the correct
+// behaviour (there is no membership left to grant), but the wrong fixture for
+// a two-step gate. A probe must be BOTH not-stocked-here AND outside the
+// group for the second press to exist at all.
+//
+// `q: 'milk powder'` also isolates the probe from the fixture's Milk: the
+// tail matches on `name.includes(query)`, and "milk" does not include
+// "milk powder".
+
+const MILK_POWDER = 'item-milk-powder'
+
+// Seeds the probe: exists globally, stocked ONLY at the Office, carrying no
+// vendor and belonging to no recipe.
+async function seedMilkPowder(page: Page) {
+  await seedRows(page, 'items', [
+    {
+      id: MILK_POWDER,
+      name: 'Milk Powder',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+  await seedRows(page, 'itemStocks', [
+    {
+      id: 'stock-milk-powder-office',
+      itemId: MILK_POWDER,
+      locationId: OFFICE,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+}
+
+test('user must press twice to stock an item at a location and apply this vendor', async ({
+  page,
+}) => {
+  const pantry = new PantryPage(page)
+
+  // Given Milk Powder exists globally, stocked only at the Office, carrying
+  // no vendor
+  await seedMilkPowder(page)
+
+  // When the user searches for it on the Costco vendor page
+  await pantry.gotoWithSearch({
+    groupBy: 'vendor',
+    id: COSTCO,
+    q: 'milk powder',
+  })
+
+  // Then the page really is Costco's — a wrong id would resolve no vendor and
+  // silently suppress the group action below
+  await expect(pantry.getDetailHeading('Costco')).toBeVisible()
+
+  // And the item sits under "not stocked here", with no vendor action yet
+  await expect(pantry.getNotStockedHereDivider()).toBeVisible()
+  await expect(
+    pantry.getTailActionButton('Apply Costco', 'Milk Powder'),
+  ).toHaveCount(0)
+
+  // When the user stocks it at My Home
+  await pantry.getTailActionButton('Add to My Home', 'Milk Powder').click()
+
+  // Then it moves to "not in this list" — a single press did NOT also apply
+  // the vendor, or it would have landed in Costco's own list
+  await expect(pantry.getNotInThisListDivider()).toBeVisible()
+  await expect(pantry.getNotStockedHereDivider()).toHaveCount(0)
+
+  // When the user applies the vendor — the second, separate press
+  await pantry.getTailActionButton('Apply Costco', 'Milk Powder').click()
+
+  // Then it joins Costco's own list and the tail clears entirely
+  await expect(pantry.getNotInThisListDivider()).toHaveCount(0)
+  await expect(pantry.getItemCard('Milk Powder')).toBeVisible()
+})
+
+test('user must press twice to stock an item at a location and add it to a recipe', async ({
+  page,
+}) => {
+  const pantry = new PantryPage(page)
+  const milkshakeId = 'recipe-milkshake'
+
+  // Given Milk Powder exists globally, stocked only at the Office, and an
+  // empty recipe
+  await seedMilkPowder(page)
+  await seedRows(page, 'recipes', [
+    {
+      id: milkshakeId,
+      name: 'Milkshake',
+      items: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+
+  // When the user searches for it inside the Milkshake recipe
+  await pantry.gotoWithSearch({
+    groupBy: 'recipe',
+    id: milkshakeId,
+    q: 'milk powder',
+  })
+
+  // Then the page really is Milkshake's — a wrong id would resolve no recipe
+  // and silently suppress the group action below
+  await expect(pantry.getDetailHeading('Milkshake')).toBeVisible()
+
+  // And the item sits under "not stocked here", with no recipe action yet
+  await expect(pantry.getNotStockedHereDivider()).toBeVisible()
+  await expect(
+    pantry.getTailActionButton('Add to recipe', 'Milk Powder'),
+  ).toHaveCount(0)
+
+  // When the user stocks it at My Home
+  await pantry.getTailActionButton('Add to My Home', 'Milk Powder').click()
+
+  // Then it moves to "not in this list" — a single press did NOT also make it
+  // an ingredient
+  await expect(pantry.getNotInThisListDivider()).toBeVisible()
+  await expect(pantry.getNotStockedHereDivider()).toHaveCount(0)
+
+  // When the user adds it to the recipe — the second, separate press
+  await pantry.getTailActionButton('Add to recipe', 'Milk Powder').click()
+
+  // Then it joins the recipe's own list and the tail clears entirely
+  await expect(pantry.getNotInThisListDivider()).toHaveCount(0)
+  await expect(pantry.getItemCard('Milk Powder')).toBeVisible()
 })

@@ -1,23 +1,27 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, ArrowUpFromLine, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { useRecipes } from '@/hooks/useRecipes'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { PantryItem, StockFields } from '@/types'
+import type { PantryItem, Recipe, StockFields } from '@/types'
 
 interface VendorDetailViewProps {
   vendorId: string
@@ -32,8 +36,13 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
+  // No `isLoading` wiring, following `ShelfDetailView` — recipe badges are
+  // decoration, so an empty first render is preferable to gating the whole
+  // page's spinner on a second query.
+  const { data: recipes = [] } = useRecipes()
 
   const updateItem = useUpdateItem()
+  const showStock = useShowStock()
 
   const {
     sortBy: localSortBy,
@@ -92,6 +101,147 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
     )
   }, [sortedItems, trimmedSearch])
 
+  // Sourced from `inScopeItems`, the PRE-search location-scoped list, because
+  // that is what `inGroupIds` is DEFINED to be — `hooks/CLAUDE.md` on
+  // `useItemSearchTail`: "must be the page's own already-location-scoped
+  // list". Reading it off a post-search value is wrong by contract, whether or
+  // not a test can observe the difference.
+  //
+  // Today it cannot: swapping in `displayedItems` is an equivalent mutant
+  // here, since the tail only ever consults `inGroupIds` for items whose name
+  // matches the query and `displayedItems` narrows these same items (via
+  // `sortedItems`, a reorder) by exactly that same name match and nothing
+  // else — so the two sets agree on every id the tail can ask
+  // about. That is an accident of the current derivation, not a licence.
+  const inGroupIds = useMemo(
+    () => new Set(inScopeItems.map((i) => i.id)),
+    [inScopeItems],
+  )
+
+  // Keyed by walking the global `recipes` list rather than `allItems`, so it
+  // resolves bucket-3 rows (not stocked here, hence absent from `allItems`)
+  // just as well as list rows — the same shape `RecipeDetailView` and
+  // `ShelfDetailView` use. Both renderers below read it, so a tail row
+  // carries exactly the recipe badges its list-row counterpart would. Vendor
+  // badges are still computed per row from the full `vendors` list, for the
+  // same reason: a map keyed over `allItems` cannot serve tail rows.
+  //
+  // Defined HERE, above the `isLoading` early return below, because it is a
+  // `useMemo`: Rules of Hooks require it to run on every render, so it cannot
+  // sit after a conditional return. `ShelfDetailView` builds the same map as a
+  // plain `const` *below* its early return (`ShelfDetailView.tsx:326`) and its
+  // `renderTailItemCard` closes over it fine — the renderer is only ever
+  // CALLED during JSX render, after that line. Memoization is the only reason
+  // the placement differs.
+  const recipeMap = useMemo(() => {
+    const map = new Map<string, Recipe[]>()
+    for (const recipe of recipes) {
+      for (const ri of recipe.items) {
+        const existing = map.get(ri.itemId) ?? []
+        map.set(ri.itemId, [...existing, recipe])
+      }
+    }
+    return map
+  }, [recipes])
+
+  function renderTailItemCard(item: PantryItem) {
+    return (
+      <ItemCard
+        item={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        tagTypes={tagTypes}
+        vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
+        recipes={recipeMap.get(item.id) ?? []}
+        showTags={isTagsVisible}
+        showStock={showStock(item)}
+      />
+    )
+  }
+
+  // Bucket 2's action on a real vendor page: pressing it APPENDS this vendor
+  // to the item's vendorIds. The dedup check is LOAD-BEARING, not decorative:
+  // any time an item already carrying this vendor renders in bucket 2 with a
+  // live button, a second press appends a DUPLICATE vendor id. Do not "clean
+  // it up".
+  //
+  // The tail's OWN press no longer opens that window: `useUpdateItem`'s local
+  // `onSuccess` RETURNS its `['items']` + `['itemStocks']` invalidations, and
+  // `['items']` covers BOTH item lists by prefix — `useStockedItems()`
+  // (`['items', 'stocked', {locationId}]`), which feeds `inGroupIds`, and
+  // `useItems()` (`['items', {locationId}]`), which feeds the tail's buckets —
+  // so `mutateAsync` resolves only once the two have resettled together and
+  // the wiring hook re-enables the rows against fresh data. What the guard
+  // still covers is every path that does NOT await that refetch: `mutate` call
+  // sites, cloud mode (whose `useUpdateItem` does not pass
+  // `awaitRefetchQueries`), and any concurrent write from another surface or
+  // tab landing between this render and the press.
+  async function handleApplyVendor(item: PantryItem) {
+    if (isUnsorted || !vendor) return
+    if ((item.vendorIds ?? []).includes(vendor.id)) return
+    await updateItem.mutateAsync({
+      id: item.id,
+      updates: { vendorIds: [...(item.vendorIds ?? []), vendor.id] },
+    })
+  }
+
+  // The "No vendor" page's bucket 2 is inert but never silent: its group is
+  // "items with NO vendor at all", so an action there would have to STRIP
+  // every vendor — destructive, the opposite of every other bucket-2 action.
+  // Each row says which vendor groups already hold the item instead, the same
+  // shape the no-vendor cart uses (`shopping/$vendorId.tsx`). Vendor names
+  // render as stored (`normal-case`) — vendors are excluded from the app's
+  // title-case convention.
+  const renderVendorsNote = (item: PantryItem) => (
+    <span className="normal-case">
+      {t('items.searchTail.inVendors', {
+        vendors: vendors
+          .filter((v) => (item.vendorIds ?? []).includes(v.id))
+          .map((v) => v.name)
+          .join(', '),
+      })}
+    </span>
+  )
+
+  // `sortTail` hands both tail sections the page's own sort. Bucket-3 rows
+  // carry no entry in the sort maps, which `sortItems` handles explicitly —
+  // same accepted residual, and same reasoning, as `ShelfDetailView`.
+  //
+  // `query` is the RAW search value: `useItemSearchTail` trims internally.
+  //
+  // The unresolved-vendor window gets NEITHER descriptor: when no vendor in
+  // `useVendors()` carries `vendorId` — it was deleted, or the id never
+  // existed at all (a stale bookmark, a hand-typed `?id=`), since
+  // `validateSearch` in `routes/index.tsx` passes `id` through as an
+  // arbitrary string with no existence check — its name is in the button
+  // label and pressing it would append a nonexistent id, so bucket 2 is
+  // simply absent for that render. A still-loading `useVendors()` is NOT one
+  // of those cases: the `<LoadingSpinner />` below returns before any tail is
+  // rendered.
+  const { tailProps, hasTail } = useItemSearchTailWiring({
+    inGroupIds,
+    query: search,
+    renderItem: renderTailItemCard,
+    sortTail: (list) =>
+      sortItems(
+        list,
+        quantities ?? new Map(),
+        expiryDates ?? new Map(),
+        purchaseDates ?? new Map(),
+        sortBy,
+        sortDirection,
+      ),
+    ...(!isUnsorted && vendor
+      ? {
+          groupAction: {
+            label: t('items.searchTail.applyVendor', { vendor: vendor.name }),
+            onAction: handleApplyVendor,
+            icon: <ArrowUpFromLine />,
+          },
+        }
+      : {}),
+    ...(isUnsorted ? { groupNote: renderVendorsNote } : {}),
+  })
+
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     setSortBy(field)
     setSortDirection(dir)
@@ -104,8 +254,6 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   }
 
   const title = isUnsorted ? 'No vendor' : (vendor?.name ?? 'Vendor')
-
-  const recipeMap = new Map<string, []>()
 
   const renderItemCard = (item: PantryItem) => (
     <ItemCard
@@ -186,7 +334,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
             </ListSectionDivider>
           )}
           {inactiveDisplayed.map(renderItemCard)}
-          {sortedItems.length === 0 && (
+
+          {trimmedSearch && <ItemSearchTail {...tailProps} />}
+
+          {!hasTail && sortedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">

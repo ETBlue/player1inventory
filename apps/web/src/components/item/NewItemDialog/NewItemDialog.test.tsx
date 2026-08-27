@@ -119,7 +119,13 @@ describe('NewItemDialog', () => {
     await vi.waitFor(async () => {
       expect(await getItemStock(created.id, DEFAULT_LOCATION_ID)).toBeDefined()
     })
-    expect(onSuccess).toHaveBeenCalled()
+    // `onSuccess` fires after the mutation's `await`, which now also awaits
+    // `useAddItemToLocation`'s returned invalidation — so it lands strictly
+    // after the stock row exists, not in the same tick. Same `waitFor` shape
+    // the sibling test below already used.
+    await vi.waitFor(() => {
+      expect(onSuccess).toHaveBeenCalled()
+    })
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 

@@ -168,10 +168,15 @@ export function useUpdateShelfMutation() {
       id: string
       data: Partial<Omit<Shelf, 'id' | 'createdAt'>>
     }) => updateShelf(id, data),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['shelves'] })
-      queryClient.invalidateQueries({ queryKey: ['shelves', id] })
-    },
+    // RETURNED, not fire-and-forget: `mutateAsync` awaits what `onSuccess`
+    // returns, so returning the invalidation makes the caller's `await`
+    // resolve only once the refetch has landed. The search tail's group action
+    // re-enables every row in a `finally` after that await
+    // (`useItemSearchTailWiring`) while appending to a `shelf.itemIds` array
+    // captured from the render closure — re-enabling against a stale array
+    // drops one of two quick presses. One key is enough: invalidation matches
+    // by PREFIX, so `['shelves']` already covers `['shelves', id]`.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shelves'] }),
   })
 
   const [cloudUpdate, { loading: cloudUpdateLoading }] =

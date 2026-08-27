@@ -10,8 +10,10 @@ extraction + flat pantry + selection shelves — see
 `2026-08-27-unified-item-search-plan-b.md`); the original three-PR phasing
 below is superseded by a **four-PR split** (ETBlue, 2026-08-27): the
 filter-shelf per-axis picker split out of PR B into its own PR D, since it is
-net-new UI spanning two non-atomic mutation targets. PR C (vendor + recipe
-detail) and PR D (filter-shelf per-axis picker) remain — see "Phasing" below.
+net-new UI spanning two non-atomic mutation targets. **PR C shipped**
+(`useShowStock` extraction + vendor detail + recipe detail — see
+`2026-08-27-unified-item-search-plan-c.md`), completing all five surfaces;
+only PR D (filter-shelf per-axis picker) remains — see "Phasing" below.
 Do not re-litigate the decisions below.
 **Brainstorming log:** `2026-08-26-brainstorming-unified-item-search.md`
 
@@ -28,14 +30,14 @@ follows the user to *every* location, including the one where the original lives
 The narrow fix (check global names, suppress the create button) trades a
 duplicate for a dead end: a screen that knows the item exists and offers nothing.
 
-## Current state (verified by reading the code, 2026-08-26; PR A/B rows updated post-ship)
+## Current state (verified by reading the code, 2026-08-26; PR A/B/C rows updated post-ship)
 
 | Surface | items source | search scope | tail section | create-from-search |
 |---|---|---|---|---|
 | Pantry flat (`PantryListView`) | `useStockedItems` | stocked-here | ✅ **shipped PR B** — bucket 3 only (`ItemSearchTail`) | opens `NewItemDialog` — **already correct** |
 | Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B** — `ItemSearchTail` (selection: `groupAction`; filter: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
-| Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | — (PR C) | — |
-| Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | — (PR C) | — |
+| Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | ✅ **shipped PR C** — `ItemSearchTail` (resolved vendor: `groupAction` appending to `item.vendorIds`; `unsorted`: inert `groupNote`; unresolvable `?id=`: neither) | — |
+| Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | ✅ **shipped PR C** — `ItemSearchTail`, the only surface mutating the **group**: appends `{ itemId, defaultAmount: consumeAmount \|\| 1 }` to `Recipe.items` (same three-way bucket 2) | — |
 | Cart (`shopping/$vendorId`) | `useItems` + `isStockedHere` | vendor ∩ here | ✅ **shipped PR A** — `ItemSearchTail` | inline `createItem` ← **#245**, fixed |
 
 Key existing pieces this design builds on, rather than inventing:
@@ -191,11 +193,15 @@ recipe membership). It is split out into its own PR D:
 |---|---|---|
 | **A** | shared hook + `ItemSearchTail` component + cart page — **closes #245** | ✅ merged (#256) |
 | **B** | tail-wiring extraction (`useItemSearchTailWiring`) + flat pantry (bucket 3 only) + shelf detail's **selection** shelves (incl. deleting the off-convention "Not in this shelf" block); filter shelves get an inert `groupNote` as an interim step | ✅ shipped |
-| **C** | vendor detail + recipe detail | not planned yet |
+| **C** | `useShowStock` extraction (3 hand-written `isCloud \|\| isStockedHere` sites → 5 call sites) + vendor detail + recipe detail — all five surfaces now wired | ✅ shipped |
 | **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | not planned yet |
 
 See `2026-08-27-unified-item-search-plan-b.md` for PR B's own scope-decision
-record and implementation detail.
+record and implementation detail, and
+`2026-08-27-unified-item-search-plan-c.md` for PR C's — including two rulings
+this design did not cover (`isUnsorted` pseudo-groups get an inert `groupNote`
+rather than silence; neither view passes `sortTail`) and four deferred gaps PR
+C surfaced without fixing.
 
 ### Carried forward from PR A's review — start PR B with these
 

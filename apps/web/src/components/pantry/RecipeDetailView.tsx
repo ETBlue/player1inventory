@@ -1,17 +1,20 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, ArrowUpFromLine, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
-import { useRecipes } from '@/hooks/useRecipes'
+import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
+import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
@@ -36,6 +39,8 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const { data: tagTypes = [] } = useTagTypes()
 
   const updateItem = useUpdateItem()
+  const updateRecipe = useUpdateRecipe()
+  const showStock = useShowStock()
 
   const {
     sortBy: localSortBy,
@@ -99,6 +104,141 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     )
   }, [sortedItems, trimmedSearch])
 
+  // Sourced from `inScopeItems`, the PRE-search location-scoped list, because
+  // that is what `inGroupIds` is DEFINED to be — `hooks/CLAUDE.md` on
+  // `useItemSearchTail`: "must be the page's own already-location-scoped
+  // list". Reading it off a post-search value is wrong by contract, whether or
+  // not a test can observe the difference. As on `VendorDetailView`, swapping
+  // in `displayedItems` is an EQUIVALENT MUTANT today: this page's only
+  // narrowing of `inScopeItems` is the same name match the tail already
+  // applies, so the two sets agree on every id the tail can ask about. That
+  // is an accident of the current derivation, not a licence.
+  const inGroupIds = useMemo(
+    () => new Set(inScopeItems.map((i) => i.id)),
+    [inScopeItems],
+  )
+
+  // Keyed by walking the global `recipes` list rather than
+  // `allItems`, so it resolves bucket-3 rows (not stocked here, hence
+  // absent from `allItems`) just as well as list rows. Both renderers below
+  // read it, so a tail row carries exactly the recipe badges its list-row
+  // counterpart would. Vendor badges must still be computed per row from the
+  // full `vendors` list, for the same reason `vendorMap` (keyed over
+  // `allItems`) cannot serve tail rows.
+  const recipeMap = new Map<string, typeof recipes>()
+  for (const r of recipes) {
+    for (const ri of r.items) {
+      const existing = recipeMap.get(ri.itemId) ?? []
+      recipeMap.set(ri.itemId, [...existing, r])
+    }
+  }
+
+  function renderTailItemCard(item: PantryItem) {
+    return (
+      <ItemCard
+        item={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        tagTypes={tagTypes}
+        vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
+        recipes={recipeMap.get(item.id) ?? []}
+        showTags={isTagsVisible}
+        showStock={showStock(item)}
+      />
+    )
+  }
+
+  // Bucket 2's action on a real recipe page. Membership lives on the RECIPE
+  // (`Recipe.items: RecipeItem[]`), not on the item, so this appends a
+  // `RecipeItem` and writes the whole array back — the shape
+  // `settings/recipes/$id/items.tsx` already uses. The dedup check is
+  // LOAD-BEARING, not decorative: any time an item already in this recipe
+  // renders in bucket 2 with a live button, a second press appends a SECOND
+  // `RecipeItem` with the same `itemId`, which cooking then double-counts as
+  // an ingredient. Do not "clean it up".
+  //
+  // The tail's OWN press no longer opens that window: `useUpdateRecipe`'s
+  // local `onSuccess` RETURNS its `['recipes']` invalidation, so `mutateAsync`
+  // resolves only once `recipe.items` has refetched, and the wiring hook
+  // re-enables the rows against fresh data. Cloud is NOT an exception here —
+  // both of `useUpdateRecipe`'s cloud branches pass `awaitRefetchQueries: true`
+  // (`useRecipes.ts:199,219`), unlike the shelf and item hooks. What the guard
+  // still covers is every path that does NOT await that refetch — `mutate`
+  // call sites, whose continuation runs without awaiting the returned promise
+  // (e.g. `items/$id/relation/recipes.tsx:45`) — and any concurrent write
+  // (another surface, another tab) landing between this render and the press.
+  async function handleAddToRecipe(item: PantryItem) {
+    if (isUnsorted || !recipe) return
+    if (recipe.items.some((ri) => ri.itemId === item.id)) return
+    await updateRecipe.mutateAsync({
+      id: recipe.id,
+      updates: {
+        items: [
+          ...recipe.items,
+          // `|| 1`, NOT `?? 1`: an item may legitimately carry consumeAmount 0
+          // (explicitly set, imported, or created while 0 was the default),
+          // and `defaultAmount: 0` means "optional, unchecked" in cooking — so
+          // `?? 1` would add an ingredient that silently does nothing. Same
+          // reasoning, same operator, as `settings/recipes/$id/items.tsx`.
+          { itemId: item.id, defaultAmount: item.consumeAmount || 1 },
+        ],
+      },
+    })
+  }
+
+  // The "Not added to recipe" page's bucket 2 is inert but never silent: its
+  // group is "items in NO recipe", so an action there would have to REMOVE the
+  // item from every recipe — destructive, the opposite of every other bucket-2
+  // action. Each row names the recipes already holding it instead. Recipe
+  // names ARE subject to the app's title-case convention (only vendor and
+  // location names are excluded), so this `capitalize` is the mirror image of
+  // `VendorDetailView`'s `normal-case`.
+  const renderRecipesNote = (item: PantryItem) => (
+    <span className="capitalize">
+      {t('items.searchTail.inRecipes', {
+        recipes: (recipeMap.get(item.id) ?? []).map((r) => r.name).join(', '),
+      })}
+    </span>
+  )
+
+  // `sortTail` hands both tail sections the page's own sort. Bucket-3 rows
+  // carry no entry in the sort maps, which `sortItems` handles explicitly —
+  // same accepted residual, and same reasoning, as `ShelfDetailView`.
+  //
+  // `query` is the RAW search value: `useItemSearchTail` trims internally.
+  //
+  // The unresolved-recipe window gets NEITHER descriptor: when no recipe in
+  // `useRecipes()` carries `recipeId` — it was deleted, or the id never
+  // existed at all (a stale bookmark, a hand-typed `?id=`), since
+  // `validateSearch` in `routes/index.tsx` passes `id` through as an
+  // arbitrary string with no existence check — there would be no
+  // `recipe.items` to append to, so bucket 2 is simply absent for that
+  // render. A still-loading `useRecipes()` is NOT one of those cases: the
+  // `<LoadingSpinner />` below returns before any tail is rendered.
+  const { tailProps, hasTail } = useItemSearchTailWiring({
+    inGroupIds,
+    query: search,
+    renderItem: renderTailItemCard,
+    sortTail: (list) =>
+      sortItems(
+        list,
+        quantities ?? new Map(),
+        expiryDates ?? new Map(),
+        purchaseDates ?? new Map(),
+        sortBy,
+        sortDirection,
+      ),
+    ...(!isUnsorted && recipe
+      ? {
+          groupAction: {
+            label: t('items.searchTail.addToRecipe'),
+            onAction: handleAddToRecipe,
+            icon: <ArrowUpFromLine />,
+          },
+        }
+      : {}),
+    ...(isUnsorted ? { groupNote: renderRecipesNote } : {}),
+  })
+
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     setSortBy(field)
     setSortDirection(dir)
@@ -118,14 +258,6 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
       vendors.filter((v) => item.vendorIds?.includes(v.id) ?? false),
     ]),
   )
-
-  const recipeMap = new Map<string, typeof recipes>()
-  for (const r of recipes) {
-    for (const ri of r.items) {
-      const existing = recipeMap.get(ri.itemId) ?? []
-      recipeMap.set(ri.itemId, [...existing, r])
-    }
-  }
 
   const renderItemCard = (item: PantryItem) => (
     <ItemCard
@@ -208,7 +340,10 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
             </ListSectionDivider>
           )}
           {inactiveDisplayed.map(renderItemCard)}
-          {sortedItems.length === 0 && (
+
+          {trimmedSearch && <ItemSearchTail {...tailProps} />}
+
+          {!hasTail && sortedItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">
               <p className="font-medium">No items</p>
               <p className="text-sm mt-1">
