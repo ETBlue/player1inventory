@@ -33,7 +33,9 @@
     "notStockedHere_one": "此據點無庫存的 {{count}} 項",
     "notStockedHere_other": "此據點無庫存的 {{count}} 項",
     "notInThisList_one": "不在此清單的 {{count}} 項",
-    "notInThisList_other": "不在此清單的 {{count}} 項"
+    "notInThisList_other": "不在此清單的 {{count}} 項",
+    "expiresOn": "到期日",
+    "expiresOnHint": "這個據點的庫存到期時間"
   },
   "shopping": {
     "title": "購物",
@@ -335,11 +337,7 @@
         "increase": "增加已開封數量"
       },
       "unpack": "開封",
-      "pack": "打包",
-      "expirationDueDate": {
-        "label": "到期日",
-        "hint": "這個據點的庫存到期時間"
-      }
+      "pack": "打包"
     },
     "detail": {
       "notFound": "查無此品項",

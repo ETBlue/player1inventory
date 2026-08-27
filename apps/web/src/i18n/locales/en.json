@@ -33,7 +33,9 @@
     "notStockedHere_one": "{{count}} not stocked here",
     "notStockedHere_other": "{{count}} not stocked here",
     "notInThisList_one": "{{count}} not in this list",
-    "notInThisList_other": "{{count}} not in this list"
+    "notInThisList_other": "{{count}} not in this list",
+    "expiresOn": "Expires on",
+    "expiresOnHint": "When the stock in this location expires"
   },
   "shopping": {
     "title": "Shopping",
@@ -335,11 +337,7 @@
         "increase": "Increase unpacked"
       },
       "unpack": "Unpack",
-      "pack": "Pack",
-      "expirationDueDate": {
-        "label": "Expires on",
-        "hint": "When the stock in this location expires"
-      }
+      "pack": "Pack"
     },
     "detail": {
       "notFound": "Item not found",

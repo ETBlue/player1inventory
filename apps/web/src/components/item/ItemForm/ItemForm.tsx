@@ -936,9 +936,7 @@ export function ItemForm({
               global and edited on the Info tab. */}
           {expirationMode === 'date' && (
             <div>
-              <Label htmlFor="expirationDueDate">
-                {t('items.form.expirationDueDate.label')}
-              </Label>
+              <Label htmlFor="expirationDueDate">{t('common.expiresOn')}</Label>
               <Input
                 id="expirationDueDate"
                 type="date"
@@ -946,7 +944,7 @@ export function ItemForm({
                 onChange={(e) => setDueDate(e.target.value)}
               />
               <p className="text-xs text-foreground-muted">
-                {t('items.form.expirationDueDate.hint')}
+                {t('common.expiresOnHint')}
               </p>
             </div>
           )}
