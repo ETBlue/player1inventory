@@ -187,4 +187,8 @@ today), so it was left out of this fix.
 
 ## PR / commit
 
-*TBD*
+PR [#264](https://github.com/ETBlue/player1inventory/pull/264)
+
+- `4f50021b` fix(shopping): give useLastPurchasedByVendor a cloud branch
+- `7d1ba9d8` fix(server): serialize Cart.lastPurchasedAt as ISO, not epoch millis
+- `5538e16a` fix(web): tolerate the legacy epoch-millis lastPurchasedAt wire format
