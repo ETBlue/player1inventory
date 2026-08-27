@@ -20,4 +20,13 @@ describe('UnitBadge stories smoke tests', () => {
     render(<WithLongUnit />)
     expect(screen.getByText('tablespoon')).toBeInTheDocument()
   })
+
+  // Stable hook for e2e/a11y.spec.ts's KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION --
+  // a class-based selector also matched the dialog Close button, so this
+  // attribute exists specifically so that exclusion can't drift onto an
+  // unrelated element.
+  it('carries the data-unit-badge marker used by the a11y contrast exclusion', () => {
+    render(<Default />)
+    expect(screen.getByText('pack')).toHaveAttribute('data-unit-badge')
+  })
 })

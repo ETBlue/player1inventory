@@ -52,8 +52,8 @@ const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
   exclude: [['.bg-importance-destructive-background']],
 }
 
-// KNOWN PRE-EXISTING DEFECT — `UnitBadge` (`.opacity-75` on the shared badge
-// component, `src/components/shared/UnitBadge/UnitBadge.tsx`) fails contrast.
+// KNOWN PRE-EXISTING DEFECT — `UnitBadge` (`src/components/shared/UnitBadge/
+// UnitBadge.tsx`) fails contrast at its `opacity-75`.
 // Documented in `apps/web/src/components/CLAUDE.md` ("Unit Display
 // Components" — "opacity-75 is intentional for visual harmony; it reduces
 // contrast to ~2.97:1 (below WCAG AA for small text) — accepted tradeoff by
@@ -74,11 +74,20 @@ const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
 // pass unaided — `foreground-muted`'s dark-mode contrast clears the bar even
 // at this opacity — so only the light-mode call sites need this exclusion.
 //
-// SCOPE: excludes `.opacity-75` from the **`color-contrast` rule only**, same
-// pattern as `KNOWN_CONFIRM_CONTRAST_EXCLUSION` above — every other rule
-// (`button-name`, `target-size`, the aria rules, …) still polices these
-// elements, and a future FIX to the badge's contrast is not hidden by this,
-// only a regression elsewhere on the same page would be.
+// SELECTOR — `[data-unit-badge]`, NOT `.opacity-75`: `opacity-75` is a
+// shared Tailwind utility class, and on these two pages it ALSO matches the
+// dialog's Close button (`ui/dialog.tsx:69`, `DialogPrimitive.Close`). A
+// class-based exclusion would have silently exempted that unrelated button
+// from `color-contrast` too — caught in review before merge. `UnitBadge` now
+// carries a dedicated `data-unit-badge` attribute for exactly this: a marker
+// that cannot drift onto another element the way a shared utility class can.
+//
+// SCOPE: excludes `[data-unit-badge]` from the **`color-contrast` rule
+// only**, same pattern as `KNOWN_CONFIRM_CONTRAST_EXCLUSION` above — every
+// other rule (`button-name`, `target-size`, the aria rules, …) still polices
+// this element and the Close button, and a future FIX to the badge's
+// contrast is not hidden by this, only a regression elsewhere on the same
+// page would be.
 //
 // REMOVAL CONDITION — checkable: once `UnitBadge` stops applying an opacity
 // that drops it below 4.5:1 (e.g. the accepted-tradeoff note in
@@ -86,7 +95,7 @@ const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
 // `checkA11yAllowingKnownBadgeContrast`, and change the call sites back to
 // `checkA11y(page, undefined, AXE_OPTIONS)` / `checkA11yAllowingKnownConfirmContrast`.
 const KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION = {
-  exclude: [['.opacity-75']],
+  exclude: [['[data-unit-badge]']],
 }
 
 // Two scans instead of one, so a known defect is excluded from a single RULE

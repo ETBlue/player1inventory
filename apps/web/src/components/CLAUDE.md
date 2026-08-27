@@ -200,7 +200,7 @@ Exported from `@/components/ui/card`.
 
 ## Unit Display Components
 
-**`UnitBadge`** (`src/components/shared/UnitBadge/`) — bordered pill for unit labels in card and dialog contexts. Props: `unit?: string | undefined` (defaults to `"pack"`). Style: `px-1 text-xs text-foreground-muted border border-foreground-muted rounded-xs opacity-75`. Used in ItemCard, GroupCard, QuickUpdateDialog. Note: `opacity-75` is intentional for visual harmony; it reduces contrast to ~2.97:1 (below WCAG AA for small text) — accepted tradeoff by design.
+**`UnitBadge`** (`src/components/shared/UnitBadge/`) — bordered pill for unit labels in card and dialog contexts. Props: `unit?: string | undefined` (defaults to `"pack"`). Style: `px-1 text-xs text-foreground-muted border border-foreground-muted rounded-xs opacity-75`. Used in ItemCard, GroupCard, QuickUpdateDialog. Note: `opacity-75` is intentional for visual harmony; it reduces contrast to ~2.97:1 (below WCAG AA for small text) — accepted tradeoff by design. Carries a `data-unit-badge` attribute — a stable selector hook for `e2e/tests/a11y.spec.ts`'s `KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION`, added because the class-based selector it replaced (`.opacity-75`) also matched the unrelated dialog Close button (`ui/dialog.tsx`) and silently exempted it from the same rule.
 
 **`UnitInline`** (`src/components/shared/UnitInline/`) — inline `(unit)` text for form labels. Props: `unit?: string | undefined`, `placeholder?: string` (default `"pack"`). Renders `(unit ?? placeholder)` with parentheses included. Pass `placeholder="?"` for measurement-unit labels where the unit may be unset — the `?` signals an unresolved setting to the user. Used in ItemForm.
 
