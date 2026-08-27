@@ -428,7 +428,12 @@ export function getStockPreview(
   const unitLabel =
     targetUnit === 'measurement' && measurementUnit
       ? measurementUnit
-      : (packageUnit ?? 'unit')
+      : // Falls back to the literal string 'unit', not DEFAULT_PACKAGE_UNIT
+        // ('pack') — a pre-existing divergence from QuickUpdateDialog's own
+        // `item.packageUnit || DEFAULT_PACKAGE_UNIT` label logic, left as-is
+        // deliberately: unifying it would change the dialog's shipped display
+        // text for every item with no package unit, which is out of scope here.
+        (packageUnit ?? 'unit')
 
   const quantityLabel =
     unpackedQuantity > 0

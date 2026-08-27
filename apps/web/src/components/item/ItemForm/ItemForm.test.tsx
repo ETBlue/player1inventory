@@ -1199,3 +1199,33 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
     expect(handleDirtyChange).toHaveBeenCalledWith(true)
   })
 })
+
+// Important 1 of the 2026-08-27 review: ItemForm used to pass `packageUnit`
+// unconditionally into getStockPreview. Form state defaults it to `''`
+// (itemToFormValues does `item.packageUnit ?? ''`), and getStockPreview's own
+// `packageUnit ?? 'unit'` fallback does not fire for `''` — only `undefined`
+// does. An item created with just a name therefore rendered a bordered EMPTY
+// UnitBadge on the Stock tab, while QuickUpdateDialog (which spreads the same
+// field conditionally) showed "unit" for the identical item.
+describe('ItemForm — stock tab unit badge falls back honestly when unconfigured', () => {
+  it('renders the unit badge as "unit", not empty, when packageUnit and measurementUnit are both unset', () => {
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          targetQuantity: 4,
+          refillThreshold: 1,
+          consumeAmount: 1,
+          name: 'Milk',
+          // packageUnit and measurementUnit both default to '' — never set
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('unit')).toBeInTheDocument()
+  })
+})

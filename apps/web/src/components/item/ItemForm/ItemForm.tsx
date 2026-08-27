@@ -374,7 +374,12 @@ export function ItemForm({
     {
       targetUnit,
       measurementUnit,
-      packageUnit,
+      // Conditional, not bare `packageUnit`: an item created with just a name
+      // defaults this to `''`, and getStockPreview's own `packageUnit ?? 'unit'`
+      // fallback does not fire for `''` (only for `undefined`) — passing the
+      // empty string through rendered a bordered, empty UnitBadge on the Stock
+      // tab. Mirrors QuickUpdateDialog's identical conditional spread below.
+      ...(packageUnit ? { packageUnit } : {}),
       // `> 0`, not bare truthiness: the raw string '0' is truthy but its
       // coerced number isn't — the caller-side test and getStockPreview's
       // internal test must agree, or a measurement item saved with
