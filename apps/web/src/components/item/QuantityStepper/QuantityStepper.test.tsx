@@ -142,6 +142,39 @@ describe('QuantityStepper', () => {
     expect(el).toHaveAttribute('min', '0')
   })
 
+  // Important 2 of the 2026-08-27 review: `size` pairs the buttons' Button
+  // `size` with the input's default height, so a caller with a taller input
+  // (ItemForm) gets a flush, equal-height joined group instead of a 32px
+  // input flanked by 28px buttons. Asserted via class names, the same way
+  // the `inputProps` test above pins the input's default className.
+  it('defaults to size="sm" — icon-sm buttons (h-7 w-7) over an h-7 input', () => {
+    render(<Harness initial={2} step={1} />)
+
+    expect(decreaseButton()).toHaveClass('h-7', 'w-7')
+    expect(increaseButton()).toHaveClass('h-7', 'w-7')
+    expect(input()).toHaveClass('h-7')
+    expect(input()).not.toHaveClass('h-8')
+  })
+
+  it('size="default" gives icon buttons (h-8 w-8) over an h-8 input', () => {
+    render(
+      <QuantityStepper
+        value={2}
+        onStep={() => {}}
+        step={1}
+        size="default"
+        decreaseLabel="Decrease quantity"
+        increaseLabel="Increase quantity"
+        inputProps={{ 'aria-label': 'Quantity', value: 2, readOnly: true }}
+      />,
+    )
+
+    expect(decreaseButton()).toHaveClass('h-8', 'w-8')
+    expect(increaseButton()).toHaveClass('h-8', 'w-8')
+    expect(input()).toHaveClass('h-8')
+    expect(input()).not.toHaveClass('h-7')
+  })
+
   it('user sees the decrease/increase aria-labels the caller passed', () => {
     // Given a stepper with caller-specified labels
     render(

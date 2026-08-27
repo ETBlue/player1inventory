@@ -732,10 +732,10 @@ export function ItemForm({
               decreaseLabel={t('items.form.targetQuantity.decrease')}
               increaseLabel={t('items.form.targetQuantity.increase')}
               disabled={isPending}
+              size="default"
               inputProps={{
                 id: 'targetQuantity',
                 step: targetUnit === 'package' ? 1 : quantityStep,
-                className: undefined,
                 ...numericInputProps(
                   'targetQuantity',
                   targetQuantity,
@@ -767,10 +767,10 @@ export function ItemForm({
               decreaseLabel={t('items.form.refillThreshold.decrease')}
               increaseLabel={t('items.form.refillThreshold.increase')}
               disabled={isPending}
+              size="default"
               inputProps={{
                 id: 'refillThreshold',
                 step: quantityStep,
-                className: undefined,
                 ...numericInputProps(
                   'refillThreshold',
                   refillThreshold,
@@ -796,10 +796,10 @@ export function ItemForm({
                 decreaseLabel={t('items.form.packedQuantity.decrease')}
                 increaseLabel={t('items.form.packedQuantity.increase')}
                 disabled={isPending}
+                size="default"
                 inputProps={{
                   id: 'packedQuantity',
                   step: 1,
-                  className: undefined,
                   ...numericInputProps(
                     'packedQuantity',
                     packedQuantity,
@@ -855,10 +855,10 @@ export function ItemForm({
                 decreaseLabel={t('items.form.unpackedQuantity.decrease')}
                 increaseLabel={t('items.form.unpackedQuantity.increase')}
                 disabled={isPending}
+                size="default"
                 inputProps={{
                   id: 'unpackedQuantity',
                   step: quantityStep,
-                  className: undefined,
                   ...numericInputProps(
                     'unpackedQuantity',
                     unpackedQuantity,

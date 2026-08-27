@@ -18,6 +18,13 @@ export interface QuantityStepperProps {
   increaseLabel: string
   // Disables both buttons; combined with the value-at-0 test for `−`.
   disabled?: boolean
+  // Pairs the buttons' Button `size` with the input's default height, so a
+  // caller whose input is taller than the dialog's still gets a flush,
+  // equal-height joined group instead of the buttons floating inside it.
+  // 'sm' (default) is QuickUpdateDialog's own shape — icon-sm buttons (h-7)
+  // over an h-7 input — and is unchanged by adding this prop. 'default' is
+  // ItemForm's — icon buttons (h-8) over an h-8 input.
+  size?: 'sm' | 'default'
   // Spread onto the Input LAST — the caller owns value/onChange/onBlur/
   // aria-label/id/step/className.
   inputProps?: ComponentPropsWithoutRef<typeof Input>
@@ -31,6 +38,7 @@ export function QuantityStepper({
   decreaseLabel,
   increaseLabel,
   disabled,
+  size = 'sm',
   inputProps,
 }: QuantityStepperProps) {
   function bump(delta: number) {
@@ -38,6 +46,12 @@ export function QuantityStepper({
     const normalized = round ? round(stepped) : stepped
     onStep(Math.max(0, normalized))
   }
+
+  const buttonSize = size === 'default' ? 'icon' : 'icon-sm'
+  const defaultInputClassName =
+    size === 'default'
+      ? 'h-8 rounded-none text-right'
+      : 'h-7 rounded-none text-right'
 
   // `type="button"` on both buttons is required, not decorative. QuickUpdateDialog
   // renders this component outside any `<form>`, so a bare `<button>` there is
@@ -53,7 +67,7 @@ export function QuantityStepper({
       <Button
         type="button"
         variant="neutral-outline"
-        size="icon-sm"
+        size={buttonSize}
         className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
         aria-label={decreaseLabel}
         disabled={value === 0 || disabled}
@@ -63,14 +77,14 @@ export function QuantityStepper({
       <Input
         type="number"
         min="0"
-        className="h-7 rounded-none text-right"
+        className={defaultInputClassName}
         disabled={disabled}
         {...inputProps}
       />
       <Button
         type="button"
         variant="neutral-outline"
-        size="icon-sm"
+        size={buttonSize}
         className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"
         aria-label={increaseLabel}
         disabled={disabled}
