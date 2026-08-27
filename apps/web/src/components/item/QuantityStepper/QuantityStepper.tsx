@@ -39,9 +39,19 @@ export function QuantityStepper({
     onStep(Math.max(0, normalized))
   }
 
+  // `type="button"` on both buttons is required, not decorative. QuickUpdateDialog
+  // renders this component outside any `<form>`, so a bare `<button>` there is
+  // harmless — but `ItemForm` renders it inside its `<form onSubmit>`, where the
+  // HTML default type is "submit". A submit-type button fires the form's native
+  // submit event on click regardless of which button was pressed, which called
+  // ItemForm's `handleSubmit` (and therefore its save mutation) one click after
+  // the field first went dirty — the Stock tab saved and navigated away the
+  // moment a stepper was clicked twice, discovered via the E2E round-trip test
+  // in item-stock-input.spec.ts.
   return (
     <div className="flex items-center gap-0">
       <Button
+        type="button"
         variant="neutral-outline"
         size="icon-sm"
         className="flex-shrink-0 -mr-[1px] rounded-tr-none rounded-br-none"
@@ -58,6 +68,7 @@ export function QuantityStepper({
         {...inputProps}
       />
       <Button
+        type="button"
         variant="neutral-outline"
         size="icon-sm"
         className="flex-shrink-0 -ml-[1px] rounded-tl-none rounded-bl-none"

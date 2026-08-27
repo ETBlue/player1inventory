@@ -42,9 +42,13 @@ export function StockProgressRow({
   clearLabel,
   fillLabel,
 }: StockProgressRowProps) {
+  // `type="button"` matters here for the same reason it does on QuantityStepper:
+  // ItemForm renders this row inside its `<form>`, where an untyped `<button>`
+  // defaults to "submit" and fires the form's native submit event on click.
   return (
     <div className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
       <Button
+        type="button"
         variant="neutral-outline"
         size="icon-sm"
         aria-label={clearLabel}
@@ -70,6 +74,7 @@ export function StockProgressRow({
         />
       </div>
       <Button
+        type="button"
         variant="neutral-outline"
         size="icon-sm"
         aria-label={fillLabel}
