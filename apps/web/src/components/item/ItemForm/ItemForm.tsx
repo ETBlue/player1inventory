@@ -935,21 +935,19 @@ export function ItemForm({
               per-location — "when THIS one expires". The mode that gates it is
               global and edited on the Info tab. */}
           {expirationMode === 'date' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="expirationDueDate">
-                  {t('items.form.expirationDueDate.label')}
-                </Label>
-                <Input
-                  id="expirationDueDate"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-                <p className="text-xs text-foreground-muted">
-                  {t('items.form.expirationDueDate.hint')}
-                </p>
-              </div>
+            <div>
+              <Label htmlFor="expirationDueDate">
+                {t('items.form.expirationDueDate.label')}
+              </Label>
+              <Input
+                id="expirationDueDate"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+              <p className="text-xs text-foreground-muted">
+                {t('items.form.expirationDueDate.hint')}
+              </p>
             </div>
           )}
         </div>
