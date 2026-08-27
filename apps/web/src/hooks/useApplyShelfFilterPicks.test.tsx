@@ -70,18 +70,29 @@ describe('useApplyShelfFilterPicks (local mode)', () => {
     )
     await waitFor(() => expect(result.current.items.data).toBeDefined())
 
-    // When the picks are applied, with the refetch held open
+    // When the picks are applied, with the refetch held open. Mirrors
+    // `ShelfDetailView.test.tsx`'s gate sequence: the triggering call is
+    // wrapped in an async `act()` (not awaiting the mutation itself, only the
+    // callback body, so `pending` is still in flight once `act()` settles),
+    // and `waitFor` carries the wait across the async Dexie transaction and
+    // the subsequent `['items']` refetch reaching the gate.
     itemsGate.hold = true
     let settled = false
-    const pending = result.current.apply
-      .mutateAsync({ item, addTagIds: ['frozen'], addVendorIds: [] })
-      .then(() => {
-        settled = true
-      })
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = result.current.apply
+        .mutateAsync({ item, addTagIds: ['frozen'], addVendorIds: [] })
+        .then(() => {
+          settled = true
+        })
+    })
 
     // Then it has NOT resolved while the refetch is still in flight
     await waitFor(() => expect(itemsGate.release).not.toBeNull())
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Everything already resolvable resolves.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
     expect(settled).toBe(false)
 
     // And it resolves once the refetch lands
