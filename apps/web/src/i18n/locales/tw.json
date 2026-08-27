@@ -304,7 +304,7 @@
       },
       "daysUnit": "（天）",
       "estimatedDueDays": {
-        "label": "到期於"
+        "label": "保存天數"
       },
       "expirationThreshold": {
         "label": "提前提醒",
