@@ -33,6 +33,7 @@ const resolversObject: Resolvers = {
   },
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,
+  Cart: cartResolvers.Cart,
 }
 
 export const resolvers = {

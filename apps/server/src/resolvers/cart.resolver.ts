@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
-export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
+export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
     activeCart: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
@@ -129,6 +129,21 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // Delete ALL items (including pinned)
       await prisma.cartItem.deleteMany({ where: { cartId, userId } })
       return existing as unknown as Cart
+    },
+  },
+
+  // Every cart resolver above returns the raw Prisma row via `as unknown as
+  // Cart`, so a JS `Date` sits in the schema's `String` slot. Without this
+  // serializer graphql-js falls back to `GraphQLString.serialize`, which calls
+  // `Date.prototype.valueOf()` *before* `toJSON()` and ships epoch millis
+  // ("1787827334343") instead of ISO 8601 — a string `new Date()` turns into an
+  // Invalid Date on the client, silently killing the shopping page's
+  // "last purchased" sort. Mirrors Recipe.lastCookedAt / InventoryLog.occurredAt.
+  Cart: {
+    lastPurchasedAt: (cart) => {
+      const d = (cart as unknown as { lastPurchasedAt: Date | string | null }).lastPurchasedAt
+      if (d == null) return null
+      return d instanceof Date ? d.toISOString() : d
     },
   },
 }
