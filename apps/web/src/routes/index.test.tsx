@@ -7,15 +7,18 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { db } from '@/db'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { db, ensureDefaultLocationRow } from '@/db'
 import {
   createItem,
+  createLocation,
   createRecipe,
+  createShelf,
   createTag,
   createTagType,
   createVendor,
 } from '@/db/operations'
+import * as useShelvesModule from '@/hooks/useShelves'
 import { routeTree } from '@/routeTree.gen'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
@@ -30,12 +33,16 @@ describe('Home page filtering integration', () => {
     await db.inventoryLogs.clear()
     await db.vendors.clear()
     await db.recipes.clear()
+    await db.locations.clear()
+    await db.shelves.clear()
     sessionStorage.clear()
     localStorage.clear()
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
+
+    await ensureDefaultLocationRow()
   })
 
   const renderApp = () => {
@@ -828,6 +835,586 @@ describe('Home page filtering integration', () => {
     await waitFor(() => {
       const badge = screen.getByTestId('tag-badge-Vegetables')
       expect(badge.className).toContain('bg-tag-blue-background-inverse')
+    })
+  })
+
+  describe('search tail (unified item search)', () => {
+    // THE FIXTURE IS THE TEST. Every case below needs an item stocked ONLY at
+    // a second location — with one location, "stocked here" and "exists"
+    // return the same set, and every assertion here passes against an
+    // implementation that ignores location entirely.
+    const stockFields = {
+      targetUnit: 'package' as const,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+
+    const openSearch = async (
+      user: ReturnType<typeof userEvent.setup>,
+      query: string,
+    ) => {
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        query,
+      )
+    }
+
+    it('user can see an item stocked only at another location under "not stocked here"', async () => {
+      // Given Eggs is stocked here, and Milk is stocked ONLY at the Office
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then it is offered under the not-stocked-here divider, not the main
+      // list — the flat pantry has no bucket 2, so this is the only tail
+      // section it ever shows
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
+    })
+
+    it('"Add to My Home" moves the item directly into the main list (no bucket-2 step on the flat pantry)', async () => {
+      // Given Eggs is stocked here, and Milk is stocked ONLY at the Office
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+      await openSearch(user, 'milk')
+
+      // When the user presses "Add to My Home"
+      const addButton = await screen.findByRole('button', {
+        name: 'Add to My Home: Milk',
+      })
+      await user.click(addButton)
+
+      // Then Milk moves straight into the main list — inGroupIds is every
+      // stocked-here item, so bucket 1 IS bucket 2 and there is no separate
+      // "not in this list" step to pass through first
+      await waitFor(() => {
+        expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      })
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user is not offered Create for a name that exists globally but is not stocked here (#245)', async () => {
+      // Given Eggs is stocked here, and Milk exists globally, stocked only
+      // at the Office
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+
+      // When the user types its exact name
+      await openSearch(user, 'Milk')
+
+      // Then Create is suppressed — pressing it would mint a second global
+      // Item that then follows the user to every location
+      await screen.findByText('1 not stocked here')
+      expect(
+        screen.queryByRole('button', { name: 'Create item' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('user is still offered Create when no global item matches', async () => {
+      // Given nothing in the catalog matches
+      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+
+      renderApp()
+      const user = userEvent.setup()
+      await screen.findByText('Eggs')
+
+      // When the user searches a brand-new name
+      await openSearch(user, 'Zucchini')
+
+      // Then Create is offered
+      expect(
+        await screen.findByRole('button', { name: 'Create item' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user can see bucket 3 on a location with nothing stocked here yet (the empty-pantry CTA does not eat the tail)', async () => {
+      // Given NOTHING is stocked at the active location — a brand-new
+      // location — and Milk is stocked ONLY at the Office. This is the
+      // fixture shape no other pantry test in this file uses: every other
+      // one seeds a stocked-here item first, which is exactly how the
+      // `items.length === 0` empty-pantry branch short-circuiting ahead of
+      // `!hasTail` survived four reviews.
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+      const user = userEvent.setup()
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then bucket 3 still renders — the empty-pantry CTA must not win
+      // ahead of the tail just because nothing is stocked here
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
+      expect(
+        screen.queryByText(/your pantry is empty/i),
+      ).not.toBeInTheDocument()
+    })
+
+    it('the empty-pantry CTA still renders on a location with nothing stocked when the search box is empty', async () => {
+      // Given NOTHING is stocked at the active location, and Milk is stocked
+      // ONLY at the Office — same fixture as above, but the search box stays
+      // blank, so the tail must be empty and the CTA must NOT regress
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderApp()
+
+      // Then the original "create your first item" CTA still shows — this is
+      // the behaviour the `items.length === 0` branch exists for, and the
+      // fix must not disturb it
+      expect(
+        await screen.findByText(/your pantry is empty/i),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Create item' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Milk')).not.toBeInTheDocument()
+    })
+
+    it('an active tag filter that excludes a stocked-here item does not push it into the tail', async () => {
+      // NEGATIVE CONTROL, not a pinned dimension of `inGroupIds`: on the flat
+      // pantry `inGroupIds` sourced from the tag/vendor-filtered list instead
+      // of the full stocked-here `items` set is an EQUIVALENT MUTANT here —
+      // this page passes neither `groupAction` nor `groupNote`, so bucket 2
+      // never renders regardless of `inGroupIds` membership, and this test
+      // stays green either way (see task-2-report.md, "equivalent mutant"
+      // analysis). What this test actually guards is that Milk stays visible
+      // in the MAIN list under an active filter (the `searchedItems` bypass
+      // below) — a real, currently-passing assertion, just not proof that
+      // `inGroupIds` reads the right variable.
+      //
+      // Given a Vegetables tag, Milk stocked here WITHOUT that tag (so a
+      // tag-filtered "page's own list" would wrongly exclude it), and Milk
+      // Substitute stocked only at the Office — a genuine bucket-3 candidate
+      // proving the tail still works correctly alongside an active filter
+      const categoryType = await createTagType({
+        name: 'Category',
+        color: 'blue',
+      })
+      const vegTag = await createTag({
+        typeId: categoryType.id,
+        name: 'Vegetables',
+      })
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Milk Substitute', tagIds: [], ...stockFields },
+        office.id,
+      )
+
+      // When the user loads the pantry with the Vegetables filter active and
+      // searches "milk" (search bypasses the tag filter for the main list —
+      // see "user can search all items even when vendor filter is active")
+      const history = createMemoryHistory({
+        initialEntries: [`/?f_${categoryType.id}=${vegTag.id}`],
+      })
+      const router = createRouter({ routeTree, history })
+      const user = userEvent.setup()
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      )
+      await openSearch(user, 'milk')
+
+      // Then Milk stays visible in the main list — it is not swallowed by
+      // inGroupIds excluding it due to the active filter — while Milk
+      // Substitute is still correctly offered under "not stocked here"
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Milk Substitute' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('shelf detail search tail (unified item search)', () => {
+    // THE FIXTURE IS THE TEST — same rationale as the flat-pantry block above:
+    // every case needs an item stocked ONLY at a second location.
+    const stockFields = {
+      targetUnit: 'package' as const,
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    }
+
+    const openSearch = async (
+      user: ReturnType<typeof userEvent.setup>,
+      query: string,
+    ) => {
+      await user.click(
+        await screen.findByRole('button', { name: /toggle search/i }),
+      )
+      await user.type(
+        await screen.findByPlaceholderText(/search items/i),
+        query,
+      )
+    }
+
+    const renderShelfDetail = (shelfId: string) => {
+      const history = createMemoryHistory({
+        initialEntries: [`/?groupBy=shelf&id=${shelfId}`],
+      })
+      const router = createRouter({ routeTree, history })
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      )
+    }
+
+    it('selection shelf: an item stocked only at another location lands under "not stocked here"', async () => {
+      // Given a selection shelf with no items yet, and Milk stocked ONLY at
+      // the Office
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then it is offered under "not stocked here", not the shelf's own list
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
+
+      // And Create is suppressed — the toolbar's hasExactMatch reads the
+      // GLOBAL catalog (hasExactGlobalMatch), not the shelf's own
+      // (twice-filtered) visible list, matching the #245 fix
+      expect(
+        screen.queryByRole('button', { name: 'Create item' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('the two-step gate: "Add to {location}" does not also add the item to the shelf, a second "Add to shelf" press does', async () => {
+      // Given a selection shelf with no items yet, and Milk stocked only at
+      // the Office
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [],
+      })
+      const office = await createLocation('Office')
+      const milk = await createItem(
+        { name: 'Milk', tagIds: [], ...stockFields },
+        office.id,
+      )
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+      await openSearch(user, 'milk')
+
+      // When the user presses "Add to My Home" (bucket 3)
+      const addToLocationButton = await screen.findByRole('button', {
+        name: 'Add to My Home: Milk',
+      })
+      await user.click(addToLocationButton)
+
+      // Then Milk moves to "not in this list" (bucket 2) — a single press did
+      // NOT also add it to the shelf
+      const addToShelfButton = await screen.findByRole('button', {
+        name: 'Add to shelf: Milk',
+      })
+      expect(addToShelfButton).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+      })
+      const shelfAfterFirstPress = await db.shelves.get(shelf.id)
+      expect(shelfAfterFirstPress?.itemIds ?? []).not.toContain(milk.id)
+
+      // When the user presses "Add to shelf" (the second, separate press)
+      await user.click(addToShelfButton)
+
+      // Then Milk joins the shelf and both tail sections clear
+      await waitFor(() => {
+        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      })
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+      const shelfAfterSecondPress = await db.shelves.get(shelf.id)
+      expect(shelfAfterSecondPress?.itemIds ?? []).toContain(milk.id)
+    })
+
+    it('an item already in the shelf but stocked only at another location lands under "not stocked here", and "Add to {location}" promotes it straight into the shelf', async () => {
+      // Given Milk is already a member of the shelf's itemIds, but stocked
+      // ONLY at the Office — no ItemStock here, so it is excluded from the
+      // shelf's own (stocked-here) list despite carrying membership
+      const office = await createLocation('Office')
+      const milk = await createItem(
+        { name: 'Milk', tagIds: [], ...stockFields },
+        office.id,
+      )
+      const shelf = await createShelf({
+        name: 'Fridge',
+        type: 'selection',
+        order: 0,
+        itemIds: [milk.id],
+      })
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+      await openSearch(user, 'milk')
+
+      // Then it is offered under "not stocked here" — membership alone does
+      // not put it in the shelf's own list without local stock
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      const addToLocationButton = screen.getByRole('button', {
+        name: 'Add to My Home: Milk',
+      })
+
+      // When the user presses "Add to My Home"
+      await user.click(addToLocationButton)
+
+      // Then Milk lands directly in the shelf's own list — there is no shelf
+      // membership left to grant, so bucket 2 is skipped entirely. Both
+      // dividers clear inside ONE waitFor: `useStockedItems()` (the shelf's
+      // own list) and `useItems()` (the tail) are separate queries, both
+      // invalidated by the mutation but not guaranteed to resettle in the
+      // same render — checking them in two separate waits can catch the
+      // transient render where only one has refetched.
+      await waitFor(() => {
+        expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      })
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+    })
+
+    it('filter shelf: an item stocked here but not matching the filter renders an inert note and no button', async () => {
+      // Given a filter shelf that only matches a Snacks tag, and Pretzels
+      // stocked here WITHOUT that tag — so it is excluded from the shelf's
+      // own list purely by the filter, not by location
+      const categoryType = await createTagType({
+        name: 'Category',
+        color: 'blue',
+      })
+      const snackTag = await createTag({
+        typeId: categoryType.id,
+        name: 'Snacks',
+      })
+      const shelf = await createShelf({
+        name: 'Snack Shelf',
+        type: 'filter',
+        order: 0,
+        filterConfig: { tagIds: [snackTag.id] },
+      })
+      await createItem({ name: 'Pretzels', tagIds: [], ...stockFields })
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Snack Shelf', level: 1 })
+      await openSearch(user, 'pretzels')
+
+      // Then Pretzels is offered under "not in this list" with the inert
+      // note — filter shelves cannot be joined by a press yet (PR D)
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(
+        screen.getByText("Doesn't match this shelf's filters"),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /pretzels/i }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('filter shelf: an item not stocked here still gets "Add to {location}"', async () => {
+      // Given a filter shelf, and Chips stocked ONLY at the Office
+      const shelf = await createShelf({
+        name: 'Snack Shelf',
+        type: 'filter',
+        order: 0,
+        filterConfig: {},
+      })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Chips', tagIds: [], ...stockFields }, office.id)
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Snack Shelf', level: 1 })
+      await openSearch(user, 'chips')
+
+      // Then bucket 3 is unaffected by the shelf's filter type — it is
+      // group-agnostic
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Chips' }),
+      ).toBeInTheDocument()
+    })
+
+    it('system shelf: renders no bucket-2 section (no "Add to shelf" button, no filter note), while bucket 3 still renders "Add to {location}"', async () => {
+      // Given a system shelf (no add path exists for these — the ternary
+      // chain in ShelfDetailView falls through both `groupAction`'s
+      // `type === 'selection'` guard and `groupNote`'s `type === 'filter'`
+      // guard, landing on neither): Frozen Peas stocked ONLY at the Office
+      // (a bucket-3 candidate) and Frozen Corn stocked HERE but NOT a member
+      // of the shelf (a bucket-2 candidate — if this were a selection shelf
+      // it would render under "not in this list" with an "Add to shelf"
+      // button; if a filter shelf, under the inert note instead)
+      const shelf = await createShelf({
+        name: 'System Shelf',
+        type: 'system',
+        order: 0,
+        itemIds: [],
+      })
+      const office = await createLocation('Office')
+      await createItem(
+        { name: 'Frozen Peas', tagIds: [], ...stockFields },
+        office.id,
+      )
+      await createItem({ name: 'Frozen Corn', tagIds: [], ...stockFields })
+
+      renderShelfDetail(shelf.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'System Shelf', level: 1 })
+      await openSearch(user, 'frozen')
+
+      // Then bucket 3 still renders — Add to {location} is group-agnostic
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Frozen Peas' }),
+      ).toBeInTheDocument()
+
+      // And bucket 2 is fully suppressed — Frozen Corn (the bucket-2
+      // candidate) renders NOWHERE at all, not even inertly: no "not in
+      // this list" divider, no "Add to shelf" button, no filter note, and
+      // no heading for it anywhere on the page
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /add to shelf/i }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByText("Doesn't match this shelf's filters"),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Frozen Corn' }),
+      ).not.toBeInTheDocument()
+    })
+
+    describe('per-row single-flight', () => {
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it('pressing one row does not spin a sibling row while its mutation is in flight', async () => {
+        // Given a selection shelf and two items already stocked here but not
+        // yet shelf members — both land in "not in this list" (bucket 2),
+        // sharing the tail's one groupAction
+        const shelf = await createShelf({
+          name: 'Fridge',
+          type: 'selection',
+          order: 0,
+          itemIds: [],
+        })
+        await createItem({ name: 'Apple Juice', tagIds: [], ...stockFields })
+        await createItem({ name: 'Apple Cider', tagIds: [], ...stockFields })
+
+        // The real Dexie mutation resolves too fast to reliably observe a
+        // mid-flight window, so control it directly — the same technique
+        // `useItemSearchTailWiring.test.tsx` uses for its own pending-id test.
+        let resolveMutation: () => void = () => {}
+        const mutateAsync = vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveMutation = resolve
+            }),
+        )
+        // isPending is fixed at `true` throughout — irrelevant to the current
+        // (correct) implementation, which never reads `updateShelf.isPending`
+        // at all, but load-bearing for mutation check 5 below: it is what
+        // lets a hypothetical `updateShelf.isPending`-driven icon prove
+        // itself against this very test.
+        vi.spyOn(useShelvesModule, 'useUpdateShelfMutation').mockReturnValue({
+          mutateAsync,
+          mutate: vi.fn(),
+          isPending: true,
+        } as unknown as ReturnType<
+          typeof useShelvesModule.useUpdateShelfMutation
+        >)
+
+        renderShelfDetail(shelf.id)
+        const user = userEvent.setup()
+        await screen.findByRole('heading', { name: 'Fridge', level: 1 })
+        await openSearch(user, 'apple')
+
+        const juiceButton = await screen.findByRole('button', {
+          name: 'Add to shelf: Apple Juice',
+        })
+        const ciderButton = await screen.findByRole('button', {
+          name: 'Add to shelf: Apple Cider',
+        })
+
+        // When the user presses one row's action
+        await user.click(juiceButton)
+
+        // Then the sibling shares the tail's single in-flight slot BY DESIGN
+        // (ItemSearchTail disables every button in a section while one is
+        // pending — see its own "Pending disables every action button in the
+        // section" test) so it also disables. What per-row tracking actually
+        // fixes is the SPINNER: only the PRESSED row shows one. The old bug
+        // tied the spinner to `updateShelf.isPending` directly — a single
+        // page-wide flag — so it spun EVERY row indistinguishably. Assert on
+        // the sibling's spinner, not the pressed row's disabled state:
+        // `Button` computes `disabled={isLoading || disabled}` internally, so
+        // the pressed row is disabled either way and proves nothing on its
+        // own — a PR A lesson.
+        expect(ciderButton).toBeDisabled()
+        expect(
+          ciderButton.querySelector('.animate-spin'),
+        ).not.toBeInTheDocument()
+        expect(juiceButton.querySelector('.animate-spin')).toBeInTheDocument()
+
+        // Cleanup: resolve the mutation so pending state clears and no
+        // dangling promise leaks into the next test
+        resolveMutation()
+        await waitFor(() => expect(juiceButton).not.toBeDisabled())
+        expect(mutateAsync).toHaveBeenCalledTimes(1)
+      })
     })
   })
 })

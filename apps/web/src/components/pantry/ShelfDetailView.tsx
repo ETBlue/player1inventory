@@ -1,15 +1,18 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, ArrowUpFromLine, Loader2, Settings } from 'lucide-react'
+import { ArrowLeft, ArrowUpFromLine, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
+import { ItemSearchTail } from '@/components/item/ItemSearchTail'
 import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
+import { useDataMode } from '@/hooks/useDataMode'
+import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
@@ -26,7 +29,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
-import { isInactive } from '@/lib/quantityUtils'
+import { isInactive, isStockedHere } from '@/lib/quantityUtils'
 import { matchesFilterConfig } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { PantryItem, StockFields } from '@/types'
@@ -54,6 +57,8 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const updateShelf = useUpdateShelfMutation()
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
 
   const {
     sortBy: localSortBy,
@@ -167,58 +172,110 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     tags,
   ])
 
-  const hasExactMatch = useMemo(() => {
-    if (!trimmedSearch) return false
-    const lower = trimmedSearch.toLowerCase()
-    return allItems.some((item) => item.name.toLowerCase() === lower)
-  }, [allItems, trimmedSearch])
-
   const inShelfItemIds = useMemo(
     () => new Set(inShelfItems.map((i) => i.id)),
     [inShelfItems],
   )
 
-  const outsideShelfSearchMatches = useMemo((): PantryItem[] => {
-    if (!trimmedSearch) return []
-    return allItems.filter(
-      (item) =>
-        !inShelfItemIds.has(item.id) &&
-        item.name.toLowerCase().includes(trimmedSearch.toLowerCase()),
+  // Tail rows can fall outside `allItems` (stocked-here items) — bucket 3 is
+  // exactly the items NOT stocked here — so vendor badges can't come from the
+  // `vendorMap` below, which is only keyed over `allItems`. Computed directly
+  // per row instead (mirrors PantryListView's tail card). `recipeMap` doesn't
+  // have this problem — like PantryListView's, it's built from the global
+  // `recipes` list, not from `allItems`, so it already covers bucket-3 items.
+  function renderTailItemCard(item: PantryItem) {
+    return (
+      <ItemCard
+        item={item}
+        tags={tags.filter((t) => item.tagIds.includes(t.id))}
+        tagTypes={tagTypes}
+        vendors={vendors.filter((v) => (item.vendorIds ?? []).includes(v.id))}
+        recipes={recipeMap.get(item.id) ?? []}
+        showTags={isTagsVisible}
+        showStock={isCloud || isStockedHere(item)}
+      />
     )
-  }, [allItems, inShelfItemIds, trimmedSearch])
+  }
+
+  // Bucket 2's action, selection shelves only: pressing it appends the item
+  // to the shelf's itemIds. The dedup check is the same "already-present"
+  // guard `handleAddToSelectionShelf` used to run before this hook took over
+  // — kept as a defensive no-op, since bucket 2 is by construction items NOT
+  // already in `inShelfItemIds` (== the shelf's stocked-here itemIds).
+  //
+  // Filter shelves get `groupNote` instead: PR D's swap point. The design's
+  // end state is a per-axis picker (one tag per tag type, one vendor, one
+  // recipe — enough to satisfy matchesFilterConfig) so a filter-shelf bucket
+  // 2 row becomes actionable; until then this inert note keeps the row from
+  // vanishing silently, the way the old hand-rolled block rendered it inert.
+  //
+  // System shelves and the `unsorted` pseudo-shelf get neither — they already
+  // have no add path (handleAddToSelectionShelf used to early-return for
+  // them), and inventing one is out of scope here.
+  //
+  // No `sortTail` is passed here, unlike the cart page and PantryListView —
+  // so the tail renders in name order while this shelf's own list obeys the
+  // user's chosen sort. This is a DELIBERATE, DEFERRED gap, not an oversight:
+  // `useItemSortData` above is keyed only over `allItems` (stocked-here
+  // items), so a bucket-3 row (not stocked here) would sort against an absent
+  // map entry. Fixing it properly means widening that sort-data source, which
+  // is a behaviour change deserving its own review — out of scope for this
+  // pass.
+  const { tailProps, hasExactGlobalMatch } = useItemSearchTailWiring({
+    inGroupIds: inShelfItemIds,
+    query: search,
+    renderItem: renderTailItemCard,
+    ...(shelf?.type === 'selection'
+      ? {
+          groupAction: {
+            label: t('items.searchTail.addToShelf'),
+            icon: <ArrowUpFromLine />,
+            onAction: async (item: PantryItem) => {
+              const currentIds = shelf.itemIds ?? []
+              if (currentIds.includes(item.id)) return
+              await updateShelf.mutateAsync({
+                id: shelf.id,
+                data: { itemIds: [...currentIds, item.id] },
+              })
+            },
+          },
+        }
+      : {}),
+    ...(shelf?.type === 'filter'
+      ? {
+          groupNote: () => (
+            <span>{t('items.searchTail.notMatchingShelf')}</span>
+          ),
+        }
+      : {}),
+  })
 
   const handleSortChange = (field: SortField, dir: SortDirection) => {
     setSortBy(field)
     setSortDirection(dir)
   }
 
-  const handleAddToSelectionShelf = (itemId: string) => {
-    if (!shelf || shelf.type !== 'selection') return
-    const currentIds = shelf.itemIds ?? []
-    if (currentIds.includes(itemId)) return
-    updateShelf.mutate({
-      id: shelf.id,
-      data: { itemIds: [...currentIds, itemId] },
-    })
-  }
-
   const handleCreateFromSearch = async (query: string) => {
-    const newItem = await createItem.mutateAsync({
-      name: query,
-      tagIds: [],
-      vendorIds: [],
-      targetUnit: 'package',
-      targetQuantity: 0,
-      refillThreshold: 0,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-    })
-    if (shelf?.type === 'selection' && newItem?.id) {
-      const currentIds = shelf.itemIds ?? []
-      updateShelf.mutate({
-        id: shelf.id,
-        data: { itemIds: [...currentIds, newItem.id] },
+    try {
+      const newItem = await createItem.mutateAsync({
+        name: query,
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 0,
+        refillThreshold: 0,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
       })
+      if (shelf?.type === 'selection' && newItem?.id) {
+        const currentIds = shelf.itemIds ?? []
+        updateShelf.mutate({
+          id: shelf.id,
+          data: { itemIds: [...currentIds, newItem.id] },
+        })
+      }
+    } catch {
+      // input stays populated for retry
     }
   }
 
@@ -260,7 +317,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           vendors={vendors}
           recipes={recipes}
           onCreateFromSearch={handleCreateFromSearch}
-          hasExactMatch={hasExactMatch}
+          hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
           leading={
             <>
@@ -345,47 +402,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
             )
           })()}
 
-          {trimmedSearch && outsideShelfSearchMatches.length > 0 && (
-            <div className="space-y-px">
-              <div className="h-px bg-accessory-default" />
-              <p className="text-xs text-foreground-muted text-center py-1">
-                Not in this shelf
-              </p>
-              {outsideShelfSearchMatches.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center bg-background-surface"
-                >
-                  <div className="flex-1 min-w-0">
-                    <ItemCard
-                      item={item}
-                      tags={tags.filter((t) => item.tagIds.includes(t.id))}
-                      tagTypes={tagTypes}
-                      vendors={vendorMap.get(item.id) ?? []}
-                      recipes={recipeMap.get(item.id) ?? []}
-                      showTags={isTagsVisible}
-                    />
-                  </div>
-                  {shelf?.type === 'selection' && (
-                    <Button
-                      size="icon"
-                      variant="neutral-outline"
-                      className="mx-2"
-                      aria-label={`Add ${item.name} to shelf`}
-                      onClick={() => handleAddToSelectionShelf(item.id)}
-                      disabled={updateShelf.isPending}
-                    >
-                      {updateShelf.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <ArrowUpFromLine />
-                      )}
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          {trimmedSearch && <ItemSearchTail {...tailProps} />}
 
           {!trimmedSearch && sortedInShelfItems.length === 0 && (
             <div className="text-center py-12 text-foreground-muted">

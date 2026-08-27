@@ -6,10 +6,12 @@ import * as stories from './index.stories'
 const {
   Default,
   WithItems,
+  WithSearchTail,
   ShelfGroupView,
   VendorGroupView,
   RecipeGroupView,
   ShelfDetailView,
+  ShelfDetailViewSearchTail,
   VendorDetailView,
   RecipeDetailView,
 } = composeStories(stories)
@@ -46,6 +48,14 @@ describe('Pantry index stories smoke tests', () => {
   it('WithItems renders seeded items', async () => {
     render(<WithItems />)
     expect(await screen.findByText(/milk/i)).toBeInTheDocument()
+  })
+
+  it('WithSearchTail shows the not-stocked-here section for a search match', async () => {
+    render(<WithSearchTail />)
+    expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
   })
 
   it('ShelfGroupView renders the manage shelves link', async () => {
@@ -102,6 +112,18 @@ describe('Pantry index stories smoke tests', () => {
   it('ShelfDetailView mounts the LocationSwitcher', async () => {
     render(<ShelfDetailView />)
     await expectToolbarSwitcher()
+  })
+
+  it('ShelfDetailViewSearchTail shows both tail sections for a selection shelf', async () => {
+    render(<ShelfDetailViewSearchTail />)
+    expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to shelf: Milk' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
   })
 
   it('VendorDetailView renders the seeded item', async () => {

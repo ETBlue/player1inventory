@@ -100,7 +100,39 @@ export class PantryPage {
   getNotStockedHereDivider(): Locator {
     // ListSectionDivider carrying t('common.notStockedHere') — "{{count}} not
     // stocked here" (src/components/pantry/ShelfGroupView.tsx:279,
-    // VendorGroupView.tsx:206, RecipeGroupView.tsx:216)
+    // VendorGroupView.tsx:206, RecipeGroupView.tsx:216). Also the search
+    // tail's bucket-3 divider (ItemSearchTail.tsx) on the flat pantry and
+    // shelf detail.
     return this.page.getByText(/\d+ not stocked here/)
+  }
+
+  async gotoWithSearch(params: Record<string, string>) {
+    // useUrlSearchAndFilters reads the raw `?q=`/`?groupBy=`/`?id=` params
+    // off the router location string (src/hooks/useUrlSearchAndFilters.ts),
+    // and ItemListToolbar's searchVisible state initializes from `search !==
+    // ''` on mount — so a direct navigation with `?q=` already set opens the
+    // search row pre-populated, far more robust than driving the toggle.
+    const qs = new URLSearchParams(params).toString()
+    await this.page.goto(`/?${qs}`, { waitUntil: 'networkidle' })
+  }
+
+  getNotInThisListDivider(): Locator {
+    // ListSectionDivider carrying t('common.notInThisList') — "{{count}} not
+    // in this list"; ItemSearchTail's in-location section (bucket 2)
+    // (src/components/item/ItemSearchTail/ItemSearchTail.tsx)
+    return this.page.getByText(/\d+ not in this list/)
+  }
+
+  getTailActionButton(action: string, itemName: string): Locator {
+    // Every row's button carries the same visible label, so the accessible
+    // name is t('items.searchTail.rowAction') = "{{action}}: {{name}}"
+    // (src/components/item/ItemSearchTail/ItemSearchTail.tsx)
+    return this.page.getByRole('button', { name: `${action}: ${itemName}` })
+  }
+
+  getCreateItemButton(): Locator {
+    // aria-label={t('itemListToolbar.createItem')} — "Create item"
+    // (src/components/item/ItemListToolbar/index.tsx)
+    return this.page.getByRole('button', { name: 'Create item' })
   }
 }

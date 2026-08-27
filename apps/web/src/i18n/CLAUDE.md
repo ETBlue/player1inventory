@@ -71,6 +71,8 @@ const { t } = useTranslation()
 
 **Common i18n keys:** `common.*` covers `cancel`, `delete`, `deleting`, `nameLabel`, `save`, `saving`, `discard`, `goBack`, `unsavedTitle`, `unsavedDescription`, `done`, `back`, `confirm`, `add`, `edit`, `clear`, `fillToFull`, `manage`, `asc`, `desc`, `search`, `tags`, `filters`, `notStockedHere` (plural, the group-list divider label), `notInThisList` (plural, `ItemSearchTail`'s in-location divider label), `expiresOn` / `expiresOnHint` (the per-location due-date field's label/hint, shared by `ItemForm`'s Stock tab and `QuickUpdateDialog` — promoted 2026-08-27 from `items.form.expirationDueDate.*` once a second caller needed the same string) — reuse these instead of adding entity-specific duplicates.
 
+**`items.searchTail.*` keys** (unified item search — `ItemSearchTail` and its callers): `rowAction` (`"{{action}}: {{name}}"` — every row's accessible name, since the visible label is identical down a section), `addToLocation` (`"Add to {{location}}"` — bucket 3's button on every surface), `applyVendor` (`"Apply {{vendor}}"` — the cart page's bucket-2 action), `inVendors` (`"In {{vendors}}"` — the no-vendor cart's inert `groupNote`, `normal-case` per the vendor-name display rule), `addToShelf` (`"Add to shelf"` — a selection shelf's bucket-2 action, PR B) and `notMatchingShelf` (`"Doesn't match this shelf's filters"` — a filter shelf's inert `groupNote`, PR B; PR D replaces this with a real `groupAction` once the per-axis picker lands).
+
 **Dynamic inventory log descriptions (`logKey`/`logParams` pattern):**
 
 Inventory log entries store a translation key + params instead of a pre-translated string, so descriptions re-render in the current language regardless of when the log was created.

@@ -1,5 +1,6 @@
 export * from './useInventoryLogs'
 export * from './useItemSearchTail'
+export * from './useItemSearchTailWiring'
 export * from './useItemStocks'
 export * from './useItems'
 export * from './useLocations'
