@@ -108,20 +108,45 @@ The real follow-up is a **separate** predicate for the location-scope concern �
 `useIsStockedInActiveLocation()`, same cloud bypass, named for what a filter is asking —
 adopted at all four sites in one change. That is its own PR; not PR C.
 
-## Deferred — a search matching nothing on an empty group renders a blank pane
+## FIXED in PR C — the empty-group blank pane was a regression, not a gap
 
-Surfaced by the Task 2 review. The empty state on all three detail views is gated
-`!trimmedSearch` (this plan's own prescription, and byte-for-byte what
-`ShelfDetailView.tsx:406-417` already shipped in PR B), so a group with no items plus a
-query that matches nothing globally renders an empty list, an empty tail, and no empty
-state at all — a blank pane with no explanation. Not a Task 2 defect: the wiring behaves
-exactly as specified, and the shelf view has the same hole today. But it is now a real gap
-on **three** surfaces rather than one, which is worth recording.
+Surfaced by the Task 2 review, and **fixed in the whole-branch review pass
+(2026-08-27)**. The empty state on all three detail views was gated `!trimmedSearch`
+(this plan's own prescription, and byte-for-byte what `ShelfDetailView.tsx:406-417`
+shipped in PR B), so a group with no items plus a query matching nothing globally
+rendered an empty list, an empty tail, and **no empty state at all** — a completely blank
+content pane.
 
-The fix needs no new derivation: `useItemSearchTailWiring` already returns `hasTail`
-(`hasVisibleTail(tailProps)` — the same boolean the component uses for its own early
-return), so a searching-and-found-nothing state is `!hasTail && displayedItems.length === 0`.
-Applying it to all three views at once is the change; not PR C.
+The original entry above filed this as a pre-existing gap. That was wrong for the case
+described: at the merge base (`f6d54fd6`) `VendorDetailView` gated the block on
+`sortedItems.length === 0` alone and **did** render "No items" there, so `!trimmedSearch`
+**introduced** the blank pane. A regression, on three surfaces.
+
+**The fix**, applied to `VendorDetailView`, `RecipeDetailView` and `ShelfDetailView`:
+destructure the `hasTail` the wiring hook already returns (`hasVisibleTail(tailProps)` —
+the same boolean the component uses for its own early return) and gate the empty state
+`{!hasTail && sortedItems.length === 0 && (…)}` (`sortedInShelfItems` on the shelf view).
+That is the shape `PantryListView.tsx:295,310` and `shopping/$vendorId.tsx:499` already
+used, so all five surfaces now agree. Pinned by one test per view in `routes/index.test.tsx`
+— *"user sees the empty state, not a blank pane, when a search matches nothing and the
+tail is empty"* — each mutation-checked back to `!trimmedSearch` and each confirmed RED
+alone (1 failed / 44 passed, three times).
+
+### Still deferred — a POPULATED group whose search matches nothing
+
+`sortedItems.length === 0`, not `displayedItems.length === 0`, and the narrowing is
+deliberate. `!hasTail && displayedItems.length === 0` would additionally cover a group
+that **has** items where the search matches none of them. That case is genuinely
+pre-existing — blank at the merge base too, since `sortedItems.length === 0` was false
+there as well — and this block cannot serve it: its copy would read *"No items are
+assigned to this vendor"* while items **are** assigned and merely fail to match, which is
+a false statement to show the user.
+
+So what remains deferred is **only** the populated-group-no-match case, and it is not a
+one-character widening of the guard. It needs its own message string (something on the
+order of *"No items match your search"*, distinct per view or shared), plus i18n keys, and
+a decision about whether it renders instead of or beside the existing block. That is its
+own change; not PR C.
 
 ## Deferred — `VendorDetailView`'s recipe map is always empty
 
@@ -253,8 +278,31 @@ item lacking the vendor; the unsorted variant renders the note and **no** button
 unresolved-vendor window renders neither.
 
 **Mutation checks** (each must go RED): delete the `!inGroupIds.has` subtraction; make
-`Add to {location}` also apply the vendor; drop the `isUnsorted` branch so unsorted gets a
-button; source `inGroupIds` from `displayedItems`.
+`Add to {location}` also apply the vendor; **drop the `groupNote` spread so the unsorted
+page loses its inert note**; source `inGroupIds` from `displayedItems`.
+
+> **Correction (whole-branch review, 2026-08-27).** This list originally prescribed
+> *"drop the `isUnsorted` branch so unsorted gets a button"*, and the Task 2 self-review
+> reported it as having gone RED. **It cannot, and it did not.** On `?id=unsorted`,
+> `vendors.find((v) => v.id === 'unsorted')` is `undefined`, so the spread's second
+> conjunct already fails and `groupAction` is omitted with or without the `!isUnsorted`
+> guard — an **equivalent mutant**. Re-run on the branch with all four `isUnsorted`
+> guards dropped (`VendorDetailView.tsx:202` and `:152`, `RecipeDetailView.tsx:223` and
+> `:167`): `routes/index.test.tsx` stayed **45/45 green**.
+>
+> This is a **reporting error, not a coverage hole**. The behaviour the check was aiming
+> at *is* pinned, by a mutation that genuinely kills: removing
+> `...(isUnsorted ? { groupNote: renderVendorsNote } : {})` turns *"the 'No vendor' page
+> renders an inert note naming the vendors that hold the item, and no button"* RED
+> (verified, 1 failed / 44 passed). That is the check the list now names.
+>
+> **The four `isUnsorted` guards are therefore dead code — harmless, but dead.** They are
+> left in place deliberately: each reads as a statement of intent at its call site, and
+> each would become load-bearing the moment a real entity could carry the literal id
+> `'unsorted'`. Do not cite them as covered behaviour, and do not "prove" them with a
+> mutation check — any such check is vacuous. (`isUnsorted` remains genuinely
+> load-bearing elsewhere in both views: the page title, the empty-state copy, the
+> Settings-link suppression, `inScopeItems`, and the `groupNote` spread above.)
 
 ### Task 3 — wire `RecipeDetailView`
 
