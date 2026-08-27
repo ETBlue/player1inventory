@@ -685,6 +685,158 @@ function RecipeDetailViewStory() {
   )
 }
 
+function VendorDetailViewSearchTailStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [vendorId, setVendorId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const stock = {
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+
+      // A second location — Milk Powder below is stocked ONLY there, never
+      // at the default location this story renders.
+      const office = await createLocation('Office')
+
+      const vendor = await createVendor('Costco')
+
+      // Carries the vendor AND is stocked here → the page's own list.
+      await createItem({
+        name: 'Milk Chocolate',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        ...stock,
+      })
+
+      // Stocked here but carrying no vendor → "not in this list", with an
+      // "Apply Costco" button.
+      await createItem({ name: 'Milk', tagIds: [], vendorIds: [], ...stock })
+
+      // Exists globally but stocked ONLY at the Office → "not stocked here",
+      // with an "Add to My Home" button. Applying the vendor is a separate,
+      // second press once it lands here.
+      await createItem(
+        { name: 'Milk Powder', tagIds: [], vendorIds: [], ...stock },
+        office.id,
+      )
+
+      setVendorId(vendor.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !vendorId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=vendor&id=${vendorId}&q=milk`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
+function RecipeDetailViewSearchTailStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [recipeId, setRecipeId] = useState('')
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const stock = {
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+
+      // A second location — Milk Powder below is stocked ONLY there, never
+      // at the default location this story renders.
+      const office = await createLocation('Office')
+
+      // An ingredient of the recipe, stocked here → the page's own list.
+      const member = await createItem({
+        name: 'Milk Chocolate',
+        tagIds: [],
+        ...stock,
+      })
+
+      // Stocked here but not an ingredient yet → "not in this list", with an
+      // "Add to recipe" button.
+      await createItem({ name: 'Milk', tagIds: [], ...stock })
+
+      // Exists globally but stocked ONLY at the Office → "not stocked here",
+      // with an "Add to My Home" button. Adding it to the recipe is a
+      // separate, second press once it lands here.
+      await createItem(
+        { name: 'Milk Powder', tagIds: [], vendorIds: [], ...stock },
+        office.id,
+      )
+
+      const recipe = await createRecipe({
+        name: 'Milkshake',
+        items: [{ itemId: member.id, defaultAmount: 1 }],
+      })
+
+      setRecipeId(recipe.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !recipeId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: [`/?groupBy=recipe&id=${recipeId}&q=milk`],
+    }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Default: Story = {
   render: () => <DefaultStory />,
 }
@@ -721,6 +873,14 @@ export const VendorDetailView: Story = {
   render: () => <VendorDetailViewStory />,
 }
 
+export const VendorDetailViewSearchTail: Story = {
+  render: () => <VendorDetailViewSearchTailStory />,
+}
+
 export const RecipeDetailView: Story = {
   render: () => <RecipeDetailViewStory />,
+}
+
+export const RecipeDetailViewSearchTail: Story = {
+  render: () => <RecipeDetailViewSearchTailStory />,
 }

@@ -13,7 +13,9 @@ const {
   ShelfDetailView,
   ShelfDetailViewSearchTail,
   VendorDetailView,
+  VendorDetailViewSearchTail,
   RecipeDetailView,
+  RecipeDetailViewSearchTail,
 } = composeStories(stories)
 
 // These stories mount the whole routeTree, so the desktop Sidebar's
@@ -136,6 +138,25 @@ describe('Pantry index stories smoke tests', () => {
     await expectToolbarSwitcher()
   })
 
+  it('VendorDetailViewSearchTail shows both tail sections with the vendor action', async () => {
+    render(<VendorDetailViewSearchTail />)
+    // Bucket 2 — stocked at My Home but carrying no vendor.
+    expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Apply Costco: Milk' }),
+    ).toBeInTheDocument()
+    // Bucket 3 — stocked ONLY at the Office. Its only action stocks it here;
+    // applying the vendor is a separate second press, so no "Apply Costco"
+    // button exists for it.
+    expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Apply Costco: Milk Powder' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('RecipeDetailView renders the seeded item', async () => {
     render(<RecipeDetailView />)
     const matches = await screen.findAllByText(/pasta/i)
@@ -145,5 +166,23 @@ describe('Pantry index stories smoke tests', () => {
   it('RecipeDetailView mounts the LocationSwitcher', async () => {
     render(<RecipeDetailView />)
     await expectToolbarSwitcher()
+  })
+
+  it('RecipeDetailViewSearchTail shows both tail sections with the recipe action', async () => {
+    render(<RecipeDetailViewSearchTail />)
+    // Bucket 2 — stocked at My Home but not an ingredient yet.
+    expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to recipe: Milk' }),
+    ).toBeInTheDocument()
+    // Bucket 3 — stocked ONLY at the Office. Its only action stocks it here;
+    // adding it to the recipe is a separate second press.
+    expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Add to recipe: Milk Powder' }),
+    ).not.toBeInTheDocument()
   })
 })
