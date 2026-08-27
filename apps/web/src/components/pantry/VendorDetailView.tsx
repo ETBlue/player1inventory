@@ -179,12 +179,15 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   //
   // `query` is the RAW search value: `useItemSearchTail` trims internally.
   //
-  // The unresolved-vendor window gets NEITHER descriptor: when `vendorId` is
-  // a real id but the vendor is absent from `useVendors()` — deleted, the
-  // only way to get here, since a still-loading `useVendors()` returns the
-  // `<LoadingSpinner />` below before any tail renders — its name is in the
-  // button label and pressing it would append a nonexistent id, so bucket 2
-  // is simply absent for that render.
+  // The unresolved-vendor window gets NEITHER descriptor: when no vendor in
+  // `useVendors()` carries `vendorId` — it was deleted, or the id never
+  // existed at all (a stale bookmark, a hand-typed `?id=`), since
+  // `validateSearch` in `routes/index.tsx` passes `id` through as an
+  // arbitrary string with no existence check — its name is in the button
+  // label and pressing it would append a nonexistent id, so bucket 2 is
+  // simply absent for that render. A still-loading `useVendors()` is NOT one
+  // of those cases: the `<LoadingSpinner />` below returns before any tail is
+  // rendered.
   const { tailProps } = useItemSearchTailWiring({
     inGroupIds,
     query: search,
