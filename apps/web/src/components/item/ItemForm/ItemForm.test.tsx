@@ -654,9 +654,15 @@ describe('ItemForm — number inputs keep the raw text while being edited', () =
         onDirtyChange={vi.fn()}
       />,
     )
-    const targetInput = screen.getByLabelText(
-      /target quantity/i,
-    ) as HTMLInputElement
+    // getByRole('spinbutton', …) rather than getByLabelText: once Minor 6
+    // unified the stepper aria-labels onto the dialog's sentence-case long
+    // forms ("Increase/Decrease target quantity"), an unanchored
+    // getByLabelText(/target quantity/i) matches the input AND both stepper
+    // buttons. getByRole('spinbutton') excludes buttons by role, same as
+    // QuickUpdateDialog.test.tsx already does.
+    const targetInput = screen.getByRole('spinbutton', {
+      name: /target quantity/i,
+    }) as HTMLInputElement
 
     // When the user empties it and tabs away
     await user.click(targetInput)
@@ -784,10 +790,9 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
     )
 
     // Then it accepts any value as well
-    expect(screen.getByLabelText(/target quantity/i)).toHaveAttribute(
-      'step',
-      'any',
-    )
+    expect(
+      screen.getByRole('spinbutton', { name: /target quantity/i }),
+    ).toHaveAttribute('step', 'any')
   })
 
   it('user typing a decimal into Unpacked keeps it on blur while the consume amount is unset', async () => {
@@ -916,7 +921,7 @@ describe('ItemForm — stock tab steppers step by the Constraint-4 increment', (
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Increase Packed' }))
+    await user.click(screen.getByRole('button', { name: 'Increase packed' }))
     expect(screen.getByLabelText(/^packed/i)).toHaveValue(3)
   })
 
@@ -931,8 +936,12 @@ describe('ItemForm — stock tab steppers step by the Constraint-4 increment', (
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Increase Target' }))
-    expect(screen.getByLabelText(/target quantity/i)).toHaveValue(5)
+    await user.click(
+      screen.getByRole('button', { name: 'Increase target quantity' }),
+    )
+    expect(
+      screen.getByRole('spinbutton', { name: /target quantity/i }),
+    ).toHaveValue(5)
   })
 
   it('user steps Refill and Unpacked by consumeAmount in package mode', async () => {
@@ -946,10 +955,12 @@ describe('ItemForm — stock tab steppers step by the Constraint-4 increment', (
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Increase Refill' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Increase refill threshold' }),
+    )
     expect(screen.getByLabelText(/refill when below/i)).toHaveValue(3)
 
-    await user.click(screen.getByRole('button', { name: 'Increase Unpacked' }))
+    await user.click(screen.getByRole('button', { name: 'Increase unpacked' }))
     expect(screen.getByLabelText(/^unpacked/i)).toHaveValue(5)
   })
 
@@ -980,8 +991,12 @@ describe('ItemForm — stock tab steppers step by the Constraint-4 increment', (
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Increase Target' }))
-    expect(screen.getByLabelText(/target quantity/i)).toHaveValue(5.5)
+    await user.click(
+      screen.getByRole('button', { name: 'Increase target quantity' }),
+    )
+    expect(
+      screen.getByRole('spinbutton', { name: /target quantity/i }),
+    ).toHaveValue(5.5)
   })
 
   it('user steps Packed by 1 and Refill/Unpacked by consumeAmount in measurement mode', async () => {
@@ -995,13 +1010,15 @@ describe('ItemForm — stock tab steppers step by the Constraint-4 increment', (
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Increase Packed' }))
+    await user.click(screen.getByRole('button', { name: 'Increase packed' }))
     expect(screen.getByLabelText(/^packed/i)).toHaveValue(2)
 
-    await user.click(screen.getByRole('button', { name: 'Increase Refill' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Increase refill threshold' }),
+    )
     expect(screen.getByLabelText(/refill when below/i)).toHaveValue(1.5)
 
-    await user.click(screen.getByRole('button', { name: 'Increase Unpacked' }))
+    await user.click(screen.getByRole('button', { name: 'Increase unpacked' }))
     expect(screen.getByLabelText(/^unpacked/i)).toHaveValue(2.5)
   })
 })
@@ -1027,10 +1044,10 @@ describe('ItemForm — stock tab steppers clamp at 0', () => {
     )
 
     for (const label of [
-      'Decrease Target',
-      'Decrease Refill',
-      'Decrease Packed',
-      'Decrease Unpacked',
+      'Decrease target quantity',
+      'Decrease refill threshold',
+      'Decrease packed',
+      'Decrease unpacked',
     ]) {
       expect(screen.getByRole('button', { name: label })).toBeDisabled()
     }
@@ -1053,10 +1070,12 @@ describe('ItemForm — stock tab steppers clamp at 0', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Decrease Refill' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Decrease refill threshold' }),
+    )
     expect(screen.getByLabelText(/refill when below/i)).toHaveValue(0)
     expect(
-      screen.getByRole('button', { name: 'Decrease Refill' }),
+      screen.getByRole('button', { name: 'Decrease refill threshold' }),
     ).toBeDisabled()
   })
 })
@@ -1098,7 +1117,9 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
 
     // When the user raises the refill threshold to meet the current total,
     // without saving
-    await user.click(screen.getByRole('button', { name: 'Increase Refill' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Increase refill threshold' }),
+    )
 
     // Then the preview warns immediately, from the live (unsaved) form state
     expect(screen.getByLabelText(/refill when below/i)).toHaveValue(2)
@@ -1128,7 +1149,9 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
 
     // When the user raises the target to 6 (not yet saved) and presses Fill
     // to Full
-    const targetInput = screen.getByLabelText(/target quantity/i)
+    const targetInput = screen.getByRole('spinbutton', {
+      name: /target quantity/i,
+    })
     await user.clear(targetInput)
     await user.type(targetInput, '6')
     await user.tab()

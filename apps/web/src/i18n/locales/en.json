@@ -313,26 +313,26 @@
       "targetQuantity": {
         "label": "Target Quantity",
         "hint": "Item becomes inactive when set to 0",
-        "decrease": "Decrease Target",
-        "increase": "Increase Target"
+        "decrease": "Decrease target quantity",
+        "increase": "Increase target quantity"
       },
       "refillThreshold": {
         "label": "Refill When Below",
         "hint": "Shows warning on low stock",
-        "decrease": "Decrease Refill",
-        "increase": "Increase Refill"
+        "decrease": "Decrease refill threshold",
+        "increase": "Increase refill threshold"
       },
       "packedQuantity": {
         "label": "Packed",
         "hint": "Number of whole packages in stock",
-        "decrease": "Decrease Packed",
-        "increase": "Increase Packed"
+        "decrease": "Decrease packed",
+        "increase": "Increase packed"
       },
       "unpackedQuantity": {
         "label": "Unpacked",
         "hint": "Loose amount from opened package(s)",
-        "decrease": "Decrease Unpacked",
-        "increase": "Increase Unpacked"
+        "decrease": "Decrease unpacked",
+        "increase": "Increase unpacked"
       },
       "unpack": "Unpack",
       "pack": "Pack",

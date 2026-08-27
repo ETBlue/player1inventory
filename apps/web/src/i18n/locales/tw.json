@@ -313,26 +313,26 @@
       "targetQuantity": {
         "label": "目標數量",
         "hint": "設為 0 時，這個品項會變成非使用中",
-        "decrease": "減少目標",
-        "increase": "增加目標"
+        "decrease": "減少目標數量",
+        "increase": "增加目標數量"
       },
       "refillThreshold": {
         "label": "低於此數補貨",
         "hint": "庫存偏低時顯示警示",
-        "decrease": "減少補貨",
-        "increase": "增加補貨"
+        "decrease": "減少補貨門檻",
+        "increase": "增加補貨門檻"
       },
       "packedQuantity": {
         "label": "未開封",
         "hint": "庫存中完整包裝的數量",
-        "decrease": "減少未開封",
-        "increase": "增加未開封"
+        "decrease": "減少未開封數量",
+        "increase": "增加未開封數量"
       },
       "unpackedQuantity": {
         "label": "已開封",
         "hint": "已拆封包裝中的散裝量",
-        "decrease": "減少已開封",
-        "increase": "增加已開封"
+        "decrease": "減少已開封數量",
+        "increase": "增加已開封數量"
       },
       "unpack": "開封",
       "pack": "打包",
