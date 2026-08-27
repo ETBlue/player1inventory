@@ -1,6 +1,7 @@
 # Plan: Stock Tab Steppers, Reorder and i18n
 
 **Date:** 2026-08-27
+**Status:** ✅ Done — all 5 tasks complete, including Task 5 (added mid-plan by controller ruling)
 **Branch:** `feature/quick-update-stock-settings`
 **Area:** items (item detail Stock tab) + pantry (quick update dialog)
 **Related:** [brainstorming — quick update stock settings](../pantry/2026-08-27-brainstorming-quick-update-stock-settings.md)
@@ -259,6 +260,20 @@ Mutation check: change one EN value, confirm a test goes red, restore.
    - `apps/web/src/i18n/CLAUDE.md` — add `ItemForm` to the migrated list.
    - `docs/INDEX.md` — update the items / quick-update-dialog rows.
    - This plan file — mark it done.
+
+**Result:** Done. The new E2E test drives the Target/Refill steppers by their
+buttons (not the keyboard), saves, and re-navigates to a fresh mount of the
+Stock tab to assert the persisted values — see
+`e2e/tests/item-stock-input.spec.ts`. Writing it surfaced a real regression:
+`QuantityStepper`'s and `StockProgressRow`'s buttons had no `type="button"`,
+which was harmless in `QuickUpdateDialog` (no enclosing `<form>`) but meant
+that inside `ItemForm`'s `<form>` a stepper click doubled as a native form
+submit once the field first went dirty — the Stock tab saved and navigated
+away after two clicks. Fixed by adding `type="button"` to all four buttons
+across both components. `pnpm test:e2e --grep
+"item-management|items|shelves|vendors-group|recipes-group|a11y"` ran clean
+apart from the four pre-existing `a11y.spec.ts` colour-contrast failures
+(shelves, vendor group-by, recipe group-by, shelves mobile) called out above.
 
 ---
 
