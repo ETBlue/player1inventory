@@ -82,3 +82,48 @@ export const WithUnpacked: Story = {
     isOpen: true,
   },
 }
+
+export const Inactive: Story = {
+  name: 'Inactive — Target 0',
+  args: {
+    item: {
+      ...mockItem,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+    },
+    isOpen: true,
+  },
+}
+
+export const NearRefillThreshold: Story = {
+  name: 'Near Refill Threshold — Fractional Steps',
+  args: {
+    // Measurement item with consumeAmount 0.25: the Target and Refill steppers
+    // move in fractions of a litre, not whole bottles.
+    item: {
+      ...mockDualUnitItem,
+      packedQuantity: 0,
+      unpackedQuantity: 0.5,
+    },
+    isOpen: true,
+  },
+}
+
+export const WithExpirationDate: Story = {
+  name: 'Date Mode — Expires On Field',
+  args: {
+    // expirationMode: 'date' is the only thing that renders the "Expires on"
+    // row, last, in the same grid as the four stepper rows above it — see
+    // the item detail Stock tab's identical gate in ItemForm.
+    item: {
+      ...mockItem,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      expirationMode: 'date',
+      dueDate: new Date('2026-09-15'),
+    },
+    isOpen: true,
+  },
+}

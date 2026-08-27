@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { QuantityStepper } from '@/components/item/QuantityStepper'
+import { StockProgressRow } from '@/components/item/StockProgressRow'
 import { UnitInline } from '@/components/shared/UnitInline'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,7 +21,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { computePack, computeUnpack, roundToStep } from '@/lib/quantityUtils'
+import {
+  computeFillToFull,
+  computePack,
+  computeUnpack,
+  getStockPreview,
+  roundToStep,
+} from '@/lib/quantityUtils'
 import type { ExpirationMode } from '@/types'
 
 // The form always holds every value — both sections read from them (the
@@ -98,7 +106,7 @@ export function ItemForm({
   onSubmit,
   onDirtyChange,
   savedAt,
-  submitLabel = 'Save',
+  submitLabel,
   isPending = false,
 }: ItemFormProps) {
   const { t } = useTranslation()
@@ -308,7 +316,7 @@ export function ItemForm({
   const showStock = sections.includes('stock')
   const showInfo = sections.includes('info')
 
-  const nameError = !name.trim() ? 'Name is required.' : undefined
+  const nameError = !name.trim() ? t('items.form.name.error') : undefined
   // Light, non-blocking URL validation: empty is allowed; if present, expect an
   // http(s):// URL. Does not contribute to hasFieldError (submission stays open).
   const isValidHttpUrl = (value: string) => {
@@ -325,14 +333,14 @@ export function ItemForm({
       : undefined
   const measurementUnitError =
     targetUnit === 'measurement' && !measurementUnit
-      ? 'Measurement unit is required.'
+      ? t('items.form.measurementUnit.error')
       : undefined
   const amountPerPackageError =
     targetUnit === 'measurement' && !amountPerPackage
-      ? 'Amount per package is required.'
+      ? t('items.form.amountPerPackage.error')
       : undefined
   const consumeAmountError =
-    consumeAmount <= 0 ? 'Must be greater than 0.' : undefined
+    consumeAmount <= 0 ? t('validation.positiveNumber') : undefined
 
   // `consumeAmount === 0` means "no step size configured" — NOT a step of 1.
   // It is no longer the create default (that reverted to 1 on 2026-08-24), but
@@ -345,6 +353,66 @@ export function ItemForm({
   // tab's "Must be greater than 0." error is the signal that it needs setting
   // up; the quantity fields must not pretend it already is.
   const quantityStep: number | 'any' = consumeAmount > 0 ? consumeAmount : 'any'
+
+  // The +/- STEPPER buttons take a different fallback than quantityStep above:
+  // a +/- increment must be non-zero to do anything, so an unconfigured
+  // consumeAmount falls back to 1 here rather than to "any". This mirrors
+  // QuickUpdateDialog's `step` (see its comment) and is a deliberate split,
+  // not an inconsistency to unify — quantityStep still drives the <input>
+  // element's own `step` attribute and blur rounding below, unchanged; only
+  // the QuantityStepper's button clicks and its `round` normalizer take this
+  // fallback-to-1 value.
+  const stepperStep = consumeAmount > 0 ? consumeAmount : 1
+  const normalizeTargetStep = (value: number) =>
+    targetUnit === 'package' ? value : roundToStep(value, stepperStep)
+
+  // Progress row preview — mirrors QuickUpdateDialog's live computations
+  // exactly (both call `getStockPreview`), but reads ItemForm's own
+  // in-progress state instead of a saved PantryItem, so raising/lowering a
+  // field updates the preview immediately.
+  const preview = getStockPreview(
+    {
+      targetUnit,
+      measurementUnit,
+      // Conditional, not bare `packageUnit`: an item created with just a name
+      // defaults this to `''`, and getStockPreview's own `packageUnit ?? 'unit'`
+      // fallback does not fire for `''` (only for `undefined`) — passing the
+      // empty string through rendered a bordered, empty UnitBadge on the Stock
+      // tab. Mirrors QuickUpdateDialog's identical conditional spread below.
+      ...(packageUnit ? { packageUnit } : {}),
+      // `> 0`, not bare truthiness: the raw string '0' is truthy but its
+      // coerced number isn't — the caller-side test and getStockPreview's
+      // internal test must agree, or a measurement item saved with
+      // amountPerPackage 0 sees one behaviour here and another inside.
+      ...(Number(amountPerPackage) > 0
+        ? { amountPerPackage: Number(amountPerPackage) }
+        : {}),
+      consumeAmount,
+    },
+    {
+      packedQuantity,
+      unpackedQuantity,
+      targetQuantity,
+      refillThreshold,
+    },
+  )
+  const currentStockQuantity = preview.current
+  const displayPackedQuantity = preview.displayPacked
+  const stockStatus = preview.status
+  const progressUnitLabel = preview.unitLabel
+  const progressQuantityLabel = preview.quantityLabel
+  const isStockAtZero = preview.isAtZero
+  const isStockAtFull = preview.isAtFull
+
+  // Fill to Full aims at the target currently in the input, not a saved one —
+  // computed separately (not read off `preview`) because the `onFill` handler
+  // below needs the destination quantities, not just whether they're reached.
+  const fillToFullState = computeFillToFull({
+    targetUnit,
+    targetQuantity,
+    consumeAmount,
+    ...(amountPerPackage ? { amountPerPackage: Number(amountPerPackage) } : {}),
+  })
 
   // Only errors the active sections actually RENDER may block submission. All
   // four validated fields live in the info section, so a sections={['stock']}
@@ -379,7 +447,7 @@ export function ItemForm({
       {showInfo && (
         <div className="space-y-2">
           <div>
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{t('common.nameLabel')}</Label>
             <Input
               id="name"
               value={name}
@@ -428,23 +496,27 @@ export function ItemForm({
               per-location numbers. */}
           <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
             <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">Stock Settings</h2>
+            <h2 className="text-sm font-medium uppercase">
+              {t('items.form.stockSettingsHeading')}
+            </h2>
             <div className="h-px bg-accessory-emphasized" />
           </div>
 
           <div>
-            <Label htmlFor="packageUnit">Package Unit</Label>
+            <Label htmlFor="packageUnit">
+              {t('items.form.packageUnit.label')}
+            </Label>
             <Input
               id="packageUnit"
               value={packageUnit}
-              placeholder="default: pack"
+              placeholder={t('items.form.packageUnit.placeholder')}
               onChange={(e) => setPackageUnit(e.target.value)}
             />
           </div>
 
           <div>
             <Label htmlFor="consumeAmount">
-              Amount per Consume{' '}
+              {t('items.form.consumeAmount.label')}{' '}
               <UnitInline
                 unit={
                   targetUnit === 'measurement'
@@ -467,14 +539,14 @@ export function ItemForm({
               )}
             />
             <p className="text-xs text-foreground-muted">
-              Amount added/removed per +/- button click. Must be greater than 0.
+              {t('items.form.consumeAmount.hint')}
             </p>
           </div>
 
           <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
             <div className="h-px bg-accessory-emphasized" />
             <h2 className="text-sm font-medium uppercase">
-              Advanced Stock Settings
+              {t('items.form.advancedStockSettingsHeading')}
             </h2>
             <div className="h-px bg-accessory-emphasized" />
           </div>
@@ -487,7 +559,7 @@ export function ItemForm({
                 onCheckedChange={handleTargetUnitChange}
               />
               <Label htmlFor="targetUnit" className="cursor-pointer">
-                Track in measurement{' '}
+                {t('items.form.trackInMeasurement.label')}{' '}
                 <UnitInline
                   unit={measurementUnit || undefined}
                   placeholder="?"
@@ -495,13 +567,15 @@ export function ItemForm({
               </Label>
             </div>
             <p className="text-xs text-foreground-muted">
-              Turn on to enable precise measurement tracking
+              {t('items.form.trackInMeasurement.hint')}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="measurementUnit">Measurement Unit</Label>
+              <Label htmlFor="measurementUnit">
+                {t('items.form.measurementUnit.label')}
+              </Label>
               <Input
                 id="measurementUnit"
                 value={measurementUnit}
@@ -514,13 +588,13 @@ export function ItemForm({
                 }
               />
               <p className="text-xs text-foreground-muted">
-                Precise unit like g / lb / ml
+                {t('items.form.measurementUnit.hint')}
               </p>
             </div>
 
             <div>
               <Label htmlFor="amountPerPackage">
-                Amount per Package
+                {t('items.form.amountPerPackage.label')}
                 {measurementUnit && (
                   <span className="text-xs font-normal">
                     {' '}
@@ -543,14 +617,16 @@ export function ItemForm({
                 }
               />
               <p className="text-xs text-foreground-muted">
-                How many {measurementUnit || '?'} per pack
+                {t('items.form.amountPerPackage.hint', {
+                  unit: measurementUnit || '?',
+                })}
               </p>
             </div>
           </div>
 
           <div>
             <Label htmlFor="expirationMode">
-              Calculate Expiration based on
+              {t('items.form.expirationMode.label')}
             </Label>
             <Select
               value={expirationMode}
@@ -565,26 +641,30 @@ export function ItemForm({
                 <SelectItem value="disabled">
                   <div className="flex items-center gap-2">
                     <InfinityIcon className="h-4 w-4" />
-                    <span>No expiration</span>
+                    <span>
+                      {t('items.form.expirationMode.options.disabled')}
+                    </span>
                   </div>
                 </SelectItem>
                 <SelectItem value="date">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    <span>Specific Date</span>
+                    <span>{t('items.form.expirationMode.options.date')}</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="days from purchase">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    <span>Days from Purchase</span>
+                    <span>
+                      {t('items.form.expirationMode.options.daysFromPurchase')}
+                    </span>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
             {expirationMode === 'date' && (
               <p className="text-xs text-foreground-muted">
-                Set each location&apos;s own expiry date on the Stock tab
+                {t('items.form.expirationMode.dateHint')}
               </p>
             )}
           </div>
@@ -594,8 +674,10 @@ export function ItemForm({
               {expirationMode === 'days from purchase' && (
                 <div>
                   <Label htmlFor="expirationDueDays">
-                    Expires in{' '}
-                    <span className="text-xs font-normal">(days)</span>
+                    {t('items.form.estimatedDueDays.label')}{' '}
+                    <span className="text-xs font-normal">
+                      {t('items.form.daysUnit')}
+                    </span>
                   </Label>
                   <Input
                     id="expirationDueDays"
@@ -608,7 +690,10 @@ export function ItemForm({
               )}
               <div>
                 <Label htmlFor="expirationThreshold">
-                  Warning in <span className="text-xs font-normal">(days)</span>
+                  {t('items.form.expirationThreshold.label')}{' '}
+                  <span className="text-xs font-normal">
+                    {t('items.form.daysUnit')}
+                  </span>
                 </Label>
                 <Input
                   id="expirationThreshold"
@@ -618,7 +703,7 @@ export function ItemForm({
                   onChange={(e) => setExpirationThreshold(e.target.value)}
                 />
                 <p className="text-xs text-foreground-muted">
-                  Shows warning when about to expire
+                  {t('items.form.expirationThreshold.hint')}
                 </p>
               </div>
             </div>
@@ -628,21 +713,126 @@ export function ItemForm({
 
       {showStock && (
         <div className="space-y-2">
+          <StockProgressRow
+            quantityLabel={progressQuantityLabel}
+            unitLabel={progressUnitLabel}
+            current={currentStockQuantity}
+            target={targetQuantity}
+            status={stockStatus}
+            targetUnit={targetUnit}
+            packed={displayPackedQuantity}
+            unpacked={unpackedQuantity}
+            {...(measurementUnit ? { measurementUnit } : {})}
+            {...(amountPerPackage
+              ? { amountPerPackage: Number(amountPerPackage) }
+              : {})}
+            onClear={() => {
+              setPackedQuantity(0)
+              setUnpackedQuantity(0)
+            }}
+            onFill={() => {
+              setPackedQuantity(fillToFullState.packedQuantity)
+              setUnpackedQuantity(fillToFullState.unpackedQuantity)
+            }}
+            clearDisabled={isPending || isStockAtZero}
+            fillDisabled={isPending || isStockAtFull}
+            clearLabel={t('common.clear')}
+            fillLabel={t('common.fillToFull')}
+          />
+
+          <div>
+            <Label htmlFor="targetQuantity">
+              {t('items.form.targetQuantity.label')}{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <QuantityStepper
+              value={targetQuantity}
+              onStep={setTargetQuantity}
+              step={targetUnit === 'package' ? 1 : stepperStep}
+              round={normalizeTargetStep}
+              decreaseLabel={t('items.form.targetQuantity.decrease')}
+              increaseLabel={t('items.form.targetQuantity.increase')}
+              disabled={isPending}
+              size="default"
+              inputProps={{
+                id: 'targetQuantity',
+                step: targetUnit === 'package' ? 1 : quantityStep,
+                ...numericInputProps(
+                  'targetQuantity',
+                  targetQuantity,
+                  setTargetQuantity,
+                ),
+              }}
+            />
+            <p className="text-xs text-foreground-muted">
+              {t('items.form.targetQuantity.hint')}
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="refillThreshold">
+              {t('items.form.refillThreshold.label')}{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <QuantityStepper
+              value={refillThreshold}
+              onStep={setRefillThreshold}
+              step={stepperStep}
+              round={(n) => roundToStep(n, stepperStep)}
+              decreaseLabel={t('items.form.refillThreshold.decrease')}
+              increaseLabel={t('items.form.refillThreshold.increase')}
+              disabled={isPending}
+              size="default"
+              inputProps={{
+                id: 'refillThreshold',
+                step: quantityStep,
+                ...numericInputProps(
+                  'refillThreshold',
+                  refillThreshold,
+                  setRefillThreshold,
+                ),
+              }}
+            />
+            <p className="text-xs text-foreground-muted">
+              {t('items.form.refillThreshold.hint')}
+            </p>
+          </div>
+
           <div>
             <Label htmlFor="packedQuantity">
-              Packed <UnitInline unit={packageUnit || undefined} />
+              {t('items.form.packedQuantity.label')}{' '}
+              <UnitInline unit={packageUnit || undefined} />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
-              <Input
-                id="packedQuantity"
-                type="number"
-                min={0}
+              <QuantityStepper
+                value={packedQuantity}
+                onStep={setPackedQuantity}
                 step={1}
-                {...numericInputProps(
-                  'packedQuantity',
-                  packedQuantity,
-                  setPackedQuantity,
-                )}
+                decreaseLabel={t('items.form.packedQuantity.decrease')}
+                increaseLabel={t('items.form.packedQuantity.increase')}
+                disabled={isPending}
+                size="default"
+                inputProps={{
+                  id: 'packedQuantity',
+                  step: 1,
+                  ...numericInputProps(
+                    'packedQuantity',
+                    packedQuantity,
+                    setPackedQuantity,
+                  ),
+                }}
               />
               <Button
                 type="button"
@@ -664,17 +854,17 @@ export function ItemForm({
                 }}
               >
                 <PackageOpen />
-                Unpack
+                {t('items.form.unpack')}
               </Button>
             </div>
             <p className="text-xs text-foreground-muted">
-              Number of whole packages in stock
+              {t('items.form.packedQuantity.hint')}
             </p>
           </div>
 
           <div>
             <Label htmlFor="unpackedQuantity">
-              Unpacked{' '}
+              {t('items.form.unpackedQuantity.label')}{' '}
               <UnitInline
                 unit={
                   targetUnit === 'measurement'
@@ -684,19 +874,27 @@ export function ItemForm({
               />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
-              <Input
-                id="unpackedQuantity"
-                type="number"
-                min={0}
-                step={quantityStep}
-                {...numericInputProps(
-                  'unpackedQuantity',
-                  unpackedQuantity,
-                  setUnpackedQuantity,
-                  // roundToStep returns the value untouched when the step is
-                  // <= 0, so an unset consume amount rounds nothing.
-                  (n) => roundToStep(n, consumeAmount),
-                )}
+              <QuantityStepper
+                value={unpackedQuantity}
+                onStep={setUnpackedQuantity}
+                step={stepperStep}
+                round={(n) => roundToStep(n, stepperStep)}
+                decreaseLabel={t('items.form.unpackedQuantity.decrease')}
+                increaseLabel={t('items.form.unpackedQuantity.increase')}
+                disabled={isPending}
+                size="default"
+                inputProps={{
+                  id: 'unpackedQuantity',
+                  step: quantityStep,
+                  ...numericInputProps(
+                    'unpackedQuantity',
+                    unpackedQuantity,
+                    setUnpackedQuantity,
+                    // roundToStep returns the value untouched when the step is
+                    // <= 0, so an unset consume amount rounds nothing.
+                    (n) => roundToStep(n, consumeAmount),
+                  ),
+                }}
               />
               <Button
                 type="button"
@@ -725,87 +923,29 @@ export function ItemForm({
                 }}
               >
                 <Package />
-                Pack
+                {t('items.form.pack')}
               </Button>
             </div>
             <p className="text-xs text-foreground-muted">
-              Loose amount from opened package(s)
+              {t('items.form.unpackedQuantity.hint')}
             </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="targetQuantity">
-                Target Quantity{' '}
-                <UnitInline
-                  unit={
-                    targetUnit === 'measurement'
-                      ? measurementUnit || undefined
-                      : packageUnit || undefined
-                  }
-                />
-              </Label>
-              <Input
-                id="targetQuantity"
-                type="number"
-                min={0}
-                step={targetUnit === 'package' ? 1 : quantityStep}
-                {...numericInputProps(
-                  'targetQuantity',
-                  targetQuantity,
-                  setTargetQuantity,
-                )}
-              />
-              <p className="text-xs text-foreground-muted">
-                Item becomes inactive when set to 0
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="refillThreshold">
-                Refill When Below{' '}
-                <UnitInline
-                  unit={
-                    targetUnit === 'measurement'
-                      ? measurementUnit || undefined
-                      : packageUnit || undefined
-                  }
-                />
-              </Label>
-              <Input
-                id="refillThreshold"
-                type="number"
-                min={0}
-                step={quantityStep}
-                {...numericInputProps(
-                  'refillThreshold',
-                  refillThreshold,
-                  setRefillThreshold,
-                )}
-              />
-              <p className="text-xs text-foreground-muted">
-                Shows warning on low stock
-              </p>
-            </div>
           </div>
 
           {/* The due date is the one expiration field that is genuinely
               per-location — "when THIS one expires". The mode that gates it is
               global and edited on the Info tab. */}
           {expirationMode === 'date' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="expirationDueDate">Expires on</Label>
-                <Input
-                  id="expirationDueDate"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-                <p className="text-xs text-foreground-muted">
-                  When the stock in this location expires
-                </p>
-              </div>
+            <div>
+              <Label htmlFor="expirationDueDate">{t('common.expiresOn')}</Label>
+              <Input
+                id="expirationDueDate"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+              <p className="text-xs text-foreground-muted">
+                {t('common.expiresOnHint')}
+              </p>
             </div>
           )}
         </div>
@@ -818,7 +958,7 @@ export function ItemForm({
           isLoading={!!isPending}
           className="w-full"
         >
-          {submitLabel}
+          {submitLabel ?? t('common.save')}
         </Button>
       </div>
     </form>

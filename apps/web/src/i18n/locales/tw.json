@@ -22,6 +22,7 @@
     "add": "新增",
     "skipToMainContent": "跳至主要內容",
     "clear": "清除",
+    "fillToFull": "補滿",
     "manage": "管理",
     "asc": "升冪",
     "desc": "降冪",
@@ -32,7 +33,9 @@
     "notStockedHere_one": "此據點無庫存的 {{count}} 項",
     "notStockedHere_other": "此據點無庫存的 {{count}} 項",
     "notInThisList_one": "不在此清單的 {{count}} 項",
-    "notInThisList_other": "不在此清單的 {{count}} 項"
+    "notInThisList_other": "不在此清單的 {{count}} 項",
+    "expiresOn": "到期日",
+    "expiresOnHint": "這個據點的庫存到期時間"
   },
   "shopping": {
     "title": "購物",
@@ -157,6 +160,30 @@
     "controlBar": {
       "expandAll": "展開全部",
       "collapseAll": "收合全部"
+    },
+    "quickUpdate": {
+      "title": "更新",
+      "packedLabel": "未開封",
+      "packedField": "未開封（{{unit}}）",
+      "decreasePacked": "減少未開封數量",
+      "increasePacked": "增加未開封數量",
+      "unpack": "開封",
+      "unpackedLabel": "已開封",
+      "unpackedField": "已開封（{{unit}}）",
+      "decreaseUnpacked": "減少已開封數量",
+      "increaseUnpacked": "增加已開封數量",
+      "pack": "打包",
+      "targetLabel": "目標",
+      "targetField": "目標數量（{{unit}}）",
+      "decreaseTarget": "減少目標數量",
+      "increaseTarget": "增加目標數量",
+      "targetHint": "0 表示暫時不用",
+      "refillLabel": "補貨門檻",
+      "refillField": "補貨門檻（{{unit}}）",
+      "decreaseRefill": "減少補貨門檻",
+      "increaseRefill": "增加補貨門檻",
+      "refillHint": "庫存偏低時提醒",
+      "submit": "更新"
     }
   },
   "navigation": {
@@ -240,6 +267,78 @@
         "placeholder": "自由輸入備註或連結"
       }
     },
+    "form": {
+      "name": {
+        "error": "名稱為必填。"
+      },
+      "stockSettingsHeading": "庫存設定",
+      "advancedStockSettingsHeading": "進階庫存設定",
+      "packageUnit": {
+        "label": "包裝單位",
+        "placeholder": "預設：包"
+      },
+      "consumeAmount": {
+        "label": "每次消耗量",
+        "hint": "每次按下 +/- 按鈕增減的量，必須大於 0。"
+      },
+      "trackInMeasurement": {
+        "label": "以計量單位追蹤",
+        "hint": "開啟後可精確追蹤計量單位"
+      },
+      "measurementUnit": {
+        "label": "計量單位",
+        "hint": "精確單位，例如 g / lb / ml",
+        "error": "計量單位為必填。"
+      },
+      "amountPerPackage": {
+        "label": "每包容量",
+        "hint": "每包有多少 {{unit}}",
+        "error": "每包容量為必填。"
+      },
+      "expirationMode": {
+        "label": "依據以下方式計算到期日",
+        "options": {
+          "disabled": "沒有到期日",
+          "date": "指定日期",
+          "daysFromPurchase": "購入後天數"
+        },
+        "dateHint": "各據點的到期日可在庫存分頁個別設定"
+      },
+      "daysUnit": "（天）",
+      "estimatedDueDays": {
+        "label": "保存天數"
+      },
+      "expirationThreshold": {
+        "label": "提前提醒",
+        "hint": "即將到期時顯示警示"
+      },
+      "targetQuantity": {
+        "label": "目標數量",
+        "hint": "設為 0 時，這個品項會變成暫時沒在用",
+        "decrease": "減少目標數量",
+        "increase": "增加目標數量"
+      },
+      "refillThreshold": {
+        "label": "低於此數補貨",
+        "hint": "庫存偏低時顯示警示",
+        "decrease": "減少補貨門檻",
+        "increase": "增加補貨門檻"
+      },
+      "packedQuantity": {
+        "label": "未開封",
+        "hint": "庫存中完整包裝的數量",
+        "decrease": "減少未開封數量",
+        "increase": "增加未開封數量"
+      },
+      "unpackedQuantity": {
+        "label": "已開封",
+        "hint": "已開封包裝中的散裝量",
+        "decrease": "減少已開封數量",
+        "increase": "增加已開封數量"
+      },
+      "unpack": "開封",
+      "pack": "打包"
+    },
     "detail": {
       "notFound": "查無此品項",
       "tabs": {
@@ -257,9 +356,9 @@
       },
       "unitSwitchDialog": {
         "title": "更新庫存數字？",
-        "description": "改為以 {{unit}} 計算。所有據點的未拆封數量、目標數量與補貨門檻都會換算；已拆封包數不變。",
+        "description": "改為以 {{unit}} 計算。所有據點的已開封數量、目標數量與補貨門檻都會換算；未開封包數不變。",
         "locationHeader": "據點",
-        "unpackedHeader": "未拆封",
+        "unpackedHeader": "已開封",
         "targetHeader": "目標數量",
         "refillHeader": "低於此數補貨"
       },

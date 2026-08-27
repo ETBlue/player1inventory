@@ -41,10 +41,10 @@ The dialog used to hang off the **Stock** tab, where saving *one location's* `co
 
 The tab is split at the top by data mode (`ItemStockTab` renders `LocalStockTab` **or** `CloudStockTab`), so the cloud branch never mounts a location hook. `StockFormPanel` is the shared piece both branches render: the `sections={['stock']}` `ItemForm` and nothing else.
 
-*Per-location page content (`StockFormPanel`) — the five state fields only:*
-- Packed / unpacked quantity, with Pack/Unpack buttons (`ItemForm sections={['stock']}`)
-- Target quantity and refill threshold
-- **"Expires on"** — this location's own due date, shown only when the item's (global) expiration mode is `date`
+*Per-location page content (`StockFormPanel`) — the five state fields only, each on its own row, in this order:*
+- A **`StockProgressRow`** leads the section (Clear · `x / y` label · `ItemProgressBar` · Fill to Full), previewing live off the form's own in-progress state — not the saved values — via the shared `getStockPreview` (`lib/quantityUtils.ts`, also called by `QuickUpdateDialog`). Raising Refill above the current total flips the status before Save is pressed; Fill to Full targets whatever Target currently reads, not the last-saved one. Clear/Fill mark the form dirty like any other field edit. It is read before the four fields below it because it is the summary of what they add up to
+- **Target Quantity**, then **Refill When Below**, then **Packed**, then **Unpacked** — each a `QuantityStepper` (`[−] <Input/> [+]`, shared with `QuickUpdateDialog` — see `components/CLAUDE.md`), not a plain number input. Packed and Unpacked additionally carry their Pack/Unpack button in an `grid grid-cols-[auto_8rem]` row (`ItemForm sections={['stock']}`); Target and Refill have no action button and need no grid. Every stepper clamps at 0 and disables `−` there; Packed always steps by 1, the other three step by `consumeAmount` (falling back to 1 when unset — a `+`/`−` increment must be non-zero to be usable), and Target steps by 1 instead whenever `targetUnit === 'package'`
+- **"Expires on"** — this location's own due date, shown only when the item's (global) expiration mode is `date`, and stays last after the fields above it. `QuickUpdateDialog` (see `components/CLAUDE.md`) renders the identical field, last, at full width, under the same gate — the pantry-page mirror of this row, added 2026-08-27
 - The quantity labels still show the item's units (`(bottle)`, `(ml)`): they read the **global** configuration, which is why every location page labels them identically even for a row that carries nothing but numbers
 - Save button (persists the five via `buildStockUpdates`) — disabled when no changes made. Saves route to **the location whose page is on screen** (`useUpdateItem({ …, locationId })`), not necessarily the active one
 - No global settings and no unit-switch dialog — both moved to Info
@@ -186,4 +186,4 @@ Users can manually set current inventory quantities in the item detail form:
 **Files:**
 - `src/routes/items/$id/stock.tsx` - Stock tab form with quantity fields
 - `src/routes/items/$id.test.tsx` - Component tests
-- `src/lib/quantityUtils.ts` - packUnpacked() and `convertTrackedQuantities()` (the unit-switch conversion of the three tracked quantities)
+- `src/lib/quantityUtils.ts` - packUnpacked() and `convertTrackedQuantities()` (the unit-switch conversion of the three tracked quantities); `getStockPreview()` (the Stock tab's progress-row derivation, shared with `QuickUpdateDialog` — see `components/CLAUDE.md`)

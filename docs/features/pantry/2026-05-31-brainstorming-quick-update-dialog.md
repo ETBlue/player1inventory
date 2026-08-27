@@ -49,3 +49,16 @@ Replace the two +/- buttons in the pantry ItemCard header with a single icon but
 3. Quick-action buttons: Clear, Fill to Full, Open Package (last only when `packageUnit` is set)
 4. Live progress bar preview
 5. Cancel + Submit — Submit sends ONE HTTP request with only `{packedQuantity, unpackedQuantity}` — `dueDate` is never modified
+
+---
+
+## Note — 2026-08-27 (decision reversed)
+
+The "Due date should be updated by shopping/cooking flows only" answer above and
+the Final Decision's "`dueDate` is never modified" are **historical** — left
+as written, since this file is the record of the original session, not of
+current behaviour. The designer reversed this on 2026-08-27: `QuickUpdateDialog`
+now also renders and submits the per-location "Expires on" date, gated on
+`item.expirationMode === 'date'`. See
+`2026-08-27-brainstorming-quick-update-stock-settings.md`'s final addendum for
+the current design and rationale.

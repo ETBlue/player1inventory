@@ -4,14 +4,25 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import * as stories from './QuickUpdateDialog.stories'
 
-const { Default, DualUnit, WithUnpacked, AtZero, FullStock } =
-  composeStories(stories)
+const {
+  Default,
+  DualUnit,
+  WithUnpacked,
+  AtZero,
+  FullStock,
+  Inactive,
+  NearRefillThreshold,
+  WithExpirationDate,
+} = composeStories(stories)
 
 // Default story: mockItem — targetUnit:'package', packageUnit:'gallon',
 //   consumeAmount:1, targetQuantity:2, packedQuantity:2, unpackedQuantity:0
 // DualUnit story: mockDualUnitItem — targetUnit:'measurement', measurementUnit:'L',
 //   amountPerPackage:1, consumeAmount:0.25, packedQuantity:1, unpackedQuantity:0.7
 // WithUnpacked story: mockItem — packedQuantity:1, unpackedQuantity:2
+// Inactive story: mockItem — targetQuantity:0, refillThreshold:0, packedQuantity:1
+// NearRefillThreshold story: mockDualUnitItem — targetQuantity:2, refillThreshold:0.5,
+//   packedQuantity:0, unpackedQuantity:0.5 (total sits exactly at the threshold)
 
 describe('QuickUpdateDialog — rendering', () => {
   it('renders without crashing', () => {
@@ -216,5 +227,80 @@ describe('QuickUpdateDialog — disabled states', () => {
     render(<WithUnpacked />)
     await user.click(screen.getByRole('button', { name: 'Increase packed' }))
     expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled()
+  })
+})
+
+describe('QuickUpdateDialog — stock settings row', () => {
+  it('target and refill inputs carry accessible names and stored values', () => {
+    render(<Default />)
+    // mockItem: targetQuantity 2, refillThreshold 1, tracked in gallons
+    expect(
+      screen.getByRole('spinbutton', { name: 'Target quantity (gallon)' }),
+    ).toHaveValue(2)
+    expect(
+      screen.getByRole('spinbutton', { name: 'Refill threshold (gallon)' }),
+    ).toHaveValue(1)
+  })
+
+  it('hints explain what each stock setting does', () => {
+    render(<Default />)
+    expect(screen.getByText('Inactive when 0')).toBeInTheDocument()
+    expect(screen.getByText('Warns on low stock')).toBeInTheDocument()
+  })
+
+  it('measurement item labels and steps the stock settings in its tracking unit', () => {
+    render(<NearRefillThreshold />)
+    // mockDualUnitItem: measurement/L, consumeAmount 0.25, target 2, refill 0.5
+    const target = screen.getByRole('spinbutton', {
+      name: 'Target quantity (L)',
+    })
+    const refill = screen.getByRole('spinbutton', {
+      name: 'Refill threshold (L)',
+    })
+    expect(target).toHaveValue(2)
+    expect(target).toHaveAttribute('step', '0.25')
+    expect(refill).toHaveValue(0.5)
+    expect(refill).toHaveAttribute('step', '0.25')
+  })
+
+  it('package-unit item steps the target by whole packages', () => {
+    render(<Default />)
+    expect(
+      screen.getByRole('spinbutton', { name: 'Target quantity (gallon)' }),
+    ).toHaveAttribute('step', '1')
+  })
+
+  it('inactive item shows a target of 0 with its − button disabled', () => {
+    render(<Inactive />)
+    expect(
+      screen.getByRole('spinbutton', { name: 'Target quantity (gallon)' }),
+    ).toHaveValue(0)
+    expect(
+      screen.getByRole('button', { name: 'Decrease target quantity' }),
+    ).toBeDisabled()
+  })
+
+  it('raising the target updates the quantity label before saving', async () => {
+    const user = userEvent.setup()
+    render(<Default />)
+    // packed=2, unpacked=0, target=2
+    expect(screen.getByText('2 / 2')).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Increase target quantity' }),
+    )
+    expect(screen.getByText('2 / 3')).toBeInTheDocument()
+  })
+})
+
+describe('QuickUpdateDialog — Expires on field (date mode)', () => {
+  it('shows the stored due date, last, at full width, in date mode', () => {
+    render(<WithExpirationDate />)
+    const dueDateInput = screen.getByLabelText(/expires on/i)
+    expect(dueDateInput).toHaveValue('2026-09-15')
+  })
+
+  it('does not show the field for a story without date mode', () => {
+    render(<Default />)
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
   })
 })

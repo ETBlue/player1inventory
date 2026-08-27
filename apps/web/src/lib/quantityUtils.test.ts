@@ -10,6 +10,7 @@ import {
   getCurrentQuantity,
   getItemPackUnits,
   getPackedTotal,
+  getStockPreview,
   getStockStatus,
   isEmptyStock,
   isInactive,
@@ -1057,5 +1058,193 @@ describe('convertTrackedQuantities', () => {
     expect(convertTrackedQuantities(q, 0, 'measurement')).toBeNull()
     expect(convertTrackedQuantities(q, -500, 'measurement')).toBeNull()
     expect(convertTrackedQuantities(q, Number.NaN, 'package')).toBeNull()
+  })
+})
+
+describe('getStockPreview', () => {
+  it('package mode: current is packed + unpacked, displayPacked equals packed', () => {
+    const result = getStockPreview(
+      { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
+      {
+        packedQuantity: 5,
+        unpackedQuantity: 1,
+        targetQuantity: 8,
+        refillThreshold: 2,
+      },
+    )
+    expect(result.current).toBe(6)
+    expect(result.displayPacked).toBe(5)
+    expect(result.unitLabel).toBe('pack')
+    expect(result.status).toBe('ok')
+  })
+
+  it('measurement mode: current and displayPacked convert packed via amountPerPackage', () => {
+    // 2 packages * 500 g/package + 100 g unpacked = 1100 g; displayPacked = 1000 g
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        consumeAmount: 10,
+      },
+      {
+        packedQuantity: 2,
+        unpackedQuantity: 100,
+        targetQuantity: 2000,
+        refillThreshold: 200,
+      },
+    )
+    expect(result.current).toBe(1100)
+    expect(result.displayPacked).toBe(1000)
+    expect(result.unitLabel).toBe('g')
+  })
+
+  it('measurement mode with amountPerPackage 0 treats it as "no conversion rate" and sums packed + unpacked', () => {
+    // amountPerPackage: 0 is reachable from ItemForm's string field ('0'
+    // passes its validation, which only rejects empty). 0 must not be read
+    // as a real conversion rate — see computeFillToFull's matching
+    // `amountPerPackage && amountPerPackage > 0` convention.
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: 0,
+        consumeAmount: 1,
+      },
+      {
+        packedQuantity: 3,
+        unpackedQuantity: 2,
+        targetQuantity: 10,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.current).toBe(5)
+    expect(result.displayPacked).toBe(3)
+  })
+
+  it('measurement mode with a negative amountPerPackage also falls back to no conversion rate', () => {
+    // A negative rate is truthy (bare `amountPerPackage &&` would accept it)
+    // but not `> 0` — this is the fixture that actually distinguishes the
+    // two guard forms, since 0 is falsy under both and can't.
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: -5,
+        consumeAmount: 1,
+      },
+      {
+        packedQuantity: 3,
+        unpackedQuantity: 2,
+        targetQuantity: 10,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.current).toBe(5)
+    expect(result.displayPacked).toBe(3)
+  })
+
+  it('quantityLabel shows the "packed (+unpacked) / target" form when unpacked > 0', () => {
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        consumeAmount: 10,
+      },
+      {
+        packedQuantity: 2,
+        unpackedQuantity: 100,
+        targetQuantity: 2000,
+        refillThreshold: 200,
+      },
+    )
+    expect(result.quantityLabel).toBe('1000 (+100) / 2000')
+  })
+
+  it('quantityLabel collapses to "current / target" when unpacked is 0', () => {
+    const result = getStockPreview(
+      { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
+      {
+        packedQuantity: 5,
+        unpackedQuantity: 0,
+        targetQuantity: 8,
+        refillThreshold: 2,
+      },
+    )
+    expect(result.quantityLabel).toBe('5 / 8')
+  })
+
+  it('status is "inactive" when targetQuantity is 0, overriding an otherwise-error quantity', () => {
+    const result = getStockPreview(
+      { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
+      {
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        targetQuantity: 0,
+        refillThreshold: 3,
+      },
+    )
+    expect(result.status).toBe('inactive')
+  })
+
+  it('isAtFull is true for a measurement item exactly at its converted Fill-to-Full state', () => {
+    // Fill to Full for target 2.5 L @ 1 L/bottle = 2 bottles packed + 0.5 L unpacked
+    const atFull = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'L',
+        amountPerPackage: 1,
+        consumeAmount: 0.5,
+      },
+      {
+        packedQuantity: 2,
+        unpackedQuantity: 0.5,
+        targetQuantity: 2.5,
+        refillThreshold: 1,
+      },
+    )
+    expect(atFull.isAtFull).toBe(true)
+
+    // A different unpacked value is not the Fill-to-Full state
+    const notAtFull = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'L',
+        amountPerPackage: 1,
+        consumeAmount: 0.5,
+      },
+      {
+        packedQuantity: 2,
+        unpackedQuantity: 0.3,
+        targetQuantity: 2.5,
+        refillThreshold: 1,
+      },
+    )
+    expect(notAtFull.isAtFull).toBe(false)
+  })
+
+  it('isAtZero is true only when both packed and unpacked are zero', () => {
+    const zero = getStockPreview(
+      { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
+      {
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        targetQuantity: 8,
+        refillThreshold: 2,
+      },
+    )
+    expect(zero.isAtZero).toBe(true)
+
+    const notZero = getStockPreview(
+      { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
+      {
+        packedQuantity: 0,
+        unpackedQuantity: 1,
+        targetQuantity: 8,
+        refillThreshold: 2,
+      },
+    )
+    expect(notZero.isAtZero).toBe(false)
   })
 })

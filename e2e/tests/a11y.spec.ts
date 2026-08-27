@@ -52,7 +52,53 @@ const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
   exclude: [['.bg-importance-destructive-background']],
 }
 
-// Two scans instead of one, so the known defect is excluded from a single RULE
+// KNOWN PRE-EXISTING DEFECT — `UnitBadge` (`src/components/shared/UnitBadge/
+// UnitBadge.tsx`) fails contrast at its `opacity-75`.
+// Documented in `apps/web/src/components/CLAUDE.md` ("Unit Display
+// Components" — "opacity-75 is intentional for visual harmony; it reduces
+// contrast to ~2.97:1 (below WCAG AA for small text) — accepted tradeoff by
+// design"), i.e. this is a KNOWN, ALREADY-ACCEPTED tradeoff, not a new defect.
+//
+//   Criterion: WCAG 2.1 SC 1.4.3 Contrast (Minimum), Level AA — 4.5:1 for
+//              NORMAL text (the badge is `text-xs`, not large text).
+//   Root cause: `opacity-75` on the badge composites its already-muted
+//              `text-foreground-muted` further into the page background.
+//
+// It went unreported until the 2026-08-27 review (Important 1): ItemForm's
+// Stock tab used to pass an empty string through to the badge for an item
+// with no `packageUnit` configured, so axe never found visible TEXT to check
+// contrast against. Fixing that bug (the badge now honestly renders the
+// literal fallback "unit" — see `getStockPreview` in `lib/quantityUtils.ts`)
+// gave axe a real text node to flag, on the two fixtures below that render an
+// unconfigured item's stock preview in light mode. Both dark-mode equivalents
+// pass unaided — `foreground-muted`'s dark-mode contrast clears the bar even
+// at this opacity — so only the light-mode call sites need this exclusion.
+//
+// SELECTOR — `[data-unit-badge]`, NOT `.opacity-75`: `opacity-75` is a
+// shared Tailwind utility class, and on these two pages it ALSO matches the
+// dialog's Close button (`ui/dialog.tsx:69`, `DialogPrimitive.Close`). A
+// class-based exclusion would have silently exempted that unrelated button
+// from `color-contrast` too — caught in review before merge. `UnitBadge` now
+// carries a dedicated `data-unit-badge` attribute for exactly this: a marker
+// that cannot drift onto another element the way a shared utility class can.
+//
+// SCOPE: excludes `[data-unit-badge]` from the **`color-contrast` rule
+// only**, same pattern as `KNOWN_CONFIRM_CONTRAST_EXCLUSION` above — every
+// other rule (`button-name`, `target-size`, the aria rules, …) still polices
+// this element and the Close button, and a future FIX to the badge's
+// contrast is not hidden by this, only a regression elsewhere on the same
+// page would be.
+//
+// REMOVAL CONDITION — checkable: once `UnitBadge` stops applying an opacity
+// that drops it below 4.5:1 (e.g. the accepted-tradeoff note in
+// `components/CLAUDE.md` is revisited), delete this constant and
+// `checkA11yAllowingKnownBadgeContrast`, and change the call sites back to
+// `checkA11y(page, undefined, AXE_OPTIONS)` / `checkA11yAllowingKnownConfirmContrast`.
+const KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION = {
+  exclude: [['[data-unit-badge]']],
+}
+
+// Two scans instead of one, so a known defect is excluded from a single RULE
 // rather than from every rule on that element.
 //
 // These use `getViolations`, not `checkA11y`, deliberately. `checkA11y`'s third
@@ -62,12 +108,15 @@ const KNOWN_CONFIRM_CONTRAST_EXCLUSION = {
 // DEFAULTS and the option object has no effect. `getViolations(page, context,
 // runOptions)` takes `RunOptions` directly, so rule selection here actually applies.
 // The two scans below therefore cover the same effective rule set as the siblings
-// (axe defaults), minus one rule on one element.
-async function checkA11yAllowingKnownConfirmContrast(
+// (axe defaults), minus one rule on the given elements.
+async function checkA11yExcludingContrastOn(
   page: import('@playwright/test').Page,
+  exclude: string[][],
+  label: string,
 ) {
-  // 1. Every rule EXCEPT color-contrast, with nothing excluded — the confirm button
-  //    is still policed for accessible name, target size, aria validity and the rest.
+  // 1. Every rule EXCEPT color-contrast, with nothing excluded — the excluded
+  //    element(s) are still policed for accessible name, target size, aria
+  //    validity and the rest.
   const nonContrast = await getViolations(page, undefined, {
     rules: { 'color-contrast': { enabled: false } },
   })
@@ -76,15 +125,52 @@ async function checkA11yAllowingKnownConfirmContrast(
     'non-contrast a11y violations',
   ).toEqual([])
 
-  // 2. color-contrast alone, excluding only the known-bad confirm button — so a
-  //    contrast regression anywhere else in the dialog still fails the test.
-  const contrast = await getViolations(page, KNOWN_CONFIRM_CONTRAST_EXCLUSION, {
-    runOnly: { type: 'rule', values: ['color-contrast'] },
-  })
-  expect(
-    contrast.flatMap((v) => v.nodes.map((n) => n.target.join(' '))),
+  // 2. color-contrast alone, excluding only the known-bad element(s) — so a
+  //    contrast regression anywhere else on the page still fails the test.
+  const contrast = await getViolations(
+    page,
+    { exclude },
+    { runOnly: { type: 'rule', values: ['color-contrast'] } },
+  )
+  expect(contrast.flatMap((v) => v.nodes.map((n) => n.target.join(' '))), label).toEqual(
+    [],
+  )
+}
+
+async function checkA11yAllowingKnownConfirmContrast(
+  page: import('@playwright/test').Page,
+) {
+  await checkA11yExcludingContrastOn(
+    page,
+    KNOWN_CONFIRM_CONTRAST_EXCLUSION.exclude,
     'color-contrast violations outside the known destructive confirm button',
-  ).toEqual([])
+  )
+}
+
+async function checkA11yAllowingKnownBadgeContrast(
+  page: import('@playwright/test').Page,
+) {
+  await checkA11yExcludingContrastOn(
+    page,
+    KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION.exclude,
+    'color-contrast violations outside the known UnitBadge opacity issue',
+  )
+}
+
+// The remove-from-location dialog carries BOTH known issues at once: its own
+// destructive confirm button, plus the item's stock preview (with the same
+// unconfigured `packageUnit` fixture) rendered behind it on the Stock tab.
+async function checkA11yAllowingKnownConfirmAndBadgeContrast(
+  page: import('@playwright/test').Page,
+) {
+  await checkA11yExcludingContrastOn(
+    page,
+    [
+      ...KNOWN_CONFIRM_CONTRAST_EXCLUSION.exclude,
+      ...KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION.exclude,
+    ],
+    'color-contrast violations outside the known destructive confirm button and UnitBadge opacity issue',
+  )
 }
 
 // Prevent the empty-data redirect to /onboarding so tests can navigate to any
@@ -728,8 +814,10 @@ test.describe('detail page a11y', () => {
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
-    // Then there should be no violations
-    await checkA11y(page, undefined, AXE_OPTIONS)
+    // Then there should be no violations (see KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION —
+    // this fixture's item has no packageUnit configured, so the stock preview's
+    // UnitBadge renders the literal "unit" fallback)
+    await checkA11yAllowingKnownBadgeContrast(page)
   })
 
   // Item detail stock tab, NOT-stocked page (empty state + "Add to location")
@@ -759,8 +847,11 @@ test.describe('detail page a11y', () => {
     await stockTab.getAffectedCounts().waitFor({ state: 'visible' })
     await injectAxe(page)
 
-    // Then there should be no violations (see KNOWN_CONFIRM_CONTRAST_EXCLUSION)
-    await checkA11yAllowingKnownConfirmContrast(page)
+    // Then there should be no violations (see KNOWN_CONFIRM_CONTRAST_EXCLUSION
+    // and KNOWN_UNIT_BADGE_CONTRAST_EXCLUSION — this fixture's item has no
+    // packageUnit configured, so the Stock tab's preview behind the dialog
+    // renders the literal "unit" fallback)
+    await checkA11yAllowingKnownConfirmAndBadgeContrast(page)
   })
 
   // Item detail relation > tags subtab (/items/:id/relation/tags)

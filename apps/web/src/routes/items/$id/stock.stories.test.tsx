@@ -70,7 +70,9 @@ const {
 describe('Item detail stock tab stories smoke tests', () => {
   it('PackageItem renders the Target Quantity stock field and no pager chrome', async () => {
     render(<PackageItem />)
-    expect(await screen.findByLabelText(/target quantity/i)).toBeInTheDocument()
+    expect(
+      await screen.findByRole('spinbutton', { name: /target quantity/i }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
   })
 

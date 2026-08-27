@@ -338,8 +338,129 @@ export function addItem(
   }
 }
 
-export function isInactive(item: Stock): boolean {
+// Widened to `Pick<Stock, 'targetQuantity'>` rather than the full `Stock`: the
+// only field this reads is targetQuantity, and a caller previewing a live
+// (not-yet-saved) target — ItemForm's Stock tab progress row — wants to pass
+// just that value without assembling an object satisfying every other Stock
+// field. Any full Stock value (PantryItem, etc.) still satisfies the narrower
+// type, so every existing caller is unaffected.
+export function isInactive(item: Pick<Stock, 'targetQuantity'>): boolean {
   return item.targetQuantity === 0
+}
+
+// The stock CONFIGURATION half of the progress-row preview: the global fields
+// that decide how the four live values are interpreted and displayed. Mirrors
+// StockConfigFields but narrowed to what the preview actually reads, and
+// `amountPerPackage` stays a plain `number` here — each caller already holds
+// (or coerces to) that shape before calling, since QuickUpdateDialog's PantryItem
+// field and ItemForm's `string | number` form field convert differently.
+export interface StockPreviewConfig {
+  targetUnit: 'package' | 'measurement'
+  measurementUnit?: string
+  packageUnit?: string
+  amountPerPackage?: number
+  consumeAmount: number
+}
+
+// The four live values driving the preview — never the stored/saved ones, so
+// callers can pass in-progress edits before they are submitted.
+export interface StockPreviewValues {
+  packedQuantity: number
+  unpackedQuantity: number
+  targetQuantity: number
+  refillThreshold: number
+}
+
+export interface StockPreview {
+  /** Total quantity in the item's tracking unit (measurement-aware). */
+  current: number
+  /** `packedQuantity` re-expressed in the tracking unit, for the label. */
+  displayPacked: number
+  unitLabel: string
+  quantityLabel: string
+  status: 'inactive' | 'error' | 'warning' | 'ok'
+  isAtZero: boolean
+  isAtFull: boolean
+}
+
+/**
+ * Derives every display value `StockProgressRow` needs from the stock
+ * configuration plus the four live quantities. Pure — no React, no hook —
+ * so both QuickUpdateDialog (local dialog state) and ItemForm (form state)
+ * can call it with their own in-progress values and stay byte-identical in
+ * behaviour. `StockProgressRow` itself stays presentational and does not call
+ * this; each caller derives these fields and passes them down as props.
+ */
+export function getStockPreview(
+  config: StockPreviewConfig,
+  values: StockPreviewValues,
+): StockPreview {
+  const {
+    targetUnit,
+    measurementUnit,
+    packageUnit,
+    amountPerPackage,
+    consumeAmount,
+  } = config
+  const { packedQuantity, unpackedQuantity, targetQuantity, refillThreshold } =
+    values
+
+  // `amountPerPackage && amountPerPackage > 0` (not bare truthiness): 0 means
+  // "no conversion rate" in this file's convention — see computeFillToFull's
+  // identical guard above. Multiplying packed by a zero rate would not
+  // produce a meaningful reading, so a measurement item with
+  // amountPerPackage 0 falls through to the plain packed+unpacked sum, same
+  // as package mode.
+  const current =
+    targetUnit === 'measurement' && amountPerPackage && amountPerPackage > 0
+      ? packedQuantity * amountPerPackage + unpackedQuantity
+      : packedQuantity + unpackedQuantity
+
+  const displayPacked =
+    targetUnit === 'measurement' && amountPerPackage && amountPerPackage > 0
+      ? packedQuantity * amountPerPackage
+      : packedQuantity
+
+  const status = isInactive({ targetQuantity })
+    ? 'inactive'
+    : getStockStatus(current, refillThreshold)
+
+  const unitLabel =
+    targetUnit === 'measurement' && measurementUnit
+      ? measurementUnit
+      : // Falls back to the literal string 'unit', not DEFAULT_PACKAGE_UNIT
+        // ('pack') — a pre-existing divergence from QuickUpdateDialog's own
+        // `item.packageUnit || DEFAULT_PACKAGE_UNIT` label logic, left as-is
+        // deliberately: unifying it would change the dialog's shipped display
+        // text for every item with no package unit, which is out of scope here.
+        (packageUnit ?? 'unit')
+
+  const quantityLabel =
+    unpackedQuantity > 0
+      ? `${displayPacked} (+${unpackedQuantity}) / ${targetQuantity}`
+      : `${current} / ${targetQuantity}`
+
+  const fillToFullState = computeFillToFull({
+    targetUnit,
+    targetQuantity,
+    consumeAmount,
+    ...(amountPerPackage ? { amountPerPackage } : {}),
+  })
+
+  const isAtZero = packedQuantity === 0 && unpackedQuantity === 0
+  const isAtFull =
+    packedQuantity === fillToFullState.packedQuantity &&
+    unpackedQuantity === fillToFullState.unpackedQuantity
+
+  return {
+    current,
+    displayPacked,
+    unitLabel,
+    quantityLabel,
+    status,
+    isAtZero,
+    isAtFull,
+  }
 }
 
 // Location predicates — guard against the ZERO_STOCK trap: joinItemStock()

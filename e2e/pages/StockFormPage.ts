@@ -25,6 +25,41 @@ export class StockFormPage {
     return this.page.locator('#unpackedQuantity')
   }
 
+  getTargetInput(): Locator {
+    // <Input id="targetQuantity" type="number"> under <Label htmlFor="targetQuantity">
+    // → "Target Quantity" (ItemForm.tsx:712-744)
+    return this.page.locator('#targetQuantity')
+  }
+
+  getRefillInput(): Locator {
+    // <Input id="refillThreshold" type="number"> under <Label htmlFor="refillThreshold">
+    // → "Refill When Below" (ItemForm.tsx:746-779)
+    return this.page.locator('#refillThreshold')
+  }
+
+  // The four QuantityStepper +/- buttons on the Stock tab. Each pair's
+  // aria-label is `items.form.<field>.decrease` / `.increase`
+  // (en.json: "Decrease target quantity" / "Increase target quantity", etc. —
+  // ItemForm.tsx QuantityStepper `decreaseLabel`/`increaseLabel` props). These
+  // are the same sentence-case long forms QuickUpdateDialog uses for its own
+  // Target/Refill steppers (`pantry.quickUpdate.decreaseTarget` etc.) —
+  // unified so the two surfaces no longer diverge on wording.
+  getTargetIncreaseButton(): Locator {
+    return this.page.getByRole('button', { name: 'Increase target quantity' })
+  }
+
+  getTargetDecreaseButton(): Locator {
+    return this.page.getByRole('button', { name: 'Decrease target quantity' })
+  }
+
+  getRefillIncreaseButton(): Locator {
+    return this.page.getByRole('button', { name: 'Increase refill threshold' })
+  }
+
+  getRefillDecreaseButton(): Locator {
+    return this.page.getByRole('button', { name: 'Decrease refill threshold' })
+  }
+
   getSaveButton(): Locator {
     // The form's only type="submit"; its label is the `submitLabel` prop,
     // default "Save" (ItemForm.tsx:101, 800-806)

@@ -36,7 +36,9 @@ describe('ItemForm stories smoke tests', () => {
   it('StockSection shows the per-location quantity fields, not the global settings', () => {
     render(<StockSection />)
     expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/target quantity/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('spinbutton', { name: /target quantity/i }),
+    ).toBeInTheDocument()
     expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
   })
 

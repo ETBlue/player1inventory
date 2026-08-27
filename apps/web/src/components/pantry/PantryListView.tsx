@@ -27,7 +27,7 @@ import {
 import { isInactive } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import { getStoredGroupBy, setPantryView } from '@/lib/viewPreference'
-import type { Recipe, Vendor } from '@/types'
+import type { Recipe, StockFields, Vendor } from '@/types'
 
 export function PantryListView() {
   const { t } = useTranslation()
@@ -312,12 +312,19 @@ export function PantryListView() {
             item={quickUpdateItem}
             isOpen={true}
             onClose={() => setQuickUpdateItemId(null)}
-            onSubmit={async ({ packedQuantity, unpackedQuantity }) => {
+            onSubmit={async (updates) => {
+              // Forwarded as-is: `updates` carries a `dueDate` key only when
+              // the dialog actually rendered that field (expirationMode ===
+              // 'date'), and the mutation must see that same absence — see
+              // the doc comment on `QuickUpdateDialogProps.onSubmit`.
               setPendingItemIds((prev) => new Set(prev).add(quickUpdateItem.id))
               try {
                 await updateItem.mutateAsync({
                   id: quickUpdateItem.id,
-                  updates: { packedQuantity, unpackedQuantity },
+                  // `dueDate?: Date | undefined` (the dialog's conditional
+                  // presence) vs `StockFields`' `dueDate?: Date` — see the
+                  // same cast in `routes/items/$id/stock.tsx`.
+                  updates: updates as Partial<StockFields>,
                 })
                 setQuickUpdateItemId(null)
               } finally {

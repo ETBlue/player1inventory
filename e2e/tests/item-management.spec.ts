@@ -62,7 +62,17 @@ test('user can create an item', async ({ page }) => {
   // 1 in BOTH modes (designer ruling 2026-08-24), so there is no validation to
   // clear before the item can be edited and saved again
   await expect(item.getConsumeAmountInput()).toHaveValue('1')
-  await expect(page.getByText('Must be greater than 0.')).not.toBeVisible()
+  // `exact: true` is load-bearing. The validation error is its own <p>, rendered
+  // by Input's `error` prop (src/components/ui/input.tsx) and reading exactly
+  // "Must be greater than 0." (ItemForm.tsx:335). The always-visible helper
+  // paragraph under the same field ends with that same sentence — "Amount
+  // added/removed per +/- button click. Must be greater than 0."
+  // (ItemForm.tsx:470) — so a substring match hits the helper and the assertion
+  // can never fail. `exact` compares an element's ENTIRE trimmed text, which the
+  // longer helper string can never equal.
+  await expect(
+    page.getByText('Must be greater than 0.', { exact: true }),
+  ).toHaveCount(0)
 
   // And the item appears in the pantry list
   await pantry.navigateTo()
@@ -291,4 +301,57 @@ test('user can quick-update item quantity via dialog', async ({ page }) => {
 
   // Then the dialog closes
   await expect(page.getByRole('dialog')).not.toBeVisible()
+})
+
+test('user can quick-update target and refill threshold via dialog', async ({
+  page,
+}) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given an item stocked with targetQuantity=4, refillThreshold=1, packedQuantity=2
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Rice Vinegar')
+  await item.save()
+  const itemId = item.getCurrentItemId()
+
+  // Target, refill threshold and packed quantity are per-location Stock fields
+  // (/items/$id/stock) — they do not exist in the NewItemDialog.
+  await page.goto(`/items/${itemId}/stock`)
+  await item.fillTargetQuantity('4')
+  await item.fillRefillThreshold('1')
+  await item.fillPackedQuantity('2')
+  await item.saveExisting()
+
+  // When user opens the quick update dialog from the pantry list
+  await pantry.navigateTo()
+  await pantry.clickQuickUpdate('Rice Vinegar')
+  await expect(pantry.getQuickUpdateDialog()).toBeVisible()
+
+  // And the dialog shows the stored stock settings
+  await expect(pantry.getQuickUpdateTargetInput()).toHaveValue('4')
+  await expect(pantry.getQuickUpdateRefillInput()).toHaveValue('1')
+
+  // And raises Target with the stepper (targetUnit='package' → step 1: 4 → 5 → 6)
+  await pantry.clickQuickUpdateStepper('Increase target quantity')
+  await pantry.clickQuickUpdateStepper('Increase target quantity')
+  await expect(pantry.getQuickUpdateTargetInput()).toHaveValue('6')
+
+  // And types a new Refill below value directly
+  await pantry.getQuickUpdateRefillInput().fill('3')
+  await expect(pantry.getQuickUpdateRefillInput()).toHaveValue('3')
+
+  // And submits
+  await pantry.submitQuickUpdate()
+
+  // Then the dialog closes
+  await expect(pantry.getQuickUpdateDialog()).not.toBeVisible()
+
+  // And both settings are persisted — the item's Stock tab reads them back from
+  // the database, so this fails if a pantry view drops either field from the
+  // `updates` object it forwards to updateItem.
+  await page.goto(`/items/${itemId}/stock`)
+  await expect(item.getTargetQuantityInput()).toHaveValue('6')
+  await expect(item.getRefillThresholdInput()).toHaveValue('3')
 })

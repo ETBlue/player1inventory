@@ -280,7 +280,13 @@ describe('Item stock tab', () => {
     await user.click(unpackedInput)
     await user.keyboard('{Backspace}3')
 
-    const targetInput = screen.getByLabelText(/target quantity/i)
+    // getByRole('spinbutton', …), not getByLabelText: the stepper buttons'
+    // aria-labels ("Increase/Decrease target quantity") now contain "target
+    // quantity" too (Minor 6), so an unanchored getByLabelText would match
+    // three elements. getByRole('spinbutton') excludes the buttons by role.
+    const targetInput = screen.getByRole('spinbutton', {
+      name: /target quantity/i,
+    })
     await user.click(targetInput)
     await user.keyboard('{Backspace}9')
 
@@ -324,10 +330,12 @@ describe('Item stock tab', () => {
     })
 
     renderStockTab(item.id)
-    await screen.findByLabelText(/target quantity/i)
+    await screen.findByRole('spinbutton', { name: /target quantity/i })
 
     // When the user changes this location's target quantity and saves
-    const targetInput = screen.getByLabelText(/target quantity/i)
+    const targetInput = screen.getByRole('spinbutton', {
+      name: /target quantity/i,
+    })
     await user.clear(targetInput)
     await user.type(targetInput, '9')
     await user.click(screen.getByRole('button', { name: /save/i }))
@@ -572,7 +580,9 @@ describe('Item stock tab', () => {
 
     // And saving this page writes only per-location state into this
     // location's ItemStock — never the configuration
-    const targetInput = screen.getByLabelText(/target quantity/i)
+    const targetInput = screen.getByRole('spinbutton', {
+      name: /target quantity/i,
+    })
     await user.clear(targetInput)
     await user.type(targetInput, '6')
     await user.click(screen.getByRole('button', { name: /save/i }))
