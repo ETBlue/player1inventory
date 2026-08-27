@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { useRecipes } from '@/hooks/useRecipes'
 import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useTags, useTagTypes } from '@/hooks/useTags'
@@ -20,7 +21,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { PantryItem, StockFields } from '@/types'
+import type { PantryItem, Recipe, StockFields } from '@/types'
 
 interface VendorDetailViewProps {
   vendorId: string
@@ -35,6 +36,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   const { data: vendors = [], isLoading: isVendorsLoading } = useVendors()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
+  // No `isLoading` wiring, following `ShelfDetailView` — recipe badges are
+  // decoration, so an empty first render is preferable to gating the whole
+  // page's spinner on a second query.
+  const { data: recipes = [] } = useRecipes()
 
   const updateItem = useUpdateItem()
   const showStock = useShowStock()
@@ -113,14 +118,27 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
     [inScopeItems],
   )
 
-  // This view shows no recipe badges at all (an always-empty map, kept for
-  // parity with `renderItemCard` below so a tail row is configured exactly
-  // like a list row). Vendor badges are computed per row from the full
-  // `vendors` list, exactly as `renderItemCard` does — which is what a tail
-  // row needs: bucket 3 is by construction the items NOT stocked here, so
-  // they fall outside `allItems` and any map keyed over it would leave them
-  // badge-less.
-  const recipeMap = new Map<string, []>()
+  // Keyed by walking the global `recipes` list rather than `allItems`, so it
+  // resolves bucket-3 rows (not stocked here, hence absent from `allItems`)
+  // just as well as list rows — the same shape `RecipeDetailView` and
+  // `ShelfDetailView` use. Both renderers below read it, so a tail row
+  // carries exactly the recipe badges its list-row counterpart would. Vendor
+  // badges are still computed per row from the full `vendors` list, for the
+  // same reason: a map keyed over `allItems` cannot serve tail rows.
+  //
+  // Defined HERE, above `renderTailItemCard`, and deliberately ahead of the
+  // `isLoading` early return below — that renderer is passed into the tail
+  // wiring before the gate runs.
+  const recipeMap = useMemo(() => {
+    const map = new Map<string, Recipe[]>()
+    for (const recipe of recipes) {
+      for (const ri of recipe.items) {
+        const existing = map.get(ri.itemId) ?? []
+        map.set(ri.itemId, [...existing, recipe])
+      }
+    }
+    return map
+  }, [recipes])
 
   function renderTailItemCard(item: PantryItem) {
     return (

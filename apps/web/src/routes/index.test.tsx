@@ -1452,9 +1452,9 @@ describe('Home page filtering integration', () => {
     // — this page's only narrowing is the same name match the tail already
     // applies, so the two sets agree on every id the tail can consult. No
     // fixture can distinguish them; adding one would be a vacuous test.
-    const renderVendorDetail = (vendorId: string) => {
+    const renderVendorDetail = (vendorId: string, extraParams = '') => {
       const history = createMemoryHistory({
-        initialEntries: [`/?groupBy=vendor&id=${vendorId}`],
+        initialEntries: [`/?groupBy=vendor&id=${vendorId}${extraParams}`],
       })
       const router = createRouter({ routeTree, history })
 
@@ -1464,6 +1464,68 @@ describe('Home page filtering integration', () => {
         </QueryClientProvider>,
       )
     }
+
+    it('user can see recipe badges on both a list row and a bucket-3 tail row', async () => {
+      // Given the vendor Costco and two items that both match "milk":
+      //   Milk Powder     — stocked HERE, carries Costco, held by Pasta
+      //                     → the page's own list
+      //   Milk Substitute — held by Soup but stocked ONLY at the Office, so
+      //                     it is absent from this location-scoped page and
+      //                     lands in bucket 3
+      // Each recipe holds exactly one of them, so each badge testid is unique
+      // to one row and no `within()` scoping is needed to tell them apart.
+      const vendor = await createVendor('Costco')
+      const office = await createLocation('Office')
+      const powder = await createItem({
+        name: 'Milk Powder',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        ...itemDefaults,
+      })
+      const substitute = await createItem(
+        { name: 'Milk Substitute', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+      await createRecipe({
+        name: 'Pasta',
+        items: [{ itemId: powder.id, defaultAmount: 1 }],
+      })
+      await createRecipe({
+        name: 'Soup',
+        items: [{ itemId: substitute.id, defaultAmount: 1 }],
+      })
+
+      // `&tags=1` so `isTagsVisible` is on and badges actually render
+      // (`ItemCard` gates them on `showTags`)
+      renderVendorDetail(vendor.id, '&tags=1')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Costco', level: 1 })
+
+      // When the user searches for "milk" on this vendor's page
+      await openSearch(user, 'milk')
+
+      // Then Milk Substitute is offered as a bucket-3 row
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', {
+          name: 'Add to My Home: Milk Substitute',
+        }),
+      ).toBeInTheDocument()
+
+      // And the page's own LIST row carries its recipe badge — this view's
+      // `recipeMap` used to be a permanently empty map, so no row here could
+      // show one at all
+      expect(
+        await screen.findByTestId('recipe-badge-Pasta'),
+      ).toBeInTheDocument()
+
+      // And so does the bucket-3 TAIL row. This is the assertion that pins
+      // the map being keyed over the global `recipes` list: Milk Substitute
+      // is by construction absent from `allItems` (it is not stocked here),
+      // so a map keyed over `allItems` would leave this row badge-less while
+      // the list row above kept its badge.
+      expect(screen.getByTestId('recipe-badge-Soup')).toBeInTheDocument()
+    })
 
     it('user can see a globally-existing item that is not stocked here under "not stocked here"', async () => {
       // Given a vendor with no items, and Milk stocked ONLY at the Office —
@@ -1953,13 +2015,12 @@ describe('Home page filtering integration', () => {
       ).not.toBeInTheDocument()
 
       // And the bucket-3 row carries the recipe badges of whatever holds it —
-      // here Soup, a DIFFERENT recipe from the one being viewed. This is the
-      // point of difference from `VendorDetailView`: `recipeMap` is built by
-      // walking the global `recipes` list, so it resolves a row that is NOT
-      // stocked here. A map keyed over `allItems` (the vendor view's shape)
-      // would leave Milk Substitute badge-less, since it is absent from
-      // `allItems` by construction. Soup holds only Milk Substitute, so the
-      // badge is unique to that tail row.
+      // here Soup, a DIFFERENT recipe from the one being viewed. `recipeMap`
+      // is built by walking the global `recipes` list, so it resolves a row
+      // that is NOT stocked here. A map keyed over `allItems` would leave
+      // Milk Substitute badge-less, since it is absent from `allItems` by
+      // construction. Soup holds only Milk Substitute, so the badge is
+      // unique to that tail row.
       expect(screen.getByTestId('recipe-badge-Soup')).toBeInTheDocument()
     })
 

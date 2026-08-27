@@ -118,9 +118,8 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
     [inScopeItems],
   )
 
-  // Unlike `VendorDetailView`'s always-empty placeholder, this view builds a
-  // REAL map — and it is keyed by walking the global `recipes` list rather
-  // than `allItems`, so it resolves bucket-3 rows (not stocked here, hence
+  // Keyed by walking the global `recipes` list rather than
+  // `allItems`, so it resolves bucket-3 rows (not stocked here, hence
   // absent from `allItems`) just as well as list rows. Both renderers below
   // read it, so a tail row carries exactly the recipe badges its list-row
   // counterpart would. Vendor badges must still be computed per row from the
