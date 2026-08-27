@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -107,6 +107,50 @@ describe('ShelfDetailView quick update', () => {
     expect(mutateAsync).toHaveBeenCalledWith({
       id: milk.id,
       updates: SUBMITTED,
+    })
+  })
+
+  it('user can edit the due date from a shelf page when the item is in date mode', async () => {
+    // Given a selection shelf holding an item in date mode with a stored due date
+    const milk = await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        targetUnit: 'package',
+        packageUnit: 'bottle',
+        consumeAmount: 1,
+        expirationMode: 'date',
+        dueDate: new Date('2026-09-01'),
+        ...STORED,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    const shelf = await createShelf({
+      name: 'Fridge',
+      type: 'selection',
+      order: 0,
+      itemIds: [milk.id],
+    })
+    const user = userEvent.setup()
+    await renderWithRouter(<ShelfDetailView shelfId={shelf.id} />)
+
+    // When the user opens the dialog, edits the due date, and presses Update
+    await user.click(
+      await screen.findByRole('button', { name: 'Update quantity of Milk' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/expires on/i), {
+      target: { value: '2026-10-15' },
+    })
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }))
+
+    // Then the mutation receives the edited due date alongside the untouched
+    // stored quantities — proving the view forwards `dueDate` through rather
+    // than dropping it on the way to `updateItem.mutateAsync`.
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
+    expect(mutateAsync).toHaveBeenCalledWith({
+      id: milk.id,
+      updates: { ...STORED, dueDate: new Date('2026-10-15') },
     })
   })
 })

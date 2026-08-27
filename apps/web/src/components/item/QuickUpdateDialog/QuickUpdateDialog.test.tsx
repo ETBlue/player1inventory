@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { PantryItem } from '@/types'
@@ -45,6 +45,7 @@ interface QuickUpdatePayload {
   unpackedQuantity: number
   targetQuantity: number
   refillThreshold: number
+  dueDate?: Date | undefined
 }
 
 const renderDialog = (
@@ -541,5 +542,152 @@ describe('QuickUpdateDialog — stock settings layout', () => {
     // strings the item form uses would widen the shared label column
     expect(screen.getByText('Target')).toBeInTheDocument()
     expect(screen.getByText('Refill below')).toBeInTheDocument()
+  })
+})
+
+describe('QuickUpdateDialog — Expires on field', () => {
+  const dueDateInput = () => screen.getByLabelText(/expires on/i)
+
+  it('user sees the field only when the item is in date mode', () => {
+    // Given three items differing only in expirationMode
+    const { unmount: unmountDate } = renderDialog(
+      makeItem({ expirationMode: 'date' }),
+    )
+    expect(dueDateInput()).toBeInTheDocument()
+    unmountDate()
+
+    const { unmount: unmountDisabled } = renderDialog(
+      makeItem({ expirationMode: 'disabled' }),
+    )
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+    unmountDisabled()
+
+    renderDialog(makeItem({ expirationMode: 'days from purchase' }))
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+  })
+
+  it('user sees the stored due date pre-filled', () => {
+    // Given a date-mode item with a stored due date
+    renderDialog(
+      makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
+    )
+
+    // Then the input shows it as YYYY-MM-DD
+    expect(dueDateInput()).toHaveValue('2026-09-01')
+  })
+
+  it('user can edit the due date and have it submitted', async () => {
+    // Given a date-mode item with a stored due date
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => {})
+    renderDialog(
+      makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
+      onSubmit,
+    )
+
+    // When the user edits the date and presses Update
+    fireEvent.change(dueDateInput(), { target: { value: '2026-10-15' } })
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the new date reaches the submit payload
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    expect('dueDate' in payload).toBe(true)
+    expect(payload.dueDate).toEqual(new Date('2026-10-15'))
+  })
+
+  it('user can clear the due date and have the cleared value submitted', async () => {
+    // Given a date-mode item with a stored due date
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => {})
+    renderDialog(
+      makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
+      onSubmit,
+    )
+
+    // When the user clears the date and presses Update
+    fireEvent.change(dueDateInput(), { target: { value: '' } })
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the submit payload carries the KEY, explicitly undefined — the
+    // signal that clears the stored value (see toUpdateItemInput /
+    // upsertItemStock, which read "key absent" as leave-alone and "key
+    // present, even as undefined" as clear). `toEqual`/`toHaveBeenCalledWith`
+    // treat `{ dueDate: undefined }` and an object missing the key as equal,
+    // so this must check `in` directly rather than deep-equality alone.
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    expect('dueDate' in payload).toBe(true)
+    expect(payload.dueDate).toBeUndefined()
+  })
+
+  it('user sees Update stay disabled until the due date actually changes', () => {
+    // Given a date-mode item with a stored due date
+    renderDialog(
+      makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
+    )
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled()
+
+    // When the user edits the date
+    fireEvent.change(dueDateInput(), { target: { value: '2026-10-15' } })
+
+    // Then Update becomes available
+    expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled()
+
+    // And reverting to the stored value disables it again
+    fireEvent.change(dueDateInput(), { target: { value: '2026-09-01' } })
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled()
+  })
+
+  it('user submits the dueDate key echoing the stored value when only another field changed, as long as the item is in date mode', async () => {
+    // Given a date-mode item whose due date is untouched — the discriminating
+    // fixture: if the key were included only when the date field itself was
+    // edited (rather than whenever the mode gates it), this would fail.
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => {})
+    renderDialog(
+      makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
+      onSubmit,
+    )
+
+    // When only the target quantity changes
+    await user.click(
+      screen.getByRole('button', { name: 'Increase target quantity' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the payload still carries the (unchanged) dueDate
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    expect('dueDate' in payload).toBe(true)
+    expect(payload.dueDate).toEqual(new Date('2026-09-01'))
+  })
+
+  it('user submits NO dueDate key at all when the item is not in date mode', async () => {
+    // Given an item NOT in date mode but carrying a leftover stored due date
+    // (e.g. the mode was switched away from 'date' on the Info tab without
+    // clearing this location's date) — a stored value that a buggy
+    // unconditional payload would echo or clear, either of which is wrong:
+    // the key must be absent entirely so neither happens.
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => {})
+    renderDialog(
+      makeItem({
+        expirationMode: 'disabled',
+        dueDate: new Date('2026-09-01'),
+      }),
+      onSubmit,
+    )
+
+    // When the user changes an unrelated field and presses Update
+    await user.click(
+      screen.getByRole('button', { name: 'Increase target quantity' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the payload has no dueDate key at all
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
+    expect('dueDate' in payload).toBe(false)
   })
 })

@@ -12,6 +12,7 @@ const {
   FullStock,
   Inactive,
   NearRefillThreshold,
+  WithExpirationDate,
 } = composeStories(stories)
 
 // Default story: mockItem — targetUnit:'package', packageUnit:'gallon',
@@ -288,5 +289,18 @@ describe('QuickUpdateDialog — stock settings row', () => {
       screen.getByRole('button', { name: 'Increase target quantity' }),
     )
     expect(screen.getByText('2 / 3')).toBeInTheDocument()
+  })
+})
+
+describe('QuickUpdateDialog — Expires on field (date mode)', () => {
+  it('shows the stored due date, last, at full width, in date mode', () => {
+    render(<WithExpirationDate />)
+    const dueDateInput = screen.getByLabelText(/expires on/i)
+    expect(dueDateInput).toHaveValue('2026-09-15')
+  })
+
+  it('does not show the field for a story without date mode', () => {
+    render(<Default />)
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
   })
 })

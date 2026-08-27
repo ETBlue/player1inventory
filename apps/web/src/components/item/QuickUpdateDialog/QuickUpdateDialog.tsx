@@ -12,6 +12,8 @@ import {
   DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   computeFillToFull,
   computePack,
@@ -22,6 +24,15 @@ import {
 import type { PantryItem } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
+// `dueDate` is deliberately OPTIONAL, not always-present: the field only
+// renders when `item.expirationMode === 'date'` (see the render block below),
+// and the key must be entirely ABSENT from the submitted object otherwise.
+// `toUpdateItemInput()` (cloud) and `updateItem()` (local) both read "key
+// absent" as "leave the stored value alone" and "key present, even as
+// undefined" as "clear it" — so an item in 'days from purchase' or 'disabled'
+// mode must never see a `dueDate` key at all, or pressing Update would wipe
+// that location's stored due date. Mirrors `ItemUpdatePayload` in
+// `routes/items/$id/stock.tsx`.
 interface QuickUpdateDialogProps {
   item: PantryItem
   isOpen: boolean
@@ -31,6 +42,7 @@ interface QuickUpdateDialogProps {
     unpackedQuantity: number
     targetQuantity: number
     refillThreshold: number
+    dueDate?: Date | undefined
   }) => Promise<void>
 }
 
@@ -45,6 +57,12 @@ export function QuickUpdateDialog({
   const [localUnpacked, setLocalUnpacked] = useState(item.unpackedQuantity)
   const [localTarget, setLocalTarget] = useState(item.targetQuantity)
   const [localRefill, setLocalRefill] = useState(item.refillThreshold)
+  // `YYYY-MM-DD` string an `<input type="date">` needs — same conversion
+  // `itemToFormValues` uses in `routes/items/$id/stock.tsx`.
+  const itemDueDateString = item.dueDate
+    ? (item.dueDate.toISOString().split('T')[0] ?? '')
+    : ''
+  const [localDueDate, setLocalDueDate] = useState(itemDueDateString)
   const [isPending, setIsPending] = useState(false)
 
   // Reset local state when dialog opens
@@ -54,6 +72,7 @@ export function QuickUpdateDialog({
       setLocalUnpacked(item.unpackedQuantity)
       setLocalTarget(item.targetQuantity)
       setLocalRefill(item.refillThreshold)
+      setLocalDueDate(itemDueDateString)
     }
   }, [
     isOpen,
@@ -61,6 +80,7 @@ export function QuickUpdateDialog({
     item.unpackedQuantity,
     item.targetQuantity,
     item.refillThreshold,
+    itemDueDateString,
   ])
 
   // Guard on `> 0`, not on nullish: `?? 1` does not fire for a stored 0, which
@@ -146,7 +166,8 @@ export function QuickUpdateDialog({
     localPacked === item.packedQuantity &&
     localUnpacked === item.unpackedQuantity &&
     localTarget === item.targetQuantity &&
-    localRefill === item.refillThreshold
+    localRefill === item.refillThreshold &&
+    localDueDate === itemDueDateString
 
   // Unpack: open one package → unpacked. Mirrors item info tab exactly.
   // Unpack disabled: mirrors item info tab (packedQuantity < 1)
@@ -188,6 +209,13 @@ export function QuickUpdateDialog({
         unpackedQuantity: localUnpacked,
         targetQuantity: localTarget,
         refillThreshold: localRefill,
+        // The `dueDate` key is included ONLY when the field is actually
+        // rendered (`expirationMode === 'date'`) — see the doc comment on
+        // `QuickUpdateDialogProps.onSubmit` above. An item in another mode
+        // must submit no `dueDate` key at all, not an undefined one.
+        ...(item.expirationMode === 'date'
+          ? { dueDate: localDueDate ? new Date(localDueDate) : undefined }
+          : {}),
       })
       // onClose() is called by the parent on success — don't call it here
     } catch {
@@ -404,6 +432,28 @@ export function QuickUpdateDialog({
               {t('pantry.quickUpdate.pack')}
             </Button>
           </div>
+
+          {/* The due date is the one expiration field that is genuinely
+              per-location — "when THIS one expires". The mode that gates it is
+              global (set on the Info tab) and is read here, never written.
+              Mirrors the same block in ItemForm's Stock tab. */}
+          {item.expirationMode === 'date' && (
+            <div>
+              <Label htmlFor="quickUpdateDueDate">
+                {t('common.expiresOn')}
+              </Label>
+              <Input
+                id="quickUpdateDueDate"
+                type="date"
+                value={localDueDate}
+                onChange={(e) => setLocalDueDate(e.target.value)}
+                disabled={isPending}
+              />
+              <p className="text-xs text-foreground-muted">
+                {t('common.expiresOnHint')}
+              </p>
+            </div>
+          )}
         </DialogMain>
 
         <DialogFooter>

@@ -110,3 +110,20 @@ export const NearRefillThreshold: Story = {
     isOpen: true,
   },
 }
+
+export const WithExpirationDate: Story = {
+  name: 'Date Mode — Expires On Field',
+  args: {
+    // expirationMode: 'date' is the only thing that renders the full-width
+    // "Expires on" field, last, after the stepper grid — see the item detail
+    // Stock tab's identical gate in ItemForm.
+    item: {
+      ...mockItem,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      expirationMode: 'date',
+      dueDate: new Date('2026-09-15'),
+    },
+    isOpen: true,
+  },
+}
