@@ -111,3 +111,26 @@ the final layout.
   read before the quantities they judge. The third column swapped with them: it
   carries the muted hints on the first two rows and the Unpack/Pack buttons on
   the last two.
+
+## Addendum — 2026-08-27 (progress row moved to lead both surfaces)
+
+A fourth change, decided after the above was already shipped: the progress bar
+no longer reads last — it reads **first**, on both `QuickUpdateDialog` and
+`ItemForm`'s Stock tab.
+
+- **Position:** `StockProgressRow` moved from the bottom of each surface to the
+  top. `QuickUpdateDialog` now renders progress bar, then the four-row grid
+  (Target, Refill below, Packed, Unpacked). The Stock tab now renders progress
+  bar, then the four fields, then "Expires on" (unchanged as the last block).
+- **Why:** the bar is the summary of the four values below it — reading it
+  first tells the user what state the item is in before they see the individual
+  numbers that produced it, rather than making them assemble the summary
+  themselves after reading four rows.
+- **What did not change:** the shared `grid-cols-[auto_auto_auto]` grid for the
+  four stepper rows on `QuickUpdateDialog`, the shortened "Target" / "Refill
+  below" labels, the steppers' step sizes and clamping, and every prop/handler
+  on `StockProgressRow` itself — this was a pure move of existing JSX, not a
+  redesign. The line above reading "with the progress bar still last" from the
+  previous addendum is superseded by this one.
+- Document order is re-pinned by tests in `QuickUpdateDialog.test.tsx` and
+  `ItemForm.test.tsx`.
