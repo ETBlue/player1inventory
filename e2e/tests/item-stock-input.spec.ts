@@ -173,7 +173,10 @@ test.describe('items stock tab — number input editing', () => {
   // component's already-correct in-memory state. A stepper whose `onStep`
   // got disconnected from its input, or a submit that dropped the field,
   // would still show the right number on screen right up until save; only
-  // the reload would catch it.
+  // the reload would catch it. Target and Refill are driven to DIFFERENT
+  // final values on purpose: identical values would let a field-swap in the
+  // save path (writing targetQuantity from refillThreshold, or vice versa)
+  // hide behind a symmetric assertion.
   test('user can adjust Target and Refill with the +/- steppers and have them persist through save and reload', async ({
     page,
     baseURL,
@@ -194,20 +197,27 @@ test.describe('items stock tab — number input editing', () => {
     await expect(form.getTargetDecreaseButton()).toBeDisabled()
     await expect(form.getRefillDecreaseButton()).toBeDisabled()
 
-    // When the user clicks Increase Target three times and Decrease Target once
+    // When the user clicks Increase Target four times and Decrease Target once
+    await form.getTargetIncreaseButton().click()
     await form.getTargetIncreaseButton().click()
     await form.getTargetIncreaseButton().click()
     await form.getTargetIncreaseButton().click()
     await form.getTargetDecreaseButton().click()
 
-    // Then Target reads 2 — proving the buttons drive the field's value
-    await expect(targetInput).toHaveValue('2')
+    // Then Target reads 3 — proving the buttons drive the field's value.
+    // Target and Refill are driven to DIFFERENT final values (and both differ
+    // from the seeded 0): if the save path ever cross-wired the two fields —
+    // writing targetQuantity from refillThreshold's local state or vice versa
+    // — identical final values would let that bug hide behind a symmetric
+    // assertion. Distinct values make a swap visible.
+    await expect(targetInput).toHaveValue('3')
 
     // When the user clicks Increase Refill twice
     await form.getRefillIncreaseButton().click()
     await form.getRefillIncreaseButton().click()
 
-    // Then Refill reads 2, and the '-' button is enabled again now the value moved off 0
+    // Then Refill reads 2 — deliberately different from Target's 3, and the
+    // '-' button is enabled again now the value moved off 0
     await expect(refillInput).toHaveValue('2')
     await expect(form.getRefillDecreaseButton()).toBeEnabled()
 
@@ -222,21 +232,22 @@ test.describe('items stock tab — number input editing', () => {
     })
 
     // Then the new quantities are persisted to this location's stock row —
-    // not merely reflected on screen
+    // not merely reflected on screen, and not swapped between the two fields
     await expect
       .poll(async () => {
         const stocks = await readRows(page, 'itemStocks')
         const stock = stocks.find((s) => s.locationId === HOME)
         return { target: stock?.targetQuantity, refill: stock?.refillThreshold }
       })
-      .toEqual({ target: 2, refill: 2 })
+      .toEqual({ target: 3, refill: 2 })
 
     // When the Stock tab is freshly re-navigated to (a new mount, reading
     // whatever the loader pulls back off IndexedDB)
     await form.navigateTo(ITEM)
 
-    // Then it shows the persisted values — the round trip through save held
-    await expect(form.getTargetInput()).toHaveValue('2')
+    // Then it shows the persisted values, each in its own field — the round
+    // trip through save held and nothing crossed over
+    await expect(form.getTargetInput()).toHaveValue('3')
     await expect(form.getRefillInput()).toHaveValue('2')
   })
 
