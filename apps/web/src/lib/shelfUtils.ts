@@ -1,5 +1,5 @@
 import { getTagAndDescendantIds } from '@/lib/tagUtils'
-import type { FilterConfig, Item, Tag } from '@/types'
+import type { FilterConfig, Item, Tag, TagType } from '@/types'
 
 /**
  * Returns true if `item` matches the given `filterConfig`.
@@ -63,4 +63,210 @@ export function matchesFilterConfig(
   }
 
   return true
+}
+
+export interface FilterAxisOption {
+  id: string
+  name: string
+}
+
+export interface FilterAxis {
+  /** Stable key: the tagTypeId for a tag axis, 'vendor' / 'recipe' for the other two. */
+  key: string
+  kind: 'tag' | 'vendor' | 'recipe'
+  /**
+   * Tag axes only — the tag TYPE's name, which is what makes a shelf filtering on two
+   * tag types legible ("Category" / "Storage"). The other two kinds carry no name here;
+   * the dialog translates their labels, because a pure function must not call `t`.
+   */
+  typeName?: string
+  /** Resolvable options only, in `filterConfig` order. Never contains a dangling id. */
+  options: FilterAxisOption[]
+  /**
+   * Set when the item ALREADY satisfies this axis — the configured id that does it.
+   * An axis with `metBy` is rendered read-only and is never written.
+   */
+  metBy?: string
+}
+
+/**
+ * Whether ANY item could be made to match this config by adding tags/vendors/recipes.
+ *
+ * Item-independent on purpose — it is a property of the SHELF, so `ShelfDetailView`
+ * decides once per shelf whether the tail's bucket 2 gets an actionable `groupAction`
+ * or keeps the inert `groupNote`. `ItemSearchTail`'s `groupAction` is one descriptor for
+ * the whole section, so a per-row fallback was never available.
+ *
+ * An axis is unsatisfiable when every id on it points at a deleted entity. We will not
+ * write a dangling vendorId onto an item merely to satisfy `matchesFilterConfig`'s
+ * `includes` check, and a deleted recipe has no row to append to.
+ *
+ * TAG axes are never unsatisfiable: `matchesFilterConfig` resolves each configured tag id
+ * through `tags.find` and skips the misses, so an all-dangling tag axis creates no entry
+ * in `tagIdsByType` and is not a constraint at all.
+ */
+export function isFilterConfigSatisfiable(
+  filterConfig: FilterConfig,
+  vendors: { id: string }[],
+  recipes: { id: string }[],
+): boolean {
+  const vendorIds = filterConfig.vendorIds ?? []
+  const recipeIds = filterConfig.recipeIds ?? []
+
+  if (
+    vendorIds.length > 0 &&
+    !vendorIds.some((id) => vendors.some((v) => v.id === id))
+  ) {
+    return false
+  }
+  if (
+    recipeIds.length > 0 &&
+    !recipeIds.some((id) => recipes.some((r) => r.id === id))
+  ) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Breaks a shelf's `filterConfig` into the axes a press must satisfy for one item.
+ *
+ * `matchesFilterConfig` ANDs across tags/vendors/recipes and ANDs BETWEEN tag types
+ * (OR only WITHIN a type), so one axis per tag type is exactly the granularity at which
+ * a user choice is meaningful — and exactly the granularity at which skipping one leaves
+ * the item still not matching.
+ *
+ * Axes carrying `metBy` are already satisfied and MUST NOT be written: adding a second
+ * tag of a type the item is already tagged with over-assigns, which is the failure mode
+ * the design rejected auto-apply-all for.
+ *
+ * The met checks mirror `matchesFilterConfig` clause for clause — including descendant
+ * expansion on tags — because "every axis met" must mean exactly "the item matches".
+ * `shelfUtils.test.ts` pins that equivalence directly.
+ */
+export function deriveFilterAxes(
+  item: Item,
+  filterConfig: FilterConfig,
+  tags: Tag[],
+  tagTypes: TagType[],
+  vendors: { id: string; name: string }[],
+  recipes: { id: string; name: string; items: { itemId: string }[] }[],
+): FilterAxis[] {
+  const { tagIds = [], vendorIds = [], recipeIds = [] } = filterConfig
+  const safeTagIds = tagIds ?? []
+  const safeVendorIds = vendorIds ?? []
+  const safeRecipeIds = recipeIds ?? []
+  const axes: FilterAxis[] = []
+
+  // Tags — one axis per TYPE, in first-appearance order of the configured ids.
+  const tagIdsByType = new Map<string, string[]>()
+  for (const tagId of safeTagIds) {
+    const tag = tags.find((t) => t.id === tagId)
+    if (!tag) continue
+    tagIdsByType.set(tag.typeId, [
+      ...(tagIdsByType.get(tag.typeId) ?? []),
+      tagId,
+    ])
+  }
+  for (const [typeId, typeTagIds] of tagIdsByType) {
+    const metBy = typeTagIds.find((id) =>
+      getTagAndDescendantIds(id, tags).some((expanded) =>
+        item.tagIds.includes(expanded),
+      ),
+    )
+    axes.push({
+      key: typeId,
+      kind: 'tag',
+      typeName: tagTypes.find((tt) => tt.id === typeId)?.name ?? '',
+      options: typeTagIds.map((id) => ({
+        id,
+        name: tags.find((t) => t.id === id)?.name ?? '',
+      })),
+      ...(metBy ? { metBy } : {}),
+    })
+  }
+
+  if (safeVendorIds.length > 0) {
+    // The met check uses EVERY configured id (mirroring matchesFilterConfig), while the
+    // options offer only resolvable vendors — we read a dangling id as satisfying, but
+    // never write one.
+    const metBy = safeVendorIds.find((id) =>
+      (item.vendorIds ?? []).includes(id),
+    )
+    axes.push({
+      key: 'vendor',
+      kind: 'vendor',
+      options: safeVendorIds.flatMap((id) => {
+        const vendor = vendors.find((v) => v.id === id)
+        return vendor ? [{ id, name: vendor.name }] : []
+      }),
+      ...(metBy ? { metBy } : {}),
+    })
+  }
+
+  if (safeRecipeIds.length > 0) {
+    const metBy = safeRecipeIds.find((id) =>
+      recipes
+        .find((r) => r.id === id)
+        ?.items.some((ri) => ri.itemId === item.id),
+    )
+    axes.push({
+      key: 'recipe',
+      kind: 'recipe',
+      options: safeRecipeIds.flatMap((id) => {
+        const recipe = recipes.find((r) => r.id === id)
+        return recipe ? [{ id, name: recipe.name }] : []
+      }),
+      ...(metBy ? { metBy } : {}),
+    })
+  }
+
+  return axes
+}
+
+export interface FilterPicks {
+  /** One chosen tag id per unmet tag axis. */
+  tagIds: string[]
+  /** The chosen vendor id, when the vendor axis was unmet. */
+  vendorId?: string
+  /** The chosen recipe id, when the recipe axis was unmet. */
+  recipeId?: string
+}
+
+/**
+ * The picks that need no user input: every UNMET axis offering exactly one option.
+ *
+ * The design's rule is "an axis offering exactly one option needs no interaction —
+ * pre-select it", and two later callers need it — the dialog seeds its initial state with
+ * this, and ShelfDetailView uses it to apply directly when it covers every unmet axis, so
+ * no dialog opens at all. One derivation, so the two cannot drift.
+ *
+ * Met axes are never included: they are already satisfied, and re-writing one would add a
+ * second tag of a type the item is already tagged with.
+ */
+export function defaultPicksFor(axes: FilterAxis[]): FilterPicks {
+  const tagIds: string[] = []
+  let vendorId: string | undefined
+  let recipeId: string | undefined
+
+  for (const axis of axes) {
+    if (axis.metBy !== undefined) continue
+    if (axis.options.length !== 1) continue
+    const onlyOption = axis.options[0]
+    if (!onlyOption) continue
+
+    if (axis.kind === 'tag') {
+      tagIds.push(onlyOption.id)
+    } else if (axis.kind === 'vendor') {
+      vendorId = onlyOption.id
+    } else if (axis.kind === 'recipe') {
+      recipeId = onlyOption.id
+    }
+  }
+
+  return {
+    tagIds,
+    ...(vendorId ? { vendorId } : {}),
+    ...(recipeId ? { recipeId } : {}),
+  }
 }
