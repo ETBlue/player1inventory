@@ -1,3 +1,4 @@
+export * from './useApplyShelfFilterPicks'
 export * from './useInventoryLogs'
 export * from './useItemSearchTail'
 export * from './useItemSearchTailWiring'
