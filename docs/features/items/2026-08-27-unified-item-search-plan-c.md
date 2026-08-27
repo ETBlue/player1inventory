@@ -126,8 +126,14 @@ described: at the merge base (`f6d54fd6`) `VendorDetailView` gated the block on
 destructure the `hasTail` the wiring hook already returns (`hasVisibleTail(tailProps)` —
 the same boolean the component uses for its own early return) and gate the empty state
 `{!hasTail && sortedItems.length === 0 && (…)}` (`sortedInShelfItems` on the shelf view).
-That is the shape `PantryListView.tsx:295,310` and `shopping/$vendorId.tsx:499` already
-used, so all five surfaces now agree. Pinned by one test per view in `routes/index.test.tsx`
+That is the `!hasTail` guard `PantryListView.tsx:295,310` and `shopping/$vendorId.tsx:499`
+already used, so all five surfaces now agree on **when a tail suppresses an empty state**.
+They do not agree on the whole block, and the difference is not accidental: those two older
+surfaces gate on a **post**-filter count (`sortedItems` / `displayItems`) and carry a
+**second, distinct** message for the populated-but-nothing-matched case (*"No items match
+the current filters."* / `shopping.emptyFiltered.*`), while the three detail views gate on a
+**pre**-search count (`sortedItems`, which here is pre-search) and have only one message.
+That gap is exactly the deferred case below. Pinned by one test per view in `routes/index.test.tsx`
 — *"user sees the empty state, not a blank pane, when a search matches nothing and the
 tail is empty"* — each mutation-checked back to `!trimmedSearch` and each confirmed RED
 alone (1 failed / 44 passed, three times).
@@ -143,10 +149,23 @@ assigned to this vendor"* while items **are** assigned and merely fail to match,
 a false statement to show the user.
 
 So what remains deferred is **only** the populated-group-no-match case, and it is not a
-one-character widening of the guard. It needs its own message string (something on the
-order of *"No items match your search"*, distinct per view or shared), plus i18n keys, and
-a decision about whether it renders instead of or beside the existing block. That is its
-own change; not PR C.
+one-character widening of the guard — it needs a second message beside this one. That is
+**not an open design question**: it is the branch the two older surfaces already have, so
+the work is to copy a shipped pattern, not to invent one.
+
+- `PantryListView.tsx:295,310` — two sibling ternary arms: the empty-pantry CTA on the
+  **pre**-filter count (`items.length === 0 && !hasTail`), *"No items match the current
+  filters."* on the **post**-filter one (`sortedItems.length === 0 && !hasTail`).
+- `shopping/$vendorId.tsx:499` — one `!hasTail` guard on the **post**-filter count, with a
+  nested ternary choosing the message off the **pre**-filter one:
+  `displayItems.length === 0 && !hasTail && (vendorScopedItems.length === 0 ? shopping.empty.* : shopping.emptyFiltered.*)`.
+
+`$vendorId`'s arrangement is the closer fit for the detail views, which already compute both
+counts (`sortedItems` pre-search, `displayedItems` post-search) — the change is to move the
+guard onto `displayedItems` and pick the message off `sortedItems`. What remains is
+mechanical: choose one of the two arrangements, and add i18n keys for the second message
+(`shopping.emptyFiltered.*` is phrased for filters rather than a search term, so expect new
+copy rather than a straight reuse). Deferred for scope, not for want of a design; not PR C.
 
 ## Deferred — `VendorDetailView`'s recipe map is always empty
 
