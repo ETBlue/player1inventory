@@ -211,6 +211,8 @@
       "addToLocation": "加入「{{location}}」",
       "applyVendor": "套用「{{vendor}}」",
       "inVendors": "屬於 {{vendors}}",
+      "addToRecipe": "加入食譜",
+      "inRecipes": "屬於 {{recipes}}",
       "addToShelf": "加入層架",
       "notMatchingShelf": "不符合此層架的篩選條件"
     },

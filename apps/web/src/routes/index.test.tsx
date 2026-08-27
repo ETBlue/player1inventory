@@ -56,6 +56,37 @@ describe('Home page filtering integration', () => {
     )
   }
 
+  // Shared by all four search-tail blocks below.
+  //
+  // THE FIXTURE IS THE TEST: with a single location, "stocked here" and
+  // "exists at all" return the same set, so every search-tail case must stock
+  // its probe item ONLY at a second location — otherwise the assertion passes
+  // just as happily against an implementation that ignores location entirely.
+  //
+  // The name is deliberately not stock-specific: post-v16 only
+  // `targetQuantity`, `refillThreshold`, `packedQuantity` and
+  // `unpackedQuantity` are per-location `ItemStock` state — `targetUnit` and
+  // `consumeAmount` are global `Item` configuration. These are simply the
+  // field defaults `createItem` is handed.
+  const itemDefaults = {
+    targetUnit: 'package' as const,
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  }
+
+  const openSearch = async (
+    user: ReturnType<typeof userEvent.setup>,
+    query: string,
+  ) => {
+    await user.click(
+      await screen.findByRole('button', { name: /toggle search/i }),
+    )
+    await user.type(await screen.findByPlaceholderText(/search items/i), query)
+  }
+
   it('user can create an item from the pantry and it is stocked in the active location', async () => {
     // Given a pantry with one item (an empty catalog sends the app to
     // onboarding instead). Unlike the Settings assignment tabs (D3), the
@@ -839,37 +870,11 @@ describe('Home page filtering integration', () => {
   })
 
   describe('search tail (unified item search)', () => {
-    // THE FIXTURE IS THE TEST. Every case below needs an item stocked ONLY at
-    // a second location — with one location, "stocked here" and "exists"
-    // return the same set, and every assertion here passes against an
-    // implementation that ignores location entirely.
-    const stockFields = {
-      targetUnit: 'package' as const,
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    }
-
-    const openSearch = async (
-      user: ReturnType<typeof userEvent.setup>,
-      query: string,
-    ) => {
-      await user.click(
-        await screen.findByRole('button', { name: /toggle search/i }),
-      )
-      await user.type(
-        await screen.findByPlaceholderText(/search items/i),
-        query,
-      )
-    }
-
     it('user can see an item stocked only at another location under "not stocked here"', async () => {
       // Given Eggs is stocked here, and Milk is stocked ONLY at the Office
-      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      await createItem({ name: 'Eggs', tagIds: [], ...itemDefaults })
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderApp()
       const user = userEvent.setup()
@@ -887,9 +892,9 @@ describe('Home page filtering integration', () => {
 
     it('"Add to My Home" moves the item directly into the main list (no bucket-2 step on the flat pantry)', async () => {
       // Given Eggs is stocked here, and Milk is stocked ONLY at the Office
-      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      await createItem({ name: 'Eggs', tagIds: [], ...itemDefaults })
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderApp()
       const user = userEvent.setup()
@@ -917,9 +922,9 @@ describe('Home page filtering integration', () => {
     it('user is not offered Create for a name that exists globally but is not stocked here (#245)', async () => {
       // Given Eggs is stocked here, and Milk exists globally, stocked only
       // at the Office
-      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      await createItem({ name: 'Eggs', tagIds: [], ...itemDefaults })
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderApp()
       const user = userEvent.setup()
@@ -938,7 +943,7 @@ describe('Home page filtering integration', () => {
 
     it('user is still offered Create when no global item matches', async () => {
       // Given nothing in the catalog matches
-      await createItem({ name: 'Eggs', tagIds: [], ...stockFields })
+      await createItem({ name: 'Eggs', tagIds: [], ...itemDefaults })
 
       renderApp()
       const user = userEvent.setup()
@@ -961,7 +966,7 @@ describe('Home page filtering integration', () => {
       // `items.length === 0` empty-pantry branch short-circuiting ahead of
       // `!hasTail` survived four reviews.
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderApp()
       const user = userEvent.setup()
@@ -983,7 +988,7 @@ describe('Home page filtering integration', () => {
       // ONLY at the Office — same fixture as above, but the search box stays
       // blank, so the tail must be empty and the CTA must NOT regress
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderApp()
 
@@ -1023,10 +1028,10 @@ describe('Home page filtering integration', () => {
         typeId: categoryType.id,
         name: 'Vegetables',
       })
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
       const office = await createLocation('Office')
       await createItem(
-        { name: 'Milk Substitute', tagIds: [], ...stockFields },
+        { name: 'Milk Substitute', tagIds: [], ...itemDefaults },
         office.id,
       )
 
@@ -1060,30 +1065,6 @@ describe('Home page filtering integration', () => {
   })
 
   describe('shelf detail search tail (unified item search)', () => {
-    // THE FIXTURE IS THE TEST — same rationale as the flat-pantry block above:
-    // every case needs an item stocked ONLY at a second location.
-    const stockFields = {
-      targetUnit: 'package' as const,
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    }
-
-    const openSearch = async (
-      user: ReturnType<typeof userEvent.setup>,
-      query: string,
-    ) => {
-      await user.click(
-        await screen.findByRole('button', { name: /toggle search/i }),
-      )
-      await user.type(
-        await screen.findByPlaceholderText(/search items/i),
-        query,
-      )
-    }
-
     const renderShelfDetail = (shelfId: string) => {
       const history = createMemoryHistory({
         initialEntries: [`/?groupBy=shelf&id=${shelfId}`],
@@ -1107,7 +1088,7 @@ describe('Home page filtering integration', () => {
         itemIds: [],
       })
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderShelfDetail(shelf.id)
       const user = userEvent.setup()
@@ -1139,7 +1120,7 @@ describe('Home page filtering integration', () => {
       })
       const office = await createLocation('Office')
       const milk = await createItem(
-        { name: 'Milk', tagIds: [], ...stockFields },
+        { name: 'Milk', tagIds: [], ...itemDefaults },
         office.id,
       )
 
@@ -1186,7 +1167,7 @@ describe('Home page filtering integration', () => {
       // shelf's own (stocked-here) list despite carrying membership
       const office = await createLocation('Office')
       const milk = await createItem(
-        { name: 'Milk', tagIds: [], ...stockFields },
+        { name: 'Milk', tagIds: [], ...itemDefaults },
         office.id,
       )
       const shelf = await createShelf({
@@ -1245,7 +1226,7 @@ describe('Home page filtering integration', () => {
         order: 0,
         filterConfig: { tagIds: [snackTag.id] },
       })
-      await createItem({ name: 'Pretzels', tagIds: [], ...stockFields })
+      await createItem({ name: 'Pretzels', tagIds: [], ...itemDefaults })
 
       renderShelfDetail(shelf.id)
       const user = userEvent.setup()
@@ -1272,7 +1253,10 @@ describe('Home page filtering integration', () => {
         filterConfig: {},
       })
       const office = await createLocation('Office')
-      await createItem({ name: 'Chips', tagIds: [], ...stockFields }, office.id)
+      await createItem(
+        { name: 'Chips', tagIds: [], ...itemDefaults },
+        office.id,
+      )
 
       renderShelfDetail(shelf.id)
       const user = userEvent.setup()
@@ -1304,10 +1288,10 @@ describe('Home page filtering integration', () => {
       })
       const office = await createLocation('Office')
       await createItem(
-        { name: 'Frozen Peas', tagIds: [], ...stockFields },
+        { name: 'Frozen Peas', tagIds: [], ...itemDefaults },
         office.id,
       )
-      await createItem({ name: 'Frozen Corn', tagIds: [], ...stockFields })
+      await createItem({ name: 'Frozen Corn', tagIds: [], ...itemDefaults })
 
       renderShelfDetail(shelf.id)
       const user = userEvent.setup()
@@ -1351,8 +1335,8 @@ describe('Home page filtering integration', () => {
           order: 0,
           itemIds: [],
         })
-        await createItem({ name: 'Apple Juice', tagIds: [], ...stockFields })
-        await createItem({ name: 'Apple Cider', tagIds: [], ...stockFields })
+        await createItem({ name: 'Apple Juice', tagIds: [], ...itemDefaults })
+        await createItem({ name: 'Apple Cider', tagIds: [], ...itemDefaults })
 
         // The real Dexie mutation resolves too fast to reliably observe a
         // mid-flight window, so control it directly — the same technique
@@ -1419,38 +1403,12 @@ describe('Home page filtering integration', () => {
   })
 
   describe('vendor detail search tail (unified item search)', () => {
-    // THE FIXTURE IS THE TEST — with a single location "stocked here" and
-    // "every item" are the same set, so every case below stocks its probe
-    // item ONLY at a second location.
-    //
     // NOT covered here, and deliberately so: sourcing `inGroupIds` from
     // `displayedItems` instead of `inScopeItems` is an EQUIVALENT MUTANT on
     // this view (see the comment at that call site in `VendorDetailView.tsx`)
     // — this page's only narrowing is the same name match the tail already
     // applies, so the two sets agree on every id the tail can consult. No
     // fixture can distinguish them; adding one would be a vacuous test.
-    const stockFields = {
-      targetUnit: 'package' as const,
-      targetQuantity: 2,
-      refillThreshold: 1,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-    }
-
-    const openSearch = async (
-      user: ReturnType<typeof userEvent.setup>,
-      query: string,
-    ) => {
-      await user.click(
-        await screen.findByRole('button', { name: /toggle search/i }),
-      )
-      await user.type(
-        await screen.findByPlaceholderText(/search items/i),
-        query,
-      )
-    }
-
     const renderVendorDetail = (vendorId: string) => {
       const history = createMemoryHistory({
         initialEntries: [`/?groupBy=vendor&id=${vendorId}`],
@@ -1469,7 +1427,7 @@ describe('Home page filtering integration', () => {
       // nothing at all is stocked at the active location, PR B's bug class
       const vendor = await createVendor('Costco')
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields }, office.id)
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
 
       renderVendorDetail(vendor.id)
       const user = userEvent.setup()
@@ -1496,7 +1454,7 @@ describe('Home page filtering integration', () => {
       const vendor = await createVendor('Costco')
       const office = await createLocation('Office')
       const milk = await createItem(
-        { name: 'Milk', tagIds: [], ...stockFields },
+        { name: 'Milk', tagIds: [], ...itemDefaults },
         office.id,
       )
 
@@ -1558,15 +1516,15 @@ describe('Home page filtering integration', () => {
         name: 'Milk Powder',
         tagIds: [],
         vendorIds: [vendor.id],
-        ...stockFields,
+        ...itemDefaults,
       })
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
       await createItem(
         {
           name: 'Milk Substitute',
           tagIds: [],
           vendorIds: [vendor.id],
-          ...stockFields,
+          ...itemDefaults,
         },
         office.id,
       )
@@ -1612,10 +1570,10 @@ describe('Home page filtering integration', () => {
         name: 'Milk',
         tagIds: [],
         vendorIds: [vendor.id],
-        ...stockFields,
+        ...itemDefaults,
       })
       await createItem(
-        { name: 'Milk Water', tagIds: [], ...stockFields },
+        { name: 'Milk Water', tagIds: [], ...itemDefaults },
         office.id,
       )
 
@@ -1645,15 +1603,18 @@ describe('Home page filtering integration', () => {
     })
 
     it('the unresolved-vendor window renders neither a group action nor a note', async () => {
-      // Given a vendorId that resolves to no vendor at all — deleted; a
-      // still-loading `useVendors()` renders a spinner instead of any tail,
-      // so it never reaches this state: Milk stocked HERE without the vendor
-      // (a bucket-2 candidate) and Milk Water stocked ONLY at the Office (a
-      // bucket-3 candidate)
+      // Given a vendorId that NO vendor carries. It need not have been
+      // deleted — `validateSearch` in `routes/index.tsx` passes `?id=`
+      // through as an arbitrary string with no existence check, so a stale
+      // bookmark or a hand-typed id lands in exactly the same window (the id
+      // below never existed). A still-loading `useVendors()` is the one case
+      // that CANNOT reach here: the spinner returns before any tail renders.
+      // Fixture: Milk stocked HERE without the vendor (a bucket-2 candidate)
+      // and Milk Water stocked ONLY at the Office (a bucket-3 candidate)
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...stockFields })
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
       await createItem(
-        { name: 'Milk Water', tagIds: [], ...stockFields },
+        { name: 'Milk Water', tagIds: [], ...itemDefaults },
         office.id,
       )
 
@@ -1676,6 +1637,289 @@ describe('Home page filtering integration', () => {
       expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /^apply/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText(/^In /)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Milk' }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('recipe detail search tail (unified item search)', () => {
+    // NOT covered here, and deliberately so: sourcing `inGroupIds` from
+    // `displayedItems` instead of `inScopeItems` is an EQUIVALENT MUTANT on
+    // this view, exactly as it is on `VendorDetailView` (see the comment at
+    // that call site in `RecipeDetailView.tsx`) — this page's only narrowing
+    // of `inScopeItems` is the same name match the tail already applies, so
+    // the two sets agree on every id the tail can consult. No fixture can
+    // distinguish them; adding one would be a vacuous test.
+    // `extraParams` is appended verbatim to the query string (e.g.
+    // `'&tags=1'`) — `useUrlSearchAndFilters` reads the raw search string, so
+    // params the route's own `validateSearch` does not model still reach it.
+    const renderRecipeDetail = (recipeId: string, extraParams = '') => {
+      const history = createMemoryHistory({
+        initialEntries: [`/?groupBy=recipe&id=${recipeId}${extraParams}`],
+      })
+      const router = createRouter({ routeTree, history })
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>,
+      )
+    }
+
+    it('user can see a globally-existing item that is not stocked here under "not stocked here"', async () => {
+      // Given a recipe with no items, and Milk stocked ONLY at the Office —
+      // nothing at all is stocked at the active location, PR B's bug class
+      const recipe = await createRecipe({ name: 'Pasta' })
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
+
+      renderRecipeDetail(recipe.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Pasta', level: 1 })
+
+      // When the user searches for Milk
+      await openSearch(user, 'milk')
+
+      // Then it is offered under "not stocked here", with the location action
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk' }),
+      ).toBeInTheDocument()
+
+      // And the empty state is gone — it is gated on `!trimmedSearch`, so it
+      // no longer renders BESIDE the tail (these are sibling `&&` blocks, not
+      // a ternary)
+      expect(screen.queryByText('No items')).not.toBeInTheDocument()
+    })
+
+    it('the two-step gate: "Add to {location}" stocks the item without adding it to the recipe, and a second "Add to recipe" press adds it', async () => {
+      // Given a recipe with no items, and Milk stocked ONLY at the Office.
+      // Milk carries `consumeAmount: 0` — an explicitly-set 0 survives
+      // `createItem`'s `?? 1` default — because THAT is the fixture that can
+      // tell `defaultAmount: item.consumeAmount || 1` apart from `?? 1`: on a
+      // `consumeAmount: 1` item the two operators are indistinguishable, and
+      // a test built on one would be vacuous.
+      const recipe = await createRecipe({ name: 'Pasta' })
+      const office = await createLocation('Office')
+      const milk = await createItem(
+        { name: 'Milk', tagIds: [], ...itemDefaults, consumeAmount: 0 },
+        office.id,
+      )
+
+      renderRecipeDetail(recipe.id)
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Pasta', level: 1 })
+      await openSearch(user, 'milk')
+
+      // When the user presses "Add to My Home" (bucket 3)
+      await user.click(
+        await screen.findByRole('button', { name: 'Add to My Home: Milk' }),
+      )
+
+      // Then the row moves to bucket 2 — and, read straight off the DATABASE
+      // rather than off where the row now sits, Milk is stocked HERE but has
+      // NOT been added to the recipe. Row position cannot prove this: a row
+      // that relocates says nothing about which mutations ran.
+      const addToRecipeButton = await screen.findByRole('button', {
+        name: 'Add to recipe: Milk',
+      })
+      const stocksAfterFirstPress = await db.itemStocks
+        .where('itemId')
+        .equals(milk.id)
+        .toArray()
+      expect(stocksAfterFirstPress.map((s) => s.locationId)).toContain(
+        DEFAULT_LOCATION_ID,
+      )
+      const recipeAfterFirstPress = await db.recipes.get(recipe.id)
+      expect(recipeAfterFirstPress?.items ?? []).toHaveLength(0)
+
+      // When the user presses "Add to recipe" (the second, separate press)
+      await user.click(addToRecipeButton)
+
+      // Then the item joins the recipe with `defaultAmount: 1`, NOT the 0 it
+      // carries — `defaultAmount: 0` means "optional, unchecked" in cooking,
+      // so a `?? 1` here would add an ingredient that silently does nothing
+      await waitFor(async () => {
+        const recipeAfterSecondPress = await db.recipes.get(recipe.id)
+        expect(recipeAfterSecondPress?.items).toEqual([
+          { itemId: milk.id, defaultAmount: 1 },
+        ])
+      })
+
+      // And both tail sections clear — Milk is now stocked here AND in the
+      // recipe, so the page's own list renders it
+      await waitFor(() => {
+        expect(screen.queryByText(/not stocked here/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      })
+      expect(
+        await screen.findByRole('heading', { name: 'Milk' }),
+      ).toBeInTheDocument()
+    })
+
+    it('user can see a stocked-here item that is absent from the recipe under "not in this list", while the page\'s own items stay out of the tail and tail rows keep their recipe badges', async () => {
+      // Given the recipe Pasta and three items that all match "milk":
+      //   Milk Powder     — stocked HERE, in Pasta   → the page's own list
+      //   Milk            — stocked HERE, no recipe  → bucket 2
+      //   Milk Substitute — in Pasta but stocked ONLY at the Office, so it is
+      //                     absent from this location-scoped page and belongs
+      //                     in bucket 3, NOT bucket 2 (there is no membership
+      //                     left to grant it)
+      const office = await createLocation('Office')
+      const powder = await createItem({
+        name: 'Milk Powder',
+        tagIds: [],
+        ...itemDefaults,
+      })
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+      const substitute = await createItem(
+        { name: 'Milk Substitute', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+      const recipe = await createRecipe({
+        name: 'Pasta',
+        items: [
+          { itemId: powder.id, defaultAmount: 1 },
+          { itemId: substitute.id, defaultAmount: 1 },
+        ],
+      })
+      // A SECOND recipe also holding Milk Substitute — the badge probe below
+      // needs a recipe other than the one being viewed
+      await createRecipe({
+        name: 'Soup',
+        items: [{ itemId: substitute.id, defaultAmount: 1 }],
+      })
+
+      // `&tags=1` so `isTagsVisible` is on and badges actually render
+      renderRecipeDetail(recipe.id, '&tags=1')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Pasta', level: 1 })
+
+      // When the user searches for "milk" on this recipe's page
+      await openSearch(user, 'milk')
+
+      // Then exactly ONE row sits in each tail bucket — Milk Powder, which
+      // the page already renders, is subtracted from both
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to recipe: Milk' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk Substitute' }),
+      ).toBeInTheDocument()
+
+      // And neither tail row offers the other bucket's action
+      expect(
+        screen.queryByRole('button', { name: 'Add to My Home: Milk' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', {
+          name: 'Add to recipe: Milk Substitute',
+        }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /add to recipe: milk powder/i }),
+      ).not.toBeInTheDocument()
+
+      // And the bucket-3 row carries the recipe badges of whatever holds it —
+      // here Soup, a DIFFERENT recipe from the one being viewed. This is the
+      // point of difference from `VendorDetailView`: `recipeMap` is built by
+      // walking the global `recipes` list, so it resolves a row that is NOT
+      // stocked here. A map keyed over `allItems` (the vendor view's shape)
+      // would leave Milk Substitute badge-less, since it is absent from
+      // `allItems` by construction. Soup holds only Milk Substitute, so the
+      // badge is unique to that tail row.
+      expect(screen.getByTestId('recipe-badge-Soup')).toBeInTheDocument()
+    })
+
+    it('the "Not added to recipe" page renders an inert note naming the recipes that hold the item, and no button', async () => {
+      // Given the unsorted ("Not added to recipe") page: Milk stocked HERE
+      // and held by Pasta — so it is excluded from this group by MEMBERSHIP,
+      // not by location — plus Milk Water stocked ONLY at the Office and in
+      // no recipe, the location-scoping probe
+      const office = await createLocation('Office')
+      const milk = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        ...itemDefaults,
+      })
+      await createItem(
+        { name: 'Milk Water', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+      await createRecipe({
+        name: 'Pasta',
+        items: [{ itemId: milk.id, defaultAmount: 1 }],
+      })
+
+      renderRecipeDetail('unsorted')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', {
+        name: 'Not added to recipe',
+        level: 1,
+      })
+
+      // When the user searches for "milk" on the "Not added to recipe" page
+      await openSearch(user, 'milk')
+
+      // Then bucket 2 renders the inert note — joining "items in NO recipe"
+      // would mean REMOVING the item from every recipe, so there is
+      // deliberately no button
+      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      expect(screen.getByText('In Pasta')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /add to recipe/i }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /: Milk$/ }),
+      ).not.toBeInTheDocument()
+
+      // And bucket 3 is unaffected — "Add to {location}" is group-agnostic
+      expect(screen.getByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk Water' }),
+      ).toBeInTheDocument()
+    })
+
+    it('the unresolved-recipe window renders neither a group action nor a note', async () => {
+      // Given a recipeId that NO recipe carries. It need not have been
+      // deleted — `validateSearch` in `routes/index.tsx` passes `?id=`
+      // through as an arbitrary string with no existence check, so a stale
+      // bookmark or a hand-typed id lands in exactly the same window (the id
+      // below never existed). A still-loading `useRecipes()` is the one case
+      // that CANNOT reach here: the spinner returns before any tail renders.
+      // Fixture: Milk stocked HERE in no recipe (a bucket-2 candidate) and
+      // Milk Water stocked ONLY at the Office (a bucket-3 candidate)
+      const office = await createLocation('Office')
+      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults })
+      await createItem(
+        { name: 'Milk Water', tagIds: [], ...itemDefaults },
+        office.id,
+      )
+
+      renderRecipeDetail('deleted-recipe-id')
+      const user = userEvent.setup()
+      await screen.findByRole('heading', { name: 'Recipe', level: 1 })
+
+      // When the user searches for "milk" on the unresolved recipe's page
+      await openSearch(user, 'milk')
+
+      // Then bucket 3 still renders — it does not depend on the recipe
+      expect(await screen.findByText('1 not stocked here')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add to My Home: Milk Water' }),
+      ).toBeInTheDocument()
+
+      // And bucket 2 is fully suppressed: no divider, no add button, no note,
+      // and no row for Milk anywhere — there is no `recipe.items` to append
+      // to, so pressing an action could write nothing
+      expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /^add to recipe/i }),
       ).not.toBeInTheDocument()
       expect(screen.queryByText(/^In /)).not.toBeInTheDocument()
       expect(
