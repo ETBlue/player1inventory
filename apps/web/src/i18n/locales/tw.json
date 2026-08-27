@@ -330,7 +330,7 @@
       },
       "unpackedQuantity": {
         "label": "已開封",
-        "hint": "已拆封包裝中的散裝量",
+        "hint": "已開封包裝中的散裝量",
         "decrease": "減少已開封數量",
         "increase": "增加已開封數量"
       },
