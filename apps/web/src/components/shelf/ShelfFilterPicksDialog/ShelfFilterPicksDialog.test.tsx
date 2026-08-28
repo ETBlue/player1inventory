@@ -28,6 +28,14 @@ const vendorAxis: FilterAxis = {
     { id: 'v2', name: '7-Eleven' },
   ],
 }
+const recipeAxis: FilterAxis = {
+  key: 'recipe',
+  kind: 'recipe',
+  options: [
+    { id: 'r1', name: 'Pancakes' },
+    { id: 'r2', name: 'Waffles' },
+  ],
+}
 
 describe('ShelfFilterPicksDialog', () => {
   it('user cannot confirm until every open axis has a pick', async () => {
@@ -121,6 +129,40 @@ describe('ShelfFilterPicksDialog', () => {
     // what stops the item gaining a second Storage tag it already has.
     await waitFor(() =>
       expect(onConfirm).toHaveBeenCalledWith({ tagIds: ['frozen'] }),
+    )
+  })
+
+  it('assembles vendorId and recipeId (not just tagIds) when those axes are open', async () => {
+    // Given all three kinds of axis open at once — the vendor and recipe halves
+    // of the assembly (`filterPicks.vendorId` / `.recipeId`) are otherwise
+    // exercised by no test above this one, which all confirm tag-only picks.
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[tagAxis, vendorAxis, recipeAxis]}
+        onConfirm={onConfirm}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // When one option is picked per axis and confirmed
+    await userEvent.click(screen.getByRole('radio', { name: 'Frozen' }))
+    await userEvent.click(screen.getByRole('radio', { name: '7-Eleven' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Waffles' }))
+    await userEvent.click(screen.getByRole('button', { name: /add/i }))
+
+    // Then onConfirm receives all three picks, keyed correctly — a swapped
+    // mapping (e.g. vendorId onto tagIds, or a dropped recipeId) would fail
+    // this exact assertion.
+    await waitFor(() =>
+      expect(onConfirm).toHaveBeenCalledWith({
+        tagIds: ['frozen'],
+        vendorId: 'v2',
+        recipeId: 'r2',
+      }),
     )
   })
 

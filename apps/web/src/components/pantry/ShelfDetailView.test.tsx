@@ -249,6 +249,7 @@ const renderSearching = async (shelfId: string, query: string) => {
   })
   render(<RouterProvider router={router} />)
   await router.load()
+  return { queryClient }
 }
 
 describe('ShelfDetailView search tail', () => {
@@ -396,6 +397,45 @@ describe('ShelfDetailView filter shelf picker', () => {
     )
   })
 
+  it('applies a single-option VENDOR axis directly, mapping the pick onto addVendorIds', async () => {
+    // Given a filter shelf keyed on a single vendor — the vendor half of the
+    // direct-apply path, which the tag-only test above does not exercise. A
+    // swapped mapping (e.g. `addVendorIds: picks.tagIds`) would still pass
+    // every tag-only assertion in this file.
+    const costco = await createVendor('Costco')
+    const shelf = await createShelf({
+      name: 'Costco Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: { vendorIds: [costco.id] },
+    })
+    const cereal = await createItem({
+      name: 'Cereal',
+      tagIds: [],
+      ...itemDefaults,
+    })
+    const user = userEvent.setup()
+    await renderSearching(shelf.id, 'cereal')
+
+    // When the user presses Add to shelf
+    await user.click(
+      await screen.findByRole('button', { name: 'Add to shelf: Cereal' }),
+    )
+
+    // Then no dialog opens and the vendor pick lands on addVendorIds, not
+    // addTagIds
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(applyPicksSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: cereal.id,
+          addTagIds: [],
+          addVendorIds: [costco.id],
+        }),
+      ),
+    )
+  })
+
   it('user picks one option per axis when the shelf filters on two tag types', async () => {
     // Given a filter shelf with Category(Dairy|Frozen) AND Storage(Fridge|Pantry)
     const categoryType = await createTagType({
@@ -458,6 +498,77 @@ describe('ShelfDetailView filter shelf picker', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     )
+  })
+
+  it('shows an axis as met once the underlying item gains it while the dialog stays open', async () => {
+    // Given the same two-axis filter shelf, opened on an item that satisfies
+    // neither axis
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const storageType = await createTagType({ name: 'Storage', color: 'green' })
+    const dairyTag = await createTag({ typeId: categoryType.id, name: 'Dairy' })
+    const frozenTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Frozen',
+    })
+    const fridgeTag = await createTag({
+      typeId: storageType.id,
+      name: 'Fridge',
+    })
+    const pantryTag = await createTag({
+      typeId: storageType.id,
+      name: 'Pantry',
+    })
+    const shelf = await createShelf({
+      name: 'Mixed Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: {
+        tagIds: [dairyTag.id, frozenTag.id, fridgeTag.id, pantryTag.id],
+      },
+    })
+    const yogurt = await createItem({
+      name: 'Yogurt',
+      tagIds: [],
+      ...itemDefaults,
+    })
+    const user = userEvent.setup()
+    const { queryClient } = await renderSearching(shelf.id, 'yogurt')
+
+    // When the dialog is opened with both axes unmet
+    await user.click(
+      await screen.findByRole('button', { name: 'Add to shelf: Yogurt' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('radio', { name: 'Dairy' }),
+    ).toBeInTheDocument()
+
+    // And the item gains the Dairy tag from OUTSIDE the dialog — standing in
+    // for a concurrent edit, or a cloud half-write whose own refetch lands
+    // while this dialog is still open
+    await db.items.update(yogurt.id, { tagIds: [dairyTag.id] })
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['items'] })
+    })
+
+    // Then the Category axis renders read-only as already-satisfied — the
+    // dialog's item is re-derived live from `allItems`, not frozen at the
+    // moment the button was pressed — while the dialog stays open and the
+    // untouched Storage axis is still an open choice
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText(/already set: dairy/i),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      within(dialog).queryByRole('radio', { name: 'Dairy' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('radio', { name: 'Fridge' }),
+    ).toBeInTheDocument()
   })
 
   it('does not ask about an axis the item already satisfies', async () => {

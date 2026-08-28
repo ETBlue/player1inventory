@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Item, Tag } from '@/types'
+import type { FilterConfig, Item, Tag } from '@/types'
 import { TagColor } from '@/types'
 import {
   defaultPicksFor,
@@ -280,21 +280,71 @@ describe('deriveFilterAxes', () => {
     ).toEqual([])
   })
 
-  it('agrees with matchesFilterConfig: every axis met ⇔ the item matches', () => {
+  describe('agrees with matchesFilterConfig: every axis met ⇔ the item matches', () => {
     // This is the invariant the whole feature rests on. If it can drift, a press can
     // report success while leaving the row exactly where it was.
-    const config = { tagIds: ['dairy'], vendorIds: ['v1'] }
-    const matching = item({ tagIds: ['dairy'], vendorIds: ['v1'] })
-    const axes = deriveFilterAxes(
-      matching,
-      config,
-      tags,
-      tagTypes,
-      vendors,
-      recipes,
-    )
-    expect(axes.every((a) => a.metBy !== undefined)).toBe(true)
-    expect(matchesFilterConfig(matching, config, recipes, tags)).toBe(true)
+    //
+    // A single all-met case does not pin this: an implementation that always sets
+    // `metBy` (e.g. `typeTagIds[0]` / `safeVendorIds[0]`) would also pass an
+    // all-met-only assertion, because `matchesFilterConfig` is exercised
+    // independently and `deriveFilterAxes` cannot influence its result. Each case
+    // below asserts the BICONDITIONAL itself, so an always-met axis fails on any
+    // case where the item does not actually match.
+    const nestedTags: Tag[] = [
+      ...tags,
+      {
+        id: 'whole-milk',
+        name: 'Whole Milk',
+        typeId: 'tt-cat',
+        parentId: 'dairy',
+      },
+    ]
+
+    const cases: {
+      name: string
+      config: FilterConfig
+      testItem: Item
+      tagSet: Tag[]
+    }[] = [
+      {
+        name: 'all axes met',
+        config: { tagIds: ['dairy'], vendorIds: ['v1'] },
+        testItem: item({ tagIds: ['dairy'], vendorIds: ['v1'] }),
+        tagSet: tags,
+      },
+      {
+        name: 'tag axis unmet',
+        config: { tagIds: ['dairy'], vendorIds: ['v1'] },
+        testItem: item({ tagIds: [], vendorIds: ['v1'] }),
+        tagSet: tags,
+      },
+      {
+        name: 'vendor axis unmet',
+        config: { tagIds: ['dairy'], vendorIds: ['v1'] },
+        testItem: item({ tagIds: ['dairy'], vendorIds: [] }),
+        tagSet: tags,
+      },
+      {
+        name: 'tag axis met via a descendant tag',
+        config: { tagIds: ['dairy'] },
+        testItem: item({ tagIds: ['whole-milk'], vendorIds: [] }),
+        tagSet: nestedTags,
+      },
+    ]
+
+    it.each(cases)('$name', ({ config, testItem, tagSet }) => {
+      const axes = deriveFilterAxes(
+        testItem,
+        config,
+        tagSet,
+        tagTypes,
+        vendors,
+        recipes,
+      )
+      expect(axes.every((a) => a.metBy !== undefined)).toBe(
+        matchesFilterConfig(testItem, config, recipes, tagSet),
+      )
+    })
   })
 })
 
