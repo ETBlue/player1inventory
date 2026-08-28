@@ -9,8 +9,10 @@ import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ShelfFilterPicksDialog } from '@/components/shelf/ShelfFilterPicksDialog'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
+import { useApplyShelfFilterPicks } from '@/hooks/useApplyShelfFilterPicks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -30,7 +32,13 @@ import {
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { isInactive } from '@/lib/quantityUtils'
-import { matchesFilterConfig } from '@/lib/shelfUtils'
+import {
+  defaultPicksFor,
+  deriveFilterAxes,
+  type FilterPicks,
+  isFilterConfigSatisfiable,
+  matchesFilterConfig,
+} from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { PantryItem, StockFields } from '@/types'
 
@@ -58,6 +66,8 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
   const showStock = useShowStock()
+  const applyPicks = useApplyShelfFilterPicks()
+  const [picksItem, setPicksItem] = useState<PantryItem | null>(null)
 
   const {
     sortBy: localSortBy,
@@ -196,6 +206,32 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     )
   }
 
+  // Whether ANY item could be made to match — an axis naming only deleted
+  // entities cannot be satisfied by any press, and `groupAction` is one
+  // descriptor for the WHOLE section, so such a shelf keeps the inert
+  // `groupNote` rather than showing a button that cannot work.
+  const filterConfig = shelf?.type === 'filter' ? shelf.filterConfig : undefined
+  const canJoinFilterShelf =
+    !!filterConfig && isFilterConfigSatisfiable(filterConfig, vendors, recipes)
+
+  const axesFor = (item: PantryItem) =>
+    filterConfig
+      ? deriveFilterAxes(item, filterConfig, tags, tagTypes, vendors, recipes)
+      : []
+
+  // Applies the picks the user made (or the ones that needed no choice).
+  const applyFilterPicks = async (item: PantryItem, picks: FilterPicks) => {
+    const recipe = picks.recipeId
+      ? recipes.find((r) => r.id === picks.recipeId)
+      : undefined
+    await applyPicks.mutateAsync({
+      item,
+      addTagIds: picks.tagIds,
+      addVendorIds: picks.vendorId ? [picks.vendorId] : [],
+      ...(recipe ? { recipe: { id: recipe.id, items: recipe.items } } : {}),
+    })
+  }
+
   // Bucket 2's action, selection shelves only: pressing it appends the item
   // to the shelf's itemIds. The dedup check is the same "already-present"
   // guard `handleAddToSelectionShelf` used to run before this hook took over,
@@ -211,11 +247,14 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // mode, and any concurrent write (another surface, another tab) landing
   // between this render and the press.
   //
-  // Filter shelves get `groupNote` instead: PR D's swap point. The design's
-  // end state is a per-axis picker (one tag per tag type, one vendor, one
-  // recipe — enough to satisfy matchesFilterConfig) so a filter-shelf bucket
-  // 2 row becomes actionable; until then this inert note keeps the row from
-  // vanishing silently, the way the old hand-rolled block rendered it inert.
+  // Filter shelves get a `groupAction` too: pressing it either applies the
+  // picks directly — every axis the item still needs to satisfy offers
+  // exactly one option, so `defaultPicksFor` covers the whole set — or opens
+  // `ShelfFilterPicksDialog` for the user to choose among axes that offer
+  // more than one option. `groupNote` survives only for a shelf whose
+  // `filterConfig` is unsatisfiable outright (e.g. a vendor or recipe axis
+  // naming only deleted entities); `canJoinFilterShelf` above decides that
+  // once per shelf.
   //
   // System shelves and the `unsorted` pseudo-shelf get neither — they already
   // have no add path (handleAddToSelectionShelf used to early-return for
@@ -269,7 +308,31 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           },
         }
       : {}),
-    ...(shelf?.type === 'filter'
+    ...(shelf?.type === 'filter' && canJoinFilterShelf
+      ? {
+          groupAction: {
+            label: t('items.searchTail.addToShelf'),
+            icon: <ArrowUpFromLine />,
+            onAction: async (item: PantryItem) => {
+              const axes = axesFor(item)
+              const open = axes.filter((a) => !a.metBy)
+              // Every open axis has exactly one option, so there is nothing
+              // to choose: apply straight away and let the row's own spinner
+              // carry the wait.
+              if (open.every((a) => a.options.length === 1)) {
+                await applyFilterPicks(item, defaultPicksFor(axes))
+                return
+              }
+              // Otherwise hand off to the dialog. The wiring hook clears its
+              // pending id when this resolves, which is correct — the
+              // dialog is modal and owns the wait from here, including its
+              // own pending state and inline error.
+              setPicksItem(item)
+            },
+          },
+        }
+      : {}),
+    ...(shelf?.type === 'filter' && !canJoinFilterShelf
       ? {
           groupNote: () => (
             <span>{t('items.searchTail.notMatchingShelf')}</span>
@@ -474,6 +537,16 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               })
             }
           }}
+        />
+      )}
+      {picksItem && (
+        <ShelfFilterPicksDialog
+          open
+          onOpenChange={(v) => !v && setPicksItem(null)}
+          itemName={picksItem.name}
+          shelfName={shelfName}
+          axes={axesFor(picksItem)}
+          onConfirm={(picks) => applyFilterPicks(picksItem, picks)}
         />
       )}
     </div>

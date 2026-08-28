@@ -16,7 +16,13 @@ import {
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
-import { createItem, createShelf } from '@/db/operations'
+import {
+  createItem,
+  createShelf,
+  createTag,
+  createTagType,
+  createVendor,
+} from '@/db/operations'
 import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
 import { renderWithRouter } from '@/test/utils'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -34,6 +40,14 @@ vi.mock('@/hooks', async (importOriginal) => {
     useUpdateItem: () => ({ mutateAsync, mutate: vi.fn(), isPending: false }),
   }
 })
+
+// A spy on the real local-mode write behind `useApplyShelfFilterPicks`
+// (`applyShelfFilterPicksBatch`), wrapping rather than replacing it — the
+// filter-shelf picker tests below want to assert on the exact
+// `{ itemId, addTagIds, addVendorIds }` payload AND on the real Dexie
+// mutation actually landing (the row leaving the tail), not one or the
+// other.
+const { applyPicksSpy } = vi.hoisted(() => ({ applyPicksSpy: vi.fn() }))
 
 // A gate on `getShelf` — the query behind `useShelfQuery()`, which is where the
 // view reads `shelf.itemIds` from. NOT `listShelves`: that one backs
@@ -62,6 +76,12 @@ vi.mock('@/db/operations', async (importOriginal) => {
         })
       }
       return actual.getShelf(id)
+    },
+    applyShelfFilterPicksBatch: async (
+      input: Parameters<typeof actual.applyShelfFilterPicksBatch>[0],
+    ) => {
+      applyPicksSpy(input)
+      return actual.applyShelfFilterPicksBatch(input)
     },
   }
 })
@@ -298,5 +318,217 @@ describe('ShelfDetailView search tail', () => {
     expect(
       screen.getByRole('button', { name: `Update quantity of ${milk.name}` }),
     ).toBeInTheDocument()
+  })
+})
+
+// Field defaults `createItem` needs beyond `name`/`tagIds` — not stock-specific
+// (see the identical comment on `itemDefaults` in `routes/index.test.tsx`,
+// which this mirrors): `targetQuantity`/`refillThreshold`/`packedQuantity`/
+// `unpackedQuantity` are per-location `ItemStock` state, `targetUnit` and
+// `consumeAmount` are global `Item` configuration.
+const itemDefaults = {
+  targetUnit: 'package' as const,
+  targetQuantity: 2,
+  refillThreshold: 1,
+  packedQuantity: 0,
+  unpackedQuantity: 0,
+  consumeAmount: 1,
+}
+
+describe('ShelfDetailView filter shelf picker', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.shelves.clear()
+    await db.recipes.clear()
+    await db.vendors.clear()
+    await db.locations.clear()
+    await db.tags.clear()
+    await db.tagTypes.clear()
+    await db.inventoryLogs.clear()
+    sessionStorage.clear()
+    localStorage.clear()
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    shelfGate.hold = false
+    shelfGate.release = null
+    applyPicksSpy.mockClear()
+  })
+
+  it('user can add a searched item to a single-criterion filter shelf in one press', async () => {
+    // Given a filter shelf keyed on one tag, and a stocked item lacking that
+    // tag (so it is in bucket 2 — stocked here, absent from this shelf's list)
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const snackTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Snacks',
+    })
+    const shelf = await createShelf({
+      name: 'Snack Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: { tagIds: [snackTag.id] },
+    })
+    const pretzels = await createItem({
+      name: 'Pretzels',
+      tagIds: [],
+      ...itemDefaults,
+    })
+    const user = userEvent.setup()
+    await renderSearching(shelf.id, 'pretzels')
+
+    // When the user searches for it and presses Add to shelf
+    await user.click(
+      await screen.findByRole('button', { name: 'Add to shelf: Pretzels' }),
+    )
+
+    // Then no dialog opens and the item gains the tag directly
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(applyPicksSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: pretzels.id,
+          addTagIds: [snackTag.id],
+        }),
+      ),
+    )
+  })
+
+  it('user picks one option per axis when the shelf filters on two tag types', async () => {
+    // Given a filter shelf with Category(Dairy|Frozen) AND Storage(Fridge|Pantry)
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const storageType = await createTagType({ name: 'Storage', color: 'green' })
+    const dairyTag = await createTag({ typeId: categoryType.id, name: 'Dairy' })
+    const frozenTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Frozen',
+    })
+    const fridgeTag = await createTag({
+      typeId: storageType.id,
+      name: 'Fridge',
+    })
+    const pantryTag = await createTag({
+      typeId: storageType.id,
+      name: 'Pantry',
+    })
+    const shelf = await createShelf({
+      name: 'Mixed Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: {
+        tagIds: [dairyTag.id, frozenTag.id, fridgeTag.id, pantryTag.id],
+      },
+    })
+    const yogurt = await createItem({
+      name: 'Yogurt',
+      tagIds: [],
+      ...itemDefaults,
+    })
+    const user = userEvent.setup()
+    await renderSearching(shelf.id, 'yogurt')
+
+    // When the user presses Add to shelf on a bucket-2 row
+    await user.click(
+      await screen.findByRole('button', { name: 'Add to shelf: Yogurt' }),
+    )
+
+    // Then the dialog opens with BOTH axes
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Category')).toBeInTheDocument()
+    expect(within(dialog).getByText('Storage')).toBeInTheDocument()
+
+    // And confirming applies both picks
+    await user.click(within(dialog).getByRole('radio', { name: 'Dairy' }))
+    await user.click(within(dialog).getByRole('radio', { name: 'Fridge' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }))
+
+    await waitFor(() =>
+      expect(applyPicksSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: yogurt.id,
+          addTagIds: expect.arrayContaining([dairyTag.id, fridgeTag.id]),
+        }),
+      ),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('does not ask about an axis the item already satisfies', async () => {
+    // Given the item is already tagged Frozen and the shelf also filters on
+    // a vendor axis with two options (so it cannot direct-apply and the
+    // dialog opens)
+    const categoryType = await createTagType({
+      name: 'Category',
+      color: 'blue',
+    })
+    const frozenTag = await createTag({
+      typeId: categoryType.id,
+      name: 'Frozen',
+    })
+    const costco = await createVendor('Costco')
+    const walmart = await createVendor('Walmart')
+    const shelf = await createShelf({
+      name: 'Frozen Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: {
+        tagIds: [frozenTag.id],
+        vendorIds: [costco.id, walmart.id],
+      },
+    })
+    await createItem({
+      name: 'Peas',
+      tagIds: [frozenTag.id],
+      ...itemDefaults,
+    })
+    const user = userEvent.setup()
+    await renderSearching(shelf.id, 'peas')
+
+    // When the row's button is pressed
+    await user.click(
+      await screen.findByRole('button', { name: 'Add to shelf: Peas' }),
+    )
+
+    // Then only the vendor axis is open — Category shows as already set,
+    // with no radio option offered for its already-satisfied tag
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/already set: frozen/i)).toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('radio', { name: 'Frozen' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('radio', { name: 'Costco' }),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('radio', { name: 'Walmart' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the inert note when the shelf filters on a deleted vendor only', async () => {
+    // Given a filter shelf whose vendorIds name a vendor that no longer exists
+    const shelf = await createShelf({
+      name: 'Ghost Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: { vendorIds: ['deleted-vendor-id'] },
+    })
+    await createItem({ name: 'Chips', tagIds: [], ...itemDefaults })
+    await renderSearching(shelf.id, 'chips')
+
+    // Then bucket 2 renders the note, not a button — no press could satisfy
+    // that axis
+    expect(
+      await screen.findByText(/doesn't match this shelf's filters/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /add to shelf/i }),
+    ).not.toBeInTheDocument()
   })
 })
