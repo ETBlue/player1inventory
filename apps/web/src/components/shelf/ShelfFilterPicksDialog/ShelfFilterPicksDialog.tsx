@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -166,12 +167,24 @@ export function ShelfFilterPicksDialog({
                   ? t('items.searchTail.filterPicks.vendorAxis')
                   : t('items.searchTail.filterPicks.recipeAxis')
 
+            // Hoisted above the metBy early return so the met line below gets
+            // the same name-casing treatment as the open-axis options: tags
+            // and recipes render title-case per the project's Name Display
+            // Convention, vendors render as-stored.
+            const nameClassName =
+              axis.kind === 'vendor' ? 'normal-case' : 'capitalize'
+
             if (axis.metBy !== undefined) {
               const metOption = axis.options.find((o) => o.id === axis.metBy)
               return (
                 <div key={axis.key} className="space-y-2">
                   <Label id={labelId}>{axisLabel}</Label>
-                  <p className="text-sm text-foreground-muted">
+                  <p
+                    className={`flex items-center gap-1.5 text-sm text-foreground-muted ${nameClassName}`}
+                  >
+                    {/* Decorative — the visible text already carries the
+                        "already satisfied" meaning via "Already set:". */}
+                    <Check aria-hidden="true" className="size-3.5 shrink-0" />
                     {t('items.searchTail.filterPicks.met', {
                       name: metOption?.name ?? '',
                     })}
@@ -179,9 +192,6 @@ export function ShelfFilterPicksDialog({
                 </div>
               )
             }
-
-            const nameClassName =
-              axis.kind === 'vendor' ? 'normal-case' : 'capitalize'
 
             return (
               <div key={axis.key} className="space-y-2">
