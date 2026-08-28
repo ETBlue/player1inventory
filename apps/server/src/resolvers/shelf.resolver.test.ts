@@ -123,8 +123,17 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
       },
     },
     recipe: {
-      findFirst: async ({ where }: { where: { id: string; userId: string } }) => {
-        const row = state.recipes.find((r) => r.id === where.id && r.userId === where.userId)
+      // Filters only on the fields actually present in `where`, like real
+      // Prisma does — NOT hardcoded to require `userId` to match. If this
+      // silently re-enforced ownership regardless of what the resolver
+      // passed, the "delete userId from the where clause" mutation check
+      // for the ownership guard would be meaningless: the fake would keep
+      // rejecting cross-user access even when the resolver itself no
+      // longer asks it to.
+      findFirst: async ({ where }: { where: { id: string; userId?: string } }) => {
+        const row = state.recipes.find(
+          (r) => r.id === where.id && (where.userId === undefined || r.userId === where.userId),
+        )
         return row ? { id: row.id, userId: row.userId, items: row.items } : null
       },
     },
@@ -322,5 +331,46 @@ describe('applyShelfFilterPicks resolver', () => {
     expect(result?.errors).toBeDefined()
     expect(result?.errors?.[0]?.extensions?.code).toBe('NOT_FOUND')
     expect(state.items[0].tagIds).toEqual([])
+  })
+
+  it('unions newly added ids with pre-existing ones instead of overwriting them', async () => {
+    // Given an item that already has a different tag and a different vendor
+    state.items = [
+      makeItemRow({ id: 'item_1', tagIds: ['tag_existing'], vendorIds: ['vendor_existing'] }),
+    ]
+
+    // When adding a new tag and a new vendor
+    const result = await execOp(APPLY_PICKS_MUTATION, {
+      input: {
+        itemId: 'item_1',
+        addTagIds: ['tag_new'],
+        addVendorIds: ['vendor_new'],
+        addRecipeId: null,
+      },
+    })
+
+    // Then the pre-existing ids survive alongside the new ones — a union of
+    // the item's current rows with the client's additions, not an overwrite
+    // of one by the other
+    expect(result?.errors).toBeUndefined()
+    const data = result?.data?.applyShelfFilterPicks as { tagIds: string[]; vendorIds: string[] }
+    expect(data.tagIds).toEqual(['tag_existing', 'tag_new'])
+    expect(data.vendorIds).toEqual(['vendor_existing', 'vendor_new'])
+  })
+
+  it("rejects a call naming another user's recipe", async () => {
+    // Given an item the caller owns, but a recipe owned by someone else
+    state.items = [makeItemRow({ id: 'item_1', tagIds: [] })]
+    state.recipes = [makeRecipeRow({ id: 'recipe_1', userId: 'user_other', items: [] })]
+
+    // When applying picks that name that recipe
+    const result = await execOp(APPLY_PICKS_MUTATION, {
+      input: { itemId: 'item_1', addTagIds: [], addVendorIds: [], addRecipeId: 'recipe_1' },
+    })
+
+    // Then the call is rejected and the other user's recipe is untouched
+    expect(result?.errors).toBeDefined()
+    expect(result?.errors?.[0]?.extensions?.code).toBe('NOT_FOUND')
+    expect(state.recipes[0].items).toEqual([])
   })
 })
