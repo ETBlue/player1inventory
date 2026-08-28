@@ -42,7 +42,7 @@ duplicate for a dead end: a screen that knows the item exists and offers nothing
 | Surface | items source | search scope | tail section | create-from-search |
 |---|---|---|---|---|
 | Pantry flat (`PantryListView`) | `useStockedItems` | stocked-here | ✅ **shipped PR B** — bucket 3 only (`ItemSearchTail`) | opens `NewItemDialog` — **already correct** |
-| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B, extended PR D** — `ItemSearchTail` (selection: `groupAction`; filter, satisfiable: `groupAction` — direct-apply or `ShelfFilterPicksDialog`, PR D; filter, unsatisfiable: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
+| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B, extended PR D, dialog-always-opens reversal 2026-08-28** — `ItemSearchTail` (selection: `groupAction`; filter, satisfiable: `groupAction` — always opens `ShelfFilterPicksDialog`, PR D; filter, unsatisfiable: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
 | Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | ✅ **shipped PR C** — `ItemSearchTail` (resolved vendor: `groupAction` appending to `item.vendorIds`; `unsorted`: inert `groupNote`; unresolvable `?id=`: neither) | — |
 | Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | ✅ **shipped PR C** — `ItemSearchTail`, the only surface mutating the **group**: appends `{ itemId, defaultAmount: consumeAmount \|\| 1 }` to `Recipe.items` (same three-way bucket 2) | — |
 | Cart (`shopping/$vendorId`) | `useItems` + `isStockedHere` | vendor ∩ here | ✅ **shipped PR A** — `ItemSearchTail` | inline `createItem` ← **#245**, fixed |
@@ -152,6 +152,29 @@ instead of `groupAction`; `isFilterConfigSatisfiable` decides this once per
 shelf, not per item. A tag axis can never trigger this case — `deriveFilterAxes`
 silently drops a dangling tag id rather than treating it as a constraint. See
 `2026-08-28-brainstorming-filter-shelf-picker.md` for the ruling record.
+
+## Note — 2026-08-28 (decision reversed)
+
+The "An axis offering exactly one option needs no interaction — pre-select it.
+The picker therefore collapses to a plain button on the common single-tag-type
+shelf, and only grows UI where a genuine choice exists" paragraph above is
+**historical** — left as written, since this section is the record of the
+original design, not of current behaviour. The designer reversed the *bypass*
+half of that ruling on 2026-08-28: pressing `Add to shelf` on a filter shelf
+now **always** opens `ShelfFilterPicksDialog`, regardless of how many options
+each axis offers. Their words: "the concept is to provide a chance to double
+confirm the tags/vendors/recipes that are about to be applied to the item" —
+the dialog is a confirmation step, not only a disambiguation step.
+
+The *pre-selection* half survives untouched: a single-option axis still
+renders its radio group with that option already checked, so Confirm is
+enabled the moment the dialog opens and the user only has to press it once
+more. `ShelfFilterPicksDialog` needed no rendering change at all — only
+`ShelfDetailView`'s `groupAction.onAction`, which used to branch on
+`open.every((a) => a.options.length === 1)` and apply directly in the
+true case, now always calls `setPicksItem(item)`. See
+`2026-08-28-brainstorming-filter-shelf-picker.md`'s dated addendum for the
+ruling record.
 
 ### Empty result → create
 

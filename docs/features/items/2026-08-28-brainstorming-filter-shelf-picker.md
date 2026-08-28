@@ -103,3 +103,23 @@ in `tagIdsByType` and is simply not a constraint.
 
 `ItemSearchTail` and `useItemSearchTailWiring` are **untouched** — the design doc promised
 "nothing else about the wiring changes when that lands", and nothing does.
+
+## Addendum — 2026-08-28 (later same day, decision reversed)
+
+Q1's recorded answer above — "When every axis is already settled ... the press applies
+immediately and **no dialog opens**" — is **historical**, left as written since this section
+is the record of the original session, not of current behaviour. Later the same day the
+designer reversed the bypass: pressing `Add to shelf` on a filter shelf now **always** opens
+the dialog, regardless of how many options each axis offers. Their words: "the concept is to
+provide a chance to double confirm the tags/vendors/recipes that are about to be applied to
+the item."
+
+**The dialog's rendering did not change.** A single-option axis still pre-selects that option
+(`defaultPicksFor`, unchanged), so Confirm is enabled the instant the dialog opens — the user
+sees the pick and presses Add once. What changed is entirely in `ShelfDetailView.tsx`:
+`groupAction.onAction` used to branch on `open.every((a) => a.options.length === 1)` and call
+`applyFilterPicks` directly in the true case; that branch is deleted, and the handler now
+always calls `setPicksItem(item)`.
+
+See the dated addendum in `2026-08-26-unified-item-search-design.md`'s "Filter shelves"
+section for the same reversal recorded against the design doc.

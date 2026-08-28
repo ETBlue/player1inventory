@@ -1,5 +1,13 @@
 # Unified item search — PR D: filter-shelf per-axis picker
 
+> **Note (2026-08-28, later same day):** this plan's completed work included a direct-apply
+> bypass — pressing `Add to shelf` skipped the dialog entirely when every unmet axis offered
+> exactly one option. The designer reversed that bypass the same day (the dialog now always
+> opens as a double-confirm step); this plan's task text below is left as the historical
+> record of the work as implemented, not rewritten. See the dated addendum in
+> `2026-08-26-unified-item-search-design.md`'s "Filter shelves" section and in
+> `2026-08-28-brainstorming-filter-shelf-picker.md` for the reversal.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
