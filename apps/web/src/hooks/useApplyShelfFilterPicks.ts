@@ -8,6 +8,14 @@ import {
 import type { PantryItem, RecipeItem } from '@/types'
 import { useDataMode } from './useDataMode'
 
+/**
+ * `item` and `recipe` accept the full `PantryItem`/`RecipeItem` objects for
+ * call-site convenience (`ShelfDetailView` already has them to hand from
+ * rendering the row) — only `item.id` and `recipe.id` are read below. Neither
+ * branch touches `item.tagIds`/`vendorIds`/`consumeAmount` or `recipe.items`:
+ * both re-derive the current rows themselves (the Dexie transaction re-reads
+ * them; the cloud resolver reads-then-unions server-side).
+ */
 export interface ApplyShelfFilterPicksVars {
   item: PantryItem
   addTagIds: string[]

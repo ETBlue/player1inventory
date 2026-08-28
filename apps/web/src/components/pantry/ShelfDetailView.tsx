@@ -219,14 +219,18 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
       : []
 
   // The dialog's item, re-read from `allItems` rather than the frozen
-  // `picksItem` snapshot: after a cloud half-write, `['items']` refetches
-  // (see useApplyShelfFilterPicks) but `picksItem` — a `useState` set once at
-  // press time — never does, so an in-dialog retry would recompute axes
-  // against the SAME pre-write item and re-offer (and re-write) an axis that
-  // already landed. Deriving live from `allItems` is what makes "the dialog
-  // recomputes which axes are met" true. The `?? picksItem` fallback exists
-  // only for a concurrent removal mid-interaction — a bucket-2 row is stocked
-  // here, so it is normally present in `allItems`.
+  // `picksItem` snapshot: `picksItem` is a `useState` set once at press time
+  // and never updates again, so if the item's tags/vendors/recipes change
+  // while the dialog is still open — a concurrent edit from another tab or
+  // surface, whose write invalidates `['items']` — an in-dialog retry would
+  // otherwise recompute axes against the SAME stale item and re-offer (and
+  // re-write) an axis that already landed elsewhere. Deriving live from
+  // `allItems` is what makes "the dialog recomputes which axes are met" true;
+  // `ShelfDetailView.test.tsx:555-575` exercises exactly this by mutating the
+  // item directly and invalidating `['items']` from outside the dialog. The
+  // `?? picksItem` fallback exists only for a concurrent removal
+  // mid-interaction — a bucket-2 row is stocked here, so it is normally
+  // present in `allItems`.
   const livePicksItem = picksItem
     ? (allItems.find((i) => i.id === picksItem.id) ?? picksItem)
     : null
