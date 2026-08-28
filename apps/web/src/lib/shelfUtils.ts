@@ -142,7 +142,10 @@ export function isFilterConfigSatisfiable(
  *
  * The met checks mirror `matchesFilterConfig` clause for clause — including descendant
  * expansion on tags — because "every axis met" must mean exactly "the item matches".
- * `shelfUtils.test.ts` pins that equivalence directly.
+ * `shelfUtils.test.ts`'s "agrees with matchesFilterConfig" block pins that equivalence
+ * directly, in both directions, across several items (all-met, tag-unmet, vendor-unmet,
+ * descendant-met) — not just the all-met case, which an always-`metBy` implementation
+ * would also satisfy without actually mirroring anything.
  */
 export function deriveFilterAxes(
   item: Item,

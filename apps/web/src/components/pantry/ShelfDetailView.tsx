@@ -219,6 +219,19 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
       ? deriveFilterAxes(item, filterConfig, tags, tagTypes, vendors, recipes)
       : []
 
+  // The dialog's item, re-read from `allItems` rather than the frozen
+  // `picksItem` snapshot: after a cloud half-write, `['items']` refetches
+  // (see useApplyShelfFilterPicks) but `picksItem` — a `useState` set once at
+  // press time — never does, so an in-dialog retry would recompute axes
+  // against the SAME pre-write item and re-offer (and re-write) an axis that
+  // already landed. Deriving live from `allItems` is what makes "the dialog
+  // recomputes which axes are met" true. The `?? picksItem` fallback exists
+  // only for a concurrent removal mid-interaction — a bucket-2 row is stocked
+  // here, so it is normally present in `allItems`.
+  const livePicksItem = picksItem
+    ? (allItems.find((i) => i.id === picksItem.id) ?? picksItem)
+    : null
+
   // Applies the picks the user made (or the ones that needed no choice).
   const applyFilterPicks = async (item: PantryItem, picks: FilterPicks) => {
     const recipe = picks.recipeId
@@ -539,14 +552,14 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           }}
         />
       )}
-      {picksItem && (
+      {livePicksItem && (
         <ShelfFilterPicksDialog
           open
           onOpenChange={(v) => !v && setPicksItem(null)}
-          itemName={picksItem.name}
+          itemName={livePicksItem.name}
           shelfName={shelfName}
-          axes={axesFor(picksItem)}
-          onConfirm={(picks) => applyFilterPicks(picksItem, picks)}
+          axes={axesFor(livePicksItem)}
+          onConfirm={(picks) => applyFilterPicks(livePicksItem, picks)}
         />
       )}
     </div>
