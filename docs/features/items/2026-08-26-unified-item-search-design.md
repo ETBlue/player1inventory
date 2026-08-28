@@ -12,8 +12,15 @@ below is superseded by a **four-PR split** (ETBlue, 2026-08-27): the
 filter-shelf per-axis picker split out of PR B into its own PR D, since it is
 net-new UI spanning two non-atomic mutation targets. **PR C shipped**
 (`useShowStock` extraction + vendor detail + recipe detail — see
-`2026-08-27-unified-item-search-plan-c.md`), completing all five surfaces;
-only PR D (filter-shelf per-axis picker) remains — see "Phasing" below.
+`2026-08-27-unified-item-search-plan-c.md`), completing all five surfaces.
+**PR D shipped** (filter-shelf per-axis picker — see
+`2026-08-28-unified-item-search-plan-d.md`): every bucket-2 row across all five
+surfaces is now actionable, except a filter shelf whose `filterConfig` is
+outright unsatisfiable (a vendor or recipe axis naming only a deleted entity),
+which keeps the inert `groupNote`. Only **PR D-1** (making the cloud half of
+that picker's two writes atomic — see
+`2026-08-28-unified-item-search-plan-d1-cloud-transaction.md`, issue #269)
+remains; local mode was already atomic on PR D's ship. See "Phasing" below.
 Do not re-litigate the decisions below.
 **Brainstorming log:** `2026-08-26-brainstorming-unified-item-search.md`
 
@@ -30,12 +37,12 @@ follows the user to *every* location, including the one where the original lives
 The narrow fix (check global names, suppress the create button) trades a
 duplicate for a dead end: a screen that knows the item exists and offers nothing.
 
-## Current state (verified by reading the code, 2026-08-26; PR A/B/C rows updated post-ship)
+## Current state (verified by reading the code, 2026-08-26; PR A/B/C/D rows updated post-ship)
 
 | Surface | items source | search scope | tail section | create-from-search |
 |---|---|---|---|---|
 | Pantry flat (`PantryListView`) | `useStockedItems` | stocked-here | ✅ **shipped PR B** — bucket 3 only (`ItemSearchTail`) | opens `NewItemDialog` — **already correct** |
-| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B** — `ItemSearchTail` (selection: `groupAction`; filter: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
+| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B, extended PR D** — `ItemSearchTail` (selection: `groupAction`; filter, satisfiable: `groupAction` — direct-apply or `ShelfFilterPicksDialog`, PR D; filter, unsatisfiable: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
 | Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | ✅ **shipped PR C** — `ItemSearchTail` (resolved vendor: `groupAction` appending to `item.vendorIds`; `unsorted`: inert `groupNote`; unresolvable `?id=`: neither) | — |
 | Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | ✅ **shipped PR C** — `ItemSearchTail`, the only surface mutating the **group**: appends `{ itemId, defaultAmount: consumeAmount \|\| 1 }` to `Recipe.items` (same three-way bucket 2) | — |
 | Cart (`shopping/$vendorId`) | `useItems` + `isStockedHere` | vendor ∩ here | ✅ **shipped PR A** — `ItemSearchTail` | inline `createItem` ← **#245**, fixed |
@@ -134,6 +141,16 @@ on the shelf — the action is never offered in a form that leaves it still not
 matching. An earlier draft claimed some rows would get no button; that was
 carried over from the rejected "pick one criterion overall" option and is wrong.
 
+**One exception this design did not anticipate, ruled during PR D's
+implementation:** a shelf whose `filterConfig` names a vendor or recipe id that
+no longer resolves to a live entity is **unsatisfiable outright** — no press
+could ever add a deleted vendor or append to a deleted recipe's row, so a
+button there would always fail. Such a shelf keeps the inert `groupNote`
+instead of `groupAction`; `isFilterConfigSatisfiable` decides this once per
+shelf, not per item. A tag axis can never trigger this case — `deriveFilterAxes`
+silently drops a dangling tag id rather than treating it as a constraint. See
+`2026-08-28-brainstorming-filter-shelf-picker.md` for the ruling record.
+
 ### Empty result → create
 
 When **no global item** matches the query, offer `Create "{query}"`, which in one
@@ -194,14 +211,17 @@ recipe membership). It is split out into its own PR D:
 | **A** | shared hook + `ItemSearchTail` component + cart page — **closes #245** | ✅ merged (#256) |
 | **B** | tail-wiring extraction (`useItemSearchTailWiring`) + flat pantry (bucket 3 only) + shelf detail's **selection** shelves (incl. deleting the off-convention "Not in this shelf" block); filter shelves get an inert `groupNote` as an interim step | ✅ shipped |
 | **C** | `useShowStock` extraction (3 hand-written `isCloud \|\| isStockedHere` sites → 5 call sites) + vendor detail + recipe detail — all five surfaces now wired | ✅ shipped |
-| **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | not planned yet |
+| **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | ✅ shipped |
 
 See `2026-08-27-unified-item-search-plan-b.md` for PR B's own scope-decision
 record and implementation detail, and
 `2026-08-27-unified-item-search-plan-c.md` for PR C's — including two rulings
 this design did not cover (`isUnsorted` pseudo-groups get an inert `groupNote`
 rather than silence; neither view passes `sortTail`) and four deferred gaps PR
-C surfaced without fixing.
+C surfaced without fixing. See `2026-08-28-unified-item-search-plan-d.md` for
+PR D's implementation detail and the unsatisfiable-axis ruling this design did
+not anticipate, and `2026-08-28-unified-item-search-plan-d1-cloud-transaction.md`
+for the still-open cloud-atomicity follow-up (issue #269).
 
 ### Carried forward from PR A's review — start PR B with these
 
