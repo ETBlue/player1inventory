@@ -33,7 +33,6 @@ import {
 } from '@/lib/filterUtils'
 import { isInactive } from '@/lib/quantityUtils'
 import {
-  defaultPicksFor,
   deriveFilterAxes,
   type FilterPicks,
   isFilterConfigSatisfiable,
@@ -260,14 +259,19 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // mode, and any concurrent write (another surface, another tab) landing
   // between this render and the press.
   //
-  // Filter shelves get a `groupAction` too: pressing it either applies the
-  // picks directly — every axis the item still needs to satisfy offers
-  // exactly one option, so `defaultPicksFor` covers the whole set — or opens
-  // `ShelfFilterPicksDialog` for the user to choose among axes that offer
-  // more than one option. `groupNote` survives only for a shelf whose
-  // `filterConfig` is unsatisfiable outright (e.g. a vendor or recipe axis
-  // naming only deleted entities); `canJoinFilterShelf` above decides that
-  // once per shelf.
+  // Filter shelves get a `groupAction` too: pressing it always opens
+  // `ShelfFilterPicksDialog` (designer ruling, 2026-08-28, reversing the
+  // direct-apply bypass this shipped with — see the dated addendum in
+  // docs/features/items/2026-08-26-unified-item-search-design.md's "Filter
+  // shelves" section). The dialog is a double-confirm step for the
+  // tags/vendors/recipe about to be applied, not only a disambiguation
+  // step, so it opens even when every axis has just one option.
+  // `defaultPicksFor` still matters — the dialog uses it to pre-select a
+  // single-option axis so Confirm is enabled immediately — but this
+  // component no longer branches on option counts itself. `groupNote`
+  // survives only for a shelf whose `filterConfig` is unsatisfiable
+  // outright (e.g. a vendor or recipe axis naming only deleted entities);
+  // `canJoinFilterShelf` above decides that once per shelf.
   //
   // System shelves and the `unsorted` pseudo-shelf get neither — they already
   // have no add path (handleAddToSelectionShelf used to early-return for
@@ -327,19 +331,19 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
             label: t('items.searchTail.addToShelf'),
             icon: <ArrowUpFromLine />,
             onAction: async (item: PantryItem) => {
-              const axes = axesFor(item)
-              const open = axes.filter((a) => !a.metBy)
-              // Every open axis has exactly one option, so there is nothing
-              // to choose: apply straight away and let the row's own spinner
-              // carry the wait.
-              if (open.every((a) => a.options.length === 1)) {
-                await applyFilterPicks(item, defaultPicksFor(axes))
-                return
-              }
-              // Otherwise hand off to the dialog. The wiring hook clears its
-              // pending id when this resolves, which is correct — the
-              // dialog is modal and owns the wait from here, including its
-              // own pending state and inline error.
+              // Always open the dialog — never apply directly, regardless
+              // of how many options each axis offers (designer ruling,
+              // 2026-08-28: "the concept is to provide a chance to double
+              // confirm the tags/vendors/recipes that are about to be
+              // applied to the item"). A single-option axis still needs no
+              // interaction — `ShelfFilterPicksDialog` pre-selects it via
+              // `defaultPicksFor` so Confirm is enabled immediately — but
+              // the user always sees the picks before they land.
+              //
+              // This resolves immediately, so the wiring hook clears its
+              // pending id right away and the row never spins. That is
+              // correct: the dialog is modal and owns the wait from here,
+              // including its own pending state and inline error.
               setPicksItem(item)
             },
           },

@@ -240,9 +240,14 @@ export interface FilterPicks {
  * The picks that need no user input: every UNMET axis offering exactly one option.
  *
  * The design's rule is "an axis offering exactly one option needs no interaction —
- * pre-select it", and two later callers need it — the dialog seeds its initial state with
- * this, and ShelfDetailView uses it to apply directly when it covers every unmet axis, so
- * no dialog opens at all. One derivation, so the two cannot drift.
+ * pre-select it" — `ShelfFilterPicksDialog` seeds its initial state with this, so a
+ * single-option axis renders its radio group already checked and Confirm is enabled
+ * immediately. `ShelfDetailView` no longer calls this itself: it used to apply these
+ * picks directly and skip the dialog entirely when they covered every unmet axis, but
+ * the designer reversed that bypass (2026-08-28) — the dialog is a double-confirm step,
+ * not only a disambiguation step, and now always opens. See the dated addendum in
+ * docs/features/items/2026-08-26-unified-item-search-design.md's "Filter shelves"
+ * section.
  *
  * Met axes are never included: they are already satisfied, and re-writing one would add a
  * second tag of a type the item is already tagged with.

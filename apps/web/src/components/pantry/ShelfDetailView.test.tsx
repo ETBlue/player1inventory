@@ -355,7 +355,7 @@ describe('ShelfDetailView filter shelf picker', () => {
     applyPicksSpy.mockClear()
   })
 
-  it('user can add a searched item to a single-criterion filter shelf in one press', async () => {
+  it('user can join a single-criterion filter shelf by confirming its pre-selected pick', async () => {
     // Given a filter shelf keyed on one tag, and a stocked item lacking that
     // tag (so it is in bucket 2 — stocked here, absent from this shelf's list)
     const categoryType = await createTagType({
@@ -385,8 +385,18 @@ describe('ShelfDetailView filter shelf picker', () => {
       await screen.findByRole('button', { name: 'Add to shelf: Pretzels' }),
     )
 
-    // Then no dialog opens and the item gains the tag directly
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // Then the dialog opens — always, per the designer's double-confirm
+    // ruling (2026-08-28) — and the axis's single option is ALREADY
+    // selected, so Confirm needs no interaction from the user
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('radio', { name: 'Snacks' })).toBeChecked()
+    const addButton = within(dialog).getByRole('button', { name: 'Add' })
+    expect(addButton).toBeEnabled()
+
+    // When the user confirms
+    await user.click(addButton)
+
+    // Then the item gains the tag
     await waitFor(() =>
       expect(applyPicksSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -397,9 +407,9 @@ describe('ShelfDetailView filter shelf picker', () => {
     )
   })
 
-  it('applies a single-option VENDOR axis directly, mapping the pick onto addVendorIds', async () => {
+  it('pre-selects a single-option VENDOR axis, mapping the confirmed pick onto addVendorIds', async () => {
     // Given a filter shelf keyed on a single vendor — the vendor half of the
-    // direct-apply path, which the tag-only test above does not exercise. A
+    // pre-selection path, which the tag-only test above does not exercise. A
     // swapped mapping (e.g. `addVendorIds: picks.tagIds`) would still pass
     // every tag-only assertion in this file.
     const costco = await createVendor('Costco')
@@ -422,9 +432,14 @@ describe('ShelfDetailView filter shelf picker', () => {
       await screen.findByRole('button', { name: 'Add to shelf: Cereal' }),
     )
 
-    // Then no dialog opens and the vendor pick lands on addVendorIds, not
-    // addTagIds
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // Then the dialog opens with its single vendor option already selected
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('radio', { name: 'Costco' })).toBeChecked()
+
+    // When the user confirms
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }))
+
+    // Then the vendor pick lands on addVendorIds, not addTagIds
     await waitFor(() =>
       expect(applyPicksSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -573,8 +588,9 @@ describe('ShelfDetailView filter shelf picker', () => {
 
   it('does not ask about an axis the item already satisfies', async () => {
     // Given the item is already tagged Frozen and the shelf also filters on
-    // a vendor axis with two options (so it cannot direct-apply and the
-    // dialog opens)
+    // a vendor axis with two options — a genuine choice, so an open radio
+    // group is expected there regardless of the dialog's own always-open
+    // behaviour
     const categoryType = await createTagType({
       name: 'Category',
       color: 'blue',
