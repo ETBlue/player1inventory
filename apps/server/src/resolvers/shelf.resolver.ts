@@ -101,14 +101,27 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         const tagIds = [...new Set([...item.tags.map((t) => t.tagId), ...addTagIds])]
         const vendorIds = [...new Set([...item.vendors.map((v) => v.vendorId), ...addVendorIds])]
 
-        await tx.itemTag.deleteMany({ where: { itemId } })
-        if (tagIds.length) {
-          await tx.itemTag.createMany({ data: tagIds.map((tagId) => ({ itemId, tagId })) })
+        // Guard each axis on its OWN `addXIds.length`, not on whether the
+        // union changed anything — a recipe-only pick (both arrays empty)
+        // must issue no itemTag/itemVendor writes at all. Rewriting every row
+        // unconditionally would race a concurrent plain `updateItem` on the
+        // same item under Postgres READ COMMITTED: two writers deleting then
+        // recreating the same composite-key rows can deadlock into a
+        // duplicate-key abort, or silently drop whichever writer's rows lose
+        // the race. The read-then-union above is unchanged — this only skips
+        // the delete+recreate when this axis added nothing.
+        if (addTagIds.length) {
+          await tx.itemTag.deleteMany({ where: { itemId } })
+          if (tagIds.length) {
+            await tx.itemTag.createMany({ data: tagIds.map((tagId) => ({ itemId, tagId })) })
+          }
         }
 
-        await tx.itemVendor.deleteMany({ where: { itemId } })
-        if (vendorIds.length) {
-          await tx.itemVendor.createMany({ data: vendorIds.map((vendorId) => ({ itemId, vendorId })) })
+        if (addVendorIds.length) {
+          await tx.itemVendor.deleteMany({ where: { itemId } })
+          if (vendorIds.length) {
+            await tx.itemVendor.createMany({ data: vendorIds.map((vendorId) => ({ itemId, vendorId })) })
+          }
         }
 
         if (addRecipeId) {

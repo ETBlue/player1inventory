@@ -418,6 +418,34 @@ describe('applyShelfFilterPicks resolver', () => {
     expect(data.vendorIds).toEqual(['vendor_existing', 'vendor_new'])
   })
 
+  it('a recipe-only pick leaves the item\'s existing tag and vendor rows untouched', async () => {
+    // Given an item that already has a tag and a vendor, and a recipe it
+    // does not belong to yet
+    state.items = [
+      makeItemRow({ id: 'item_1', tagIds: ['tag_existing'], vendorIds: ['vendor_existing'] }),
+    ]
+    state.recipes = [makeRecipeRow({ id: 'recipe_1', items: [] })]
+
+    // When applying only a recipe pick — no tag or vendor additions
+    const result = await execOp(APPLY_PICKS_MUTATION, {
+      input: { itemId: 'item_1', addTagIds: [], addVendorIds: [], addRecipeId: 'recipe_1' },
+    })
+
+    // Then the recipe membership lands, but the itemTag/itemVendor junction
+    // rows are never rewritten at all — the per-axis guard skips both
+    // delete+recreate calls entirely when that axis added nothing, so a
+    // concurrent writer's own tag/vendor edit on the same item can't be
+    // raced or lost by this call rewriting rows it had no reason to touch
+    expect(result?.errors).toBeUndefined()
+    expect(state.recipes[0].items).toEqual([{ itemId: 'item_1', defaultAmount: 2 }])
+    expect(state.items[0].tagIds).toEqual(['tag_existing'])
+    expect(state.items[0].vendorIds).toEqual(['vendor_existing'])
+    expect(sharedClient.itemTag.deleteMany).not.toHaveBeenCalled()
+    expect(sharedClient.itemTag.createMany).not.toHaveBeenCalled()
+    expect(sharedClient.itemVendor.deleteMany).not.toHaveBeenCalled()
+    expect(sharedClient.itemVendor.createMany).not.toHaveBeenCalled()
+  })
+
   it("rejects a call naming another user's recipe", async () => {
     // Given an item the caller owns, but a recipe owned by someone else
     state.items = [makeItemRow({ id: 'item_1', tagIds: [] })]
