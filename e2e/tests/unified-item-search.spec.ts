@@ -316,25 +316,32 @@ test('user can join a filter shelf in one press when its only unmet axis has a s
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
-test('user picks per axis in the dialog when a filter shelf axis offers a genuine choice', async ({
+test('user picks per axis in the dialog when a filter shelf spans two tag types', async ({
   page,
 }) => {
   const pantry = new PantryPage(page)
   const categoryTagTypeId = 'tagtype-category'
+  const storageTagTypeId = 'tagtype-storage'
   const snackTagId = 'tag-snacks'
   const drinksTagId = 'tag-drinks'
+  const fridgeTagId = 'tag-fridge'
+  const freezerTagId = 'tag-freezer'
   const treatsShelfId = 'shelf-treats'
 
-  // Given a filter shelf whose single tag-type axis offers TWO options, and
-  // Bread (stocked at My Home, carrying no tags) matches neither — the axis
-  // is unmet with more than one option, so the dialog must open for the user
-  // to choose rather than applying anything automatically
+  // Given a filter shelf spanning TWO tag types, each offering two options,
+  // and Bread (stocked at My Home, carrying no tags) matches neither axis —
+  // both axes are unmet, so a press must satisfy BOTH (AND-joined) and the
+  // dialog must open for the user to choose each rather than applying
+  // anything automatically
   await seedRows(page, 'tagTypes', [
     { id: categoryTagTypeId, name: 'Category', color: 'blue' },
+    { id: storageTagTypeId, name: 'Storage', color: 'green' },
   ])
   await seedRows(page, 'tags', [
     { id: snackTagId, name: 'Snacks', typeId: categoryTagTypeId },
     { id: drinksTagId, name: 'Drinks', typeId: categoryTagTypeId },
+    { id: fridgeTagId, name: 'Fridge', typeId: storageTagTypeId },
+    { id: freezerTagId, name: 'Freezer', typeId: storageTagTypeId },
   ])
   await seedRows(page, 'shelves', [
     {
@@ -342,7 +349,9 @@ test('user picks per axis in the dialog when a filter shelf axis offers a genuin
       name: 'Treats Shelf',
       type: 'filter',
       order: 0,
-      filterConfig: { tagIds: [snackTagId, drinksTagId] },
+      filterConfig: {
+        tagIds: [snackTagId, drinksTagId, fridgeTagId, freezerTagId],
+      },
       createdAt: now,
       updatedAt: now,
     },
@@ -362,7 +371,7 @@ test('user picks per axis in the dialog when a filter shelf axis offers a genuin
   await pantry.getTailActionButton('Add to shelf', 'Bread').click()
 
   // Then the picker dialog opens, titled for this item and shelf, with
-  // neither option pre-selected — a 2-option axis gets no default
+  // neither axis pre-selected — a 2-option axis gets no default
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   await expect(
@@ -370,8 +379,15 @@ test('user picks per axis in the dialog when a filter shelf axis offers a genuin
   ).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Add' })).toBeDisabled()
 
-  // When the user picks one option per axis and confirms
+  // When the user picks only the Category axis's option
   await dialog.getByRole('radio', { name: 'Snacks' }).click()
+
+  // Then Confirm stays disabled — the Storage axis is still AND-joined and
+  // unmet, so one axis being satisfied is not enough
+  await expect(dialog.getByRole('button', { name: 'Add' })).toBeDisabled()
+
+  // When the user also picks the Storage axis's option and confirms
+  await dialog.getByRole('radio', { name: 'Fridge' }).click()
   await dialog.getByRole('button', { name: 'Add' }).click()
 
   // Then the dialog closes and Bread joins the shelf's own list
