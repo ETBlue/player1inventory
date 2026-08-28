@@ -136,10 +136,12 @@ This avoids both bad alternatives: auto-applying *all* of an axis over-assigns
 (tagging an item `Frozen` because the shelf happens to filter on it), and
 auto-applying the *first* makes an arbitrary choice on the user's behalf.
 
-**Every bucket-2 row on a filter shelf is actionable**, and the item always lands
-on the shelf — the action is never offered in a form that leaves it still not
-matching. An earlier draft claimed some rows would get no button; that was
-carried over from the rejected "pick one criterion overall" option and is wrong.
+**Every bucket-2 row on a *satisfiable* filter shelf is actionable**, and the
+item always lands on the shelf — the action is never offered in a form that
+leaves it still not matching. An earlier draft claimed some rows would get no
+button; that was carried over from the rejected "pick one criterion overall"
+option and is wrong. (An *unsatisfiable* shelf is the one exception, covered
+immediately below — it was not yet a concept when this line was first written.)
 
 **One exception this design did not anticipate, ruled during PR D's
 implementation:** a shelf whose `filterConfig` names a vendor or recipe id that
