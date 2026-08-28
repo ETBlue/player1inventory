@@ -330,6 +330,18 @@ describe('deriveFilterAxes', () => {
         testItem: item({ tagIds: ['whole-milk'], vendorIds: [] }),
         tagSet: nestedTags,
       },
+      {
+        // Every other configured axis is satisfied — only the recipe axis is
+        // not — so this is the row that isolates a recipe-specific bug (e.g.
+        // a `metBy` computation reading the wrong field, or one that treats a
+        // deleted/empty recipe as satisfying). Without this row, the
+        // tag/vendor cases above cannot catch a mistake confined to the
+        // recipe branch.
+        name: 'recipe axis unmet (everything else met)',
+        config: { tagIds: ['dairy'], vendorIds: ['v1'], recipeIds: ['r1'] },
+        testItem: item({ tagIds: ['dairy'], vendorIds: ['v1'] }),
+        tagSet: tags,
+      },
     ]
 
     it.each(cases)('$name', ({ config, testItem, tagSet }) => {
