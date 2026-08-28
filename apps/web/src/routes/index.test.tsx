@@ -1312,10 +1312,14 @@ describe('Home page filtering integration', () => {
       ).toBeInTheDocument()
     })
 
-    it('filter shelf: an item stocked here but not matching the filter renders an inert note and no button', async () => {
+    it('filter shelf: a searched item stocked here but not matching the filter joins after confirming the pre-selected pick', async () => {
       // Given a filter shelf that only matches a Snacks tag, and Pretzels
       // stocked here WITHOUT that tag — so it is excluded from the shelf's
-      // own list purely by the filter, not by location
+      // own list purely by the filter, not by location. One tag axis with
+      // exactly one option needs no choice from the user (its radio is
+      // pre-selected), but the dialog still opens — per the designer's
+      // double-confirm ruling (2026-08-28) it always opens, regardless of
+      // option count.
       const categoryType = await createTagType({
         name: 'Category',
         color: 'blue',
@@ -1330,22 +1334,40 @@ describe('Home page filtering integration', () => {
         order: 0,
         filterConfig: { tagIds: [snackTag.id] },
       })
-      await createItem({ name: 'Pretzels', tagIds: [], ...itemDefaults })
+      const pretzels = await createItem({
+        name: 'Pretzels',
+        tagIds: [],
+        ...itemDefaults,
+      })
 
       renderShelfDetail(shelf.id)
       const user = userEvent.setup()
       await screen.findByRole('heading', { name: 'Snack Shelf', level: 1 })
       await openSearch(user, 'pretzels')
 
-      // Then Pretzels is offered under "not in this list" with the inert
-      // note — filter shelves cannot be joined by a press yet (PR D)
-      expect(await screen.findByText('1 not in this list')).toBeInTheDocument()
+      // When the user presses Add to shelf
+      await user.click(
+        await screen.findByRole('button', { name: 'Add to shelf: Pretzels' }),
+      )
+
+      // Then the dialog opens with the single tag option already selected
+      const dialog = await screen.findByRole('dialog')
       expect(
-        screen.getByText("Doesn't match this shelf's filters"),
+        within(dialog).getByRole('radio', { name: 'Snacks' }),
+      ).toBeChecked()
+
+      // When the user confirms
+      await user.click(within(dialog).getByRole('button', { name: 'Add' }))
+
+      // Then the item gains the tag and lands directly in the shelf's own
+      // list — no more tail row
+      await waitFor(() => {
+        expect(screen.queryByText(/not in this list/)).not.toBeInTheDocument()
+      })
+      expect(
+        await screen.findByRole('heading', { name: 'Pretzels' }),
       ).toBeInTheDocument()
-      expect(
-        screen.queryByRole('button', { name: /pretzels/i }),
-      ).not.toBeInTheDocument()
+      expect((await db.items.get(pretzels.id))?.tagIds).toEqual([snackTag.id])
     })
 
     it('filter shelf: an item not stocked here still gets "Add to {location}"', async () => {

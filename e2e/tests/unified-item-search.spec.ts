@@ -266,7 +266,7 @@ test('user must press twice to stock an item at a location and add it to a selec
   await expect(pantry.getItemCard('Milk')).toBeVisible()
 })
 
-test('filter shelf shows an inert note with no button for an item that does not match its filter', async ({
+test('user can join a filter shelf by confirming its one pre-selected axis in the dialog', async ({
   page,
 }) => {
   const pantry = new PantryPage(page)
@@ -276,6 +276,10 @@ test('filter shelf shows an inert note with no button for an item that does not 
 
   // Given a filter shelf that only matches a Snacks tag, and Bread (stocked
   // at My Home, per the top fixture, but carrying no tags) does not match it
+  // yet — the tag axis offers exactly one option, so `defaultPicksFor` covers
+  // the whole set and the dialog pre-selects it, but it still ALWAYS opens
+  // (designer ruling, 2026-08-28: the dialog is a double-confirm step, not
+  // only a disambiguation step)
   await seedRows(page, 'tagTypes', [
     { id: snackTagTypeId, name: 'Category', color: 'blue' },
   ])
@@ -301,15 +305,106 @@ test('filter shelf shows an inert note with no button for an item that does not 
     q: 'bread',
   })
 
-  // Then Bread is offered under "not in this list" with an inert note —
-  // filter shelves cannot be joined by a press yet (PR D)
+  // Then Bread is offered under "not in this list" with a real action button
   await expect(pantry.getNotInThisListDivider()).toBeVisible()
+
+  // When the user presses it
+  await pantry.getTailActionButton('Add to shelf', 'Bread').click()
+
+  // Then the dialog opens with the single tag option ALREADY selected — no
+  // user choice was needed, but the confirmation step still happens
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('radio', { name: 'Snacks' })).toBeChecked()
+  await expect(dialog.getByRole('button', { name: 'Add' })).toBeEnabled()
+
+  // When the user confirms
+  await dialog.getByRole('button', { name: 'Add' }).click()
+
+  // Then the dialog closes and Bread joins the shelf's own list
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(pantry.getNotInThisListDivider()).toHaveCount(0)
+  await expect(pantry.getItemCard('Bread')).toBeVisible()
+})
+
+test('user picks per axis in the dialog when a filter shelf spans two tag types requiring genuine choices', async ({
+  page,
+}) => {
+  const pantry = new PantryPage(page)
+  const categoryTagTypeId = 'tagtype-category'
+  const storageTagTypeId = 'tagtype-storage'
+  const snackTagId = 'tag-snacks'
+  const drinksTagId = 'tag-drinks'
+  const fridgeTagId = 'tag-fridge'
+  const freezerTagId = 'tag-freezer'
+  const treatsShelfId = 'shelf-treats'
+
+  // Given a filter shelf spanning TWO tag types, each offering two options,
+  // and Bread (stocked at My Home, carrying no tags) matches neither axis —
+  // both axes are unmet, so a press must satisfy BOTH (AND-joined) and the
+  // dialog must open for the user to choose each rather than applying
+  // anything automatically
+  await seedRows(page, 'tagTypes', [
+    { id: categoryTagTypeId, name: 'Category', color: 'blue' },
+    { id: storageTagTypeId, name: 'Storage', color: 'green' },
+  ])
+  await seedRows(page, 'tags', [
+    { id: snackTagId, name: 'Snacks', typeId: categoryTagTypeId },
+    { id: drinksTagId, name: 'Drinks', typeId: categoryTagTypeId },
+    { id: fridgeTagId, name: 'Fridge', typeId: storageTagTypeId },
+    { id: freezerTagId, name: 'Freezer', typeId: storageTagTypeId },
+  ])
+  await seedRows(page, 'shelves', [
+    {
+      id: treatsShelfId,
+      name: 'Treats Shelf',
+      type: 'filter',
+      order: 0,
+      filterConfig: {
+        tagIds: [snackTagId, drinksTagId, fridgeTagId, freezerTagId],
+      },
+      createdAt: now,
+      updatedAt: now,
+    },
+  ])
+
+  // When the user searches for Bread inside the Treats Shelf
+  await pantry.gotoWithSearch({
+    groupBy: 'shelf',
+    id: treatsShelfId,
+    q: 'bread',
+  })
+
+  // Then Bread is offered under "not in this list" with a real action button
+  await expect(pantry.getNotInThisListDivider()).toBeVisible()
+
+  // When the user presses it
+  await pantry.getTailActionButton('Add to shelf', 'Bread').click()
+
+  // Then the picker dialog opens, titled for this item and shelf, with
+  // neither axis pre-selected — a 2-option axis gets no default
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
   await expect(
-    page.getByText("Doesn't match this shelf's filters"),
+    dialog.getByRole('heading', { name: 'Add Bread to Treats Shelf' }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('button', { name: /bread/i }),
-  ).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Add' })).toBeDisabled()
+
+  // When the user picks only the Category axis's option
+  await dialog.getByRole('radio', { name: 'Snacks' }).click()
+
+  // Then Confirm stays disabled — the Storage axis is still AND-joined and
+  // unmet, so one axis being satisfied is not enough
+  await expect(dialog.getByRole('button', { name: 'Add' })).toBeDisabled()
+
+  // When the user also picks the Storage axis's option and confirms
+  await dialog.getByRole('radio', { name: 'Fridge' }).click()
+  await dialog.getByRole('button', { name: 'Add' }).click()
+
+  // Then the dialog closes and Bread joins the shelf's own list
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(pantry.getNotInThisListDivider()).toHaveCount(0)
+  await expect(pantry.getItemCard('Bread')).toBeVisible()
 })
 
 // Unified item search, PR C — the same tail wired onto vendor detail and

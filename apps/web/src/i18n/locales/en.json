@@ -214,7 +214,16 @@
       "addToRecipe": "Add to recipe",
       "inRecipes": "In {{recipes}}",
       "addToShelf": "Add to shelf",
-      "notMatchingShelf": "Doesn't match this shelf's filters"
+      "notMatchingShelf": "Doesn't match this shelf's filters",
+      "filterPicks": {
+        "title": "Add {{name}} to {{shelf}}",
+        "vendorAxis": "Vendor",
+        "recipeAxis": "Recipe",
+        "met": "Already set: {{name}}",
+        "error": "Couldn't add to this shelf. Try again.",
+        "confirm": "Add",
+        "cancel": "Cancel"
+      }
     },
     "tags": {
       "empty": {

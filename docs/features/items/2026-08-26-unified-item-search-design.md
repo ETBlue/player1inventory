@@ -12,8 +12,15 @@ below is superseded by a **four-PR split** (ETBlue, 2026-08-27): the
 filter-shelf per-axis picker split out of PR B into its own PR D, since it is
 net-new UI spanning two non-atomic mutation targets. **PR C shipped**
 (`useShowStock` extraction + vendor detail + recipe detail — see
-`2026-08-27-unified-item-search-plan-c.md`), completing all five surfaces;
-only PR D (filter-shelf per-axis picker) remains — see "Phasing" below.
+`2026-08-27-unified-item-search-plan-c.md`), completing all five surfaces.
+**PR D shipped** (#270 — filter-shelf per-axis picker — see
+`2026-08-28-unified-item-search-plan-d.md`): every bucket-2 row across all five
+surfaces is now actionable, except a filter shelf whose `filterConfig` is
+outright unsatisfiable (a vendor or recipe axis naming only a deleted entity),
+which keeps the inert `groupNote`. Only **PR D-1** (making the cloud half of
+that picker's two writes atomic — see
+`2026-08-28-unified-item-search-plan-d1-cloud-transaction.md`, issue #269)
+remains; local mode was already atomic on PR D's ship. See "Phasing" below.
 Do not re-litigate the decisions below.
 **Brainstorming log:** `2026-08-26-brainstorming-unified-item-search.md`
 
@@ -30,12 +37,12 @@ follows the user to *every* location, including the one where the original lives
 The narrow fix (check global names, suppress the create button) trades a
 duplicate for a dead end: a screen that knows the item exists and offers nothing.
 
-## Current state (verified by reading the code, 2026-08-26; PR A/B/C rows updated post-ship)
+## Current state (verified by reading the code, 2026-08-26; PR A/B/C/D rows updated post-ship)
 
 | Surface | items source | search scope | tail section | create-from-search |
 |---|---|---|---|---|
 | Pantry flat (`PantryListView`) | `useStockedItems` | stocked-here | ✅ **shipped PR B** — bucket 3 only (`ItemSearchTail`) | opens `NewItemDialog` — **already correct** |
-| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B** — `ItemSearchTail` (selection: `groupAction`; filter: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
+| Shelf detail (`ShelfDetailView`) | `useStockedItems` | in-shelf ∩ here | ✅ **shipped PR B, extended PR D, dialog-always-opens reversal 2026-08-28** — `ItemSearchTail` (selection: `groupAction`; filter, satisfiable: `groupAction` — always opens `ShelfFilterPicksDialog`, PR D; filter, unsatisfiable: inert `groupNote`; system/unsorted: neither) | inline `createItem` + add to shelf |
 | Vendor detail (`VendorDetailView`) | `useStockedItems` | vendor ∩ here | ✅ **shipped PR C** — `ItemSearchTail` (resolved vendor: `groupAction` appending to `item.vendorIds`; `unsorted`: inert `groupNote`; unresolvable `?id=`: neither) | — |
 | Recipe detail (`RecipeDetailView`) | `useStockedItems` | recipe ∩ here | ✅ **shipped PR C** — `ItemSearchTail`, the only surface mutating the **group**: appends `{ itemId, defaultAmount: consumeAmount \|\| 1 }` to `Recipe.items` (same three-way bucket 2) | — |
 | Cart (`shopping/$vendorId`) | `useItems` + `isStockedHere` | vendor ∩ here | ✅ **shipped PR A** — `ItemSearchTail` | inline `createItem` ← **#245**, fixed |
@@ -129,10 +136,45 @@ This avoids both bad alternatives: auto-applying *all* of an axis over-assigns
 (tagging an item `Frozen` because the shelf happens to filter on it), and
 auto-applying the *first* makes an arbitrary choice on the user's behalf.
 
-**Every bucket-2 row on a filter shelf is actionable**, and the item always lands
-on the shelf — the action is never offered in a form that leaves it still not
-matching. An earlier draft claimed some rows would get no button; that was
-carried over from the rejected "pick one criterion overall" option and is wrong.
+**Every bucket-2 row on a *satisfiable* filter shelf is actionable**, and the
+item always lands on the shelf — the action is never offered in a form that
+leaves it still not matching. An earlier draft claimed some rows would get no
+button; that was carried over from the rejected "pick one criterion overall"
+option and is wrong. (An *unsatisfiable* shelf is the one exception, covered
+immediately below — it was not yet a concept when this line was first written.)
+
+**One exception this design did not anticipate, ruled during PR D's
+implementation:** a shelf whose `filterConfig` names a vendor or recipe id that
+no longer resolves to a live entity is **unsatisfiable outright** — no press
+could ever add a deleted vendor or append to a deleted recipe's row, so a
+button there would always fail. Such a shelf keeps the inert `groupNote`
+instead of `groupAction`; `isFilterConfigSatisfiable` decides this once per
+shelf, not per item. A tag axis can never trigger this case — `deriveFilterAxes`
+silently drops a dangling tag id rather than treating it as a constraint. See
+`2026-08-28-brainstorming-filter-shelf-picker.md` for the ruling record.
+
+## Note — 2026-08-28 (decision reversed)
+
+The "An axis offering exactly one option needs no interaction — pre-select it.
+The picker therefore collapses to a plain button on the common single-tag-type
+shelf, and only grows UI where a genuine choice exists" paragraph above is
+**historical** — left as written, since this section is the record of the
+original design, not of current behaviour. The designer reversed the *bypass*
+half of that ruling on 2026-08-28: pressing `Add to shelf` on a filter shelf
+now **always** opens `ShelfFilterPicksDialog`, regardless of how many options
+each axis offers. Their words: "the concept is to provide a chance to double
+confirm the tags/vendors/recipes that are about to be applied to the item" —
+the dialog is a confirmation step, not only a disambiguation step.
+
+The *pre-selection* half survives untouched: a single-option axis still
+renders its radio group with that option already checked, so Confirm is
+enabled the moment the dialog opens and the user only has to press it once
+more. `ShelfFilterPicksDialog` needed no rendering change at all — only
+`ShelfDetailView`'s `groupAction.onAction`, which used to branch on
+`open.every((a) => a.options.length === 1)` and apply directly in the
+true case, now always calls `setPicksItem(item)`. See
+`2026-08-28-brainstorming-filter-shelf-picker.md`'s dated addendum for the
+ruling record.
 
 ### Empty result → create
 
@@ -192,16 +234,20 @@ recipe membership). It is split out into its own PR D:
 | PR | Scope | Status |
 |---|---|---|
 | **A** | shared hook + `ItemSearchTail` component + cart page — **closes #245** | ✅ merged (#256) |
-| **B** | tail-wiring extraction (`useItemSearchTailWiring`) + flat pantry (bucket 3 only) + shelf detail's **selection** shelves (incl. deleting the off-convention "Not in this shelf" block); filter shelves get an inert `groupNote` as an interim step | ✅ shipped |
-| **C** | `useShowStock` extraction (3 hand-written `isCloud \|\| isStockedHere` sites → 5 call sites) + vendor detail + recipe detail — all five surfaces now wired | ✅ shipped |
-| **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | not planned yet |
+| **B** | tail-wiring extraction (`useItemSearchTailWiring`) + flat pantry (bucket 3 only) + shelf detail's **selection** shelves (incl. deleting the off-convention "Not in this shelf" block); filter shelves get an inert `groupNote` as an interim step | ✅ merged (#259) |
+| **C** | `useShowStock` extraction (3 hand-written `isCloud \|\| isStockedHere` sites → 5 call sites) + vendor detail + recipe detail — all five surfaces now wired | ✅ merged (#266) |
+| **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | ✅ merged (#270) |
+| **D-1** | cloud atomicity — one `prisma.$transaction` resolver replacing D's two sequential Apollo round-trips | 🔲 issue #269 |
 
 See `2026-08-27-unified-item-search-plan-b.md` for PR B's own scope-decision
 record and implementation detail, and
 `2026-08-27-unified-item-search-plan-c.md` for PR C's — including two rulings
 this design did not cover (`isUnsorted` pseudo-groups get an inert `groupNote`
 rather than silence; neither view passes `sortTail`) and four deferred gaps PR
-C surfaced without fixing.
+C surfaced without fixing. See `2026-08-28-unified-item-search-plan-d.md` for
+PR D's implementation detail and the unsatisfiable-axis ruling this design did
+not anticipate, and `2026-08-28-unified-item-search-plan-d1-cloud-transaction.md`
+for the still-open cloud-atomicity follow-up (issue #269).
 
 ### Carried forward from PR A's review — start PR B with these
 

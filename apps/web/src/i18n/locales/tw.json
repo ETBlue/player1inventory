@@ -214,7 +214,16 @@
       "addToRecipe": "加入食譜",
       "inRecipes": "屬於 {{recipes}}",
       "addToShelf": "加入層架",
-      "notMatchingShelf": "不符合此層架的篩選條件"
+      "notMatchingShelf": "不符合此層架的篩選條件",
+      "filterPicks": {
+        "title": "將「{{name}}」加入「{{shelf}}」",
+        "vendorAxis": "商家",
+        "recipeAxis": "食譜",
+        "met": "已符合：{{name}}",
+        "error": "無法加入此層架，請再試一次。",
+        "confirm": "加入",
+        "cancel": "取消"
+      }
     },
     "tags": {
       "empty": {

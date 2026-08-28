@@ -9,8 +9,10 @@ import { QuickUpdateDialog } from '@/components/item/QuickUpdateDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ShelfFilterPicksDialog } from '@/components/shelf/ShelfFilterPicksDialog'
 import { Button } from '@/components/ui/button'
 import { useCreateItem, useStockedItems, useUpdateItem } from '@/hooks'
+import { useApplyShelfFilterPicks } from '@/hooks/useApplyShelfFilterPicks'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -30,7 +32,12 @@ import {
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { isInactive } from '@/lib/quantityUtils'
-import { matchesFilterConfig } from '@/lib/shelfUtils'
+import {
+  deriveFilterAxes,
+  type FilterPicks,
+  isFilterConfigSatisfiable,
+  matchesFilterConfig,
+} from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import type { PantryItem, StockFields } from '@/types'
 
@@ -58,6 +65,8 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   const updateItem = useUpdateItem()
   const createItem = useCreateItem()
   const showStock = useShowStock()
+  const applyPicks = useApplyShelfFilterPicks()
+  const [picksItem, setPicksItem] = useState<PantryItem | null>(null)
 
   const {
     sortBy: localSortBy,
@@ -196,6 +205,45 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     )
   }
 
+  // Whether ANY item could be made to match — an axis naming only deleted
+  // entities cannot be satisfied by any press, and `groupAction` is one
+  // descriptor for the WHOLE section, so such a shelf keeps the inert
+  // `groupNote` rather than showing a button that cannot work.
+  const filterConfig = shelf?.type === 'filter' ? shelf.filterConfig : undefined
+  const canJoinFilterShelf =
+    !!filterConfig && isFilterConfigSatisfiable(filterConfig, vendors, recipes)
+
+  const axesFor = (item: PantryItem) =>
+    filterConfig
+      ? deriveFilterAxes(item, filterConfig, tags, tagTypes, vendors, recipes)
+      : []
+
+  // The dialog's item, re-read from `allItems` rather than the frozen
+  // `picksItem` snapshot: after a cloud half-write, `['items']` refetches
+  // (see useApplyShelfFilterPicks) but `picksItem` — a `useState` set once at
+  // press time — never does, so an in-dialog retry would recompute axes
+  // against the SAME pre-write item and re-offer (and re-write) an axis that
+  // already landed. Deriving live from `allItems` is what makes "the dialog
+  // recomputes which axes are met" true. The `?? picksItem` fallback exists
+  // only for a concurrent removal mid-interaction — a bucket-2 row is stocked
+  // here, so it is normally present in `allItems`.
+  const livePicksItem = picksItem
+    ? (allItems.find((i) => i.id === picksItem.id) ?? picksItem)
+    : null
+
+  // Applies the picks the user made (or the ones that needed no choice).
+  const applyFilterPicks = async (item: PantryItem, picks: FilterPicks) => {
+    const recipe = picks.recipeId
+      ? recipes.find((r) => r.id === picks.recipeId)
+      : undefined
+    await applyPicks.mutateAsync({
+      item,
+      addTagIds: picks.tagIds,
+      addVendorIds: picks.vendorId ? [picks.vendorId] : [],
+      ...(recipe ? { recipe: { id: recipe.id, items: recipe.items } } : {}),
+    })
+  }
+
   // Bucket 2's action, selection shelves only: pressing it appends the item
   // to the shelf's itemIds. The dedup check is the same "already-present"
   // guard `handleAddToSelectionShelf` used to run before this hook took over,
@@ -211,11 +259,19 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
   // mode, and any concurrent write (another surface, another tab) landing
   // between this render and the press.
   //
-  // Filter shelves get `groupNote` instead: PR D's swap point. The design's
-  // end state is a per-axis picker (one tag per tag type, one vendor, one
-  // recipe — enough to satisfy matchesFilterConfig) so a filter-shelf bucket
-  // 2 row becomes actionable; until then this inert note keeps the row from
-  // vanishing silently, the way the old hand-rolled block rendered it inert.
+  // Filter shelves get a `groupAction` too: pressing it always opens
+  // `ShelfFilterPicksDialog` (designer ruling, 2026-08-28, reversing the
+  // direct-apply bypass this shipped with — see the dated addendum in
+  // docs/features/items/2026-08-26-unified-item-search-design.md's "Filter
+  // shelves" section). The dialog is a double-confirm step for the
+  // tags/vendors/recipe about to be applied, not only a disambiguation
+  // step, so it opens even when every axis has just one option.
+  // `defaultPicksFor` still matters — the dialog uses it to pre-select a
+  // single-option axis so Confirm is enabled immediately — but this
+  // component no longer branches on option counts itself. `groupNote`
+  // survives only for a shelf whose `filterConfig` is unsatisfiable
+  // outright (e.g. a vendor or recipe axis naming only deleted entities);
+  // `canJoinFilterShelf` above decides that once per shelf.
   //
   // System shelves and the `unsorted` pseudo-shelf get neither — they already
   // have no add path (handleAddToSelectionShelf used to early-return for
@@ -269,7 +325,31 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           },
         }
       : {}),
-    ...(shelf?.type === 'filter'
+    ...(shelf?.type === 'filter' && canJoinFilterShelf
+      ? {
+          groupAction: {
+            label: t('items.searchTail.addToShelf'),
+            icon: <ArrowUpFromLine />,
+            onAction: async (item: PantryItem) => {
+              // Always open the dialog — never apply directly, regardless
+              // of how many options each axis offers (designer ruling,
+              // 2026-08-28: "the concept is to provide a chance to double
+              // confirm the tags/vendors/recipes that are about to be
+              // applied to the item"). A single-option axis still needs no
+              // interaction — `ShelfFilterPicksDialog` pre-selects it via
+              // `defaultPicksFor` so Confirm is enabled immediately — but
+              // the user always sees the picks before they land.
+              //
+              // This resolves immediately, so the wiring hook clears its
+              // pending id right away and the row never spins. That is
+              // correct: the dialog is modal and owns the wait from here,
+              // including its own pending state and inline error.
+              setPicksItem(item)
+            },
+          },
+        }
+      : {}),
+    ...(shelf?.type === 'filter' && !canJoinFilterShelf
       ? {
           groupNote: () => (
             <span>{t('items.searchTail.notMatchingShelf')}</span>
@@ -474,6 +554,16 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
               })
             }
           }}
+        />
+      )}
+      {livePicksItem && (
+        <ShelfFilterPicksDialog
+          open
+          onOpenChange={(v) => !v && setPicksItem(null)}
+          itemName={livePicksItem.name}
+          shelfName={shelfName}
+          axes={axesFor(livePicksItem)}
+          onConfirm={(picks) => applyFilterPicks(livePicksItem, picks)}
         />
       )}
     </div>

@@ -466,6 +466,73 @@ export async function applyUnitSwitchBatch(
   )
 }
 
+export interface ShelfFilterPicksInput {
+  itemId: string
+  /** Tag ids to ADD — one per unmet tag axis. May be empty. */
+  addTagIds: string[]
+  /** Vendor ids to ADD — at most one, from the unmet vendor axis. May be empty. */
+  addVendorIds: string[]
+  /** The recipe to add the item to, when the recipe axis was unmet. */
+  addRecipeId?: string
+}
+
+/**
+ * Applies a filter shelf's picks as ONE transaction: the item's tag/vendor ids and the
+ * recipe's membership either both land or neither does.
+ *
+ * Modelled on `applyUnitSwitchBatch` above, with one deliberate difference: the current
+ * rows are read INSIDE the transaction rather than passed in by the caller. The caller's
+ * copies come from a React render closure, and two quick presses against a stale closure
+ * would append a duplicate id — reading here makes the write idempotent regardless.
+ *
+ * `[db.items, db.recipes]` only: the picker writes `Item.tagIds` / `Item.vendorIds`,
+ * which are GLOBAL Item fields, and `Recipe.items`. No `ItemStock` is involved, so
+ * unlike `applyUnitSwitchBatch` this transaction does not name `db.itemStocks`.
+ */
+export async function applyShelfFilterPicksBatch(
+  input: ShelfFilterPicksInput,
+): Promise<void> {
+  const now = new Date()
+  await db.transaction('rw', [db.items, db.recipes], async () => {
+    const item = await db.items.get(input.itemId)
+    if (!item) throw new Error(`Item not found: ${input.itemId}`)
+
+    // Union, not concat — re-pressing must not duplicate an id.
+    const tagIds = [...new Set([...item.tagIds, ...input.addTagIds])]
+    const vendorIds = [
+      ...new Set([...(item.vendorIds ?? []), ...input.addVendorIds]),
+    ]
+    // `locationId` is inert here: neither `tagIds` nor `vendorIds` is a
+    // `StockFields` key, so `writeItemUpdate`'s stock branch never fires.
+    // `DEFAULT_LOCATION_ID` only satisfies the signature — passing an active
+    // location would falsely imply this write is location-scoped, and it is
+    // not: both fields are global `Item` fields.
+    await writeItemUpdate(
+      input.itemId,
+      { tagIds, vendorIds },
+      DEFAULT_LOCATION_ID,
+      now,
+    )
+
+    if (input.addRecipeId) {
+      const recipe = await db.recipes.get(input.addRecipeId)
+      if (!recipe) throw new Error(`Recipe not found: ${input.addRecipeId}`)
+      if (!recipe.items.some((ri) => ri.itemId === input.itemId)) {
+        await db.recipes.update(input.addRecipeId, {
+          items: [
+            ...recipe.items,
+            // `|| 1`, NOT `?? 1`: consumeAmount 0 is legitimate, and defaultAmount 0
+            // means "optional, unchecked" in cooking — same operator and rationale as
+            // RecipeDetailView.tsx:182.
+            { itemId: input.itemId, defaultAmount: item.consumeAmount || 1 },
+          ],
+          updatedAt: now,
+        })
+      }
+    }
+  })
+}
+
 export async function deleteItem(id: string): Promise<void> {
   // Delete all stock rows for this item (every location)
   await db.itemStocks.where('itemId').equals(id).delete()

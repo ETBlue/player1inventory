@@ -7,6 +7,7 @@ import {
   addInventoryLog,
   addItemToLocation,
   addToCart,
+  applyShelfFilterPicksBatch,
   applyUnitSwitchBatch,
   checkout,
   createItem,
@@ -2674,5 +2675,158 @@ describe('applyUnitSwitchBatch', () => {
     expect(recipes.find((r) => r.id === seed.cake.id)?.items[0]).toMatchObject({
       defaultAmount: 200,
     })
+  })
+})
+
+describe('applyShelfFilterPicksBatch', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.recipes.clear()
+  })
+
+  it('user can apply tag, vendor and recipe picks in one press', async () => {
+    // Given an item carrying neither the tag nor the vendor, and a recipe without it
+    const item = await createItem({
+      name: 'Oat Milk',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+    const recipe = await createRecipe({ name: 'Pancakes', items: [] })
+
+    // When the picks are applied
+    await applyShelfFilterPicksBatch({
+      itemId: item.id,
+      addTagIds: ['frozen'],
+      addVendorIds: ['v1'],
+      addRecipeId: recipe.id,
+    })
+
+    // Then all three land
+    const saved = await db.items.get(item.id)
+    expect(saved?.tagIds).toContain('frozen')
+    expect(saved?.vendorIds).toContain('v1')
+    const savedRecipe = await db.recipes.get(recipe.id)
+    expect(savedRecipe?.items.map((ri) => ri.itemId)).toContain(item.id)
+  })
+
+  it('rolls back the item write when the recipe write fails', async () => {
+    // Given an item and a recipe id that does not exist
+    const item = await createItem({
+      name: 'Oat Milk',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+
+    // When the recipe half of the batch throws
+    await expect(
+      applyShelfFilterPicksBatch({
+        itemId: item.id,
+        addTagIds: ['frozen'],
+        addVendorIds: [],
+        addRecipeId: 'no-such-recipe',
+      }),
+    ).rejects.toThrow()
+
+    // Then the tag write is rolled back too — the whole press either lands or does not.
+    // This is the assertion the Dexie transaction exists for; a sequential
+    // implementation leaves 'frozen' on the item and passes everything else.
+    const saved = await db.items.get(item.id)
+    expect(saved?.tagIds).not.toContain('frozen')
+  })
+
+  it('does not duplicate ids that are already present', async () => {
+    // Given an item that already carries the tag and vendor, in a recipe that already
+    // holds it — the shape two quick presses produce
+    const item = await createItem({
+      name: 'Oat Milk',
+      tagIds: ['frozen'],
+      vendorIds: ['v1'],
+      targetUnit: 'package',
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+    const recipe = await createRecipe({
+      name: 'Pancakes',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    // When the same picks are applied again
+    await applyShelfFilterPicksBatch({
+      itemId: item.id,
+      addTagIds: ['frozen'],
+      addVendorIds: ['v1'],
+      addRecipeId: recipe.id,
+    })
+
+    // Then nothing is duplicated and the existing recipe amount is untouched
+    const saved = await db.items.get(item.id)
+    expect(saved?.tagIds).toEqual(['frozen'])
+    expect(saved?.vendorIds).toEqual(['v1'])
+    const savedRecipe = await db.recipes.get(recipe.id)
+    expect(savedRecipe?.items).toEqual([{ itemId: item.id, defaultAmount: 2 }])
+  })
+
+  it("uses the item's consumeAmount as the recipe entry's defaultAmount", async () => {
+    const item = await createItem({
+      name: 'Flour',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      consumeAmount: 3,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+    const recipe = await createRecipe({ name: 'Pancakes', items: [] })
+
+    await applyShelfFilterPicksBatch({
+      itemId: item.id,
+      addTagIds: [],
+      addVendorIds: [],
+      addRecipeId: recipe.id,
+    })
+
+    const savedRecipe = await db.recipes.get(recipe.id)
+    expect(savedRecipe?.items[0]?.defaultAmount).toBe(3)
+  })
+
+  it('falls back to defaultAmount 1 when consumeAmount is 0', async () => {
+    // `|| 1`, not `?? 1`: defaultAmount 0 means "optional, unchecked" in cooking, so a
+    // 0 consumeAmount would add an ingredient that silently does nothing.
+    const item = await createItem({
+      name: 'Salt',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      consumeAmount: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+    const recipe = await createRecipe({ name: 'Pancakes', items: [] })
+
+    await applyShelfFilterPicksBatch({
+      itemId: item.id,
+      addTagIds: [],
+      addVendorIds: [],
+      addRecipeId: recipe.id,
+    })
+
+    const savedRecipe = await db.recipes.get(recipe.id)
+    expect(savedRecipe?.items[0]?.defaultAmount).toBe(1)
   })
 })
