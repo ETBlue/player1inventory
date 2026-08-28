@@ -80,10 +80,37 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
   // meaningful: if the resolver is rewritten to call `prisma.X` sequentially
   // instead of going through `prisma.$transaction`, writes land immediately
   // with no snapshot to restore from.
+  // Mirrors Postgres's unique-constraint violation on a composite `@@id`
+  // (`ItemTag`/`ItemVendor` in schema.prisma:109,119) — a real `createMany`
+  // throws P2002 on a duplicate key, whether the duplicate is against a row
+  // already present or against another row in the SAME batch. Without this,
+  // dropping the resolver's `new Set(...)` dedupe (shelf.resolver.ts:101-102)
+  // would insert the same key twice here and the fake would silently absorb
+  // it via the `!includes` guard — exactly the gap that let the dedupe-loss
+  // mutation stay green (see 'shelf.resolver.test.ts' finding notes).
+  function assertNoDuplicateKey(pairs: [string, string][], fieldNames: string) {
+    const seen = new Set<string>()
+    for (const [a, b] of pairs) {
+      const key = `${a}:${b}`
+      if (seen.has(key)) {
+        throw new Error(`Unique constraint failed on the fields: (${fieldNames})`)
+      }
+      seen.add(key)
+    }
+  }
+
   const sharedClient = {
     item: {
-      findFirst: async ({ where }: { where: { id: string; userId: string } }) => {
-        const row = state.items.find((i) => i.id === where.id && i.userId === where.userId)
+      // Filters only on the fields actually present in `where`, like real
+      // Prisma does — NOT hardcoded to require `userId` to match. Mirrors
+      // the `recipe.findFirst` fake below for the same reason: if this
+      // silently re-enforced ownership regardless of what the resolver
+      // passed, the "delete userId from the where clause" mutation check for
+      // the item-ownership guard would be meaningless.
+      findFirst: async ({ where }: { where: { id: string; userId?: string } }) => {
+        const row = state.items.find(
+          (i) => i.id === where.id && (where.userId === undefined || i.userId === where.userId),
+        )
         return row ? projectItem(row) : null
       },
       findUniqueOrThrow: async ({ where }: { where: { id: string } }) => {
@@ -93,34 +120,56 @@ const { state, sharedClient, snapshot } = vi.hoisted(() => {
       },
     },
     itemTag: {
-      deleteMany: async ({ where }: { where: { itemId: string } }) => {
+      deleteMany: vi.fn(async ({ where }: { where: { itemId: string } }) => {
         const row = state.items.find((i) => i.id === where.itemId)
         const count = row ? row.tagIds.length : 0
         if (row) row.tagIds = []
         return { count }
-      },
-      createMany: async ({ data }: { data: { itemId: string; tagId: string }[] }) => {
+      }),
+      createMany: vi.fn(async ({ data }: { data: { itemId: string; tagId: string }[] }) => {
+        // Duplicates within this batch...
+        assertNoDuplicateKey(
+          data.map((d) => [d.itemId, d.tagId]),
+          '`itemId`,`tagId`',
+        )
+        // ...and duplicates against rows already in the store.
         for (const { itemId, tagId } of data) {
           const row = state.items.find((i) => i.id === itemId)
-          if (row && !row.tagIds.includes(tagId)) row.tagIds.push(tagId)
+          if (row?.tagIds.includes(tagId)) {
+            throw new Error('Unique constraint failed on the fields: (`itemId`,`tagId`)')
+          }
+        }
+        for (const { itemId, tagId } of data) {
+          const row = state.items.find((i) => i.id === itemId)
+          if (row) row.tagIds.push(tagId)
         }
         return { count: data.length }
-      },
+      }),
     },
     itemVendor: {
-      deleteMany: async ({ where }: { where: { itemId: string } }) => {
+      deleteMany: vi.fn(async ({ where }: { where: { itemId: string } }) => {
         const row = state.items.find((i) => i.id === where.itemId)
         const count = row ? row.vendorIds.length : 0
         if (row) row.vendorIds = []
         return { count }
-      },
-      createMany: async ({ data }: { data: { itemId: string; vendorId: string }[] }) => {
+      }),
+      createMany: vi.fn(async ({ data }: { data: { itemId: string; vendorId: string }[] }) => {
+        assertNoDuplicateKey(
+          data.map((d) => [d.itemId, d.vendorId]),
+          '`itemId`,`vendorId`',
+        )
         for (const { itemId, vendorId } of data) {
           const row = state.items.find((i) => i.id === itemId)
-          if (row && !row.vendorIds.includes(vendorId)) row.vendorIds.push(vendorId)
+          if (row?.vendorIds.includes(vendorId)) {
+            throw new Error('Unique constraint failed on the fields: (`itemId`,`vendorId`)')
+          }
+        }
+        for (const { itemId, vendorId } of data) {
+          const row = state.items.find((i) => i.id === itemId)
+          if (row) row.vendorIds.push(vendorId)
         }
         return { count: data.length }
-      },
+      }),
     },
     recipe: {
       // Filters only on the fields actually present in `where`, like real
@@ -278,8 +327,15 @@ describe('applyShelfFilterPicks resolver', () => {
   })
 
   it('re-applying the same picks duplicates nothing', async () => {
-    // Given an item that already has the tag and already belongs to the recipe
-    state.items = [makeItemRow({ id: 'item_1', tagIds: ['tag_existing'] })]
+    // Given an item that already has the tag and vendor and already belongs
+    // to the recipe. Both axes are exercised here (not just tags) because
+    // the fake's createMany throws on a real duplicate composite key — a
+    // dropped dedupe on EITHER axis must be independently provable, and a
+    // test that only re-applies a tag pick would leave the vendor union's
+    // own `new Set(...)` unguarded.
+    state.items = [
+      makeItemRow({ id: 'item_1', tagIds: ['tag_existing'], vendorIds: ['vendor_existing'] }),
+    ]
     state.recipes = [
       makeRecipeRow({ id: 'recipe_1', items: [{ itemId: 'item_1', defaultAmount: 2 }] }),
     ]
@@ -289,16 +345,20 @@ describe('applyShelfFilterPicks resolver', () => {
       input: {
         itemId: 'item_1',
         addTagIds: ['tag_existing'],
-        addVendorIds: [],
+        addVendorIds: ['vendor_existing'],
         addRecipeId: 'recipe_1',
       },
     })
 
-    // Then the tag is not duplicated and the recipe membership is not
-    // duplicated (the recipe write is skipped entirely)
+    // Then neither the tag nor the vendor is duplicated, and the recipe
+    // membership is not duplicated (the recipe write is skipped entirely)
     expect(result?.errors).toBeUndefined()
-    const data = result?.data?.applyShelfFilterPicks as { tagIds: string[] }
+    const data = result?.data?.applyShelfFilterPicks as {
+      tagIds: string[]
+      vendorIds: string[]
+    }
     expect(data.tagIds).toEqual(['tag_existing'])
+    expect(data.vendorIds).toEqual(['vendor_existing'])
     expect(state.recipes[0].items).toEqual([{ itemId: 'item_1', defaultAmount: 2 }])
   })
 
