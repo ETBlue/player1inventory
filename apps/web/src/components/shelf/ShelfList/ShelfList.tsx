@@ -1,6 +1,16 @@
-import { ShelvingUnit } from 'lucide-react'
+import { ShelvingUnit, SlidersVertical, SquareMousePointer } from 'lucide-react'
 import { GroupCard } from '@/components/shared/GroupCard'
 import type { Shelf } from '@/types'
+
+// Shelf type is legible at a glance from the card icon, using the same pairing
+// as the shelf settings list: sliders for a filter shelf, a pointer for a
+// selection shelf. Shelves with no type (legacy rows) keep the generic icon.
+function ShelfTypeIcon({ type }: { type: Shelf['type'] }) {
+  const className = 'h-4 w-4 text-foreground-muted'
+  if (type === 'filter') return <SlidersVertical className={className} />
+  if (type === 'selection') return <SquareMousePointer className={className} />
+  return <ShelvingUnit className={className} />
+}
 
 interface ShelfListProps {
   shelves: Shelf[]
@@ -37,7 +47,7 @@ export function ShelfList({
           <GroupCard
             key={shelf.id}
             name={shelf.name}
-            icon={<ShelvingUnit className="h-4 w-4 text-foreground-muted" />}
+            icon={<ShelfTypeIcon type={shelf.type} />}
             itemCount={getItemCount(shelf.id)}
             {...(summary !== undefined ? { filterSummary: summary } : {})}
             {...(getOutOfStockCount !== undefined
