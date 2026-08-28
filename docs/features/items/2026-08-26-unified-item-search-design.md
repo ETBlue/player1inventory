@@ -17,7 +17,7 @@ net-new UI spanning two non-atomic mutation targets. **PR C shipped**
 `2026-08-28-unified-item-search-plan-d.md`): every bucket-2 row across all five
 surfaces is now actionable, except a filter shelf whose `filterConfig` is
 outright unsatisfiable (a vendor or recipe axis naming only a deleted entity),
-which keeps the inert `groupNote`. **PR D-1 shipped** (#TBD — making the cloud
+which keeps the inert `groupNote`. **PR D-1 shipped** (#272 — making the cloud
 half of that picker's two writes atomic via a single `prisma.$transaction`
 resolver — see `2026-08-28-unified-item-search-plan-d1-cloud-transaction.md`,
 issue #269); local mode was already atomic on PR D's ship. All phases of this
@@ -238,7 +238,7 @@ recipe membership). It is split out into its own PR D:
 | **B** | tail-wiring extraction (`useItemSearchTailWiring`) + flat pantry (bucket 3 only) + shelf detail's **selection** shelves (incl. deleting the off-convention "Not in this shelf" block); filter shelves get an inert `groupNote` as an interim step | ✅ merged (#259) |
 | **C** | `useShowStock` extraction (3 hand-written `isCloud \|\| isStockedHere` sites → 5 call sites) + vendor detail + recipe detail — all five surfaces now wired | ✅ merged (#266) |
 | **D** | filter-shelf per-axis picker (swaps `groupNote` → `groupAction` on filter shelves; nothing else about the wiring changes) | ✅ merged (#270) |
-| **D-1** | cloud atomicity — one `prisma.$transaction` resolver replacing D's two sequential Apollo round-trips | ✅ #TBD (issue #269) |
+| **D-1** | cloud atomicity — one `prisma.$transaction` resolver replacing D's two sequential Apollo round-trips | ✅ #272 (issue #269) |
 
 See `2026-08-27-unified-item-search-plan-b.md` for PR B's own scope-decision
 record and implementation detail, and
