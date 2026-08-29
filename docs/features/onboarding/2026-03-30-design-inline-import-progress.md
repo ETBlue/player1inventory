@@ -107,3 +107,25 @@ Add to `en.json` and `tw.json` under `onboarding.templateOverview`:
 - `useOnboardingSetup` hook is unchanged — it still accepts `onProgress` but that callback is no longer used (can be omitted).
 - `TemplateOverview` stories: add `Loading` and `WithError` stories; update smoke test to cover loading state.
 - `onboarding.tsx` stories: update to reflect the 4-step state machine (no `progress` step).
+
+---
+
+## As implemented — divergence from this design
+
+**`onboarding-dismissed` is SET to `'true'`, never removed.** Steps 5 and the flow diagram
+above both say "clears `onboarding-dismissed`" on success; `apps/web/src/routes/onboarding.tsx`
+calls `localStorage.setItem('onboarding-dismissed', 'true')` instead.
+
+**Why:** removing the key re-opens a race with the query refetch that follows
+`navigate('/')` — the empty-data guard in `__root.tsx` can observe still-empty caches and
+bounce the user straight back to `/onboarding`. Setting it pins the guard shut.
+
+The guard reads two keys (`__root.tsx`):
+
+```ts
+localStorage.getItem('onboarding-dismissed') === 'true' ||
+localStorage.getItem('e2e-skip-onboarding') === 'true'
+```
+
+`e2e-skip-onboarding` is set by `src/test/setup.ts` so unit and Storybook smoke tests never
+hit the redirect.
