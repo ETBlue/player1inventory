@@ -155,7 +155,29 @@ itself (5 PRs) and unified item search (4 PRs) landed.
   open question about location-independent entities, not on this backend.
 - **`Tag`/`Vendor`/`Recipe`/`Shelf` scoping** — they keep their flat `userId` filters.
 
-## Known blocker surfaced, not solved
+## Q10 — should issue #260 be resolved along the way?
 
-Cloud E2E is gated on `TEST_CLOUD_MODE`, which per issue #260 is **set nowhere** — cloud E2E
-specs can be written but will not execute until that is addressed (`e2e/CLAUDE.md`).
+Raised by ETBlue after the design was written, "so that the newly implemented cloud features
+can be fully tested."
+
+**A claim made earlier in this session was wrong and is corrected here.** Claude had stated
+that cloud E2E "will not execute" until #260 is fixed. It does execute:
+`e2e/playwright.config.ts` defines a `cloud` project that boots a cloud web server and
+backend, pre-sets `data-mode=cloud`, and runs nine spec files. `TEST_CLOUD_MODE` gates only
+two tests, both in `shopping.spec.ts`.
+
+Checking the file, though, produced a sharper reason to fix it than the original premise: the
+four ordinary vendor-cart tests (`:191`, `:255`, `:315`, `:373`) skip under the cloud project
+because they seed IndexedDB, and the two cloud-mode replacements are the dead ones. **Cloud
+has zero E2E coverage of vendor cart cards and checkout** — the exact surface PR 3 rewrites.
+
+**Answer: yes, but as a standalone pre-PR rather than "along the way."** Enabling the tests on
+today's code proves they pass against the current implementation, so PR 3 is measured against
+a known-good baseline; enabled inside PR 3, a failure could not be attributed.
+
+**And a second, larger prerequisite was identified.** #260's own body notes that cloud E2E
+shares the dev database with isolation by row ownership under a single `E2E_USER_ID`. The §5
+`'no-vendor'` split test is inherently multi-user, and `/e2e/cleanup` deletes only that one
+user's rows — a second synthetic user's rows would persist in the dev database forever.
+Combined with §7's independent need for a real Postgres to verify the migration, both are
+served by one dedicated Neon branch, scheduled as PR 1 groundwork.

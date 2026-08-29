@@ -306,11 +306,41 @@ A green test proves the test passes, not that it would catch a regression
 - **E2E** — `--grep "items|shopping|cooking|settings|shelves|vendors-group|recipes-group|a11y"`.
   Pantry group views are touched, so `shelves|vendors-group|recipes-group` are mandatory.
 
-### Known blocker, surfaced not solved
+### E2E prerequisites
 
-Cloud E2E is gated on `TEST_CLOUD_MODE`, which per **issue #260** is *set nowhere*
-(`e2e/CLAUDE.md`). Cloud E2E specs can be written but **will not execute** until that is
-addressed. A green gate that skipped every cloud spec is not evidence.
+Cloud E2E **does run** — `e2e/playwright.config.ts` defines a `cloud` project that boots a
+cloud web server plus backend, pre-sets `data-mode=cloud`, and covers nine spec files. Two
+prerequisites nonetheless come first.
+
+**1. Issue #260 — a standalone pre-PR, before PR 1.** Two tests in `shopping.spec.ts`'s
+`cloud mode vendor carts` block are gated on `TEST_CLOUD_MODE`, which is set nowhere, so they
+have never run. Meanwhile the four ordinary vendor-cart tests (`:191`, `:255`, `:315`, `:373`)
+skip under the cloud project because they seed IndexedDB. **Cloud therefore has zero E2E
+coverage of vendor cart cards and checkout** — exactly the surface PR 3 rewrites. The fix is
+two lines, matching the convention already used four times in the same file:
+
+```ts
+test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
+```
+
+It must land **before** PR 1, not inside PR 3. Enabling these tests on today's code proves
+they pass against the current implementation, making PR 3 measurable against a known-good
+baseline. Enabled inside PR 3, a failure cannot be attributed — the test would never have been
+green, so it is a new red test rather than a regression guard.
+
+**2. A dedicated test database — PR 1 groundwork.** Cloud E2E runs against the **dev**
+database, isolated only by row ownership under a single `E2E_USER_ID`, and `/e2e/cleanup`
+deletes only that user's rows (`e2e/CLAUDE.md`). Two requirements in this design break that
+model:
+
+- The §5 `'no-vendor'` split is **inherently multi-user** — proving carts no longer collide
+  needs ≥2 user ids, and a second synthetic user's rows would persist in the dev database
+  permanently with no cleanup path.
+- The migration verification above needs a throwaway Postgres seeded from committed history.
+
+Both are served by one Neon branch with its own `DATABASE_URL` / `DIRECT_URL`.
+`e2e/CLAUDE.md` records this as infra work rather than a config edit, and it is a
+prerequisite here rather than an improvement.
 
 ## 8. Rollout — five staged PRs
 
@@ -318,7 +348,8 @@ Additive first, so a browser running a stale bundle keeps working until the fina
 
 | PR | Contents |
 |---|---|
-| **1** | Prisma `Location` + `ItemStock`, migration §4.1–4.3, `requireLocationRole`, Location + ItemStock resolvers, GraphQL types. `Item` keeps its columns and still serves them — nothing breaks. |
+| **0** | **Prerequisite.** Fix issue #260 (two-line guard change) so cloud vendor-cart and checkout E2E run *against today's code*, establishing the baseline PR 3 is measured against. See §7. |
+| **1** | Prisma `Location` + `ItemStock`, migration §4.1–4.3, `requireLocationRole`, Location + ItemStock resolvers, GraphQL types, **plus the dedicated test database** (§7). `Item` keeps its columns and still serves them — nothing breaks. |
 | **2** | Web cloud path switches to the new types: `joinItemStock` extracted to `lib/itemStock.ts`, `PantryData` query, Apollo `keyArgs` policy, every `isCloud` bypass deleted, Dexie v18 + `isDefault`, per-mode storage key, corrected reconcile effect. |
 | **3** | Carts and logs: migration §4.5–4.7 (including the §5 `'no-vendor'` split), composite cart ids, location-scoped logs, `consumeRecipes` and `applyUnitSwitch` transactions. |
 | **4** | Import / export / post-login migration / purge (§6). |
@@ -328,5 +359,4 @@ Mirrors how locations itself (5 PRs) and unified item search (4 PRs) landed in t
 
 ## Open questions
 
-None blocking. Deferred by decision: everything in *Non-goals*, and issue #260 (cloud E2E
-gating), which is a pre-existing infrastructure gap rather than a question about this design.
+None blocking. Deferred by decision: everything in *Non-goals*.
