@@ -141,6 +141,16 @@ routing them through `deserializeVendor` at all, so an imported cloud vendor
 lands in Dexie with `createdAt` **absent** rather than Invalid. Different
 symptom, different fix; not part of this issue.
 
+## Related
+
+`docs/features/shopping/2026-08-27-bug-cloud-checkout-last-purchased-sort.md` —
+the sibling `Cart.lastPurchasedAt` bug that found this one. Same file, same
+silent-`NaN` failure class, same vacuous-ISO-fixture blind spot. It contributed
+the `parseWireDate()` helper this fix reuses.
+
 ## PR / commit
 
-*TBD*
+PR [#278](https://github.com/ETBlue/player1inventory/pull/278)
+
+- `33820f49` fix(web): stop building Invalid Dates from fields the cloud never sends
+- `4f8d7d67` docs(bugs): record the deserializer Invalid Date fix
