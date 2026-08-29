@@ -278,3 +278,29 @@ export function defaultPicksFor(axes: FilterAxis[]): FilterPicks {
     ...(recipeId ? { recipeId } : {}),
   }
 }
+
+/**
+ * How many filter OPTIONS a shelf's `filterConfig` selects — the total number of
+ * individual badges toggled on across the Filters tab's three sections
+ * (`tagIds` + `vendorIds` + `recipeIds`).
+ *
+ * Deliberately NOT the number of AXES `deriveFilterAxes` produces: that collapses
+ * every tag of one tag type into a single axis, so a shelf selecting two tags of
+ * the same type plus a vendor would report 2 where the user toggled 3 badges. The
+ * settings shelf row is a tally of the user's own selections, so options is the
+ * right unit.
+ *
+ * Fields are normalised with `?? []` rather than destructuring defaults: a
+ * `filterConfig` restored from a backed-up JSON may carry `null` on any of the
+ * three arrays, and a destructuring default only covers `undefined`. An absent
+ * `filterConfig` counts as 0.
+ */
+export function countSelectedFilters(
+  filterConfig: FilterConfig | undefined,
+): number {
+  if (!filterConfig) return 0
+  const { tagIds, vendorIds, recipeIds } = filterConfig
+  return (
+    (tagIds ?? []).length + (vendorIds ?? []).length + (recipeIds ?? []).length
+  )
+}

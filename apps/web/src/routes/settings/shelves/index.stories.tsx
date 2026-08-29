@@ -8,7 +8,14 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createShelf } from '@/db/operations'
+import {
+  createItem,
+  createRecipe,
+  createShelf,
+  createTag,
+  createTagType,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -71,17 +78,60 @@ function WithShelvesStory() {
       await db.delete()
       await db.open()
 
+      // Seed real filter targets so the filter shelf below shows a non-zero
+      // filter count. Dairy and Frozen share one tag type on purpose: the row
+      // counts selected OPTIONS (4 here), not filter axes (3).
+      const storage = await createTagType({ name: 'Storage' })
+      const dairy = await createTag({ name: 'Dairy', typeId: storage.id })
+      const frozen = await createTag({ name: 'Frozen', typeId: storage.id })
+      const costco = await createVendor('Costco')
+      const pancakes = await createRecipe({ name: 'Pancakes' })
+
+      const milk = await createItem({
+        name: 'Milk',
+        tagIds: [dairy.id],
+        vendorIds: [costco.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+      const peas = await createItem({
+        name: 'Frozen Peas',
+        tagIds: [frozen.id],
+        vendorIds: [costco.id],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
       await createShelf({
         name: 'Fridge',
         type: 'filter',
         order: 0,
-        filterConfig: { tagIds: [], vendorIds: [], recipeIds: [] },
+        filterConfig: {
+          tagIds: [dairy.id, frozen.id],
+          vendorIds: [costco.id],
+          recipeIds: [pancakes.id],
+        },
       })
+      await createShelf({
+        name: 'Snacks',
+        type: 'filter',
+        order: 1,
+        filterConfig: { vendorIds: [costco.id] },
+      })
+      // Contrast case: a selection shelf shows no filter count at all.
       await createShelf({
         name: 'Pantry Essentials',
         type: 'selection',
-        order: 1,
-        itemIds: [],
+        order: 2,
+        itemIds: [milk.id, peas.id],
       })
 
       setReady(true)
