@@ -328,6 +328,12 @@ This ensures the design token system remains consistent across the entire codeba
 
 Create a brainstorming log when brainstorming leads to implementation/design decisions. Location: same folder as the design doc (`docs/global/<area>/` or `docs/features/<area>/`). Naming: `YYYY-MM-DD-brainstorming-<topic>.md`. Content: questions asked, user answers, final decision, rationale.
 
+### Implementation Plans
+
+Plans live in the **same folder as their design doc** — `docs/features/<area>/` or `docs/global/<area>/`. Naming: `YYYY-MM-DD-<topic>-plan.md` (e.g. `2026-04-02-expiration-mode-plan.md`).
+
+**Never `docs/superpowers/plans/`.** The `writing-plans` skill defaults there; override it every time. This project keeps all artifacts for a feature — brainstorming log, design doc, plan — together by feature area.
+
 ### Workflow
 
 **Branch Management:**
@@ -446,6 +452,21 @@ git worktree add .worktrees/<feature-xxx> -b <branch-name>
 ```
 (The EnterWorktree tool runs `pnpm install` and `pnpm codegen` automatically via the WorktreeCreate hook, in addition to copying `.env` files)
 
+**Verify the base ref before trusting anything you test there.** Immediately after creating a worktree, run `git log --oneline -1` and confirm it matches the merge you expect. `EnterWorktree` resolves the base ref at creation time, and the `git fetch` that updated `origin/main` may have happened in a *different* worktree — on 2026-08-23 a new worktree landed on the previous release minutes after a newer PR had merged, and four Playwright runs silently exercised code that no longer existed. If it is behind: `git fetch origin main && git rebase origin/main` before doing any work. The risk is highest right after merging a PR, which is exactly when "my change isn't taking effect" gets misread as a code problem.
+
+**Copy both env files when creating a worktree manually.** `git worktree add` skips the `WorktreeCreate` hook, and so does `EnterWorktree path:` on an already-existing worktree (the hook only fires on creation):
+
+```bash
+cp apps/web/.env.local .worktrees/<name>/apps/web/.env.local
+cp apps/server/.env    .worktrees/<name>/apps/server/.env
+```
+
+Without them the dev server throws `VITE_CLERK_PUBLISHABLE_KEY is not set` and the backend won't connect. Prefer `EnterWorktree name:` (creation mode) to get the copy automatically.
+
+**Exclude `.worktrees/` from every repo-wide file walk.** Each worktree is a *separate branch's* working tree holding a full copy of the source, so `Path('.').rglob('*')`, `find .`, and bulk sed/grep-replace will silently modify files belonging to other branches — it happened on 2026-08-18 during a bulk comment fix, modifying 12 files on another branch. Prefer `git ls-files`, which is scoped to the current worktree automatically; otherwise exclude `.worktrees/`, `node_modules`, `storybook-static` and `.git` explicitly. Afterwards check `git status` in each worktree and verify with `git diff -U0` that every changed line is yours before reverting anything.
+
+**Only one E2E suite can run per machine** — the ports are shared across all worktrees. See `e2e/CLAUDE.md`.
+
 **Directory Convention:**
 Use `.worktrees/` directory for git worktrees (project-local, hidden). Ensure it's in `.gitignore`. Use dashes instead of slashes in directory names (e.g. `feature-xxx`, not `feature/xxx`) to avoid creating subfolders.
 
@@ -512,9 +533,46 @@ counting them toward coverage.
 verified these tests fail without the behaviour" are different claims; only the second
 one means anything.
 
+**Write test doubles to model the constraint, not the happy path.** A fake that cannot
+distinguish the right implementation from a wrong one passes against both, exactly like a
+weak fixture. The server suite has hit this twice in one branch:
+
+- a `findFirst` fake hardcoding `i.userId === where.userId` leaves an ownership guard green
+  even when `userId` is dropped from the resolver. The fix is to model Prisma's own
+  semantics: `where.userId === undefined || i.userId === where.userId`
+- a `createMany` fake that silently dedupes hides the `P2002` real Postgres would throw,
+  leaving a read-then-union unpinned
+
+Note also that **nothing executes the resolvers against real SQL** — every server test runs
+against a hand-written stateful Prisma fake, and cloud E2E is gated on `TEST_CLOUD_MODE`
+(issue #260), which is set nowhere. A manual cloud smoke test is owed for anything
+transactional.
+
+**"The item eventually lands" does not pin the path it took.** An assertion on the end
+state passes just as well when a bypass short-circuits the flow. Assert the mechanism — the
+dialog is visible *and* its radio pre-checked — not only the outcome.
+
+**Watch for predicates that cannot tell rows apart.** `joinItemStock` gives an item not
+stocked here `targetQuantity: 0` and no entry in any `useItemSortData` map, so such rows
+**tie** under `stock` / `purchased` / `expiring` sorting (only `name` orders them) and all
+render `0/0`. Two assertions were vacuous for exactly this reason.
+
 **Why this is a rule here:** PR D shipped four tests that kept passing after the
 behaviour they nominally covered was deleted. A vacuous test is worse than no test — it
 is a no-test that reports as covered, so nobody looks there again.
+
+### Explanatory Comments Are Claims, Not Facts
+
+**Treat any explanatory code comment or agent self-report as unverified until you run the
+thing it describes.** Across the four unified-item-search PRs, **twelve false comments**
+were caught — every one a plausible causal claim nobody checked against source (a barrel-mock
+claim, a "defensive no-op", a `sortTail` rationale, "`mutate` is unaffected", "the dialog
+recomputes which axes are met", a comment citing a test that could not fail for the reason it
+named). One agent report also **fabricated a quote from its own requirements doc** to justify
+a deviation.
+
+When you write a comment asserting *why* something behaves as it does, verify it first. When
+you read one, do not trust it as evidence.
 
 ### A11y Testing
 
@@ -527,6 +585,8 @@ When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.t
 ### E2E Test Format
 
 E2E tests use Playwright. The `e2e/` directory lives at the **monorepo root** (not inside `apps/web/`) because e2e tests cover the full stack. Test files live in `e2e/tests/`, page objects in `e2e/pages/`, config at `e2e/playwright.config.ts`.
+
+> **Before running E2E, read `e2e/CLAUDE.md`** — port collisions across worktrees, a stale `generated/graphql.ts`, and the shared cloud dev database each produce failures that look like code regressions and are not.
 
 **Page objects** — one class per page, encapsulating selectors and actions. Include a comment on each method citing the aria-label string and source file location:
 
@@ -588,10 +648,14 @@ Include these sections in PR description:
 - [ ] <verification steps>
 ```
 
-After creating the PR, attach it to the relevant milestone:
+After creating the PR, attach it to the relevant milestone. **Use `gh api` — `gh milestone` is not a valid subcommand and `gh pr edit --milestone` does not work here:**
 
 ```bash
-gh pr edit <number> --milestone "<milestone title>"
+# List milestones (note the number, not the title)
+gh api repos/OWNER/REPO/milestones | grep -E '"title"|"number"'
+
+# Attach the PR, by milestone NUMBER
+gh api repos/OWNER/REPO/issues/PR_NUMBER --method PATCH --field milestone=MILESTONE_NUMBER
 ```
 
 Match the milestone to the feature area being worked on (e.g. `v0.2.0 — Cloud Foundation` for cloud work). If no milestone fits, skip this step.
