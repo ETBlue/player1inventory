@@ -62,6 +62,12 @@ Components never access the database directly — they use Query hooks from `src
 
 > See `apps/server/prisma/CLAUDE.md` — migration safety rules (reset the dev DB after squashing uncommitted `migrate dev` migrations; a migration must be valid on a DB built only from committed history).
 
+## Authorization (cloud)
+
+> See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — every cloud model is still scoped by a flat `userId`.
+>
+> **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
+
 ## Project Structure
 
 ```
