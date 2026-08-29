@@ -16,7 +16,9 @@ describe('StockProgressRow stories smoke tests', () => {
   it('Ok renders the ok status fill and the quantity label', () => {
     const { container } = render(<Ok />)
     expect(container.querySelector(`.${STATUS_CLASSES.ok}`)).not.toBeNull()
-    expect(screen.getByText('3 / 4')).toBeInTheDocument()
+    // The unit trails the quantity inside ONE span — it is no longer a
+    // separate badge element, so it is queried as part of the same string.
+    expect(screen.getByText('3 / 4 pack')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Clear' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Fill to Full' })).toBeEnabled()
   })
@@ -39,7 +41,7 @@ describe('StockProgressRow stories smoke tests', () => {
   it('Low renders the warning status fill', () => {
     const { container } = render(<Low />)
     expect(container.querySelector(`.${STATUS_CLASSES.warning}`)).not.toBeNull()
-    expect(screen.getByText('1 / 4')).toBeInTheDocument()
+    expect(screen.getByText('1 / 4 pack')).toBeInTheDocument()
   })
 
   it('Inactive renders the inactive status fill and disables Fill to Full', () => {
@@ -51,9 +53,11 @@ describe('StockProgressRow stories smoke tests', () => {
     expect(screen.getByRole('button', { name: 'Clear' })).toBeEnabled()
   })
 
-  it('MeasurementUnit shows the measurement unit badge and label', () => {
+  it('MeasurementUnit shows the measurement unit trailing the label', () => {
     render(<MeasurementUnit />)
-    expect(screen.getByText('L')).toBeInTheDocument()
-    expect(screen.getByText('1 (+0.5) / 2')).toBeInTheDocument()
+    // Loose-stock reading with a measurement unit: "1 (+0.5) / 2 L"
+    expect(screen.getByText('1 (+0.5) / 2 L')).toBeInTheDocument()
+    // And no stray bare-unit node is left behind by the removed badge
+    expect(screen.queryByText('L')).not.toBeInTheDocument()
   })
 })

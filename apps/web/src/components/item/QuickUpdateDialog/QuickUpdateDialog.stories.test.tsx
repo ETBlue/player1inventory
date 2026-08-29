@@ -284,11 +284,11 @@ describe('QuickUpdateDialog — stock settings row', () => {
     const user = userEvent.setup()
     render(<Default />)
     // packed=2, unpacked=0, target=2
-    expect(screen.getByText('2 / 2')).toBeInTheDocument()
+    expect(screen.getByText('2 / 2 gallon')).toBeInTheDocument()
     await user.click(
       screen.getByRole('button', { name: 'Increase target quantity' }),
     )
-    expect(screen.getByText('2 / 3')).toBeInTheDocument()
+    expect(screen.getByText('2 / 3 gallon')).toBeInTheDocument()
   })
 })
 

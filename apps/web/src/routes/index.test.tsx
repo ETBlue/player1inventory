@@ -1656,7 +1656,13 @@ describe('Home page filtering integration', () => {
       // nothing at all is stocked at the active location, PR B's bug class
       const vendor = await createVendor('Costco')
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
+      // `packageUnit: 'jug'` makes the unit string UNIQUE in this DOM, so
+      // the assertion below that it is absent cannot pass vacuously the way a
+      // check for the default 'pack' could.
+      await createItem(
+        { name: 'Milk', tagIds: [], packageUnit: 'jug', ...itemDefaults },
+        office.id,
+      )
 
       renderVendorDetail(vendor.id)
       const user = userEvent.setup()
@@ -1685,8 +1691,11 @@ describe('Home page filtering integration', () => {
       // whose `targetQuantity` is 0, so the denominator an ungated row would
       // print is 0 too. `itemDefaults`' target of 2 lives on the Office
       // ItemStock and never reaches this row.
-      expect(screen.queryByText('0/0')).not.toBeInTheDocument()
-      expect(document.querySelectorAll('[data-unit-badge]')).toHaveLength(0)
+      expect(screen.queryByText(/0\/0/)).not.toBeInTheDocument()
+      // And no unit either — the unit is now part of the quantity's own text
+      // node (an ungated row would read "0/0 jug"), so the guard is a
+      // substring match on that unit rather than a badge-element count.
+      expect(screen.queryByText(/jug/)).not.toBeInTheDocument()
     })
 
     it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {
@@ -1986,7 +1995,13 @@ describe('Home page filtering integration', () => {
       // nothing at all is stocked at the active location, PR B's bug class
       const recipe = await createRecipe({ name: 'Pasta' })
       const office = await createLocation('Office')
-      await createItem({ name: 'Milk', tagIds: [], ...itemDefaults }, office.id)
+      // `packageUnit: 'jug'` makes the unit string UNIQUE in this DOM, so
+      // the assertion below that it is absent cannot pass vacuously the way a
+      // check for the default 'pack' could.
+      await createItem(
+        { name: 'Milk', tagIds: [], packageUnit: 'jug', ...itemDefaults },
+        office.id,
+      )
 
       renderRecipeDetail(recipe.id)
       const user = userEvent.setup()
@@ -2015,8 +2030,11 @@ describe('Home page filtering integration', () => {
       // whose `targetQuantity` is 0, so the denominator an ungated row would
       // print is 0 too. `itemDefaults`' target of 2 lives on the Office
       // ItemStock and never reaches this row.
-      expect(screen.queryByText('0/0')).not.toBeInTheDocument()
-      expect(document.querySelectorAll('[data-unit-badge]')).toHaveLength(0)
+      expect(screen.queryByText(/0\/0/)).not.toBeInTheDocument()
+      // And no unit either — the unit is now part of the quantity's own text
+      // node (an ungated row would read "0/0 jug"), so the guard is a
+      // substring match on that unit rather than a badge-element count.
+      expect(screen.queryByText(/jug/)).not.toBeInTheDocument()
     })
 
     it('user sees the empty state, not a blank pane, when a search matches nothing and the tail is empty', async () => {

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_PACKAGE_UNIT } from '@/types'
 import { GroupCard } from './GroupCard'
 
 describe('GroupCard', () => {
@@ -26,9 +27,31 @@ describe('GroupCard', () => {
       />,
     )
 
-    // Then descendant text inside the button is still found by getByText
-    expect(screen.getByText('5/9')).toBeInTheDocument()
-    expect(screen.getByText('pack')).toBeInTheDocument()
+    // Then descendant text inside the button is still found by getByText.
+    // The unit trails the totals inside the SAME metadata span — group
+    // totals are pack-counted, so it is the explicit DEFAULT_PACKAGE_UNIT.
+    expect(screen.getByText('5/9 pack')).toBeInTheDocument()
+  })
+
+  it('user sees the pack unit trailing the totals in the same text node', () => {
+    // Given a group card with packed totals
+    render(
+      <GroupCard
+        name="Pasta"
+        itemCount={9}
+        onClick={() => {}}
+        totalPackedQuantity={12}
+        totalTargetInPacks={20}
+      />,
+    )
+
+    // When the metadata line renders
+    // Then the unit is part of that line's own text, not a separate badge
+    // element — group totals are pack-counted, so it is DEFAULT_PACKAGE_UNIT
+    expect(
+      screen.getByText(`12/20 ${DEFAULT_PACKAGE_UNIT}`),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('pack')).not.toBeInTheDocument()
   })
 
   it('user can activate the card by clicking it', async () => {

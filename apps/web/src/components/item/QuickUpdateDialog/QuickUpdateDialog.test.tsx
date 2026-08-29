@@ -356,7 +356,7 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
     // Given an item with a stored target of 4
     const user = userEvent.setup()
     renderDialog(makeItem({ packedQuantity: 1, unpackedQuantity: 0 }))
-    expect(screen.getByText('1 / 4')).toBeInTheDocument()
+    expect(screen.getByText('1 / 4 gallon')).toBeInTheDocument()
 
     // When the user raises the target
     await user.click(
@@ -364,7 +364,7 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
     )
 
     // Then the label tracks the edited target, not the stored one
-    expect(screen.getByText('1 / 5')).toBeInTheDocument()
+    expect(screen.getByText('1 / 5 gallon')).toBeInTheDocument()
   })
 
   it('user fills to the edited target, not the stored one', async () => {
