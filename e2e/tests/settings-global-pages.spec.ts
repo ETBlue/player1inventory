@@ -97,7 +97,7 @@ test('user sees no location stock on a settings items tab, while the pantry show
       id: `stock-${ITEM_ID}`,
       itemId: ITEM_ID,
       locationId: 'local',
-      // Per-location STATE. 5 of 10 renders "5/10" plus a 10-segment bar.
+      // Per-location STATE. 5 of 10 renders "5 / 10" plus a 10-segment bar.
       targetQuantity: 10,
       refillThreshold: 2,
       packedQuantity: 5,
@@ -117,7 +117,7 @@ test('user sees no location stock on a settings items tab, while the pantry show
   // each carrying data-segment). Those two are the load-bearing pair — the unit
   // badge and the severity tint are covered by ItemCard.test.tsx, where they
   // can be asserted without guessing at rendered class names.
-  await expect(page.getByText('5/10')).toBeVisible()
+  await expect(page.getByText('5 / 10')).toBeVisible()
   await expect(page.locator('[data-segment]').first()).toBeVisible()
 
   // When the same item is viewed on the tag's Items tab — a GLOBAL item↔tag
@@ -126,7 +126,7 @@ test('user sees no location stock on a settings items tab, while the pantry show
   await expect(page.getByText('Milk').first()).toBeVisible()
 
   // Then no active-location stock is rendered at all
-  await expect(page.getByText('5/10')).toHaveCount(0)
+  await expect(page.getByText('5 / 10')).toHaveCount(0)
   await expect(page.locator('[data-segment]')).toHaveCount(0)
 })
 

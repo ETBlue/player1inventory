@@ -117,8 +117,8 @@ describe('ItemProgressBar with partial segments', () => {
     )
 
     // Count display moved to ItemCard - progress bar should not show count
-    expect(container.textContent).not.toContain('3 (+0.5)/5')
-    expect(container.textContent).not.toContain('3/5')
+    expect(container.textContent).not.toContain('3 (+0.5) / 5')
+    expect(container.textContent).not.toContain('3 / 5')
   })
 
   it('shows packed and unpacked in continuous mode for simple items', () => {

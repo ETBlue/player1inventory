@@ -369,7 +369,7 @@ describe('ItemCard - Tag Sorting', () => {
 
     // Should show converted packed quantity: 3 bottles × 500g = 1500g,
     // with the measurement unit as a trailing bare word in the same span
-    expect(screen.getByText('1500 (+100)/2000 g')).toBeInTheDocument()
+    expect(screen.getByText('1500 (+100) / 2000 g')).toBeInTheDocument()
   })
 
   it('shows packed quantity as-is when tracking in packages', async () => {
@@ -394,7 +394,7 @@ describe('ItemCard - Tag Sorting', () => {
 
     // Should show packed quantity without conversion: 5 packs, with the
     // package unit trailing the loose-stock reading in the same span
-    expect(screen.getByText('5 (+0.5)/10 pack')).toBeInTheDocument()
+    expect(screen.getByText('5 (+0.5) / 10 pack')).toBeInTheDocument()
   })
 
   it('shows simple count when unpacked is 0 with measurement tracking', async () => {
@@ -419,8 +419,8 @@ describe('ItemCard - Tag Sorting', () => {
       <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
-    // Should show simple count with converted packed: 2000/2000, unit trailing
-    expect(screen.getByText('2000/2000 mL')).toBeInTheDocument()
+    // Should show simple count with converted packed: 2000 / 2000, unit trailing
+    expect(screen.getByText('2000 / 2000 mL')).toBeInTheDocument()
   })
 })
 
@@ -1563,7 +1563,7 @@ describe('ItemCard - showStock', () => {
       // Then every stock-derived rendering is present. The unit is part of
       // the quantity's own text node now (no separate badge element), so the
       // two must be queried as one string.
-      expect(screen.getByText('1/3 bunch')).toBeInTheDocument()
+      expect(screen.getByText('1 / 3 bunch')).toBeInTheDocument()
       expect(container.querySelectorAll('[data-segment]').length).toBe(3)
     })
 
@@ -1607,7 +1607,7 @@ describe('ItemCard - showStock', () => {
       )
 
       // Then the location-scoped quantity is not rendered
-      expect(screen.queryByText('1/3')).not.toBeInTheDocument()
+      expect(screen.queryByText(/1 \/ 3/)).not.toBeInTheDocument()
     })
 
     it('user cannot see the unit', async () => {

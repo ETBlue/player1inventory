@@ -235,8 +235,8 @@ export function ItemCard({
               // — see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md.
               <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
                 {item.unpackedQuantity > 0
-                  ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity} ${unitLabel}`
-                  : `${currentQuantity}/${item.targetQuantity} ${unitLabel}`}
+                  ? `${displayPacked} (+${item.unpackedQuantity}) / ${item.targetQuantity} ${unitLabel}`
+                  : `${currentQuantity} / ${item.targetQuantity} ${unitLabel}`}
               </span>
             )}
           </CardTitle>

@@ -76,7 +76,7 @@ export function GroupCard({
               docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md). Group
               totals are genuinely pack-counted, so the unit is the explicit
               DEFAULT_PACKAGE_UNIT rather than any item's own unit. */}
-          <CardMetadata>{`${displayPacked}/${displayTarget} ${DEFAULT_PACKAGE_UNIT}`}</CardMetadata>
+          <CardMetadata>{`${displayPacked} / ${displayTarget} ${DEFAULT_PACKAGE_UNIT}`}</CardMetadata>
         </div>
         {/* Row 2: progress bar */}
         <ItemProgressBar

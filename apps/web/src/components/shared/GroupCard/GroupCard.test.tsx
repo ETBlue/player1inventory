@@ -30,7 +30,7 @@ describe('GroupCard', () => {
     // Then descendant text inside the button is still found by getByText.
     // The unit trails the totals inside the SAME metadata span — group
     // totals are pack-counted, so it is the explicit DEFAULT_PACKAGE_UNIT.
-    expect(screen.getByText('5/9 pack')).toBeInTheDocument()
+    expect(screen.getByText('5 / 9 pack')).toBeInTheDocument()
   })
 
   it('user sees the pack unit trailing the totals in the same text node', () => {
@@ -49,7 +49,7 @@ describe('GroupCard', () => {
     // Then the unit is part of that line's own text, not a separate badge
     // element — group totals are pack-counted, so it is DEFAULT_PACKAGE_UNIT
     expect(
-      screen.getByText(`12/20 ${DEFAULT_PACKAGE_UNIT}`),
+      screen.getByText(`12 / 20 ${DEFAULT_PACKAGE_UNIT}`),
     ).toBeInTheDocument()
     expect(screen.queryByText('pack')).not.toBeInTheDocument()
   })

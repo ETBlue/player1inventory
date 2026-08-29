@@ -208,15 +208,15 @@ Exported from `@/components/ui/card`.
 
 ## Unit Display Components
 
-**Units on cards and progress rows are plain trailing words, not a component.** There is no `UnitBadge` — it was deleted on 2026-08-29 (issue #257). The bordered pill's `opacity-75` composited `text-foreground-muted` down to 4.44:1 on `background-elevated` and failed WCAG AA on **every** light surface, and the token itself was innocent (8.68:1 opaque), so darkening it would have restyled the ~70 files that share it. Each of the three render sites now folds the unit into the quantity's own already-muted `text-xs text-foreground-muted` element as a trailing bare word — no parentheses, no border, full opacity:
+**Units on cards and progress rows are plain trailing words, not a component.** There is no `UnitBadge` — it was deleted on 2026-08-29 (issue #257). The bordered pill's `opacity-75` composited `text-foreground-muted` down to 4.44:1 on `background-elevated` and failed WCAG AA on **every** light surface, and the token itself was innocent (8.68:1 opaque), so darkening it would have restyled the ~70 files that share it. Each of the three render sites now folds the unit into the quantity's own already-muted `text-xs text-foreground-muted` element as a trailing bare word — no parentheses, no border, full opacity. All three space the `/` (`3 / 4`, never `3/4`):
 
 | Site | Renders |
 | --- | --- |
-| `ItemCard` | `3/4 pack` · `3 (+2)/4 pack` · `750/1000 ml` |
-| `GroupCard` | `12/20 pack` — the explicit `DEFAULT_PACKAGE_UNIT` from `@/types`, since group totals are genuinely pack-counted |
-| `StockProgressRow` | `3 / 4 pack` (its `quantityLabel` keeps its spaces; `ItemCard`'s does not) |
+| `ItemCard` | `3 / 4 pack` · `3 (+2) / 4 pack` · `750 / 1000 ml` |
+| `GroupCard` | `12 / 20 pack` — the explicit `DEFAULT_PACKAGE_UNIT` from `@/types`, since group totals are genuinely pack-counted |
+| `StockProgressRow` | `3 / 4 pack` (its `quantityLabel` comes from `getStockPreview`, which has always spaced the `/`) |
 
-Because the unit shares one text node with the numbers, tests must query them together — `getByText('1/3 bunch')`, never `getByText('bunch')`. See `docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md`.
+Because the unit shares one text node with the numbers, tests must query them together — `getByText('1 / 3 bunch')`, never `getByText('bunch')`. See `docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md`.
 
 **`UnitInline`** (`src/components/shared/UnitInline/`) — inline `(unit)` text for form labels. Props: `unit?: string | undefined`, `placeholder?: string` (default `"pack"`). Renders `(unit ?? placeholder)` with parentheses included. Pass `placeholder="?"` for measurement-unit labels where the unit may be unset — the `?` signals an unresolved setting to the user. Used in ItemForm.
 

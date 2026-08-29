@@ -1685,15 +1685,15 @@ describe('Home page filtering integration', () => {
       // And the bucket-3 row shows NO stock figures: `useShowStock` gates
       // them off for an item with no ItemStock here, because
       // `joinItemStock()` hands such a row zeroed quantities and rendering
-      // those as if they were real stock is a lie. The literal is "0/0", not
+      // those as if they were real stock is a lie. The literal is "0 / 0", not
       // "0/2": the ROW's quantities are zeroed, not just its on-hand count —
       // `joinItemStock()` falls back to ZERO_STOCK (`db/operations.ts`),
       // whose `targetQuantity` is 0, so the denominator an ungated row would
       // print is 0 too. `itemDefaults`' target of 2 lives on the Office
       // ItemStock and never reaches this row.
-      expect(screen.queryByText(/0\/0/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/0 \/ 0/)).not.toBeInTheDocument()
       // And no unit either — the unit is now part of the quantity's own text
-      // node (an ungated row would read "0/0 jug"), so the guard is a
+      // node (an ungated row would read "0 / 0 jug"), so the guard is a
       // substring match on that unit rather than a badge-element count.
       expect(screen.queryByText(/jug/)).not.toBeInTheDocument()
     })
@@ -2024,15 +2024,15 @@ describe('Home page filtering integration', () => {
       // And the bucket-3 row shows NO stock figures: `useShowStock` gates
       // them off for an item with no ItemStock here, because
       // `joinItemStock()` hands such a row zeroed quantities and rendering
-      // those as if they were real stock is a lie. The literal is "0/0", not
+      // those as if they were real stock is a lie. The literal is "0 / 0", not
       // "0/2": the ROW's quantities are zeroed, not just its on-hand count —
       // `joinItemStock()` falls back to ZERO_STOCK (`db/operations.ts`),
       // whose `targetQuantity` is 0, so the denominator an ungated row would
       // print is 0 too. `itemDefaults`' target of 2 lives on the Office
       // ItemStock and never reaches this row.
-      expect(screen.queryByText(/0\/0/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/0 \/ 0/)).not.toBeInTheDocument()
       // And no unit either — the unit is now part of the quantity's own text
-      // node (an ungated row would read "0/0 jug"), so the guard is a
+      // node (an ungated row would read "0 / 0 jug"), so the guard is a
       // substring match on that unit rather than a badge-element count.
       expect(screen.queryByText(/jug/)).not.toBeInTheDocument()
     })
