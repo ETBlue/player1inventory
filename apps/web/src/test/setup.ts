@@ -276,6 +276,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useApplyShelfFilterPicksMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 

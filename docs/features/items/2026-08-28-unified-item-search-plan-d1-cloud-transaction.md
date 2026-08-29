@@ -1,7 +1,7 @@
 # Unified item search — PR D-1: make the cloud filter-shelf picker atomic
 
 **Date:** 2026-08-28
-**Status:** 🔲 Pending — deliberately deferred out of PR D
+**Status:** ✅ Complete — PR #272
 **Issue:** [#269](https://github.com/ETBlue/player1inventory/issues/269)
 **Depends on:** PR D (`2026-08-28-unified-item-search-plan-d.md`) being merged
 **Design doc:** `2026-08-26-unified-item-search-design.md`

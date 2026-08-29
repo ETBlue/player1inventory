@@ -7,7 +7,9 @@ import type { Item as PrismaItem, ItemTag, ItemVendor } from '@prisma/client'
 
 // Map a Prisma item (with junction rows included) to the GraphQL Item shape.
 // GraphQL schema types createdAt, updatedAt as String! and dueDate as String.
-function toGraphQL(item: PrismaItem & { tags: ItemTag[]; vendors: ItemVendor[] }): Item {
+// Exported for shelf.resolver.ts's applyShelfFilterPicks, which also returns
+// an Item! and needs the same mapping.
+export function toGraphQL(item: PrismaItem & { tags: ItemTag[]; vendors: ItemVendor[] }): Item {
   // Prisma enum for 'days from purchase' is 'days_from_purchase' — map back to display string
   const expirationMode =
     item.expirationMode === 'days_from_purchase'

@@ -28,6 +28,32 @@ This is exactly how the `vendorId` P3018 deploy failure happened (see `docs/glob
    ```
    If `migrate status` reports migrations "from the database are not found locally," your dev DB has orphans — it has drifted and a hand-written migration may be unsafe.
 
+## Transaction forms: array vs interactive (callback)
+
+Prisma supports two `prisma.$transaction` forms. Every use before this branch
+was the **array form** — `prisma.$transaction([...])`, a list of independent
+queries Prisma batches into one transaction with no logic between them:
+`apps/server/src/resolvers/import.resolver.ts:499`,
+`apps/server/src/resolvers/purge.resolver.ts:22`, and
+`apps/server/src/index.ts:29` (the E2E-only cleanup endpoint).
+
+`apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
+resolver introduces the first **interactive (callback) form** —
+`prisma.$transaction(async (tx) => { ... })` — because it needs to read the
+current `Item`/`Recipe` rows and branch on them (union ids, check for
+already-having a recipe) before deciding what to write, which the array form
+cannot express.
+
+**Implication for pooled connections:** the interactive form holds one
+database connection open for the duration of the callback (every query inside
+it must run sequentially against the same `tx`), unlike the array form, which
+Prisma can send as a single batched request. `schema.prisma:5-8` already
+configures a `directUrl` alongside the pooled `DATABASE_URL` — an interactive
+transaction is exactly the kind of pattern that benefits from a non-pooled
+connection, since it ties up a connection from the pool for the whole
+callback rather than for one statement. Keep interactive transactions short
+and free of any `await` that isn't itself a `tx.*` call.
+
 ## Defensive SQL
 
 For destructive operations whose target may not exist on every database, prefer the idempotent forms — `DROP COLUMN IF EXISTS`, `DROP INDEX IF EXISTS`, `DROP TABLE IF EXISTS`. They make a migration safe to replay across drifted databases without changing the end-state.

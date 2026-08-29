@@ -562,8 +562,8 @@ describe('ShelfDetailView filter shelf picker', () => {
     ).toBeInTheDocument()
 
     // And the item gains the Dairy tag from OUTSIDE the dialog — standing in
-    // for a concurrent edit, or a cloud half-write whose own refetch lands
-    // while this dialog is still open
+    // for a concurrent edit from another tab or surface whose own refetch
+    // lands while this dialog is still open
     await db.items.update(yogurt.id, { tagIds: [dairyTag.id] })
     await act(async () => {
       await queryClient.invalidateQueries({ queryKey: ['items'] })

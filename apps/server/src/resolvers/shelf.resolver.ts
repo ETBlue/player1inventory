@@ -1,7 +1,9 @@
 import { GraphQLError } from 'graphql'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Shelf } from '../generated/graphql.js'
+import { toGraphQL as itemToGraphQL } from './item.resolver.js'
 
 export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
   Query: {
@@ -73,6 +75,85 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         data: { itemIds: orderedItemIds },
       })
       return true
+    },
+    // Joins an item to a filter shelf's picks: adds tag/vendor ids onto the
+    // Item and (optionally) membership onto a Recipe, in one DB transaction —
+    // the cloud counterpart to local mode's applyShelfFilterPicksBatch
+    // (apps/web/src/db/operations.ts). Wrapped in prisma.$transaction so a
+    // failing recipe write rolls back the tag/vendor writes rather than
+    // leaving the item half-updated.
+    applyShelfFilterPicks: async (_, { input }, ctx) => {
+      const userId = requireAuth(ctx)
+      const { itemId, addTagIds, addVendorIds, addRecipeId } = input
+
+      const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const item = await tx.item.findFirst({
+          where: { id: itemId, userId },
+          include: { tags: true, vendors: true },
+        })
+        if (!item) {
+          throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
+        }
+
+        // Read-then-union, not client-supplied merge — mirrors
+        // applyShelfFilterPicksBatch's idempotency so a duplicate call
+        // (e.g. two quick presses) cannot duplicate an id.
+        const tagIds = [...new Set([...item.tags.map((t) => t.tagId), ...addTagIds])]
+        const vendorIds = [...new Set([...item.vendors.map((v) => v.vendorId), ...addVendorIds])]
+
+        // Guard each axis on its OWN `addXIds.length`, not on whether the
+        // union changed anything — a recipe-only pick (both arrays empty)
+        // must issue no itemTag/itemVendor writes at all. Rewriting every row
+        // unconditionally would race a concurrent plain `updateItem` on the
+        // same item under Postgres READ COMMITTED: two writers deleting then
+        // recreating the same composite-key rows can deadlock into a
+        // duplicate-key abort, or silently drop whichever writer's rows lose
+        // the race. The read-then-union above is unchanged — this only skips
+        // the delete+recreate when this axis added nothing.
+        if (addTagIds.length) {
+          await tx.itemTag.deleteMany({ where: { itemId } })
+          if (tagIds.length) {
+            await tx.itemTag.createMany({ data: tagIds.map((tagId) => ({ itemId, tagId })) })
+          }
+        }
+
+        if (addVendorIds.length) {
+          await tx.itemVendor.deleteMany({ where: { itemId } })
+          if (vendorIds.length) {
+            await tx.itemVendor.createMany({ data: vendorIds.map((vendorId) => ({ itemId, vendorId })) })
+          }
+        }
+
+        if (addRecipeId) {
+          const recipe = await tx.recipe.findFirst({
+            where: { id: addRecipeId, userId },
+            include: { items: true },
+          })
+          if (!recipe) {
+            throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
+          }
+          const alreadyHasItem = recipe.items.some((ri) => ri.itemId === itemId)
+          if (!alreadyHasItem) {
+            await tx.recipeItem.create({
+              data: {
+                recipeId: addRecipeId,
+                itemId,
+                // `|| 1`, NOT `?? 1`: consumeAmount 0 is legitimate, and
+                // defaultAmount 0 means "optional, unchecked" in cooking —
+                // same operator and rationale as applyShelfFilterPicksBatch.
+                defaultAmount: item.consumeAmount || 1,
+              },
+            })
+          }
+        }
+
+        return tx.item.findUniqueOrThrow({
+          where: { id: itemId },
+          include: { tags: true, vendors: true },
+        })
+      })
+
+      return itemToGraphQL(updated)
     },
   },
 }

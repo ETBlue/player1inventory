@@ -71,3 +71,9 @@ mutation ReorderShelves($orderedIds: [String!]!) {
 mutation ReorderShelfItems($shelfId: ID!, $orderedItemIds: [String!]!) {
   reorderShelfItems(shelfId: $shelfId, orderedItemIds: $orderedItemIds)
 }
+
+mutation ApplyShelfFilterPicks($input: ApplyShelfFilterPicksInput!) {
+  applyShelfFilterPicks(input: $input) {
+    id
+  }
+}
