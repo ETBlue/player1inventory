@@ -87,11 +87,15 @@ function withLocationStock(item: PantryItem, stock: ItemStock): PantryItem {
   return joinItemStock(stripStockFields(item), stock, stock.locationId)
 }
 
-// A wider update type that allows explicit `undefined` for the optional
-// per-location due date. Passing `undefined` tells Dexie (local) to clear the
-// property and tells toUpdateItemInput() (cloud) to send null so the server
-// clears it. A separate type is needed because `exactOptionalPropertyTypes:
-// true` prevents assigning `undefined` to a field typed `?: T`.
+// A wider update type that allows an EXPLICIT `undefined` for the optional
+// per-location due date. Three states, not two, and they are all distinct:
+//   - key absent          → leave the stored date alone
+//   - key present, a Date → set it
+//   - key present, undefined → clear it (Dexie spreads the undefined over the
+//     existing row; toUpdateItemInput() sends null so the server clears it)
+// A separate type is needed for the third state because
+// `exactOptionalPropertyTypes: true` prevents assigning `undefined` to a field
+// typed `?: T`.
 type ItemUpdatePayload = Omit<Partial<StockFields>, 'dueDate'> & {
   dueDate?: Date | undefined
 }
@@ -101,18 +105,30 @@ type ItemUpdatePayload = Omit<Partial<StockFields>, 'dueDate'> & {
 // consume amount) — is persisted by the Info tab and is intentionally absent
 // here: writing it from this page would mean one location editing all of them.
 //
-// `expirationMode` is read (never written) to decide whether this location's
-// own due date applies at all.
+// `expirationMode` is read (never written) to decide whether the "Expires on"
+// field is rendered at all, and therefore whether this save has anything to say
+// about this location's due date.
+//
+// The `dueDate` KEY is emitted only in `'date'` mode — the same gate the field
+// itself is rendered behind in `ItemForm`, and the same convention
+// `QuickUpdateDialog` follows (`QuickUpdateDialog.tsx`, `handleSubmit`). A
+// present key means "write what I say", and both persistence paths read a
+// present-but-undefined key as "clear it", so emitting it unconditionally made
+// a quantity save in `'days from purchase'` / `'disabled'` mode silently
+// discard a date the form never showed the user (issue #261).
+//
+// Inside `'date'` mode the key IS emitted even when the field is empty — that
+// is the user clearing a date they can see, and it must still clear the stored
+// one.
 function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
   return {
     packedQuantity: values.packedQuantity,
     unpackedQuantity: values.unpackedQuantity,
     targetQuantity: values.targetQuantity,
     refillThreshold: values.refillThreshold,
-    dueDate:
-      values.expirationMode === 'date' && values.dueDate
-        ? new Date(values.dueDate)
-        : undefined,
+    ...(values.expirationMode === 'date'
+      ? { dueDate: values.dueDate ? new Date(values.dueDate) : undefined }
+      : {}),
   }
 }
 
