@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { FilterConfig, Item, Tag } from '@/types'
 import { TagColor } from '@/types'
 import {
+  countSelectedFilters,
   defaultPicksFor,
   deriveFilterAxes,
   isFilterConfigSatisfiable,
@@ -421,5 +422,56 @@ describe('defaultPicksFor', () => {
 
   it('returns { tagIds: [] } for no axes', () => {
     expect(defaultPicksFor([])).toEqual({ tagIds: [] })
+  })
+})
+
+describe('countSelectedFilters', () => {
+  it('sums every selected option across all three arrays', () => {
+    // Given a config selecting 2 tags of the SAME tag type, 1 vendor and 1 recipe
+    const filterConfig: FilterConfig = {
+      tagIds: ['dairy', 'frozen'],
+      vendorIds: ['vendor-1'],
+      recipeIds: ['recipe-1'],
+    }
+
+    // When counting selected filters
+    // Then it is 4 — the number of OPTIONS, not the number of axes (which is 3:
+    // one tag-type axis + vendor + recipe)
+    expect(countSelectedFilters(filterConfig)).toBe(4)
+  })
+
+  it('counts two tags of the same type as two, not one axis', () => {
+    // Given two tags that would collapse into a single axis in deriveFilterAxes
+    const filterConfig: FilterConfig = {
+      tagIds: ['dairy', 'frozen'],
+      vendorIds: ['vendor-1'],
+    }
+
+    // When counting selected filters
+    // Then it is 3 selected options (axes would be 2)
+    expect(countSelectedFilters(filterConfig)).toBe(3)
+  })
+
+  it('treats undefined fields as empty', () => {
+    expect(countSelectedFilters({ tagIds: ['dairy'] })).toBe(1)
+    expect(countSelectedFilters({})).toBe(0)
+  })
+
+  it('treats null fields as empty (restored backups store null)', () => {
+    const filterConfig = {
+      tagIds: null,
+      vendorIds: ['vendor-1'],
+      recipeIds: null,
+    } as unknown as FilterConfig
+
+    expect(() => countSelectedFilters(filterConfig)).not.toThrow()
+    expect(countSelectedFilters(filterConfig)).toBe(1)
+  })
+
+  it('returns 0 for empty arrays and for an absent filterConfig', () => {
+    expect(
+      countSelectedFilters({ tagIds: [], vendorIds: [], recipeIds: [] }),
+    ).toBe(0)
+    expect(countSelectedFilters(undefined)).toBe(0)
   })
 })

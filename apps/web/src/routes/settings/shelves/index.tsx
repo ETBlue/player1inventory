@@ -47,7 +47,7 @@ import {
   useShelvesQuery,
 } from '@/hooks/useShelves'
 import { useTags } from '@/hooks/useTags'
-import { matchesFilterConfig } from '@/lib/shelfUtils'
+import { countSelectedFilters, matchesFilterConfig } from '@/lib/shelfUtils'
 import type { Shelf } from '@/types'
 
 export const Route = createFileRoute('/settings/shelves/')({
@@ -75,6 +75,11 @@ function SortableShelfRow({
     transition,
     isDragging,
   } = useSortable({ id: shelf.id })
+
+  // Only filter shelves have filters at all — a selection shelf omits the count
+  // entirely rather than reporting a meaningless "0 filters".
+  const filterCount =
+    shelf.type === 'filter' ? countSelectedFilters(shelf.filterConfig) : null
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -113,7 +118,18 @@ function SortableShelfRow({
           {shelf.type === 'selection' && (
             <SquareMousePointer className="h-3 w-3 text-foreground-muted" />
           )}
-          {itemCount} {itemCount <= 1 ? 'item' : 'items'}
+          {filterCount !== null && (
+            <>
+              <span>
+                {filterCount} {filterCount === 1 ? 'filter' : 'filters'}
+              </span>
+              {/* Muted `·` between metadata segments — same idiom as GroupCard */}
+              <span className="text-foreground-muted">·</span>
+            </>
+          )}
+          <span>
+            {itemCount} {itemCount <= 1 ? 'item' : 'items'}
+          </span>
         </CardMetadata>
         {/* Right side: delete */}
         <DeleteButton
