@@ -8,9 +8,9 @@ Three rules, all four tabs alike
 (`settings/{tags,vendors,recipes}/$id/items.tsx`, `settings/shelves/$shelfId/items.tsx`):
 
 1. **No stock is rendered.** Each passes `showStock={false}` to `ItemCard`,
-   which suppresses all five stock-derived renderings — the quantity text, the
-   `UnitBadge`, the `ItemProgressBar`, the **severity card tint** and the
-   **inactive dimming**. The last two are styling rather than content and are
+   which suppresses all four stock-derived renderings — the quantity text
+   (which carries the unit as a trailing word), the `ItemProgressBar`, the
+   **severity card tint** and the **inactive dimming**. The last two are styling rather than content and are
    exactly what a partial gate misses: a card still tinted red or still dimmed
    is still leaking one location's state onto a global page. See
    `components/CLAUDE.md`.
