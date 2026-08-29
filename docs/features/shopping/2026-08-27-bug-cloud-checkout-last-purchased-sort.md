@@ -185,6 +185,12 @@ Issue [#263](https://github.com/ETBlue/player1inventory/issues/263) —
 same file, found during this investigation. Latent (nothing reads those fields
 today), so it was left out of this fix.
 
+**Fixed 2026-08-29** — [bug](../../global/bugs/2026-08-29-bug-deserialize-invalid-dates.md).
+It turned out not to be fully latent: `deserializeRecipe` is also on the
+backup-import path, so importing a cloud-exported backup into local mode was
+already writing Invalid Dates into IndexedDB. The `parseWireDate()` helper added
+by *this* fix is what the fix reuses.
+
 ## PR / commit
 
 PR [#264](https://github.com/ETBlue/player1inventory/pull/264)

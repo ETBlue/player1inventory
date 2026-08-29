@@ -87,7 +87,10 @@ describe('deserializeItem', () => {
 })
 
 describe('deserializeVendor', () => {
-  it('converts createdAt ISO string to Date', () => {
+  it('converts createdAt ISO string to Date (local-backup shape)', () => {
+    // Given a vendor as a *local* backup carries it — IndexedDB stores a
+    // createdAt, and export serializes it as ISO 8601. The cloud never sends
+    // this field at all; see the next test for that shape.
     const raw = {
       id: '1',
       name: 'Costco',
@@ -97,10 +100,37 @@ describe('deserializeVendor', () => {
     expect(result.createdAt).toBeInstanceOf(Date)
     expect(result.createdAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
   })
+
+  it('falls back to epoch for the cloud wire shape, which has no createdAt', () => {
+    // Given a vendor exactly as GetVendors returns it — `Vendor { id, name,
+    // userId }` in vendor.graphql, with no createdAt in the SDL, in Prisma, or
+    // in the selection set
+    const raw = { id: '1', name: 'Costco', userId: 'user-1' }
+
+    // When deserializing
+    const result = deserializeVendor(raw)
+
+    // Then createdAt is a valid Date at the epoch — never an Invalid Date,
+    // whose NaN getTime() silently no-ops every comparator that touches it
+    expect(Number.isNaN(result.createdAt.getTime())).toBe(false)
+    expect(result.createdAt).toEqual(new Date(0))
+  })
+
+  it('falls back to epoch rather than an Invalid Date for an unparseable createdAt', () => {
+    const result = deserializeVendor({
+      id: '1',
+      name: 'Costco',
+      createdAt: 'nope',
+    })
+    expect(Number.isNaN(result.createdAt.getTime())).toBe(false)
+    expect(result.createdAt).toEqual(new Date(0))
+  })
 })
 
 describe('deserializeRecipe', () => {
-  it('converts createdAt and updatedAt ISO strings to Date', () => {
+  it('converts createdAt and updatedAt ISO strings to Date (local-backup shape)', () => {
+    // Given a recipe as a *local* backup carries it — ISO 8601 timestamps. The
+    // cloud sends neither field; see the next test.
     const raw = {
       id: '1',
       name: 'Pasta',
@@ -109,8 +139,44 @@ describe('deserializeRecipe', () => {
       updatedAt: '2026-02-01T00:00:00.000Z',
     }
     const result = deserializeRecipe(raw)
-    expect(result.createdAt).toBeInstanceOf(Date)
-    expect(result.updatedAt).toBeInstanceOf(Date)
+    expect(result.createdAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
+    expect(result.updatedAt).toEqual(new Date('2026-02-01T00:00:00.000Z'))
+  })
+
+  it('falls back to epoch for the cloud wire shape, which has no timestamps', () => {
+    // Given a recipe exactly as GetRecipes returns it — `Recipe { id, name,
+    // items, lastCookedAt, userId }` in recipe.graphql, with no
+    // createdAt/updatedAt in the SDL, in Prisma, or in the selection set
+    const raw = {
+      id: '1',
+      name: 'Pasta',
+      items: [],
+      userId: 'user-1',
+      lastCookedAt: null,
+    }
+
+    // When deserializing
+    const result = deserializeRecipe(raw)
+
+    // Then both timestamps are valid Dates at the epoch, never Invalid Dates
+    expect(Number.isNaN(result.createdAt.getTime())).toBe(false)
+    expect(Number.isNaN(result.updatedAt.getTime())).toBe(false)
+    expect(result.createdAt).toEqual(new Date(0))
+    expect(result.updatedAt).toEqual(new Date(0))
+  })
+
+  it('falls back to epoch rather than an Invalid Date for unparseable timestamps', () => {
+    const result = deserializeRecipe({
+      id: '1',
+      name: 'Pasta',
+      items: [],
+      createdAt: 'nope',
+      updatedAt: 'nope',
+    })
+    expect(Number.isNaN(result.createdAt.getTime())).toBe(false)
+    expect(Number.isNaN(result.updatedAt.getTime())).toBe(false)
+    expect(result.createdAt).toEqual(new Date(0))
+    expect(result.updatedAt).toEqual(new Date(0))
   })
 
   it('converts lastCookedAt when present', () => {
@@ -191,6 +257,27 @@ describe('deserializeShelf', () => {
     const result = deserializeShelf(raw)
 
     // Then epoch is used as fallback
+    expect(result.createdAt).toEqual(new Date(0))
+    expect(result.updatedAt).toEqual(new Date(0))
+  })
+
+  it('falls back to epoch rather than an Invalid Date for unparseable timestamps', () => {
+    // Given a shelf whose timestamps are present but unparseable — the guard
+    // `raw.createdAt ? new Date(...) : new Date(0)` passes this through as an
+    // Invalid Date; `parseWireDate` does not
+    const raw = {
+      id: '1',
+      name: 'My Shelf',
+      createdAt: 'nope',
+      updatedAt: 'nope',
+    }
+
+    // When deserialized
+    const result = deserializeShelf(raw)
+
+    // Then epoch is used, and neither field is an Invalid Date
+    expect(Number.isNaN(result.createdAt.getTime())).toBe(false)
+    expect(Number.isNaN(result.updatedAt.getTime())).toBe(false)
     expect(result.createdAt).toEqual(new Date(0))
     expect(result.updatedAt).toEqual(new Date(0))
   })

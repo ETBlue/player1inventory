@@ -12,20 +12,26 @@ export function deserializeItem(raw: Record<string, unknown>): PantryItem {
   } as PantryItem
 }
 
-// GraphQL returns createdAt as ISO string; convert to Date.
+// GraphQL Vendor has no createdAt (absent from the SDL, from Prisma, and from
+// every selection set); only a local backup carries one, as an ISO string. Use
+// epoch as a safe fallback. See `parseWireDate` below for why an Invalid Date
+// is never an acceptable outcome here.
 export function deserializeVendor(raw: Record<string, unknown>): Vendor {
   return {
     ...raw,
-    createdAt: new Date(raw.createdAt as string),
+    createdAt: parseWireDate(raw.createdAt) ?? new Date(0),
   } as Vendor
 }
 
-// GraphQL returns createdAt/updatedAt/lastCookedAt as ISO strings; convert to Date.
+// GraphQL Recipe has no createdAt/updatedAt (absent from the SDL, from Prisma,
+// and from every selection set); only a local backup carries them, as ISO
+// strings. Use epoch as a safe fallback. `lastCookedAt` *is* in the schema and
+// arrives as an ISO string.
 export function deserializeRecipe(raw: Record<string, unknown>): Recipe {
   return {
     ...raw,
-    createdAt: new Date(raw.createdAt as string),
-    updatedAt: new Date(raw.updatedAt as string),
+    createdAt: parseWireDate(raw.createdAt) ?? new Date(0),
+    updatedAt: parseWireDate(raw.updatedAt) ?? new Date(0),
     lastCookedAt: raw.lastCookedAt
       ? new Date(raw.lastCookedAt as string)
       : undefined,
@@ -47,8 +53,8 @@ export function deserializeShelf(raw: Record<string, unknown>): Shelf {
 
   return {
     ...raw,
-    createdAt: raw.createdAt ? new Date(raw.createdAt as string) : new Date(0),
-    updatedAt: raw.updatedAt ? new Date(raw.updatedAt as string) : new Date(0),
+    createdAt: parseWireDate(raw.createdAt) ?? new Date(0),
+    updatedAt: parseWireDate(raw.updatedAt) ?? new Date(0),
     ...(filterConfig != null && {
       filterConfig: {
         ...filterConfig,
