@@ -1185,4 +1185,177 @@ describe('Item stock tab', () => {
     })
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
+
+  // Issue #261. The Stock tab renders the "Expires on" field ONLY when the
+  // item's global expirationMode is 'date' (same gate as QuickUpdateDialog).
+  // `buildStockUpdates` used to emit the `dueDate` key unconditionally, and
+  // BOTH persistence paths read a present-but-undefined key as "clear it"
+  // (`upsertItemStock` spreads it over the existing row; `toUpdateItemInput`
+  // turns it into an explicit null) — so saving quantities in any other mode
+  // silently discarded that location's stored date. A form must not clear a
+  // field it never showed.
+  describe('a save must not clear a due date the form never rendered', () => {
+    it('user can save a quantity in "days from purchase" mode without losing this location’s due date', async () => {
+      const user = userEvent.setup()
+
+      // Given an item whose expiration mode is NOT 'date' — so the tab never
+      // renders the "Expires on" field — stocked here WITH a due date. A
+      // fixture without one could not detect a clear.
+      const stored = new Date('2026-12-24T00:00:00.000Z')
+      const item = await createItem({
+        name: 'Milk',
+        tagIds: [],
+        packageUnit: 'bottle',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        expirationMode: 'days from purchase',
+        estimatedDueDays: 7,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        dueDate: stored,
+      })
+      expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
+
+      renderStockTab(item.id)
+
+      // The field really is absent — the premise of the whole test
+      const packedInput = await screen.findByLabelText(/^packed/i)
+      expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+      // When the user changes a quantity and saves
+      await user.clear(packedInput)
+      await user.type(packedInput, '5')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then the quantity is persisted and the stored due date is untouched
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.packedQuantity).toBe(5)
+      })
+      expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
+    })
+
+    it('user can save a quantity in "disabled" expiration mode without losing this location’s due date', async () => {
+      const user = userEvent.setup()
+
+      // Given the same setup in the third mode — 'disabled' reaches the same
+      // branch as 'days from purchase' but is what an item lands in after the
+      // user turns expiration off, which is the likelier way to hit this
+      const stored = new Date('2026-11-11T00:00:00.000Z')
+      const item = await createItem({
+        name: 'Rice',
+        tagIds: [],
+        packageUnit: 'bag',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        expirationMode: 'disabled',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        dueDate: stored,
+      })
+
+      renderStockTab(item.id)
+
+      // When the user changes a quantity and saves
+      const packedInput = await screen.findByLabelText(/^packed/i)
+      await user.clear(packedInput)
+      await user.type(packedInput, '3')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then the stored due date survives
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.packedQuantity).toBe(3)
+      })
+      expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
+    })
+
+    // The other half of the fix: in 'date' mode the field IS rendered, so the
+    // key is still emitted and an emptied field still clears the stored date.
+    // Without this the fix could over-correct into "never clear".
+    it('user can clear the due date in "date" mode and have it cleared on this location', async () => {
+      const user = userEvent.setup()
+
+      // Given an item in 'date' mode stocked here with a due date
+      const item = await createItem({
+        name: 'Yogurt',
+        tagIds: [],
+        packageUnit: 'cup',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        expirationMode: 'date',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        dueDate: new Date('2026-12-24T00:00:00.000Z'),
+      })
+
+      renderStockTab(item.id)
+
+      // When the user empties the rendered "Expires on" field and saves
+      const dueDateInput = await screen.findByLabelText(/expires on/i)
+      expect(dueDateInput).toHaveValue('2026-12-24')
+      await user.clear(dueDateInput)
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then this location's stored due date is gone
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.dueDate).toBeUndefined()
+      })
+    })
+
+    it('cloud mode: saving a quantity in "days from purchase" mode sends no dueDate key at all', async () => {
+      const user = userEvent.setup()
+
+      // Given cloud mode and a cloud item in a non-'date' expiration mode that
+      // carries a due date the server holds
+      localStorage.setItem('data-mode', 'cloud')
+      const cloudItem = {
+        id: 'item-cloud-3',
+        name: 'Cloud Milk',
+        packageUnit: 'bottle',
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        expirationMode: 'days from purchase',
+        estimatedDueDays: 7,
+        dueDate: '2026-12-24T00:00:00.000Z',
+        createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+      }
+      mockUseGetItemQuery.mockReturnValue({
+        data: { item: cloudItem },
+        loading: false,
+        error: undefined,
+      })
+      const mockCloudUpdate = vi.fn().mockResolvedValue({
+        data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
+      })
+      mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
+
+      renderStockTab(cloudItem.id)
+
+      // When the user changes a quantity and saves
+      const packedInput = await screen.findByLabelText(/^packed/i)
+      await user.clear(packedInput)
+      await user.type(packedInput, '5')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then the GraphQL input carries no `dueDate` KEY — its mere presence,
+      // whatever the value, is what makes toUpdateItemInput send an explicit
+      // null and the server clear the date
+      await waitFor(() => {
+        expect(mockCloudUpdate).toHaveBeenCalled()
+      })
+      const input = mockCloudUpdate.mock.calls[0][0].variables.input
+      expect(input.packedQuantity).toBe(5)
+      expect('dueDate' in input).toBe(false)
+    })
+  })
 })
