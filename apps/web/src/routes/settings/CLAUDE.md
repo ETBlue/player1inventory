@@ -86,6 +86,32 @@ Settings-created item in a default location — the exact bug issue #247 part 2 
 Recorded in the design doc's "Deferred" section and in `routes/CLAUDE.md` beside the
 matching transaction-atomicity obligation.
 
+### The shelf list row shows a filter count
+
+`settings/shelves/index.tsx`'s `SortableShelfRow` renders its `CardMetadata` as
+`<type icon> N filters · M items` — the item count stays last, separated by the
+muted `·` span idiom `components/shared/GroupCard/GroupCard.tsx` uses between its
+own metadata segments. Strings on this page are hardcoded English, not i18n.
+
+**The filter count is selected OPTIONS, not axes.** It comes from
+`countSelectedFilters()` (`lib/shelfUtils.ts`) — `tagIds.length +
+vendorIds.length + recipeIds.length`, i.e. exactly the badges the user toggled on
+the Filters tab. It is deliberately **not** `deriveFilterAxes().length`, which
+collapses every tag of one tag type into a single axis and would report 2 where
+three badges are lit. A filter shelf whose `filterConfig` is absent, `{}`, or
+all-empty reads 0 and still renders "0 filters" — it is still a filter shelf.
+Fields are normalised with `?? []` (not destructuring defaults) because a
+restored backup can carry `null` on any of the three arrays; see
+`matchesFilterConfig` for the same trap.
+
+**Selection shelves omit the count entirely.** Membership there is manual, so a
+"0 filters" would be noise rather than information. The virtual "Unsorted" row is
+untouched. Plurals follow the surrounding style: `filterCount === 1 ? 'filter' :
+'filters'`.
+
+The pantry `ShelfList` / `GroupCard` surface is unrelated and unchanged — the
+filter count lives only on the settings page row.
+
 ### Shelf filters tab shows global counts
 
 `settings/shelves/$shelfId/filters.tsx` renders ` (N)` after every tag, vendor
