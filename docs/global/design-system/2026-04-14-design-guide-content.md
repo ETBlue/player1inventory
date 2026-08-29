@@ -236,28 +236,59 @@ Add to sidebar:
 
 ## Progress
 
+_Verified against `apps/design/src/content/docs/` on 2026-08-29._
+
 Site is live at `design.player1inventory.etblue.tw` (scaffold: PR #183, merged into
-v0.3.0). Content is filled in phase by phase.
+v0.3.0). Cloudflare Pages build command is `pnpm design:build`, output directory
+`apps/design/dist` (Astro's default `outDir`); the `p1i-design` project was originally
+misconfigured and corrected to these.
 
-**Cloudflare Pages config (fixed):** the `p1i-design` project was misconfigured. Correct
-settings are build command `pnpm design:build`, output directory `apps/design/dist`.
+**A placeholder page is literally 5 lines** — frontmatter plus `TODO: Add content.` That is
+the test used below, not page length.
 
-| Page | Status | Notes |
-|---|---|---|
-| `principles.mdx` | 🔲 | Not started |
-| `tokens/colors.mdx` | ✅ | PR #192 — "When to use" table simplified to 6 group-level rows |
-| `tokens/typography.mdx` | ✅ | PR #202 — full audit: demo corrected to system sans-serif (was Rosario); Rosario noted as a variable font (300–700); "When to use each step" split into heading scale (prescriptive) + content scale (descriptive); "Uppercase labels" section added (`text-sm font-medium uppercase` for form section headers); weight conventions rewritten to match actual usage; line height trimmed to `leading-tight` only. Also fixed `text-md` → `text-base` across 7 route files |
-| `tokens/spacing.mdx` | 🔲 | Placeholder — **next up** |
-| `tokens/motion.mdx` | 🔲 | Placeholder |
-| `tokens/effects.mdx` | 🔲 | New page |
-| `tokens/theming.mdx` | 🔲 | New page |
-| `tokens/layout.mdx` | 🔲 | New page |
-| `components/button.mdx` | 🔲 | Has live demo — needs anatomy, do/don't, a11y |
-| `components/badge.mdx` | 🔲 | Placeholder |
-| `components/card.mdx` | 🔲 | Placeholder |
-| `patterns/*` | 🔲 | All placeholders or new pages (see Phase 4 above) |
-| Phases 5–7 | 🔲 | Accessibility, Voice & Tone, Governance — all placeholders |
+### Written
+
+| Page | Notes |
+|---|---|
+| `principles.mdx` | 5 named principles, each with rationale — "Structure earns its keep" first |
+| `tokens/colors.mdx` | PR #192 — "When to use" table simplified to group-level rows |
+| `tokens/typography.mdx` | PR #202 — full audit: demo corrected to system sans-serif (was Rosario), Rosario noted as a variable font (300–700), "when to use" split into a prescriptive heading scale and a descriptive content scale, uppercase-label section added, weight table rewritten to match real usage, line height trimmed to `leading-tight`. Also fixed `text-md` → `text-base` across 7 route files |
+| `tokens/spacing.mdx` | Tailwind's 4px-base scale, no custom tokens |
+| `tokens/motion.mdx` | Includes `animate-spin`, `animate-in/out`, and the `transition-all` vs `transition-colors` performance note |
+| `tokens/effects.mdx` | Corrected against the implementation |
+| `tokens/theming.mdx` | Corrected against the implementation |
+| `tokens/layout.mdx` | The largest page — global shell, full-page patterns, live layout diagrams, mobile/desktop split, toolbar+list/form model |
+
+All three Phase-2 "new pages" (`effects`, `theming`, `layout`) exist and are in the sidebar.
+
+### Written, but short of what this plan asks for
+
+`components/button.mdx`, `components/badge.mdx` and `components/card.mdx` all carry real
+content — Variants, Usage, Resources, and full variant tables — but **none has the
+anatomy, do/don't, or accessibility sections** Phase 3 specifies. Treat these as partial,
+not as placeholders.
+
+### Still placeholders
+
+`index.mdx` · `patterns/filter-pipeline.mdx` · `patterns/forms.mdx` ·
+`patterns/empty-states.mdx` · `accessibility/overview.mdx` ·
+`accessibility/color-contrast.mdx` · `accessibility/keyboard-navigation.mdx` ·
+`voice-tone/overview.mdx` · `voice-tone/copy-guidelines.mdx`
+
+### Never created
+
+Six of the planned pattern pages — `navigation`, `error-states`, `object-detail`,
+`shelf-items`, `search-and-create`, `object-cards` — plus `governance.mdx`.
+
+The sidebar reflects this: **Tokens got all three of its new entries; Patterns got none of
+its six, and there is no Governance entry.** The "Sidebar changes required" section above
+is therefore item 2 done, items 1 and 3–4 outstanding.
+
+**Next up: Phase 4 — Patterns.** Three placeholder pages to fill and six to create; it is
+the largest remaining block and the only phase with pages that do not exist yet.
 
 **Workflow:** create a worktree per content batch, **audit each page against the actual
-implementation before writing** (use an Explore subagent to find real usage patterns),
-then PR + merge.
+implementation before writing** (use an Explore subagent to find real usage patterns), then
+PR + merge. Several commits in this area are corrections — `fix four factual errors in
+layout page`, `fix three factual errors in theming page`, `fix effects page to match
+implementation` — so the audit step is load-bearing, not ceremony.
