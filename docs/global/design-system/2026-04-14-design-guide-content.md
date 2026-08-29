@@ -231,3 +231,33 @@ Add to sidebar:
 - Figma file or design handoff artifacts
 - Automated token sync with Style Dictionary
 - Storybook cross-linking (deferred from PR #183)
+
+---
+
+## Progress
+
+Site is live at `design.player1inventory.etblue.tw` (scaffold: PR #183, merged into
+v0.3.0). Content is filled in phase by phase.
+
+**Cloudflare Pages config (fixed):** the `p1i-design` project was misconfigured. Correct
+settings are build command `pnpm design:build`, output directory `apps/design/dist`.
+
+| Page | Status | Notes |
+|---|---|---|
+| `principles.mdx` | 🔲 | Not started |
+| `tokens/colors.mdx` | ✅ | PR #192 — "When to use" table simplified to 6 group-level rows |
+| `tokens/typography.mdx` | ✅ | PR #202 — full audit: demo corrected to system sans-serif (was Rosario); Rosario noted as a variable font (300–700); "When to use each step" split into heading scale (prescriptive) + content scale (descriptive); "Uppercase labels" section added (`text-sm font-medium uppercase` for form section headers); weight conventions rewritten to match actual usage; line height trimmed to `leading-tight` only. Also fixed `text-md` → `text-base` across 7 route files |
+| `tokens/spacing.mdx` | 🔲 | Placeholder — **next up** |
+| `tokens/motion.mdx` | 🔲 | Placeholder |
+| `tokens/effects.mdx` | 🔲 | New page |
+| `tokens/theming.mdx` | 🔲 | New page |
+| `tokens/layout.mdx` | 🔲 | New page |
+| `components/button.mdx` | 🔲 | Has live demo — needs anatomy, do/don't, a11y |
+| `components/badge.mdx` | 🔲 | Placeholder |
+| `components/card.mdx` | 🔲 | Placeholder |
+| `patterns/*` | 🔲 | All placeholders or new pages (see Phase 4 above) |
+| Phases 5–7 | 🔲 | Accessibility, Voice & Tone, Governance — all placeholders |
+
+**Workflow:** create a worktree per content batch, **audit each page against the actual
+implementation before writing** (use an Explore subagent to find real usage patterns),
+then PR + merge.
