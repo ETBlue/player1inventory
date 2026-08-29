@@ -151,11 +151,12 @@ now, `/0 \/ 2/` and `/gallon/`. The same `true &&` mutation turns that test red.
 - `53e4f6dd` — `getItemPackUnits` measurement-fallback fix + tests
 - `a532739e` — drop the dead a11y exclusion
 - `d6568d21` — docs
-- a follow-up commit on the same branch — put spaces around the `/` in
-  `ItemCard` and `GroupCard` so all three render sites read `3 / 4 pack`,
-  with every exact-string assertion and doc table re-spaced to match
+- `a88865a1` — put spaces around the `/` in `ItemCard` and `GroupCard` so all
+  three render sites read `3 / 4 pack`, with every exact-string assertion and
+  doc table re-spaced to match
 
-PR: *TBD*
+PR: [#276](https://github.com/ETBlue/player1inventory/pull/276)
+(milestone `v0.3.0 — Local Polish`)
 
 ## Verification
 
