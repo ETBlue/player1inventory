@@ -1,6 +1,5 @@
 import { ArrowLeftToLine, ArrowRightToLine } from 'lucide-react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
-import { UnitBadge } from '@/components/shared/UnitBadge'
 import { Button } from '@/components/ui/button'
 
 export interface StockProgressRowProps {
@@ -59,8 +58,10 @@ export function StockProgressRow({
       <div className="space-y-1">
         <div className="flex gap-1 items-baseline text-xs text-right text-foreground-muted">
           <span className="flex-1" />
-          <span>{quantityLabel}</span>
-          <UnitBadge unit={unitLabel} />
+          {/* Unit as a trailing bare word in the row's own muted text, not a
+              separate `opacity-75` pill — the pill failed WCAG AA contrast
+              (docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md). */}
+          <span>{`${quantityLabel} ${unitLabel}`}</span>
         </div>
         <ItemProgressBar
           current={current}

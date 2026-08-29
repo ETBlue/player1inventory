@@ -2,7 +2,6 @@ import { ChevronRight } from 'lucide-react'
 import type React from 'react'
 import { Fragment } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
-import { UnitBadge } from '@/components/shared/UnitBadge'
 import {
   Card,
   CardContent,
@@ -10,6 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { getStockStatus } from '@/lib/quantityUtils'
+import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 interface GroupCardProps {
   name: string
@@ -70,8 +70,13 @@ export function GroupCard({
           <CardTitle className={`flex-1 truncate ${nameClassName}`}>
             {name}
           </CardTitle>
-          <CardMetadata>{`${displayPacked}/${displayTarget}`}</CardMetadata>
-          <UnitBadge />
+          {/* The unit is a trailing bare word in the same muted metadata
+              span, not a separate `opacity-75` pill — the pill failed WCAG AA
+              contrast (see
+              docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md). Group
+              totals are genuinely pack-counted, so the unit is the explicit
+              DEFAULT_PACKAGE_UNIT rather than any item's own unit. */}
+          <CardMetadata>{`${displayPacked} / ${displayTarget} ${DEFAULT_PACKAGE_UNIT}`}</CardMetadata>
         </div>
         {/* Row 2: progress bar */}
         <ItemProgressBar

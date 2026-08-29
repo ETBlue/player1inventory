@@ -1225,8 +1225,8 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
     // "ok"), not packedQuantity * 0 + unpackedQuantity = 2 (below it, "error")
     expect(progressStatus()).toBe('ok')
     // And the packed half of the label is the raw packed count (3), not
-    // packed * 0 (0)
-    expect(screen.getByText('3 (+2) / 10')).toBeInTheDocument()
+    // packed * 0 (0). The unit trails it in the same span.
+    expect(screen.getByText('3 (+2) / 10 g')).toBeInTheDocument()
   })
 
   it('Clear resets Packed and Unpacked to 0 and marks the form dirty', async () => {
@@ -1260,11 +1260,17 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
 // unconditionally into getStockPreview. Form state defaults it to `''`
 // (itemToFormValues does `item.packageUnit ?? ''`), and getStockPreview's own
 // `packageUnit ?? 'unit'` fallback does not fire for `''` — only `undefined`
-// does. An item created with just a name therefore rendered a bordered EMPTY
-// UnitBadge on the Stock tab, while QuickUpdateDialog (which spreads the same
-// field conditionally) showed "unit" for the identical item.
-describe('ItemForm — stock tab unit badge falls back honestly when unconfigured', () => {
-  it('renders the unit badge as "unit", not empty, when packageUnit and measurementUnit are both unset', () => {
+// does. An item created with just a name therefore rendered NOTHING where the
+// unit belongs, while QuickUpdateDialog (which spreads the same field
+// conditionally) showed "unit" for the identical item.
+//
+// The unit is no longer a bordered `UnitBadge` — it is a trailing bare word
+// inside the quantity's own span (the badge's `opacity-75` failed WCAG AA;
+// see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md) — so the guard
+// now asserts the label ENDS in the honest "unit" fallback rather than
+// trailing off after the numbers.
+describe('ItemForm — stock tab unit falls back honestly when unconfigured', () => {
+  it('renders the unit as "unit", not nothing, when packageUnit and measurementUnit are both unset', () => {
     render(
       <ItemForm
         initialValues={{
@@ -1282,6 +1288,6 @@ describe('ItemForm — stock tab unit badge falls back honestly when unconfigure
       />,
     )
 
-    expect(screen.getByText('unit')).toBeInTheDocument()
+    expect(screen.getByText('0 / 4 unit')).toBeInTheDocument()
   })
 })

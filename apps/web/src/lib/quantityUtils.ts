@@ -80,7 +80,23 @@ export function getItemPackUnits(item: Stock): {
       refill: item.refillThreshold / item.amountPerPackage,
     }
   }
-  // Fallback: no targetUnit or amountPerPackage = 0
+  // Fallback: no targetUnit, or a measurement item with amountPerPackage
+  // unset / 0.
+  //
+  // An UNCONVERTIBLE MEASUREMENT item contributes 0 packs, not its raw
+  // measurement amount. Both quantities here are in measurement units (ml, g,
+  // …) and there is no rate to divide by, so summing them into a PACK total
+  // mixes units: a 750 ml item used to push a group card to "750 / 20 pack".
+  // Zero is the only honest answer, and it matches the target 0 / refill 0
+  // this branch already returns for the same item.
+  //
+  // The zeroing is gated on `targetUnit === 'measurement'` so a row that
+  // reaches this branch for the OTHER reason — no `targetUnit` at all, which
+  // the type forbids but legacy stored rows can still carry — keeps its
+  // existing packed + unpacked sum.
+  if (item.targetUnit === 'measurement') {
+    return { packed: 0, target: 0, refill: 0 }
+  }
   const packed = item.packedQuantity + item.unpackedQuantity
   return { packed, target: 0, refill: 0 }
 }

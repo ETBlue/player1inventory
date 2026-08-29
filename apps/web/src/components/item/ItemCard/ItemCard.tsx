@@ -11,7 +11,6 @@ import {
 import type React from 'react'
 import { Fragment, useEffect, useState } from 'react'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
-import { UnitBadge } from '@/components/shared/UnitBadge'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,7 +58,7 @@ interface ItemCardProps {
   showExpiration?: boolean
   showTagSummary?: boolean
   // Suppresses every rendering derived from the ACTIVE LOCATION's stock:
-  // the quantity text, the unit badge, the progress bar, the severity card
+  // the quantity text (which carries the unit), the progress bar, the severity card
   // tint and the inactive dimming. Surfaces that edit global item↔entity
   // relations (the four Settings assignment tabs) pass false so they never
   // show one location's state on a global page. The last two are styling
@@ -228,13 +227,18 @@ export function ItemCard({
             </h3>
             <div className="flex-1" />
             {showStock && (
+              // The unit is a trailing bare word inside the quantity's own
+              // span (no parentheses, no pill) so it inherits
+              // `text-foreground-muted` at FULL opacity. It used to be a
+              // separate bordered `UnitBadge` at `opacity-75`, which
+              // composited to 4.44:1 on the card surface and failed WCAG AA
+              // — see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md.
               <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
                 {item.unpackedQuantity > 0
-                  ? `${displayPacked} (+${item.unpackedQuantity})/${item.targetQuantity}`
-                  : `${currentQuantity}/${item.targetQuantity}`}
+                  ? `${displayPacked} (+${item.unpackedQuantity}) / ${item.targetQuantity} ${unitLabel}`
+                  : `${currentQuantity} / ${item.targetQuantity} ${unitLabel}`}
               </span>
             )}
-            {showStock && <UnitBadge unit={unitLabel} />}
           </CardTitle>
           {showStock && (
             <ItemProgressBar

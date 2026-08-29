@@ -367,8 +367,9 @@ describe('ItemCard - Tag Sorting', () => {
       <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
-    // Should show converted packed quantity: 3 bottles × 500g = 1500g
-    expect(screen.getByText('1500 (+100)/2000')).toBeInTheDocument()
+    // Should show converted packed quantity: 3 bottles × 500g = 1500g,
+    // with the measurement unit as a trailing bare word in the same span
+    expect(screen.getByText('1500 (+100) / 2000 g')).toBeInTheDocument()
   })
 
   it('shows packed quantity as-is when tracking in packages', async () => {
@@ -391,8 +392,9 @@ describe('ItemCard - Tag Sorting', () => {
       <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
-    // Should show packed quantity without conversion: 5 packs
-    expect(screen.getByText('5 (+0.5)/10')).toBeInTheDocument()
+    // Should show packed quantity without conversion: 5 packs, with the
+    // package unit trailing the loose-stock reading in the same span
+    expect(screen.getByText('5 (+0.5) / 10 pack')).toBeInTheDocument()
   })
 
   it('shows simple count when unpacked is 0 with measurement tracking', async () => {
@@ -417,8 +419,8 @@ describe('ItemCard - Tag Sorting', () => {
       <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
     )
 
-    // Should show simple count with converted packed: 2000/2000
-    expect(screen.getByText('2000/2000')).toBeInTheDocument()
+    // Should show simple count with converted packed: 2000 / 2000, unit trailing
+    expect(screen.getByText('2000 / 2000 mL')).toBeInTheDocument()
   })
 })
 
@@ -1551,16 +1553,17 @@ describe('ItemCard - showStock', () => {
   }
 
   describe('by default (showStock omitted)', () => {
-    it('user can see the quantity text, the unit badge and the progress bar', async () => {
+    it('user can see the quantity text with its unit and the progress bar', async () => {
       // Given an item with stock in the active location
       // When the card renders with the default showStock
       const { container } = await renderWithRouter(
         <ItemCard item={lowStockItem} tags={[]} tagTypes={[]} />,
       )
 
-      // Then every stock-derived rendering is present
-      expect(screen.getByText('1/3')).toBeInTheDocument()
-      expect(screen.getByText('bunch')).toBeInTheDocument()
+      // Then every stock-derived rendering is present. The unit is part of
+      // the quantity's own text node now (no separate badge element), so the
+      // two must be queried as one string.
+      expect(screen.getByText('1 / 3 bunch')).toBeInTheDocument()
       expect(container.querySelectorAll('[data-segment]').length).toBe(3)
     })
 
@@ -1604,10 +1607,10 @@ describe('ItemCard - showStock', () => {
       )
 
       // Then the location-scoped quantity is not rendered
-      expect(screen.queryByText('1/3')).not.toBeInTheDocument()
+      expect(screen.queryByText(/1 \/ 3/)).not.toBeInTheDocument()
     })
 
-    it('user cannot see the unit badge', async () => {
+    it('user cannot see the unit', async () => {
       // Given an item with a package unit
       // When the card renders with showStock={false}
       await renderWithRouter(
@@ -1619,8 +1622,9 @@ describe('ItemCard - showStock', () => {
         />,
       )
 
-      // Then the unit badge is not rendered
-      expect(screen.queryByText('bunch')).not.toBeInTheDocument()
+      // Then the unit is not rendered anywhere on the card — it now travels
+      // inside the quantity text, so a substring match is what proves it gone
+      expect(screen.queryByText(/bunch/)).not.toBeInTheDocument()
     })
 
     it('user cannot see the progress bar', async () => {

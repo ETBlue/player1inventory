@@ -903,7 +903,7 @@ describe('getItemPackUnits', () => {
     expect(result).toEqual({ packed: 3, target: 3, refill: 1 })
   })
 
-  it('returns target 0 and refill 0 for measurement item without amountPerPackage', () => {
+  it('returns packed 0, target 0 and refill 0 for measurement item without amountPerPackage', () => {
     const item: Item = {
       ...base,
       targetUnit: 'measurement',
@@ -911,10 +911,10 @@ describe('getItemPackUnits', () => {
       refillThreshold: 3,
     }
     const result = getItemPackUnits(item)
-    expect(result).toEqual({ packed: 3, target: 0, refill: 0 })
+    expect(result).toEqual({ packed: 0, target: 0, refill: 0 })
   })
 
-  it('returns target 0 and refill 0 for measurement item with amountPerPackage of 0', () => {
+  it('returns packed 0, target 0 and refill 0 for measurement item with amountPerPackage of 0', () => {
     const item: Item = {
       ...base,
       targetUnit: 'measurement',
@@ -923,6 +923,45 @@ describe('getItemPackUnits', () => {
       refillThreshold: 3,
     }
     const result = getItemPackUnits(item)
+    expect(result).toEqual({ packed: 0, target: 0, refill: 0 })
+  })
+
+  it('user does not see a raw measurement amount counted as packs on a group card', () => {
+    // Given a 750 ml bottle tracked in measurement units with NO
+    // amountPerPackage — nothing to convert millilitres into packs with
+    const item: Item = {
+      ...base,
+      targetUnit: 'measurement',
+      measurementUnit: 'ml',
+      packedQuantity: 0,
+      unpackedQuantity: 750,
+      targetQuantity: 1000,
+      refillThreshold: 250,
+    }
+
+    // When the group views total it up in pack units
+    const result = getItemPackUnits(item)
+
+    // Then it contributes 0 packs, not 750 — the raw millilitre reading must
+    // never be summed into a pack total (it used to render "750 / 20 pack")
+    expect(result.packed).toBe(0)
+    expect(result.packed).not.toBe(750)
+  })
+
+  it('a row with no targetUnit at all keeps the packed + unpacked fallback sum', () => {
+    // Given a legacy row that carries no targetUnit — the OTHER way into the
+    // fallback branch, which the measurement zeroing must not capture
+    const item = {
+      ...base,
+      packedQuantity: 2,
+      unpackedQuantity: 1,
+      targetUnit: undefined,
+    } as unknown as Item
+
+    // When it is totalled in pack units
+    const result = getItemPackUnits(item)
+
+    // Then its existing behaviour is unchanged
     expect(result).toEqual({ packed: 3, target: 0, refill: 0 })
   })
 

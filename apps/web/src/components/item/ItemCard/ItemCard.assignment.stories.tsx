@@ -75,7 +75,7 @@ export const RecipeUnassigned: Story = {
 }
 
 // mockItem is below its refill threshold, so with the default showStock the
-// card renders the error tint, the quantity, the unit badge and the bar.
+// card renders the error tint, the quantity (with its trailing unit) and the bar.
 // This is how the four Settings assignment tabs render it: a global
 // item↔entity row with no trace of the active location's stock.
 export const TagAssignmentNoStock: Story = {

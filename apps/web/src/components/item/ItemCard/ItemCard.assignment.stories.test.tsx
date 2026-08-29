@@ -54,9 +54,9 @@ describe('ItemCard assignment stories smoke tests', () => {
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )
-    // mockItem is 0/2 with refillThreshold 1 → error tint + bar by default
-    expect(screen.queryByText('0/2')).not.toBeInTheDocument()
-    expect(screen.queryByText('gallon')).not.toBeInTheDocument()
+    // mockItem is 0 / 2 with refillThreshold 1 → error tint + bar by default
+    expect(screen.queryByText(/0 \/ 2/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/gallon/)).not.toBeInTheDocument()
     expect(container.querySelectorAll('[data-segment]').length).toBe(0)
   })
 

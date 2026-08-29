@@ -215,6 +215,6 @@ test('user sees packed progress label on shelf card', async ({ page }) => {
   // Then: the shelf card shows packed totals (5 packed / 9 target) and "pack" unit
   const fruitShelfCard = page.getByRole('button', { name: /Fruit Shelf/ })
   await expect(fruitShelfCard).toBeVisible()
-  await expect(fruitShelfCard.getByText('5/9')).toBeVisible()
+  await expect(fruitShelfCard.getByText('5 / 9')).toBeVisible()
   await expect(fruitShelfCard.getByText('pack')).toBeVisible()
 })
