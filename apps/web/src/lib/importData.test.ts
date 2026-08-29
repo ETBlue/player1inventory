@@ -530,6 +530,37 @@ describe('importLocalData', () => {
     expect((carts[0].lastPurchasedAt as Date).getTime()).toBe(1787827334343)
   })
 
+  it('user can import a cloud-exported recipe that carries no timestamps', async () => {
+    // Given a backup exported from cloud: `Recipe { id, name, items,
+    // lastCookedAt, userId }` — the cloud schema has no createdAt/updatedAt, so
+    // the export simply has no such keys
+    const payload = legacyPayload({
+      items: [makeItem('item-1', 'Milk')],
+      recipes: [
+        {
+          id: 'recipe-1',
+          name: 'Pasta',
+          items: [],
+          userId: 'user-1',
+          lastCookedAt: null,
+        },
+      ],
+    })
+
+    // When importing into local mode
+    await importLocalData(payload, 'skip')
+
+    // Then the recipe lands in Dexie with valid Dates, not Invalid Dates —
+    // createdAt/updatedAt are unindexed on the `recipes` store, so IndexedDB
+    // would have accepted NaN timestamps silently
+    const recipes = await db.recipes.toArray()
+    expect(recipes).toHaveLength(1)
+    expect(recipes[0].createdAt).toBeInstanceOf(Date)
+    expect(Number.isNaN(recipes[0].createdAt.getTime())).toBe(false)
+    expect(recipes[0].updatedAt).toBeInstanceOf(Date)
+    expect(Number.isNaN(recipes[0].updatedAt.getTime())).toBe(false)
+  })
+
   it('user can import and skip conflicting entities', async () => {
     // Given a database with an existing item
     await db.items.add(makeItem('item-1', 'Milk'))
