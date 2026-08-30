@@ -147,7 +147,14 @@ describe('location resolvers', () => {
     // Date.valueOf()'s epoch-millisecond coercion (a bare numeric string would
     // also satisfy a looser 'is a non-empty string' assertion, so this pins the
     // exact ISO value instead)
-    const loc = res.data?.locations?.find((l: { id: string }) => l.id === 'loc-a')
+    // `singleResult.data` is untyped (`Record<string, unknown>`), so narrow it
+    // before using array methods — `tsc` rejects `.find` on `{}` even though
+    // vitest/esbuild strips types and would run it fine. Caught only by the
+    // root `pnpm build`, never by `pnpm test`.
+    const locations = res.data?.locations as
+      | Array<{ id: string; createdAt: string; updatedAt: string }>
+      | undefined
+    const loc = locations?.find((l) => l.id === 'loc-a')
     expect(loc?.createdAt).toBe(seeded.createdAt.toISOString())
     expect(loc?.updatedAt).toBe(seeded.updatedAt.toISOString())
     expect(loc?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
