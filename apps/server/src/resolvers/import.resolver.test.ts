@@ -93,6 +93,7 @@ const p = prisma as unknown as {
     findUniqueOrThrow: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
   }
   itemTag: {
     createMany: ReturnType<typeof vi.fn>
@@ -418,5 +419,16 @@ describe('clearAllData', () => {
     expect(p.itemStock.deleteMany).toHaveBeenCalledWith({
       where: { location: { userId: 'user_import_test' } },
     })
+    // And itemStock is deleted before item and before location — real
+    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
+    // destroy ItemStock rows before this deleteMany runs. Each deleteMany(...)
+    // call executes synchronously while the $transaction array literal is built,
+    // so mock.invocationCallOrder reflects source order.
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.item.deleteMany.mock.invocationCallOrder[0],
+    )
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.location.deleteMany.mock.invocationCallOrder[0],
+    )
   })
 })

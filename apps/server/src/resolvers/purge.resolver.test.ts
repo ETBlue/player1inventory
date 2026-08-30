@@ -82,13 +82,15 @@ describe('purgeUserData resolver', () => {
       { count: 3 },  // recipes
       { count: 0 },  // itemTags (junction)
       { count: 0 },  // itemVendors (junction)
+      { count: 7 },  // itemStocks (no userId, scoped through location) — must run
+                     // before item.deleteMany so this count isn't pre-empted by
+                     // ItemStock_itemId_fkey's ON DELETE CASCADE
       { count: 5 },  // items
       { count: 4 },  // tags
       { count: 2 },  // tagTypes
       { count: 1 },  // vendors
       { count: 6 },  // shelves
-      { count: 0 },  // itemStocks (junction, no userId)
-      { count: 2 },  // locations
+      { count: 3 },  // locations
     ])
 
     // When user calls purgeUserData
@@ -111,8 +113,8 @@ describe('purgeUserData resolver', () => {
       expect(data.tagTypes).toBe(2)
       expect(data.vendors).toBe(1)
       expect(data.shelves).toBe(6)
-      expect(data.itemStocks).toBe(0)
-      expect(data.locations).toBe(2)
+      expect(data.itemStocks).toBe(7)
+      expect(data.locations).toBe(3)
     }
     // And every user-owned table was asked to delete this user's rows —
     // shelves and locations included (see purge-coverage.test.ts and issue #250).
@@ -122,6 +124,18 @@ describe('purgeUserData resolver', () => {
     expect(p.itemStock.deleteMany).toHaveBeenCalledWith({
       where: { location: { userId: 'user_purge_test' } },
     })
+    // And itemStock is deleted before item and before location — real
+    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
+    // destroy ItemStock rows before this deleteMany could count them, and
+    // ItemStock_locationId_fkey requires the FK target to still exist. Each
+    // deleteMany(...) call executes synchronously while the $transaction array
+    // literal is built, so mock.invocationCallOrder reflects source order.
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.item.deleteMany.mock.invocationCallOrder[0],
+    )
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.location.deleteMany.mock.invocationCallOrder[0],
+    )
   })
 
   it('returns zero counts when user has no data', async () => {
