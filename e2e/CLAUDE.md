@@ -73,7 +73,8 @@ the real invariant is now commented in `e2e/playwright.config.ts`.
 
 **Fixed (2026-08-30, cloud locations PR 1).** The switch is an in-process datasource
 override in `apps/server/src/lib/prisma.ts`, not a `webServer` env var: the cloud
-`webServer` entry in `e2e/playwright.config.ts` only sets `E2E_TEST_MODE=true`, and when
+`webServer` entry in `e2e/playwright.config.ts` passes no database URL of any kind — it
+sets `E2E_TEST_MODE=true` (alongside `PORT` and `CLIENT_ORIGIN`), and when
 `prisma.ts` sees that flag it points the runtime Prisma client at `TEST_DATABASE_URL`
 (read from `apps/server/.env`, a dedicated Neon branch — see `apps/server/.env.example`)
 instead of `DATABASE_URL`. `TEST_DIRECT_URL` has no runtime consumer today — it exists
