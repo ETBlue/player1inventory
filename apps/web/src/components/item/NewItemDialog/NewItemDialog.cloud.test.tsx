@@ -59,6 +59,13 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // item's inline stock values into the ItemStock row the join reads.
     usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
     useCreateItemMutation: () => [mockCreateItem, { loading: false }],
+    // `useAddItemToLocation` is dual-mode since PR 2 Task 8, so the dialog
+    // mounts this hook in both modes. Stubbed for the same reason as the
+    // location hooks above.
+    useAddItemToLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 

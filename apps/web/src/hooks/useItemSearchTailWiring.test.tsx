@@ -143,8 +143,8 @@ describe('useItemSearchTailWiring', () => {
     expect(result.current.tailProps.groupAction?.pendingItemId).toBeNull()
   })
 
-  it('omits addToLocationAction in cloud mode', () => {
-    // Given cloud mode, where useAddItemToLocation would throw
+  it('offers addToLocationAction in cloud mode too', () => {
+    // Given cloud mode, where `useAddItemToLocation` now sends a real mutation
     mockMode('cloud')
     mockActiveLocation(homeLocation)
     mockSearchTail({ inLocation: [], notStockedHere: [milk] })
@@ -159,8 +159,10 @@ describe('useItemSearchTailWiring', () => {
       }),
     )
 
-    // Then bucket 3's action is entirely absent, not a disabled one
-    expect(result.current.tailProps.addToLocationAction).toBeUndefined()
+    // Then bucket 3 is actionable — the data mode is not part of the gate any
+    // more, only the resolved active location below is. The press itself is
+    // exercised end-to-end in `useItemSearchTailWiring.cloud.test.tsx`.
+    expect(result.current.tailProps.addToLocationAction).toBeDefined()
   })
 
   it('omits addToLocationAction when no active location has resolved', () => {

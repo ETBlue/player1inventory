@@ -1,3 +1,4 @@
+import type { ApolloCache } from '@apollo/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type { UnitSwitchBatchInput } from '@/db/operations'
@@ -25,12 +26,14 @@ import {
   GetRecipesDocument,
   ItemCountByTagDocument,
   ItemCountByVendorDocument,
+  useAddItemToLocationMutation,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
   useItemStocksForItemQuery,
   useLastPurchaseDatesQuery,
   usePantryDataQuery,
+  useRemoveItemFromLocationMutation,
   useUpdateItemMutation,
 } from '@/generated/graphql'
 import { deserializeItem, deserializeItemStock } from '@/lib/deserialization'
@@ -403,15 +406,44 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
   return localMutation
 }
 
-// Both location mutations below are Dexie-only: cloud mode has no locations and
-// no ItemStock backend (deferred in PR D), so running them there would write to
-// local rows the cloud UI never reads and report success for something that did
-// not happen. They throw instead of no-op'ing so a wiring mistake fails loudly
-// in dev rather than silently — false success is exactly the PR D trap. This is
-// a safety net under the component-level `mode === 'local'` guard (the
-// NewItemDialog pattern), not a replacement for it.
-const LOCAL_ONLY_LOCATION_MUTATION =
-  'Location stock mutations are local-mode only: cloud mode has no locations or ItemStock.'
+// What both cloud location mutations do about the cache, in one place.
+//
+// The mutation result is a normalized `ItemStock` entity, and that can never
+// teach Apollo that the `itemStocks(locationId:)` / `itemStocksForItem(itemId:)`
+// ROOT FIELDS gained or lost an entry — the same reasoning `useCreateLocation`
+// records for `Query.locations`. So:
+//
+//   `update` evicts both root fields, covering the lists that are NOT mounted.
+//   The Stock tab can stock an item while the pantry is off screen; without the
+//   eviction the pantry's next mount would be served the pre-mutation list from
+//   the cache under the default cache-first policy.
+//
+//   `refetchQueries` by NAME refills whatever IS mounted. Names rather than
+//   `{ query, variables }` descriptors because both queries are variable-scoped
+//   (a location id / an item id) and this hook cannot know every mounted
+//   variant; `useCheckout` already refetches `'VendorCart'` the same way.
+//   Apollo's query deduplication merges this with the refetch the eviction
+//   itself triggers on those same observers.
+//
+//   `awaitRefetchQueries` so `mutateAsync` resolves only once the lists have
+//   landed — the search tail's bucket-3 row re-enables in a `finally` after
+//   that await, and the local branches return their invalidations from
+//   `onSuccess` for exactly the same reason.
+//
+// `GetItems` is deliberately absent: an item's own row is untouched by stocking
+// it somewhere. `PantryData` does have to be listed even though it shares
+// `ROOT_QUERY.items` with `GetItems`, because `itemStocks` is a different root
+// field that a `GetItems` refetch never reaches.
+const STOCK_LIST_QUERIES = ['PantryData', 'ItemStocksForItem']
+
+const CLOUD_ADD_RETURNED_NO_STOCK =
+  'addItemToLocation resolved without an ItemStock — the item was not stocked.'
+
+function evictStockLists(cache: ApolloCache) {
+  cache.evict({ id: 'ROOT_QUERY', fieldName: 'itemStocks' })
+  cache.evict({ id: 'ROOT_QUERY', fieldName: 'itemStocksForItem' })
+  cache.gc()
+}
 
 type AddToLocationVars = {
   itemId: string
@@ -421,18 +453,18 @@ type AddToLocationVars = {
 }
 
 // Stock an existing global item in a location via copy-on-add (inherits all
-// stock fields except packed/unpacked → 0). No-op if the item is already
-// stocked there. Local-first only — ItemStock has no cloud backend yet.
+// stock fields except packed/unpacked -> 0). No-op if the item is already
+// stocked there. Both modes: local writes the ItemStock row through Dexie,
+// cloud sends `addItemToLocation`, whose resolver performs the same
+// copy-on-add server-side.
 export function useAddItemToLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
 
-  return useMutation({
-    mutationFn: ({ itemId, locationId }: AddToLocationVars) => {
-      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
-      return addItemToLocation(itemId, locationId ?? activeLocationId)
-    },
+  const localMutation = useMutation({
+    mutationFn: ({ itemId, locationId }: AddToLocationVars) =>
+      addItemToLocation(itemId, locationId ?? activeLocationId),
     // RETURNED, not fire-and-forget, for the same reason as `useUpdateItem`
     // below: `mutateAsync` awaits what `onSuccess` returns, and the search
     // tail's bucket-3 "Add to <location>" action re-enables every row in a
@@ -447,6 +479,56 @@ export function useAddItemToLocation() {
         queryClient.invalidateQueries({ queryKey: ['itemStocks'] }),
       ]),
   })
+
+  const [cloudAdd, { loading: cloudAddLoading }] = useAddItemToLocationMutation(
+    {
+      update: (cache) => evictStockLists(cache),
+      refetchQueries: STOCK_LIST_QUERIES,
+      awaitRefetchQueries: true,
+    },
+  )
+
+  if (mode === 'cloud') {
+    // `sourceLocationId` is left out, so the resolver copies from the item's
+    // most recently updated row. The two modes' defaults are NOT identical:
+    // local's parameter defaults to `DEFAULT_LOCATION_ID` and only falls back
+    // to the most-recent row when the item is not stocked there. No call site
+    // passes one in either mode, and nothing today depends on which row is
+    // copied — the difference is recorded rather than papered over.
+    //
+    // The Stock-tab pager passes the location of the page being viewed as
+    // `locationId`, exactly as in local mode.
+    return {
+      mutate: (
+        { itemId, locationId }: AddToLocationVars,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudAdd({
+          variables: { itemId, locationId: locationId ?? activeLocationId },
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
+      // Returns a deserialized `ItemStock`, the same type the local branch
+      // resolves to — `NewItemDialog` reads the freshly copied row's fields off
+      // it rather than off the stale pre-add item, and a union of "Dexie row |
+      // wire row | undefined" would not let it. A resolved mutation with no row
+      // is a broken response, not an empty result, so it throws.
+      mutateAsync: ({ itemId, locationId }: AddToLocationVars) =>
+        cloudAdd({
+          variables: { itemId, locationId: locationId ?? activeLocationId },
+        }).then((r) => {
+          const row = r.data?.addItemToLocation
+          if (!row) throw new Error(CLOUD_ADD_RETURNED_NO_STOCK)
+          return deserializeItemStock(row as Record<string, unknown>)
+        }),
+      isPending: cloudAddLoading,
+    }
+  }
+
+  return localMutation
 }
 
 type RemoveFromLocationVars = {
@@ -456,32 +538,29 @@ type RemoveFromLocationVars = {
   locationId?: string
 }
 
-// Un-stock an item from a location, cascading that location's inventory logs
-// and cart entries (see `removeItemFromLocation`). The global Item survives, so
-// the item stays in the Add combobox catalog and can be re-added.
+// Un-stock an item from a location. The global Item survives, so the item stays
+// in the Add combobox catalog and can be re-added.
 //
-// Invalidates every query family the cascade touches so removing from the
-// ACTIVE location leaves the UI consistent without a reload: `['items']` (the
-// pantry `getStockedItems` list, single-item reads and the item's logs, which
-// are keyed `['items', id, 'logs', …]`), `['itemStocks']`, `['cart']` (the
-// deleted cart entries) and `['sort']` (expiry/purchase dates derived from the
-// deleted logs).
+// The LOCAL branch also cascades that location's inventory logs and cart
+// entries (see `removeItemFromLocation`), so it invalidates every query family
+// the cascade touches and removing from the ACTIVE location leaves the UI
+// consistent without a reload: `['items']` (the pantry `getStockedItems` list,
+// single-item reads and the item's logs, which are keyed
+// `['items', id, 'logs', ...]`), `['itemStocks']`, `['cart']` (the deleted cart
+// entries) and `['sort']` (expiry/purchase dates derived from the deleted logs).
 //
-// Local-first only, and it refuses to run in cloud mode (see
-// LOCAL_ONLY_LOCATION_MUTATION above). This one is destructive and
-// irreversible — it deletes every inventory log for the pair — so a stray
-// cloud-mode call would silently destroy local history the cloud UI never
-// shows.
+// The CLOUD branch has no cascade to mirror yet: `removeItemFromLocation`'s
+// resolver deletes the stock row only, because cloud carts and inventory logs
+// gain a `locationId` in PR 3. When they do, their queries belong in the
+// refetch list next to the two stock lists.
 export function useRemoveItemFromLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
 
-  return useMutation({
-    mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) => {
-      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
-      return removeItemFromLocation(itemId, locationId ?? activeLocationId)
-    },
+  const localMutation = useMutation({
+    mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) =>
+      removeItemFromLocation(itemId, locationId ?? activeLocationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })
       queryClient.invalidateQueries({ queryKey: ['itemStocks'] })
@@ -493,6 +572,41 @@ export function useRemoveItemFromLocation() {
       queryClient.invalidateQueries({ queryKey: ['cartItems'] })
     },
   })
+
+  const [cloudRemove, { loading: cloudRemoveLoading }] =
+    useRemoveItemFromLocationMutation({
+      update: (cache) => evictStockLists(cache),
+      refetchQueries: STOCK_LIST_QUERIES,
+      awaitRefetchQueries: true,
+    })
+
+  if (mode === 'cloud') {
+    return {
+      mutate: (
+        { itemId, locationId }: RemoveFromLocationVars,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        cloudRemove({
+          variables: { itemId, locationId: locationId ?? activeLocationId },
+        }).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
+      // Resolves to void, like the local branch: the resolver's `Boolean!` is
+      // always `true` (it throws on failure), so returning it would invite a
+      // caller to test a flag that can never be false.
+      mutateAsync: async ({ itemId, locationId }: RemoveFromLocationVars) => {
+        await cloudRemove({
+          variables: { itemId, locationId: locationId ?? activeLocationId },
+        })
+      },
+      isPending: cloudRemoveLoading,
+    }
+  }
+
+  return localMutation
 }
 
 type ItemUpdateVars = {
@@ -574,9 +688,16 @@ export function useUpdateItem() {
 // mutations can leave the item on the new unit while some rows still hold
 // old-unit numbers.
 //
-// Local-mode only, like the other location-aware mutations: cloud has no
-// Location or ItemStock, and Apollo has no client-side transaction to borrow.
-// The Info tab keeps its sequential path there rather than fake atomicity.
+// The LAST local-mode-only mutation in this file, and not for want of an
+// ItemStock backend: the schema has no `applyUnitSwitch` mutation to call. The
+// design names one as a requirement — it has to be a single server-side
+// `prisma.$transaction`, since Apollo has no client-side transaction to borrow
+// — but PR 1 did not ship it, so the Info tab keeps its sequential path in
+// cloud rather than faking atomicity. It throws rather than no-op'ing so a
+// wiring mistake fails loudly instead of reporting a switch that never happened.
+const LOCAL_ONLY_UNIT_SWITCH =
+  'applyUnitSwitch is local-mode only: the cloud schema has no transactional unit-switch mutation.'
+
 export function useApplyUnitSwitch() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
@@ -584,7 +705,7 @@ export function useApplyUnitSwitch() {
 
   return useMutation({
     mutationFn: (input: UnitSwitchBatchInput) => {
-      if (mode !== 'local') throw new Error(LOCAL_ONLY_LOCATION_MUTATION)
+      if (mode !== 'local') throw new Error(LOCAL_ONLY_UNIT_SWITCH)
       return applyUnitSwitchBatch({
         ...input,
         locationId: input.locationId ?? activeLocationId,

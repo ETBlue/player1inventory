@@ -245,9 +245,8 @@ function VendorCart() {
 
   // The wiring hook owns deriving the two buckets (useItemSearchTail), the
   // one-mutation-at-a-time pending id, gating bucket 3's "Add to <location>"
-  // action on local mode + a resolved active location (useAddItemToLocation
-  // throws in cloud), and applying this page's sort to both buckets — the
-  // tail is part of this list, not a separate widget.
+  // action on a resolved active location, and applying this page's sort to
+  // both buckets — the tail is part of this list, not a separate widget.
   //
   // The no-vendor cart's groupNote-vs-groupAction choice stays here: the
   // no-vendor cart always gets `groupNote`, a real vendor cart only gets

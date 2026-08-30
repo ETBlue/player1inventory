@@ -126,9 +126,11 @@ export async function addItemToLocation(
 // filters on ItemStock) but still in the catalog (`getAllItems`), so the Add
 // combobox can find and re-add it. Use `deleteItem` to remove it everywhere.
 //
-// Local/Dexie only. Cloud mode has no locations and no ItemStock — cloud items
-// carry inline stock on the GraphQL `Item` — so no cloud branch exists here and
-// nothing in the cloud code path may call this.
+// Dexie only, as every function in this module is: the cloud path calls the
+// `removeItemFromLocation` MUTATION instead (`useRemoveItemFromLocation` picks
+// between the two). The cascade above has no cloud counterpart yet — that
+// resolver deletes the stock row alone, because cloud carts and inventory logs
+// gain a `locationId` in PR 3.
 export async function removeItemFromLocation(
   itemId: string,
   locationId: string = DEFAULT_LOCATION_ID,

@@ -45,6 +45,8 @@ const mockCloudUpdate = vi.fn()
 const mockCloudDelete = vi.fn()
 const mockUseDeleteItemMutationOptions = vi.fn()
 const mockUseLastPurchaseDatesQuery = vi.fn()
+const mockCloudAddToLocation = vi.fn()
+const mockCloudRemoveFromLocation = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -63,6 +65,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    useAddItemToLocationMutation: () => [mockCloudAddToLocation, {}],
+    useRemoveItemFromLocationMutation: () => [mockCloudRemoveFromLocation, {}],
     useCreateItemMutation: () => [mockCloudCreate, {}],
     useUpdateItemMutation: () => [mockCloudUpdate, {}],
     useDeleteItemMutation: (options: unknown) => {
@@ -716,17 +720,29 @@ describe('useRemoveItemFromLocation invalidates every affected query family', ()
 // reads — a silent false success. They refuse loudly instead. Task 2 still owns
 // the component-level guard that keeps the controls off screen in cloud mode;
 // this is the safety net underneath it.
-describe('location mutations refuse to run in cloud mode', () => {
+// Both location mutations are dual-mode since PR 2 Task 8. What matters at this
+// level is that the cloud branch goes to the SERVER and does not touch Dexie —
+// the end-to-end behaviour against the real documents is
+// `useItemLocationMutations.cloud.test.tsx`.
+describe('location mutations go to the cloud in cloud mode', () => {
+  const CLOUD_LOCATION = 'clw3loc0a0000s9f8h7g6d5e4'
+
   beforeEach(async () => {
     await db.items.clear()
     await db.itemStocks.clear()
     await db.inventoryLogs.clear()
     await db.locations.clear()
     localStorage.removeItem(activeLocationStorageKey('local'))
+    mockCloudAddToLocation.mockResolvedValue({
+      data: { addItemToLocation: {} },
+    })
+    mockCloudRemoveFromLocation.mockResolvedValue({
+      data: { removeItemFromLocation: true },
+    })
   })
 
-  it('useRemoveItemFromLocation rejects in cloud mode and deletes nothing', async () => {
-    // Given an item stocked locally, and the app in cloud mode
+  it('useRemoveItemFromLocation sends the cloud mutation and deletes no local row', async () => {
+    // Given an item stocked in local Dexie, and the app in cloud mode
     const item = await createItem({ name: 'Milk', tagIds: [] })
     localStorage.setItem('data-mode', 'cloud')
 
@@ -734,15 +750,23 @@ describe('location mutations refuse to run in cloud mode', () => {
       wrapper: createWrapper(),
     })
 
-    // When something tries to remove it anyway
-    // Then the mutation rejects and the local stock row is untouched
-    await expect(
-      result.current.mutateAsync({ itemId: item.id }),
-    ).rejects.toThrow(/local/i)
+    // When the item is un-stocked from a named cloud location — an explicit id,
+    // as the Stock-tab pager passes; no ActiveLocationProvider is mounted here,
+    // so the active-location default is left to the .cloud test file
+    await result.current.mutateAsync({
+      itemId: item.id,
+      locationId: CLOUD_LOCATION,
+    })
+
+    // Then the request went to the server with that location, and the untouched
+    // local row proves Dexie was not the target
+    expect(mockCloudRemoveFromLocation).toHaveBeenCalledWith({
+      variables: { itemId: item.id, locationId: CLOUD_LOCATION },
+    })
     expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
   })
 
-  it('useAddItemToLocation rejects in cloud mode and writes no orphan stock', async () => {
+  it('useAddItemToLocation sends the cloud mutation and writes no local row', async () => {
     // Given a global item with no stock anywhere, and the app in cloud mode
     const item = await createItem({ name: 'Flour', tagIds: [] })
     await db.itemStocks.clear()
@@ -752,11 +776,16 @@ describe('location mutations refuse to run in cloud mode', () => {
       wrapper: createWrapper(),
     })
 
-    // When something tries to stock it anyway
-    // Then the mutation rejects and no ItemStock row is written
-    await expect(
-      result.current.mutateAsync({ itemId: item.id }),
-    ).rejects.toThrow(/local/i)
+    // When it is stocked in a named cloud location
+    await result.current.mutateAsync({
+      itemId: item.id,
+      locationId: CLOUD_LOCATION,
+    })
+
+    // Then the server was asked, and Dexie still holds nothing
+    expect(mockCloudAddToLocation).toHaveBeenCalledWith({
+      variables: { itemId: item.id, locationId: CLOUD_LOCATION },
+    })
     expect(await db.itemStocks.toArray()).toHaveLength(0)
   })
 })

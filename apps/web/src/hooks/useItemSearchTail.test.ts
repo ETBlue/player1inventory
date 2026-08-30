@@ -189,28 +189,9 @@ describe('useItemSearchTail (local mode)', () => {
   })
 })
 
-describe('useItemSearchTail (cloud mode)', () => {
-  it('puts every out-of-list match in the in-location bucket and leaves not-stocked-here empty', () => {
-    // Given cloud mode, where no item carries a stockId at all
-    mockMode('cloud')
-    mockItems([
-      { id: 'milk', name: 'Milk', stockId: undefined, ...baseStock },
-      {
-        id: 'milk-powder',
-        name: 'Milk Powder',
-        stockId: undefined,
-        ...baseStock,
-      },
-    ])
-
-    // When the user searches
-    const { result } = renderHook(() =>
-      useItemSearchTail({ inGroupIds: new Set(['milk']), query: 'milk' }),
-    )
-
-    // Then the third section stays off — there is nothing to be "not stocked
-    // here" from, and a naive stockId split would empty the tail entirely
-    expect(result.current.inLocation.map((i) => i.id)).toEqual(['milk-powder'])
-    expect(result.current.notStockedHere).toEqual([])
-  })
-})
+// The cloud describe that used to live here asserted the bypass this hook no
+// longer has: every out-of-list match landing in `inLocation` with the third
+// bucket forced empty. Cloud now splits on `stockId` exactly as local does, and
+// it is covered against the REAL `PantryData` documents in
+// `useItemSearchTail.cloud.test.tsx` — a stubbed `useItems` here could only
+// re-assert the fixture the test itself wrote.

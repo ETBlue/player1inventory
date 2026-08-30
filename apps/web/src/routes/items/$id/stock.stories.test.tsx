@@ -12,7 +12,7 @@ import * as stories from './stock.stories'
 // shows in Storybook. The fixture is repeated rather than imported from the
 // stories module: importing it inside the mock factory would re-enter the
 // module graph this factory is mocking, and hang.
-const { CLOUD_ITEM } = vi.hoisted(() => ({
+const { CLOUD_ITEM, CLOUD_LOCATIONS, CLOUD_STOCKS } = vi.hoisted(() => ({
   CLOUD_ITEM: {
     id: 'item-cloud-1',
     name: 'Cloud Milk',
@@ -27,13 +27,45 @@ const { CLOUD_ITEM } = vi.hoisted(() => ({
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
+  CLOUD_LOCATIONS: [
+    {
+      id: 'cloud-kitchen',
+      name: 'Cloud Kitchen',
+      order: 0,
+      isDefault: true,
+      createdAt: '2026-08-01T10:00:00.000Z',
+      updatedAt: '2026-08-01T10:00:00.000Z',
+    },
+    {
+      id: 'cloud-garage',
+      name: 'Cloud Garage',
+      order: 1,
+      isDefault: false,
+      createdAt: '2026-08-01T10:00:00.000Z',
+      updatedAt: '2026-08-01T10:00:00.000Z',
+    },
+  ],
+  CLOUD_STOCKS: [
+    {
+      id: 'stock-cloud-garage',
+      itemId: 'item-cloud-1',
+      locationId: 'cloud-garage',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      dueDate: null,
+      createdAt: '2026-08-01T10:00:00.000Z',
+      updatedAt: '2026-08-01T10:00:00.000Z',
+    },
+  ],
 }))
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
-  // Everything except GetItem keeps the same inert default setup.ts uses, so
-  // the ancestor routes rendering alongside the stock tab can't reach a real
-  // Apollo hook.
+  // Everything except the three the Stock tab reads in cloud mode keeps the
+  // same inert default setup.ts uses, so the ancestor routes rendering
+  // alongside the stock tab can't reach a real Apollo hook.
   const queryStub = () => ({
     data: undefined,
     loading: false,
@@ -51,6 +83,16 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   }
   stubbed.useGetItemQuery = () => ({
     data: { item: CLOUD_ITEM },
+    loading: false,
+    error: undefined,
+  })
+  stubbed.useGetLocationsQuery = () => ({
+    data: { locations: CLOUD_LOCATIONS },
+    loading: false,
+    error: undefined,
+  })
+  stubbed.useItemStocksForItemQuery = () => ({
+    data: { itemStocksForItem: CLOUD_STOCKS },
     loading: false,
     error: undefined,
   })
@@ -135,23 +177,33 @@ describe('Item detail stock tab stories smoke tests', () => {
   })
 
   describe('CloudMode', () => {
-    beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
-    afterEach(() => localStorage.removeItem('data-mode'))
+    beforeEach(() => {
+      localStorage.setItem('data-mode', 'cloud')
+      localStorage.setItem('active-location-id:cloud', 'cloud-kitchen')
+    })
+    afterEach(() => {
+      localStorage.removeItem('data-mode')
+      localStorage.removeItem('active-location-id:cloud')
+    })
 
-    it('renders the stock form alone — no dots, no chevrons, no location actions', async () => {
+    it('pages over the cloud locations, opening on the one the item is not stocked in', async () => {
       render(<CloudMode />)
+      const user = userEvent.setup()
 
-      expect(await screen.findByLabelText(/^packed/i)).toBeInTheDocument()
-      expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+      const tablist = await screen.findByRole('tablist', {
+        name: /stock by location/i,
+      })
+      expect(within(tablist).getAllByRole('tab')).toHaveLength(2)
       expect(
-        screen.queryByRole('button', { name: /next location/i }),
-      ).not.toBeInTheDocument()
+        await screen.findByRole('button', { name: /add to location/i }),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('tab', { name: 'Cloud Garage' }))
+
+      expect(await screen.findByLabelText(/^packed/i)).toHaveValue(2)
       expect(
-        screen.queryByRole('button', { name: /remove from location/i }),
-      ).not.toBeInTheDocument()
-      expect(
-        screen.queryByRole('button', { name: /add to location/i }),
-      ).not.toBeInTheDocument()
+        screen.getByRole('button', { name: /remove from location/i }),
+      ).toBeInTheDocument()
     })
   })
 })

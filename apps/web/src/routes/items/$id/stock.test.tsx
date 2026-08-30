@@ -20,7 +20,9 @@ import {
   getRecipes,
   upsertItemStock,
 } from '@/db/operations'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
+import { cloudLocation, cloudStock, LOC_A } from '@/test/cloudFixtures'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 // The eight configuration fields that live on the global Item since v16 — no
@@ -51,6 +53,19 @@ const mockUseUpdateItemMutation = vi.fn(() => [
   vi.fn().mockResolvedValue({ data: undefined }),
   {},
 ])
+// Cloud locations and the item's per-location stock. Since PR 2 the Stock tab
+// pages over these in cloud mode too, so the cloud tests below have to supply
+// them; in local mode they stay empty and are skipped by their hooks.
+const mockUseGetLocationsQuery = vi.fn(() => ({
+  data: undefined as unknown,
+  loading: false,
+  error: undefined,
+}))
+const mockUseItemStocksForItemQuery = vi.fn(() => ({
+  data: undefined as unknown,
+  loading: false,
+  error: undefined,
+}))
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -71,11 +86,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // have to be repeated here or the real Apollo hook runs and demands a
     // provider. Placed right after `...original` so this file's own overrides
     // below still win.
-    useGetLocationsQuery: () => ({
-      data: undefined,
-      loading: false,
-      error: undefined,
-    }),
+    useGetLocationsQuery: () => mockUseGetLocationsQuery(),
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
@@ -93,12 +104,13 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       {},
     ],
     useGetItemQuery: (...args: unknown[]) => mockUseGetItemQuery(...args),
-    // Cloud read paths the pantry hooks moved onto in PR 2. Stubbed empty:
-    // this file drives cloud mode through `mockUseGetItemQuery` alone, so the
-    // stock row it joins with is deliberately absent (cloud has no ItemStock
-    // pager until Task 8).
+    // Cloud read paths the pantry hooks moved onto in PR 2. `PantryData` stays
+    // inert (no test here reads the pantry); `ItemStocksForItem` is the Stock
+    // tab's own cloud read and is driven per test.
     usePantryDataQuery: queryStub,
-    useItemStocksForItemQuery: queryStub,
+    useItemStocksForItemQuery: () => mockUseItemStocksForItemQuery(),
+    useAddItemToLocationMutation: mutationStub,
+    useRemoveItemFromLocationMutation: mutationStub,
     useCreateItemMutation: mutationStub,
     useUpdateItemMutation: (...args: unknown[]) =>
       mockUseUpdateItemMutation(...args),
@@ -180,11 +192,52 @@ describe('Item stock tab', () => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ])
+    mockUseGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+    mockUseItemStocksForItemQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
   })
 
   afterEach(() => {
     localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('cloud'))
   })
+
+  // One cloud location holding one stock row for `itemId` — the minimum the
+  // cloud Stock tab needs to render a page. `stock: false` leaves the item
+  // unstocked there instead.
+  const seedCloud = (
+    itemId: string,
+    fields: {
+      targetQuantity: number
+      refillThreshold: number
+      packedQuantity: number
+      unpackedQuantity: number
+      dueDate?: string | null
+    },
+  ) => {
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    mockUseGetLocationsQuery.mockReturnValue({
+      data: { locations: [cloudLocation(LOC_A, 'Cloud Kitchen', 0, true)] },
+      loading: false,
+      error: undefined,
+    })
+    mockUseItemStocksForItemQuery.mockReturnValue({
+      data: {
+        itemStocksForItem: [
+          cloudStock(`stock-${itemId}`, itemId, LOC_A, fields),
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+  }
 
   const renderStockTab = (itemId: string) => {
     const history = createMemoryHistory({
@@ -1128,8 +1181,9 @@ describe('Item stock tab', () => {
     ).toBeInTheDocument()
   })
 
-  it('cloud mode: renders a single stock page with no pager and no location actions', async () => {
-    // Given cloud mode, several local locations, and a cloud item
+  it('cloud mode: pages over the CLOUD locations, not the local ones', async () => {
+    // Given cloud mode with a second LOCAL location that must be ignored, and
+    // one cloud location holding this item's stock
     await createLocation('Cabin')
     localStorage.setItem('data-mode', 'cloud')
     const cloudItem = {
@@ -1149,20 +1203,27 @@ describe('Item stock tab', () => {
       loading: false,
       error: undefined,
     })
+    seedCloud(cloudItem.id, {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+    })
 
     renderStockTab(cloudItem.id)
 
-    // Then the stock form renders on its own: cloud has no locations and no
-    // ItemStock, so there is nothing to page over and nothing to add to or
-    // remove from (both mutations throw in cloud mode by design)
+    // Then there is no pager chrome — the CLOUD list holds a single location,
+    // and the two local ones ('My Home' + 'Cabin') are not paged over — while
+    // the un-stock action IS offered: cloud reached parity in Task 8
     await screen.findByLabelText(/^packed/i)
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /next location/i }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: /remove from location/i }),
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: /remove from location/i }),
+    ).toBeInTheDocument()
+    // ...and no "add" action, because the item IS stocked in the page's location
     expect(
       screen.queryByRole('button', { name: /add to location/i }),
     ).not.toBeInTheDocument()
@@ -1193,6 +1254,12 @@ describe('Item stock tab', () => {
       data: { item: cloudItem },
       loading: false,
       error: undefined,
+    })
+    seedCloud(cloudItem.id, {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
     })
     const mockCloudUpdate = vi.fn().mockResolvedValue({
       data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
@@ -1365,6 +1432,13 @@ describe('Item stock tab', () => {
         data: { item: cloudItem },
         loading: false,
         error: undefined,
+      })
+      seedCloud(cloudItem.id, {
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        dueDate: '2026-12-24T00:00:00.000Z',
       })
       const mockCloudUpdate = vi.fn().mockResolvedValue({
         data: { updateItem: { ...cloudItem, packedQuantity: 5 } },

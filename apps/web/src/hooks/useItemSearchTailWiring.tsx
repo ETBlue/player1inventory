@@ -9,7 +9,6 @@ import {
 } from '@/components/item/ItemSearchTail'
 import type { PantryItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
-import { useDataMode } from './useDataMode'
 import { useItemSearchTail } from './useItemSearchTail'
 import { useAddItemToLocation } from './useItems'
 
@@ -52,9 +51,8 @@ export interface ItemSearchTailWiring {
 
 // The shared wiring behind every location-scoped item search's two-section
 // tail: derives the buckets via useItemSearchTail, owns the one-mutation-at-a-
-// time pending id, gates bucket 3's "Add to <location>" action on local mode +
-// a resolved active location (useAddItemToLocation THROWS in cloud mode), and
-// assembles a complete, spreadable ItemSearchTailProps.
+// time pending id, gates bucket 3's "Add to <location>" action on a resolved
+// active location, and assembles a complete, spreadable ItemSearchTailProps.
 export function useItemSearchTailWiring({
   inGroupIds,
   query,
@@ -65,8 +63,6 @@ export function useItemSearchTailWiring({
 }: UseItemSearchTailWiringOptions): ItemSearchTailWiring {
   const { t } = useTranslation()
   const { activeLocation } = useActiveLocation()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
   const addItemToLocation = useAddItemToLocation()
   // One tail mutation at a time — see ItemSearchTailAction.pendingItemId.
   const [pendingItemId, setPendingItemId] = useState<string | null>(null)
@@ -108,11 +104,12 @@ export function useItemSearchTailWiring({
     },
   })
 
-  // Local-mode only (useAddItemToLocation throws in cloud), and gated on the
-  // active location resolving because its name is in the button label — the
-  // same guard NewItemDialog applies for the same reason. When false, omit
-  // addToLocationAction entirely rather than passing a disabled one.
-  const canAddToLocation = !isCloud && !!activeLocation
+  // Gated on the active location resolving, and on nothing else: its name is in
+  // the button label — the same guard NewItemDialog applies for the same
+  // reason. When false, omit addToLocationAction entirely rather than passing a
+  // disabled one. Both modes stock through `useAddItemToLocation`; the cloud
+  // exclusion here dated from when that mutation threw.
+  const canAddToLocation = !!activeLocation
 
   const tailProps: ItemSearchTailProps = {
     inLocationItems,
