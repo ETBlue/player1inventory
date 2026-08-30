@@ -513,6 +513,10 @@ Every server test runs against a hand-written Prisma fake; **nothing executes ag
 - Consumes: `TEST_DATABASE_URL` / `TEST_DIRECT_URL` from Task 2; the migration from Task 4.
 - Produces: `pnpm --filter server verify:migration`, run again in Task 11.
 
+**Known about the test branch, from Task 2.** The Neon `e2e` branch was created as a *schema-only* branch of dev, so it arrived carrying dev's DDL but no `_prisma_migrations` rows. A bare `prisma migrate deploy` therefore failed with **P3018** ("type already exists"), and Task 2 baselined the 8 existing migrations with `prisma migrate resolve --applied`. `prisma migrate status` now reports all 8 applied.
+
+This does **not** affect the script below: it opens with `migrate reset`, which drops the schema and reapplies every migration from scratch, rebuilding `_prisma_migrations` properly — so the baselined state is irrelevant to it. Noted because the symptom is confusing if you meet it cold. If `migrate reset` itself ever fails on Neon, drop and recreate the public schema explicitly rather than reaching for `migrate resolve`, which would mark the migration applied *without running it* — silently defeating the entire purpose of this task.
+
 - [ ] **Step 1: Write the verification script**
 
 Create `apps/server/scripts/verify-migration.ts`:
