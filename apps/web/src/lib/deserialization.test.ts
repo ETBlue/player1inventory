@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   deserializeCart,
   deserializeItem,
+  deserializeLocation,
   deserializeRecipe,
   deserializeShelf,
   deserializeVendor,
@@ -280,6 +281,58 @@ describe('deserializeShelf', () => {
     expect(Number.isNaN(result.updatedAt.getTime())).toBe(false)
     expect(result.createdAt).toEqual(new Date(0))
     expect(result.updatedAt).toEqual(new Date(0))
+  })
+})
+
+describe('deserializeLocation', () => {
+  it('converts the cloud wire shape to Dates', () => {
+    // Given a location exactly as GetLocations returns it — createdAt and
+    // updatedAt are `String!` in location.graphql, sent as ISO 8601
+    const raw = {
+      __typename: 'Location',
+      id: 'clw3k1q2a0000s9f8h7g6d5e4',
+      name: 'Warehouse',
+      order: 0,
+      isDefault: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-02-01T00:00:00.000Z',
+    }
+
+    // When deserializing
+    const result = deserializeLocation(raw)
+
+    // Then both timestamps are Dates and the rest is carried through
+    expect(result.createdAt).toBeInstanceOf(Date)
+    expect(result.createdAt).toEqual(new Date('2026-01-01T00:00:00.000Z'))
+    expect(result.updatedAt).toEqual(new Date('2026-02-01T00:00:00.000Z'))
+    expect(result.isDefault).toBe(true)
+  })
+
+  it('falls back to epoch rather than an Invalid Date for missing timestamps', () => {
+    // Given a payload with no timestamps at all — `new Date(undefined)` would
+    // build an Invalid Date here, which is issue #263's exact failure
+    const result = deserializeLocation({ id: '1', name: 'Warehouse', order: 0 })
+
+    // Then both are valid Dates at the epoch
+    expect(Number.isNaN(result.createdAt.getTime())).toBe(false)
+    expect(Number.isNaN(result.updatedAt.getTime())).toBe(false)
+    expect(result.createdAt).toEqual(new Date(0))
+    expect(result.updatedAt).toEqual(new Date(0))
+  })
+
+  it('parses the epoch-millis digit-string form a cloud backup can carry', () => {
+    // Given the digit-string form `new Date(raw)` cannot parse (see parseWireDate)
+    const result = deserializeLocation({
+      id: '1',
+      name: 'Warehouse',
+      order: 0,
+      createdAt: '1767225600000',
+      updatedAt: '1767225600000',
+    })
+
+    // Then it round-trips to the same instant, not an Invalid Date
+    expect(result.createdAt).toEqual(new Date(1767225600000))
+    expect(result.updatedAt).toEqual(new Date(1767225600000))
   })
 })
 

@@ -18,7 +18,7 @@ Global `Item`s are **not** touched — an item stocked only in the deleted locat
 
 **Un-stocking one item** is the narrower counterpart, `removeItemFromLocation(itemId, locationId)` — see the "Orphan items" section below and `src/routes/items/CLAUDE.md` for the Stock-tab UI that calls it.
 
-**Hooks** (`src/hooks/useLocations.ts`): `useLocations`, `useCreateLocation`, `useUpdateLocation` (takes `{ id, updates }`), `useDeleteLocation`, `useReorderLocations`. **Local-first only** — there is no cloud GraphQL `Location` backend yet, so these are mode-independent rather than dual-mode.
+**Hooks** (`src/hooks/useLocations.ts`): `useLocations`, `useCreateLocation`, `useUpdateLocation` (takes `{ id, updates }`), `useDeleteLocation`, `useReorderLocations`. **Dual-mode** — local reads/writes Dexie, cloud runs the `GetLocations` / `CreateLocation` / `UpdateLocation` / `DeleteLocation` / `ReorderLocations` operations. Two cloud-contract details are easy to get wrong: `UpdateLocationInput` is **name-only** (reordering must go through `useReorderLocations`, and the cloud branch throws on an `order` update rather than dropping it), and `reorderLocations` returns `[Location!]!`, whose result the cloud branch writes straight into the `GetLocations` cache entry. See `src/hooks/CLAUDE.md`.
 
 **Active location** (`src/hooks/useActiveLocation.tsx`): a React Context exposing `{ activeLocationId, setActiveLocationId, activeLocation }`, persisted in localStorage under `active-location-id`, defaulting to `DEFAULT_LOCATION_ID`. `ActiveLocationProvider` is mounted in `__root.tsx`. It also bootstraps the location's shopping carts (`bootstrapCarts`) whenever the active id changes. See `src/hooks/CLAUDE.md` for the full list of hooks that thread it.
 

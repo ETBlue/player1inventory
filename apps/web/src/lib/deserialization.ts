@@ -1,4 +1,11 @@
-import type { PantryItem, Recipe, Shelf, ShoppingCart, Vendor } from '@/types'
+import type {
+  Location,
+  PantryItem,
+  Recipe,
+  Shelf,
+  ShoppingCart,
+  Vendor,
+} from '@/types'
 
 // GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
 // The cloud Item still carries stock/unit/expiration fields (ItemStock is
@@ -64,6 +71,22 @@ export function deserializeShelf(raw: Record<string, unknown>): Shelf {
       },
     }),
   } as Shelf
+}
+
+// GraphQL Location declares createdAt/updatedAt as `String!`
+// (apps/server/src/schema/location.graphql), so both are present on the live
+// wire as ISO strings. They still go through `parseWireDate` rather than
+// `new Date(raw)`: a local backup or an older payload can carry a missing or
+// epoch-millis value, and `new Date(undefined)` yields an *Invalid Date* whose
+// NaN `getTime()` survives `??` and silently no-ops every comparator that
+// touches it. That is issue #263 exactly. Epoch is the safe fallback, matching
+// `deserializeShelf` / `deserializeVendor`.
+export function deserializeLocation(raw: Record<string, unknown>): Location {
+  return {
+    ...raw,
+    createdAt: parseWireDate(raw.createdAt) ?? new Date(0),
+    updatedAt: parseWireDate(raw.updatedAt) ?? new Date(0),
+  } as Location
 }
 
 // `Cart.lastPurchasedAt` has reached the client in two wire formats. ISO 8601 is

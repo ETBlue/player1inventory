@@ -1,15 +1,20 @@
+import { ApolloProvider } from '@apollo/client/react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
+import { noopApolloClient } from '@/test/apolloStub'
 import { PostLoginMigrationDialog } from '.'
 
 // PostLoginMigrationDialog uses:
 //   - usePostLoginMigration() → useAuth() from @clerk/react
 //     (mocked in Storybook via .storybook/mocks/clerk.tsx — always returns isSignedIn: true)
 //   - getAllItems() from db — async Dexie call
-//   - useLocations() — TanStack Query read backing the multi-location warning,
-//     hence the QueryClientProvider decorator below
+//   - useLocations() — dual-mode: the local branch is a TanStack Query read
+//     backing the multi-location warning (hence the QueryClientProvider
+//     decorator below), and the cloud branch calls useGetLocationsQuery with
+//     skip:true, which still needs an Apollo client in context (hence the
+//     ApolloProvider decorator)
 //
 // Idle story: set 'migration-prompted' in localStorage so the hook returns early.
 //   No db access occurs. Dialog stays closed.
@@ -26,9 +31,11 @@ const meta: Meta<typeof PostLoginMigrationDialog> = {
   component: PostLoginMigrationDialog,
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <Story />
-      </QueryClientProvider>
+      <ApolloProvider client={noopApolloClient}>
+        <QueryClientProvider client={queryClient}>
+          <Story />
+        </QueryClientProvider>
+      </ApolloProvider>
     ),
   ],
   parameters: {

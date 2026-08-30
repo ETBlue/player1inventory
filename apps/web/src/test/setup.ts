@@ -280,6 +280,27 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    useGetLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCreateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useReorderLocationsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
   }
 })
 

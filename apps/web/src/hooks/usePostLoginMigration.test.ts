@@ -26,7 +26,10 @@ vi.mock('@/lib/importData', () => ({
 }))
 
 // Mock the Dexie operations the hook (and ActiveLocationProvider) reach for:
-// getAllItems drives the prompting path, getLocations backs useLocations.
+// getAllItems drives the prompting path, getLocations backs useLocations' LOCAL
+// branch. Every test below that sets `data-mode: 'cloud'` must seed the CLOUD
+// list instead — see `mockCloudLocations` — because as of PR 2 useLocations is
+// dual-mode and no longer reads Dexie in cloud mode.
 vi.mock('@/db/operations', () => ({
   getAllItems: vi.fn().mockResolvedValue([]),
   getLocations: vi.fn().mockResolvedValue([]),
@@ -47,6 +50,49 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
   return {
     ...original,
     useApolloClient: vi.fn(() => stableApolloClient),
+  }
+})
+
+// `useLocations` is dual-mode: in cloud mode the list the ActiveLocationProvider
+// validates the stored active id against comes from GetLocations, not Dexie.
+// This per-file factory REPLACES the one in `src/test/setup.ts`, so the other
+// location hooks are stubbed here too.
+const mockGetLocationsQuery = vi.fn(() => ({
+  data: undefined as { locations: unknown[] } | undefined,
+  loading: false,
+  error: undefined,
+}))
+
+function mockCloudLocations(
+  rows: { id: string; name: string; order: number; isDefault: boolean }[],
+) {
+  mockGetLocationsQuery.mockReturnValue({
+    data: {
+      locations: rows.map((r) => ({
+        __typename: 'Location',
+        ...r,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      })),
+    },
+    loading: false,
+    error: undefined,
+  })
+}
+
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/generated/graphql')>()
+  const mutationStub = () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ]
+  return {
+    ...original,
+    useGetLocationsQuery: () => mockGetLocationsQuery(),
+    useCreateLocationMutation: mutationStub,
+    useUpdateLocationMutation: mutationStub,
+    useDeleteLocationMutation: mutationStub,
+    useReorderLocationsMutation: mutationStub,
   }
 })
 
@@ -87,6 +133,11 @@ beforeEach(() => {
   vi.mocked(getAllItems).mockResolvedValue([])
   vi.mocked(getLocations).mockResolvedValue([])
   vi.mocked(bootstrapCarts).mockResolvedValue(undefined)
+  mockGetLocationsQuery.mockReturnValue({
+    data: undefined,
+    loading: false,
+    error: undefined,
+  })
 })
 
 afterEach(() => {
@@ -152,24 +203,12 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
   // 'local' and a user whose active location is elsewhere migrates the wrong
   // (or zeroed) quantities.
   function seedTwoLocations() {
-    const now = new Date()
-    // afterEach resets every mock, so re-arm the ones the hook reads.
+    // afterEach resets every mock, so re-arm the ones the hook reads. These
+    // tests run in cloud mode, so the list comes from GetLocations.
     vi.mocked(getAllItems).mockResolvedValue([])
-    vi.mocked(getLocations).mockResolvedValue([
-      {
-        id: 'local',
-        name: 'My Home',
-        order: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'office',
-        name: 'Office',
-        order: 1,
-        createdAt: now,
-        updatedAt: now,
-      },
+    mockCloudLocations([
+      { id: 'local', name: 'My Home', order: 0, isDefault: true },
+      { id: 'office', name: 'Office', order: 1, isDefault: false },
     ])
   }
 
@@ -226,16 +265,9 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
   // default once useLocations() resolves, which is asynchronous.
   it('a location reset mid-migration does not start a second copy', async () => {
     // Given a stored active location that no longer exists
-    const now = new Date()
     vi.mocked(getAllItems).mockResolvedValue([])
-    vi.mocked(getLocations).mockResolvedValue([
-      {
-        id: 'local',
-        name: 'My Home',
-        order: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
+    mockCloudLocations([
+      { id: 'local', name: 'My Home', order: 0, isDefault: true },
     ])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
@@ -261,16 +293,9 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
   // cart, and the ref then blocks the corrected retry.
   it('a stale stored location is corrected before the copy starts', async () => {
     // Given a stored active location that no longer exists
-    const now = new Date()
     vi.mocked(getAllItems).mockResolvedValue([])
-    vi.mocked(getLocations).mockResolvedValue([
-      {
-        id: 'local',
-        name: 'My Home',
-        order: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
+    mockCloudLocations([
+      { id: 'local', name: 'My Home', order: 0, isDefault: true },
     ])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
