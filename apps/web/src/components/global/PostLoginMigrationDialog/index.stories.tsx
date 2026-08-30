@@ -10,11 +10,13 @@ import { PostLoginMigrationDialog } from '.'
 //   - usePostLoginMigration() → useAuth() from @clerk/react
 //     (mocked in Storybook via .storybook/mocks/clerk.tsx — always returns isSignedIn: true)
 //   - getAllItems() from db — async Dexie call
-//   - useLocations() — dual-mode: the local branch is a TanStack Query read
-//     backing the multi-location warning (hence the QueryClientProvider
-//     decorator below), and the cloud branch calls useGetLocationsQuery with
-//     skip:true, which still needs an Apollo client in context (hence the
-//     ApolloProvider decorator)
+//   - a TanStack Query read of the LOCAL locations table backing the
+//     multi-location warning (hence the QueryClientProvider decorator below)
+//   - usePostLoginMigration() → useLocations(), which is dual-mode: its cloud
+//     branch calls useGetLocationsQuery with skip:true, and even a skipped
+//     Apollo hook needs a client in context (hence the ApolloProvider
+//     decorator). The dialog itself no longer calls useLocations — the warning
+//     is about the LOCAL pantry being copied up, so it reads Dexie directly.
 //
 // Idle story: set 'migration-prompted' in localStorage so the hook returns early.
 //   No db access occurs. Dialog stays closed.
