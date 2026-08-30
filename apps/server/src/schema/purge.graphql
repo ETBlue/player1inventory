@@ -8,6 +8,8 @@ type PurgeResult {
   cartItems: Int!
   inventoryLogs: Int!
   shelves: Int!
+  itemStocks: Int!
+  locations: Int!
 }
 
 extend type Mutation {

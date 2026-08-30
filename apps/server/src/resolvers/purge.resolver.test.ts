@@ -20,6 +20,8 @@ vi.mock('../lib/prisma.js', () => ({
     tagType: { deleteMany: vi.fn() },
     vendor: { deleteMany: vi.fn() },
     shelf: { deleteMany: vi.fn() },
+    itemStock: { deleteMany: vi.fn() },
+    location: { deleteMany: vi.fn() },
     $transaction: vi.fn(),
   },
 }))
@@ -39,6 +41,8 @@ const p = prisma as unknown as {
   tagType: { deleteMany: ReturnType<typeof vi.fn> }
   vendor: { deleteMany: ReturnType<typeof vi.fn> }
   shelf: { deleteMany: ReturnType<typeof vi.fn> }
+  itemStock: { deleteMany: ReturnType<typeof vi.fn> }
+  location: { deleteMany: ReturnType<typeof vi.fn> }
   $transaction: ReturnType<typeof vi.fn>
 }
 
@@ -61,7 +65,7 @@ beforeEach(() => {
 
 const PURGE_MUTATION = `mutation {
   purgeUserData {
-    items tags tagTypes vendors recipes carts cartItems inventoryLogs shelves
+    items tags tagTypes vendors recipes carts cartItems inventoryLogs shelves itemStocks locations
   }
 }`
 
@@ -78,11 +82,15 @@ describe('purgeUserData resolver', () => {
       { count: 3 },  // recipes
       { count: 0 },  // itemTags (junction)
       { count: 0 },  // itemVendors (junction)
+      { count: 7 },  // itemStocks (no userId, scoped through location) — must run
+                     // before item.deleteMany so this count isn't pre-empted by
+                     // ItemStock_itemId_fkey's ON DELETE CASCADE
       { count: 5 },  // items
       { count: 4 },  // tags
       { count: 2 },  // tagTypes
       { count: 1 },  // vendors
       { count: 6 },  // shelves
+      { count: 3 },  // locations
     ])
 
     // When user calls purgeUserData
@@ -105,16 +113,35 @@ describe('purgeUserData resolver', () => {
       expect(data.tagTypes).toBe(2)
       expect(data.vendors).toBe(1)
       expect(data.shelves).toBe(6)
+      expect(data.itemStocks).toBe(7)
+      expect(data.locations).toBe(3)
     }
     // And every user-owned table was asked to delete this user's rows —
-    // shelves included (see purge-coverage.test.ts and issue #250)
+    // shelves and locations included (see purge-coverage.test.ts and issue #250).
+    // itemStock has no userId — scoped through its location, like recipeItem.
     expect(p.shelf.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_purge_test' } })
+    expect(p.location.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_purge_test' } })
+    expect(p.itemStock.deleteMany).toHaveBeenCalledWith({
+      where: { location: { userId: 'user_purge_test' } },
+    })
+    // And itemStock is deleted before item and before location — real
+    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
+    // destroy ItemStock rows before this deleteMany could count them, and
+    // ItemStock_locationId_fkey requires the FK target to still exist. Each
+    // deleteMany(...) call executes synchronously while the $transaction array
+    // literal is built, so mock.invocationCallOrder reflects source order.
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.item.deleteMany.mock.invocationCallOrder[0],
+    )
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.location.deleteMany.mock.invocationCallOrder[0],
+    )
   })
 
   it('returns zero counts when user has no data', async () => {
     // Given everything returns 0
     p.$transaction.mockResolvedValue(
-      Array(12).fill({ count: 0 })
+      Array(14).fill({ count: 0 })
     )
 
     // When purging
@@ -131,6 +158,8 @@ describe('purgeUserData resolver', () => {
       expect(data.items).toBe(0)
       expect(data.tags).toBe(0)
       expect(data.shelves).toBe(0)
+      expect(data.itemStocks).toBe(0)
+      expect(data.locations).toBe(0)
     }
   })
 

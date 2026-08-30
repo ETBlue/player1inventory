@@ -75,6 +75,12 @@ vi.mock('../lib/prisma.js', () => ({
       upsert: vi.fn(),
       deleteMany: vi.fn(),
     },
+    itemStock: {
+      deleteMany: vi.fn(),
+    },
+    location: {
+      deleteMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }))
@@ -87,6 +93,7 @@ const p = prisma as unknown as {
     findUniqueOrThrow: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
   }
   itemTag: {
     createMany: ReturnType<typeof vi.fn>
@@ -142,6 +149,12 @@ const p = prisma as unknown as {
   shelf: {
     findMany: ReturnType<typeof vi.fn>
     upsert: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  itemStock: {
+    deleteMany: ReturnType<typeof vi.fn>
+  }
+  location: {
     deleteMany: ReturnType<typeof vi.fn>
   }
   $transaction: ReturnType<typeof vi.fn>
@@ -383,6 +396,7 @@ describe('clearAllData', () => {
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
       { count: 0 }, { count: 0 }, { count: 0 }, { count: 0 },
+      { count: 0 }, { count: 0 },
     ])
 
     // When calling clearAllData
@@ -398,7 +412,23 @@ describe('clearAllData', () => {
       expect(response.body.singleResult.data?.clearAllData).toBe(true)
     }
     // And every user-owned table was asked to delete this user's rows —
-    // shelves included (see purge-coverage.test.ts and issue #250)
+    // shelves and locations included (see purge-coverage.test.ts and issue #250).
+    // itemStock has no userId — scoped through its location, like recipeItem.
     expect(p.shelf.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
+    expect(p.location.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_import_test' } })
+    expect(p.itemStock.deleteMany).toHaveBeenCalledWith({
+      where: { location: { userId: 'user_import_test' } },
+    })
+    // And itemStock is deleted before item and before location — real
+    // ItemStock_itemId_fkey is ON DELETE CASCADE, so deleting items first would
+    // destroy ItemStock rows before this deleteMany runs. Each deleteMany(...)
+    // call executes synchronously while the $transaction array literal is built,
+    // so mock.invocationCallOrder reflects source order.
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.item.deleteMany.mock.invocationCallOrder[0],
+    )
+    expect(p.itemStock.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      p.location.deleteMany.mock.invocationCallOrder[0],
+    )
   })
 })

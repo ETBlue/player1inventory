@@ -1,0 +1,25 @@
+type Location {
+  id: ID!
+  name: String!
+  order: Int!
+  isDefault: Boolean!
+  createdAt: String!
+  updatedAt: String!
+}
+
+extend type Query {
+  # Lazily creates the caller's default location if they have none, so a new
+  # account and a pre-migration account both start with exactly one.
+  locations: [Location!]!
+}
+
+extend type Mutation {
+  createLocation(name: String!): Location!
+  updateLocation(id: ID!, input: UpdateLocationInput!): Location!
+  deleteLocation(id: ID!): Boolean!
+  reorderLocations(orderedIds: [ID!]!): [Location!]!
+}
+
+input UpdateLocationInput {
+  name: String
+}

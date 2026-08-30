@@ -1,0 +1,37 @@
+# Per-(item × location) stock STATE. Configuration lives on Item.
+type ItemStock {
+  id: ID!
+  itemId: ID!
+  locationId: ID!
+  targetQuantity: Float!
+  refillThreshold: Float!
+  packedQuantity: Float!
+  unpackedQuantity: Float!
+  dueDate: String
+  createdAt: String!
+  updatedAt: String!
+}
+
+extend type Query {
+  # Every stock in one location — the pantry's join source.
+  itemStocks(locationId: ID!): [ItemStock!]!
+  # Every location's row for one item — the Stock-tab all-locations pager.
+  itemStocksForItem(itemId: ID!): [ItemStock!]!
+}
+
+extend type Mutation {
+  upsertItemStock(itemId: ID!, locationId: ID!, input: ItemStockInput!): ItemStock!
+  # Copy-on-add. Inherits targetQuantity, refillThreshold and dueDate from the
+  # source location; packed/unpacked always start at 0. Returns the existing row
+  # unchanged if the item is already stocked there.
+  addItemToLocation(itemId: ID!, locationId: ID!, sourceLocationId: ID): ItemStock!
+  removeItemFromLocation(itemId: ID!, locationId: ID!): Boolean!
+}
+
+input ItemStockInput {
+  targetQuantity: Float
+  refillThreshold: Float
+  packedQuantity: Float
+  unpackedQuantity: Float
+  dueDate: String
+}
