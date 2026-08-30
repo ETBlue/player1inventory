@@ -345,7 +345,7 @@ seeding its own fixture, so inherited rows are destroyed on the first run — an
 `e2e/CLAUDE.md` records this as infra work rather than a config edit, and it is a
 prerequisite here rather than an improvement.
 
-**3. A production-data rehearsal — required before PR 3 deploys.** Everything above verifies
+**3. Production-data rehearsals — required before PR 1 *and* PR 3.** Everything above verifies
 the migration against a **synthetic** fixture. That proves the logic — the nine-table union,
 per-user scoping, the partial unique index — and proves nothing about contact with real rows:
 unexpected nulls, orphans, an item whose owner has no other data, and above all **how many
@@ -353,16 +353,32 @@ users actually share the `'no-vendor'` cart**. §5 designs a split for that row 
 whether it affects two accounts or two hundred.
 
 For a migration whose requirement is "preserve everything", synthetic verification alone is
-insufficient. Before PR 3 deploys:
+insufficient.
 
-1. Create a Neon branch of **production**, **schema and data** — a different parent and a
-   different lifetime from the `e2e` branch, which is why it must not share one.
-2. Run `prisma migrate deploy` against it.
-3. Assert on the **real** result: every user has exactly one default location; every `Item`
-   has exactly one `ItemStock`; no `CartItem` points at a cart owned by a different user;
-   `SELECT COUNT(DISTINCT "userId") FROM "CartItem" WHERE "cartId" = 'no-vendor'` before the
-   split matches the number of `:no-vendor` carts after it.
-4. Record the row counts in the PR, then **delete the branch** — it holds production data.
+**Timing — corrected 2026-08-30.** This originally said "before PR 3", on the reasoning that
+PR 3 holds the destructive work. That was wrong about when production is first written to.
+**PR 1's §4.1–4.3 backfill already runs against production**, creating a `Location` for every
+real user and an `ItemStock` for every real `Item`. That is two PRs earlier than the rehearsal
+was scheduled. The insert-only blast radius is small and recoverable — delete from the new
+tables and re-run — but recoverable is not verified, and the nine-table union is precisely the
+query that behaves differently against real rows than against a fixture: a `userId` present
+only in `CartItem`, a NULL `userId`, an orphan from an older migration. The fixture contains a
+tag-only user *because that case was anticipated*; production holds the ones that were not.
+
+So there are **two** rehearsals, each immediately before its PR merges, each on a branch
+created fresh at that moment (an older copy is a copy of the wrong database):
+
+| # | Before | Asserts |
+|---|---|---|
+| 1 | **PR 1** | every user has exactly one `isDefault` location; every `Item` has exactly one `ItemStock`; no user missed by the nine-table union; `Item`'s five state columns still present and unchanged |
+| 2 | **PR 3** | no `CartItem` points at a cart owned by another user; `SELECT COUNT(DISTINCT "userId") FROM "CartItem" WHERE "cartId" = 'no-vendor'` before the split equals the number of `:no-vendor` carts after it |
+
+Each one: branch **production**, **schema and data** — a different parent and lifetime from the
+`e2e` branch, which is why they must not share one — run `prisma migrate deploy`, assert,
+record the row counts in the PR, then **delete the branch**; it holds production data.
+
+Run each rehearsal only *after* the synthetic verification passes. Reversing the order burns a
+production copy to find bugs the cheap check catches for free.
 
 A rehearsal that finds nothing still produces the one number this design is missing.
 
