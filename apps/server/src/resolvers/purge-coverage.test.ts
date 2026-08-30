@@ -19,8 +19,9 @@
  *   Every model in prisma/schema.prisma that owns a `userId` field must be deleted
  *   by BOTH purge paths.
  *
- * Junction models (ItemTag, ItemVendor, RecipeItem) have no `userId` — they are
- * deleted through a parent relation filter and are deliberately out of scope here.
+ * Junction models (ItemTag, ItemVendor, RecipeItem, ItemStock) have no `userId` —
+ * they are deleted through a parent relation filter and are deliberately out of
+ * scope here.
  */
 
 import { readFileSync } from 'node:fs'
@@ -76,8 +77,9 @@ describe('purge coverage against prisma/schema.prisma', () => {
       'CartItem',
       'InventoryLog',
       'Shelf',
+      'Location',
     ])
-    expect(userOwnedModels.length).toBe(9)
+    expect(userOwnedModels.length).toBe(10)
   })
 
   it('knows about both purge paths', () => {

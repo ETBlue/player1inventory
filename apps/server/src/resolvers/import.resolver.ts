@@ -509,6 +509,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         prisma.tagType.deleteMany({ where: { userId } }),
         prisma.vendor.deleteMany({ where: { userId } }),
         prisma.shelf.deleteMany({ where: { userId } }),
+        // ItemStock has no userId of its own — scoped through its location,
+        // matching how recipeItem is scoped through its recipe above.
+        // Must run before locations.deleteMany: ItemStock FKs to Location.
+        prisma.itemStock.deleteMany({ where: { location: { userId } } }),
+        prisma.location.deleteMany({ where: { userId } }),
       ])
       return true
     },
