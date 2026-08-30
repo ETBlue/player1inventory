@@ -442,7 +442,7 @@ test('user can checkout from a vendor cart without affecting another vendor cart
 
 test.describe('cloud mode vendor carts', () => {
   test('user can see vendor cart cards (cloud mode)', async ({ page, request, baseURL }) => {
-    test.skip(!process.env.TEST_CLOUD_MODE, 'cloud mode only')
+    test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
     const shopping = new ShoppingPage(page)
     const gql = makeGql(request)
 
@@ -470,7 +470,7 @@ test.describe('cloud mode vendor carts', () => {
   })
 
   test('user can checkout from vendor cart in cloud mode', async ({ page, request, baseURL }) => {
-    test.skip(!process.env.TEST_CLOUD_MODE, 'cloud mode only')
+    test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
     const shopping = new ShoppingPage(page)
     const gql = makeGql(request)
 
