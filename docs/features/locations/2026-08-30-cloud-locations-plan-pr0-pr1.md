@@ -177,8 +177,9 @@ Cloud E2E runs against whatever `DATABASE_URL` is in `apps/server/.env` — norm
 
 **Files:**
 - Create: `apps/server/.env.example`
-- Modify: `e2e/playwright.config.ts` (the cloud backend `webServer` entry)
+- Modify: `apps/server/src/lib/prisma.ts` (route `E2E_TEST_MODE` at the test database)
 - Modify: `e2e/CLAUDE.md` (replace the "Documented, not fixed" note)
+- **Not** `e2e/playwright.config.ts` — see Step 3 for why the switch cannot live there
 
 **Interfaces:**
 - Produces: environment variables `TEST_DATABASE_URL` and `TEST_DIRECT_URL` in `apps/server/.env`, consumed by Task 5's verification script and by the cloud Playwright backend.
@@ -211,24 +212,51 @@ TEST_DATABASE_URL="postgresql://user:pass@host/db-e2e?sslmode=require"
 TEST_DIRECT_URL="postgresql://user:pass@host/db-e2e?sslmode=require"
 ```
 
-- [ ] **Step 3: Point the cloud E2E backend at the test database**
+- [ ] **Step 3: Route the E2E backend at the test database — inside the server, not in Playwright**
 
-In `e2e/playwright.config.ts`, in the third `webServer` entry (the cloud backend), add the two env overrides to the command array, before `pnpm --filter server dev`:
+`e2e/playwright.config.ts` is **not** the place for this. A `DATABASE_URL=$TEST_DATABASE_URL` entry in the `webServer` command would expand in *Playwright's* shell, where `apps/server/.env` has never been loaded — `dotenv/config` runs inside the server process (`apps/server/src/index.ts:1`). It would expand to the empty string with no error naming the cause.
+
+Put the switch in the server instead. Replace the whole of `apps/server/src/lib/prisma.ts`:
 
 ```ts
-      command: [
-        'E2E_TEST_MODE=true',
-        // Route the E2E backend at the throwaway database, never dev. Isolation
-        // by row ownership under one E2E_USER_ID is not sufficient for the
-        // multi-user fixtures cloud locations needs — /e2e/cleanup deletes only
-        // that one user's rows, so a second synthetic user would persist.
-        'DATABASE_URL=$TEST_DATABASE_URL',
-        'DIRECT_URL=$TEST_DIRECT_URL',
-        `PORT=${CLOUD_SERVER_PORT}`,
-        `CLIENT_ORIGIN=${CLOUD_WEB_URL}`,
-        'pnpm --filter server dev',
-      ].join(' '),
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+
+// E2E runs against a throwaway database, never dev.
+//
+// Isolation by row ownership under a single E2E_USER_ID is not sufficient for
+// the multi-user fixtures cloud locations needs: /e2e/cleanup deletes only that
+// one user's rows, so a second synthetic user would persist in dev forever.
+//
+// This switch lives here rather than in e2e/playwright.config.ts because
+// TEST_DATABASE_URL comes from apps/server/.env, which dotenv loads inside THIS
+// process — Playwright's shell has never seen it and would expand it to "".
+function datasourceUrl(): string | undefined {
+  if (process.env.E2E_TEST_MODE !== 'true') return undefined
+  const testUrl = process.env.TEST_DATABASE_URL
+  if (!testUrl) {
+    throw new Error(
+      'E2E_TEST_MODE=true but TEST_DATABASE_URL is unset. Refusing to run E2E ' +
+        'against the dev database — see apps/server/.env.example.',
+    )
+  }
+  return testUrl
+}
+
+function createClient(): PrismaClient {
+  const url = datasourceUrl()
+  return url ? new PrismaClient({ datasources: { db: { url } } }) : new PrismaClient()
+}
+
+export const prisma = globalForPrisma.prisma ?? createClient()
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 ```
+
+Throwing when `E2E_TEST_MODE=true` and `TEST_DATABASE_URL` is missing is deliberate: a silent fallback to dev is exactly the failure this task exists to prevent, and it would be invisible until a stray fixture row turned up in production-shaped data.
+
+Leave `e2e/playwright.config.ts` unchanged — it already sets `E2E_TEST_MODE=true`.
 
 - [ ] **Step 4: Apply the existing migrations to the test database**
 
@@ -271,7 +299,7 @@ that a multi-user spec cleaned up after itself.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/server/.env.example e2e/playwright.config.ts e2e/CLAUDE.md
+git add apps/server/.env.example apps/server/src/lib/prisma.ts e2e/CLAUDE.md
 git commit -m "test(e2e): run cloud specs against a dedicated test database
 
 Cloud E2E ran against the dev database with isolation only by row ownership
@@ -279,8 +307,13 @@ under a single E2E_USER_ID. That does not survive the multi-user fixtures
 cloud locations needs: /e2e/cleanup deletes one user's rows, so a second
 synthetic user would persist in dev indefinitely.
 
-Points the cloud backend at TEST_DATABASE_URL/TEST_DIRECT_URL and documents
-both in a new .env.example."
+The switch lives in prisma.ts rather than playwright.config.ts because
+TEST_DATABASE_URL comes from apps/server/.env, which dotenv loads inside the
+server process — Playwright's shell has never seen it and would have expanded
+it to the empty string with no error naming the cause.
+
+Refuses to start when E2E_TEST_MODE is set without TEST_DATABASE_URL: a
+silent fallback to dev is the exact failure this prevents."
 ```
 
 ---
@@ -492,6 +525,8 @@ Create `apps/server/scripts/verify-migration.ts`:
 // Destructive: drops and recreates the public schema of TEST_DATABASE_URL.
 // Refuses to run against DATABASE_URL.
 import { execSync } from 'node:child_process'
+import { renameSync } from 'node:fs'
+import { join } from 'node:path'
 import { PrismaClient } from '@prisma/client'
 
 const TEST_URL = process.env.TEST_DATABASE_URL
@@ -512,19 +547,16 @@ function assert(condition: boolean, message: string): void {
   console.log(`  ok — ${message}`)
 }
 
-async function main(): Promise<void> {
-  console.log('Resetting test database...')
-  execSync('pnpm exec prisma migrate reset --force --skip-seed --skip-generate', {
-    cwd: new URL('..', import.meta.url).pathname,
-    env,
-    stdio: 'inherit',
-  })
-
-  // ── Seed a fixture that looks like production BEFORE the new migration ──
-  // Two users, so every assertion below can tell "scoped correctly" from
-  // "returned everything". A single-user fixture would pass against a
-  // migration that ignored userId entirely.
-  console.log('Seeding two-user fixture...')
+// A fixture shaped like production BEFORE the migration: Item still carries its
+// five state fields inline, and there is no Location table yet.
+//
+// Deliberately THREE users. With one, "stocked under its owner's location" and
+// "stocked under any location" are the same assertion, and a migration that
+// ignored userId entirely would pass. user-c owns no Item at all — only a
+// TagType — which is what proves the nine-table union rather than a bare
+// SELECT DISTINCT over Item.
+async function seedFixture(): Promise<void> {
+  console.log('Seeding three-user pre-migration fixture...')
   await prisma.$executeRawUnsafe(`
     INSERT INTO "Item" ("id","name","targetUnit","targetQuantity","refillThreshold","packedQuantity","unpackedQuantity","consumeAmount","expirationMode","userId","createdAt","updatedAt")
     VALUES
@@ -532,17 +564,44 @@ async function main(): Promise<void> {
       ('item-a2','Eggs','package',6,2,4,0,1,'disabled','user-a',NOW(),NOW()),
       ('item-b1','Rice','package',1,1,1,0,1,'disabled','user-b',NOW(),NOW())
   `)
-  // user-c owns no items — only a tag. Proves the union across nine tables.
   await prisma.$executeRawUnsafe(`
     INSERT INTO "TagType" ("id","name","color","userId") VALUES ('tt-c','Storage','blue','user-c')
   `)
+}
 
-  console.log('Applying pending migrations...')
-  execSync('pnpm exec prisma migrate deploy', {
-    cwd: new URL('..', import.meta.url).pathname,
-    env,
-    stdio: 'inherit',
-  })
+const SERVER_DIR = new URL('..', import.meta.url).pathname
+const MIGRATION = '20260830000000_add_location_and_item_stock'
+const MIGRATION_DIR = join(SERVER_DIR, 'prisma/migrations', MIGRATION)
+const PARKED_DIR = join(SERVER_DIR, '.migration-under-test')
+
+async function main(): Promise<void> {
+  // `prisma migrate reset` applies EVERY committed migration — including the one
+  // under test. Seeding after that would run the backfill against an empty
+  // database and make `migrate deploy` a no-op, so the assertions below would
+  // verify nothing. Park the migration, reset to the state before it, seed a
+  // production-shaped fixture, then restore and apply it.
+  //
+  // This is also the property apps/server/prisma/CLAUDE.md demands — "a
+  // migration must be valid on a DB built only from committed history" — so the
+  // harness now tests that directly rather than assuming it.
+  console.log(`Parking ${MIGRATION}...`)
+  renameSync(MIGRATION_DIR, PARKED_DIR)
+
+  try {
+    console.log('Resetting test database to pre-migration history...')
+    execSync('pnpm exec prisma migrate reset --force --skip-seed --skip-generate', {
+      cwd: SERVER_DIR,
+      env,
+      stdio: 'inherit',
+    })
+    await seedFixture()
+  } finally {
+    console.log(`Restoring ${MIGRATION}...`)
+    renameSync(PARKED_DIR, MIGRATION_DIR)
+  }
+
+  console.log('Applying the migration under test...')
+  execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
   console.log('Asserting...')
 
