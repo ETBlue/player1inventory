@@ -71,6 +71,11 @@ migration, which made the config *look* isolated. The server never read it (Pris
 `DATABASE_URL`/`DIRECT_URL`), so it was inert rather than erroring. Removed in PR #242;
 the real invariant is now commented in `e2e/playwright.config.ts`.
 
-**Documented, not fixed.** Real isolation means pointing the cloud `webServer` at a
-dedicated Neon branch with its own `DATABASE_URL`/`DIRECT_URL` — infra work, not a config
-edit.
+**Fixed (2026-08-30, cloud locations PR 1).** The cloud `webServer` now runs with
+`DATABASE_URL=$TEST_DATABASE_URL` / `DIRECT_URL=$TEST_DIRECT_URL` (see
+`apps/server/.env.example`), a dedicated Neon branch. Row-ownership scoping under
+`E2E_USER_ID` still applies and `/e2e/cleanup` is unchanged — but a spec that needs a
+second synthetic user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true`
+and `TEST_DATABASE_URL` is unset, `apps/server/src/lib/prisma.ts` throws rather than
+falling back to `DATABASE_URL` — verified directly (see the task-2 report) — so a missing
+test database fails loudly instead of silently writing multi-user fixtures into dev.
