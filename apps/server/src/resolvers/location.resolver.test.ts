@@ -1,0 +1,194 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApolloServer } from '@apollo/server'
+import { typeDefs } from '../schema/index.js'
+import { resolvers } from '../resolvers/index.js'
+import type { Context } from '../context.js'
+
+interface FakeLocation {
+  id: string
+  name: string
+  order: number
+  isDefault: boolean
+  userId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+const { state, client } = vi.hoisted(() => {
+  const state = { locations: [] as FakeLocation[], itemStocks: [] as { id: string; locationId: string }[] }
+  let seq = 0
+
+  function matches(l: FakeLocation, where: Record<string, unknown>): boolean {
+    // Filters only on keys present in `where`, like real Prisma. Hardcoding a
+    // userId check would leave every ownership mutation check meaningless.
+    if (where.id !== undefined && l.id !== where.id) return false
+    if (where.userId !== undefined && l.userId !== where.userId) return false
+    if (where.isDefault !== undefined && l.isDefault !== where.isDefault) return false
+    return true
+  }
+
+  const client = {
+    location: {
+      findFirst: async ({ where = {}, orderBy }: { where?: Record<string, unknown>; orderBy?: { order: 'asc' | 'desc' } }) => {
+        const rows = state.locations.filter((l) => matches(l, where))
+        if (orderBy?.order === 'asc') rows.sort((a, b) => a.order - b.order)
+        return rows[0] ?? null
+      },
+      findMany: async ({ where = {}, orderBy }: { where?: Record<string, unknown>; orderBy?: { order: 'asc' | 'desc' } }) => {
+        const rows = state.locations.filter((l) => matches(l, where))
+        if (orderBy?.order === 'asc') rows.sort((a, b) => a.order - b.order)
+        return rows
+      },
+      create: async ({ data }: { data: Omit<FakeLocation, 'id' | 'createdAt' | 'updatedAt'> }) => {
+        // Models the partial unique index from the migration. Without this the
+        // "drop the isDefault guard" mutation check would stay green.
+        if (data.isDefault && state.locations.some((l) => l.userId === data.userId && l.isDefault)) {
+          throw new Error('Unique constraint failed on the fields: (`userId`)')
+        }
+        const row: FakeLocation = { ...data, id: `loc-${++seq}`, createdAt: new Date(), updatedAt: new Date() }
+        state.locations.push(row)
+        return row
+      },
+      update: async ({ where, data }: { where: { id: string }; data: Partial<FakeLocation> }) => {
+        const row = state.locations.find((l) => l.id === where.id)
+        if (!row) throw new Error('Location not found')
+        Object.assign(row, data, { updatedAt: new Date() })
+        return row
+      },
+      delete: async ({ where }: { where: { id: string } }) => {
+        const i = state.locations.findIndex((l) => l.id === where.id)
+        if (i === -1) throw new Error('Location not found')
+        const [row] = state.locations.splice(i, 1)
+        // FK ON DELETE CASCADE
+        state.itemStocks = state.itemStocks.filter((s) => s.locationId !== row.id)
+        return row
+      },
+      count: async ({ where = {} }: { where?: Record<string, unknown> }) =>
+        state.locations.filter((l) => matches(l, where)).length,
+    },
+    $transaction: async (arg: unknown) => {
+      const snapshot = JSON.parse(JSON.stringify(state))
+      try {
+        return typeof arg === 'function' ? await (arg as (tx: unknown) => Promise<unknown>)(client) : await Promise.all(arg as Promise<unknown>[])
+      } catch (err) {
+        state.locations = snapshot.locations.map((l: FakeLocation) => ({
+          ...l,
+          createdAt: new Date(l.createdAt),
+          updatedAt: new Date(l.updatedAt),
+        }))
+        state.itemStocks = snapshot.itemStocks
+        throw err
+      }
+    },
+  }
+  return { state, client }
+})
+
+vi.mock('../lib/prisma.js', () => ({ prisma: client }))
+
+const server = new ApolloServer<Context>({ typeDefs, resolvers })
+
+async function run(query: string, variables: Record<string, unknown> = {}, userId: string | null = 'user-a') {
+  const res = await server.executeOperation({ query, variables }, { contextValue: { userId } })
+  if (res.body.kind !== 'single') throw new Error('expected single result')
+  return res.body.singleResult
+}
+
+describe('location resolvers', () => {
+  beforeEach(() => {
+    state.locations = [
+      { id: 'loc-a', name: 'My Home', order: 0, isDefault: true, userId: 'user-a', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'loc-a2', name: 'Garage', order: 1, isDefault: false, userId: 'user-a', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'loc-b', name: 'Their Home', order: 0, isDefault: true, userId: 'user-b', createdAt: new Date(), updatedAt: new Date() },
+    ]
+    state.itemStocks = [{ id: 'st-1', locationId: 'loc-a2' }]
+  })
+
+  it('user can list only their own locations, in order', async () => {
+    // Given user-a owns two locations and user-b owns one
+    // When user-a lists locations
+    const res = await run(`query { locations { id name order isDefault } }`)
+
+    // Then only user-a's are returned, ordered — user-b's is absent
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.locations).toEqual([
+      expect.objectContaining({ id: 'loc-a', order: 0, isDefault: true }),
+      expect.objectContaining({ id: 'loc-a2', order: 1, isDefault: false }),
+    ])
+  })
+
+  it('user with no locations gets a default created lazily', async () => {
+    // Given a user who owns nothing
+    state.locations = []
+
+    // When they list locations
+    const res = await run(`query { locations { name isDefault order } }`, {}, 'user-new')
+
+    // Then exactly one default location was created for them
+    expect(res.data?.locations).toEqual([{ name: 'My Home', isDefault: true, order: 0 }])
+  })
+
+  it('user can create a location, appended after the highest order', async () => {
+    const res = await run(`mutation { createLocation(name: "Cellar") { name order isDefault } }`)
+    expect(res.data?.createLocation).toEqual({ name: 'Cellar', order: 2, isDefault: false })
+  })
+
+  it('user can rename their own location', async () => {
+    const res = await run(
+      `mutation Update($id: ID!, $input: UpdateLocationInput!) { updateLocation(id: $id, input: $input) { name } }`,
+      { id: 'loc-a2', input: { name: 'Shed' } },
+    )
+    expect(res.data?.updateLocation).toEqual({ name: 'Shed' })
+  })
+
+  it('user cannot rename another user\'s location', async () => {
+    const res = await run(
+      `mutation Update($id: ID!, $input: UpdateLocationInput!) { updateLocation(id: $id, input: $input) { name } }`,
+      { id: 'loc-b', input: { name: 'Hijacked' } },
+    )
+    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
+    expect(state.locations.find((l) => l.id === 'loc-b')?.name).toBe('Their Home')
+  })
+
+  it('user can delete a non-default location, cascading its stock', async () => {
+    const res = await run(`mutation { deleteLocation(id: "loc-a2") }`)
+    expect(res.data?.deleteLocation).toBe(true)
+    expect(state.locations.some((l) => l.id === 'loc-a2')).toBe(false)
+    expect(state.itemStocks).toHaveLength(0)
+  })
+
+  it('user cannot delete the default location', async () => {
+    const res = await run(`mutation { deleteLocation(id: "loc-a") }`)
+    expect(res.errors?.[0]?.message).toMatch(/default location cannot be deleted/i)
+    expect(state.locations.some((l) => l.id === 'loc-a')).toBe(true)
+  })
+
+  it('user cannot delete another user\'s location', async () => {
+    const res = await run(`mutation { deleteLocation(id: "loc-b") }`)
+    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
+    expect(state.locations.some((l) => l.id === 'loc-b')).toBe(true)
+  })
+
+  it('user can reorder their locations', async () => {
+    const res = await run(
+      `mutation Reorder($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id order } }`,
+      { ids: ['loc-a2', 'loc-a'] },
+    )
+    expect(res.data?.reorderLocations).toEqual([
+      { id: 'loc-a2', order: 0 },
+      { id: 'loc-a', order: 1 },
+    ])
+  })
+
+  it('reorder rejects the whole batch if any id is another user\'s', async () => {
+    // Given a batch mixing user-a's location with user-b's
+    const res = await run(
+      `mutation Reorder($ids: [ID!]!) { reorderLocations(orderedIds: $ids) { id } }`,
+      { ids: ['loc-a2', 'loc-b'] },
+    )
+
+    // Then nothing is written — user-a's own order is unchanged too
+    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
+    expect(state.locations.find((l) => l.id === 'loc-a2')?.order).toBe(1)
+  })
+})
