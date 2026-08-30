@@ -146,11 +146,41 @@ unchanged in cloud, and `useShowStock` collapses to it with no mode branch. The
 deferred-requirements doc's instruction to "revisit every `isCloud` bypass" is satisfied
 **structurally** — they are removed, not translated.
 
-### The one new hazard: Apollo cache keying
+### ~~The one new hazard: Apollo cache keying~~ — measured false, PR 2
 
-`ItemStock` normalizes by `id` automatically, but the `itemStocks` root field needs
-`keyArgs: ['locationId']` in the type policy. Without it, switching locations overwrites the
-cached list and the pantry renders the previous location's stock. This gets an explicit test (§7).
+> **Corrected 2026-08-30 during PR 2.** This section originally read:
+>
+> > `ItemStock` normalizes by `id` automatically, but the `itemStocks` root field needs
+> > `keyArgs: ['locationId']` in the type policy. Without it, switching locations overwrites
+> > the cached list and the pantry renders the previous location's stock.
+>
+> **The second sentence is wrong.** Apollo Client 4 already includes *every* argument of a
+> root field in its store key by default, so `keyArgs: ['locationId']` on a field whose only
+> argument is `locationId` is a **no-op**. Probed directly against the version in this repo,
+> writing two locations and reading the first back:
+>
+> | Type policy | `ROOT_QUERY` keys | Read back A |
+> |---|---|---|
+> | none (default) | `itemStocks({"locationId":"A"})`, `itemStocks({"locationId":"B"})` | `a1` ✓ |
+> | `keyArgs: ['locationId']` | `itemStocks:{"locationId":"A"}`, `itemStocks:{"locationId":"B"}` | `a1` ✓ |
+> | `keyArgs: false` | `itemStocks` (one entry) | **`b1`** ✗ |
+>
+> Only the key *serialization* differs between the first two rows. The hazard the design
+> named does not exist; `keyArgs: false` is the only way to produce it, and nothing writes that.
+>
+> **What was real** is the other half of PR 2's Task 4: `apollo/client.ts` built
+> `new InMemoryCache()` **twice**, so any policy added later would have applied to production
+> but not to the E2E client — cloud E2E would have exercised a different cache than
+> production. Both now share one `createCache()` factory. That divergence is closed.
+>
+> The `keyArgs` line is kept, with a source comment stating it matches the default and is
+> **not** load-bearing — because it stops being a no-op the moment `itemStocks` gains a
+> second argument, at which point an explicit `keyArgs: ['locationId']` would silently drop
+> that argument from the key while the default would not.
+>
+> This is the class of error the root `CLAUDE.md` warns about under *Explanatory Comments Are
+> Claims, Not Facts*: a plausible causal claim, written into a design doc, that nobody
+> measured until an agent tried to make its mutation check go red and could not.
 
 ## 3. Retiring the `'local'` sentinel
 

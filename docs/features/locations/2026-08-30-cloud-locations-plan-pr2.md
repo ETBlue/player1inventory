@@ -192,15 +192,27 @@ function createCache() {
 }
 ```
 
-`ItemStock` normalizes by `id` on its own; the root **field** is what needs keying.
-Without it, switching locations overwrites the cached list and the pantry renders
-the previous location's stock (§2).
-
 **Test:** two locations with disjoint stock. Query location A, then B, then read A
-from the cache — A's rows must come back, not B's.
+from the cache — A's rows must come back, not B's. Run it against a cache from
+**each** factory, so "the policy reached both clients" is asserted rather than assumed.
 
-**Mutation check:** delete `keyArgs` → the test must go RED. This one is
-non-negotiable: it is the only evidence the policy does anything.
+> **Corrected after implementation (2026-08-30).** This task was written expecting
+> `keyArgs` to be load-bearing, with the mutation check "non-negotiable: it is the
+> only evidence the policy does anything." **Measured, that is false.** Apollo
+> Client 4 already keys a root field by all of its arguments, so
+> `keyArgs: ['locationId']` on a single-argument field is a no-op, and deleting it
+> **cannot** turn the test red. Design §2 carries the probe output and is corrected
+> there too.
+>
+> The mutation actually run was `keyArgs: false` — the only configuration that
+> produces the collapse the design described. All four tests went red on it, so the
+> test is not vacuous. Asserting on Apollo's literal store-key format would also
+> have gone red, and was deliberately **not** done: that tests Apollo's internals,
+> not this app's behaviour.
+>
+> **What this task really fixes** is the two separate `new InMemoryCache()` calls —
+> a policy added to one would have left cloud E2E on a different cache than
+> production. That risk was real and is closed.
 
 ### Task 5 — `useLocations` gains a cloud branch
 
