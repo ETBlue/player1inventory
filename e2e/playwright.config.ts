@@ -72,10 +72,13 @@ export default defineConfig({
       // Cloud-mode backend — dedicated port avoids conflicts with the normal dev
       // server. E2E_TEST_MODE bypasses Clerk auth and mounts the /e2e/cleanup route.
       //
-      // Isolation note: the server loads apps/server/.env, so these tests run against
-      // whichever database DATABASE_URL points at — normally the dev database, not a
-      // separate one. Isolation is by row ownership, not by database: every write is
-      // scoped to E2E_USER_ID, and /e2e/cleanup only deletes rows owned by that user.
+      // Isolation note: E2E_TEST_MODE=true is read inside apps/server/src/lib/prisma.ts
+      // (not here — TEST_DATABASE_URL lives in apps/server/.env, which dotenv loads
+      // inside the server process, never in this shell) to route Prisma at
+      // TEST_DATABASE_URL, a dedicated Neon branch — it throws rather than falling back
+      // to DATABASE_URL if that var is unset. Row ownership under E2E_USER_ID still
+      // applies on top of that for /e2e/cleanup, which only deletes rows owned by that
+      // user.
       command: [
         'E2E_TEST_MODE=true',
         `PORT=${CLOUD_SERVER_PORT}`,

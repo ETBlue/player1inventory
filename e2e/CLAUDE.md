@@ -71,11 +71,17 @@ migration, which made the config *look* isolated. The server never read it (Pris
 `DATABASE_URL`/`DIRECT_URL`), so it was inert rather than erroring. Removed in PR #242;
 the real invariant is now commented in `e2e/playwright.config.ts`.
 
-**Fixed (2026-08-30, cloud locations PR 1).** The cloud `webServer` now runs with
-`DATABASE_URL=$TEST_DATABASE_URL` / `DIRECT_URL=$TEST_DIRECT_URL` (see
-`apps/server/.env.example`), a dedicated Neon branch. Row-ownership scoping under
-`E2E_USER_ID` still applies and `/e2e/cleanup` is unchanged — but a spec that needs a
-second synthetic user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true`
-and `TEST_DATABASE_URL` is unset, `apps/server/src/lib/prisma.ts` throws rather than
-falling back to `DATABASE_URL` — verified directly (see the task-2 report) — so a missing
-test database fails loudly instead of silently writing multi-user fixtures into dev.
+**Fixed (2026-08-30, cloud locations PR 1).** The switch is an in-process datasource
+override in `apps/server/src/lib/prisma.ts`, not a `webServer` env var: the cloud
+`webServer` entry in `e2e/playwright.config.ts` only sets `E2E_TEST_MODE=true`, and when
+`prisma.ts` sees that flag it points the runtime Prisma client at `TEST_DATABASE_URL`
+(read from `apps/server/.env`, a dedicated Neon branch — see `apps/server/.env.example`)
+instead of `DATABASE_URL`. `TEST_DIRECT_URL` has no runtime consumer today — it exists
+for Prisma **migrations** against that same branch (`prisma migrate deploy` /
+`migrate resolve`, run manually) and will be read by a later task's
+`scripts/verify-migration.ts`. Row-ownership scoping under `E2E_USER_ID` still applies on
+top of this and `/e2e/cleanup` is unchanged — but a spec that needs a second synthetic
+user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true` and
+`TEST_DATABASE_URL` is unset, `prisma.ts` throws rather than falling back to
+`DATABASE_URL` (covered by `apps/server/src/lib/prisma.test.ts`) — so a missing test
+database fails loudly instead of silently writing multi-user fixtures into dev.
