@@ -94,6 +94,7 @@ model Item {
   recipes       RecipeItem[]
   inventoryLogs InventoryLog[]
   cartItems     CartItem[]
+  itemStocks    ItemStock[]
 
   @@index([userId, updatedAt])
   @@index([userId, name])
@@ -193,4 +194,48 @@ model Shelf {
   updatedAt    DateTime  @updatedAt
 
   @@index([userId, order])
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int
+  // Exactly one per user. NOT derivable from `order`: dnd-kit's `disabled`
+  // stops the default row being dragged but not from being displaced by
+  // another row dropped above it, so lowest-order is not stable.
+  // A partial unique index enforces the invariant — see the migration.
+  isDefault Boolean  @default(false)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itemStocks ItemStock[]
+
+  @@index([userId, order])
+}
+
+// Per-(item × location) stock STATE. Configuration (units, packaging,
+// expiration mode, consume amount) lives on Item and does not vary by location.
+//
+// Deliberately has NO userId: an ItemStock is scoped through its location
+// (`where: { location: { userId } }`), the shape location RBAC needs. A userId
+// column would put `stock.userId === ctx.userId` within reach at every call
+// site — the guard the RBAC design forbids.
+model ItemStock {
+  id               String    @id @default(cuid())
+  itemId           String
+  locationId       String
+  targetQuantity   Float     @default(0)
+  refillThreshold  Float     @default(0)
+  packedQuantity   Float     @default(0)
+  unpackedQuantity Float     @default(0)
+  dueDate          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, locationId])
+  @@index([locationId])
 }
