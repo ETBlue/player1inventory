@@ -338,9 +338,33 @@ model:
   permanently with no cleanup path.
 - The migration verification above needs a throwaway Postgres seeded from committed history.
 
-Both are served by one Neon branch with its own `DATABASE_URL` / `DIRECT_URL`.
+Served by a Neon branch of **dev**, **schema only**, with its own `DATABASE_URL` / `DIRECT_URL`.
+Schema-only because `verify-migration.ts` resets and rebuilds from committed migrations before
+seeding its own fixture, so inherited rows are destroyed on the first run — and branching
+*production* rows into a database an automated script drops is a hazard bought for nothing.
 `e2e/CLAUDE.md` records this as infra work rather than a config edit, and it is a
 prerequisite here rather than an improvement.
+
+**3. A production-data rehearsal — required before PR 3 deploys.** Everything above verifies
+the migration against a **synthetic** fixture. That proves the logic — the nine-table union,
+per-user scoping, the partial unique index — and proves nothing about contact with real rows:
+unexpected nulls, orphans, an item whose owner has no other data, and above all **how many
+users actually share the `'no-vendor'` cart**. §5 designs a split for that row without knowing
+whether it affects two accounts or two hundred.
+
+For a migration whose requirement is "preserve everything", synthetic verification alone is
+insufficient. Before PR 3 deploys:
+
+1. Create a Neon branch of **production**, **schema and data** — a different parent and a
+   different lifetime from the `e2e` branch, which is why it must not share one.
+2. Run `prisma migrate deploy` against it.
+3. Assert on the **real** result: every user has exactly one default location; every `Item`
+   has exactly one `ItemStock`; no `CartItem` points at a cart owned by a different user;
+   `SELECT COUNT(DISTINCT "userId") FROM "CartItem" WHERE "cartId" = 'no-vendor'` before the
+   split matches the number of `:no-vendor` carts after it.
+4. Record the row counts in the PR, then **delete the branch** — it holds production data.
+
+A rehearsal that finds nothing still produces the one number this design is missing.
 
 ## 8. Rollout — five staged PRs
 
