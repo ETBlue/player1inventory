@@ -99,7 +99,14 @@ async function seedLocations(...entries: Array<[string, string]>) {
   )
 }
 
-describe('ImportCard — cloud import scopes stock to the active location', () => {
+// A backup file is always LOCAL-shaped — `fetchCloudPayload` writes no
+// `itemStocks` at all — so the id used to pick which location's stock goes up
+// must itself be a local one. The CLOUD active location is a server cuid that
+// no backup's `itemStocks` can ever mention, so using it makes every
+// multi-location backup unresolvable and the import is refused outright.
+const CLOUD_LOCATION_ID = 'clx7k2p9a0001qwer5678efgh'
+
+describe('ImportCard — cloud import scopes stock to the local active location', () => {
   afterEach(async () => {
     localStorage.clear()
     vi.mocked(importCloudData).mockClear()
@@ -107,22 +114,26 @@ describe('ImportCard — cloud import scopes stock to the active location', () =
     await db.locations.clear()
   })
 
-  it('user importing a backup in cloud mode migrates the active location stock', async () => {
-    // Given cloud mode with 'office' as the active location, and a backup that
-    // holds stock for it
+  it('user importing a multi-location backup in cloud mode keeps their local location stock', async () => {
+    // Given cloud mode, whose active location is a server cuid, while the
+    // user's offline pantry was last on 'office' — and a backup holding stock
+    // for two local locations
     await seedLocations(['local', 'My Home'], ['office', 'Office'])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(activeLocationStorageKey('cloud'), 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_LOCATION_ID)
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     const { container } = renderCard()
 
     // When the user picks a v15 backup file
     await uploadPayload(container, v15Payload('local', 'office'))
 
-    // Then the cloud import is told which location's stock to flatten
+    // Then the cloud import is told which location's stock to flatten — the
+    // cloud cuid matches neither, so the import would be refused entirely
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
     expect(vi.mocked(importCloudData).mock.calls[0][3]).toMatchObject({
       locationId: 'office',
     })
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('user importing another devices backup keeps its stock instead of zeroing it', async () => {

@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { bootstrapCarts } from '@/db/operations'
+import { bootstrapCarts, getLocations } from '@/db/operations'
 import { useLocations } from '@/hooks/useLocations'
 import type { DataMode } from '@/lib/dataMode'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
@@ -32,7 +32,12 @@ export function activeLocationStorageKey(mode: DataMode): string {
 
 // Pure read — the legacy key is consulted as a fallback here and moved by
 // `migrateLegacyStoredLocationId` below, so this can run during render.
-function readStoredLocationId(mode: DataMode): string {
+//
+// Exported for the CROSS-MODE data paths (import / export / migration), which
+// need one mode's id while the app is running in the other. They must not use
+// `useActiveLocation().activeLocationId`: since the slot became per-mode that
+// is the CURRENT mode's id, and the two id spaces are disjoint.
+export function readStoredLocationId(mode: DataMode): string {
   try {
     const stored = localStorage.getItem(activeLocationStorageKey(mode))
     if (stored !== null) return stored
@@ -63,6 +68,30 @@ function migrateLegacyStoredLocationId(): void {
   } catch {
     // ignore read/write failures (e.g. private mode)
   }
+}
+
+// The local mode's own active location, validated against the LOCAL `locations`
+// table — usable from either mode.
+//
+// A cloud → local copy synthesises `ItemStock` rows and has to place them in
+// one location, and that location has to exist in the table those rows are
+// written to. `useActiveLocation().activeLocationId` cannot supply it while the
+// app is in cloud mode: that id is a server-generated cuid naming a cloud
+// `Location`, so stock written under it belongs to no local location and the
+// user lands on an empty pantry after the switch.
+//
+// The fallback rule matches the provider's own validation effect: the local
+// `isDefault` row, then any row, then the seed sentinel for a table that has
+// not been populated yet.
+export async function resolveLocalActiveLocationId(): Promise<string> {
+  const stored = readStoredLocationId('local')
+  const locations = await getLocations()
+  if (locations.some((loc) => loc.id === stored)) return stored
+  return (
+    locations.find((loc) => loc.isDefault)?.id ??
+    locations[0]?.id ??
+    DEFAULT_LOCATION_ID
+  )
 }
 
 interface ActiveLocationContextValue {
