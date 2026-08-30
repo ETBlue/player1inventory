@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && cp src/schema/*.graphql dist/schema/",
     "typecheck": "tsc --noEmit",
+    "verify:migration": "tsx scripts/verify-migration.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
     "postinstall": "prisma generate"
