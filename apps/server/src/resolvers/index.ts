@@ -3,6 +3,7 @@ import { cartResolvers } from './cart.resolver.js'
 import { importResolvers } from './import.resolver.js'
 import { inventoryLogResolvers, JSONScalar } from './inventoryLog.resolver.js'
 import { itemResolvers } from './item.resolver.js'
+import { itemStockResolvers } from './itemStock.resolver.js'
 import { locationResolvers } from './location.resolver.js'
 import { purgeResolvers } from './purge.resolver.js'
 import { recipeResolvers } from './recipe.resolver.js'
@@ -21,6 +22,7 @@ const resolversObject: Resolvers = {
     ...inventoryLogResolvers.Query,
     ...shelfResolvers.Query,
     ...locationResolvers.Query,
+    ...itemStockResolvers.Query,
   },
   Mutation: {
     ...itemResolvers.Mutation,
@@ -33,6 +35,7 @@ const resolversObject: Resolvers = {
     ...purgeResolvers.Mutation,
     ...shelfResolvers.Mutation,
     ...locationResolvers.Mutation,
+    ...itemStockResolvers.Mutation,
   },
   Recipe: recipeResolvers.Recipe,
   InventoryLog: inventoryLogResolvers.InventoryLog,
