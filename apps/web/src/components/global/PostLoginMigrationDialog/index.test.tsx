@@ -47,6 +47,7 @@ async function seedLocations(...entries: Array<[string, string]>) {
       id,
       name,
       order,
+      isDefault: id === 'local',
       createdAt: now,
       updatedAt: now,
     })),

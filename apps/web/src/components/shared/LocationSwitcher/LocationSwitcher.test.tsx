@@ -27,6 +27,7 @@ async function seedLocations() {
     id: DEFAULT_LOCATION_ID,
     name: 'My Home',
     order: 0,
+    isDefault: true,
     createdAt: now,
     updatedAt: now,
   })
@@ -34,6 +35,7 @@ async function seedLocations() {
     id: 'loc-office',
     name: 'Office',
     order: 1,
+    isDefault: false,
     createdAt: now,
     updatedAt: now,
   })

@@ -52,6 +52,7 @@ function SwitcherHarness({
         id: DEFAULT_LOCATION_ID,
         name: longName ? 'Grandparents’ Summer House' : 'My Home',
         order: 0,
+        isDefault: true,
         createdAt: now,
         updatedAt: now,
       })
@@ -60,6 +61,7 @@ function SwitcherHarness({
           id: 'loc-office',
           name: 'Office',
           order: 1,
+          isDefault: false,
           createdAt: now,
           updatedAt: now,
         })
@@ -67,6 +69,7 @@ function SwitcherHarness({
           id: 'loc-beach',
           name: 'Beach House',
           order: 2,
+          isDefault: false,
           createdAt: now,
           updatedAt: now,
         })

@@ -128,9 +128,16 @@ function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
   return result as unknown as ItemStock
 }
 
+// `isDefault` (Dexie v18) is derived, not carried: a pre-v18 backup has no such
+// key at all, and a payload written elsewhere could name a different row as its
+// default. In local mode the default is always DEFAULT_LOCATION_ID, and
+// `ensureDefaultLocationRow` guarantees that row exists after every import — so
+// deriving here is what keeps exactly one row flagged, and keeps an imported
+// non-default location unflagged whatever the file says.
 function deserializeLocation(raw: Record<string, unknown>): Location {
   return {
     ...raw,
+    isDefault: raw.id === DEFAULT_LOCATION_ID,
     createdAt: toDate(raw.createdAt),
     updatedAt: toDate(raw.updatedAt),
   } as unknown as Location

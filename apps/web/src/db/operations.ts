@@ -1230,8 +1230,9 @@ export async function reorderShelfItems(
 // Location operations
 //
 // PR A — inert: locations exist but nothing else references them yet. Delete is
-// a plain row delete (no cascade). The default location (DEFAULT_LOCATION_ID)
-// is undeletable. Cloud sync is deferred; locations are local-first for now.
+// a plain row delete (no cascade). The default location — the row carrying
+// `isDefault` — is undeletable. Cloud sync is deferred; locations are
+// local-first for now.
 
 export async function getLocations(): Promise<Location[]> {
   return db.locations.orderBy('order').toArray()
@@ -1246,6 +1247,8 @@ export async function createLocation(name: string): Promise<Location> {
     id: crypto.randomUUID(),
     name: name.trim(),
     order: maxOrder + 1,
+    // Only the seeded default carries the flag (ensureDefaultLocation).
+    isDefault: false,
     createdAt: now,
     updatedAt: now,
   }
@@ -1266,8 +1269,10 @@ export async function updateLocation(
 }
 
 export async function deleteLocation(id: string): Promise<void> {
-  // The default location is undeletable.
-  if (id === DEFAULT_LOCATION_ID) {
+  // The default location is undeletable. Identified by its flag, not its id —
+  // a cloud default's id is a server cuid, not DEFAULT_LOCATION_ID (v18).
+  const location = await db.locations.get(id)
+  if (location?.isDefault) {
     throw new Error('The default location cannot be deleted.')
   }
   // Cascade: remove this location's ItemStock rows, its carts + cart items, and

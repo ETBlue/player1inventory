@@ -57,6 +57,7 @@ describe('ActiveLocationProvider — cart bootstrap effect', () => {
       id: DEFAULT_LOCATION_ID,
       name: 'My Home',
       order: 0,
+      isDefault: true,
       createdAt: new Date(),
     })
   })
@@ -99,6 +100,7 @@ describe('ActiveLocationProvider — cart bootstrap effect', () => {
       id: 'loc-2',
       name: 'Cabin',
       order: 1,
+      isDefault: false,
       createdAt: new Date(),
     })
     const user = userEvent.setup()
