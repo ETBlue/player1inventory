@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import type { UnitSwitchBatchInput } from '@/db/operations'
 import {
   addItemToLocation,
@@ -14,7 +15,11 @@ import {
   removeItemFromLocation,
   updateItem,
 } from '@/db/operations'
-import type { CreateItemInput, UpdateItemInput } from '@/generated/graphql'
+import type {
+  CreateItemInput,
+  PantryDataQuery,
+  UpdateItemInput,
+} from '@/generated/graphql'
 import {
   GetItemsDocument,
   GetRecipesDocument,
@@ -23,13 +28,15 @@ import {
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
-  useGetItemsQuery,
+  useItemStocksForItemQuery,
   useLastPurchaseDatesQuery,
+  usePantryDataQuery,
   useUpdateItemMutation,
 } from '@/generated/graphql'
-import { deserializeItem } from '@/lib/deserialization'
+import { deserializeItem, deserializeItemStock } from '@/lib/deserialization'
+import { joinItemStock, stripStockFields } from '@/lib/itemStock'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
-import type { Item, StockFields } from '@/types'
+import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useDataMode } from './useDataMode'
 
@@ -101,6 +108,52 @@ export function toUpdateItemInput(
   }
 }
 
+// One `PantryData` result -> the pantry's PantryItem list.
+//
+// `PantryData` asks for the global catalog and the ACTIVE LOCATION's stock rows
+// in a single operation, so the join below costs no extra round trip. The join
+// itself is `joinItemStock` — the very same function the Dexie path calls, not
+// a cloud copy of it (that is why it was moved to `lib/itemStock.ts`).
+//
+// The cloud `Item` still declares the five stock STATE fields until PR 5, so
+// each row goes through `stripStockFields` FIRST. Without it the item's own
+// inline `dueDate` would survive the join for an item that has no row here —
+// `ZERO_STOCK` carries no `dueDate` key to overwrite it with — and an item
+// stocked nowhere near this location would still render an expiry.
+//
+// `stockedOnly` selects the two consumers: the pantry's "stocked here" list
+// (`useStockedItems`) keeps only items with a row in this location, while the
+// full catalog (`useItems`) keeps every item and lets the ones with no row here
+// come back with `stockId: undefined` and zeroed quantities — exactly the shape
+// local mode produces, which is what lets `isStockedHere` work in both modes.
+function joinPantryData(
+  data: PantryDataQuery | undefined,
+  locationId: string,
+  stockedOnly: boolean,
+): PantryItem[] | undefined {
+  if (!data) return undefined
+  const stockByItemId = new Map<string, ItemStock>(
+    data.itemStocks.map((stock) => [
+      stock.itemId,
+      deserializeItemStock(stock as Record<string, unknown>),
+    ]),
+  )
+  const items = stockedOnly
+    ? data.items.filter((item) => stockByItemId.has(item.id))
+    : data.items
+  return items.map((item) =>
+    joinItemStock(
+      stripStockFields(deserializeItem(item as Record<string, unknown>)),
+      stockByItemId.get(item.id),
+      locationId,
+    ),
+  )
+}
+
+// The whole item catalog, each entry joined with the active location's stock.
+// Items not stocked here are PRESENT, with `stockId: undefined` — the search
+// tail's third bucket ("exists globally, not stocked here") is built from that
+// difference, so this list must not be filtered.
 export function useItems() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -112,13 +165,19 @@ export function useItems() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetItemsQuery({ skip: !isCloud })
+  const cloud = usePantryDataQuery({
+    variables: { locationId: activeLocationId },
+    skip: !isCloud,
+  })
+
+  const cloudData = useMemo(
+    () => joinPantryData(cloud.data, activeLocationId, false),
+    [cloud.data, activeLocationId],
+  )
 
   if (isCloud) {
     return {
-      data: cloud.data?.items.map((i) =>
-        deserializeItem(i as Record<string, unknown>),
-      ),
+      data: cloudData,
       isLoading: cloud.loading,
       isFetching: cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       isError: !!cloud.error,
@@ -138,10 +197,12 @@ export function useItems() {
 // Items stocked in the active location (have an ItemStock row there), joined
 // with that location's stock. This is the pantry's data source — items not
 // stocked in the active location are absent. Switching the active location
-// re-scopes the result (activeLocationId is part of the query key).
+// re-scopes the result: it is part of the query key in local mode, and a query
+// VARIABLE in cloud mode.
 //
-// Cloud mode: ItemStock has no GraphQL backend yet, so this falls back to the
-// full cloud item list (cloud TODO: per-location stock + catalog).
+// Cloud mode derives this from the SAME `PantryData` result `useItems` reads,
+// filtered to the items that have a row in `itemStocks`. It deliberately issues
+// no second request — Apollo serves both hooks from the one result.
 export function useStockedItems() {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -153,13 +214,19 @@ export function useStockedItems() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetItemsQuery({ skip: !isCloud })
+  const cloud = usePantryDataQuery({
+    variables: { locationId: activeLocationId },
+    skip: !isCloud,
+  })
+
+  const cloudData = useMemo(
+    () => joinPantryData(cloud.data, activeLocationId, true),
+    [cloud.data, activeLocationId],
+  )
 
   if (isCloud) {
     return {
-      data: cloud.data?.items.map((i) =>
-        deserializeItem(i as Record<string, unknown>),
-      ),
+      data: cloudData,
       isLoading: cloud.loading,
       isFetching: cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       isError: !!cloud.error,
@@ -176,6 +243,17 @@ export function useStockedItems() {
   }
 }
 
+// One item, joined with the active location's stock.
+//
+// Cloud pairs `GetItem` with `ItemStocksForItem` rather than reusing
+// `PantryData`, and the choice is between two costs. `PantryData` would be a
+// cache hit when the user arrived from the pantry, but a cold deep link to
+// /items/$id would pull the entire catalog to render one row. These two ask
+// only for what the page shows, and `ItemStocksForItem` is the query the Stock
+// tab's all-locations pager reads as well — so the pager shares this exact
+// cache entry instead of adding a request of its own. Switching the active
+// location then costs no request at all: every location's row is already here
+// and the active one is picked out of the set.
 export function useItem(id: string) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
@@ -188,14 +266,31 @@ export function useItem(id: string) {
   })
 
   const cloud = useGetItemQuery({ variables: { id }, skip: !isCloud || !id })
+  const cloudStocks = useItemStocksForItemQuery({
+    variables: { itemId: id },
+    skip: !isCloud || !id,
+  })
+
+  const cloudData = useMemo(() => {
+    const raw = cloud.data?.item
+    if (!raw) return undefined
+    const stock = cloudStocks.data?.itemStocksForItem.find(
+      (row) => row.locationId === activeLocationId,
+    )
+    return joinItemStock(
+      stripStockFields(deserializeItem(raw as Record<string, unknown>)),
+      stock
+        ? deserializeItemStock(stock as Record<string, unknown>)
+        : undefined,
+      activeLocationId,
+    )
+  }, [cloud.data, cloudStocks.data, activeLocationId])
 
   if (isCloud) {
     return {
-      data: cloud.data?.item
-        ? deserializeItem(cloud.data.item as Record<string, unknown>)
-        : undefined,
-      isLoading: cloud.loading,
-      isError: !!cloud.error,
+      data: cloudData,
+      isLoading: cloud.loading || cloudStocks.loading,
+      isError: !!cloud.error || !!cloudStocks.error,
     }
   }
 

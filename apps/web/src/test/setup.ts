@@ -69,6 +69,18 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    usePantryDataQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: vi.fn(),
+    }),
+    useItemStocksForItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useCreateItemMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},

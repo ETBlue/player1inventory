@@ -4,6 +4,7 @@ import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
+import { asPantryDataResult } from '@/test/pantryData'
 import { NewItemDialog } from './NewItemDialog'
 
 // Cloud mode has no ItemStock backend yet (deferred in the Location feature,
@@ -53,7 +54,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
-    useGetItemsQuery: () => mockUseGetItemsQuery(),
+    // The catalog comes from `PantryData` now, not `GetItems`. The fixture
+    // below is still written as an item list; `asPantryDataResult` lifts each
+    // item's inline stock values into the ItemStock row the join reads.
+    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
     useCreateItemMutation: () => [mockCreateItem, { loading: false }],
   }
 })

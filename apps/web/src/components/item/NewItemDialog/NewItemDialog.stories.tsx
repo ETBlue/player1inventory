@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { GetItemsDocument } from '@/generated/graphql'
+import { PantryDataDocument } from '@/generated/graphql'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -132,9 +132,11 @@ export const AlreadyStockedExactMatch: Story = {
 // every catalog option renders disabled ("already here") regardless of
 // whether it has a stockId, and only the Create path is available (PR D
 // review 2.1 — selecting a disabled option must never write an orphan local
-// ItemStock). This mocks `useGetItemsQuery` via `MockedProvider` instead of
-// seeding Dexie, since cloud mode reads the catalog from GraphQL, not local
-// IndexedDB.
+// ItemStock). This mocks `PantryData` via `MockedProvider` instead of seeding
+// Dexie, since cloud mode reads the catalog from GraphQL, not local IndexedDB.
+// `variables` is a matcher rather than a literal: the harness has no location
+// list to load, so the active location id it asks for is whatever the provider
+// falls back to.
 function CloudDialogHarness({ initialName }: { initialName?: string }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -159,7 +161,7 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
 
   const mocks = [
     {
-      request: { query: GetItemsDocument, variables: {} },
+      request: { query: PantryDataDocument, variables: () => true },
       result: {
         data: {
           items: [
@@ -186,6 +188,7 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
               updatedAt: '2026-01-01T00:00:00.000Z',
             },
           ],
+          itemStocks: [],
         },
       },
     },

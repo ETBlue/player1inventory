@@ -15,6 +15,7 @@ import {
   upsertItemStock,
 } from '@/db/operations'
 import { GetRecipesDocument } from '@/generated/graphql'
+import { asPantryDataResult } from '@/test/pantryData'
 import type { PantryItem } from '@/types'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 import { activeLocationStorageKey } from './useActiveLocation'
@@ -50,7 +51,18 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   return {
     ...original,
     useGetItemQuery: () => mockUseGetItemQuery(),
-    useGetItemsQuery: () => mockUseGetItemsQuery(),
+    // The pantry hooks read `PantryData` now, not `GetItems`. The cloud
+    // fixtures below are still written as item lists; `asPantryDataResult`
+    // lifts each item's inline stock values into the ItemStock row the join
+    // reads. `useItemStocksForItemQuery` (the detail page's second half) is
+    // stubbed empty — this file's `useItem` cases assert the item, and the
+    // per-location row picking is covered in `useItems.cloud.test.tsx`.
+    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
+    useItemStocksForItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useCreateItemMutation: () => [mockCloudCreate, {}],
     useUpdateItemMutation: () => [mockCloudUpdate, {}],
     useDeleteItemMutation: (options: unknown) => {

@@ -8,6 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
+import { asPantryDataResult } from '@/test/pantryData'
 
 // Cloud mode has no ItemStock backend yet (deferred in the Location feature,
 // PR D): `useItems()` returns cloud items with inline stock and no `stockId`.
@@ -50,7 +51,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
-    useGetItemsQuery: () => mockUseGetItemsQuery(),
+    // The pantry hooks read `PantryData` now, not `GetItems`. The fixture
+    // below is still written as an item list; `asPantryDataResult` lifts each
+    // item's inline stock values into the ItemStock row the join reads.
+    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
     useGetRecipesQuery: () => mockUseGetRecipesQuery(),
     useConsumeRecipesMutation: () => [mockConsumeRecipes, {}],
     useGetTagsQuery: () => emptyQuery,

@@ -7,6 +7,7 @@ import {
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
+import { asPantryDataResult } from '@/test/pantryData'
 
 // Cloud carts have **bare** ids (`'no-vendor'` / `<vendorId>`) — the server keys
 // them that way and PR D did not change it (ItemStock/locations are deferred in
@@ -52,7 +53,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
-    useGetItemsQuery: () => mockUseGetItemsQuery(),
+    // The pantry hooks read `PantryData` now, not `GetItems`. The fixture
+    // below is still written as an item list; `asPantryDataResult` lifts each
+    // item's inline stock values into the ItemStock row the join reads.
+    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
     useGetVendorsQuery: () => mockUseGetVendorsQuery(),
     useAllCartsQuery: () => mockUseAllCartsQuery(),
     useAllCartItemsQuery: () => mockUseAllCartItemsQuery(),

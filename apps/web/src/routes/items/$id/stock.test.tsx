@@ -93,7 +93,12 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       {},
     ],
     useGetItemQuery: (...args: unknown[]) => mockUseGetItemQuery(...args),
-    useGetItemsQuery: queryStub,
+    // Cloud read paths the pantry hooks moved onto in PR 2. Stubbed empty:
+    // this file drives cloud mode through `mockUseGetItemQuery` alone, so the
+    // stock row it joins with is deliberately absent (cloud has no ItemStock
+    // pager until Task 8).
+    usePantryDataQuery: queryStub,
+    useItemStocksForItemQuery: queryStub,
     useCreateItemMutation: mutationStub,
     useUpdateItemMutation: (...args: unknown[]) =>
       mockUseUpdateItemMutation(...args),

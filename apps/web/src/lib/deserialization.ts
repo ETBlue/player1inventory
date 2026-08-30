@@ -1,4 +1,5 @@
 import type {
+  ItemStock,
   Location,
   PantryItem,
   Recipe,
@@ -8,8 +9,14 @@ import type {
 } from '@/types'
 
 // GraphQL returns dueDate/createdAt/updatedAt as ISO strings; convert to Date.
-// The cloud Item still carries stock/unit/expiration fields (ItemStock is
-// local-only for now — cloud TODO), so the deserialized value is a PantryItem.
+//
+// The return type is `PantryItem`, not `Item`, because the cloud `Item` type
+// still declares the five stock STATE fields (`apps/server/src/schema/
+// item.graphql`) — they are not dropped from it until PR 5. They are a
+// leftover, not a data source: since the pantry moved onto `ItemStock`, every
+// read site runs this result through `stripStockFields` before joining it with
+// the active location's row (`hooks/useItems.ts`), so a quantity or a due date
+// only ever comes from an `ItemStock`.
 export function deserializeItem(raw: Record<string, unknown>): PantryItem {
   return {
     ...raw,
@@ -17,6 +24,27 @@ export function deserializeItem(raw: Record<string, unknown>): PantryItem {
     createdAt: new Date(raw.createdAt as string),
     updatedAt: new Date(raw.updatedAt as string),
   } as PantryItem
+}
+
+// GraphQL declares ItemStock's createdAt/updatedAt as `String!` and dueDate as
+// `String` (`apps/server/src/schema/itemStock.graphql`), all ISO — the same
+// wire shape `deserializeLocation` handles, and parsed the same way, so a
+// missing or epoch-millis value cannot become an Invalid Date (issue #263).
+//
+// `__typename` is dropped rather than spread through: the joined result is an
+// `Item` shape, and `joinItemStock` spreads the row's remaining keys onto it,
+// so keeping it would stamp `__typename: 'ItemStock'` onto a pantry item.
+export function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
+  const { __typename, ...rest } = raw as Record<string, unknown> & {
+    __typename?: string
+  }
+  void __typename
+  return {
+    ...rest,
+    dueDate: parseWireDate(rest.dueDate),
+    createdAt: parseWireDate(rest.createdAt) ?? new Date(0),
+    updatedAt: parseWireDate(rest.updatedAt) ?? new Date(0),
+  } as ItemStock
 }
 
 // GraphQL Vendor has no createdAt (absent from the SDL, from Prisma, and from

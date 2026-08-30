@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react'
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { pantryDataFromItems } from '@/test/pantryData'
 import * as stories from './NewItemDialog.stories'
 
 // composeStories doesn't run a story's own `beforeEach` (see
@@ -15,7 +16,7 @@ const {
   CloudExactMatch,
 } = composeStories(stories)
 
-// setup.ts globally stubs `useGetItemsQuery` to always return
+// setup.ts globally stubs `usePantryDataQuery` to always return
 // `data: undefined` (all other tests run in local mode, so cloud data is
 // never needed there) — that stub wins over the CloudMode story's
 // `MockedProvider` mock under vitest (MockedProvider only takes effect for a
@@ -25,24 +26,22 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
-    useGetItemsQuery: () => ({
-      data: {
-        items: [
-          {
-            id: 'item-flour',
-            name: 'Flour',
-            tagIds: [],
-            targetUnit: 'package',
-            targetQuantity: 10,
-            refillThreshold: 2,
-            packedQuantity: 5,
-            unpackedQuantity: 0,
-            consumeAmount: 1,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-          },
-        ],
-      },
+    usePantryDataQuery: () => ({
+      data: pantryDataFromItems([
+        {
+          id: 'item-flour',
+          name: 'Flour',
+          tagIds: [],
+          targetUnit: 'package',
+          targetQuantity: 10,
+          refillThreshold: 2,
+          packedQuantity: 5,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]),
       loading: false,
       error: undefined,
       networkStatus: 7,
