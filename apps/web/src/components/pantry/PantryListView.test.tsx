@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem } from '@/db/operations'
-import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { renderWithRouter } from '@/test/utils'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { PantryListView } from './PantryListView'
@@ -82,7 +82,7 @@ describe('PantryListView quick update', () => {
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     mutateAsync.mockReset()
     mutateAsync.mockResolvedValue(undefined)
   })

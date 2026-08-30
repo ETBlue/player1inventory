@@ -5,8 +5,8 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
   useActiveLocation,
 } from '@/hooks/useActiveLocation'
 import { useAddInventoryLog, useItemLogs } from './useInventoryLogs'
@@ -278,7 +278,7 @@ describe('useAddInventoryLog (local mode)', () => {
           '@/hooks/useActiveLocation',
         )
       const cabin = await createLocation('Cabin')
-      localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, cabin.id)
+      localStorage.setItem(activeLocationStorageKey('local'), cabin.id)
       vi.mocked(useActiveLocation).mockImplementation(realUseActiveLocation)
       const { addInventoryLog: mockedAddInventoryLog } = await import(
         '@/db/operations'

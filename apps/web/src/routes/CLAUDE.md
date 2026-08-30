@@ -1,6 +1,6 @@
 ### Active-Location Scoping
 
-One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under `active-location-id`, defaulting to `DEFAULT_LOCATION_ID = 'local'`) and switched from the `LocationSwitcher`. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
+One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under a per-mode key, `active-location-id:local` / `active-location-id:cloud`, and validated against the loaded location list (a stale id falls back to the `isDefault` location)) and switched from the `LocationSwitcher`. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
 
 **Where the switcher lives depends on the breakpoint.** At `lg+` it is in the desktop `Sidebar` (`variant="full"`, showing the location name); below `lg` there is no sidebar and it stays in the pantry/shopping/cooking page toolbars (`variant="compact"`, the single-letter glyph, each site passing `className="lg:hidden"`). Exactly one copy is visible at any width, and the set of pages that have a switcher is unchanged. See `components/CLAUDE.md` for the jsdom duplicate-accessible-name hazard this creates in tests.
 

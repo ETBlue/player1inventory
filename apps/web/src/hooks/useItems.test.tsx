@@ -17,7 +17,7 @@ import {
 import { GetRecipesDocument } from '@/generated/graphql'
 import type { PantryItem } from '@/types'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
-import { ACTIVE_LOCATION_STORAGE_KEY } from './useActiveLocation'
+import { activeLocationStorageKey } from './useActiveLocation'
 import { useItemSortData } from './useItemSortData'
 import { useItemStocks } from './useItemStocks'
 import {
@@ -419,7 +419,7 @@ describe('useStockedItems (local mode)', () => {
     await db.items.clear()
     await db.itemStocks.clear()
     localStorage.removeItem('data-mode')
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     const cabin = await createLocation('Cabin')
     await createItem({ name: 'Milk', tagIds: [] }, DEFAULT_LOCATION_ID)
     await createItem({ name: 'Firewood', tagIds: [] }, cabin.id)
@@ -442,7 +442,7 @@ describe('useRemoveItemFromLocation (local mode)', () => {
     await db.inventoryLogs.clear()
     await db.locations.clear()
     localStorage.removeItem('data-mode')
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
   })
 
   it('user can remove an item from the active location and the pantry updates without a reload', async () => {
@@ -575,7 +575,7 @@ describe('useRemoveItemFromLocation invalidates every affected query family', ()
     await db.shoppingCarts.clear()
     await db.locations.clear()
     localStorage.removeItem('data-mode')
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     // useItemSortData's cloud branch is skipped in local mode but still calls
     // the Apollo hook; give it a shape it can destructure.
     mockUseLastPurchaseDatesQuery.mockReturnValue({ data: undefined })
@@ -710,7 +710,7 @@ describe('location mutations refuse to run in cloud mode', () => {
     await db.itemStocks.clear()
     await db.inventoryLogs.clear()
     await db.locations.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
   })
 
   it('useRemoveItemFromLocation rejects in cloud mode and deletes nothing', async () => {
@@ -762,7 +762,7 @@ describe('useApplyUnitSwitch invalidates every affected query family', () => {
     await db.recipes.clear()
     await db.locations.clear()
     localStorage.removeItem('data-mode')
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
   })
 
   it('the item, both location stock rows and the recipe all re-resolve after a unit switch', async () => {

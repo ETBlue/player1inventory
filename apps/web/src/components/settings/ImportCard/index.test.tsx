@@ -4,8 +4,8 @@ import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { importCloudData } from '@/lib/importData'
 import { ImportCard } from '.'
@@ -112,7 +112,7 @@ describe('ImportCard — cloud import scopes stock to the active location', () =
     // holds stock for it
     await seedLocations(['local', 'My Home'], ['office', 'Office'])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'office')
     const { container } = renderCard()
 
     // When the user picks a v15 backup file
@@ -212,7 +212,7 @@ describe('ImportCard — local import lands in the active location', () => {
   it('user restoring a legacy backup sees it in the location they are in', async () => {
     // Given local mode with 'office' as the active location
     await seedLocations(['local', 'My Home'], ['office', 'Office'])
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     const { container } = renderCard()
 
     // When the user restores a pre-v15 backup

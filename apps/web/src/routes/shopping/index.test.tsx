@@ -7,14 +7,14 @@ import {
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import {
   addToCart,
   createItem,
   createLocation,
   createVendor,
 } from '@/db/operations'
-import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
@@ -52,8 +52,14 @@ describe('Shopping index page', () => {
     await db.cartItems.clear()
     await db.vendors.clear()
     await db.locations.clear()
+    // Re-seed the row Dexie's `populate` hook creates on a real first open.
+    // The active location is now validated against the loaded list (no id is
+    // special-cased as always-valid any more), so with the default row missing
+    // the provider corrects the active id to the only location present — this
+    // test's OTHER location — which inverts the partition asserted below.
+    await ensureDefaultLocationRow()
     sessionStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

@@ -6,8 +6,8 @@ import { bootstrapCarts, getAllItems, getLocations } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from './useActiveLocation'
 import {
   MIGRATION_PROMPTED_KEY,
@@ -216,7 +216,7 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
     // Given the user last worked in 'office' and chose a copy strategy
     seedTwoLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'office')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
@@ -238,7 +238,7 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
     // Given the user is prompted after signing in, with 'office' active
     seedTwoLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'office')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
 
@@ -270,7 +270,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
       { id: 'local', name: 'My Home', order: 0, isDefault: true },
     ])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     // And an import that is still in flight (so nothing has marked it done)
@@ -279,7 +279,9 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     // When the hook mounts and the provider resets the stale location
     renderHook(() => usePostLoginMigration(), { wrapper })
     await waitFor(() =>
-      expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe('local'),
+      expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
+        'local',
+      ),
     )
 
     // Then the pantry is copied up exactly once — a second copy would run the
@@ -298,7 +300,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
       { id: 'local', name: 'My Home', order: 0, isDefault: true },
     ])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)

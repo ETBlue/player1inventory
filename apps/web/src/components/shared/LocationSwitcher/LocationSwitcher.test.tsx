@@ -14,12 +14,22 @@ import { db } from '@/db'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { LocationSwitcher } from './LocationSwitcher'
 
 const now = new Date()
+
+// The active id lives in a PER-MODE slot ('active-location-id:local'), so
+// removing the legacy bare key alone no longer isolates one test from the
+// previous one's location switch.
+function clearStoredActiveLocationIds() {
+  localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  localStorage.removeItem(activeLocationStorageKey('local'))
+  localStorage.removeItem(activeLocationStorageKey('cloud'))
+}
 
 async function seedLocations() {
   await db.locations.clear()
@@ -80,7 +90,7 @@ function renderSwitcher(props?: {
 describe('LocationSwitcher', () => {
   beforeEach(async () => {
     await seedLocations()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    clearStoredActiveLocationIds()
   })
 
   it("trigger shows the active location's first letter", async () => {
@@ -129,12 +139,14 @@ describe('LocationSwitcher', () => {
         screen.getByRole('button', { name: /switch location/i }),
       ).toHaveTextContent('O')
     })
-    expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe('loc-office')
+    expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
+      'loc-office',
+    )
   })
 
   it('falls back to the default when the stored id no longer exists', async () => {
     // Given a stored active id that does not match any location
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'deleted-location')
+    localStorage.setItem(activeLocationStorageKey('local'), 'deleted-location')
     renderSwitcher()
 
     // Then it falls back to the default and re-persists 'local'
@@ -144,7 +156,7 @@ describe('LocationSwitcher', () => {
       ).toHaveTextContent('M')
     })
     await waitFor(() => {
-      expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe(
+      expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
         DEFAULT_LOCATION_ID,
       )
     })
@@ -186,7 +198,7 @@ describe('LocationSwitcher', () => {
 describe('LocationSwitcher variant="full"', () => {
   beforeEach(async () => {
     await seedLocations()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    clearStoredActiveLocationIds()
   })
 
   it('user sees the full location name, not the initial', async () => {
@@ -237,7 +249,9 @@ describe('LocationSwitcher variant="full"', () => {
         screen.getByRole('button', { name: /switch location/i }),
       ).toHaveTextContent('Office')
     })
-    expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe('loc-office')
+    expect(localStorage.getItem(activeLocationStorageKey('local'))).toBe(
+      'loc-office',
+    )
   })
 
   it('user can pass a className that merges onto the full trigger', async () => {

@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { getLocations } from '@/db/operations'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { importCloudData } from '@/lib/importData'
 import { PostLoginMigrationDialog } from '.'
@@ -80,7 +80,7 @@ describe('PostLoginMigrationDialog — multi-location warning', () => {
   it('user with several locations confirms the warning before the copy runs', async () => {
     // Given two locations with 'office' active
     await seedLocations(['local', 'My Home'], ['office', 'Office'])
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     const user = userEvent.setup()
     renderDialog()
 

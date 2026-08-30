@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { getLocations } from '@/db/operations'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { importLocalData } from '@/lib/importData'
 import { DataModeCard } from '.'
@@ -357,7 +357,7 @@ describe('DataModeCard — multi-location migration warning', () => {
       ['office', 'Office'],
       ['shed', 'Shed'],
     )
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     const reloadMock = vi.fn()
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: reloadMock },
@@ -488,7 +488,7 @@ describe('DataModeCard — cloud to local copy lands in the active location', ()
     // Given cloud mode with 'office' as the active location
     await seedLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'office')
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: vi.fn() },
       writable: true,
@@ -510,7 +510,7 @@ describe('DataModeCard — cloud to local copy lands in the active location', ()
     // Given the same setup, taking the sign-out route instead
     await seedLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'office')
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: vi.fn() },
       writable: true,
