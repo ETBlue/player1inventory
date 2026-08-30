@@ -435,7 +435,10 @@ Prisma generates only the `CREATE TABLE` / index / FK statements. Append the res
 -- by application code. Prisma has no syntax for a partial index, so this is
 -- hand-written; it is what makes the lazy ensureDefaultLocation race-safe
 -- (a concurrent second insert gets P2002 instead of a duplicate default).
-CREATE UNIQUE INDEX "Location_userId_isDefault_key"
+-- Named outside Prisma's generator namespace: "Location_userId_isDefault_key"
+-- is exactly what Prisma would emit for a future @@unique([userId, isDefault]),
+-- which would collide.
+CREATE UNIQUE INDEX "Location_one_default_per_user_key"
   ON "Location" ("userId") WHERE "isDefault";
 
 -- Backfill 1: one default Location per user.
@@ -702,6 +705,30 @@ Run each of these, confirm the script FAILS, then restore:
    Expected failure: *a second isDefault location for one user is rejected by the database*.
 
 Re-run `pnpm verify:migration` after restoring and confirm green. **Report all three results.**
+
+- [ ] **Step 4b: Settle the two environmental questions the Task 4 review left open**
+
+Both are one command each, and the first is the one that matters.
+
+**Schema drift on the hand-written partial index.** `Location_one_default_per_user_key` exists in SQL but not in `schema.prisma` — Prisma has no syntax for a filtered index. Prisma's schema describer is *expected* to ignore filtered indexes, which is the only reason this pattern is viable. If it does not, the next `prisma migrate dev` anyone runs will emit a `DROP INDEX` and silently delete the invariant this whole design rests on — the one that makes `ensureDefaultLocation` race-safe.
+
+With the migration applied to the test database:
+
+```bash
+cd apps/server && DATABASE_URL="$TEST_DATABASE_URL" DIRECT_URL="$TEST_DIRECT_URL" pnpm exec prisma migrate dev --create-only --name drift_check
+```
+
+Expected: an **empty** migration (no statements), proving Prisma does not see the index as drift. Then **delete the generated directory** — it must not be committed.
+
+If it instead emits `DROP INDEX "Location_one_default_per_user_key"`, stop and report: the partial-index approach does not survive Prisma's describer, and the invariant needs a different mechanism (a `CHECK` constraint, or an application-level guard with its own test). Do not delete the index to make the drift check pass.
+
+**Postgres version.** `gen_random_uuid()` is built in from PG 13; no committed migration creates `pgcrypto`. Confirm the server is new enough:
+
+```bash
+cd apps/server && DATABASE_URL="$TEST_DATABASE_URL" pnpm exec prisma db execute --stdin <<< "SELECT version();"
+```
+
+Report the major version only.
 
 - [ ] **Step 5: Apply the migration to the dev database**
 

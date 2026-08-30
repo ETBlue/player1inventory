@@ -46,7 +46,15 @@ ALTER TABLE "ItemStock" ADD CONSTRAINT "ItemStock_locationId_fkey" FOREIGN KEY (
 -- by application code. Prisma has no syntax for a partial index, so this is
 -- hand-written; it is what makes the lazy ensureDefaultLocation race-safe
 -- (a concurrent second insert gets P2002 instead of a duplicate default).
-CREATE UNIQUE INDEX "Location_userId_isDefault_key"
+--
+-- Named deliberately OUTSIDE Prisma's generator namespace. The obvious name,
+-- "Location_userId_isDefault_key", is byte-for-byte what Prisma would emit for
+-- a future @@unique([userId, isDefault]) on Location — a plausible mistake,
+-- since that constraint LOOKS like the right way to express this invariant
+-- (it is not: it would permit two isDefault=false rows and one isDefault=true
+-- per user, which is a different, weaker rule). Sharing the name would make
+-- the generated CREATE UNIQUE INDEX collide with this one.
+CREATE UNIQUE INDEX "Location_one_default_per_user_key"
   ON "Location" ("userId") WHERE "isDefault";
 
 -- Backfill 1: one default Location per user.
