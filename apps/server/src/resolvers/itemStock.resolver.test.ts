@@ -47,8 +47,28 @@ const { state, client } = vi.hoisted(() => {
         ) ?? null,
     },
     itemStock: {
-      findMany: async ({ where = {} }: { where?: Record<string, unknown> }) =>
-        state.itemStocks.filter((s) => stockMatches(s, where)),
+      findMany: async ({
+        where = {},
+        orderBy,
+      }: {
+        where?: Record<string, unknown>
+        orderBy?: Record<string, 'asc' | 'desc'>
+      }) => {
+        const rows = state.itemStocks.filter((s) => stockMatches(s, where))
+        // Only sorts when the resolver actually asks for it — mirrors
+        // Postgres giving no ordering guarantee without orderBy, so a
+        // resolver that drops the orderBy call gets insertion order back,
+        // not an accidentally-correct sort.
+        if (!orderBy) return rows
+        const [[field, dir]] = Object.entries(orderBy)
+        const sign = dir === 'desc' ? -1 : 1
+        return [...rows].sort((a, b) => {
+          const av = (a as unknown as Record<string, unknown>)[field]
+          const bv = (b as unknown as Record<string, unknown>)[field]
+          if (av === bv) return 0
+          return (av as string) < (bv as string) ? -sign : sign
+        })
+      },
       findUnique: async ({ where }: { where: Record<string, unknown> }) =>
         state.itemStocks.find((s) => stockMatches(s, where)) ?? null,
       create: async ({ data }: { data: Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'> }) => {
@@ -106,7 +126,10 @@ describe('itemStock resolvers', () => {
       { id: 'loc-b', userId: 'user-b', isDefault: true },
     ]
     state.itemStocks = [
-      stock({ id: 'st-home', itemId: 'item-milk', locationId: 'loc-a', targetQuantity: 3, refillThreshold: 1, packedQuantity: 2 }),
+      // dueDate is non-null so the upsert "omitted" and "cleared" cases are
+      // distinguishable — with a null starting value both would look
+      // identical and prove nothing.
+      stock({ id: 'st-home', itemId: 'item-milk', locationId: 'loc-a', targetQuantity: 3, refillThreshold: 1, packedQuantity: 2, dueDate: new Date('2026-09-01T00:00:00.000Z') }),
       stock({ id: 'st-garage', itemId: 'item-far', locationId: 'loc-a2', targetQuantity: 9, refillThreshold: 4, packedQuantity: 7 }),
       stock({ id: 'st-theirs', itemId: 'item-rice', locationId: 'loc-b', targetQuantity: 1 }),
     ]
@@ -140,6 +163,19 @@ describe('itemStock resolvers', () => {
     expect(res.data?.itemStocksForItem).toEqual([{ locationId: 'loc-a' }])
   })
 
+  it('itemStocksForItem returns rows ordered by locationId regardless of insertion order', async () => {
+    // Given the loc-a2 row is inserted BEFORE the loc-a row — the reverse of
+    // sorted order — so a resolver relying on insertion/array order would
+    // return them out of order
+    state.itemStocks.push(stock({ id: 'st-rev2', itemId: 'item-ordered', locationId: 'loc-a2', targetQuantity: 1 }))
+    state.itemStocks.push(stock({ id: 'st-rev1', itemId: 'item-ordered', locationId: 'loc-a', targetQuantity: 2 }))
+
+    const res = await run(`query Q($i: ID!) { itemStocksForItem(itemId: $i) { locationId } }`, { i: 'item-ordered' })
+
+    // Then the result is still ascending by locationId
+    expect(res.data?.itemStocksForItem).toEqual([{ locationId: 'loc-a' }, { locationId: 'loc-a2' }])
+  })
+
   it('user can upsert a stock that does not exist yet', async () => {
     const res = await run(
       `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { targetQuantity packedQuantity } }`,
@@ -155,6 +191,38 @@ describe('itemStock resolvers', () => {
     )
     // refillThreshold and targetQuantity are untouched by a partial input
     expect(res.data?.upsertItemStock).toEqual({ targetQuantity: 3, refillThreshold: 1, packedQuantity: 5 })
+  })
+
+  it('upsert with dueDate omitted leaves the existing date untouched', async () => {
+    // Given st-home has dueDate 2026-09-01 (set in beforeEach)
+    // When input omits the dueDate key entirely
+    const res = await run(
+      `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { dueDate } }`,
+      { i: 'item-milk', l: 'loc-a', in: { packedQuantity: 5 } },
+    )
+    // Then the date survives — 'dueDate' in input is false, so toData never
+    // touches data.dueDate
+    expect(res.data?.upsertItemStock).toEqual({ dueDate: '2026-09-01T00:00:00.000Z' })
+  })
+
+  it('upsert with dueDate explicitly null clears the existing date', async () => {
+    // Given st-home has dueDate 2026-09-01
+    // When input explicitly sends dueDate: null
+    const res = await run(
+      `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { dueDate } }`,
+      { i: 'item-milk', l: 'loc-a', in: { dueDate: null } },
+    )
+    // Then the date is cleared — 'dueDate' in input is true even though the
+    // value is null, which is exactly why a null check would be wrong here
+    expect(res.data?.upsertItemStock).toEqual({ dueDate: null })
+  })
+
+  it('upsert with an explicit dueDate value sets it', async () => {
+    const res = await run(
+      `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { dueDate } }`,
+      { i: 'item-milk', l: 'loc-a', in: { dueDate: '2026-12-25T00:00:00.000Z' } },
+    )
+    expect(res.data?.upsertItemStock).toEqual({ dueDate: '2026-12-25T00:00:00.000Z' })
   })
 
   it('user cannot upsert into another user\'s location', async () => {
@@ -195,6 +263,33 @@ describe('itemStock resolvers', () => {
       { i: 'item-orphan', l: 'loc-a2' },
     )
     expect(res.data?.addItemToLocation).toEqual({ targetQuantity: 0, refillThreshold: 0, packedQuantity: 0 })
+  })
+
+  it('add to location with no sourceLocationId picks the most recently updated source', async () => {
+    // Given item-tiebreak is stocked at two OTHER locations with distinct
+    // updatedAt — sourceLocationId omitted means the resolver must choose,
+    // and targetQuantity distinguishes which one it chose (not coincidence)
+    state.locations.push({ id: 'loc-a3', userId: 'user-a', isDefault: false })
+    state.itemStocks.push(
+      stock({
+        id: 'st-older', itemId: 'item-tiebreak', locationId: 'loc-a',
+        targetQuantity: 10, updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      }),
+      stock({
+        id: 'st-newer', itemId: 'item-tiebreak', locationId: 'loc-a2',
+        targetQuantity: 20, updatedAt: new Date('2026-06-01T00:00:00.000Z'),
+      }),
+    )
+
+    // When adding to a third location without specifying a source
+    const res = await run(
+      `mutation M($i: ID!, $l: ID!) { addItemToLocation(itemId: $i, locationId: $l) { targetQuantity } }`,
+      { i: 'item-tiebreak', l: 'loc-a3' },
+    )
+
+    // Then the more recently updated row (loc-a2, targetQuantity 20) won,
+    // not the older one (loc-a, targetQuantity 10)
+    expect(res.data?.addItemToLocation).toEqual({ targetQuantity: 20 })
   })
 
   it('user can remove an item from one location, leaving the others', async () => {
