@@ -3,8 +3,23 @@ import { requireAuth } from '../context.js'
 import { requireLocationRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
+import type { Location as PrismaLocation } from '@prisma/client'
 
 const DEFAULT_LOCATION_NAME = 'My Home'
+
+// Map a Prisma Location row to the GraphQL shape. GraphQL schema types
+// createdAt/updatedAt as String! — Date objects must be explicitly
+// ISO-stringified here rather than left for the default String scalar
+// serializer, which coerces via Date.valueOf() (epoch milliseconds) before
+// it ever reaches toJSON(). Mirrors item.resolver.ts's and
+// itemStock.resolver.ts's toGraphQL.
+function toGraphQL(row: PrismaLocation): Location {
+  return {
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  } as unknown as Location
+}
 
 /**
  * Give a user a default location if they have none.
@@ -36,10 +51,11 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     locations: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
       await ensureDefaultLocation(userId)
-      return prisma.location.findMany({
+      const rows = await prisma.location.findMany({
         where: { userId },
         orderBy: { order: 'asc' },
-      }) as unknown as Promise<Location[]>
+      })
+      return (rows as unknown as PrismaLocation[]).map(toGraphQL)
     },
   },
 
@@ -48,16 +64,18 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const userId = requireAuth(ctx)
       const siblings = await prisma.location.findMany({ where: { userId } })
       const maxOrder = siblings.reduce((max, l) => Math.max(max, l.order), -1)
-      return prisma.location.create({
+      const row = await prisma.location.create({
         data: { name: name.trim(), order: maxOrder + 1, isDefault: false, userId },
-      }) as unknown as Promise<Location>
+      })
+      return toGraphQL(row as unknown as PrismaLocation)
     },
 
     updateLocation: async (_, { id, input }, ctx) => {
       await requireLocationRole(ctx, id, 'member')
       const data: { name?: string } = {}
       if (typeof input.name === 'string') data.name = input.name.trim()
-      return prisma.location.update({ where: { id }, data }) as unknown as Promise<Location>
+      const row = await prisma.location.update({ where: { id }, data })
+      return toGraphQL(row as unknown as PrismaLocation)
     },
 
     deleteLocation: async (_, { id }, ctx) => {
@@ -87,10 +105,11 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           prisma.location.update({ where: { id }, data: { order: index } }),
         ),
       )
-      return prisma.location.findMany({
+      const rows = await prisma.location.findMany({
         where: { userId },
         orderBy: { order: 'asc' },
-      }) as unknown as Promise<Location[]>
+      })
+      return (rows as unknown as PrismaLocation[]).map(toGraphQL)
     },
   },
 }

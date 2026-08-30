@@ -135,6 +135,24 @@ describe('location resolvers', () => {
     ])
   })
 
+  it('user can read createdAt/updatedAt as real ISO-8601 strings, not epoch ms', async () => {
+    // Given loc-a's seeded Date objects
+    const seeded = state.locations.find((l) => l.id === 'loc-a')
+    if (!seeded) throw new Error('fixture missing loc-a')
+
+    // When user-a lists locations
+    const res = await run(`query { locations { id createdAt updatedAt } }`)
+
+    // Then createdAt/updatedAt come back as the row's actual ISO string, not
+    // Date.valueOf()'s epoch-millisecond coercion (a bare numeric string would
+    // also satisfy a looser 'is a non-empty string' assertion, so this pins the
+    // exact ISO value instead)
+    const loc = res.data?.locations?.find((l: { id: string }) => l.id === 'loc-a')
+    expect(loc?.createdAt).toBe(seeded.createdAt.toISOString())
+    expect(loc?.updatedAt).toBe(seeded.updatedAt.toISOString())
+    expect(loc?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+  })
+
   it('user with no locations gets a default created lazily', async () => {
     // Given a user who owns nothing
     state.locations = []
