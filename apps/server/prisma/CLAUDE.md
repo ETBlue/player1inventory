@@ -70,6 +70,38 @@ pnpm prisma migrate resolve --rolled-back <migration_name>   # against the prod 
 ```
 Use `--rolled-back` (not `--applied`) because the failed migration left no partial changes.
 
+## Verifying a migration against real SQL
+
+**Nothing in the automated gate executes a migration.** Every server test runs against a
+hand-written Prisma fake, so a fake cannot exercise SQL at all, and `pnpm test` / `pnpm check`
+/ `build-storybook` never touch a database. A migration that is wrong in a way `tsc` cannot
+see ships unnoticed.
+
+`pnpm --filter server verify:migration` (`scripts/verify-migration.ts`) closes that gap:
+
+1. Parks the migration under test outside `prisma/migrations/`,
+2. `migrate reset` — rebuilding from **committed history only**, which is also how it enforces
+   the golden rule above,
+3. seeds a deliberately **multi-user** fixture (one user owning only a `TagType`, so a union
+   that reads just `Item` fails),
+4. restores the migration, `migrate deploy`, asserts.
+
+**It is not reachable from any gate** — it needs a live database — so it will bit-rot between
+manual runs. Run it whenever you touch a migration, and treat a stale failure as a real signal
+rather than assuming the script rotted.
+
+Three things about it that are easy to get wrong:
+
+- **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
+  passed via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. Ask first.
+- **It refuses to run** unless `TEST_DATABASE_URL` *and* `TEST_DIRECT_URL` both resolve — by
+  parsed host + path, not string equality — to a different database from `DATABASE_URL` and
+  `DIRECT_URL`. Guarding only the pooled URL is insufficient: **Prisma Migrate issues DDL
+  through `directUrl`**, so that is the connection that actually drops the schema.
+- **Never point it at a copy of production.** For that, use an additive-only rehearsal:
+  `migrate deploy` plus read-only assertions. See the *Production-data rehearsals* section of
+  `docs/features/locations/2026-08-30-cloud-locations-design.md` §7.
+
 ## Deferred data repair: cloud items with `consumeAmount = 0`
 
 **Status: deliberately not done (2026-08-24). Do this before cloud has real users.**

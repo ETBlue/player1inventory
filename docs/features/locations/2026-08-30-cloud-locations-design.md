@@ -382,6 +382,44 @@ production copy to find bugs the cheap check catches for free.
 
 A rehearsal that finds nothing still produces the one number this design is missing.
 
+### Rehearsal 1 — run 2026-08-30, before PR 1. **PASSED.**
+
+Branch `rehearsal` (schema + data, off production), `migrate deploy`, 10 read-only assertions,
+branch deleted afterwards. `verify:migration` was deliberately **not** used — it opens with
+`migrate reset`, which would have destroyed the copy under test.
+
+| Before | After |
+|---|---|
+| 1 distinct user across all nine tables | 1 `Location`, `isDefault` |
+| 167 `Item` rows | 167 `ItemStock` rows |
+| 37 carts | — |
+| **0 accounts with a `CartItem` on `'no-vendor'`** | — |
+
+All ten assertions green: one location per user, exactly one default, no user missed by the
+union, one stock per item, no item left without one, no duplicate `(itemId, locationId)`, no
+orphan stock, no cross-user stock, all five `Item` state columns intact, every copied value
+verbatim.
+
+**The number this design was missing: production has exactly one user.** Therefore:
+
+- The §5 `'no-vendor'` cross-user leak is real code that has **never affected anybody**, and
+  **PR 3's split will touch zero production rows**. It stays worth fixing — the second account
+  to sign up hits it immediately — but it carries no data risk and no urgency.
+- The union's *breadth* was never going to matter on this dataset: the single user owns items,
+  so the `Item` arm alone would have found them. Breadth still matters for correctness, and is
+  covered by the synthetic fixture.
+
+**Limitation, recorded rather than glossed:** with one user, several rehearsal assertions
+**cannot fail** — "no cross-user stock" and "no missed user" are trivially satisfied. This
+rehearsal proves the migration works at real *scale and data shape* (167 rows, real values,
+real NULLs); the **synthetic three-user fixture is what tests the scoping**. Neither
+verification subsumes the other, and reading this pass as validating multi-user correctness
+would be precisely the vacuous-assertion error §7 exists to prevent.
+
+**Rehearsal 2 (before PR 3) is still required** — it re-measures the `'no-vendor'` count
+against whatever production looks like then, which is the point of running it fresh rather
+than trusting this one.
+
 ## 8. Rollout — five staged PRs
 
 Additive first, so a browser running a stale bundle keeps working until the final contract step.
