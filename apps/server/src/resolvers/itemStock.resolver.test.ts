@@ -72,9 +72,11 @@ const { state, client } = vi.hoisted(() => {
       findUnique: async ({ where }: { where: Record<string, unknown> }) =>
         state.itemStocks.find((s) => stockMatches(s, where)) ?? null,
       create: async ({ data }: { data: Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'> }) => {
-        // Models @@unique([itemId, locationId]). A fake that silently deduped
-        // here would hide the P2002 real Postgres throws and leave the
-        // already-stocked branch of addItemToLocation unpinned.
+        // Models @@unique([itemId, locationId]). It guards a resolver that
+        // creates unconditionally; it does NOT pin addItemToLocation's
+        // already-stocked branch, which its own assertions cover — making this
+        // dedupe instead of throw leaves all 17 specs here green (verified
+        // 2026-08-31, correcting an earlier comment that claimed otherwise).
         if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
           throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
         }

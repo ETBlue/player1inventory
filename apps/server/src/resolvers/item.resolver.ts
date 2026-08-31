@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { prisma } from '../lib/prisma.js'
+import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers } from '../generated/graphql.js'
 import type { ExpirationMode, TargetUnit } from '@prisma/client'
@@ -164,6 +165,22 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
           ...(expirationMode !== undefined ? { expirationMode: toExpirationMode(expirationMode) } : {}),
         },
+      })
+
+      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Unlike checkout and
+      // consumeRecipes this is a LEGACY path: a current client sends the five
+      // state fields to `upsertItemStock(itemId, locationId)` and this mutation
+      // never sees them (hooks/useItems.ts `toConfigInput`). What it covers is a
+      // browser on a stale bundle, which still puts them inline here — and has
+      // no location to name, so they land in the caller's default location.
+      // Only keys the input actually carried are mirrored: an absent key must
+      // stay absent, or a rename would zero the item's stock.
+      await mirrorStockToDefaultLocation(userId, id, {
+        ...(rest.targetQuantity != null ? { targetQuantity: rest.targetQuantity } : {}),
+        ...(rest.refillThreshold != null ? { refillThreshold: rest.refillThreshold } : {}),
+        ...(rest.packedQuantity != null ? { packedQuantity: rest.packedQuantity } : {}),
+        ...(rest.unpackedQuantity != null ? { unpackedQuantity: rest.unpackedQuantity } : {}),
+        ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
       })
 
       // Replace junction rows wholesale when the field is explicitly provided
