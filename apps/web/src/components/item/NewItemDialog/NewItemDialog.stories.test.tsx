@@ -1,7 +1,6 @@
 import { composeStories } from '@storybook/react'
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { pantryDataFromItems } from '@/test/pantryData'
 import * as stories from './NewItemDialog.stories'
 
 // composeStories doesn't run a story's own `beforeEach` (see
@@ -21,27 +20,72 @@ const {
 // never needed there) — that stub wins over the CloudMode story's
 // `MockedProvider` mock under vitest (MockedProvider only takes effect for a
 // real Apollo context, e.g. actual Storybook). Override it here, scoped to
-// this file, so the smoke test below sees the same catalog the story mocks.
+// this file, so the smoke tests below see the same catalog and locations the
+// story mocks. This factory REPLACES setup.ts's rather than layering on it, so
+// every hook the assertions depend on has to be repeated.
+const CLOUD_KITCHEN = 'cloud-kitchen'
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
+  const item = (id: string, name: string) => ({
+    id,
+    name,
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 10,
+    refillThreshold: 2,
+    packedQuantity: 5,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  })
   return {
     ...original,
+    useGetLocationsQuery: () => ({
+      data: {
+        locations: [
+          {
+            id: CLOUD_KITCHEN,
+            name: 'Kitchen',
+            isDefault: true,
+            order: 0,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 'cloud-garage',
+            name: 'Garage',
+            isDefault: false,
+            order: 1,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    }),
+    // Milk is stocked in the Kitchen, Flour is stocked nowhere here — the same
+    // two-location split the story mocks, so "already here" and "stockable"
+    // are distinguishable rather than one blanket state.
     usePantryDataQuery: () => ({
-      data: pantryDataFromItems([
-        {
-          id: 'item-flour',
-          name: 'Flour',
-          tagIds: [],
-          targetUnit: 'package',
-          targetQuantity: 10,
-          refillThreshold: 2,
-          packedQuantity: 5,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z',
-        },
-      ]),
+      data: {
+        items: [item('item-milk', 'Milk'), item('item-flour', 'Flour')],
+        itemStocks: [
+          {
+            id: 'stock-milk-kitchen',
+            itemId: 'item-milk',
+            locationId: CLOUD_KITCHEN,
+            targetQuantity: 3,
+            refillThreshold: 1,
+            packedQuantity: 2,
+            unpackedQuantity: 0,
+            dueDate: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
       loading: false,
       error: undefined,
       networkStatus: 7,
@@ -92,21 +136,27 @@ describe('NewItemDialog stories smoke tests', () => {
     beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
     afterEach(() => localStorage.removeItem('data-mode'))
 
-    it('renders every catalog option as disabled (create-only)', async () => {
+    it('renders a stockable catalog option as selectable and a stocked one as disabled', async () => {
       render(<CloudMode />)
-      // Cloud mode has no per-location ItemStock backend yet — every catalog
-      // option (e.g. "Flour", from the mocked GetItems response) renders
-      // disabled/"already here" regardless of stockId (PR D review 2.1).
-      const option = await screen.findByRole('option', { name: /flour/i })
-      expect(option).toHaveAttribute('aria-disabled', 'true')
+      // Since Task 9b the dialog reads `stockId` in cloud exactly as in local:
+      // Flour is stocked nowhere here so it can be added, Milk is already in
+      // the active Kitchen so it cannot. Asserting BOTH is the point — a
+      // dialog that disabled everything (the old cloud behaviour) or enabled
+      // everything would fail one of them.
+      expect(
+        await screen.findByRole('option', { name: /flour/i }),
+      ).toHaveAttribute('aria-disabled', 'false')
+      expect(
+        await screen.findByRole('option', { name: /milk/i }),
+      ).toHaveAttribute('aria-disabled', 'true')
     })
 
-    it('CloudExactMatch explains why an existing name cannot be created', async () => {
+    it('CloudExactMatch names the location the item is already stocked in', async () => {
       render(<CloudExactMatch />)
-      // Cloud has no locations, so the message must not name one (PR D review
-      // I-3).
+      // The location-naming string local mode uses, now that cloud has
+      // locations of its own.
       expect(
-        await screen.findByText('An item named Flour already exists.'),
+        await screen.findByText('Milk is already in Kitchen.'),
       ).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: /create/i }),

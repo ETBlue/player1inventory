@@ -15,7 +15,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddItemToLocation, useCreateItem, useItems } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
-import { useDataMode } from '@/hooks/useDataMode'
 import { cn } from '@/lib/utils'
 import type { PantryItem } from '@/types'
 
@@ -44,13 +43,11 @@ export function NewItemDialog({
 }: NewItemDialogProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { mode } = useDataMode()
-  // Cloud has no per-location ItemStock backend yet (deferred in PR D): cloud
-  // items never carry a `stockId`, so the add-existing path (Dexie-only) would
-  // silently write an orphan local ItemStock and report false success. In
-  // cloud mode the dialog is create-only — every catalog item renders as
-  // already-here/disabled (PR D review 2.1).
-  const isLocal = mode === 'local'
+  // Mode-agnostic since PR 2 Task 9b. The dialog used to be create-only in
+  // cloud, on two premises that are both false now: cloud items DO carry a
+  // `stockId` (the `PantryData` join sets one — hooks/useItems.ts) and
+  // `useAddItemToLocation` is dual-mode, sending `addItemToLocation` in cloud
+  // rather than writing Dexie. Nothing below branches on the data mode.
   const { activeLocation } = useActiveLocation()
   const createItem = useCreateItem()
   const addItemToLocation = useAddItemToLocation()
@@ -109,17 +106,7 @@ export function NewItemDialog({
   // list is in flight. The sibling dialog in items/$id/stock.tsx guards the
   // same way (PR D review m-5).
   const alreadyStockedExactMatch =
-    isLocal && trimmed.length > 0 && exactMatchItem?.stockId && activeLocation
-      ? exactMatchItem
-      : undefined
-
-  // Cloud mode is create-only, and an exact name match also suppresses Create
-  // (duplicate names stay impossible, consistent with local mode — user ruling
-  // 2026-08-16, PR D review I-3). That leaves the same dead end as above, so it
-  // needs the same feedback — but cloud has no locations, which makes the local
-  // copy wrong here; hence its own location-free string.
-  const cloudExactMatch =
-    !isLocal && trimmed.length > 0 && exactMatchItem
+    trimmed.length > 0 && exactMatchItem?.stockId && activeLocation
       ? exactMatchItem
       : undefined
 
@@ -134,12 +121,11 @@ export function NewItemDialog({
     return opts
   }, [matches, showCreate, trimmed])
 
-  // Selectable options exclude items already stocked in the active location.
-  // In cloud mode add-existing is unsupported (see isLocal comment above), so
-  // no catalog item is ever selectable there — only Create.
+  // Selectable options exclude items already stocked in the active location —
+  // in both modes, since `stockId` now means the same thing in both.
   const isSelectable = useCallback(
-    (opt: Option) => opt.kind === 'create' || (isLocal && !opt.item.stockId),
-    [isLocal],
+    (opt: Option) => opt.kind === 'create' || !opt.item.stockId,
+    [],
   )
 
   // Keep the highlighted index on a selectable option whenever the option set
@@ -201,8 +187,8 @@ export function NewItemDialog({
   const handleSelectExisting = async (item: PantryItem) => {
     // Copy-on-add. No-op-safe: if the item is already stocked here, the
     // operation returns the existing row without resetting quantities.
-    // Cloud mode has no ItemStock backend yet — this path is local-only.
-    if (!isLocal) return
+    // Both modes: Dexie writes the row locally, `addItemToLocation` does the
+    // same copy-on-add server-side in cloud (hooks/useItems.ts).
     if (submitting) return
     setSubmitting(true)
     try {
@@ -354,9 +340,7 @@ export function NewItemDialog({
                     </div>
                   )
                 }
-                // In cloud mode every catalog item renders as already-here
-                // (disabled) — add-existing is unsupported there (see isLocal).
-                const stocked = isLocal ? !!opt.item.stockId : true
+                const stocked = !!opt.item.stockId
                 return (
                   // biome-ignore lint/a11y/useFocusableInteractive: virtual focus via aria-activedescendant on the combobox input
                   // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled by the combobox input's onKeyDown
@@ -394,13 +378,6 @@ export function NewItemDialog({
                 {t('items.addDialog.alreadyStockedHere', {
                   name: alreadyStockedExactMatch.name,
                   location: activeLocation?.name ?? '',
-                })}
-              </p>
-            )}
-            {cloudExactMatch && (
-              <p className="text-sm text-foreground-muted">
-                {t('items.addDialog.alreadyExists', {
-                  name: cloudExactMatch.name,
                 })}
               </p>
             )}
