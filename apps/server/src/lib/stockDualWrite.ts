@@ -18,6 +18,15 @@ import { prisma } from './prisma.js'
  * (docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md, "The
  * write-path decision").
  *
+ * ── THE BRIDGE RUNS BOTH WAYS ──
+ *
+ * `mirrorStock` / `mirrorStockToDefaultLocation` carry `Item` → `ItemStock`,
+ * for the three resolvers above. `mirrorItemStockToItem` carries the REVERSE,
+ * `ItemStock` → `Item`, for `upsertItemStock` — the mutation a CURRENT client
+ * sends its stock edits to. Without it the current client's writes never reach
+ * `Item`'s columns and a stale bundle shows frozen quantities, which is the
+ * same broken-pantry failure from the other direction.
+ *
  * ── NOT LOCATION-AWARE, AND DELIBERATELY SO ──
  *
  * `checkout` and `consumeRecipes` have no location to write to in PR 2:
@@ -99,6 +108,46 @@ export async function mirrorStock(
       packedQuantity: seed(data.packedQuantity),
       unpackedQuantity: seed(data.unpackedQuantity),
       dueDate: data.dueDate ?? null,
+    },
+  })
+}
+
+/**
+ * The reverse mirror: one location's `ItemStock` back onto `Item`'s five legacy
+ * columns. Call it ONLY for the caller's DEFAULT location.
+ *
+ * Why default-only: a stale bundle has no location concept at all — it renders
+ * one number per item — so the default location's stock is the only value that
+ * is correct to show it. An edit to a NON-default location must leave `Item`
+ * alone, because there is no correct single value to write: mirroring a Garage
+ * edit onto `Item` would make the stale bundle report the Garage's numbers as
+ * the Kitchen's.
+ *
+ * `updateMany` rather than `update`, so an itemId that is not the caller's
+ * matches nothing and the mirror silently no-ops. That is a query SCOPE, not an
+ * authorization decision — the caller's right to write here was already settled
+ * by `requireLocationRole` at the call site (root CLAUDE.md forbids
+ * `row.userId === ctx.userId` as a guard, not `userId` in a where clause).
+ */
+export async function mirrorItemStockToItem(
+  userId: string,
+  itemId: string,
+  stock: {
+    targetQuantity: number
+    refillThreshold: number
+    packedQuantity: number
+    unpackedQuantity: number
+    dueDate: Date | null
+  },
+): Promise<void> {
+  await prisma.item.updateMany({
+    where: { id: itemId, userId },
+    data: {
+      targetQuantity: stock.targetQuantity,
+      refillThreshold: stock.refillThreshold,
+      packedQuantity: stock.packedQuantity,
+      unpackedQuantity: stock.unpackedQuantity,
+      dueDate: stock.dueDate,
     },
   })
 }
