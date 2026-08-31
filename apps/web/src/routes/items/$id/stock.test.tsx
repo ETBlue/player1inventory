@@ -53,6 +53,14 @@ const mockUseUpdateItemMutation = vi.fn(() => [
   vi.fn().mockResolvedValue({ data: undefined }),
   {},
 ])
+// Since Task 9 the cloud branch of `useUpdateItem` splits its input: the five
+// per-location state fields go here, not to `updateItem`. This page saves
+// NOTHING BUT those fields, so in cloud mode a save now sends this mutation and
+// no `updateItem` at all — the cloud assertions below moved onto it.
+const mockUseUpsertItemStockMutation = vi.fn(() => [
+  vi.fn().mockResolvedValue({ data: undefined }),
+  {},
+])
 // Cloud locations and the item's per-location stock. Since PR 2 the Stock tab
 // pages over these in cloud mode too, so the cloud tests below have to supply
 // them; in local mode they stay empty and are skipped by their hooks.
@@ -109,6 +117,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // tab's own cloud read and is driven per test.
     usePantryDataQuery: queryStub,
     useItemStocksForItemQuery: () => mockUseItemStocksForItemQuery(),
+    useUpsertItemStockMutation: (...args: unknown[]) =>
+      mockUseUpsertItemStockMutation(...args),
     useAddItemToLocationMutation: mutationStub,
     useRemoveItemFromLocationMutation: mutationStub,
     useCreateItemMutation: mutationStub,
@@ -189,6 +199,10 @@ describe('Item stock tab', () => {
       error: undefined,
     })
     mockUseUpdateItemMutation.mockReturnValue([
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ])
+    mockUseUpsertItemStockMutation.mockReturnValue([
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ])
@@ -1265,6 +1279,10 @@ describe('Item stock tab', () => {
       data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
     })
     mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
+    const mockCloudUpsertStock = vi.fn().mockResolvedValue({
+      data: { upsertItemStock: null },
+    })
+    mockUseUpsertItemStockMutation.mockReturnValue([mockCloudUpsertStock, {}])
 
     renderStockTab(cloudItem.id)
 
@@ -1277,11 +1295,20 @@ describe('Item stock tab', () => {
     await user.type(packedInput, '5')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the update is sent directly — no local-only "not yet stocked
-    // here" confirmation dialog ever appears in cloud mode
+    // Then the write is sent directly — no local-only "not yet stocked
+    // here" confirmation dialog ever appears in cloud mode. It goes to
+    // `upsertItemStock`, NOT `updateItem`: this page edits nothing but the five
+    // per-location state fields, and since Task 9 those no longer travel inline
+    // on the global Item (sending both would give one value two writers, and
+    // `updateItem`'s own dual-write targets the DEFAULT location rather than
+    // the one being viewed).
     await waitFor(() => {
-      expect(mockCloudUpdate).toHaveBeenCalled()
+      expect(mockCloudUpsertStock).toHaveBeenCalled()
     })
+    expect(mockCloudUpdate).not.toHaveBeenCalled()
+    expect(mockCloudUpsertStock.mock.calls[0][0].variables.itemId).toBe(
+      cloudItem.id,
+    )
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
@@ -1444,6 +1471,10 @@ describe('Item stock tab', () => {
         data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
       })
       mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
+      const mockCloudUpsertStock = vi.fn().mockResolvedValue({
+        data: { upsertItemStock: null },
+      })
+      mockUseUpsertItemStockMutation.mockReturnValue([mockCloudUpsertStock, {}])
 
       renderStockTab(cloudItem.id)
 
@@ -1454,12 +1485,13 @@ describe('Item stock tab', () => {
       await user.click(screen.getByRole('button', { name: /save/i }))
 
       // Then the GraphQL input carries no `dueDate` KEY — its mere presence,
-      // whatever the value, is what makes toUpdateItemInput send an explicit
-      // null and the server clear the date
+      // whatever the value, is what makes `toStockInput` send an explicit null
+      // and the server clear the date. Since Task 9 the key is asserted on
+      // `upsertItemStock`'s input, which is where the five state fields go.
       await waitFor(() => {
-        expect(mockCloudUpdate).toHaveBeenCalled()
+        expect(mockCloudUpsertStock).toHaveBeenCalled()
       })
-      const input = mockCloudUpdate.mock.calls[0][0].variables.input
+      const input = mockCloudUpsertStock.mock.calls[0][0].variables.input
       expect(input.packedQuantity).toBe(5)
       expect('dueDate' in input).toBe(false)
     })

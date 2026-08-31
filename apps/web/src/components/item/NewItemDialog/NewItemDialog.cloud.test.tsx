@@ -66,6 +66,12 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // `useCreateItem` mounts this unconditionally since Task 9 — a hook cannot
+    // sit behind the mode branch — so it needs a stub here too.
+    useUpsertItemStockMutation: () => [
+      vi.fn().mockResolvedValue({ data: { upsertItemStock: null } }),
+      {},
+    ],
   }
 })
 

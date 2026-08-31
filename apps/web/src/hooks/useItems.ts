@@ -18,6 +18,7 @@ import {
 } from '@/db/operations'
 import type {
   CreateItemInput,
+  ItemStockInput,
   PantryDataQuery,
   UpdateItemInput,
 } from '@/generated/graphql'
@@ -35,9 +36,15 @@ import {
   usePantryDataQuery,
   useRemoveItemFromLocationMutation,
   useUpdateItemMutation,
+  useUpsertItemStockMutation,
 } from '@/generated/graphql'
 import { deserializeItem, deserializeItemStock } from '@/lib/deserialization'
-import { joinItemStock, stripStockFields } from '@/lib/itemStock'
+import {
+  joinItemStock,
+  pickStockFields,
+  STOCK_FIELD_KEYS,
+  stripStockFields,
+} from '@/lib/itemStock'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
@@ -109,6 +116,81 @@ export function toUpdateItemInput(
       dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
     }),
   }
+}
+
+// The five per-location state fields, as the cloud `ItemStockInput` wants them.
+//
+// Cloud mode routes these to `upsertItemStock(itemId, locationId)` instead of
+// leaving them inline on `updateItem`, so the write lands where PR 2's reads
+// come from. Mirrors `pickStockFields`, with two deliberate differences:
+//
+//   - only keys PRESENT in `updates` are emitted. The server's `toData` merges
+//     rather than replaces, so an absent key means "leave it alone"; zeroing
+//     the four quantities the way `pickStockFields` does would turn a tag edit
+//     into a stock wipe.
+//   - `dueDate` is emitted whenever the KEY is present, even when the value is
+//     undefined, because that is how the form clears an expiry. The server
+//     tests `'dueDate' in input`, so a present-but-null value clears the date
+//     and an absent key preserves it.
+export function toStockInput(
+  updates: Partial<Item> & Partial<StockFields>,
+): ItemStockInput {
+  const { dueDate } = updates
+  return {
+    ...('targetQuantity' in updates && {
+      targetQuantity: updates.targetQuantity,
+    }),
+    ...('refillThreshold' in updates && {
+      refillThreshold: updates.refillThreshold,
+    }),
+    ...('packedQuantity' in updates && {
+      packedQuantity: updates.packedQuantity,
+    }),
+    ...('unpackedQuantity' in updates && {
+      unpackedQuantity: updates.unpackedQuantity,
+    }),
+    ...('dueDate' in updates && {
+      dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
+    }),
+  }
+}
+
+// The new item's opening stock row. Unlike `toStockInput` this fills the four
+// quantities in whether or not the caller supplied them: a create has no
+// existing row whose values an absent key could preserve, and `pickStockFields`
+// already defaults them to `ZERO_STOCK` — the same values `db/operations.ts`'s
+// `createItem` writes.
+function toCreateStockInput(input: ItemMutationInput): ItemStockInput {
+  const fields = pickStockFields(input as unknown as Record<string, unknown>)
+  return {
+    targetQuantity: fields.targetQuantity,
+    refillThreshold: fields.refillThreshold,
+    packedQuantity: fields.packedQuantity,
+    unpackedQuantity: fields.unpackedQuantity,
+    ...(fields.dueDate instanceof Date
+      ? { dueDate: fields.dueDate.toISOString() }
+      : {}),
+  }
+}
+
+// Does this update touch per-location state at all? Used to skip the stock
+// mutation entirely for a pure configuration edit (a rename, a tag change),
+// which must not create an ItemStock row where none existed.
+function touchesStock(updates: Partial<Item> & Partial<StockFields>): boolean {
+  return STOCK_FIELD_KEYS.some((key) => key in updates)
+}
+
+// The same input with every stock key removed, so `updateItem` receives only
+// the global Item's own fields. Until PR 5 the cloud `Item` still HAS those
+// five columns, and the server still dual-writes anything it receives in them
+// — sending them here as well as to `upsertItemStock` would be two writers for
+// one value.
+function toConfigInput(
+  updates: Partial<Item> & Partial<StockFields>,
+): UpdateItemInput {
+  const input = toUpdateItemInput(updates) as Record<string, unknown>
+  for (const key of STOCK_FIELD_KEYS) delete input[key]
+  return input as UpdateItemInput
 }
 
 // One `PantryData` result -> the pantry's PantryItem list.
@@ -363,7 +445,8 @@ export function useLastPurchaseDate(itemId: string) {
  * without writing an `ItemStock` in the active location. Opt-in — omitting it
  * keeps the historic behaviour (stock the new item here), which is what the
  * pantry's Add flow needs. Only the Settings assignment tabs pass `true`.
- * No-op in cloud mode, which has no `ItemStock` backend.
+ * Honoured in BOTH modes: cloud follows the create with an
+ * `upsertItemStock` in the active location unless this is set.
  */
 export function useCreateItem(options?: { catalogOnly?: boolean }) {
   const queryClient = useQueryClient()
@@ -383,23 +466,71 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
     refetchQueries: [{ query: GetItemsDocument }],
   })
 
+  // The second half of a cloud create: the new item's ItemStock in the active
+  // location. `GetItems` alone would not refresh the pantry — `itemStocks` is
+  // a different root field — so this one carries the stock-list refetches, the
+  // same pair `useAddItemToLocation` uses.
+  const [cloudStockNewItem, { loading: cloudStockLoading }] =
+    useUpsertItemStockMutation({
+      update: (cache) => evictStockLists(cache),
+      refetchQueries: STOCK_LIST_QUERIES,
+      awaitRefetchQueries: true,
+    })
+
   if (mode === 'cloud') {
+    // Create, then stock — the same two steps `db/operations.ts`'s `createItem`
+    // takes, in the same order, honouring the same `catalogOnly` opt-out.
+    // `pickStockFields` (not `toStockInput`) because a brand-new row genuinely
+    // starts at zero for anything the form did not supply; there is no existing
+    // row whose values an absent key should preserve.
+    const runCloudCreate = async (input: ItemMutationInput) => {
+      const created = (
+        await cloudCreate({ variables: { input: toCreateItemInput(input) } })
+      ).data?.createItem
+      if (!created) return undefined
+      // Stripped, for the same reason the PantryData join strips: until PR 5
+      // the cloud `Item` still carries the five state columns, and leaving them
+      // on would let the Item's inline values show through the join.
+      const item = stripStockFields(
+        deserializeItem(created as Record<string, unknown>),
+      )
+      if (catalogOnly) return joinItemStock(item, undefined, activeLocationId)
+
+      const stockRow = (
+        await cloudStockNewItem({
+          variables: {
+            itemId: created.id,
+            locationId: activeLocationId,
+            input: toCreateStockInput(input),
+          },
+        })
+      ).data?.upsertItemStock
+      // Joined, so callers reading `stockId` / the stock fields off the result
+      // (NewItemDialog's `onSuccess`, and through it the recipe-items dialog)
+      // see the row that was just written rather than the Item's inline
+      // columns, which PR 5 removes.
+      return joinItemStock(
+        item,
+        stockRow
+          ? deserializeItemStock(stockRow as Record<string, unknown>)
+          : undefined,
+        activeLocationId,
+      )
+    }
+
     return {
       mutate: (
         input: ItemMutationInput,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
+        runCloudCreate(input).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: (input: ItemMutationInput) =>
-        cloudCreate({ variables: { input: toCreateItemInput(input) } }).then(
-          (r) => r.data?.createItem,
-        ),
-      isPending: cloudCreateLoading,
+      mutateAsync: runCloudCreate,
+      isPending: cloudCreateLoading || cloudStockLoading,
     }
   }
 
@@ -612,10 +743,9 @@ export function useRemoveItemFromLocation() {
 type ItemUpdateVars = {
   id: string
   updates: Partial<Item> & Partial<StockFields>
-  // Local mode only: which location's ItemStock the stock fields are written
-  // to. The Stock-tab pager saves to the location on the page being viewed;
-  // everything else omits it and writes to the active location. Cloud mode
-  // ignores it — cloud items carry inline stock and have no locations.
+  // Which location's ItemStock the stock fields are written to, in BOTH modes.
+  // The Stock-tab pager saves to the location on the page being viewed;
+  // everything else omits it and writes to the active location.
   locationId?: string
 }
 
@@ -654,28 +784,65 @@ export function useUpdateItem() {
     refetchQueries: [{ query: GetItemsDocument }],
   })
 
+  // The stock half of a cloud update. Separate from `cloudUpdate` because the
+  // two touch different root fields: `updateItem` changes `ROOT_QUERY.items`,
+  // which `GetItems` and `PantryData` share, while `upsertItemStock` changes
+  // `itemStocks` / `itemStocksForItem`, which a `GetItems` refetch never
+  // reaches. Same cache handling as `useAddItemToLocation` — see the
+  // STOCK_LIST_QUERIES comment for why an eviction AND a named refetch.
+  const [cloudUpsertStock, { loading: cloudStockLoading }] =
+    useUpsertItemStockMutation({
+      update: (cache) => evictStockLists(cache),
+      refetchQueries: STOCK_LIST_QUERIES,
+      awaitRefetchQueries: true,
+    })
+
   if (mode === 'cloud') {
-    // Cloud mode: serializes updates to GraphQL input via toUpdateItemInput().
-    // Absent fields are omitted (server leaves them alone); fields present
-    // with undefined/null are sent as null (server clears them).
+    // Cloud mode splits the input the way local mode's `updateItem` does:
+    // configuration fields go to the global Item, the five state fields go to
+    // ONE location's ItemStock — `locationId` when the Stock-tab pager passes
+    // one, the active location otherwise.
+    //
+    // Absent fields are omitted (server leaves them alone); fields present with
+    // undefined/null are sent as null (server clears them).
+    const runCloudUpdate = async ({
+      id,
+      updates,
+      locationId,
+    }: ItemUpdateVars) => {
+      const config = toConfigInput(updates)
+      // A pure stock edit (the quantity buttons, the Stock tab) sends no
+      // `updateItem` at all, and a pure configuration edit (a rename, a tag
+      // change) creates no ItemStock row where none existed.
+      const itemResult =
+        Object.keys(config).length > 0
+          ? await cloudUpdate({ variables: { id, input: config } })
+          : undefined
+      if (touchesStock(updates)) {
+        await cloudUpsertStock({
+          variables: {
+            itemId: id,
+            locationId: locationId ?? activeLocationId,
+            input: toStockInput(updates),
+          },
+        })
+      }
+      return itemResult?.data?.updateItem
+    }
+
     return {
       mutate: (
-        { id, updates }: ItemUpdateVars,
+        vars: ItemUpdateVars,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudUpdate({
-          variables: { id, input: toUpdateItemInput(updates) },
-        }).then(
+        runCloudUpdate(vars).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
-      mutateAsync: ({ id, updates }: ItemUpdateVars) =>
-        cloudUpdate({
-          variables: { id, input: toUpdateItemInput(updates) },
-        }).then((r) => r.data?.updateItem),
-      isPending: cloudUpdateLoading,
+      mutateAsync: runCloudUpdate,
+      isPending: cloudUpdateLoading || cloudStockLoading,
     }
   }
 

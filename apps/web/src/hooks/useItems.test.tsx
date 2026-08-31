@@ -47,6 +47,15 @@ const mockUseDeleteItemMutationOptions = vi.fn()
 const mockUseLastPurchaseDatesQuery = vi.fn()
 const mockCloudAddToLocation = vi.fn()
 const mockCloudRemoveFromLocation = vi.fn()
+// Since Task 9 `useCreateItem` and `useUpdateItem` mount this hook in BOTH
+// modes (a hook cannot sit behind the mode branch), so it has to be stubbed
+// here or the real Apollo hook demands a provider. It resolves with a null row:
+// the cloud create path tolerates one and returns the item unjoined. What each
+// mutation actually SENDS is pinned in `useItemStockWrites.cloud.test.tsx`,
+// which drives the real hooks through MockedProvider.
+const mockCloudUpsertStock = vi
+  .fn()
+  .mockResolvedValue({ data: { upsertItemStock: null } })
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -69,6 +78,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useRemoveItemFromLocationMutation: () => [mockCloudRemoveFromLocation, {}],
     useCreateItemMutation: () => [mockCloudCreate, {}],
     useUpdateItemMutation: () => [mockCloudUpdate, {}],
+    useUpsertItemStockMutation: () => [mockCloudUpsertStock, {}],
     useDeleteItemMutation: (options: unknown) => {
       mockUseDeleteItemMutationOptions(options)
       return [mockCloudDelete, {}]

@@ -136,11 +136,6 @@ function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
 // `item` already carries the stock state of the location being edited;
 // `locationId` routes the save to that location's ItemStock.
 //
-// CLOUD SAVES ARE NOT LOCATION-ROUTED YET. `useUpdateItem`'s cloud branch still
-// sends the five state fields inline on `updateItem` and ignores `locationId`;
-// pointing them at `upsertItemStock(itemId, locationId)` is Task 9 of the PR 2
-// plan. Reading is per-location here from Task 8 on; writing catches up next.
-//
 // The recipe-adjust dialog is NOT here any more: it fires on a consumeAmount /
 // targetUnit change, and both are global fields edited on the Info tab since
 // v16. Hanging it off this page meant one location's edit rescaled every

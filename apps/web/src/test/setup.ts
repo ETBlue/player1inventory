@@ -85,6 +85,16 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Called UNCONDITIONALLY by `useCreateItem` and `useUpdateItem` — a hook
+    // cannot sit behind the `mode === 'cloud'` branch — so a local-mode test
+    // rendering either one reaches the real Apollo hook without an
+    // ApolloProvider and dies with "Could not find client in the context".
+    // That is what a missing entry here looks like: 270 failures across 19
+    // files, none of them cloud tests.
+    useUpsertItemStockMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useRemoveItemFromLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
