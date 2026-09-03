@@ -1,8 +1,8 @@
 # Cloud Locations — design
 
 **Date:** 2026-08-30
-**Status:** 🔲 Designed, not implemented
-**Branch:** `feature/cloud-locations`
+**Status:** 🔄 In progress — PR 0 ✅, PR 1 ✅, PR 2 ✅ (this branch), PRs 3–5 🔲
+**Branch:** `feature/cloud-locations` → `feature/cloud-locations-pr2`
 **Brainstorming:** [2026-08-30-brainstorming-cloud-locations.md](2026-08-30-brainstorming-cloud-locations.md)
 **Closes the deferral in:** [2026-08-23-cloud-locations-deferred-requirements.md](2026-08-23-cloud-locations-deferred-requirements.md)
 **Related:** [locations design](2026-06-11-locations-design.md) · [location RBAC](../../global/permissions/2026-08-29-design-location-rbac.md) · [global stock settings](../items/2026-08-22-design-global-stock-settings.md)
@@ -115,6 +115,16 @@ client-side transaction:
   and `RecipeItem.defaultAmount` on every affected recipe. Local does this in a single Dexie
   `rw`; partial failure otherwise leaves mixed units silently. Recorded as a designer
   requirement on 2026-08-23.
+
+  > **Not built — verified 2026-09-04, during PR 2.** `apps/server/src/schema/itemStock.graphql`
+  > shipped in PR 1 with `upsertItemStock`, `addItemToLocation` and `removeItemFromLocation`
+  > and **no `applyUnitSwitch`**; `grep -r applyUnitSwitch apps/server/src/schema` returns
+  > nothing. So `useApplyUnitSwitch` still throws in cloud (`LOCAL_ONLY_UNIT_SWITCH`) — and
+  > *not* for want of an `ItemStock` backend, which has existed since PR 1, but for want of
+  > this mutation. The visible consequence, which no test currently fails on: **a cloud unit
+  > switch leaves every location's tracked quantities in the OLD unit.** `buildStockConversions`
+  > (`routes/items/$id/index.tsx`) gates itself on `isLocal` rather than listing conversions
+  > the cloud branch could not write. **PR 3 owes it.**
 - **`consumeRecipes`** — cooking's "done": stock quantities, logs, and `Recipe.lastCookedAt`.
 - **`applyShelfFilterPicks`** — already transactional; its writes are re-pointed at `ItemStock`.
 
@@ -208,6 +218,26 @@ deferred-requirements doc's instruction to "revisit every `isCloud` bypass" is s
   absent from it falls back to the `isDefault` location. No id is special-cased as always-valid.
 - `DEFAULT_LOCATION_ID` survives only as the id the local seed happens to use. Nothing
   branches on it.
+
+### `defaultLocationId` is not merely coarse — it is incoherent for shared locations
+
+PR 2's server-side dual-write targets **the caller's default location** in three places:
+`checkout`, `consumeRecipes`, and `upsertItemStock`'s reverse mirror (which only fires when
+the target *is* the default). That was accepted as a stopgap because `Cart.locationId` does
+not exist until PR 3.
+
+The reason it must not survive PR 3 is stronger than "it is a coarse approximation".
+**"The caller's default location" is only well-defined for a location the caller owns.**
+Under the [location RBAC](../../global/permissions/2026-08-29-design-location-rbac.md) this
+design is shaped for, a `member` on someone else's shared location has **no `isDefault` row
+for it** — `isDefault` is one row per user, over that user's own locations. So for a member
+acting on a shared location, `defaultLocationId` names a location that is not the one being
+acted on, and every one of those call sites silently writes the wrong row: a member's
+checkout in the shared Kitchen would increment stock in their own private default.
+
+That makes PR 3 — giving carts and consumption their **own** `locationId` — not a nicety but
+the change that makes these paths *correct*, and it is the motivation to record rather than
+"the scoping is a bit rough today".
 
 This is the one part of the design that changes **local-mode** behavior. Accepted
 deliberately: the alternative is a permanent fork.
@@ -461,9 +491,41 @@ Additive first, so a browser running a stale bundle keeps working until the fina
 | **2** | Web cloud path switches to the new types: `joinItemStock` extracted to `lib/itemStock.ts`, `PantryData` query, Apollo `keyArgs` policy, every `isCloud` bypass deleted, Dexie v18 + `isDefault`, per-mode storage key, corrected reconcile effect. |
 | **3** | Carts and logs: migration §4.5–4.7 (including the §5 `'no-vendor'` split), composite cart ids, location-scoped logs, `consumeRecipes` and `applyUnitSwitch` transactions. |
 | **4** | Import / export / post-login migration / purge (§6). |
-| **5** | **Contract:** drop the five `Item` columns and remove them from the GraphQL type and inputs. |
+| **5** | **Contract:** drop the five `Item` columns and remove them from the GraphQL type and inputs. **Delete `apps/server/src/lib/stockDualWrite.ts` and all FOUR of its call sites** — see below. |
 
 Mirrors how locations itself (5 PRs) and unified item search (4 PRs) landed in this repo.
+
+### PR 5's teardown: five dual-write sites, not three
+
+PR 2's plan named three resolvers. Two more were added during implementation (Tasks 9b and
+10), and the teardown list must carry all five or one survives the contract step:
+
+| # | Site | Direction | What it writes |
+|---|---|---|---|
+| 1 | `cart.resolver.ts` `checkout` | `Item` → also `ItemStock` | increments the **default** location's stock |
+| 2 | `recipe.resolver.ts` `consumeRecipes` | `Item` → also `ItemStock` | sets the **default** location's stock |
+| 3 | `item.resolver.ts` `updateItem` | `Item` → also `ItemStock` | mirrors any **inline** stock fields it still receives (the legacy path; the PR-2 client sends stock to `upsertItemStock` instead) |
+| 4 | `itemStock.resolver.ts` `upsertItemStock` → `mirrorItemStockToItem` | **`ItemStock` → `Item`** (the reverse mirror) | mirrors the saved row onto `Item`'s five columns, **only** when the target location is the caller's default |
+| 5 | `import.resolver.ts` `bulkCreateItems` **and** `bulkUpsertItems` | `Item` → also `ItemStock` | mirrors the flat payload's inline stock into the caller's **default** location |
+
+Site 5 is not optional politeness: the import surface stays FLAT until PR 4 (`ItemInput`
+carries stock inline with no `locationId`), while the cloud pantry has read `ItemStock` since
+PR 2 — so without it an import completes "successfully" and **every imported item is stocked
+nowhere and invisible in the pantry**, with no error raised anywhere. Found by
+`e2e/tests/settings/import-export-cloud.spec.ts` on 2026-09-04. PR 4 replaces it with real
+`LocationInput` / `ItemStockInput` rather than deleting it outright.
+
+Site 4 is the one most easily missed, because it runs the *other* way. It exists because the
+PR-2 client stopped sending stock fields to `updateItem` at all (Task 9), so `Item`'s legacy
+columns would otherwise have gone stale immediately and a stale bundle would have shown
+frozen quantities — the very invariant the dual-write decision exists to protect.
+
+`addItemToLocation` / `removeItemFromLocation` deliberately have **no** mirror: they mutate
+membership, which `Item`'s columns cannot express at all, so any mirror there would invent a
+value rather than reflect one.
+
+All four are marked in source with `DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts)`, so
+`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist.
 
 ## Open questions
 

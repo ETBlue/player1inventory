@@ -3,7 +3,7 @@
 **Design:** `docs/features/locations/2026-08-30-cloud-locations-design.md` (§2, §3, §7, §8)
 **Branch:** `feature/cloud-locations-pr2`
 **Base:** `3143dbc3` (PR 1 merge)
-**Status:** 🔲 Pending
+**Status:** ✅ Implemented (Tasks 1–10, plus the unplanned 6b, 6c and 9b)
 
 PR 2 of five. PR 1 shipped the whole server surface this PR consumes — `Location`
 and `ItemStock` tables, `requireLocationRole`, and the resolvers behind
@@ -44,10 +44,28 @@ Left alone, cloud checkout, cooking and the quantity buttons would write where
 nothing reads — visibly broken on `main` between PR 2 and PR 3.
 
 **Decision (2026-08-30, ETBlue): dual-write until PR 5.** Those three resolvers
-write **both** `Item`'s columns and the corresponding `ItemStock` row. This
-preserves the rollout's stated invariant — a browser on a stale bundle keeps
-working through every intermediate PR — at the cost of three small server changes
-and a teardown in PR 5.
+write **both** `Item`'s columns and the corresponding `ItemStock` row, and a
+fourth site — the reverse mirror in `upsertItemStock` — was added during Task 9b
+once the client stopped sending stock to `updateItem` at all.
+
+### What "a stale bundle keeps working" actually means (corrected during implementation)
+
+§8 of the design states the invariant unconditionally, and **that is wrong**. State
+it precisely, because the unqualified version invites someone to assume a guarantee
+the code does not provide:
+
+| Case | Preserved for a stale bundle? |
+|---|---|
+| A stock **value** edit at the **default** location (quantity buttons, Stock tab on the default page, checkout, cooking) | **Yes** — `mirrorItemStockToItem` writes `Item`'s five columns |
+| A stock **value** edit at a **non-default** location | **No, by design.** `Item` has one set of columns and no location concept; there is no correct single value to write. Mirroring one would let a Garage edit corrupt what the stale bundle reports for the Kitchen |
+| **Membership** changes — `addItemToLocation` / `removeItemFromLocation` | **No, deliberately.** These mutate *which locations an item is stocked in*, which `Item`'s columns cannot express at all. Any mirror would invent a value rather than reflect one |
+| **Atomicity** of the mirror | **No.** The mirror is a second Prisma statement, not part of a `$transaction`. `ItemStock` can be written and the `Item` mirror fail; `ItemStock` is the source of truth from PR 2 on, so the divergence is in the stale bundle's favour, but it is a real window and is accepted for the three PRs the bridge lives |
+
+The invariant that *is* held: **a stale bundle keeps working for the single-location
+user editing their default location's stock** — which, per the production rehearsal
+in the design's §7, is every current production account (one user, one location).
+
+The cost is four small server changes and a teardown in PR 5.
 
 **Which location do the server-side writers target?** `checkout` and
 `consumeRecipes` have no location in PR 2: `Cart.locationId` does not exist until
@@ -57,8 +75,9 @@ its caller is the client, which knows the active location, so the client sends
 stock fields to `upsertItemStock(itemId, locationId)` directly (Task 9) and
 `updateItem`'s dual-write covers only the legacy inline-stock path.
 
-> **PR 5 must delete all three dual-writes.** Recorded in §8 of the design as part
-> of PR 5's contract step, not left implicit here.
+> **PR 5 must delete all FOUR dual-writes** — the three above plus
+> `mirrorItemStockToItem` (Task 9b). The design's §8 carries the full table;
+> `grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist.
 
 ---
 
@@ -266,6 +285,40 @@ fallback.
   must go RED **in cloud** (in local it will not — the local default's id *is*
   `'local'`; the fixture must be a cloud one for this check to mean anything).
 
+### Task 6b — every cross-mode data path must target a LOCAL location id (unplanned)
+
+**Not in the original plan; found while implementing Task 6, and a direct consequence
+of it.** Once the active-location slot became per-mode, `useActiveLocation().activeLocationId`
+is *the current mode's* id and the two id spaces are disjoint. Three sites still fed the
+**cloud** cuid into a **local** data operation. They had worked only by accident: before
+Task 6 the cloud active id was the literal `'local'`, which is also a valid local location id.
+
+| Site | Was | Symptom |
+|---|---|---|
+| `DataModeCard`'s cloud→local copy (`doSwitch` / `doSignOut`) | passed the cuid to `importLocalData` as the target location | `ItemStock` rows written under a local location that does not exist — **empty local pantry after the reload** |
+| `ImportCard`'s cloud branch | passed the cuid to `resolveFlattenLocationId` | a backup file is always local-shaped, so a cuid matched nothing and **every multi-location backup was refused outright** |
+| `usePostLoginMigration` | passed the cuid as `importCloudData`'s `locationId` | flattening by a cuid matches no `ItemStock` row: **every item uploads zeroed, every cart is dropped** — and the one-shot ref blocks any retry |
+
+Two module-level helpers were added to `useActiveLocation.tsx` to serve the two shapes:
+- `readStoredLocationId(mode)` — pure localStorage read (legacy-key read-through included),
+  for callers that only need an id to **match** a payload;
+- `resolveLocalActiveLocationId()` — async; the local slot **validated** against the local
+  `locations` table, `isDefault` fallback, for callers that **write** into local Dexie.
+
+### Task 6c — the migration warning must name the LOCAL locations (unplanned)
+
+`PostLoginMigrationDialog` warns, before a local → cloud copy that carries one location's
+stock, about the locations left behind — so the locations at risk are the **local** ones.
+It read them with `useLocations()`, dual-mode since Task 5, and the active id with
+`useActiveLocation()`, per-mode since Task 6. In cloud mode — the only mode this dialog runs
+in — both name **cloud** rows. The warning therefore enumerated locations that were never at
+risk and could stay silent when a local location really would be left behind, while gating a
+destructive one-shot copy on the wrong list.
+
+Fixed by reading local Dexie directly and resolving the local active id through
+`resolveLocalActiveLocationId()`. Tests seed the two stores so they **disagree** (two local
+vs one cloud, and one local vs two cloud); both go red against the pre-fix component.
+
 ### Task 7 — `PantryData` wiring
 
 - `useItems()` — cloud runs `PantryData({ locationId: activeLocationId })` and maps
@@ -348,6 +401,25 @@ behaves differently; leaving them would make the file lie about itself.
 > demonstrated vector — but the item scope is inherited rather than asserted. Out
 > of scope for PR 2; worth a look when PR 3 rewrites this resolver.
 
+### Task 9b — `NewItemDialog` stocks existing items in cloud (unplanned)
+
+**A bypass Task 8's sweep missed.** The dialog was create-only in cloud, on two premises
+Tasks 7 and 8 falsified: that cloud items carry no `stockId` (the `PantryData` join sets
+one) and that `useAddItemToLocation` throws in cloud (it has had a cloud branch since
+Task 8). Removed `handleSelectExisting`'s `if (!isLocal) return`, the `isLocal` term in
+`isSelectable`, and the `stocked = isLocal ? … : true` render gate — **the component no
+longer reads `useDataMode` at all**.
+
+The cloud-only i18n string `items.addDialog.alreadyExists` went with the branch: it existed
+because "cloud has no locations", which stopped being true when `useLocations` became
+dual-mode, and it would now contradict a selectable row. The location-naming
+`alreadyStockedHere` covers both modes.
+
+**Method note worth carrying forward:** this was found by re-reading every remaining
+`useDataMode()` call site for a *premise* that PR 2 had falsified, rather than by grepping
+for `isCloud` near stock fields — which is what Task 8's table did, and which is why it was
+missed. A bypass phrased as `isLocal ? … : true` matches no `isCloud` grep.
+
 ### Task 10 — documentation and the verification gate
 
 - `apps/web/src/db/CLAUDE.md` — the v18 migration.
@@ -403,3 +475,152 @@ that look like code regressions.
   check is one. They are not coverage.
 - **Explanatory comments are claims.** This PR deletes several that assert why cloud
   differs; any comment written to replace them gets verified against the code first.
+
+### Task 10b — the fresh-cloud-session bugs E2E caught (unplanned)
+
+**Two real regressions, found only by running cloud E2E.** Both come from the same window:
+on a fresh cloud session there is no `active-location-id:cloud` slot, so `activeLocationId`
+is `DEFAULT_LOCATION_ID` — the `'local'` sentinel — until `GetLocations` resolves. Thirteen
+cloud specs failed; the whole suite is green afterwards.
+
+**They were invisible to unit tests because of the fixtures.** Every cloud test in
+`useItemStockWrites.cloud.test.tsx` seeds `active-location-id:cloud` with a real cuid, which
+**pre-resolves the exact thing that breaks** — the canonical weak fixture this repo's rules
+describe, in a file whose own header claims "THE FIXTURE IS THE TEST".
+
+**1. Location-scoped WRITES were sent with the sentinel.** A read in that window merely
+re-runs with the corrected id; a write is refused by `requireLocationRole` (`FORBIDDEN`) and
+lost. Creating an item from the pantry's Add dialog created the `Item`, had its follow-up
+`upsertItemStock(locationId: 'local')` rejected, and left the dialog open with the item
+stocked nowhere. The provider's correction cannot help: `activeLocationId` is state, and a
+handler that already started reads the value from the render it started in. Fixed by a new
+`useCloudLocationId()` that resolves the target **at call time** from Apollo (`GetLocations`,
+`cache-first` — a hit costs nothing, a miss awaits the in-flight request), used by all four
+cloud write paths.
+
+**2. `refetchQueries` by NAME refetched a query the app had declined to make.** With the
+write fixed, the create still hung. `PantryData` was gated to skip while the location was
+unresolved — but Apollo registers the ObservableQuery anyway, and a **name-based**
+`refetchQueries: ['PantryData']` refetches every observer with that name, `skip` included.
+That parked observer refetched with `locationId: 'local'`, returned `FORBIDDEN`, and under
+`awaitRefetchQueries: true` **rejected the mutation that had already succeeded**. Fixed by
+targeting the refetch at the location just written (`stockListRefetches(locationId)`), which
+is also strictly more correct — another location's list is unaffected by the write, and
+anything unmounted is already covered by the cache eviction. `ItemStocksForItem` stays a
+name: its only variable is an item id, which is always valid.
+
+**3. `bulkCreateItems` / `bulkUpsertItems` wrote no `ItemStock`.** The import surface is flat
+until PR 4, but the cloud pantry has read `ItemStock` since Task 7 — so a cloud import
+completed "successfully" with **every imported item stocked nowhere and invisible**, no error
+anywhere. Fixed by the same `mirrorStockToDefaultLocation` bridge the other dual-writes use;
+it becomes the fifth entry on PR 5's teardown list (design §8).
+
+**Spec change, not a product change:** `shopping.spec.ts`'s cloud seed built its item with a
+raw `createItem` GraphQL call and never stocked it — a back door the app itself never takes,
+since `useCreateItem`'s cloud branch always follows the create with an `upsertItemStock`. The
+seed now does the same two steps.
+
+**Mutation checks run:**
+- Reduce `useCloudLocationId` to `return activeLocationId` → both new
+  `a fresh cloud session, before GetLocations has resolved` tests go RED, and the five
+  pre-existing tests in that file stay GREEN (proving the fix leaves the already-resolved
+  path alone).
+- Disable `bulkCreateItems`' mirror → the new import-resolver test goes RED.
+
+---
+
+## Deferred work — recorded here because this is where the next reader will look
+
+Nothing in this section is a defect of PR 2. Each item is either explicitly out of
+scope or a pre-existing condition, and each is named so it is not rediscovered as a
+surprise.
+
+### Owed by PR 3
+
+1. **`applyUnitSwitch` is missing from the schema.** Design §2 lists it as a
+   requirement; PR 1 shipped `itemStock.graphql` without it. `useApplyUnitSwitch`
+   therefore still throws in cloud (`LOCAL_ONLY_UNIT_SWITCH`) — **not** for want of an
+   `ItemStock` backend but for want of the mutation. Consequence: **a cloud unit switch
+   leaves every location's tracked quantities in the OLD unit**, and no test fails on it
+   (`buildStockConversions` gates on `isLocal`, so the confirmation dialog never even
+   lists conversions the cloud branch could not write). Design §2 carries the same note.
+
+2. **`removeItemFromLocation` has no cloud cascade.** The resolver deletes the
+   `ItemStock` row only, because cloud carts and inventory logs gain a `locationId` in
+   PR 3. That is why the Stock tab's confirmation line *"Inventory logs: N · Cart
+   entries: N"* renders in **local mode only** — printing local numbers beside a cloud
+   removal would name rows it will not touch. When the cascade lands, the counts should
+   become dual-mode and their queries belong in `useRemoveItemFromLocation`'s cloud
+   refetch list.
+
+3. **The `defaultLocationId` call sites.** `checkout`, `consumeRecipes` and
+   `mirrorItemStockToItem` all target the caller's default location. This is not merely
+   coarse — it is **incoherent for a shared location**: under the location RBAC design a
+   `member` has no `isDefault` row for someone else's location, so `defaultLocationId`
+   names a location that is not the one being acted on. See the design's new §3
+   subsection. PR 3 giving carts and consumption their own `locationId` is what makes
+   these paths correct.
+
+### Owed by PR 4
+
+4. **`usePostLoginMigration` and its dialog disagree about which local location.** The
+   hook copies by the **unvalidated** `readStoredLocationId('local')`; the dialog now
+   warns by the **validated** `resolveLocalActiveLocationId()` (Task 6c). They agree
+   whenever the slot names a live local location — and diverge when it names a **deleted**
+   one, in which case the dialog warns about the right set while the copy flattens by an
+   id no `ItemStock` row carries: **every item uploads with zeroed stock and every cart
+   is dropped, silently**, and the one-shot ref blocks a retry. Fixing it means deciding
+   whether the copy id should also be validated, which is PR 4's call (the source comment
+   in `usePostLoginMigration.ts` says so too).
+
+5. **`locationResolved` still validates the CLOUD active id against the CLOUD list.**
+   Since Task 6b the copy target is the local slot, so this gate no longer guards it. It
+   is kept because it still delays the destructive one-shot copy until the session has
+   stabilised — but design §6 already schedules its `activeLocationId === DEFAULT_LOCATION_ID`
+   branch for removal in PR 4, and this is the same gate.
+
+### Standing caveats (not scheduled — carried forward)
+
+6. **Nothing executes the resolvers against real SQL.** Every `apps/server` test runs
+   against a hand-written stateful Prisma fake (`src/test/`), and cloud E2E is gated on
+   `TEST_CLOUD_MODE`, which is set nowhere (issue #260 fixed the *vendor-cart* gating, not
+   this). **A manual cloud smoke test is owed for checkout and cooking** — the two
+   dual-write paths PR 2 added that no automated test exercises end-to-end.
+
+7. **`$transaction` rollback is deliberately not modelled in the fake.** An atomicity
+   test written against it would be vacuous. Named here so nobody writes one and reports
+   it as coverage — design §7 says the same about `applyUnitSwitch`.
+
+8. **`upsertItemStock` authorizes the location, not the item.** It calls
+   `requireLocationRole` on the target location and then writes an `ItemStock` for
+   `itemId` without asserting the item's own scope. Pre-existing and analogous to the
+   note already recorded against `cart.resolver.ts:86`, which calls
+   `prisma.item.update({ where: { id: ci.itemId } })` with no `userId`. Neither is a
+   demonstrated vector today (both inherit scope from a row that *is* scoped), but both
+   assert nothing. Worth closing when RBAC lands, behind the same
+   `requireLocationRole`-shaped helper — never as `row.userId === ctx.userId`.
+
+10. **No cloud E2E covers any location surface — audited 2026-09-04, Task 10.** Six specs
+   exercise locations (`settings/locations`, `location-switcher`, `item-stock-pager`,
+   `item-stock-input`, `location-not-stocked-here`, `unified-item-search`), and the
+   `cloud` project's `testMatch` in `e2e/playwright.config.ts` selects **none** of them —
+   so their `test.skip(baseURL === CLOUD_WEB_URL, …)` guards are dead code. The blocker
+   is not the backend (PR 1 shipped it): **every fixture seeds IndexedDB through
+   `page.evaluate()`**, which writes nothing a cloud-mode app reads, so widening
+   `testMatch` alone would turn six green specs red. Cloud coverage needs a GraphQL- or
+   UI-driven seed helper — real work, and PR 3's natural home since it rewrites carts and
+   logs anyway. Task 10 corrected the stale *reasons* in those files (they all claimed
+   "no cloud Location/ItemStock backend") but deliberately did **not** attempt the
+   migration. This is the E2E half of caveat 6: cloud locations are covered by unit tests
+   and by nothing else.
+
+### Separate follow-up issue — NOT part of this PR
+
+9. **`apps/web/tsconfig.app.json` excludes tests and stories from the type-check.** Its
+   `exclude` is `["**/*.test.ts", "**/*.test.tsx", "**/*.stories.tsx"]`, so `pnpm build`
+   never type-checks them and `pnpm test` (esbuild) does not either. **Measured
+   2026-09-04**, by re-running `tsc` with `exclude: []` and `types` widened to include
+   `vitest/globals`: **672 pre-existing errors** in those files. It cost this PR real
+   time **three separate times** — a change looks green everywhere, and the type error surfaces only
+   when someone runs `tsc` over the excluded set by hand. **Propose it as its own issue**;
+   fixing it here would bury PR 2 under an unrelated 676-error cleanup.
