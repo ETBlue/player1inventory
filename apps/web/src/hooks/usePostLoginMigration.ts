@@ -23,9 +23,11 @@ export function usePostLoginMigration() {
   const { isSignedIn, isLoaded } = useAuth()
   const [state, setState] = useState<MigrationState>('idle')
   const apolloClient = useApolloClient()
-  // Cloud has no per-location ItemStock (deferred in PR D), so the copy sends
-  // the stock of ONE location out of the LOCAL payload `fetchLocalPayload`
-  // builds — `importCloudData` flattens the payload onto it.
+  // Cloud HAS per-location ItemStock since PR 1, but the cloud IMPORT surface
+  // is still flat (`ItemInput` carries stock inline, no `locationId` — PR 4
+  // gives it `LocationInput`/`ItemStockInput`). So the copy sends the stock of
+  // ONE location out of the LOCAL payload `fetchLocalPayload` builds —
+  // `importCloudData` flattens the payload onto it.
   //
   // That id has to be a LOCAL one. This hook only ever runs in cloud mode (it
   // is gated on `isSignedIn`), where `useActiveLocation().activeLocationId` is

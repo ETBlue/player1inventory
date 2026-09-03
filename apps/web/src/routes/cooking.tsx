@@ -110,9 +110,12 @@ function CookingPage() {
   // the item isn't stocked here, so such recipe items are shown unavailable and
   // never consumed.
   //
-  // Cloud mode has no ItemStock backend yet (deferred in PR D) — cloud items
-  // carry inline stock and never a `stockId`, so the location gate is bypassed
-  // there and every item counts as available (pre-split behaviour).
+  // Cloud bypasses the gate until PR 3. Cloud items DO carry a `stockId` since
+  // PR 2 (`useItems()` joins `PantryData` per location), so the gate would work
+  // — but `consumeRecipes` still writes the caller's DEFAULT location's stock
+  // (the PR-2 dual-write, `apps/server/src/lib/stockDualWrite.ts`), so cooking
+  // consumes from a location this list would not be scoped to. PR 3 gives
+  // consumption its own location and the bypass goes with it.
   const availableItemIds = useMemo(
     () =>
       new Set((isCloud ? items : items.filter(isStockedHere)).map((i) => i.id)),
@@ -167,9 +170,8 @@ function CookingPage() {
   // visible and stays disabled — position and interactivity are independent
   // axes, so this changes only where the card sits.
   //
-  // Cloud has no Location/ItemStock backend, so no cloud item carries a
-  // stockId; a "not stocked here" section would be meaningless without
-  // locations and the partition is skipped there entirely.
+  // Cloud skips the partition until PR 3, because the availability set it would
+  // partition on is itself un-scoped there (see `availableItemIds` above).
   //
   // Partitioning with two filters rather than a sort key: filter preserves
   // relative order, so the user's chosen sort survives within each half instead

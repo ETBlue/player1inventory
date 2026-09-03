@@ -182,7 +182,7 @@ function StockFormPanel({
 
 // "Remove from location" and its confirmation. This is a component rather than
 // inline JSX so the two count queries only exist while a stocked page is on
-// screen: declared up in LocalStockTab they would run once against
+// screen: declared up in StockTab they would run once against
 // `locationId: undefined` (an item-global scan) before `useLocations()`
 // resolves, then re-key and run again.
 function RemoveFromLocationButton({

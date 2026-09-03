@@ -337,13 +337,18 @@ function upgradeUnsplitItems(
   }
 }
 
-// Cloud has NO per-location ItemStock (deliberately deferred in PR D): a cloud
-// Item still carries its stock inline and a cloud cart id is a bare
-// `vendorId | 'no-vendor'`. Copying a local (post-v15) pantry up to cloud must
-// therefore collapse the split shape back down — otherwise every stock field
-// arrives as `undefined` (they are non-null in `ItemInput`, so the migration
-// fails outright) and every cart id keeps a `${locationId}:` prefix no cloud
-// query ever looks up.
+// The cloud IMPORT path is flat, even though cloud gained per-location
+// ItemStock in PR 1. `ItemInput` (apps/server/src/schema/import.graphql)
+// carries the five stock fields INLINE with no `locationId`, there is no
+// `ItemStockInput` or `LocationInput` beside it, and a cloud cart id is still a
+// bare `vendorId | 'no-vendor'` (composite ids land in PR 3). Copying a local
+// (post-v15) pantry up to cloud must therefore collapse the split shape back
+// down — otherwise every stock field arrives as `undefined` (they are non-null
+// in `ItemInput`, so the migration fails outright) and every cart id keeps a
+// `${locationId}:` prefix no cloud query ever looks up.
+//
+// PR 4 gives the import surface `LocationInput` / `ItemStockInput` and this
+// collapse goes away with them (design §6).
 //
 // Ruling (user, 2026-08-16): send the stock of the location that is ACTIVE at
 // migration time — it is what the user is looking at, and it is how the rest of
@@ -1867,9 +1872,11 @@ export async function importCloudData(
   options?: {
     onProgress?: (p: ImportProgress) => void
     session?: ImportSession
-    // Which location's stock to send. Cloud has no per-location ItemStock, so a
-    // local (post-v15) payload is collapsed onto this one location. Defaults to
-    // the default location; callers thread `useActiveLocation().activeLocationId`.
+    // Which location's stock to send. The cloud IMPORT surface is still flat
+    // (`ItemInput` carries stock inline, with no `locationId` — see
+    // `flattenPayloadForCloud`), so a local (post-v15) payload is collapsed onto
+    // this one location. Defaults to the default location; callers thread the
+    // LOCAL slot (`readStoredLocationId('local')`), never the cloud active id.
     locationId?: string
   },
 ): Promise<void> {

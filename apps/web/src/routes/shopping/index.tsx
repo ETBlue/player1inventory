@@ -117,9 +117,9 @@ function ShoppingIndex() {
     }
   }
 
-  // No-vendor card mirrors useVendorCartCounts()'s location-scoping: cloud has
-  // no Location/ItemStock backend (no stockId), so it bypasses the location
-  // gate and never reports an inactive count.
+  // No-vendor card mirrors useVendorCartCounts()'s location-scoping, cloud
+  // bypass included: cloud carts have no locationId until PR 3, so the count
+  // must stay global to match what the card opens onto. See that hook.
   const noVendorItems = items.filter((i) => !(i.vendorIds ?? []).length)
   const noVendorScopedItems = isCloud
     ? noVendorItems
@@ -155,9 +155,9 @@ function ShoppingIndex() {
   // location-scoped, and a vendor with nothing stocked here has no map entry at
   // all — hence the `?? 0`.
   //
-  // Cloud has no Location/ItemStock backend, so that hook falls back to a
-  // global tally there; a "not stocked here" section would be meaningless
-  // without locations, so cloud skips the partition entirely.
+  // Cloud carts are not location-scoped until PR 3, so that hook keeps a global
+  // tally there and a "not stocked here" section would partition on a number
+  // that is not location-scoped. Cloud skips the partition entirely until then.
   //
   // Partitioning with two filters rather than a sort key: filter preserves
   // relative order, so the user's chosen sort survives within each half instead

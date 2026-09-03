@@ -190,10 +190,21 @@ export function useDeleteLocation() {
 
   // The server cascade matches the local one, but Apollo has no prefix-keyed
   // invalidation to mirror those five keys with — it refetches named queries.
-  // `GetLocations` is the only query cloud mode reads today that the cascade
-  // can touch: cloud carts and inventory logs are not location-scoped until
-  // PR 3, and `PantryData` (the cloud ItemStock read) does not exist until
-  // Task 7 of this PR. When it lands, its refetch belongs in this list.
+  // Only `GetLocations` is refetched. Cloud carts and inventory logs are not
+  // location-scoped until PR 3, so the cascade cannot touch them.
+  //
+  // `PantryData` and `ItemStocksForItem` DO exist since Task 7 of this PR and
+  // ARE invalidated by the cascade, but are deliberately left out: the only
+  // rows the cascade deletes belong to the location being deleted, and once it
+  // is gone nothing renders them. `PantryData` is keyed by `locationId`, so the
+  // stale entry is the deleted location's own and is unreachable; the Stock-tab
+  // pager pages over `useLocations()`, which this list does refetch, so a stale
+  // `ItemStocksForItem` row for a deleted location has no page to render on.
+  // Deleting the ACTIVE location additionally moves `activeLocationId` to the
+  // default (`useActiveLocation`), which changes `PantryData`'s variables and
+  // fetches afresh. Recorded rather than assumed — if a surface ever reads
+  // stock across locations without consulting the location list, its refetch
+  // belongs here.
   const [cloudDelete, { loading: cloudDeleteLoading }] =
     useDeleteLocationMutationGql({
       refetchQueries: [{ query: GetLocationsDocument }],
