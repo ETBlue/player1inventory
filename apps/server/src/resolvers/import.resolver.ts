@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js'
+import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, InventoryLog, Item, Recipe, Resolvers, Shelf, Tag, TagType, Vendor } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, TagColor, TargetUnit } from '@prisma/client'
@@ -70,6 +71,25 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             updatedAt: new Date(updatedAt),
             userId,
           },
+        })
+        // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). The import
+        // surface is FLAT — `ItemInput` carries the five stock fields inline
+        // with no `locationId`, and it does not gain `LocationInput` /
+        // `ItemStockInput` until PR 4 — but since PR 2 the cloud pantry reads
+        // `ItemStock`, not those columns. Without this mirror every imported
+        // item lands in the catalog and is stocked NOWHERE: invisible in the
+        // pantry, with no error anywhere. Caught by
+        // `e2e/tests/settings/import-export-cloud.spec.ts`.
+        //
+        // The caller's default location, like the other dual-writes — PR 4
+        // gives the payload real locations and maps its default onto the
+        // destination's `isDefault` (design §6), and this goes away with it.
+        await mirrorStockToDefaultLocation(userId, id, {
+          targetQuantity: rest.targetQuantity,
+          refillThreshold: rest.refillThreshold,
+          packedQuantity: rest.packedQuantity,
+          unpackedQuantity: rest.unpackedQuantity,
+          dueDate: dueDate ? new Date(dueDate) : null,
         })
         if (tagIds?.length) {
           const existingTags = await prisma.tag.findMany({
@@ -284,6 +304,25 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           where: { id },
           create: { id, ...data },
           update: data,
+        })
+        // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). The import
+        // surface is FLAT — `ItemInput` carries the five stock fields inline
+        // with no `locationId`, and it does not gain `LocationInput` /
+        // `ItemStockInput` until PR 4 — but since PR 2 the cloud pantry reads
+        // `ItemStock`, not those columns. Without this mirror every imported
+        // item lands in the catalog and is stocked NOWHERE: invisible in the
+        // pantry, with no error anywhere. Caught by
+        // `e2e/tests/settings/import-export-cloud.spec.ts`.
+        //
+        // The caller's default location, like the other dual-writes — PR 4
+        // gives the payload real locations and maps its default onto the
+        // destination's `isDefault` (design §6), and this goes away with it.
+        await mirrorStockToDefaultLocation(userId, id, {
+          targetQuantity: rest.targetQuantity,
+          refillThreshold: rest.refillThreshold,
+          packedQuantity: rest.packedQuantity,
+          unpackedQuantity: rest.unpackedQuantity,
+          dueDate: dueDate ? new Date(dueDate) : null,
         })
         // Replace junction rows
         await prisma.itemTag.deleteMany({ where: { itemId: id } })
