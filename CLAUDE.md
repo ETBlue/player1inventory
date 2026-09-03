@@ -56,7 +56,7 @@ Components never access the database directly — they use Query hooks from `src
 
 ## Local Database & Dexie Schema
 
-> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` / v16 global-stock-settings migrations, the Item/ItemStock join (configuration on `Item`, per-location state on `ItemStock`), and the three cascades.
+> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` / v16 global-stock-settings / v18 `Location.isDefault` migrations, the Item/ItemStock join (configuration on `Item`, per-location state on `ItemStock`), and the three cascades.
 
 ## Backend & Prisma Migrations
 
@@ -64,7 +64,7 @@ Components never access the database directly — they use Query hooks from `src
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — every cloud model is still scoped by a flat `userId`.
+> See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — cloud models are still scoped by a flat `userId`, with one deliberate exception: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
 >
 > **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
 

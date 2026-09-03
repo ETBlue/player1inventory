@@ -2,19 +2,23 @@
 
 Location CRUD at `/settings/locations`. A **Location** is a place the user stocks things — a home, a second home, a storage unit. It is the scoping unit for all stock-bearing data: every `ItemStock`, `InventoryLog`, and `ShoppingCart` belongs to exactly one location.
 
-**`Location` type** (`src/types/index.ts`): `id`, `name`, `order`, `createdAt`, `updatedAt`.
+**`Location` type** (`packages/types/src/index.ts`): `id`, `name`, `order`, `isDefault`, `createdAt`, `updatedAt`. **Both modes** — local is the Dexie `locations` store (`isDefault` added in v18, see `src/db/CLAUDE.md`); cloud is the Prisma `Location` model behind `apps/server/src/schema/location.graphql`, added in cloud-locations PR 1.
 
-**The default location.** `DEFAULT_LOCATION_ID = 'local'` (exported from `src/types`). It always exists — seeded by the Dexie `on('populate')` hook on a fresh DB and by the v14/v15 upgrade functions on an existing one (`ensureDefaultLocation`). It is **never deletable** and **never draggable**: `LocationList` renders a `Lock` icon in place of its drag handle and an empty spacer in place of its delete button, and `deleteLocation` throws if called with it anyway. Its id is `'local'` unconditionally — it is *not* swapped to the user's id in cloud mode, because cloud has no `Location` backend to swap to.
+**The default location is marked by `isDefault`, not by its id.** It always exists in both modes: locally it is seeded by the Dexie `on('populate')` hook on a fresh DB and by the v14/v15 upgrade functions on an existing one (`ensureDefaultLocation`, which writes `isDefault: true`); in cloud the `locations` query **lazily creates** one for any user who has none. It is **never deletable** and **never draggable**: `LocationList` renders a `Lock` icon in place of its drag handle and an empty spacer in place of its delete button, and `deleteLocation` throws if called with it anyway.
+
+`DEFAULT_LOCATION_ID = 'local'` still exists (exported from `@/types`) but is now **only** the id the local seed happens to use — nothing branches on it as a *marker*. The local default's id is `'local'`; a cloud default's id is a server cuid. That is why `deleteLocation`'s guard, `LocationList`'s lock/badge and `useActiveLocation`'s fallback all read `isDefault` instead. It is **not** derivable from `order`: `LocationList` disables dragging *of* the default row, but dnd-kit's `disabled` only stops that row being picked up — another row dragged above it still displaces it.
 
 **Operations** (`src/db/operations.ts`): `getLocations` (ordered by `order`), `createLocation(name)` (appends after the current max `order`), `updateLocation(id, updates)`, `deleteLocation(id)`, `reorderLocations(orderedIds)`.
 
-**Delete cascade.** `deleteLocation` refuses the default location, then removes everything scoped to the location being deleted:
+**Delete cascade (local).** `deleteLocation` refuses the default location (`if (location.isDefault) throw`), then removes everything scoped to the location being deleted:
 - its `itemStocks` rows (`where('locationId')`),
 - its `inventoryLogs` (`where('locationId')`),
 - its shopping carts (`id` prefixed `${locationId}:`) and every `cartItem` in them,
 - finally the `locations` row itself.
 
-Global `Item`s are **not** touched — an item stocked only in the deleted location survives as an orphan (see below). If the deleted location was the active one, `useActiveLocation` falls back to the default because the stored id no longer matches any location.
+Global `Item`s are **not** touched — an item stocked only in the deleted location survives as an orphan (see below). If the deleted location was the active one, `useActiveLocation` falls back to the **`isDefault`** location because the stored id no longer matches any location.
+
+**Delete cascade (cloud).** The server cascade matches, but is narrower for now: Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows, and cloud carts and inventory logs are not location-scoped until PR 3, so there is nothing else for it to take. The cloud mutation refetches only `GetLocations` — see the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
 
 **Un-stocking one item** is the narrower counterpart, `removeItemFromLocation(itemId, locationId)` — see the "Orphan items" section below and `src/routes/items/CLAUDE.md` for the Stock-tab UI that calls it.
 

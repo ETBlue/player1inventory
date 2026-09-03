@@ -74,17 +74,20 @@ remaining way a Settings page wrote location state. Removing the dialog removed
 that path, so no Settings tab reads or writes `ItemStock` any more. The pantry's
 Add dialog still stocks on select-existing, which is correct there.
 
-### Cloud mode owes this a catalog-only create path
+### Catalog-only create is live in cloud too (PR 2)
 
-The three rules above are mode-agnostic except one detail. `catalogOnly` skips the
-`ItemStock` write; cloud has no `ItemStock`, so the flag is a **no-op** there today and the
-tabs already behave correctly. When cloud gains `Location`/`ItemStock`, the GraphQL
-`createItem` mutation must gain the same affordance and the tabs' cloud branch must pass it.
+The three rules above are fully mode-agnostic since cloud-locations PR 2. `catalogOnly`
+skips the `ItemStock` write in **both** modes: no new GraphQL affordance was needed, because
+`useCreateItem`'s cloud branch runs `createItem` and then simply omits the follow-up
+`upsertItemStock` the pantry's Add flow performs. The obligation recorded here — "when cloud
+gains `Location`/`ItemStock`, the tabs must not silently resume stocking every
+Settings-created item in a default location" — is discharged, and pinned by a cloud test.
 
-Forgetting it is silent: no test fails, and cloud quietly resumes stocking every
-Settings-created item in a default location — the exact bug issue #247 part 2 fixed locally.
-Recorded in the design doc's "Deferred" section and in `routes/CLAUDE.md` beside the
-matching transaction-atomicity obligation.
+`useAddItemToLocation` also became dual-mode in PR 2, so the select-existing path the
+Settings tabs deliberately do **not** mount would now write cloud stock as well. That does
+not change these tabs: none of them mounts `NewItemDialog`, which is what closes the
+asymmetry described above, and the guard is structural (no dialog) rather than a mode
+branch.
 
 ### The shelf list row shows a filter count
 
@@ -138,7 +141,7 @@ Deleting a tag, tag type, or vendor automatically cleans up all item references:
 - **Delete tag** → removes tag from all item `tagIds` arrays (+ bumps `updatedAt`)
 - **Delete tag type** → deletes all child tags (which cascade to items), then deletes the type
 - **Delete vendor** → removes vendor from all item `vendorIds` arrays (+ bumps `updatedAt`)
-- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; the default location (`'local'`) cannot be deleted. Global `Item`s survive — see `settings/locations/CLAUDE.md`
+- **Delete location** → deletes that location's `ItemStock` rows, its `inventoryLogs`, and its carts + cart items; the location flagged `isDefault` cannot be deleted (an id comparison against `'local'` would be wrong in cloud, where the default's id is a cuid). Global `Item`s survive — see `settings/locations/CLAUDE.md`
 
 **Local mode:** Cascade logic lives in `src/db/operations.ts` (`deleteTag`, `deleteTagType`, `deleteVendor`). The hooks (`useDeleteTag`, `useDeleteTagType`, `useDeleteVendor`) also invalidate the `['items']` query cache after deletion.
 
