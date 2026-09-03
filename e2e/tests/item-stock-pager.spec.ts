@@ -6,8 +6,15 @@ import { StockPagerPage } from '../pages/StockPagerPage'
 // The item-detail Stock tab (`/items/$id/stock`) is an all-locations pager
 // (Location feature, PR E): one page per location, opening on the ACTIVE one,
 // with "Add to location" on a not-stocked page and "Remove from location" on a
-// stocked one. Locations are local-first — there is no cloud Location or
-// ItemStock backend — so every flow here is local-only.
+// stocked one. Every flow here is local-only.//
+// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
+// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
+// client on it. It is that every fixture here seeds **IndexedDB** through
+// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
+// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
+// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
+// guards below are belt-and-braces rather than the thing that excludes it.
+// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
 
 const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home"
 const OFFICE = 'office-loc'
@@ -126,7 +133,7 @@ test.describe('items stock tab — location pager', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given Milk is stocked only in My Home, and a second location exists
     await seedFixture(page, {
@@ -171,7 +178,7 @@ test.describe('items stock tab — location pager', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given Milk is stocked in both locations, with one log and one cart entry
     // in each
@@ -267,7 +274,7 @@ test.describe('items stock tab — location pager', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given three locations, with Milk stocked only in the first
     await seedFixture(page, {
@@ -336,7 +343,7 @@ test.describe('items stock tab — location pager', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given Milk is stocked in My Home only, and it shows in the pantry
     await seedFixture(page, {
@@ -386,7 +393,7 @@ test.describe('items stock tab — location pager', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given only the default location exists
     await seedFixture(page, {

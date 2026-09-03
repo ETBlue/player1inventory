@@ -19,8 +19,16 @@ import { StockFormPage } from '../pages/StockFormPage'
 // real browser re-renders the input the way the user saw. Do not delete this
 // file on the grounds that ItemForm.test.tsx "already covers it".
 //
-// Locations are local-first — there is no cloud Location or ItemStock backend —
-// so the fixture, and therefore every test here, is local-only.
+// The fixture, and therefore every test here, is local-only.
+//
+// WHY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
+// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
+// client on it. It is that the fixture seeds **IndexedDB** through
+// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
+// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
+// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
+// guards below are belt-and-braces rather than the thing that excludes it.
+// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
 
 const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home"
 const ITEM = 'item-milk'
@@ -112,7 +120,7 @@ test.describe('items stock tab — number input editing', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given Milk is stocked at My Home with a Packed quantity of 0
     await seedFixture(page)
@@ -181,7 +189,7 @@ test.describe('items stock tab — number input editing', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given Milk is stocked at My Home with Target and Refill both at 0
     await seedFixture(page)
@@ -255,7 +263,7 @@ test.describe('items stock tab — number input editing', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given Milk is stocked at My Home with an Unpacked quantity of 0
     await seedFixture(page)

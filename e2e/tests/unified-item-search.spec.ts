@@ -12,8 +12,15 @@ import { ShoppingPage } from '../pages/ShoppingPage'
 // location-blind implementation it reads as stocked here, lands in the cart's
 // own list, and every assertion below stops distinguishing right from wrong.
 //
-// Locations are local-first (no cloud Location/ItemStock backend), so this
-// flow is local-only.
+// This flow is local-only.//
+// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
+// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
+// client on it. It is that every fixture here seeds **IndexedDB** through
+// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
+// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
+// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
+// guards below are belt-and-braces rather than the thing that excludes it.
+// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
 
 const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home"
 const OFFICE = 'office-loc'

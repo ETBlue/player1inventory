@@ -1,9 +1,16 @@
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 
-// Locations are local-first with NO cloud GraphQL backend yet (PR A). The page
-// must still render in both modes (covered by a11y.spec.ts), but the CRUD flows
-// only operate against local Dexie, so the functional tests are local-only.
+// The page must render in both modes (covered by a11y.spec.ts), but the CRUD
+// flows here are local-only.//
+// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
+// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
+// client on it. It is that every fixture here seeds **IndexedDB** through
+// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
+// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
+// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
+// guards below are belt-and-braces rather than the thing that excludes it.
+// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
 //
 // Name lookups are scoped to <main>: /settings/locations is not a fullscreen
 // page, so at Playwright's default (desktop) viewport the sidebar's
@@ -44,7 +51,7 @@ test.afterEach(async ({ page }) => {
 })
 
 test('user can create a location', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   // Given the locations settings page is open (default "My Home" seeded on first open)
   await page.goto('/settings/locations')
@@ -64,7 +71,7 @@ test('user can create a location', async ({ page, baseURL }) => {
 })
 
 test('user can rename a location', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
@@ -89,7 +96,7 @@ test('user can rename a location', async ({ page, baseURL }) => {
 })
 
 test('user can delete a non-default location', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
@@ -114,7 +121,7 @@ test('user can delete a non-default location', async ({ page, baseURL }) => {
 })
 
 test('the default location cannot be deleted', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   // Given the locations page with only the default location
   await page.goto('/settings/locations')
@@ -127,7 +134,7 @@ test('the default location cannot be deleted', async ({ page, baseURL }) => {
 })
 
 test('user can reorder locations', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet (PR A)')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()

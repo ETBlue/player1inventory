@@ -76,6 +76,29 @@ test('user can see expiration badge updated after checkout without manual refres
     )
     expect(testItem.id).toBeDefined()
 
+    // Stock it in the account's default location. Since cloud-locations PR 2
+    // the cloud pantry reads `PantryData` and shows only items with an
+    // `ItemStock` row HERE — the raw `createItem` mutation writes the Item's
+    // legacy inline columns and no stock row, so without this the item is
+    // created and invisible. The app itself never takes this path:
+    // `useCreateItem`'s cloud branch always follows the create with an
+    // `upsertItemStock` (see apps/web/src/hooks/useItems.ts). This seed has to
+    // do the same two steps to stand in for it.
+    const { locations } = await gql<{
+      locations: { id: string; isDefault: boolean }[]
+    }>(`query { locations { id isDefault } }`, {})
+    const defaultLocationId = (locations.find((l) => l.isDefault) ?? locations[0]).id
+    await gql(
+      `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+        upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+      }`,
+      {
+        itemId: testItem.id,
+        locationId: defaultLocationId,
+        input: { packedQuantity: 0, targetQuantity: 1, refillThreshold: 1 },
+      },
+    )
+
     // Pantry: item is visible but no expiration badge (no purchase yet → no lastPurchaseDate)
     await pantry.navigateTo()
     await expect(pantry.getItemCard('Test Yogurt')).toBeVisible()
