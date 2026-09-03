@@ -212,9 +212,11 @@ describe('NewItemDialog — cloud mode', () => {
     // Then `addItemToLocation` stocked it in the ACTIVE location — the Kitchen,
     // not the Garage it was already in
     await waitFor(() =>
-      expect(mockAddItemToLocation).toHaveBeenCalledWith({
-        variables: { itemId: 'item-flour', locationId: KITCHEN },
-      }),
+      expect(mockAddItemToLocation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variables: { itemId: 'item-flour', locationId: KITCHEN },
+        }),
+      ),
     )
 
     // And the caller gets the freshly copied stock row merged over the item,

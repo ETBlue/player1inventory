@@ -22,6 +22,7 @@ import {
   LOC_A,
   LOC_B,
 } from '@/test/cloudFixtures'
+import { DEFAULT_LOCATION_ID } from '@/types'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
@@ -36,10 +37,20 @@ import { useCreateItem, useStockedItems, useUpdateItem } from './useItems'
 // to the location being viewed" could pass against a hook that sent no
 // `locationId` at all, which is exactly the bug this task fixes.
 //
-// `@apollo/client/react` is NOT unmocked here: nothing in `useItems` calls
-// `useApolloClient` (the cache eviction runs off the `update` callback's own
-// `cache` argument), so setup.ts's stub is never reached.
+// The cache eviction runs off the `update` callback's own `cache` argument, but
+// the location resolution added by the fresh-session fix does call
+// `useApolloClient` — see the unmock below.
 vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
+
+// `@apollo/client/react` IS unmocked here now: since the FRESH-SESSION fix the
+// cloud write paths call `useApolloClient()` to resolve the target location
+// (`useCloudLocationId`), and setup.ts's stub returns `{ data: {} }` from
+// `query`, which would silently take the degraded fall-through branch and make
+// the fresh-session test below unable to fail.
+vi.mock(
+  '@apollo/client/react',
+  async (importOriginal) => await importOriginal(),
+)
 
 vi.mock('./useDataMode', () => ({ useDataMode: vi.fn() }))
 
@@ -388,5 +399,71 @@ describe('cloud stock writes go to one location', () => {
     expect(created?.stockId).toBeUndefined()
     expect(rowAt('item-new', LOC_A)).toBeUndefined()
     expect(names(result.current.pantry.data)).toEqual(['Milk'])
+  })
+
+  // ── The FRESH cloud session ────────────────────────────────────────────────
+  //
+  // THE FIXTURE IS THE TEST, and every test above has the wrong one: they seed
+  // `active-location-id:cloud` with a real cuid, which pre-resolves the very
+  // thing that breaks. A fresh cloud sign-in has NO such slot, so
+  // `readStoredLocationId('cloud')` hands back `DEFAULT_LOCATION_ID` — the local
+  // `'local'` sentinel — until `GetLocations` resolves and the provider corrects
+  // it. A write issued inside that window was sent with `'local'` and refused by
+  // `requireLocationRole`; thirteen cloud E2E specs failed on it.
+  //
+  // These tests mutate on the FIRST render pass, before `GetLocations` has
+  // landed, which is what the E2E was doing by clicking Add immediately after
+  // load. There is deliberately no `waitFor` before the mutation.
+  describe('a fresh cloud session, before GetLocations has resolved', () => {
+    beforeEach(() => {
+      // No stored slot at all — the state a first cloud sign-in is actually in.
+      localStorage.removeItem(activeLocationStorageKey('cloud'))
+    })
+
+    it('user creating an item has it stocked in the real default location', async () => {
+      // Given a brand-new cloud session with no remembered location
+      const { result } = renderHook(() => useCreateItem(), {
+        wrapper: makeWrapper(),
+      })
+
+      // When the user creates an item immediately, without waiting for the
+      // location list to load
+      const created = await result.current.mutateAsync({
+        name: 'Oat milk',
+        tagIds: [],
+        vendorIds: [],
+        targetUnit: 'package',
+        targetQuantity: 3,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+      })
+
+      // Then the stock landed in the isDefault location — NOT under the
+      // `'local'` sentinel, which names no cloud Location and whose upsert the
+      // server refuses
+      expect(rowAt('item-new', LOC_A)?.targetQuantity).toBe(3)
+      expect(rowAt('item-new', DEFAULT_LOCATION_ID)).toBeUndefined()
+      expect(created?.stockId).toBeDefined()
+      expect(created?.locationId).toBe(LOC_A)
+    })
+
+    it('user editing stock has it written to the real default location', async () => {
+      // Given the same fresh session
+      const { result } = renderHook(() => useUpdateItem(), {
+        wrapper: makeWrapper(),
+      })
+
+      // When a quantity is saved before the location list has loaded
+      await result.current.mutateAsync({
+        id: 'item-milk',
+        updates: { packedQuantity: 9 },
+      })
+
+      // Then Cloud Kitchen's row moved and Cloud Garage's did not
+      expect(rowAt('item-milk', LOC_A)?.packedQuantity).toBe(9)
+      expect(rowAt('item-milk', LOC_B)?.packedQuantity).toBe(6)
+      expect(rowAt('item-milk', DEFAULT_LOCATION_ID)).toBeUndefined()
+    })
   })
 })

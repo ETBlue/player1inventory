@@ -62,6 +62,28 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   return {
     ...original,
     useGetItemQuery: () => mockUseGetItemQuery(),
+    // The cloud pantry gate (`useCloudLocationKnown` in `useItems.ts`) reads the
+    // location list to check the active id is real before sending `PantryData`.
+    // These fixtures pin the ACTIVE location (`ActiveLocationProvider`'s
+    // provider-less fallback, `DEFAULT_LOCATION_ID`), so the gate must see it in
+    // the list or every cloud read here would stay `isLoading`.
+    useGetLocationsQuery: () => ({
+      data: {
+        locations: [
+          {
+            __typename: 'Location',
+            id: DEFAULT_LOCATION_ID,
+            name: 'My Home',
+            order: 0,
+            isDefault: true,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+      loading: false,
+      error: undefined,
+    }),
     // The pantry hooks read `PantryData` now, not `GetItems`. The cloud
     // fixtures below are still written as item lists; `asPantryDataResult`
     // lifts each item's inline stock values into the ItemStock row the join
@@ -770,9 +792,15 @@ describe('location mutations go to the cloud in cloud mode', () => {
 
     // Then the request went to the server with that location, and the untouched
     // local row proves Dexie was not the target
-    expect(mockCloudRemoveFromLocation).toHaveBeenCalledWith({
-      variables: { itemId: item.id, locationId: CLOUD_LOCATION },
-    })
+    // `objectContaining`: the call also carries the per-call
+    // `refetchQueries` / `awaitRefetchQueries` that target the written
+    // location (see `stockListRefetches`). The VARIABLES are what this
+    // assertion is about.
+    expect(mockCloudRemoveFromLocation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: { itemId: item.id, locationId: CLOUD_LOCATION },
+      }),
+    )
     expect(await getItemStock(item.id, DEFAULT_LOCATION_ID)).toBeDefined()
   })
 
@@ -793,9 +821,11 @@ describe('location mutations go to the cloud in cloud mode', () => {
     })
 
     // Then the server was asked, and Dexie still holds nothing
-    expect(mockCloudAddToLocation).toHaveBeenCalledWith({
-      variables: { itemId: item.id, locationId: CLOUD_LOCATION },
-    })
+    expect(mockCloudAddToLocation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variables: { itemId: item.id, locationId: CLOUD_LOCATION },
+      }),
+    )
     expect(await db.itemStocks.toArray()).toHaveLength(0)
   })
 })

@@ -27,10 +27,12 @@ import {
   GetRecipesDocument,
   ItemCountByTagDocument,
   ItemCountByVendorDocument,
+  PantryDataDocument,
   useAddItemToLocationMutation,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
+  useGetLocationsQuery,
   useItemStocksForItemQuery,
   useLastPurchaseDatesQuery,
   usePantryDataQuery,
@@ -48,6 +50,7 @@ import {
 import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
+import { useCloudLocationId } from './useCloudLocationId'
 import { useDataMode } from './useDataMode'
 
 // In local mode, item create/update accept the global Item fields plus stock
@@ -235,6 +238,32 @@ function joinPantryData(
   )
 }
 
+// Is `activeLocationId` a location this account actually has?
+//
+// On a fresh cloud session it is not: there is no `active-location-id:cloud`
+// slot, so it is still `DEFAULT_LOCATION_ID` — the local `'local'` sentinel —
+// until `GetLocations` resolves and `ActiveLocationProvider` corrects it
+// (`useCloudLocationId` documents the same window from the write side).
+//
+// `PantryData` must NOT be sent with an unknown id, and not merely because the
+// response is a wasted `FORBIDDEN`. Apollo keeps that request as a live
+// OBSERVER keyed by its variables, and every stock mutation refetches
+// `PantryData` BY NAME with `awaitRefetchQueries` — so the stale
+// `{locationId: 'local'}` observer is refetched too, fails again, and rejects
+// the mutation's own promise. A create then left the item written, the dialog
+// open and no navigation: the second half of the bug cloud E2E caught on
+// 2026-09-04, and the half that survives fixing the write path alone.
+//
+// `useGetLocationsQuery` rather than `useLocations()`: this must add nothing to
+// the LOCAL branch, and Apollo dedupes it against the provider's own call, so
+// the gate costs no request.
+function useCloudLocationKnown(activeLocationId: string, isCloud: boolean) {
+  const { data } = useGetLocationsQuery({ skip: !isCloud })
+  return (
+    !isCloud || !!data?.locations.some((loc) => loc.id === activeLocationId)
+  )
+}
+
 // The whole item catalog, each entry joined with the active location's stock.
 // Items not stocked here are PRESENT, with `stockId: undefined` — the search
 // tail's third bucket ("exists globally, not stocked here") is built from that
@@ -250,9 +279,10 @@ export function useItems() {
     enabled: !isCloud,
   })
 
+  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
   const cloud = usePantryDataQuery({
     variables: { locationId: activeLocationId },
-    skip: !isCloud,
+    skip: !isCloud || !locationKnown,
   })
 
   const cloudData = useMemo(
@@ -263,8 +293,11 @@ export function useItems() {
   if (isCloud) {
     return {
       data: cloudData,
-      isLoading: cloud.loading,
-      isFetching: cloud.networkStatus < 7, // 7 = NetworkStatus.ready
+      // Still loading while the location is being resolved — a skipped query
+      // reports `loading: false`, and reporting "loaded, no items" there would
+      // flash an empty pantry on every cloud page load.
+      isLoading: cloud.loading || !locationKnown,
+      isFetching: !locationKnown || cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       isError: !!cloud.error,
       refetch: cloud.refetch,
     }
@@ -299,9 +332,10 @@ export function useStockedItems() {
     enabled: !isCloud,
   })
 
+  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
   const cloud = usePantryDataQuery({
     variables: { locationId: activeLocationId },
-    skip: !isCloud,
+    skip: !isCloud || !locationKnown,
   })
 
   const cloudData = useMemo(
@@ -312,8 +346,9 @@ export function useStockedItems() {
   if (isCloud) {
     return {
       data: cloudData,
-      isLoading: cloud.loading,
-      isFetching: cloud.networkStatus < 7, // 7 = NetworkStatus.ready
+      // See `useItems` above — skipped is not loaded.
+      isLoading: cloud.loading || !locationKnown,
+      isFetching: !locationKnown || cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       isError: !!cloud.error,
       refetch: cloud.refetch,
     }
@@ -452,6 +487,7 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  const resolveCloudLocationId = useCloudLocationId()
   const catalogOnly = options?.catalogOnly ?? false
 
   const localMutation = useMutation({
@@ -473,8 +509,6 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
   const [cloudStockNewItem, { loading: cloudStockLoading }] =
     useUpsertItemStockMutation({
       update: (cache) => evictStockLists(cache),
-      refetchQueries: STOCK_LIST_QUERIES,
-      awaitRefetchQueries: true,
     })
 
   if (mode === 'cloud') {
@@ -496,13 +530,22 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
       )
       if (catalogOnly) return joinItemStock(item, undefined, activeLocationId)
 
+      // Resolved at CALL time, not render time. On a fresh cloud session
+      // `activeLocationId` is still the `'local'` sentinel until `GetLocations`
+      // resolves, and stocking the brand-new item with it is refused by
+      // `requireLocationRole` — the item lands in the catalog, stocked nowhere,
+      // and the dialog hangs. See `useCloudLocationId`.
+      const locationId = await resolveCloudLocationId()
+
       const stockRow = (
         await cloudStockNewItem({
           variables: {
             itemId: created.id,
-            locationId: activeLocationId,
+            locationId,
             input: toCreateStockInput(input),
           },
+          refetchQueries: stockListRefetches(locationId),
+          awaitRefetchQueries: true,
         })
       ).data?.upsertItemStock
       // Joined, so callers reading `stockId` / the stock fields off the result
@@ -514,7 +557,7 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
         stockRow
           ? deserializeItemStock(stockRow as Record<string, unknown>)
           : undefined,
-        activeLocationId,
+        locationId,
       )
     }
 
@@ -549,12 +592,21 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
 //   eviction the pantry's next mount would be served the pre-mutation list from
 //   the cache under the default cache-first policy.
 //
-//   `refetchQueries` by NAME refills whatever IS mounted. Names rather than
-//   `{ query, variables }` descriptors because both queries are variable-scoped
-//   (a location id / an item id) and this hook cannot know every mounted
-//   variant; `useCheckout` already refetches `'VendorCart'` the same way.
-//   Apollo's query deduplication merges this with the refetch the eviction
-//   itself triggers on those same observers.
+//   `refetchQueries` refills whatever IS mounted. `PantryData` is refetched by
+//   `{ query, variables }` for the location just written, NOT by name.
+//   Name-based refetching was the first shape and it is wrong here in a way
+//   that broke cloud E2E: Apollo refetches EVERY `PantryData` observer with
+//   that name — including one that `skip` has parked on an unresolved
+//   `locationId` — so a refetch the app deliberately declined to make is made
+//   anyway, comes back `FORBIDDEN`, and (under `awaitRefetchQueries`) REJECTS
+//   the mutation that had already succeeded. The dialog then hangs on a write
+//   that landed. Targeting the written location is also simply more correct:
+//   another location's list is unaffected by this write, and anything unmounted
+//   is already covered by the eviction above.
+//
+//   `ItemStocksForItem` stays a NAME: its only variable is an item id, which is
+//   always valid, and the pager may be mounted for an item this call does not
+//   know. `useCheckout` refetches `'VendorCart'` the same way.
 //
 //   `awaitRefetchQueries` so `mutateAsync` resolves only once the lists have
 //   landed — the search tail's bucket-3 row re-enables in a `finally` after
@@ -565,7 +617,12 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
 // it somewhere. `PantryData` does have to be listed even though it shares
 // `ROOT_QUERY.items` with `GetItems`, because `itemStocks` is a different root
 // field that a `GetItems` refetch never reaches.
-const STOCK_LIST_QUERIES = ['PantryData', 'ItemStocksForItem']
+function stockListRefetches(locationId: string) {
+  return [
+    { query: PantryDataDocument, variables: { locationId } },
+    'ItemStocksForItem',
+  ]
+}
 
 const CLOUD_ADD_RETURNED_NO_STOCK =
   'addItemToLocation resolved without an ItemStock — the item was not stocked.'
@@ -592,6 +649,7 @@ export function useAddItemToLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  const resolveCloudLocationId = useCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ itemId, locationId }: AddToLocationVars) =>
@@ -612,11 +670,7 @@ export function useAddItemToLocation() {
   })
 
   const [cloudAdd, { loading: cloudAddLoading }] = useAddItemToLocationMutation(
-    {
-      update: (cache) => evictStockLists(cache),
-      refetchQueries: STOCK_LIST_QUERIES,
-      awaitRefetchQueries: true,
-    },
+    { update: (cache) => evictStockLists(cache) },
   )
 
   if (mode === 'cloud') {
@@ -629,14 +683,24 @@ export function useAddItemToLocation() {
     //
     // The Stock-tab pager passes the location of the page being viewed as
     // `locationId`, exactly as in local mode.
+    // `resolveCloudLocationId` rather than `?? activeLocationId`: the active id
+    // is still the `'local'` sentinel until `GetLocations` resolves on a fresh
+    // cloud session, and the resolver refuses it. See `useCloudLocationId`.
+    const runCloudAdd = async ({ itemId, locationId }: AddToLocationVars) => {
+      const target = await resolveCloudLocationId(locationId)
+      return await cloudAdd({
+        variables: { itemId, locationId: target },
+        refetchQueries: stockListRefetches(target),
+        awaitRefetchQueries: true,
+      })
+    }
+
     return {
       mutate: (
-        { itemId, locationId }: AddToLocationVars,
+        vars: AddToLocationVars,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudAdd({
-          variables: { itemId, locationId: locationId ?? activeLocationId },
-        }).then(
+        runCloudAdd(vars).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -647,10 +711,8 @@ export function useAddItemToLocation() {
       // it rather than off the stale pre-add item, and a union of "Dexie row |
       // wire row | undefined" would not let it. A resolved mutation with no row
       // is a broken response, not an empty result, so it throws.
-      mutateAsync: ({ itemId, locationId }: AddToLocationVars) =>
-        cloudAdd({
-          variables: { itemId, locationId: locationId ?? activeLocationId },
-        }).then((r) => {
+      mutateAsync: (vars: AddToLocationVars) =>
+        runCloudAdd(vars).then((r) => {
           const row = r.data?.addItemToLocation
           if (!row) throw new Error(CLOUD_ADD_RETURNED_NO_STOCK)
           return deserializeItemStock(row as Record<string, unknown>)
@@ -688,6 +750,7 @@ export function useRemoveItemFromLocation() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  const resolveCloudLocationId = useCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ itemId, locationId }: RemoveFromLocationVars) =>
@@ -707,19 +770,29 @@ export function useRemoveItemFromLocation() {
   const [cloudRemove, { loading: cloudRemoveLoading }] =
     useRemoveItemFromLocationMutation({
       update: (cache) => evictStockLists(cache),
-      refetchQueries: STOCK_LIST_QUERIES,
-      awaitRefetchQueries: true,
     })
 
   if (mode === 'cloud') {
+    // See `useCloudLocationId` — the active id can still be the `'local'`
+    // sentinel on a fresh cloud session.
+    const runCloudRemove = async ({
+      itemId,
+      locationId,
+    }: RemoveFromLocationVars) => {
+      const target = await resolveCloudLocationId(locationId)
+      return await cloudRemove({
+        variables: { itemId, locationId: target },
+        refetchQueries: stockListRefetches(target),
+        awaitRefetchQueries: true,
+      })
+    }
+
     return {
       mutate: (
-        { itemId, locationId }: RemoveFromLocationVars,
+        vars: RemoveFromLocationVars,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudRemove({
-          variables: { itemId, locationId: locationId ?? activeLocationId },
-        }).then(
+        runCloudRemove(vars).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -728,10 +801,8 @@ export function useRemoveItemFromLocation() {
       // Resolves to void, like the local branch: the resolver's `Boolean!` is
       // always `true` (it throws on failure), so returning it would invite a
       // caller to test a flag that can never be false.
-      mutateAsync: async ({ itemId, locationId }: RemoveFromLocationVars) => {
-        await cloudRemove({
-          variables: { itemId, locationId: locationId ?? activeLocationId },
-        })
+      mutateAsync: async (vars: RemoveFromLocationVars) => {
+        await runCloudRemove(vars)
       },
       isPending: cloudRemoveLoading,
     }
@@ -753,6 +824,7 @@ export function useUpdateItem() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  const resolveCloudLocationId = useCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: ({ id, updates, locationId }: ItemUpdateVars) =>
@@ -789,12 +861,10 @@ export function useUpdateItem() {
   // which `GetItems` and `PantryData` share, while `upsertItemStock` changes
   // `itemStocks` / `itemStocksForItem`, which a `GetItems` refetch never
   // reaches. Same cache handling as `useAddItemToLocation` — see the
-  // STOCK_LIST_QUERIES comment for why an eviction AND a named refetch.
+  // stockListRefetches comment for why an eviction AND a targeted refetch.
   const [cloudUpsertStock, { loading: cloudStockLoading }] =
     useUpsertItemStockMutation({
       update: (cache) => evictStockLists(cache),
-      refetchQueries: STOCK_LIST_QUERIES,
-      awaitRefetchQueries: true,
     })
 
   if (mode === 'cloud') {
@@ -819,12 +889,16 @@ export function useUpdateItem() {
           ? await cloudUpdate({ variables: { id, input: config } })
           : undefined
       if (touchesStock(updates)) {
+        // Resolved at CALL time — see `useCloudLocationId`.
+        const target = await resolveCloudLocationId(locationId)
         await cloudUpsertStock({
           variables: {
             itemId: id,
-            locationId: locationId ?? activeLocationId,
+            locationId: target,
             input: toStockInput(updates),
           },
+          refetchQueries: stockListRefetches(target),
+          awaitRefetchQueries: true,
         })
       }
       return itemResult?.data?.updateItem
