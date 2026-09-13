@@ -543,10 +543,20 @@ weak fixture. The server suite has hit this twice in one branch:
 - a `createMany` fake that silently dedupes hides the `P2002` real Postgres would throw,
   leaving a read-then-union unpinned
 
-Note also that **nothing executes the resolvers against real SQL** — every server test runs
-against a hand-written stateful Prisma fake, and cloud E2E is gated on `TEST_CLOUD_MODE`
-(issue #260), which is set nowhere. A manual cloud smoke test is owed for anything
-transactional.
+Note also that **no *unit* test executes the resolvers against real SQL** — every server
+test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
+Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
+branch), but only for the spec files listed in the `cloud` project's `testMatch` in
+`e2e/playwright.config.ts` — that list is opt-in and covers nine files today. **A resolver
+exercised by no cloud spec has never touched SQL at all**, and a manual smoke test is owed
+for anything transactional.
+
+> The former wording here — "cloud E2E is gated on `TEST_CLOUD_MODE` (issue #260), which is
+> set nowhere" — was true until PR 0 of cloud locations replaced those guards with the
+> `baseURL !== CLOUD_WEB_URL` convention. `grep -rn TEST_CLOUD_MODE` now returns nothing
+> outside historical docs. It survived here long enough to be copied into several task
+> briefs during PR 2, which is the failure mode the section directly below this one
+> describes.
 
 **"The item eventually lands" does not pin the path it took.** An assertion on the end
 state passes just as well when a bypass short-circuits the flow. Assert the mechanism — the
