@@ -169,25 +169,31 @@ async function switchTo(page: Page, name: string) {
   await expect(trigger).toHaveText(name)
 }
 
+// Create a brand-new item in whatever location is active right now, through the
+// pantry's Add combobox. The item ends up stocked ONLY in that location, which
+// is what lets a test hold "stocked here" and "stocked elsewhere" side by side.
+// Clicking "Create" navigates to the new item's detail page, so callers that
+// need the pantry again must navigate back themselves.
+async function createItemHere(page: Page, name: string) {
+  // Add-item button: aria-label="Add item" (src/components/pantry/PantryListView.tsx)
+  await page.getByRole('button', { name: 'Add item' }).click()
+  const dialog = page.getByRole('dialog')
+  // Combobox: role="combobox" aria-label via the Name label (NewItemDialog.tsx)
+  await dialog.getByRole('combobox').fill(name)
+  // No catalog match -> a "Create" button appears in the dialog footer.
+  await Promise.all([
+    page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
+    dialog.getByRole('button', { name: /create/i }).click(),
+  ])
+}
+
 test('switching the active location re-scopes the pantry to stocked items', async ({
   page,
 }) => {
   // Given a second location "Office" and an item created in "My Home"
   await seedOfficeLocation(page)
   await page.goto('/')
-
-  // Create "Yogurt" in the active (My Home) location via the Add combobox.
-  // Add-item button: aria-label="Add item" (src/components/pantry/PantryListView.tsx)
-  await page.getByRole('button', { name: 'Add item' }).click()
-  const dialog = page.getByRole('dialog')
-  // Combobox: role="combobox" aria-label via the Name label (NewItemDialog.tsx)
-  await dialog.getByRole('combobox').fill('Yogurt')
-  // No catalog match → "Create" button appears in the dialog footer; clicking it
-  // creates the item and navigates to its detail page.
-  await Promise.all([
-    page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
-    dialog.getByRole('button', { name: /create/i }).click(),
-  ])
+  await createItemHere(page, 'Yogurt')
 
   // Go back to the pantry.
   await page.goto('/')
@@ -198,7 +204,20 @@ test('switching the active location re-scopes the pantry to stocked items', asyn
   // When the user switches to the empty "Office" location
   await switchTo(page, 'Office')
 
-  // Then the pantry is empty there (Yogurt is stocked only in My Home)
+  // Then the pantry shows its empty state there — Yogurt is stocked only in
+  // My Home.
+  //
+  // ASSERT THE EMPTY STATE FIRST, and only then that Yogurt is gone. The empty
+  // state renders only after the location's stock query resolves with zero rows
+  // (PantryListView returns <LoadingSpinner /> while `isLoading`), so it proves
+  // the page settled. `toHaveCount(0)` on its own does not: it passes on the
+  // first frame where the count is 0, which right after a location switch is the
+  // loading frame, before the response arrives. That is why this test still
+  // passed here when the server's `itemStocks` query was made to ignore its
+  // `locationId` filter — it failed ~40 lines later instead, at the
+  // `aria-disabled` click, pointing at the wrong code.
+  // Empty-state title: t('pantry.empty.title') (src/components/pantry/PantryListView.tsx)
+  await expect(page.getByText('Your pantry is empty')).toBeVisible()
   await expect(
     page.getByRole('heading', { name: 'Yogurt', level: 3 }),
   ).toHaveCount(0)
@@ -222,31 +241,52 @@ test('switching the active location re-scopes the pantry to stocked items', asyn
   ).toBeVisible()
 })
 
+// TWO locations, and an item stocked in each — not one location.
+//
+// With a single location "stocked here" and "stocked anywhere" return the same
+// answer, so the test passed against a server that ignored `locationId`
+// entirely. It stayed green under exactly that mutation. The pair below is what
+// a one-location fixture cannot produce: an implementation that disables
+// nothing fails the first assertion, and one that disables everything fails the
+// second.
 test('an item already stocked in the active location is shown disabled in the Add combobox', async ({
   page,
 }) => {
-  // Given an item created in the active (My Home) location
+  // Given a second location "Office"
+  await seedOfficeLocation(page)
+
+  // And "Oats" created in the active (My Home) location
   await page.goto('/')
-  await page.getByRole('button', { name: 'Add item' }).click()
-  let dialog = page.getByRole('dialog')
-  await dialog.getByRole('combobox').fill('Oats')
-  await Promise.all([
-    page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
-    dialog.getByRole('button', { name: /create/i }).click(),
-  ])
+  await createItemHere(page, 'Oats')
+
+  // And "Oat Milk" created while "Office" is active, so it is stocked THERE and
+  // not in My Home
   await page.goto('/')
+  await switchTo(page, 'Office')
+  await createItemHere(page, 'Oat Milk')
+
+  // Back in My Home, where Oats is stocked and Oat Milk is not
+  await page.goto('/')
+  await switchTo(page, 'My Home')
   await expect(
     page.getByRole('heading', { name: 'Oats', level: 3 }),
   ).toBeVisible()
 
-  // When the user re-opens Add and searches for the same item
+  // When the user opens Add and searches for "Oat", which matches both
   await page.getByRole('button', { name: 'Add item' }).click()
-  dialog = page.getByRole('dialog')
-  await dialog.getByRole('combobox').fill('Oats')
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('combobox').fill('Oat')
 
-  // Then the matching option is marked disabled (already stocked here)
-  const option = dialog.getByRole('option', { name: /oats/i })
-  await expect(option).toHaveAttribute('aria-disabled', 'true')
+  // Then the item stocked HERE is marked disabled
+  // aria-disabled={stocked} on role="option" (NewItemDialog.tsx)
+  await expect(
+    dialog.getByRole('option', { name: /oats/i }),
+  ).toHaveAttribute('aria-disabled', 'true')
+
+  // And the item stocked only in Office stays selectable
+  await expect(
+    dialog.getByRole('option', { name: /oat milk/i }),
+  ).toHaveAttribute('aria-disabled', 'false')
 })
 
 // ---------------------------------------------------------------------------
