@@ -333,6 +333,52 @@ closes only part of it.
 
 ---
 
+## Task 4b — Two test-quality problems Task 3 found
+
+Task 3's mutation check exposed both. Neither was changed during Task 3, on
+purpose: the agent reported them instead of quietly reshaping a test to pass.
+Fix them here, after Task 4.
+
+### 4b.1 — A racy absence assertion
+
+In `e2e/tests/location-switcher.spec.ts`, "switching the active location
+re-scopes the pantry to stocked items" checks that Yogurt is gone at Office:
+
+```ts
+await expect(page.getByRole('heading', { name: 'Yogurt', level: 3 })).toHaveCount(0)
+```
+
+`toHaveCount(0)` passes on the first frame where the count is 0. Right after a
+location switch the pantry is still loading, so it passes before the response
+arrives. Under Task 3's mutation this assertion **did not catch the bug** — the
+test failed later, at the `aria-disabled` click.
+
+Fix: assert something positive first — the empty-state text, or that loading has
+finished — then assert Yogurt is gone.
+
+**Mutation check:** re-run Task 3's mutation (drop the `locationId` filter from
+the `itemStocks` query in `apps/server/src/resolvers/itemStock.resolver.ts`). The
+test must now fail **at this assertion**, not 40 lines later.
+
+### 4b.2 — A fixture that cannot tell scoped from unscoped
+
+"an item already stocked in the active location is shown disabled in the Add
+combobox" uses one location only. With one location, "stocked here" and "stocked
+anywhere" give the same answer, so the test passes against an implementation that
+ignores location entirely. It stayed green under Task 3's mutation.
+
+Root `CLAUDE.md`: "Every location-scoped test needs a fixture stocked only at
+*another* location."
+
+Fix: give the fixture a second location and an item stocked only there. Assert
+that item's option is **enabled** in the combobox while the here-stocked item's
+option is disabled. That is the pair a one-location fixture cannot produce.
+
+**Mutation check:** the same mutation must now turn this test red too.
+
+If either test cannot be turned red after the fix, say so plainly rather than
+reshaping it further.
+
 ## Corrections found while running this plan
 
 | Task | What the plan got wrong |
@@ -340,6 +386,15 @@ closes only part of it.
 | 1 | The `ItemStock` ordering rationale. Both FKs cascade, so order is not observable in `/e2e/cleanup`. Fixed above and in the design doc. |
 | 1 | `purge-coverage.test.ts` cannot see the `itemStock` line — it only checks models with a `userId`. Not covered, and not required. |
 | 1 | Line numbers for `index.ts` are stale after the fix. The `$transaction` array is now lines 29-57. Later tasks must not trust line numbers in this plan. |
+| 2 | Step 2.4's command carried a useless `--grep-invert nothing` flag. The repo already has `pnpm test:e2e:cloud`. |
+| 2 | The mutation check is stronger than written. Run 1 already fails, not run 2 — `beforeEach` also calls `/e2e/cleanup`, so locations leak between tests inside one run. |
+| 2 | Nothing lints `e2e/`. `pnpm lint` and `pnpm check` scan `apps/web` only, and there is no root `biome.json`. The verification gate does not cover this directory. |
+| 3 | `location-switcher.spec.ts` has **14** test cases, not 8. Two `test()` declarations sit inside `for` loops over 4 pages. It had 8 `test.skip` lines, not 9. |
+| 3 | 8 tests in that file are layout-only, not 4 (4 desktop + 4 mobile). Only 1 of the 14 depends on location scoping at all. |
+| 3 | The plan named the Add-combobox test as key coverage. It is not — see Task 4b.2. |
+
+**Total test count.** The design said 16 tests. The real figure is **22**: 5 in
+`settings/locations`, 14 in `location-switcher`, 3 in `location-not-stocked-here`.
 
 ## Standing rules for every task
 
