@@ -69,9 +69,11 @@ prisma.itemStock.deleteMany({ where: { location: { userId } } }),
 prisma.location.deleteMany({ where: { userId } }),  // last
 ```
 
-Copy the ordering rationale from `import.resolver.ts:546-553` rather than
-restating it: `ItemStock` must be deleted before both `item` and `location`
-because `ItemStock_itemId_fkey` is `ON DELETE CASCADE`.
+**Corrected during Task 1 — this instruction was wrong.** It said to copy the
+ordering rationale from `import.resolver.ts:546-553`. Both of `ItemStock`'s
+foreign keys cascade (`schema.prisma:236-237`), so the order changes nothing
+`/e2e/cleanup` can observe. The order only matters in `purgeUserData`, which
+returns a deleted count. The shipped comment says the true thing.
 
 Add a short comment on the `PURGE_PATHS` entry saying that `/e2e/cleanup` is now
 a third hand-maintained copy of the same list, and this guard is what keeps the
@@ -330,6 +332,14 @@ closes only part of it.
 - the final list of files in the cloud `testMatch`
 
 ---
+
+## Corrections found while running this plan
+
+| Task | What the plan got wrong |
+|---|---|
+| 1 | The `ItemStock` ordering rationale. Both FKs cascade, so order is not observable in `/e2e/cleanup`. Fixed above and in the design doc. |
+| 1 | `purge-coverage.test.ts` cannot see the `itemStock` line — it only checks models with a `userId`. Not covered, and not required. |
+| 1 | Line numbers for `index.ts` are stale after the fix. The `$transaction` array is now lines 29-57. Later tasks must not trust line numbers in this plan. |
 
 ## Standing rules for every task
 

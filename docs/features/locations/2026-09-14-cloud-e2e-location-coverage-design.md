@@ -32,13 +32,23 @@ has any location, so leftovers are not cleaned up on the next run either. Run 2
 of "user can create a location" would see run 1's "Office" and fail.
 
 The fix copies `clearAllData`'s model list and order
-(`import.resolver.ts:537-562`), which already handles this and carries a comment
-explaining the ordering: `itemStock` must be deleted before both `item` and
-`location`, because `ItemStock_itemId_fkey` is `ON DELETE CASCADE` and would
-otherwise remove the rows before the explicit `deleteMany` runs.
+(`import.resolver.ts:537-562`).
 
-The two lists must not drift apart again. The plan adds a server test that
-compares them.
+**Corrected during Task 1.** An earlier draft of this section said `itemStock`
+must be deleted before `item` and `location` because `ItemStock_itemId_fkey` is
+`ON DELETE CASCADE`. That is wrong for this route. `schema.prisma:236-237` shows
+**both** of `ItemStock`'s foreign keys cascade, so the rows go either way and the
+order changes nothing that `/e2e/cleanup` can observe. The order only changes the
+result in `purgeUserData`, which returns a deleted count. The `itemStock` line is
+there to keep the three delete lists identical, not because the route needs it.
+
+The three lists must not drift apart again. `purge-coverage.test.ts` is the
+guard, and it reads resolver source from disk rather than a mock.
+
+**What the guard does not cover.** It only checks models that declare a `userId`.
+`ItemStock` has none on purpose. So nothing would notice if the `itemStock` line
+were removed from `/e2e/cleanup` again — and per the paragraph above, nothing
+would break either. Recorded here so it is not counted as covered.
 
 ### 2. A shared cloud teardown helper
 
