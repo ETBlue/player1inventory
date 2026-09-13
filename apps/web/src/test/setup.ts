@@ -69,6 +69,36 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    usePantryDataQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: vi.fn(),
+    }),
+    useItemStocksForItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useAddItemToLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // Called UNCONDITIONALLY by `useCreateItem` and `useUpdateItem` — a hook
+    // cannot sit behind the `mode === 'cloud'` branch — so a local-mode test
+    // rendering either one reaches the real Apollo hook without an
+    // ApolloProvider and dies with "Could not find client in the context".
+    // That is what a missing entry here looks like: 270 failures across 19
+    // files, none of them cloud tests.
+    useUpsertItemStockMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useRemoveItemFromLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useCreateItemMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
@@ -277,6 +307,27 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       {},
     ],
     useApplyShelfFilterPicksMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useGetLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCreateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useReorderLocationsMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],

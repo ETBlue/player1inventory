@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
+import { defaultLocationId, mirrorStock } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
@@ -80,12 +81,28 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // Pinned items (quantity === 0) stay in the permanent cart — no migration needed
 
       const now = new Date()
+      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Resolved once
+      // outside the loop rather than per item — every mirror below targets the
+      // same location. NOT the cart's location: `Cart.locationId` does not
+      // exist until PR 3, so checkout credits the caller's DEFAULT location
+      // whatever they were looking at.
+      const mirrorLocationId = buyingItems.length > 0 ? await defaultLocationId(userId) : null
+
       for (const ci of buyingItems) {
         const updatedItem = await prisma.item.update({
           where: { id: ci.itemId },
           data: { packedQuantity: { increment: ci.quantity }, updatedAt: now },
         })
         const finalQuantity = updatedItem.packedQuantity + updatedItem.unpackedQuantity
+
+        // The same increment against the location's stock row. `increment`
+        // rather than the item's new total, so two concurrent checkouts of one
+        // item cannot lose an increment to a read-modify-write race.
+        if (mirrorLocationId) {
+          await mirrorStock(ci.itemId, mirrorLocationId, {
+            packedQuantity: { increment: ci.quantity },
+          })
+        }
 
         await prisma.inventoryLog.create({
           data: {

@@ -56,7 +56,7 @@ Components never access the database directly — they use Query hooks from `src
 
 ## Local Database & Dexie Schema
 
-> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` / v16 global-stock-settings migrations, the Item/ItemStock join (configuration on `Item`, per-location state on `ItemStock`), and the three cascades.
+> See `apps/web/src/db/CLAUDE.md` — schema versioning rules (forward-only, add a version rather than editing one, fresh DBs never run upgrade functions so `on('populate')` must seed too), the v14 `locations` / v15 `Item`+`ItemStock` / v16 global-stock-settings / v18 `Location.isDefault` migrations, the Item/ItemStock join (configuration on `Item`, per-location state on `ItemStock`), and the three cascades.
 
 ## Backend & Prisma Migrations
 
@@ -64,7 +64,7 @@ Components never access the database directly — they use Query hooks from `src
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — every cloud model is still scoped by a flat `userId`.
+> See `docs/global/permissions/2026-08-29-design-location-rbac.md` — permissions bind to **location RBAC**: rights come from the role held on a `Location` (owner/member edit, viewer reads), not from having created the row. Decided, **not yet built** — cloud models are still scoped by a flat `userId`, with one deliberate exception: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
 >
 > **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
 
@@ -543,10 +543,20 @@ weak fixture. The server suite has hit this twice in one branch:
 - a `createMany` fake that silently dedupes hides the `P2002` real Postgres would throw,
   leaving a read-then-union unpinned
 
-Note also that **nothing executes the resolvers against real SQL** — every server test runs
-against a hand-written stateful Prisma fake, and cloud E2E is gated on `TEST_CLOUD_MODE`
-(issue #260), which is set nowhere. A manual cloud smoke test is owed for anything
-transactional.
+Note also that **no *unit* test executes the resolvers against real SQL** — every server
+test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
+Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
+branch), but only for the spec files listed in the `cloud` project's `testMatch` in
+`e2e/playwright.config.ts` — that list is opt-in and covers nine files today. **A resolver
+exercised by no cloud spec has never touched SQL at all**, and a manual smoke test is owed
+for anything transactional.
+
+> The former wording here — "cloud E2E is gated on `TEST_CLOUD_MODE` (issue #260), which is
+> set nowhere" — was true until PR 0 of cloud locations replaced those guards with the
+> `baseURL !== CLOUD_WEB_URL` convention. `grep -rn TEST_CLOUD_MODE` now returns nothing
+> outside historical docs. It survived here long enough to be copied into several task
+> briefs during PR 2, which is the failure mode the section directly below this one
+> describes.
 
 **"The item eventually lands" does not pin the path it took.** An assertion on the end
 state passes just as well when a bypass short-circuits the flow. Assert the mechanism — the

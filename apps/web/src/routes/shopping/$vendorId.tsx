@@ -137,9 +137,12 @@ function VendorCart() {
   // checked. An item with no ItemStock row here has nothing to check out
   // against, so listing it on this page was always the anomaly.
   //
-  // Cloud has no Location/ItemStock backend, so a cloud item never carries a
-  // stockId — cloud bypasses the location gate entirely, matching the same
-  // bypass in useVendorCartCounts() and the shopping index page.
+  // Cloud bypasses the location gate until PR 3 — because of the CART, not the
+  // item. A cloud item does carry a stockId since PR 2 (`useItems()` joins
+  // `PantryData` per location), but a cloud `Cart` has no `locationId` until
+  // PR 3, so this page's cart still holds items stocked in other locations.
+  // Gating the list would hide rows the cart genuinely contains. Matches the
+  // same bypass in useVendorCartCounts() and the shopping index page.
   //
   // Memoized because its identity feeds `inGroupIds` below, which is a
   // dependency of the search tail's derivation.
@@ -245,9 +248,8 @@ function VendorCart() {
 
   // The wiring hook owns deriving the two buckets (useItemSearchTail), the
   // one-mutation-at-a-time pending id, gating bucket 3's "Add to <location>"
-  // action on local mode + a resolved active location (useAddItemToLocation
-  // throws in cloud), and applying this page's sort to both buckets — the
-  // tail is part of this list, not a separate widget.
+  // action on a resolved active location, and applying this page's sort to
+  // both buckets — the tail is part of this list, not a separate widget.
   //
   // The no-vendor cart's groupNote-vs-groupAction choice stays here: the
   // no-vendor cart always gets `groupNote`, a real vendor cart only gets
@@ -285,9 +287,10 @@ function VendorCart() {
   // (above), so isInactiveHere's stockId check is a no-op here and this is
   // equivalent to isInactive — reusing isInactiveHere keeps the predicate
   // consistent with the card and the pantry rather than reintroducing a bare
-  // isInactive check. Cloud items never carry a stockId (no ItemStock
-  // backend), so isInactiveHere would always read them as active; cloud
-  // keeps the pre-existing bare isInactive split instead.
+  // isInactive check. Cloud keeps the bare isInactive split because its list
+  // above is NOT stocked-here-filtered (the cart is not location-scoped until
+  // PR 3), so isInactiveHere's stockId check would read a genuinely inactive
+  // item stocked elsewhere as active.
   const isInactiveForDisplay = (item: PantryItem) =>
     isCloud ? isInactive(item) : isInactiveHere(item)
   const activeCartItems = cartSectionItems.filter(

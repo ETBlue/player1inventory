@@ -1,3 +1,9 @@
+import {
+  joinItemStock,
+  pickStockFields,
+  STOCK_FIELD_KEYS,
+  ZERO_STOCK,
+} from '@/lib/itemStock'
 import type { Language } from '@/lib/language'
 import { getPackedTotal } from '@/lib/quantityUtils'
 import type {
@@ -26,74 +32,10 @@ import { db } from './index'
 // the Item since v16. Components consume a joined `PantryItem`
 // (Item + active-location stock); operations expose both the raw ItemStock CRUD
 // and the joined reads.
-
-// The default stock state used when an item has no ItemStock in the requested
-// location (so a joined PantryItem still reads sensible zeroed values).
-const ZERO_STOCK: StockFields = {
-  targetQuantity: 0,
-  refillThreshold: 0,
-  packedQuantity: 0,
-  unpackedQuantity: 0,
-}
-
-// Every field `joinItemStock` copies from an ItemStock onto an Item. The eight
-// configuration fields are deliberately absent — they are the Item's own.
-const STOCK_FIELD_KEYS: (keyof StockFields)[] = [
-  'targetQuantity',
-  'refillThreshold',
-  'packedQuantity',
-  'unpackedQuantity',
-  'dueDate',
-]
-
-// Pull just the stock fields off an object (drops join keys / metadata / undefined).
-function pickStockFields(source: Record<string, unknown>): StockFields {
-  const out: StockFields = { ...ZERO_STOCK }
-  const keys = STOCK_FIELD_KEYS
-  for (const key of keys) {
-    const value = source[key]
-    if (value !== undefined) {
-      // biome-ignore lint/suspicious/noExplicitAny: assigning across the union of stock field types
-      ;(out as any)[key] = value
-    }
-  }
-  return out
-}
-
-// Reduce an already-joined PantryItem back to its global Item.
 //
-// Re-joining a PantryItem with a DIFFERENT location's row without this is a
-// data-correctness bug, not a tidiness one: an ItemStock omits its unset
-// optional keys entirely (see ZERO_STOCK / pickStockFields), so spreading the
-// second row over the first join leaves the FIRST location's `dueDate` showing
-// through — and a form fed that shape saves one location's expiry into
-// another location's row. (Before v16 the same trap covered the unit and
-// expiration-config keys too; those are global now and are meant to survive.)
-export function stripStockFields(item: PantryItem): Item {
-  // Typed as Partial<PantryItem> so the deletes type-check (every key being
-  // removed is optional there) and the result still converts to Item.
-  const out: Partial<PantryItem> = { ...item }
-  for (const key of STOCK_FIELD_KEYS) delete out[key]
-  delete out.stockId
-  delete out.locationId
-  return out as Item
-}
-
-// Join an Item with a stock row into the runtime PantryItem shape.
-export function joinItemStock(
-  item: Item,
-  stock: ItemStock | undefined,
-  locationId: string,
-): PantryItem {
-  if (!stock) {
-    return { ...item, ...ZERO_STOCK, locationId }
-  }
-  const { id, itemId, createdAt, updatedAt, ...stockFields } = stock
-  void itemId
-  void createdAt
-  void updatedAt
-  return { ...item, ...stockFields, stockId: id, locationId: stock.locationId }
-}
+// The join itself is mode-neutral and lives in `@/lib/itemStock`; it is
+// re-exported here so local call sites keep importing it from `@/db/operations`.
+export { joinItemStock, stripStockFields } from '@/lib/itemStock'
 
 export async function getItemStock(
   itemId: string,
@@ -184,9 +126,11 @@ export async function addItemToLocation(
 // filters on ItemStock) but still in the catalog (`getAllItems`), so the Add
 // combobox can find and re-add it. Use `deleteItem` to remove it everywhere.
 //
-// Local/Dexie only. Cloud mode has no locations and no ItemStock — cloud items
-// carry inline stock on the GraphQL `Item` — so no cloud branch exists here and
-// nothing in the cloud code path may call this.
+// Dexie only, as every function in this module is: the cloud path calls the
+// `removeItemFromLocation` MUTATION instead (`useRemoveItemFromLocation` picks
+// between the two). The cascade above has no cloud counterpart yet — that
+// resolver deletes the stock row alone, because cloud carts and inventory logs
+// gain a `locationId` in PR 3.
 export async function removeItemFromLocation(
   itemId: string,
   locationId: string = DEFAULT_LOCATION_ID,
@@ -1230,8 +1174,9 @@ export async function reorderShelfItems(
 // Location operations
 //
 // PR A — inert: locations exist but nothing else references them yet. Delete is
-// a plain row delete (no cascade). The default location (DEFAULT_LOCATION_ID)
-// is undeletable. Cloud sync is deferred; locations are local-first for now.
+// a plain row delete (no cascade). The default location — the row carrying
+// `isDefault` — is undeletable. Cloud sync is deferred; locations are
+// local-first for now.
 
 export async function getLocations(): Promise<Location[]> {
   return db.locations.orderBy('order').toArray()
@@ -1246,6 +1191,8 @@ export async function createLocation(name: string): Promise<Location> {
     id: crypto.randomUUID(),
     name: name.trim(),
     order: maxOrder + 1,
+    // Only the seeded default carries the flag (ensureDefaultLocation).
+    isDefault: false,
     createdAt: now,
     updatedAt: now,
   }
@@ -1266,8 +1213,10 @@ export async function updateLocation(
 }
 
 export async function deleteLocation(id: string): Promise<void> {
-  // The default location is undeletable.
-  if (id === DEFAULT_LOCATION_ID) {
+  // The default location is undeletable. Identified by its flag, not its id —
+  // a cloud default's id is a server cuid, not DEFAULT_LOCATION_ID (v18).
+  const location = await db.locations.get(id)
+  if (location?.isDefault) {
     throw new Error('The default location cannot be deleted.')
   }
   // Cascade: remove this location's ItemStock rows, its carts + cart items, and

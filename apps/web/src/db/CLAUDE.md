@@ -2,11 +2,11 @@
 
 The local-mode data source. `index.ts` declares the Dexie schema, `operations.ts` holds every read/write. Components never touch Dexie directly — they go through the Query hooks in `src/hooks/` (see `src/hooks/CLAUDE.md`).
 
-**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`.
+**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`.
 
 ## Schema versioning
 
-One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **17**.
+One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **18**.
 
 Rules:
 - **Add a new version; never edit a shipped one.** An upgrade function must be valid on a database built only from committed history.
@@ -14,7 +14,7 @@ Rules:
 
 ### v14 — `locations`
 
-Adds `locations` (`id, order, name`) and seeds the default `Location {id: 'local', name: 'My Home', order: 0}` via `ensureDefaultLocation`. See `src/routes/settings/locations/CLAUDE.md` for the entity itself.
+Adds `locations` (`id, order, name`) and seeds the default `Location {id: 'local', name: 'My Home', order: 0}` via `ensureDefaultLocation` (which also writes `isDefault: true` since v18). See `src/routes/settings/locations/CLAUDE.md` for the entity itself.
 
 ### v15 — the `Item` → `Item` + `ItemStock` split
 
@@ -69,6 +69,18 @@ Non-finite is covered even though the form cannot produce it; **missing is genui
 
 **Cloud is NOT covered.** The equivalent Postgres rows can carry a `0` from the same window (the resolver's default moved 1 → 0 → 1 alongside local mode) and no Prisma migration backfills them — see the cloud note under **The Item/ItemStock join** below.
 
+### v18 — `Location.isDefault`
+
+Adds a boolean `isDefault` to `locations`, backfilled `isDefault: location.id === DEFAULT_LOCATION_ID`. Nothing else moves, and no store or index changes (`isDefault` is **not** indexed), so v18 restates v17's `.stores()` unchanged, as v7, v11 and v17 do.
+
+**Why a column rather than a derivation.** The default location has to be identifiable in **cloud** too, where its id is a server cuid, not the `'local'` sentinel. `order` cannot stand in for it: `LocationList` disables dragging *of* the default row, but dnd-kit's `disabled` only stops that row being picked up — another row dragged above it still displaces it, so the default's `order` is not stable.
+
+**What the flag replaces.** `deleteLocation`'s guard is now `if (location.isDefault) throw`, not an id comparison, and `LocationList` derives its lock/no-delete affordance from `location.isDefault`. `DEFAULT_LOCATION_ID` survives only as the id the local seed happens to use — nothing branches on it as a *marker* any more. In local mode both spellings are true of the same row, which is why the id-comparison mutation check on `deleteLocation` stays green; the guard's real change is pinned by the **cloud** delete-guard test, where the default's id is a cuid.
+
+**`on('populate')` DID need a change** — this is the v14/v15 trap, not the v16/v17 one. A fresh database never runs the upgrade functions, so the backfill above would never fire for a brand-new user and their seeded default would carry no flag at all: undeletable-by-id would still work, but `deleteLocation`'s new guard and `LocationList`'s badge would both read `undefined`. The seed routes through `ensureDefaultLocation`, which the populate hook calls, so the flag is written **there** — one function serving both paths. `upgradeV18.test.ts` asserts the fresh-DB case explicitly rather than assuming it, and its migration fixture carries **three** locations (the default plus two others) so "flag the default" is distinguishable from "flag everything".
+
+**Restored backups.** A pre-v18 payload carries locations with no `isDefault`. `importData.ts` calls `ensureDefaultLocationRow()` after the location rows land, which seeds the `'local'` row only if it is absent — so a payload containing non-default locations does not arrive flagged, and exactly one row ends up flagged.
+
 ## The Item/ItemStock join
 
 An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.** Reads join the two: `useItems`/`useItem` return a `PantryItem` (global `Item` + the active location's stock) via `joinItemStock` / `stripStockFields`, both exported from `operations.ts` so the Stock-tab pager re-joins against a different location with the same implementation.
@@ -79,7 +91,9 @@ An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.
 
 `getStockedItems(locationId)` filters on `ItemStock` (the pantry's data source); `getAllItems()` does not (the Add combobox catalog). That difference is what makes an **orphan** — an item with no stock rows left — invisible in the pantry but still re-addable.
 
-**Cloud mode has no `Location` and no `ItemStock`** (deliberately deferred): a cloud `Item` still carries its stock inline and its carts are keyed bare. Nothing in the cloud path may call the location-scoped operations. v16 *narrows* that divergence rather than widening it — the cloud `Item` (GraphQL type, both its inputs, and the Prisma model) already carried all eight configuration fields, so they now mean the same thing on both sides and only the five state fields remain cloud-inline.
+**Cloud has `Location` and `ItemStock` too** (cloud-locations PR 1 shipped the Prisma models and the GraphQL surface; PR 2 moved the web client onto them). The cloud path reads `PantryData($locationId)` and runs the result through the **same** `joinItemStock` / `stripStockFields` this file's local path calls — they live in `lib/itemStock.ts` for exactly that reason, with `operations.ts` re-exporting them so no local call site changed. A cloud item unstocked in the active location therefore arrives with `stockId: undefined` and zeroed quantities, exactly as a local one does.
+
+Two divergences remain, both closing in later PRs: the cloud `Item` **still declares the five state columns** until PR 5 (they are dual-written server-side by `lib/stockDualWrite.ts` so a browser on a stale bundle keeps working, and every cloud read strips them before joining), and cloud **carts and inventory logs are not location-scoped until PR 3**, which is why shopping and cooking keep an `isCloud` bypass while the item/pantry path has none. v16 had already narrowed the configuration half — the cloud `Item` carried all eight configuration fields before this — so PR 2 closed what was left on the state half.
 
 **v17 has no cloud counterpart yet.** `createItem` in `apps/server/src/resolvers/item.resolver.ts` moved `1 → 0 → 1` on the same two commits as local mode, and it always sends an explicit value, so Prisma's `consumeAmount Float @default(1)` never applied — cloud rows created in that window hold a real `0`. Repairing them needs a Prisma data migration (`UPDATE "Item" SET "consumeAmount" = 1 WHERE "consumeAmount" = 0`); it is deliberately not written here, and is the designer's call because it would also overwrite any intentional `0` a client sent.
 

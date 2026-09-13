@@ -8,6 +8,7 @@ const defaultLocation: Location = {
   id: DEFAULT_LOCATION_ID,
   name: 'My Home',
   order: 0,
+  isDefault: true,
   createdAt: now,
   updatedAt: now,
 }
@@ -16,6 +17,7 @@ const office: Location = {
   id: 'loc-office',
   name: 'Office',
   order: 1,
+  isDefault: false,
   createdAt: now,
   updatedAt: now,
 }
@@ -24,6 +26,7 @@ const beachHouse: Location = {
   id: 'loc-beach',
   name: 'Beach House',
   order: 2,
+  isDefault: false,
   createdAt: now,
   updatedAt: now,
 }

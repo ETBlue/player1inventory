@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { isStockedHere } from '@/lib/quantityUtils'
 import type { PantryItem } from '@/types'
-import { useDataMode } from './useDataMode'
 import { useItems } from './useItems'
 
 export interface UseItemSearchTailOptions {
@@ -52,8 +51,6 @@ export function useItemSearchTail({
   query,
 }: UseItemSearchTailOptions): ItemSearchTailResult {
   const { data: items = [] } = useItems()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
 
   return useMemo(() => {
     const lower = query.trim().toLowerCase()
@@ -67,24 +64,10 @@ export function useItemSearchTail({
     const byName = (a: PantryItem, b: PantryItem) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
 
-    // THE ONE CLOUD BYPASS. Cloud has no Location/ItemStock backend yet, so no
-    // cloud item carries a stockId and "stocked here" is meaningless there — a
-    // naive split would drop every match into the third section and leave the
-    // second empty. Every out-of-list match therefore lands in the in-location
-    // bucket and the third section stays off. When cloud gains ItemStock,
-    // DELETE THIS BRANCH: the split below is already correct for both modes.
-    if (isCloud) {
-      return {
-        inLocation: outsideList.sort(byName),
-        notStockedHere: [],
-        hasExactGlobalMatch,
-      }
-    }
-
     return {
       inLocation: outsideList.filter(isStockedHere).sort(byName),
       notStockedHere: outsideList.filter((i) => !isStockedHere(i)).sort(byName),
       hasExactGlobalMatch,
     }
-  }, [items, inGroupIds, query, isCloud])
+  }, [items, inGroupIds, query])
 }

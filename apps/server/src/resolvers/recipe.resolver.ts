@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
+import { defaultLocationId, mirrorStock } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
 
@@ -68,6 +69,13 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
 
       const itemResults: Array<{ itemId: string; success: boolean; error?: string }> = []
 
+      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Cooking has no
+      // location in PR 2 — `ConsumeRecipesInput` carries none — so the mirror
+      // goes to the caller's DEFAULT location regardless of which one they
+      // were viewing. PR 3 gives the input a location and this becomes it.
+      // Resolved once: every item in the batch mirrors to the same place.
+      const mirrorLocationId = items.length > 0 ? await defaultLocationId(userId) : null
+
       for (const item of items) {
         try {
           await prisma.item.updateMany({
@@ -78,6 +86,18 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
               updatedAt: occurredAtDate,
             },
           })
+
+          // Absolute values, not a delta: the client has already computed the
+          // post-cooking quantities, and `Item`'s write above sets the very
+          // same two numbers. A failure here lands in this item's
+          // `itemResults` entry, exactly as an `Item` write failure does.
+          if (mirrorLocationId) {
+            await mirrorStock(item.itemId, mirrorLocationId, {
+              packedQuantity: item.packedQuantity,
+              unpackedQuantity: item.unpackedQuantity,
+            })
+          }
+
           await prisma.inventoryLog.create({
             data: {
               itemId: item.itemId,

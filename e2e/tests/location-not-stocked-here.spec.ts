@@ -29,10 +29,18 @@ import { ShoppingPage } from '../pages/ShoppingPage'
 // group counts as stocked, lands above the divider, and the assertions fail.
 // A fixture with only empty groups would pass either way and prove nothing.
 //
-// Locations are local-first (no cloud Location/ItemStock backend), and both
-// `/shopping` and `/cooking` skip the partition entirely in cloud mode, so
-// these flows are local-only. The Playwright `cloud` project's `testMatch`
-// does not select this file; the guard below is belt-and-braces.
+// These flows are local-only. `/shopping` and `/cooking` additionally skip the
+// partition entirely in cloud mode until PR 3 — because a cloud `Cart` has no
+// `locationId` and `consumeRecipes` writes the caller's default location, not
+// because cloud items lack a `stockId` (they carry one since PR 2).//
+// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
+// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
+// client on it. It is that every fixture here seeds **IndexedDB** through
+// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
+// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
+// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
+// guards below are belt-and-braces rather than the thing that excludes it.
+// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
 
 const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home" — the active location
 const OFFICE = 'office-loc'
@@ -238,7 +246,7 @@ test.describe('location-scoped group lists — items not stocked here', () => {
       page,
       baseURL,
     }) => {
-      test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+      test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
       // Given two locations, with "${elsewhere}" holding only an item stocked
       // at the Office and "${here}" holding one stocked in the active location
@@ -274,7 +282,7 @@ test.describe('location-scoped group lists — items not stocked here', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given "Bodega" sells only Coffee, which is stocked at the Office, while
     // "Costco" sells Milk, stocked in the active location
@@ -312,7 +320,7 @@ test.describe('location-scoped group lists — items not stocked here', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given "Cold Brew" needs only Coffee, stocked at the Office, while
     // "Pancakes" needs Milk, stocked in the active location

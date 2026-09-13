@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { getLocations } from '@/db/operations'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { importLocalData } from '@/lib/importData'
 import { DataModeCard } from '.'
@@ -336,6 +336,7 @@ describe('DataModeCard — multi-location migration warning', () => {
         id,
         name,
         order,
+        isDefault: id === 'local',
         createdAt: now,
         updatedAt: now,
       })),
@@ -356,7 +357,7 @@ describe('DataModeCard — multi-location migration warning', () => {
       ['office', 'Office'],
       ['shed', 'Shed'],
     )
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     const reloadMock = vi.fn()
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: reloadMock },
@@ -449,17 +450,29 @@ describe('DataModeCard — the warning cannot be skipped by timing', () => {
   })
 })
 
-// Cloud has no per-location ItemStock, so a cloud payload's stock is inline and
-// has to be placed somewhere on the way down. It must go to the location the
-// user is ACTIVE in — the same rule the outbound copy follows. `doSwitch`
-// reloads the page but does NOT reset `active-location-id`, so hard-coding the
-// default location leaves the user staring at an empty pantry (PR D review I-4).
-describe('DataModeCard — cloud to local copy lands in the active location', () => {
+// A cloud EXPORT still carries stock inline on the item (`fetchCloudPayload`
+// sends no `itemStocks`), so the copy down has to synthesise ItemStock rows and
+// place them in one local location. The target must be a LOCAL location id:
+// after the reload the app is in local mode, and the provider reads the
+// `active-location-id:local` slot — stock written under the cloud active id
+// (a cuid) belongs to no location the local pantry can show (PR D review I-4).
+describe('DataModeCard — cloud to local copy lands in the local active location', () => {
   afterEach(async () => {
     localStorage.clear()
     vi.mocked(importLocalData).mockClear()
     await db.locations.clear()
   })
+
+  // A cloud Location id is a server-generated cuid — it can never name a row in
+  // the LOCAL `locations` table.
+  const CLOUD_LOCATION_ID = 'clx7k2p9a0001qwer5678efgh'
+
+  function stubReload() {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: vi.fn() },
+      writable: true,
+    })
+  }
 
   async function seedLocations() {
     const now = new Date()
@@ -468,6 +481,7 @@ describe('DataModeCard — cloud to local copy lands in the active location', ()
         id: 'local',
         name: 'My Home',
         order: 0,
+        isDefault: true,
         createdAt: now,
         updatedAt: now,
       },
@@ -475,21 +489,21 @@ describe('DataModeCard — cloud to local copy lands in the active location', ()
         id: 'office',
         name: 'Office',
         order: 1,
+        isDefault: false,
         createdAt: now,
         updatedAt: now,
       },
     ])
   }
 
-  it('user copying their cloud data down gets it in the location they are in', async () => {
-    // Given cloud mode with 'office' as the active location
+  it('user copying their cloud data down gets it in the local location they were in', async () => {
+    // Given cloud mode, whose active location is a server cuid naming no LOCAL
+    // location, while the user's offline pantry was last on 'office'
     await seedLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, reload: vi.fn() },
-      writable: true,
-    })
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_LOCATION_ID)
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
+    stubReload()
     const user = userEvent.setup()
     renderCard()
 
@@ -498,20 +512,20 @@ describe('DataModeCard — cloud to local copy lands in the active location', ()
     await user.click(screen.getByRole('button', { name: 'Copy' }))
     await user.click(screen.getByRole('button', { name: /append/i }))
 
-    // Then the import is told to place the stock in 'office'
+    // Then the import is told to place the stock in the LOCAL 'office' — the
+    // cloud cuid would write ItemStock rows under a location the local
+    // database does not have, i.e. an empty pantry after the reload
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
     expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('office')
   })
 
-  it('user signing out with a copy also keeps their active location', async () => {
+  it('user signing out with a copy also keeps their local active location', async () => {
     // Given the same setup, taking the sign-out route instead
     await seedLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, reload: vi.fn() },
-      writable: true,
-    })
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_LOCATION_ID)
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
+    stubReload()
     const user = userEvent.setup()
     renderCard()
 
@@ -520,8 +534,28 @@ describe('DataModeCard — cloud to local copy lands in the active location', ()
     await user.click(screen.getByRole('button', { name: /switch to offline/i }))
     await user.click(screen.getByRole('button', { name: /copy/i }))
 
-    // Then the copy lands in 'office' too
+    // Then the copy lands in the local 'office' too
     await waitFor(() => expect(importLocalData).toHaveBeenCalled())
     expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('office')
+  })
+
+  it('user whose stored local location was deleted gets the copy in their default one', async () => {
+    // Given a stored local active location that no longer exists locally
+    await seedLocations()
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_LOCATION_ID)
+    localStorage.setItem(activeLocationStorageKey('local'), 'deleted-shed')
+    stubReload()
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the user copies their cloud data down
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    await user.click(screen.getByRole('button', { name: /append/i }))
+
+    // Then it lands in the local `isDefault` location, not the dangling id
+    await waitFor(() => expect(importLocalData).toHaveBeenCalled())
+    expect(vi.mocked(importLocalData).mock.calls[0][2]).toBe('local')
   })
 })

@@ -22,7 +22,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useActiveLocation } from '@/hooks/useActiveLocation'
+import {
+  resolveLocalActiveLocationId,
+  useActiveLocation,
+} from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useLocations } from '@/hooks/useLocations'
 import {
@@ -67,27 +70,36 @@ function CloudModeSection() {
   const apolloClient = useApolloClient()
   const clerk = useClerk()
   const { t } = useTranslation()
-  // Cloud keeps stock inline on the Item (no per-location ItemStock yet), so a
-  // copy down has to be placed into one location — the one the user is in.
-  // `active-location-id` survives the reload below and nothing resets it, so
-  // landing everything in the default location would show an empty pantry.
-  const { activeLocationId } = useActiveLocation()
 
   const [switchFlow, setSwitchFlow] = useState<SwitchFlow>('idle')
   const [signOutFlow, setSignOutFlow] = useState<SignOutFlow>('idle')
 
   // ── Switch cloud→local ──────────────────────────────────────────────────────
 
+  // A cloud EXPORT still carries stock inline on the item — `fetchCloudPayload`
+  // sends no `itemStocks` — so the copy down has to synthesise `ItemStock` rows
+  // and place them in ONE location. That location must exist in the LOCAL
+  // `locations` table the rows are written to, which rules out
+  // `useActiveLocation().activeLocationId`: in cloud mode it is a
+  // server-generated cuid, and stock stored under it is unreachable from the
+  // local pantry — the user would land on an empty one.
+  //
+  // `resolveLocalActiveLocationId` reads the `active-location-id:local` slot the
+  // provider will itself read after the reload below, so the restored data is in
+  // the pantry the user is returned to.
   async function doSwitch(
     copyChoice: 'copy' | 'skip',
     conflictRes?: 'append' | 'replace',
   ) {
     if (copyChoice === 'copy') {
-      const payload = await fetchCloudPayload(apolloClient)
+      const [payload, localLocationId] = await Promise.all([
+        fetchCloudPayload(apolloClient),
+        resolveLocalActiveLocationId(),
+      ])
       await importLocalData(
         payload,
         conflictRes === 'replace' ? 'replace' : 'skip',
-        activeLocationId,
+        localLocationId,
       )
     }
     // Clerk session stays alive — seamless re-enable
@@ -100,8 +112,12 @@ function CloudModeSection() {
   async function doSignOut(switchToOffline: boolean, copyData = false) {
     if (copyData && switchToOffline) {
       setSignOutFlow('migrating')
-      const payload = await fetchCloudPayload(apolloClient)
-      await importLocalData(payload, 'skip', activeLocationId)
+      // Same rule as `doSwitch`: a LOCAL location id, not the cloud one.
+      const [payload, localLocationId] = await Promise.all([
+        fetchCloudPayload(apolloClient),
+        resolveLocalActiveLocationId(),
+      ])
+      await importLocalData(payload, 'skip', localLocationId)
     }
     await clerk.signOut()
     if (switchToOffline) {

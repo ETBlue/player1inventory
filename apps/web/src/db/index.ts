@@ -61,6 +61,10 @@ async function ensureDefaultLocation(
     id: DEFAULT_LOCATION_ID,
     name: 'My Home',
     order: 0,
+    // v18: the default is marked by this flag, not by its id. A fresh DB never
+    // runs the v18 upgrade fn (see db/CLAUDE.md), and `on('populate')` routes
+    // through this function — so the flag has to be seeded here too.
+    isDefault: true,
     createdAt: now,
     updatedAt: now,
   })
@@ -583,6 +587,45 @@ db.version(17)
           return
         }
         item.consumeAmount = 1
+      }),
+  )
+
+// Version 18: `isDefault` on locations
+//
+// The default location stops being identified by its id. Cloud locations
+// (PR 2 of the cloud-locations feature) have server-generated ids, so
+// `id === DEFAULT_LOCATION_ID` cannot mark the default there — a flag on the
+// row can, in both modes.
+//
+// The flag is NOT derivable from `order`: dnd-kit's `disabled` on the default
+// row only stops that row being picked up, so another row dragged above it
+// still displaces it.
+//
+// Backfill: `isDefault: id === DEFAULT_LOCATION_ID`. In local mode exactly one
+// row has that id, so exactly one row ends up flagged.
+//
+// No index change — `isDefault` is not indexed — so the stores definition is
+// v17's, restated as v7, v11 and v17 all do.
+db.version(18)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('locations')
+      .toCollection()
+      .modify((location: Record<string, unknown>) => {
+        location.isDefault = location.id === DEFAULT_LOCATION_ID
       }),
   )
 

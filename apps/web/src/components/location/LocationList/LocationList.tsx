@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
-import { DEFAULT_LOCATION_ID, type Location } from '@/types'
+import type { Location } from '@/types'
 
 interface LocationListProps {
   locations: Location[]
@@ -194,7 +194,7 @@ export function LocationList({
             <LocationRow
               key={location.id}
               location={location}
-              isDefault={location.id === DEFAULT_LOCATION_ID}
+              isDefault={location.isDefault}
               onRename={() => onRename(location)}
               onDelete={() => onDelete(location)}
             />

@@ -17,9 +17,22 @@ interface FakeStock {
   updatedAt: Date
 }
 
+// Only the five legacy state columns the PR 5 dual-write touches, plus the
+// ownership scope the mirror filters on.
+interface FakeItem {
+  id: string
+  userId: string
+  targetQuantity: number
+  refillThreshold: number
+  packedQuantity: number
+  unpackedQuantity: number
+  dueDate: Date | null
+}
+
 const { state, client } = vi.hoisted(() => {
   const state = {
     locations: [] as { id: string; userId: string; isDefault: boolean }[],
+    items: [] as FakeItem[],
     itemStocks: [] as FakeStock[],
   }
   let seq = 0
@@ -43,8 +56,29 @@ const { state, client } = vi.hoisted(() => {
         state.locations.find(
           (l) =>
             (where.id === undefined || l.id === where.id) &&
-            (where.userId === undefined || l.userId === where.userId),
+            (where.userId === undefined || l.userId === where.userId) &&
+            (where.isDefault === undefined || l.isDefault === where.isDefault),
         ) ?? null,
+    },
+    item: {
+      // `undefined ||` on every key — Prisma's own where semantics, so a
+      // resolver that drops `userId` from the scope becomes visible rather
+      // than staying green against a hardcoded ownership match.
+      updateMany: async ({
+        where = {},
+        data,
+      }: {
+        where?: Record<string, unknown>
+        data: Partial<FakeItem>
+      }) => {
+        const rows = state.items.filter(
+          (i) =>
+            (where.id === undefined || i.id === where.id) &&
+            (where.userId === undefined || i.userId === where.userId),
+        )
+        for (const row of rows) Object.assign(row, data)
+        return { count: rows.length }
+      },
     },
     itemStock: {
       findMany: async ({
@@ -72,9 +106,11 @@ const { state, client } = vi.hoisted(() => {
       findUnique: async ({ where }: { where: Record<string, unknown> }) =>
         state.itemStocks.find((s) => stockMatches(s, where)) ?? null,
       create: async ({ data }: { data: Omit<FakeStock, 'id' | 'createdAt' | 'updatedAt'> }) => {
-        // Models @@unique([itemId, locationId]). A fake that silently deduped
-        // here would hide the P2002 real Postgres throws and leave the
-        // already-stocked branch of addItemToLocation unpinned.
+        // Models @@unique([itemId, locationId]). It guards a resolver that
+        // creates unconditionally; it does NOT pin addItemToLocation's
+        // already-stocked branch, which its own assertions cover — making this
+        // dedupe instead of throw leaves all 17 specs here green (verified
+        // 2026-08-31, correcting an earlier comment that claimed otherwise).
         if (state.itemStocks.some((s) => s.itemId === data.itemId && s.locationId === data.locationId)) {
           throw new Error('Unique constraint failed on the fields: (`itemId`,`locationId`)')
         }
@@ -124,6 +160,38 @@ describe('itemStock resolvers', () => {
       { id: 'loc-a', userId: 'user-a', isDefault: true },
       { id: 'loc-a2', userId: 'user-a', isDefault: false },
       { id: 'loc-b', userId: 'user-b', isDefault: true },
+    ]
+    // The legacy `Item` columns the PR 5 dual-write mirrors onto. Their values
+    // deliberately differ from every ItemStock row's, so "the mirror ran" and
+    // "the fixture already said that" are distinguishable.
+    state.items = [
+      {
+        id: 'item-milk',
+        userId: 'user-a',
+        targetQuantity: 99,
+        refillThreshold: 99,
+        packedQuantity: 99,
+        unpackedQuantity: 99,
+        dueDate: null,
+      },
+      {
+        id: 'item-far',
+        userId: 'user-a',
+        targetQuantity: 99,
+        refillThreshold: 99,
+        packedQuantity: 99,
+        unpackedQuantity: 99,
+        dueDate: null,
+      },
+      {
+        id: 'item-new',
+        userId: 'user-a',
+        targetQuantity: 99,
+        refillThreshold: 99,
+        packedQuantity: 99,
+        unpackedQuantity: 99,
+        dueDate: null,
+      },
     ]
     state.itemStocks = [
       // dueDate is non-null so the upsert "omitted" and "cleared" cases are
@@ -223,6 +291,105 @@ describe('itemStock resolvers', () => {
       { i: 'item-milk', l: 'loc-a', in: { dueDate: '2026-12-25T00:00:00.000Z' } },
     )
     expect(res.data?.upsertItemStock).toEqual({ dueDate: '2026-12-25T00:00:00.000Z' })
+  })
+
+  // The PR 5 dual-write, in the ItemStock -> Item direction. A stale bundle
+  // reads `Item`'s five legacy columns and has no location concept, so the
+  // DEFAULT location's stock is the value it must be shown — and an edit
+  // anywhere else must leave `Item` alone. Deleting these when `Item`'s columns
+  // go (lib/stockDualWrite.ts).
+  const UPSERT = `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { packedQuantity } }`
+  const itemColumns = (id: string) => {
+    const row = state.items.find((i) => i.id === id)
+    if (!row) throw new Error(`no fixture item ${id}`)
+    const { id: _id, userId: _userId, ...columns } = row
+    return columns
+  }
+
+  it('user editing stock at their default location also updates the item\'s legacy columns', async () => {
+    // Given loc-a is user-a's default and item-milk's Item columns all read 99
+    expect(state.locations.find((l) => l.id === 'loc-a')?.isDefault).toBe(true)
+
+    // When the user sets packedQuantity there
+    const res = await run(UPSERT, { i: 'item-milk', l: 'loc-a', in: { packedQuantity: 5 } })
+
+    // Then BOTH halves moved: the ItemStock row, and the Item columns a stale
+    // bundle still reads — mirrored as the whole saved row, so they equal the
+    // default location's stock rather than a partial merge of it
+    expect(res.data?.upsertItemStock).toEqual({ packedQuantity: 5 })
+    expect(state.itemStocks.find((s) => s.id === 'st-home')?.packedQuantity).toBe(5)
+    expect(itemColumns('item-milk')).toEqual({
+      targetQuantity: 3,
+      refillThreshold: 1,
+      packedQuantity: 5,
+      unpackedQuantity: 0,
+      dueDate: new Date('2026-09-01T00:00:00.000Z'),
+    })
+  })
+
+  it('user editing stock at a non-default location leaves the item\'s legacy columns alone', async () => {
+    // Given loc-a2 is NOT user-a's default, and item-far is stocked only there
+    expect(state.locations.find((l) => l.id === 'loc-a2')?.isDefault).toBe(false)
+
+    // When the user sets packedQuantity there
+    const res = await run(UPSERT, { i: 'item-far', l: 'loc-a2', in: { packedQuantity: 5 } })
+
+    // Then only the ItemStock row moved. There is no correct single value to
+    // write onto `Item` for a non-default location, so a stale bundle keeps
+    // showing the default location's numbers rather than the Garage's.
+    expect(res.data?.upsertItemStock).toEqual({ packedQuantity: 5 })
+    expect(state.itemStocks.find((s) => s.id === 'st-garage')?.packedQuantity).toBe(5)
+    expect(itemColumns('item-far')).toEqual({
+      targetQuantity: 99,
+      refillThreshold: 99,
+      packedQuantity: 99,
+      unpackedQuantity: 99,
+      dueDate: null,
+    })
+  })
+
+  it('creating a stock row at the default location mirrors the whole new row', async () => {
+    // Given item-new has no ItemStock anywhere, and Item columns reading 99
+    // When it is stocked at the default location with a partial input
+    await run(UPSERT, { i: 'item-new', l: 'loc-a', in: { targetQuantity: 4, packedQuantity: 1 } })
+
+    // Then the fields the input omitted land as the new row's zeroes, not as
+    // the leftover 99s — the mirror copies the saved row, not the input
+    expect(itemColumns('item-new')).toEqual({
+      targetQuantity: 4,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      dueDate: null,
+    })
+  })
+
+  it('the mirror never writes another user\'s item', async () => {
+    // Given user-b owns item-rice, and user-a upserts it into their OWN
+    // default location — `upsertItemStock` authorizes the LOCATION, not the
+    // item, so the stock row is written and the mirror is reached
+    state.items.push({
+      id: 'item-rice',
+      userId: 'user-b',
+      targetQuantity: 99,
+      refillThreshold: 99,
+      packedQuantity: 99,
+      unpackedQuantity: 99,
+      dueDate: null,
+    })
+
+    // When user-a upserts it at loc-a (their default)
+    await run(UPSERT, { i: 'item-rice', l: 'loc-a', in: { packedQuantity: 5 } })
+
+    // Then user-b's Item columns are untouched — the mirror's where clause
+    // scopes to the caller, so a foreign id matches no row
+    expect(itemColumns('item-rice')).toEqual({
+      targetQuantity: 99,
+      refillThreshold: 99,
+      packedQuantity: 99,
+      unpackedQuantity: 99,
+      dueDate: null,
+    })
   })
 
   it('user cannot upsert into another user\'s location', async () => {

@@ -6,26 +6,47 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
-    recipe: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+// `recipe` / `recipeItem` / `item` / `inventoryLog` are plain `vi.fn()` call
+// recorders. `location` and `itemStock` are the stateful fake
+// (src/test/stockFake.ts): consumeRecipes' PR-2 dual-write is an end state, and
+// the fake models `@@unique([itemId, locationId])` and Prisma's `where`
+// semantics so a resolver that dropped the scope cannot stay green.
+vi.mock('../lib/prisma.js', async () => {
+  const { createStockFake } = await import('../test/stockFake.js')
+  const stockFake = createStockFake()
+  return {
+    prisma: {
+      recipe: {
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        findUnique: vi.fn(),
+        findUniqueOrThrow: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+        delete: vi.fn(),
+      },
+      recipeItem: {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+      item: {
+        updateMany: vi.fn(),
+      },
+      inventoryLog: {
+        create: vi.fn(),
+      },
+      ...stockFake.client,
+      // Hung off the client because a `vi.mock` factory is hoisted above every
+      // import and cannot close over a module-scope binding.
+      $stockFake: stockFake,
     },
-    recipeItem: {
-      count: vi.fn(),
-      createMany: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-  },
-}))
+  }
+})
 
 import { prisma } from '../lib/prisma.js'
+import { makeStock, type StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   recipe: {
@@ -35,6 +56,7 @@ const mockPrisma = prisma as unknown as {
     findUniqueOrThrow: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
+    updateMany: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
   }
   recipeItem: {
@@ -42,6 +64,13 @@ const mockPrisma = prisma as unknown as {
     createMany: ReturnType<typeof vi.fn>
     deleteMany: ReturnType<typeof vi.fn>
   }
+  item: {
+    updateMany: ReturnType<typeof vi.fn>
+  }
+  inventoryLog: {
+    create: ReturnType<typeof vi.fn>
+  }
+  $stockFake: StockFake
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -67,8 +96,27 @@ function makeRecipe(overrides: Partial<{
 let server: ApolloServer<Context>
 const ctx: Context = { userId: 'user_test123' }
 
+// TWO locations for the cooking user, plus one belonging to somebody else that
+// is ALSO flagged isDefault. A single-location fixture cannot tell "writes the
+// caller's default location" apart from "writes the first default it finds".
+const LOC_DEFAULT = 'loc_kitchen'
+const LOC_OTHER = 'loc_garage'
+const LOC_STRANGER = 'loc_theirs'
+
+const stockFake = mockPrisma.$stockFake
+
 beforeEach(async () => {
   vi.clearAllMocks()
+  stockFake.reset(
+    [
+      // The default is deliberately not first: a lookup that took locations[0]
+      // rather than the isDefault row would otherwise pass by coincidence.
+      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
+      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
+      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+    ],
+    [],
+  )
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -310,5 +358,151 @@ describe('Recipe resolvers', () => {
     // Then the count is returned
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.itemCountByRecipe).toBe(2)
+  })
+})
+
+// ─── consumeRecipes ──────────────────────────────────────────────────────────
+//
+// Two groups, on purpose. The first pins the `Item` half of PR 2's dual-write,
+// the second the `ItemStock` half. Deleting either half must turn exactly one
+// group red — that pair is what "dual-write" means, and until PR 5 it is what
+// keeps a browser on a stale bundle working.
+
+const CONSUME = `mutation Consume($input: ConsumeRecipesInput!) {
+  consumeRecipes(input: $input) { allSucceeded itemResults { itemId success } }
+}`
+
+function consumeInput(
+  items: Array<{
+    itemId: string
+    packedQuantity: number
+    unpackedQuantity: number
+    delta: number
+    quantity: number
+  }>,
+  recipeIds: string[] = [],
+) {
+  return {
+    occurredAt: '2026-03-01T12:00:00.000Z',
+    recipeIds,
+    items,
+  }
+}
+
+const COOKED_MILK = {
+  itemId: 'item_milk',
+  packedQuantity: 1,
+  unpackedQuantity: 0.5,
+  delta: -1.5,
+  quantity: 1.5,
+}
+
+describe('consumeRecipes writes the Item columns', () => {
+  it('user cooking a recipe has each item\'s quantities written and a log recorded', async () => {
+    // Given a cook that leaves Milk at 1 packed + 0.5 unpacked
+    mockPrisma.item.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
+
+    // When the cook is submitted
+    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK], ['recipe_1']) })
+
+    // Then the Item's own columns were set to those numbers, scoped to the user
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
+    expect(mockPrisma.item.updateMany).toHaveBeenCalledWith({
+      where: { id: 'item_milk', userId: 'user_test123' },
+      data: {
+        packedQuantity: 1,
+        unpackedQuantity: 0.5,
+        updatedAt: new Date('2026-03-01T12:00:00.000Z'),
+      },
+    })
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledOnce()
+  })
+})
+
+describe('consumeRecipes dual-writes onto ItemStock', () => {
+  function stockAt(locationId: string) {
+    return stockFake.state.itemStocks.find(
+      (s) => s.itemId === 'item_milk' && s.locationId === locationId,
+    )
+  }
+
+  beforeEach(() => {
+    mockPrisma.item.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('user cooking writes the DEFAULT location\'s stock and leaves the others alone', async () => {
+    // Given Milk stocked in both of the user's locations and in a stranger's
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 3, unpackedQuantity: 1 }),
+      makeStock({ id: 'st_other', itemId: 'item_milk', locationId: LOC_OTHER, packedQuantity: 40, unpackedQuantity: 9 }),
+      makeStock({ id: 'st_stranger', itemId: 'item_milk', locationId: LOC_STRANGER, packedQuantity: 99, unpackedQuantity: 8 }),
+    ])
+
+    // When the user cooks
+    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
+
+    // Then only the default location's row carries the post-cooking numbers
+    expect(result?.errors).toBeUndefined()
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
+    // And the other two are untouched — the assertion a one-location fixture
+    // could not make
+    expect(stockAt(LOC_OTHER)).toMatchObject({ packedQuantity: 40, unpackedQuantity: 9 })
+    expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
+  })
+
+  it('user cooking an item with no stock row there gets one created at the cooked quantities', async () => {
+    // Given the item has no ItemStock anywhere yet
+    stockFake.reset(stockFake.state.locations, [])
+
+    // When the user cooks with it
+    await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
+
+    // Then a single row appears, in the default location, holding exactly the
+    // post-cooking values — absolute, not a delta
+    expect(stockFake.state.itemStocks).toHaveLength(1)
+    expect(stockFake.state.itemStocks[0]).toMatchObject({
+      itemId: 'item_milk',
+      locationId: LOC_DEFAULT,
+      packedQuantity: 1,
+      unpackedQuantity: 0.5,
+    })
+  })
+
+  it('cooking twice sets rather than accumulates, and never duplicates the row', async () => {
+    // Given a first cook has already written the row
+    stockFake.reset(stockFake.state.locations, [])
+    await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
+
+    // When a second cook leaves it at 0 packed / 0.25 unpacked
+    await execOp(CONSUME, {
+      input: consumeInput([
+        { ...COOKED_MILK, packedQuantity: 0, unpackedQuantity: 0.25 },
+      ]),
+    })
+
+    // Then the row holds the SECOND cook's numbers, not their sum — and the
+    // @@unique constraint the fake enforces was respected by taking the update
+    // branch rather than a second create
+    expect(stockFake.state.itemStocks).toHaveLength(1)
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 0, unpackedQuantity: 0.25 })
+  })
+
+  it('a user with no locations still cooks — the mirror is skipped, not fatal', async () => {
+    // Given an account with no Location rows (predating PR 1's backfill)
+    stockFake.reset([], [])
+
+    // When they cook
+    const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
+
+    // Then the cook reports success, the Item half still ran, and no orphan row
+    // was invented against a location id that does not exist
+    expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
+    expect(mockPrisma.item.updateMany).toHaveBeenCalledOnce()
+    expect(stockFake.state.itemStocks).toHaveLength(0)
   })
 })

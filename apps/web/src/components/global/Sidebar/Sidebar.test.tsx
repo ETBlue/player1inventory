@@ -10,8 +10,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -53,10 +53,11 @@ describe('Sidebar', () => {
       id: DEFAULT_LOCATION_ID,
       name: 'My Home',
       order: 0,
+      isDefault: true,
       createdAt: now,
       updatedAt: now,
     })
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
   })
 
   it('user sees the location switcher in the sidebar on a normal page', async () => {

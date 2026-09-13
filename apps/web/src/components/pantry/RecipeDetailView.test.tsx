@@ -17,7 +17,7 @@ import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
-import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { renderWithRouter } from '@/test/utils'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { RecipeDetailView } from './RecipeDetailView'
@@ -133,7 +133,7 @@ describe('RecipeDetailView quick update', () => {
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     mutateAsync.mockReset()
     mutateAsync.mockResolvedValue(undefined)
   })
@@ -237,7 +237,7 @@ describe('RecipeDetailView search tail', () => {
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     recipesGate.hold = false
     recipesGate.release = null
   })

@@ -12,6 +12,7 @@ import { db } from '@/db'
 import {
   ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -52,6 +53,7 @@ function SwitcherHarness({
         id: DEFAULT_LOCATION_ID,
         name: longName ? 'Grandparents’ Summer House' : 'My Home',
         order: 0,
+        isDefault: true,
         createdAt: now,
         updatedAt: now,
       })
@@ -60,6 +62,7 @@ function SwitcherHarness({
           id: 'loc-office',
           name: 'Office',
           order: 1,
+          isDefault: false,
           createdAt: now,
           updatedAt: now,
         })
@@ -67,14 +70,19 @@ function SwitcherHarness({
           id: 'loc-beach',
           name: 'Beach House',
           order: 2,
+          isDefault: false,
           createdAt: now,
           updatedAt: now,
         })
       }
+      // Stories always run in local mode, so the active id lives in the
+      // 'local' slot. Clear the legacy bare key too: it is migrated into that
+      // slot on mount, and a leftover would outlive this story's own choice.
+      localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
       if (initialActiveId) {
-        localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, initialActiveId)
+        localStorage.setItem(activeLocationStorageKey('local'), initialActiveId)
       } else {
-        localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+        localStorage.removeItem(activeLocationStorageKey('local'))
       }
       setReady(true)
     }

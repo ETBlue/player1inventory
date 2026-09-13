@@ -74,6 +74,7 @@ function WithLocationsStory() {
           id: DEFAULT_LOCATION_ID,
           name: 'My Home',
           order: 0,
+          isDefault: true,
           createdAt: now,
           updatedAt: now,
         })

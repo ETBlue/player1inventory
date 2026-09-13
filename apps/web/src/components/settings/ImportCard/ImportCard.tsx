@@ -12,7 +12,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useActiveLocation } from '@/hooks/useActiveLocation'
+import {
+  readStoredLocationId,
+  useActiveLocation,
+} from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { ExportPayload } from '@/lib/exportData'
 import {
@@ -64,9 +67,9 @@ export function ImportCard() {
   const { mode } = useDataMode()
   const client = useApolloClient()
   const queryClient = useQueryClient()
-  // Cloud keeps stock inline on the Item (no per-location ItemStock yet), so a
-  // post-v15 backup has to be flattened onto one location on the way up — the
-  // one the user is currently in.
+  // Where a restored backup's stock lands on the way DOWN (local branch of
+  // `runImport`). The cloud branch needs a local-format id instead — see
+  // `handleCloudImport`.
   const { activeLocationId } = useActiveLocation()
   const [importStatus, setImportStatus] = useState<ImportStatus>({
     phase: 'idle',
@@ -148,14 +151,24 @@ export function ImportCard() {
 
     if (!payload) return
 
-    // Which location's stock goes up. Unlike the migration paths, the payload
-    // here is a file from another device, whose location ids need not exist on
-    // this one — flattening by an id the backup does not know would upload every
-    // item with zeroed stock and drop every cart. `resolveFlattenLocationId`
-    // falls back to the backup's own location when that is unambiguous, and
-    // returns null when it is not: refuse the import rather than lose the data
-    // silently (before the v15 split this case failed loudly on its own).
-    const locationId = resolveFlattenLocationId(payload, activeLocationId)
+    // Which of the BACKUP's locations goes up. Unlike the migration paths, the
+    // payload here is a file from another device, whose location ids need not
+    // exist on this one — flattening by an id the backup does not know would
+    // upload every item with zeroed stock and drop every cart.
+    // `resolveFlattenLocationId` falls back to the backup's own location when
+    // that is unambiguous, and returns null when it is not: refuse the import
+    // rather than lose the data silently (before the v15 split this case failed
+    // loudly on its own).
+    //
+    // The hint it picks with must be a LOCAL-format id, because a backup file is
+    // always local-shaped — `fetchCloudPayload` writes no `itemStocks` at all.
+    // `useActiveLocation().activeLocationId` is the CLOUD active id here (a
+    // server cuid), which no backup's `itemStocks` can ever mention, so every
+    // multi-location backup would resolve to null and be refused outright.
+    const locationId = resolveFlattenLocationId(
+      payload,
+      readStoredLocationId('local'),
+    )
     if (locationId === null) {
       toast.error(t('settings.import.unknownLocations'))
       setImportStatus({ phase: 'idle' })

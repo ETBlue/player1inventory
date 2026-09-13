@@ -1,0 +1,47 @@
+query GetLocations {
+  locations {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation CreateLocation($name: String!) {
+  createLocation(name: $name) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation UpdateLocation($id: ID!, $input: UpdateLocationInput!) {
+  updateLocation(id: $id, input: $input) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}
+
+mutation DeleteLocation($id: ID!) {
+  deleteLocation(id: $id)
+}
+
+mutation ReorderLocations($orderedIds: [ID!]!) {
+  reorderLocations(orderedIds: $orderedIds) {
+    id
+    name
+    order
+    isDefault
+    createdAt
+    updatedAt
+  }
+}

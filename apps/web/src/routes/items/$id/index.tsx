@@ -209,8 +209,10 @@ function ItemInfoTab() {
   const applyUnitSwitch = useApplyUnitSwitch()
 
   // Every location's stock row for this item, plus the locations to name and
-  // order them by. Local-mode data: cloud has no locations and no ItemStock (a
-  // cloud Item carries its stock inline), so no conversion is built there.
+  // order them by. Both hooks are dual-mode since PR 2, so cloud returns real
+  // rows here — but `buildStockConversions` still gates on `isLocal` and yields
+  // nothing in cloud, because there is no cloud mutation to APPLY a conversion
+  // with (see `handleConfirmAdjustments`).
   const { mode } = useDataMode()
   const isLocal = mode === 'local'
   const { data: stocks } = useItemStocks(id)
@@ -401,15 +403,21 @@ function ItemInfoTab() {
     } else {
       // Cloud stays sequential. There is no client-side transaction to borrow:
       // each Apollo mutation is its own server round-trip, so wrapping them
-      // would fake an atomicity that does not exist. It is also the smaller
-      // exposure today — cloud has no Location or ItemStock, so
-      // `buildStockConversions` yields nothing and only the item and recipe
-      // writes run.
+      // would fake an atomicity that does not exist.
       //
-      // When cloud gains locations, this must NOT stay a sequence of Apollo
-      // calls: the item update, the per-location stock conversions and the
-      // recipe rewrites need one combined GraphQL mutation wrapping all three
-      // in a single server-side transaction, the cloud counterpart of
+      // Cloud DOES have per-location ItemStock since PR 1, so the old reason —
+      // "there is nothing to convert" — no longer holds. What holds instead is
+      // that the schema has no `applyUnitSwitch` mutation: the design names one
+      // as a requirement (§2) but PR 1 shipped `itemStock.graphql` without it,
+      // so `useApplyUnitSwitch` throws in cloud and `buildStockConversions`
+      // gates itself on `isLocal` rather than listing conversions this branch
+      // could not write. A cloud unit switch therefore leaves every location's
+      // tracked quantities in the OLD unit. PR 3 owes the mutation.
+      //
+      // When it lands, this must NOT stay a sequence of Apollo calls: the item
+      // update, the per-location stock conversions and the recipe rewrites need
+      // one combined GraphQL mutation wrapping all three in a single
+      // server-side transaction, the cloud counterpart of
       // `applyUnitSwitchBatch`.
       await persistInfo(pending.values)
       for (const update of recipeUpdates) {

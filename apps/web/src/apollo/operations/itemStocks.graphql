@@ -1,0 +1,90 @@
+# The pantry's single request: the item catalog plus the active location's stock
+# rows, joined on the client by `joinItemStock` (`lib/itemStock.ts`) — the same
+# function local mode calls. The `items` selection set is identical to
+# `GetItems` (`items.graphql`) so both operations agree in the normalized cache.
+query PantryData($locationId: ID!) {
+  items {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    expirationMode
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    userId
+    createdAt
+    updatedAt
+  }
+  itemStocks(locationId: $locationId) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+# Every location's row for one item — the Stock-tab all-locations pager.
+query ItemStocksForItem($itemId: ID!) {
+  itemStocksForItem(itemId: $itemId) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+mutation UpsertItemStock($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+  upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+mutation AddItemToLocation($itemId: ID!, $locationId: ID!, $sourceLocationId: ID) {
+  addItemToLocation(itemId: $itemId, locationId: $locationId, sourceLocationId: $sourceLocationId) {
+    id
+    itemId
+    locationId
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    dueDate
+    createdAt
+    updatedAt
+  }
+}
+
+mutation RemoveItemFromLocation($itemId: ID!, $locationId: ID!) {
+  removeItemFromLocation(itemId: $itemId, locationId: $locationId)
+}

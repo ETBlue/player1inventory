@@ -20,7 +20,9 @@ import {
   getRecipes,
   upsertItemStock,
 } from '@/db/operations'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
+import { cloudLocation, cloudStock, LOC_A } from '@/test/cloudFixtures'
 import { cartIdFor, DEFAULT_LOCATION_ID } from '@/types'
 
 // The eight configuration fields that live on the global Item since v16 — no
@@ -51,6 +53,27 @@ const mockUseUpdateItemMutation = vi.fn(() => [
   vi.fn().mockResolvedValue({ data: undefined }),
   {},
 ])
+// Since Task 9 the cloud branch of `useUpdateItem` splits its input: the five
+// per-location state fields go here, not to `updateItem`. This page saves
+// NOTHING BUT those fields, so in cloud mode a save now sends this mutation and
+// no `updateItem` at all — the cloud assertions below moved onto it.
+const mockUseUpsertItemStockMutation = vi.fn(() => [
+  vi.fn().mockResolvedValue({ data: undefined }),
+  {},
+])
+// Cloud locations and the item's per-location stock. Since PR 2 the Stock tab
+// pages over these in cloud mode too, so the cloud tests below have to supply
+// them; in local mode they stay empty and are skipped by their hooks.
+const mockUseGetLocationsQuery = vi.fn(() => ({
+  data: undefined as unknown,
+  loading: false,
+  error: undefined,
+}))
+const mockUseItemStocksForItemQuery = vi.fn(() => ({
+  data: undefined as unknown,
+  loading: false,
+  error: undefined,
+}))
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -65,8 +88,39 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   ]
   return {
     ...original,
+    // `useLocations` is dual-mode, so it calls `useGetLocationsQuery` in BOTH
+    // modes (skipped in local). This per-file factory REPLACES the one in
+    // `src/test/setup.ts` rather than layering on it, so the location stubs
+    // have to be repeated here or the real Apollo hook runs and demands a
+    // provider. Placed right after `...original` so this file's own overrides
+    // below still win.
+    useGetLocationsQuery: () => mockUseGetLocationsQuery(),
+    useCreateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useReorderLocationsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useGetItemQuery: (...args: unknown[]) => mockUseGetItemQuery(...args),
-    useGetItemsQuery: queryStub,
+    // Cloud read paths the pantry hooks moved onto in PR 2. `PantryData` stays
+    // inert (no test here reads the pantry); `ItemStocksForItem` is the Stock
+    // tab's own cloud read and is driven per test.
+    usePantryDataQuery: queryStub,
+    useItemStocksForItemQuery: () => mockUseItemStocksForItemQuery(),
+    useUpsertItemStockMutation: (...args: unknown[]) =>
+      mockUseUpsertItemStockMutation(...args),
+    useAddItemToLocationMutation: mutationStub,
+    useRemoveItemFromLocationMutation: mutationStub,
     useCreateItemMutation: mutationStub,
     useUpdateItemMutation: (...args: unknown[]) =>
       mockUseUpdateItemMutation(...args),
@@ -148,11 +202,56 @@ describe('Item stock tab', () => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ])
+    mockUseUpsertItemStockMutation.mockReturnValue([
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ])
+    mockUseGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+    mockUseItemStocksForItemQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
   })
 
   afterEach(() => {
     localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('cloud'))
   })
+
+  // One cloud location holding one stock row for `itemId` — the minimum the
+  // cloud Stock tab needs to render a page. `stock: false` leaves the item
+  // unstocked there instead.
+  const seedCloud = (
+    itemId: string,
+    fields: {
+      targetQuantity: number
+      refillThreshold: number
+      packedQuantity: number
+      unpackedQuantity: number
+      dueDate?: string | null
+    },
+  ) => {
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    mockUseGetLocationsQuery.mockReturnValue({
+      data: { locations: [cloudLocation(LOC_A, 'Cloud Kitchen', 0, true)] },
+      loading: false,
+      error: undefined,
+    })
+    mockUseItemStocksForItemQuery.mockReturnValue({
+      data: {
+        itemStocksForItem: [
+          cloudStock(`stock-${itemId}`, itemId, LOC_A, fields),
+        ],
+      },
+      loading: false,
+      error: undefined,
+    })
+  }
 
   const renderStockTab = (itemId: string) => {
     const history = createMemoryHistory({
@@ -1096,8 +1195,9 @@ describe('Item stock tab', () => {
     ).toBeInTheDocument()
   })
 
-  it('cloud mode: renders a single stock page with no pager and no location actions', async () => {
-    // Given cloud mode, several local locations, and a cloud item
+  it('cloud mode: pages over the CLOUD locations, not the local ones', async () => {
+    // Given cloud mode with a second LOCAL location that must be ignored, and
+    // one cloud location holding this item's stock
     await createLocation('Cabin')
     localStorage.setItem('data-mode', 'cloud')
     const cloudItem = {
@@ -1117,20 +1217,27 @@ describe('Item stock tab', () => {
       loading: false,
       error: undefined,
     })
+    seedCloud(cloudItem.id, {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+    })
 
     renderStockTab(cloudItem.id)
 
-    // Then the stock form renders on its own: cloud has no locations and no
-    // ItemStock, so there is nothing to page over and nothing to add to or
-    // remove from (both mutations throw in cloud mode by design)
+    // Then there is no pager chrome — the CLOUD list holds a single location,
+    // and the two local ones ('My Home' + 'Cabin') are not paged over — while
+    // the un-stock action IS offered: cloud reached parity in Task 8
     await screen.findByLabelText(/^packed/i)
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /next location/i }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: /remove from location/i }),
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: /remove from location/i }),
+    ).toBeInTheDocument()
+    // ...and no "add" action, because the item IS stocked in the page's location
     expect(
       screen.queryByRole('button', { name: /add to location/i }),
     ).not.toBeInTheDocument()
@@ -1162,10 +1269,20 @@ describe('Item stock tab', () => {
       loading: false,
       error: undefined,
     })
+    seedCloud(cloudItem.id, {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+    })
     const mockCloudUpdate = vi.fn().mockResolvedValue({
       data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
     })
     mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
+    const mockCloudUpsertStock = vi.fn().mockResolvedValue({
+      data: { upsertItemStock: null },
+    })
+    mockUseUpsertItemStockMutation.mockReturnValue([mockCloudUpsertStock, {}])
 
     renderStockTab(cloudItem.id)
 
@@ -1178,11 +1295,20 @@ describe('Item stock tab', () => {
     await user.type(packedInput, '5')
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the update is sent directly — no local-only "not yet stocked
-    // here" confirmation dialog ever appears in cloud mode
+    // Then the write is sent directly — no local-only "not yet stocked
+    // here" confirmation dialog ever appears in cloud mode. It goes to
+    // `upsertItemStock`, NOT `updateItem`: this page edits nothing but the five
+    // per-location state fields, and since Task 9 those no longer travel inline
+    // on the global Item (sending both would give one value two writers, and
+    // `updateItem`'s own dual-write targets the DEFAULT location rather than
+    // the one being viewed).
     await waitFor(() => {
-      expect(mockCloudUpdate).toHaveBeenCalled()
+      expect(mockCloudUpsertStock).toHaveBeenCalled()
     })
+    expect(mockCloudUpdate).not.toHaveBeenCalled()
+    expect(mockCloudUpsertStock.mock.calls[0][0].variables.itemId).toBe(
+      cloudItem.id,
+    )
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
@@ -1334,10 +1460,21 @@ describe('Item stock tab', () => {
         loading: false,
         error: undefined,
       })
+      seedCloud(cloudItem.id, {
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        dueDate: '2026-12-24T00:00:00.000Z',
+      })
       const mockCloudUpdate = vi.fn().mockResolvedValue({
         data: { updateItem: { ...cloudItem, packedQuantity: 5 } },
       })
       mockUseUpdateItemMutation.mockReturnValue([mockCloudUpdate, {}])
+      const mockCloudUpsertStock = vi.fn().mockResolvedValue({
+        data: { upsertItemStock: null },
+      })
+      mockUseUpsertItemStockMutation.mockReturnValue([mockCloudUpsertStock, {}])
 
       renderStockTab(cloudItem.id)
 
@@ -1348,12 +1485,13 @@ describe('Item stock tab', () => {
       await user.click(screen.getByRole('button', { name: /save/i }))
 
       // Then the GraphQL input carries no `dueDate` KEY — its mere presence,
-      // whatever the value, is what makes toUpdateItemInput send an explicit
-      // null and the server clear the date
+      // whatever the value, is what makes `toStockInput` send an explicit null
+      // and the server clear the date. Since Task 9 the key is asserted on
+      // `upsertItemStock`'s input, which is where the five state fields go.
       await waitFor(() => {
-        expect(mockCloudUpdate).toHaveBeenCalled()
+        expect(mockCloudUpsertStock).toHaveBeenCalled()
       })
-      const input = mockCloudUpdate.mock.calls[0][0].variables.input
+      const input = mockCloudUpsertStock.mock.calls[0][0].variables.input
       expect(input.packedQuantity).toBe(5)
       expect('dueDate' in input).toBe(false)
     })

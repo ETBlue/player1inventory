@@ -14,11 +14,14 @@ export interface VendorCartCounts {
 // Distinct from useVendorItemCounts(), which stays global (location-unaware)
 // for the vendors settings page, where entities are location-independent.
 //
-// Cloud: no Location/ItemStock backend, so items never carry a stockId. A
-// naive stockId guard would zero out every count, so cloud bypasses the
-// location gate entirely (keeping the pre-existing global count) and never
-// reports an inactive count — a cloud item's targetQuantity is real user
-// data, not "not stocked here".
+// Cloud keeps a GLOBAL tally until PR 3 — and the reason is the CART, not the
+// item. Since PR 2 a cloud item does carry a `stockId` (`useItems()` joins
+// `PantryData` per location), so `isStockedHere` would work here; but a cloud
+// `Cart` has no `locationId` until PR 3, so the cart these counts label still
+// holds items from every location. Scoping the count to the active location
+// would under-report what the card actually opens onto. `inactiveCount` stays
+// 0 for the same reason: it is the subset of a count that is not location-
+// scoped. Both become location-scoped in PR 3, when `Cart.locationId` lands.
 export function useVendorCartCounts(): Map<string, VendorCartCounts> {
   const { data: items = [] } = useItems()
   const { mode } = useDataMode()

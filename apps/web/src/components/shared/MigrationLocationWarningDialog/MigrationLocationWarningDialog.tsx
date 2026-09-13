@@ -23,10 +23,13 @@ export interface MigrationLocationWarningDialogProps {
 /**
  * Shown before a local → cloud copy when the pantry has more than one location.
  *
- * Cloud has no per-location `ItemStock` (deferred in PR D), so the copy collapses
- * the pantry onto the location that is active at migration time. Everything in
- * the other locations is simply not migrated and is not preserved anywhere in
- * the cloud — this dialog informs the user of that; it does not rescue the data.
+ * The cloud IMPORT surface is flat — `ItemInput` carries stock inline with no
+ * `locationId`, and PR 4 is what gives it `LocationInput`/`ItemStockInput` —
+ * so the copy collapses the pantry onto the location that is active at
+ * migration time, even though cloud itself has had per-location `ItemStock`
+ * since PR 1. Everything in the other locations is simply not migrated and is
+ * not preserved anywhere in the cloud — this dialog informs the user of that;
+ * it does not rescue the data.
  *
  * Purely presentational: both call sites (`DataModeCard`'s copy action and
  * `PostLoginMigrationDialog`'s sign-in prompt) resolve the names via

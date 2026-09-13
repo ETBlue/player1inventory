@@ -8,23 +8,90 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { bootstrapCarts } from '@/db/operations'
+import { bootstrapCarts, getLocations } from '@/db/operations'
 import { useLocations } from '@/hooks/useLocations'
+import type { DataMode } from '@/lib/dataMode'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
-// localStorage key for the globally active location id. Mirrors the naming of
-// other preference keys (e.g. 'theme-preference', 'pantry-group-by').
+// The LEGACY localStorage key for the globally active location id, written back
+// when both data modes shared one slot. It is read once and migrated into the
+// local slot (below), so an existing user is not reset by the upgrade. It can
+// only ever have named a *local* location — cloud mode had no locations of its
+// own while it was in use — which is why it migrates to 'local' and nowhere else.
 export const ACTIVE_LOCATION_STORAGE_KEY = 'active-location-id'
 
-function readStoredLocationId(): string {
+// The active id is stored PER DATA MODE — 'active-location-id:local' /
+// 'active-location-id:cloud'. The two modes have disjoint id spaces (local seeds
+// the `DEFAULT_LOCATION_ID` sentinel; cloud ids are server-generated cuids), so
+// one shared slot hands each mode an id belonging to the other: sign into cloud
+// and the stored local id names no cloud location at all.
+export function activeLocationStorageKey(mode: DataMode): string {
+  return `${ACTIVE_LOCATION_STORAGE_KEY}:${mode}`
+}
+
+// Pure read — the legacy key is consulted as a fallback here and moved by
+// `migrateLegacyStoredLocationId` below, so this can run during render.
+//
+// Exported for the CROSS-MODE data paths (import / export / migration), which
+// need one mode's id while the app is running in the other. They must not use
+// `useActiveLocation().activeLocationId`: since the slot became per-mode that
+// is the CURRENT mode's id, and the two id spaces are disjoint.
+export function readStoredLocationId(mode: DataMode): string {
   try {
-    return (
-      localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY) ?? DEFAULT_LOCATION_ID
-    )
+    const stored = localStorage.getItem(activeLocationStorageKey(mode))
+    if (stored !== null) return stored
+    if (mode === 'local') {
+      const legacy = localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)
+      if (legacy !== null) return legacy
+    }
+    return DEFAULT_LOCATION_ID
   } catch {
     return DEFAULT_LOCATION_ID
   }
+}
+
+// Move the legacy bare key into the local slot, once, on first mount. The
+// read-through above already keeps an existing user on their location without
+// this; the move is what makes it a one-time upgrade rather than a fallback
+// consulted forever, and it stops a stale bare key from outliving the choice
+// the user later makes in local mode.
+function migrateLegacyStoredLocationId(): void {
+  try {
+    const legacy = localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)
+    if (legacy === null) return
+    const localKey = activeLocationStorageKey('local')
+    if (localStorage.getItem(localKey) === null) {
+      localStorage.setItem(localKey, legacy)
+    }
+    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+  } catch {
+    // ignore read/write failures (e.g. private mode)
+  }
+}
+
+// The local mode's own active location, validated against the LOCAL `locations`
+// table — usable from either mode.
+//
+// A cloud → local copy synthesises `ItemStock` rows and has to place them in
+// one location, and that location has to exist in the table those rows are
+// written to. `useActiveLocation().activeLocationId` cannot supply it while the
+// app is in cloud mode: that id is a server-generated cuid naming a cloud
+// `Location`, so stock written under it belongs to no local location and the
+// user lands on an empty pantry after the switch.
+//
+// The fallback rule matches the provider's own validation effect: the local
+// `isDefault` row, then any row, then the seed sentinel for a table that has
+// not been populated yet.
+export async function resolveLocalActiveLocationId(): Promise<string> {
+  const stored = readStoredLocationId('local')
+  const locations = await getLocations()
+  if (locations.some((loc) => loc.id === stored)) return stored
+  return (
+    locations.find((loc) => loc.isDefault)?.id ??
+    locations[0]?.id ??
+    DEFAULT_LOCATION_ID
+  )
 }
 
 interface ActiveLocationContextValue {
@@ -42,28 +109,60 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   const { mode } = useDataMode()
   const queryClient = useQueryClient()
   const [activeLocationId, setActiveLocationIdState] = useState<string>(() =>
-    readStoredLocationId(),
+    readStoredLocationId(mode),
   )
 
-  const setActiveLocationId = useCallback((id: string) => {
-    setActiveLocationIdState(id)
-    try {
-      localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, id)
-    } catch {
-      // ignore write failures (e.g. private mode)
-    }
+  // Re-read the stored id whenever the DATA MODE changes, not only on mount:
+  // each mode has its own slot and the id held for one is meaningless in the
+  // other. This is React's documented "adjust state when an input changes"
+  // pattern — done during render rather than in an effect so children never
+  // get a pass with the other mode's id.
+  const [lastMode, setLastMode] = useState<DataMode>(mode)
+  if (lastMode !== mode) {
+    setLastMode(mode)
+    setActiveLocationIdState(readStoredLocationId(mode))
+  }
+
+  useEffect(() => {
+    migrateLegacyStoredLocationId()
   }, [])
 
-  // If the stored/active id no longer matches any existing location (e.g. it was
-  // deleted), fall back to the default. Only runs once the location list has
-  // loaded — avoids resetting before data is available.
+  const setActiveLocationId = useCallback(
+    (id: string) => {
+      setActiveLocationIdState(id)
+      try {
+        localStorage.setItem(activeLocationStorageKey(mode), id)
+      } catch {
+        // ignore write failures (e.g. private mode)
+      }
+    },
+    [mode],
+  )
+
+  // Once the location list has loaded, an active id matching none of its
+  // entries is stale — a deleted location, or an id belonging to the other data
+  // mode — and falls back to the user's default location.
+  //
+  // NO id is special-cased as always-valid. This effect used to return early
+  // when the active id equalled `DEFAULT_LOCATION_ID`, which made the local
+  // sentinel 'local' permanently "valid" in cloud mode, where it names nothing:
+  // it was never corrected and every location-scoped query came back empty —
+  // a silently empty pantry rather than a cosmetic fallback.
+  //
+  // The fallback target is the `isDefault` location, not the `'local'` literal:
+  // a cloud default's id is a server-generated cuid (see `Location.isDefault`).
+  //
+  // A list that has loaded but is EMPTY leaves the active id untouched: there
+  // is nothing to point at, and blanking it would discard the user's choice for
+  // the moment the list does arrive. An empty list is far more often transient
+  // (a refetch in flight, a failed cloud read) than a genuine "no locations" —
+  // local seeds a default on populate and the server creates one lazily.
   useEffect(() => {
     if (!locations) return
-    if (activeLocationId === DEFAULT_LOCATION_ID) return
-    const exists = locations.some((loc) => loc.id === activeLocationId)
-    if (!exists) {
-      setActiveLocationId(DEFAULT_LOCATION_ID)
-    }
+    if (locations.some((loc) => loc.id === activeLocationId)) return
+    const fallbackId =
+      locations.find((loc) => loc.isDefault)?.id ?? locations[0]?.id
+    if (fallbackId) setActiveLocationId(fallbackId)
   }, [locations, activeLocationId, setActiveLocationId])
 
   // `getCart` is a pure read (see db/operations.ts) — it no longer creates a
@@ -114,8 +213,13 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
 // Fallback used when no ActiveLocationProvider is mounted. In the real app the
 // provider is always mounted in __root.tsx; this fallback exists so that
 // isolated unit/story renders (and any hook now reading the active location to
-// scope its data) default to the single default location ('local') without
-// requiring every test to wrap in a provider. Switching is a no-op here.
+// scope its data) default to a location without requiring every test to wrap in
+// a provider. Switching is a no-op here.
+//
+// It KEEPS `DEFAULT_LOCATION_ID` deliberately — this was not missed when the
+// provider stopped special-casing the sentinel. There is no location list to
+// consult here (that is the provider's job), so the local seed's id is the only
+// id available; a provider-less render has no cloud data to scope anyway.
 const FALLBACK_ACTIVE_LOCATION: ActiveLocationContextValue = {
   activeLocationId: DEFAULT_LOCATION_ID,
   setActiveLocationId: () => {},

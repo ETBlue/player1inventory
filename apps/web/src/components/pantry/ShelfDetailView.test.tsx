@@ -23,7 +23,7 @@ import {
   createTagType,
   createVendor,
 } from '@/db/operations'
-import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { renderWithRouter } from '@/test/utils'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { ShelfDetailView } from './ShelfDetailView'
@@ -156,7 +156,7 @@ describe('ShelfDetailView quick update', () => {
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     mutateAsync.mockReset()
     mutateAsync.mockResolvedValue(undefined)
   })
@@ -265,7 +265,7 @@ describe('ShelfDetailView search tail', () => {
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     shelfGate.hold = false
     shelfGate.release = null
   })
@@ -349,7 +349,7 @@ describe('ShelfDetailView filter shelf picker', () => {
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
     shelfGate.hold = false
     shelfGate.release = null
     applyPicksSpy.mockClear()

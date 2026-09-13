@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { GetItemsDocument } from '@/generated/graphql'
+import { GetLocationsDocument, PantryDataDocument } from '@/generated/graphql'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -128,13 +128,16 @@ export const AlreadyStockedExactMatch: Story = {
   render: () => <DialogHarness initialName="Milk" />,
 }
 
-// Cloud mode has no per-location ItemStock backend yet (deferred in PR D):
-// every catalog option renders disabled ("already here") regardless of
-// whether it has a stockId, and only the Create path is available (PR D
-// review 2.1 — selecting a disabled option must never write an orphan local
-// ItemStock). This mocks `useGetItemsQuery` via `MockedProvider` instead of
-// seeding Dexie, since cloud mode reads the catalog from GraphQL, not local
-// IndexedDB.
+// Cloud mode behaves exactly as local does since PR 2 Task 9b — the dialog no
+// longer branches on the data mode at all. The catalog and the active
+// location's stock come from `PantryData` via `MockedProvider` rather than
+// Dexie, and the fixture is deliberately TWO locations with Milk stocked in the
+// Kitchen and Flour stocked nowhere here, so "already here" and "stockable" are
+// both visible in one screenshot.
+//
+// `variables` is a matcher rather than a literal: the provider starts on the
+// stored id and only settles on the Kitchen once `GetLocations` resolves, so
+// `PantryData` is asked for more than one location id across the render.
 function CloudDialogHarness({ initialName }: { initialName?: string }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
@@ -157,31 +160,73 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
 
+  const cloudItem = (id: string, name: string) => ({
+    id,
+    name,
+    tagIds: [],
+    vendorIds: [],
+    packageUnit: null,
+    measurementUnit: null,
+    amountPerPackage: null,
+    targetUnit: 'package',
+    targetQuantity: 10,
+    refillThreshold: 2,
+    packedQuantity: 5,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    expirationMode: null,
+    dueDate: null,
+    estimatedDueDays: null,
+    expirationThreshold: null,
+    userId: 'user-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  })
+  const cloudLocation = (id: string, name: string, isDefault: boolean) => ({
+    id,
+    name,
+    isDefault,
+    order: isDefault ? 0 : 1,
+    userId: 'user-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  })
+
   const mocks = [
     {
-      request: { query: GetItemsDocument, variables: {} },
+      request: { query: GetLocationsDocument, variables: () => true },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: {
+        data: {
+          locations: [
+            cloudLocation('cloud-kitchen', 'Kitchen', true),
+            cloudLocation('cloud-garage', 'Garage', false),
+          ],
+        },
+      },
+    },
+    {
+      request: { query: PantryDataDocument, variables: () => true },
+      maxUsageCount: Number.POSITIVE_INFINITY,
       result: {
         data: {
           items: [
+            cloudItem('item-milk', 'Milk'),
+            cloudItem('item-flour', 'Flour'),
+          ],
+          // Milk is stocked in the Kitchen; Flour is not stocked here at all,
+          // so it stays selectable and Milk renders "already here".
+          itemStocks: [
             {
-              id: 'item-flour',
-              name: 'Flour',
-              tagIds: [],
-              vendorIds: [],
-              packageUnit: null,
-              measurementUnit: null,
-              amountPerPackage: null,
-              targetUnit: 'package',
-              targetQuantity: 10,
-              refillThreshold: 2,
-              packedQuantity: 5,
+              __typename: 'ItemStock',
+              id: 'stock-milk-kitchen',
+              itemId: 'item-milk',
+              locationId: 'cloud-kitchen',
+              targetQuantity: 3,
+              refillThreshold: 1,
+              packedQuantity: 2,
               unpackedQuantity: 0,
-              consumeAmount: 1,
-              expirationMode: null,
               dueDate: null,
-              estimatedDueDays: null,
-              expirationThreshold: null,
-              userId: 'user-1',
               createdAt: '2026-01-01T00:00:00.000Z',
               updatedAt: '2026-01-01T00:00:00.000Z',
             },
@@ -208,14 +253,15 @@ export const CloudMode: Story = {
   render: () => <CloudDialogHarness />,
 }
 
-// Cloud mode, query exactly matching a catalog item ("Flour") — Create stays
-// suppressed (duplicate names are impossible in cloud too) and inline feedback
-// explains why, with a location-free sentence since cloud has no locations
-// (PR D review I-3, user ruling 2026-08-16).
+// Cloud mode, query exactly matching an item already stocked in the active
+// location ("Milk") — Create stays suppressed (duplicate names are impossible)
+// and the sole option is disabled, so the same location-naming feedback local
+// mode shows appears here. Before PR 2 Task 9b cloud rendered a separate
+// location-free sentence, on the premise that cloud had no locations.
 export const CloudExactMatch: Story = {
   beforeEach() {
     localStorage.setItem('data-mode', 'cloud')
     return () => localStorage.removeItem('data-mode')
   },
-  render: () => <CloudDialogHarness initialName="Flour" />,
+  render: () => <CloudDialogHarness initialName="Milk" />,
 }

@@ -16,7 +16,11 @@ import {
   createLocation,
   upsertItemStock,
 } from '@/db/operations'
-import { GetItemDocument } from '@/generated/graphql'
+import {
+  GetItemDocument,
+  GetLocationsDocument,
+  ItemStocksForItemDocument,
+} from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -208,9 +212,11 @@ export const RemoveFromLocationConfirmation: Story = {
   },
 }
 
-// Cloud mode has no locations and no ItemStock (deferred in PR D): the tab
-// renders the bare stock form — no dots, no chevrons, no add/remove. The item
-// comes from GraphQL, so this mocks GetItem rather than seeding Dexie.
+// Cloud mode pages over CLOUD locations since PR 2 — same pager, same actions
+// as local. Everything comes from GraphQL, so this mocks `GetItem`,
+// `GetLocations` and `ItemStocksForItem` rather than seeding Dexie. The item is
+// stocked in the second cloud location only, so the tab opens on the
+// not-stocked empty state and the pager is what reaches its stock.
 export const CLOUD_ITEM = {
   id: 'item-cloud-1',
   name: 'Cloud Milk',
@@ -236,6 +242,40 @@ export const CLOUD_ITEM = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
+export const CLOUD_LOCATIONS = [
+  {
+    id: 'cloud-kitchen',
+    name: 'Cloud Kitchen',
+    order: 0,
+    isDefault: true,
+    createdAt: '2026-08-01T10:00:00.000Z',
+    updatedAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'cloud-garage',
+    name: 'Cloud Garage',
+    order: 1,
+    isDefault: false,
+    createdAt: '2026-08-01T10:00:00.000Z',
+    updatedAt: '2026-08-01T10:00:00.000Z',
+  },
+]
+
+export const CLOUD_STOCKS = [
+  {
+    id: 'stock-cloud-garage',
+    itemId: CLOUD_ITEM.id,
+    locationId: 'cloud-garage',
+    targetQuantity: 4,
+    refillThreshold: 2,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    dueDate: null,
+    createdAt: '2026-08-01T10:00:00.000Z',
+    updatedAt: '2026-08-01T10:00:00.000Z',
+  },
+]
+
 function CloudStockHarness() {
   const [queryClient] = useState(
     () =>
@@ -258,6 +298,19 @@ function CloudStockHarness() {
       result: { data: { item: CLOUD_ITEM } },
       maxUsageCount: Number.POSITIVE_INFINITY,
     },
+    {
+      request: { query: GetLocationsDocument },
+      result: { data: { locations: CLOUD_LOCATIONS } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
+    {
+      request: {
+        query: ItemStocksForItemDocument,
+        variables: { itemId: CLOUD_ITEM.id },
+      },
+      result: { data: { itemStocksForItem: CLOUD_STOCKS } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
   ]
 
   return (
@@ -270,10 +323,14 @@ function CloudStockHarness() {
 }
 
 export const CloudMode: Story = {
-  name: 'Cloud mode — single page, no pager',
+  name: 'Cloud mode — pager over cloud locations',
   beforeEach() {
     localStorage.setItem('data-mode', 'cloud')
-    return () => localStorage.removeItem('data-mode')
+    localStorage.setItem('active-location-id:cloud', 'cloud-kitchen')
+    return () => {
+      localStorage.removeItem('data-mode')
+      localStorage.removeItem('active-location-id:cloud')
+    }
   },
   render: () => <CloudStockHarness />,
 }

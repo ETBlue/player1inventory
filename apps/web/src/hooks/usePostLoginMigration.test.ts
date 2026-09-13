@@ -6,8 +6,8 @@ import { bootstrapCarts, getAllItems, getLocations } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
 } from './useActiveLocation'
 import {
   MIGRATION_PROMPTED_KEY,
@@ -26,7 +26,10 @@ vi.mock('@/lib/importData', () => ({
 }))
 
 // Mock the Dexie operations the hook (and ActiveLocationProvider) reach for:
-// getAllItems drives the prompting path, getLocations backs useLocations.
+// getAllItems drives the prompting path, getLocations backs useLocations' LOCAL
+// branch. Every test below that sets `data-mode: 'cloud'` must seed the CLOUD
+// list instead — see `mockCloudLocations` — because as of PR 2 useLocations is
+// dual-mode and no longer reads Dexie in cloud mode.
 vi.mock('@/db/operations', () => ({
   getAllItems: vi.fn().mockResolvedValue([]),
   getLocations: vi.fn().mockResolvedValue([]),
@@ -47,6 +50,49 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
   return {
     ...original,
     useApolloClient: vi.fn(() => stableApolloClient),
+  }
+})
+
+// `useLocations` is dual-mode: in cloud mode the list the ActiveLocationProvider
+// validates the stored active id against comes from GetLocations, not Dexie.
+// This per-file factory REPLACES the one in `src/test/setup.ts`, so the other
+// location hooks are stubbed here too.
+const mockGetLocationsQuery = vi.fn(() => ({
+  data: undefined as { locations: unknown[] } | undefined,
+  loading: false,
+  error: undefined,
+}))
+
+function mockCloudLocations(
+  rows: { id: string; name: string; order: number; isDefault: boolean }[],
+) {
+  mockGetLocationsQuery.mockReturnValue({
+    data: {
+      locations: rows.map((r) => ({
+        __typename: 'Location',
+        ...r,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      })),
+    },
+    loading: false,
+    error: undefined,
+  })
+}
+
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/generated/graphql')>()
+  const mutationStub = () => [
+    vi.fn().mockResolvedValue({ data: undefined }),
+    {},
+  ]
+  return {
+    ...original,
+    useGetLocationsQuery: () => mockGetLocationsQuery(),
+    useCreateLocationMutation: mutationStub,
+    useUpdateLocationMutation: mutationStub,
+    useDeleteLocationMutation: mutationStub,
+    useReorderLocationsMutation: mutationStub,
   }
 })
 
@@ -87,6 +133,11 @@ beforeEach(() => {
   vi.mocked(getAllItems).mockResolvedValue([])
   vi.mocked(getLocations).mockResolvedValue([])
   vi.mocked(bootstrapCarts).mockResolvedValue(undefined)
+  mockGetLocationsQuery.mockReturnValue({
+    data: undefined,
+    loading: false,
+    error: undefined,
+  })
 })
 
 afterEach(() => {
@@ -145,39 +196,35 @@ describe('usePostLoginMigration — auto-import path', () => {
   })
 })
 
-describe('usePostLoginMigration — active location is what gets migrated', () => {
-  // Cloud has no per-location ItemStock, so the copy sends the stock of the
-  // location that is active at migration time. The hook must thread that id
-  // down to importCloudData — otherwise the copy silently falls back to
-  // 'local' and a user whose active location is elsewhere migrates the wrong
-  // (or zeroed) quantities.
-  function seedTwoLocations() {
-    const now = new Date()
-    // afterEach resets every mock, so re-arm the ones the hook reads.
+// The CLOUD location list is server-generated: every id is a cuid. That is the
+// whole reason this hook cannot use `useActiveLocation().activeLocationId` as
+// the copy target — the payload it is flattening comes from the LOCAL Dexie
+// database, whose ids the cloud list never contains.
+const CLOUD_HOME_ID = 'clx7k2p9a0000qwer1234abcd'
+const CLOUD_OFFICE_ID = 'clx7k2p9a0001qwer5678efgh'
+
+describe('usePostLoginMigration — the LOCAL active location is what gets migrated', () => {
+  // Cloud has no per-location ItemStock, so the copy sends the stock of ONE
+  // location out of the local payload. That id must therefore be a local one:
+  // flattening a local payload by the cloud active id matches no ItemStock row
+  // at all, so every item uploads zeroed and every cart is dropped.
+  function seedCloudLocations() {
+    // afterEach resets every mock, so re-arm the ones the hook reads. These
+    // tests run in cloud mode, so the list comes from GetLocations.
     vi.mocked(getAllItems).mockResolvedValue([])
-    vi.mocked(getLocations).mockResolvedValue([
-      {
-        id: 'local',
-        name: 'My Home',
-        order: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'office',
-        name: 'Office',
-        order: 1,
-        createdAt: now,
-        updatedAt: now,
-      },
+    mockCloudLocations([
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
+      { id: CLOUD_OFFICE_ID, name: 'Office', order: 1, isDefault: false },
     ])
   }
 
-  it('auto-import sends the active location id to importCloudData', async () => {
-    // Given the user last worked in 'office' and chose a copy strategy
-    seedTwoLocations()
+  it('user auto-importing after sign-in copies the local active location stock', async () => {
+    // Given the user was last in the LOCAL 'office' pantry and chose a copy
+    // strategy, and cloud mode's own active location is a server cuid
+    seedCloudLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_OFFICE_ID)
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
@@ -186,7 +233,8 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
     const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
     await waitFor(() => expect(result.current.state).toBe('done'))
 
-    // Then the office stock is what gets copied
+    // Then the local office stock is what gets copied — not the cloud cuid,
+    // which names no row in the payload being flattened
     expect(mockImportCloudData).toHaveBeenCalledWith(
       emptyPayload,
       'skip',
@@ -195,11 +243,12 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
     )
   })
 
-  it('manual import sends the active location id to importCloudData', async () => {
-    // Given the user is prompted after signing in, with 'office' active
-    seedTwoLocations()
+  it('user confirming the prompt copies the local active location stock', async () => {
+    // Given the user is prompted after signing in, with LOCAL 'office' active
+    seedCloudLocations()
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'office')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_OFFICE_ID)
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
 
@@ -208,7 +257,7 @@ describe('usePostLoginMigration — active location is what gets migrated', () =
     // When the user confirms the import
     await result.current.importData('append')
 
-    // Then the office stock is what gets copied
+    // Then the local office stock is what gets copied
     expect(mockImportCloudData).toHaveBeenCalledWith(
       emptyPayload,
       'skip',
@@ -225,20 +274,13 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
   // concrete trigger: ActiveLocationProvider resets a stale stored id to the
   // default once useLocations() resolves, which is asynchronous.
   it('a location reset mid-migration does not start a second copy', async () => {
-    // Given a stored active location that no longer exists
-    const now = new Date()
+    // Given a stored CLOUD active location that no longer exists
     vi.mocked(getAllItems).mockResolvedValue([])
-    vi.mocked(getLocations).mockResolvedValue([
-      {
-        id: 'local',
-        name: 'My Home',
-        order: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
+    mockCloudLocations([
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
     ])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     // And an import that is still in flight (so nothing has marked it done)
@@ -247,7 +289,9 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     // When the hook mounts and the provider resets the stale location
     renderHook(() => usePostLoginMigration(), { wrapper })
     await waitFor(() =>
-      expect(localStorage.getItem(ACTIVE_LOCATION_STORAGE_KEY)).toBe('local'),
+      expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
+        CLOUD_HOME_ID,
+      ),
     )
 
     // Then the pantry is copied up exactly once — a second copy would run the
@@ -255,25 +299,20 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     expect(mockImportCloudData).toHaveBeenCalledTimes(1)
   })
 
-  // The one-shot ref makes the FIRST call the only call, so that call must not
-  // be made with a location id the provider is about to correct: flattening by
-  // an id no location has uploads every item with zeroed stock and drops every
-  // cart, and the ref then blocks the corrected retry.
-  it('a stale stored location is corrected before the copy starts', async () => {
-    // Given a stored active location that no longer exists
-    const now = new Date()
+  // The one-shot ref makes the FIRST call the only call, so that call must
+  // already carry the right location. The provider correcting the CLOUD active
+  // id mid-flight must not change it: the copy target comes from the local
+  // slot, and re-entering to "fix" it would run the strategy a second time.
+  it('a stale cloud location does not change which local location is copied', async () => {
+    // Given a stored CLOUD active location that no longer exists, while the
+    // user's LOCAL pantry was last on 'office'
     vi.mocked(getAllItems).mockResolvedValue([])
-    vi.mocked(getLocations).mockResolvedValue([
-      {
-        id: 'local',
-        name: 'My Home',
-        order: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
+    mockCloudLocations([
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
     ])
     localStorage.setItem('data-mode', 'cloud')
-    localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, 'ghost')
+    localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
+    localStorage.setItem(activeLocationStorageKey('local'), 'office')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockResolvedValue(undefined)
@@ -282,13 +321,13 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     const { result } = renderHook(() => usePostLoginMigration(), { wrapper })
     await waitFor(() => expect(result.current.state).toBe('done'))
 
-    // Then the copy runs against the corrected location, exactly once
+    // Then the copy runs against the local location, exactly once
     expect(mockImportCloudData).toHaveBeenCalledTimes(1)
     expect(mockImportCloudData).toHaveBeenCalledWith(
       emptyPayload,
       'skip',
       expect.anything(),
-      expect.objectContaining({ locationId: 'local' }),
+      expect.objectContaining({ locationId: 'office' }),
     )
   })
 })

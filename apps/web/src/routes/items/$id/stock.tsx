@@ -134,8 +134,7 @@ function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
 
 // The editable stock form for ONE (item × location) stock.
 // `item` already carries the stock state of the location being edited;
-// `locationId` routes the save to that location's ItemStock (omitted in cloud
-// mode, which has no locations and writes inline stock on the Item).
+// `locationId` routes the save to that location's ItemStock.
 //
 // The recipe-adjust dialog is NOT here any more: it fires on a consumeAmount /
 // targetUnit change, and both are global fields edited on the Info tab since
@@ -181,26 +180,9 @@ function StockFormPanel({
   )
 }
 
-// Cloud mode has no locations and no ItemStock (deferred in PR D): a cloud
-// Item carries its stock inline. So there is nothing to page over, nothing to
-// add the item to and nothing to remove it from — this branch renders the bare
-// form, exactly as the tab did before the pager existed. It deliberately does
-// not mount the local-only hooks (useLocations / useItemStocks / the two
-// location mutations, which throw in cloud mode) at all.
-function CloudStockTab({ itemId }: { itemId: string }) {
-  const { data: item } = useItem(itemId)
-  if (!item) return null
-
-  return (
-    <div className="p-4 pb-16 bg-background-elevated min-h-[100cqh]">
-      <StockFormPanel item={item} />
-    </div>
-  )
-}
-
 // "Remove from location" and its confirmation. This is a component rather than
 // inline JSX so the two count queries only exist while a stocked page is on
-// screen: declared up in LocalStockTab they would run once against
+// screen: declared up in StockTab they would run once against
 // `locationId: undefined` (an item-global scan) before `useLocations()`
 // resolves, then re-key and run again.
 function RemoveFromLocationButton({
@@ -215,10 +197,21 @@ function RemoveFromLocationButton({
   onRemove: () => Promise<void>
 }) {
   const { t } = useTranslation()
+  const { mode } = useDataMode()
   // Scoped to this page, so the confirmation counts exactly the rows removal
   // would delete — an item-global count would over-report.
+  //
+  // Both counts read Dexie, so they are shown in LOCAL mode only. Cloud's
+  // `removeItemFromLocation` deletes the stock row and nothing else — its carts
+  // and inventory logs are not location-scoped until PR 3 — so there is no
+  // cloud cascade to count, and printing the local numbers next to a cloud
+  // removal would name rows it will not touch.
   const logCount = useInventoryLogCountByItem(itemId, location.id)
   const cartCount = useCartItemCountByItem(itemId, location.id)
+  const showAffectedCounts =
+    mode === 'local' &&
+    logCount.data !== undefined &&
+    cartCount.data !== undefined
 
   return (
     <DeleteButton
@@ -237,7 +230,7 @@ function RemoveFromLocationButton({
           })}
           {/* Only once both counts have resolved — a half-rendered
               "Inventory logs:  · Cart entries: " helps nobody. */}
-          {logCount.data !== undefined && cartCount.data !== undefined && (
+          {showAffectedCounts && (
             <span className="mt-2 block">
               {t('items.detail.removeLocationDialog.affected', {
                 logs: logCount.data,
@@ -253,10 +246,16 @@ function RemoveFromLocationButton({
   )
 }
 
-// Local mode: a pager across every location. Each page shows that location's
+// A pager across every location, in BOTH modes. Each page shows that location's
 // own ItemStock — its form plus "Remove from location" when stocked, an empty
 // state plus "Add to location" when not.
-function LocalStockTab({ itemId }: { itemId: string }) {
+//
+// One component, no mode branch: `useLocations`, `useItemStocks` and the two
+// location mutations are all dual-mode as of PR 2, and cloud's `ItemStocksForItem`
+// answers "which locations is this item stocked in" exactly as the Dexie read
+// does. The cloud tab used to be a separate placeholder that rendered the bare
+// form, because those hooks were local-only and two of them threw.
+function StockTab({ itemId }: { itemId: string }) {
   const { t } = useTranslation()
   const { data: item } = useItem(itemId)
   const { data: locations } = useLocations()
@@ -429,14 +428,5 @@ function LocalStockTab({ itemId }: { itemId: string }) {
 
 function ItemStockTab() {
   const { id } = Route.useParams()
-  const { mode } = useDataMode()
-  // Split at the top so the cloud branch never mounts a location hook. The
-  // two location mutations throw in cloud mode by design (Task 1), so a shared
-  // component with runtime `if (isLocal)` guards would be one missed branch
-  // away from a runtime error — the PR D trap.
-  return mode === 'local' ? (
-    <LocalStockTab itemId={id} />
-  ) : (
-    <CloudStockTab itemId={id} />
-  )
+  return <StockTab itemId={id} />
 }

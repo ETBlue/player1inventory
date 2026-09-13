@@ -77,9 +77,15 @@ vi.mock('../lib/prisma.js', () => ({
     },
     itemStock: {
       deleteMany: vi.fn(),
+      // The PR-2 dual-write: `bulkCreateItems` / `bulkUpsertItems` mirror the
+      // flat payload's inline stock into an `ItemStock` in the caller's default
+      // location, because the cloud pantry reads `ItemStock` and the import
+      // surface stays flat until PR 4.
+      upsert: vi.fn(),
     },
     location: {
       deleteMany: vi.fn(),
+      findFirst: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -153,9 +159,11 @@ const p = prisma as unknown as {
   }
   itemStock: {
     deleteMany: ReturnType<typeof vi.fn>
+    upsert: ReturnType<typeof vi.fn>
   }
   location: {
     deleteMany: ReturnType<typeof vi.fn>
+    findFirst: ReturnType<typeof vi.fn>
   }
   $transaction: ReturnType<typeof vi.fn>
 }
@@ -173,8 +181,16 @@ afterAll(async () => {
   await server.stop()
 })
 
+// The caller's default location, resolved by `defaultLocationId` in
+// `lib/stockDualWrite.ts`. Every user has exactly one (`ensureDefaultLocation`
+// creates it lazily), so a fake that returned `null` here would silently skip
+// the dual-write and leave the assertions below unable to fail.
+const DEFAULT_LOCATION = { id: 'loc_default', userId: 'user_import_test' }
+
 beforeEach(() => {
   vi.clearAllMocks()
+  p.location.findFirst.mockResolvedValue(DEFAULT_LOCATION)
+  p.itemStock.upsert.mockImplementation(async (args: unknown) => args)
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -331,6 +347,73 @@ describe('bulkCreateItems', () => {
       const items = response.body.singleResult.data?.bulkCreateItems as Array<{ userId: string }>
       expect(items[0].userId).toBe('new_user')
     }
+  })
+
+  // ── The PR-2 dual-write onto ItemStock ────────────────────────────────────
+  //
+  // Since PR 2 the cloud pantry reads `ItemStock`, not `Item`'s legacy columns.
+  // The import surface is still FLAT (`ItemInput` carries stock inline with no
+  // `locationId`, until PR 4), so `bulkCreateItems` has to mirror the inline
+  // values into an `ItemStock` in the caller's default location. Without it an
+  // import completes "successfully" and every imported item is invisible in the
+  // pantry — no error, anywhere. Caught by
+  // `e2e/tests/settings/import-export-cloud.spec.ts`.
+  it('user importing items has each one stocked in their default location', async () => {
+    // Given an item whose payload carries real stock values
+    const prismaItem = makePrismaItem('item_abc123', 'Milk')
+    p.item.findUnique.mockResolvedValue(null)
+    p.item.create.mockResolvedValue(prismaItem)
+    p.itemTag.createMany.mockResolvedValue({ count: 0 })
+    p.itemVendor.createMany.mockResolvedValue({ count: 0 })
+    p.item.findUniqueOrThrow.mockResolvedValue(prismaItem)
+
+    // When it is imported
+    const response = await server.executeOperation(
+      {
+        query: BULK_CREATE_ITEMS,
+        variables: {
+          items: [
+            makeItemInput({
+              id: 'item_abc123',
+              targetQuantity: 4,
+              refillThreshold: 2,
+              packedQuantity: 3,
+              unpackedQuantity: 1,
+            }),
+          ],
+        },
+      },
+      { contextValue: CONTEXT },
+    )
+
+    // Then an ItemStock row was written for (item × the caller's default
+    // location), carrying the payload's values — not the Item's columns alone
+    expect(response.body.kind).toBe('single')
+    if (response.body.kind === 'single') {
+      expect(response.body.singleResult.errors).toBeUndefined()
+    }
+    expect(p.itemStock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          itemId_locationId: {
+            itemId: 'item_abc123',
+            locationId: DEFAULT_LOCATION.id,
+          },
+        },
+        update: expect.objectContaining({
+          targetQuantity: 4,
+          refillThreshold: 2,
+          packedQuantity: 3,
+          unpackedQuantity: 1,
+        }),
+      }),
+    )
+    // And the location it resolved was scoped to the CALLER, not any default
+    expect(p.location.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user_import_test' }),
+      }),
+    )
   })
 
   it('rejects unauthenticated bulk-create requests', async () => {

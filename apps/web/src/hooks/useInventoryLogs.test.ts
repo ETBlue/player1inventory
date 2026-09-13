@@ -5,8 +5,8 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
-  ACTIVE_LOCATION_STORAGE_KEY,
   ActiveLocationProvider,
+  activeLocationStorageKey,
   useActiveLocation,
 } from '@/hooks/useActiveLocation'
 import { useAddInventoryLog, useItemLogs } from './useInventoryLogs'
@@ -18,6 +18,33 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // `useLocations` is dual-mode, so it calls `useGetLocationsQuery` in BOTH
+    // modes (skipped in local). This per-file factory REPLACES the one in
+    // `src/test/setup.ts` rather than layering on it, so the location stubs
+    // have to be repeated here or the real Apollo hook runs and demands a
+    // provider. Placed right after `...original` so this file's own overrides
+    // below still win.
+    useGetLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCreateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useReorderLocationsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useItemLogsQuery: (options?: Record<string, unknown>) => {
       capturedItemLogsQueryOptions = options
       return mockItemLogsQuery()
@@ -251,7 +278,7 @@ describe('useAddInventoryLog (local mode)', () => {
           '@/hooks/useActiveLocation',
         )
       const cabin = await createLocation('Cabin')
-      localStorage.setItem(ACTIVE_LOCATION_STORAGE_KEY, cabin.id)
+      localStorage.setItem(activeLocationStorageKey('local'), cabin.id)
       vi.mocked(useActiveLocation).mockImplementation(realUseActiveLocation)
       const { addInventoryLog: mockedAddInventoryLog } = await import(
         '@/db/operations'

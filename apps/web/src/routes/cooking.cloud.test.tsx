@@ -8,6 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
+import { asPantryDataResult } from '@/test/pantryData'
 
 // Cloud mode has no ItemStock backend yet (deferred in the Location feature,
 // PR D): `useItems()` returns cloud items with inline stock and no `stockId`.
@@ -23,7 +24,37 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
-    useGetItemsQuery: () => mockUseGetItemsQuery(),
+    // `useLocations` is dual-mode, so it calls `useGetLocationsQuery` in BOTH
+    // modes (skipped in local). This per-file factory REPLACES the one in
+    // `src/test/setup.ts` rather than layering on it, so the location stubs
+    // have to be repeated here or the real Apollo hook runs and demands a
+    // provider. Placed right after `...original` so this file's own overrides
+    // below still win.
+    useGetLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCreateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useUpdateLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeleteLocationMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useReorderLocationsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // The pantry hooks read `PantryData` now, not `GetItems`. The fixture
+    // below is still written as an item list; `asPantryDataResult` lifts each
+    // item's inline stock values into the ItemStock row the join reads.
+    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
     useGetRecipesQuery: () => mockUseGetRecipesQuery(),
     useConsumeRecipesMutation: () => [mockConsumeRecipes, {}],
     useGetTagsQuery: () => emptyQuery,

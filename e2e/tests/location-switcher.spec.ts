@@ -4,7 +4,15 @@ import { CLOUD_WEB_URL } from '../constants'
 // The LocationSwitcher is a global active-location selector. PR B made it persist
 // the active location and update its trigger label; PR D made it LIVE — switching
 // the active location re-scopes the pantry to items stocked in that location.
-// Locations are local-first (no cloud backend yet), so these flows are local-only.
+// These flows are local-only.//
+// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
+// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
+// client on it. It is that every fixture here seeds **IndexedDB** through
+// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
+// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
+// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
+// guards below are belt-and-braces rather than the thing that excludes it.
+// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
 //
 // IT IS MOUNTED TWICE, and exactly one copy is visible at any width:
 //   - `< lg`  — compact glyph trigger in the page toolbar (inside <main>); no sidebar.
@@ -82,7 +90,7 @@ test('sidebar switcher shows the active location name and lists locations', asyn
   page,
   baseURL,
 }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   // Given a second location exists
   await seedOfficeLocation(page)
@@ -106,7 +114,7 @@ test('sidebar switcher shows the active location name and lists locations', asyn
 })
 
 test('switching location persists across reload', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   await seedOfficeLocation(page)
   await page.goto('/')
@@ -131,7 +139,7 @@ test('"Manage" navigates to the locations settings page', async ({
   page,
   baseURL,
 }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   await page.goto('/')
   // Desktop viewport → the sidebar copy is the reachable one
@@ -157,7 +165,7 @@ test('switching the active location re-scopes the pantry to stocked items', asyn
   page,
   baseURL,
 }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   // Given a second location "Office" and an item created in "My Home"
   await seedOfficeLocation(page)
@@ -213,7 +221,7 @@ test('an item already stocked in the active location is shown disabled in the Ad
   page,
   baseURL,
 }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
   // Given an item created in the active (My Home) location
   await page.goto('/')
@@ -261,7 +269,7 @@ test.describe('desktop (>= lg): the switcher lives in the sidebar', () => {
       page,
       baseURL,
     }) => {
-      test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+      test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
       // Given the page at Playwright's default 1280×720 viewport (>= lg)
       await page.goto(path)
@@ -287,7 +295,7 @@ test.describe('mobile (< lg): the switcher stays in the page toolbar', () => {
       page,
       baseURL,
     }) => {
-      test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+      test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
       // Given the page at a mobile viewport
       await page.goto(path)
@@ -308,7 +316,7 @@ test.describe('mobile (< lg): the switcher stays in the page toolbar', () => {
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'Locations have no cloud backend yet')
+    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
 
     // Given a second location exists
     await seedOfficeLocation(page)

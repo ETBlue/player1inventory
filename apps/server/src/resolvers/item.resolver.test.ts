@@ -6,33 +6,45 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
-    item: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+// `item` / `itemTag` / `itemVendor` / `recipeItem` stay plain `vi.fn()` call
+// recorders. `location` and `itemStock` are the stateful fake
+// (src/test/stockFake.ts), which `updateItem`'s PR-2 dual-write writes into.
+vi.mock('../lib/prisma.js', async () => {
+  const { createStockFake } = await import('../test/stockFake.js')
+  const stockFake = createStockFake()
+  return {
+    prisma: {
+      item: {
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        findUniqueOrThrow: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      },
+      itemTag: {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+      itemVendor: {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+      recipeItem: {
+        count: vi.fn(),
+      },
+      ...stockFake.client,
+      // Hung off the client because a `vi.mock` factory is hoisted above every
+      // import and cannot close over a module-scope binding.
+      $stockFake: stockFake,
     },
-    itemTag: {
-      count: vi.fn(),
-      createMany: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    itemVendor: {
-      count: vi.fn(),
-      createMany: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    recipeItem: {
-      count: vi.fn(),
-    },
-  },
-}))
+  }
+})
 
 import { prisma } from '../lib/prisma.js'
+import { makeStock, type StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   item: {
@@ -56,7 +68,17 @@ const mockPrisma = prisma as unknown as {
   recipeItem: {
     count: ReturnType<typeof vi.fn>
   }
+  $stockFake: StockFake
 }
+
+const stockFake = mockPrisma.$stockFake
+
+// TWO locations for the item's owner, plus one belonging to somebody else that
+// is also flagged isDefault: a single-location fixture cannot tell "the
+// caller's default" apart from "the first default row in the table".
+const LOC_DEFAULT = 'loc_kitchen'
+const LOC_OTHER = 'loc_garage'
+const LOC_STRANGER = 'loc_theirs'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -99,6 +121,15 @@ const ctx: Context = { userId: 'user_test123' }
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  stockFake.reset(
+    [
+      // Default deliberately not first, so a lookup taking locations[0] fails.
+      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
+      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
+      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+    ],
+    [],
+  )
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -496,5 +527,111 @@ describe('Item resolvers', () => {
     expect(result?.errors).toBeUndefined()
     const items = result?.data?.items as { dueDate: string | null }[]
     expect(items[0].dueDate).toBe(due.toISOString())
+  })
+})
+
+// ─── updateItem's legacy inline-stock dual-write (removed in PR 5) ────────────
+//
+// A CURRENT client never exercises this: `useUpdateItem`'s cloud branch strips
+// the five state fields out of `updateItem` and sends them to
+// `upsertItemStock(itemId, locationId)` instead. What this covers is a browser
+// on a stale bundle, which still puts them inline here and names no location.
+
+describe('updateItem mirrors inline stock fields onto ItemStock', () => {
+  const UPDATE = `mutation UpdateItem($id: ID!, $input: UpdateItemInput!) {
+    updateItem(id: $id, input: $input) { id }
+  }`
+
+  function stockAt(locationId: string) {
+    return stockFake.state.itemStocks.find(
+      (s) => s.itemId === 'item_1' && s.locationId === locationId,
+    )
+  }
+
+  beforeEach(() => {
+    const item = makeItem()
+    mockPrisma.item.findFirst.mockResolvedValue(item)
+    mockPrisma.item.update.mockResolvedValue(item)
+    mockPrisma.item.findUniqueOrThrow.mockResolvedValue(item)
+  })
+
+  it('a stale client sending inline quantities has them mirrored to the default location', async () => {
+    // Given the item is stocked in both of the user's locations, and in a
+    // stranger's
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({ id: 'st_default', itemId: 'item_1', locationId: LOC_DEFAULT, packedQuantity: 1 }),
+      makeStock({ id: 'st_other', itemId: 'item_1', locationId: LOC_OTHER, packedQuantity: 40 }),
+      makeStock({ id: 'st_stranger', itemId: 'item_1', locationId: LOC_STRANGER, packedQuantity: 99 }),
+    ])
+
+    // When an old bundle sends the five state fields inline
+    const result = await execOp(UPDATE, {
+      id: 'item_1',
+      input: { packedQuantity: 7, unpackedQuantity: 2, targetQuantity: 9, refillThreshold: 3 },
+    })
+
+    // Then the default location's row carries them
+    expect(result?.errors).toBeUndefined()
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({
+      packedQuantity: 7, unpackedQuantity: 2, targetQuantity: 9, refillThreshold: 3,
+    })
+    // And no other location moved
+    expect(stockAt(LOC_OTHER)?.packedQuantity).toBe(40)
+    expect(stockAt(LOC_STRANGER)?.packedQuantity).toBe(99)
+    // And the Item's own columns were still written — this is a DUAL-write
+    expect(mockPrisma.item.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ packedQuantity: 7, unpackedQuantity: 2 }),
+      }),
+    )
+  })
+
+  it('a configuration-only update creates no stock row', async () => {
+    // Given the item is stocked nowhere
+    stockFake.reset(stockFake.state.locations, [])
+
+    // When a current client renames it and reassigns its tags — no stock fields
+    const result = await execOp(UPDATE, {
+      id: 'item_1',
+      input: { name: 'Oat milk', tagIds: ['tag_1'] },
+    })
+
+    // Then nothing was mirrored. An empty mirror that still upserted would
+    // stock every item in the default location on every rename.
+    expect(result?.errors).toBeUndefined()
+    expect(stockFake.state.itemStocks).toHaveLength(0)
+  })
+
+  it('an inline dueDate is mirrored, and an explicit null clears it', async () => {
+    // Given a row carrying an expiry
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({
+        id: 'st_default', itemId: 'item_1', locationId: LOC_DEFAULT,
+        dueDate: new Date('2026-09-01T00:00:00.000Z'),
+      }),
+    ])
+
+    // When a stale client sends a new date
+    await execOp(UPDATE, { id: 'item_1', input: { dueDate: '2026-12-25T00:00:00.000Z' } })
+    expect(stockAt(LOC_DEFAULT)?.dueDate?.toISOString()).toBe('2026-12-25T00:00:00.000Z')
+
+    // And when it sends an explicit null, the date is cleared rather than left
+    // in place — `dueDate !== undefined` is the test, not a truthiness check
+    await execOp(UPDATE, { id: 'item_1', input: { dueDate: null } })
+    expect(stockAt(LOC_DEFAULT)?.dueDate).toBeNull()
+  })
+
+  it('mirroring an item with no row yet creates exactly one, and a second update reuses it', async () => {
+    // Given no stock rows at all
+    stockFake.reset(stockFake.state.locations, [])
+
+    // When a stale client updates quantities twice
+    await execOp(UPDATE, { id: 'item_1', input: { packedQuantity: 2 } })
+    await execOp(UPDATE, { id: 'item_1', input: { packedQuantity: 5 } })
+
+    // Then one row exists holding the latest value — the second write took the
+    // update branch rather than a create the @@unique index would reject
+    expect(stockFake.state.itemStocks).toHaveLength(1)
+    expect(stockAt(LOC_DEFAULT)?.packedQuantity).toBe(5)
   })
 })

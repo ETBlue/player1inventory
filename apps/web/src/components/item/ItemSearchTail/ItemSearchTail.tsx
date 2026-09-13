@@ -37,9 +37,8 @@ export interface ItemSearchTailProps {
    */
   groupNote?: (item: PantryItem) => ReactNode
   /**
-   * Bucket 3's action. OMIT to suppress the section: cloud mode (no
-   * `ItemStock` backend — `useAddItemToLocation` throws there), or while the
-   * active location has not resolved yet (its name is in the label).
+   * Bucket 3's action. OMIT to suppress the section — the one case left is a
+   * still-unresolved active location, whose name is in the label.
    */
   addToLocationAction?: ItemSearchTailAction
 }

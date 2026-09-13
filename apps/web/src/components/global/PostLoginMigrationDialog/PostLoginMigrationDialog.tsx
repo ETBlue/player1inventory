@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MigrationLocationWarningDialog } from '@/components/shared/MigrationLocationWarningDialog'
@@ -11,8 +12,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { useActiveLocation } from '@/hooks/useActiveLocation'
-import { useLocations } from '@/hooks/useLocations'
+import { getLocations } from '@/db/operations'
+import { resolveLocalActiveLocationId } from '@/hooks/useActiveLocation'
 import { usePostLoginMigration } from '@/hooks/usePostLoginMigration'
 
 export function PostLoginMigrationDialog() {
@@ -20,19 +21,48 @@ export function PostLoginMigrationDialog() {
   const { t } = useTranslation()
   const [showLocationWarning, setShowLocationWarning] = useState(false)
 
-  // The copy sends only the active location's stock (cloud has no per-location
-  // ItemStock yet), so warn first when another location would be left behind.
-  // A single-location pantry — the common case — is never interrupted.
-  const { data: locations } = useLocations()
-  const { activeLocationId, activeLocation } = useActiveLocation()
-  // Until the list has loaded there is no way to tell a single-location pantry
+  // The copy sends only one location's stock — `flattenPayloadForCloud`
+  // collapses the local payload onto the location `usePostLoginMigration`
+  // passes as `importCloudData`'s `locationId`, because the cloud IMPORT path
+  // is still flat (`ItemInput` carries stock inline and the payload's
+  // `itemStocks`/`locations` are dropped). So warn first when another location
+  // would be left behind. A single-location pantry — the common case — is
+  // never interrupted.
+  //
+  // Both the list and the active id must be the LOCAL ones. This dialog only
+  // ever runs in cloud mode (its hook is gated on `isSignedIn`), where
+  // `useLocations()` returns the CLOUD list and `useActiveLocation()` the cloud
+  // slot — neither describes the local pantry being copied UP, so the warning
+  // would enumerate locations that are not at risk while missing the local ones
+  // that are. Read local Dexie directly, by the same local-slot id
+  // `usePostLoginMigration` copies by (`readStoredLocationId('local')`) — here
+  // VALIDATED against the local table, exactly as the provider validates its
+  // own, so the name shown and the id filtered on can never name two different
+  // rows. The copy id itself is still the raw slot; whether that read should be
+  // validated too is the PR 4 question `usePostLoginMigration` documents.
+  const { data: localSource } = useQuery({
+    queryKey: ['locations', 'local-migration-source'],
+    queryFn: async () => ({
+      locations: await getLocations(),
+      activeLocationId: await resolveLocalActiveLocationId(),
+    }),
+  })
+  // Until the read has landed there is no way to tell a single-location pantry
   // from a multi-location one, and defaulting to "no warning" would let a fast
-  // click skip it. Hold the import instead — `locations` is undefined only while
-  // the query is in flight.
-  const locationsLoaded = locations !== undefined
-  const otherLocations = (locations ?? []).filter(
+  // click skip it. Hold the import instead.
+  const locationsLoaded = localSource !== undefined
+  const activeLocationId = localSource?.activeLocationId
+  const activeLocation = localSource?.locations.find(
+    (loc) => loc.id === activeLocationId,
+  )
+  const otherLocations = (localSource?.locations ?? []).filter(
     (loc) => loc.id !== activeLocationId,
   )
+  // The name the warning displays comes from the same row the filter above
+  // keeps out of `otherLocations` — naming one location while filtering by
+  // another would be worse than not warning at all. It is missing only for a
+  // local table with no rows, where the resolved id is the seed sentinel.
+  const activeLocationName = activeLocation?.name ?? activeLocationId ?? ''
 
   function handleImport() {
     if (otherLocations.length > 0) {
@@ -94,7 +124,7 @@ export function PostLoginMigrationDialog() {
       {/* Multi-location warning — shown in place of the prompt, before any copy */}
       <MigrationLocationWarningDialog
         open={showLocationWarning}
-        activeLocationName={activeLocation?.name ?? activeLocationId}
+        activeLocationName={activeLocationName}
         otherLocationNames={otherLocations.map((loc) => loc.name)}
         onConfirm={() => {
           setShowLocationWarning(false)

@@ -6,9 +6,9 @@ import {
 } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db } from '@/db'
+import { db, ensureDefaultLocationRow } from '@/db'
 import { createItem, createLocation, createRecipe } from '@/db/operations'
-import { ACTIVE_LOCATION_STORAGE_KEY } from '@/hooks/useActiveLocation'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
@@ -48,12 +48,18 @@ describe('RecipeGroupView location partition', () => {
     await db.itemStocks.clear()
     await db.recipes.clear()
     await db.locations.clear()
+    // Re-seed the row Dexie's `populate` hook creates on a real first open.
+    // The active location is now validated against the loaded list (no id is
+    // special-cased as always-valid any more), so with the default row missing
+    // the provider corrects the active id to the only location present — this
+    // test's OTHER location — which inverts the partition asserted below.
+    await ensureDefaultLocationRow()
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
     sessionStorage.clear()
     localStorage.clear()
-    localStorage.removeItem(ACTIVE_LOCATION_STORAGE_KEY)
+    localStorage.removeItem(activeLocationStorageKey('local'))
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
