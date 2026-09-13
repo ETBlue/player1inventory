@@ -581,11 +581,25 @@ surprise.
 
 ### Standing caveats (not scheduled — carried forward)
 
-6. **Nothing executes the resolvers against real SQL.** Every `apps/server` test runs
-   against a hand-written stateful Prisma fake (`src/test/`), and cloud E2E is gated on
-   `TEST_CLOUD_MODE`, which is set nowhere (issue #260 fixed the *vendor-cart* gating, not
-   this). **A manual cloud smoke test is owed for checkout and cooking** — the two
-   dual-write paths PR 2 added that no automated test exercises end-to-end.
+6. **No unit test runs the resolvers against real SQL.** Every `apps/server` test uses a
+   hand-written stateful Prisma fake (`src/test/`).
+
+   Cloud E2E *does* use real Postgres. `E2E_TEST_MODE=true` makes `prisma.ts` point at
+   `TEST_DATABASE_URL`, a dedicated Neon branch. But it only runs the spec files listed in
+   the `cloud` project's `testMatch` in `e2e/playwright.config.ts` — nine files today. So
+   the right statement is: **a resolver that no cloud spec covers has never run against
+   SQL at all.** Caveat 10 below lists what is missing and why.
+
+   **A manual cloud smoke test is owed for checkout and cooking.** These are the two
+   dual-write paths PR 2 added, and no automated test runs them end to end.
+
+   > **Corrected 2026-09-13.** This caveat used to say "cloud E2E is gated on
+   > `TEST_CLOUD_MODE`, which is set nowhere". That was true until PR 0 of this series
+   > replaced those guards with the `baseURL !== CLOUD_WEB_URL` pattern. `grep -rn
+   > TEST_CLOUD_MODE` now finds nothing outside old docs. The sentence contradicted
+   > caveat 10, which correctly names `testMatch` as the blocker. The same stale sentence
+   > lived in the root `CLAUDE.md` and was copied into several PR 2 task briefs before
+   > anyone checked it — see commit `456ff93e`.
 
 7. **`$transaction` rollback is deliberately not modelled in the fake.** An atomicity
    test written against it would be vacuous. Named here so nobody writes one and reports
