@@ -390,12 +390,49 @@ reshaping it further.
 | 2 | The mutation check is stronger than written. Run 1 already fails, not run 2 — `beforeEach` also calls `/e2e/cleanup`, so locations leak between tests inside one run. |
 | 2 | Nothing lints `e2e/`. `pnpm lint` and `pnpm check` scan `apps/web` only, and there is no root `biome.json`. The verification gate does not cover this directory. |
 | 3 | `location-switcher.spec.ts` has **14** test cases, not 8. Two `test()` declarations sit inside `for` loops over 4 pages. It had 8 `test.skip` lines, not 9. |
-| 3 | 8 tests in that file are layout-only, not 4 (4 desktop + 4 mobile). Only 1 of the 14 depends on location scoping at all. |
+| 3 | 8 tests in that file are layout-only, not 4 (4 desktop + 4 mobile). Only 1 of the 14 depended on location scoping at all. **Now 2**, after Task 4b — see the 4b rows below. |
 | 3 | The plan named the Add-combobox test as key coverage. It is not — see Task 4b.2. |
 | 4 | `location-not-stocked-here.spec.ts` has **5** test cases, not 3. One `test()` sits inside a `for` loop over 3 group-by views. It had 3 `test.skip` lines, not 4. |
 | 4 | Two of those 5 cannot run in cloud. `/shopping` and `/cooking` disable the partition with `!isCloud` (`shopping/index.tsx:166`, `cooking.tsx:180`). Their skips were kept, with the true reason replacing the false one. PR 3 removes both guards. |
 | 4 | The brief said `ItemStockInput` does not exist. It does, in `apps/server/src/schema/itemStock.graphql`, used by `upsertItemStock`. Only `LocationInput` is genuinely missing from the import schema. |
 | 4 | `git checkout --` cannot restore an untracked new file, so the plan's "confirm `git diff --stat` is empty" step does not work for a helper created in the same task. |
+| 4b | Step 4b.1 offered two ways to write the positive assertion: the empty-state text, or "loading has finished". **Only the first one works.** `PantryListView` renders `<LoadingSpinner />` and then either the item list or the empty state. There is no separate "loaded" marker to wait on. |
+| 4b | After commit `82f41b5a`, **2** of the 14 `location-switcher` cases depend on location scoping, not 1. Tests 4 and 5 both go red when `locationId` is dropped from the `itemStocks` query. The Task 3 row above is corrected accordingly. |
+| 5 | The plan expected the full E2E run to be a formality. It was not. The Task 1 cleanup fix **broke `cooking.spec.ts` in the cloud project** — see the row below this table. |
+
+**A risk Task 4b introduced, recorded so it is not rediscovered.** Test 5's fixture uses
+two items named "Oats" and "Oat Milk". The test finds their combobox options with the
+locators `/oats/i` and `/oat milk/i`. Neither string matches the other item's name today,
+which is the only reason the locators work. **Renaming either item would make them
+ambiguous**, and Playwright would then fail on strict mode rather than on the behaviour
+the test is about — a failure that points at the wrong thing. If you rename one, replace
+both locators with exact-name matching.
+
+**Task 1's cleanup fix broke one older cloud spec, and the full run is what found it.**
+`[cloud] cooking.spec.ts › user can cook a recipe with partial items and multiple servings`
+failed: the Stock tab showed a packed quantity of 0 where the test expects 6.
+
+Cause. `/e2e/cleanup` now deletes `Location`, so every cloud test starts with zero
+locations. `ensureDefaultLocation` runs only inside the `locations` query resolver, and
+`cooking.spec.ts`'s cloud seed writes stock over GraphQL before the browser ever loads the
+app. `mirrorStockToDefaultLocation` ends with `if (!locationId) return`, so the stock write
+was dropped in silence: `Item`'s legacy columns were set, no `ItemStock` row was written,
+and the Stock tab — which reads `ItemStock` — showed 0.
+
+Measured, not assumed. With `prisma.location.deleteMany` removed from `/e2e/cleanup` again
+and the spec fix reverted, that test **fails on run 1 and passes on run 2**. Run 1's app
+created the default location and the old cleanup left it behind for run 2. The test had
+been passing on a leaked row and would have failed on any genuinely fresh database.
+
+Fix. `ensureCloudDefaultLocation(request)` was extracted from `seedCloudFixture`'s step 1
+into an exported helper in `e2e/helpers/cloudSeed.ts`, and `cooking.spec.ts`'s cloud seed
+now calls it before its first stock write. This is a test-fixture fix, not a resolver
+change — `mirrorStockToDefaultLocation`'s silent no-op is documented behaviour for accounts
+that predate PR 1's backfill, and changing it is outside this branch.
+
+Open risk. The other eight older cloud specs were not audited for this, and none of them
+failed in the full run. Any future cloud seed that writes stock before loading the app
+needs the same call. Recorded in `e2e/CLAUDE.md`.
 
 **Total test count.** The design said 16 tests. The real figure is **24**: 5 in
 `settings/locations`, 14 in `location-switcher`, 5 in `location-not-stocked-here`.

@@ -607,9 +607,9 @@ surprise.
 
    Cloud E2E *does* use real Postgres. `E2E_TEST_MODE=true` makes `prisma.ts` point at
    `TEST_DATABASE_URL`, a dedicated Neon branch. But it only runs the spec files listed in
-   the `cloud` project's `testMatch` in `e2e/playwright.config.ts` — nine files today. So
-   the right statement is: **a resolver that no cloud spec covers has never run against
-   SQL at all.** Caveat 10 below lists what is missing and why.
+   the `cloud` project's `testMatch` in `e2e/playwright.config.ts` — **12 files** since
+   2026-09-14, nine before that. So the right statement is: **a resolver that no cloud spec
+   covers has never run against SQL at all.** Caveat 10 below lists what is missing and why.
 
    **A manual cloud smoke test is owed for checkout and cooking.** These are the two
    dual-write paths PR 2 added, and no automated test runs them end to end.
@@ -635,19 +635,68 @@ surprise.
    assert nothing. Worth closing when RBAC lands, behind the same
    `requireLocationRole`-shaped helper — never as `row.userId === ctx.userId`.
 
-10. **No cloud E2E covers any location surface — audited 2026-09-04, Task 10.** Six specs
-   exercise locations (`settings/locations`, `location-switcher`, `item-stock-pager`,
-   `item-stock-input`, `location-not-stocked-here`, `unified-item-search`), and the
-   `cloud` project's `testMatch` in `e2e/playwright.config.ts` selects **none** of them —
-   so their `test.skip(baseURL === CLOUD_WEB_URL, …)` guards are dead code. The blocker
-   is not the backend (PR 1 shipped it): **every fixture seeds IndexedDB through
-   `page.evaluate()`**, which writes nothing a cloud-mode app reads, so widening
-   `testMatch` alone would turn six green specs red. Cloud coverage needs a GraphQL- or
-   UI-driven seed helper — real work, and PR 3's natural home since it rewrites carts and
-   logs anyway. Task 10 corrected the stale *reasons* in those files (they all claimed
-   "no cloud Location/ItemStock backend") but deliberately did **not** attempt the
-   migration. This is the E2E half of caveat 6: cloud locations are covered by unit tests
-   and by nothing else.
+10. **Cloud E2E covers three location surfaces — partly closed 2026-09-14, issue #284.**
+
+    > **Corrected 2026-09-14.** The paragraph below was true when written. It is now only
+    > partly true. Read this box first, then the original text for the history.
+
+    **What is covered now.** Three of the six specs run in the `cloud` project:
+
+    | Spec | Test cases | Run in cloud |
+    |---|---|---|
+    | `e2e/tests/settings/locations.spec.ts` | 5 | 5 |
+    | `e2e/tests/location-switcher.spec.ts` | 14 | 14 |
+    | `e2e/tests/location-not-stocked-here.spec.ts` | 5 | 3 |
+    | **Total** | **24** | **22** |
+
+    The resolvers these reach against real Postgres, for the first time:
+
+    | Resolver | Covered by |
+    |---|---|
+    | `createLocation` | `settings/locations` — create, reorder |
+    | `updateLocation` | `settings/locations` — rename |
+    | `deleteLocation` | `settings/locations` — delete, and the default-location refusal |
+    | `reorderLocations` | `settings/locations` — reorder |
+    | `locations` query + `ensureDefaultLocation` | every converted test |
+    | `upsertItemStock` | `location-switcher` — pantry re-scoping |
+    | `addItemToLocation` | `location-switcher` — the Add combobox |
+    | `itemStocks` / `PantryData` | `location-not-stocked-here` — all three grouping axes |
+
+    `removeItemFromLocation` runs only inside `seedCloudFixture`'s stock reconciliation.
+    That is seeding, not coverage — no assertion depends on it.
+
+    Only **2 of the 14** `location-switcher` cases depend on location scoping at all. The
+    other 12 assert layout (sidebar vs toolbar at four widths, desktop and mobile) or
+    plain CRUD. Do not count them as location coverage.
+
+    **What is still not covered.**
+
+    | Still uncovered | Why |
+    |---|---|
+    | `e2e/tests/item-stock-pager.spec.ts` | seeds carts and inventory logs; cart ids change shape in PR 3, so converting now means converting twice |
+    | `e2e/tests/item-stock-input.spec.ts` | same reason |
+    | `shelves.spec.ts`, `vendors-group.spec.ts`, `recipes-group.spec.ts`, `unified-item-search.spec.ts` | no cloud awareness at all; each needs a cloud fixture written from nothing |
+    | 2 of the 5 `location-not-stocked-here` cases | they assert on a divider cloud never renders — blocked on PR 3 removing the two `!isCloud` bypasses in deferred item 3b above |
+    | The nine older cloud specs | still hand-roll their own teardown instead of `e2e/helpers/cloudTeardown.ts` |
+
+    Issue #284 stays open for the rows above. See
+    `2026-09-14-cloud-e2e-location-coverage-plan.md`.
+
+    **The original text, kept for history:**
+
+    Six specs
+    exercise locations (`settings/locations`, `location-switcher`, `item-stock-pager`,
+    `item-stock-input`, `location-not-stocked-here`, `unified-item-search`), and the
+    `cloud` project's `testMatch` in `e2e/playwright.config.ts` selects **none** of them —
+    so their `test.skip(baseURL === CLOUD_WEB_URL, …)` guards are dead code. The blocker
+    is not the backend (PR 1 shipped it): **every fixture seeds IndexedDB through
+    `page.evaluate()`**, which writes nothing a cloud-mode app reads, so widening
+    `testMatch` alone would turn six green specs red. Cloud coverage needs a GraphQL- or
+    UI-driven seed helper — real work, and PR 3's natural home since it rewrites carts and
+    logs anyway. Task 10 corrected the stale *reasons* in those files (they all claimed
+    "no cloud Location/ItemStock backend") but deliberately did **not** attempt the
+    migration. This is the E2E half of caveat 6: cloud locations are covered by unit tests
+    and by nothing else.
 
 ### Separate follow-up issue — NOT part of this PR
 
