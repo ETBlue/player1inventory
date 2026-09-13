@@ -1,29 +1,44 @@
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
+import { cleanupCloudData } from '../../helpers/cloudTeardown'
 
-// The page must render in both modes (covered by a11y.spec.ts), but the CRUD
-// flows here are local-only.//
-// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
-// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
-// client on it. It is that every fixture here seeds **IndexedDB** through
-// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
-// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
-// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
-// guards below are belt-and-braces rather than the thing that excludes it.
-// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
+// Runs in BOTH projects, local and cloud.
+//
+// Every test here is UI-driven: it opens /settings/locations and clicks "Add
+// location". Nothing in this file seeds a database. The only `page.evaluate()`
+// call is the local-mode teardown below.
+//
+// An earlier version of this comment said the fixtures seed IndexedDB and that
+// the file is therefore local-only. That was false — the file never seeded
+// anything.
+//
+// Cloud isolation is by row ownership, not by database: every write is owned by
+// E2E_USER_ID, and `/e2e/cleanup` deletes that user's rows. As of this branch
+// that endpoint also deletes `Location`. Without it, `ensureDefaultLocation`
+// (location.resolver.ts) returns early whenever the user already has a
+// location, so run 2 would see run 1's "Office" and fail.
 //
 // Name lookups are scoped to <main>: /settings/locations is not a fullscreen
 // page, so at Playwright's default (desktop) viewport the sidebar's
 // LocationSwitcher also renders the active location's name.
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request, baseURL }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
+  if (baseURL === CLOUD_WEB_URL) {
+    // Guards against a previous run that crashed before its teardown.
+    await cleanupCloudData(request)
+  }
 })
 
-test.afterEach(async ({ page }) => {
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
+    await cleanupCloudData(request)
+    return
+  }
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -50,9 +65,7 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-test('user can create a location', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('user can create a location', async ({ page }) => {
   // Given the locations settings page is open (default "My Home" seeded on first open)
   await page.goto('/settings/locations')
   // Default location is undeletable and visible
@@ -70,9 +83,7 @@ test('user can create a location', async ({ page, baseURL }) => {
   await expect(page.getByText('Office')).toBeVisible()
 })
 
-test('user can rename a location', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('user can rename a location', async ({ page }) => {
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
@@ -95,9 +106,7 @@ test('user can rename a location', async ({ page, baseURL }) => {
   await expect(page.getByText('Office')).not.toBeVisible()
 })
 
-test('user can delete a non-default location', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('user can delete a non-default location', async ({ page }) => {
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
@@ -120,9 +129,7 @@ test('user can delete a non-default location', async ({ page, baseURL }) => {
   await expect(page.getByText('Office')).not.toBeVisible()
 })
 
-test('the default location cannot be deleted', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('the default location cannot be deleted', async ({ page }) => {
   // Given the locations page with only the default location
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
@@ -133,9 +140,7 @@ test('the default location cannot be deleted', async ({ page, baseURL }) => {
   ).toHaveCount(0)
 })
 
-test('user can reorder locations', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('user can reorder locations', async ({ page }) => {
   await page.goto('/settings/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
 
