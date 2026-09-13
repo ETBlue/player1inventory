@@ -392,9 +392,15 @@ reshaping it further.
 | 3 | `location-switcher.spec.ts` has **14** test cases, not 8. Two `test()` declarations sit inside `for` loops over 4 pages. It had 8 `test.skip` lines, not 9. |
 | 3 | 8 tests in that file are layout-only, not 4 (4 desktop + 4 mobile). Only 1 of the 14 depends on location scoping at all. |
 | 3 | The plan named the Add-combobox test as key coverage. It is not — see Task 4b.2. |
+| 4 | `location-not-stocked-here.spec.ts` has **5** test cases, not 3. One `test()` sits inside a `for` loop over 3 group-by views. It had 3 `test.skip` lines, not 4. |
+| 4 | Two of those 5 cannot run in cloud. `/shopping` and `/cooking` disable the partition with `!isCloud` (`shopping/index.tsx:166`, `cooking.tsx:180`). Their skips were kept, with the true reason replacing the false one. PR 3 removes both guards. |
+| 4 | The brief said `ItemStockInput` does not exist. It does, in `apps/server/src/schema/itemStock.graphql`, used by `upsertItemStock`. Only `LocationInput` is genuinely missing from the import schema. |
+| 4 | `git checkout --` cannot restore an untracked new file, so the plan's "confirm `git diff --stat` is empty" step does not work for a helper created in the same task. |
 
-**Total test count.** The design said 16 tests. The real figure is **22**: 5 in
-`settings/locations`, 14 in `location-switcher`, 3 in `location-not-stocked-here`.
+**Total test count.** The design said 16 tests. The real figure is **24**: 5 in
+`settings/locations`, 14 in `location-switcher`, 5 in `location-not-stocked-here`.
+**22 run in the cloud project** — two of the not-stocked-here cases stay skipped
+there until PR 3.
 
 ## Standing rules for every task
 

@@ -561,6 +561,27 @@ surprise.
    subsection. PR 3 giving carts and consumption their own `locationId` is what makes
    these paths correct.
 
+3b. **Two `isCloud` partition bypasses survived Task 8.** Task 8 was titled "delete
+   every `isCloud` stock bypass" and its table listed three. Two more are still in the
+   tree, both switching off the "not stocked here" partition:
+
+   | Site | Code |
+   |---|---|
+   | `apps/web/src/routes/shopping/index.tsx:166` | `!isCloud && (vendorCartCounts.get(vendorId)?.count ?? 0) === 0` |
+   | `apps/web/src/routes/cooking.tsx:180` | `!isCloud && getAvailableRecipeItems(recipe).length === 0` |
+
+   They are correctly blocked on PR 3, not merely missed: a cloud `Cart` has no
+   `locationId`, and `consumeRecipes` writes the caller's default location, so cloud has
+   no per-location answer to give. But they were never written down here, which is how a
+   deferred item turns into a forgotten one. Found on 2026-09-14 while bringing
+   `location-not-stocked-here.spec.ts` into the cloud project — two of its five cases
+   assert on a divider that cloud never renders, so they stay `test.skip` until PR 3
+   removes both guards. See `2026-09-14-cloud-e2e-location-coverage-plan.md`.
+
+   This is the same failure mode the note further up this plan describes: a bypass
+   phrased as `!isCloud && …` matches a grep for `isCloud` but reads as ordinary logic,
+   so it survives a review that scans for `if (isCloud)`.
+
 ### Owed by PR 4
 
 4. **`usePostLoginMigration` and its dialog disagree about which local location.** The
