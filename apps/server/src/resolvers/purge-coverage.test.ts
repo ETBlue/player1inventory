@@ -1,13 +1,14 @@
 /**
- * Schema-coverage guard for the two purge paths (issue #250).
+ * Schema-coverage guard for the three purge paths (issue #250).
  *
  * WHY THIS FILE EXISTS
  *
- * `purgeUserData` (purge.resolver.ts) and `clearAllData` (import.resolver.ts) each
- * hand-maintain a list of `prisma.<model>.deleteMany(...)` calls. Nothing links that
- * list to `prisma/schema.prisma`, so adding a user-owned model is a two-place edit
- * that no compiler checks — and their unit tests hand-maintain a *third* duplicate,
- * the mocked Prisma client. When `Shelf` was added, the resolvers were updated but
+ * `purgeUserData` (purge.resolver.ts), `clearAllData` (import.resolver.ts) and the
+ * E2E-only `DELETE /e2e/cleanup` endpoint (index.ts) each hand-maintain a list of
+ * `prisma.<model>.deleteMany(...)` calls. Nothing links those
+ * lists to `prisma/schema.prisma`, so adding a user-owned model is a three-place
+ * edit that no compiler checks — and the two resolvers' unit tests hand-maintain
+ * yet another duplicate, the mocked Prisma client. When `Shelf` was added, the resolvers were updated but
  * the mocks were not: `prisma.shelf` was `undefined` and all three purge tests blew
  * up with "Cannot read properties of undefined (reading 'deleteMany')". Worse, had
  * the mock happened to be permissive, the resolvers could have silently *skipped* a
@@ -17,7 +18,7 @@
  * against the resolver *source*, so it cannot be satisfied by a mock:
  *
  *   Every model in prisma/schema.prisma that owns a `userId` field must be deleted
- *   by BOTH purge paths.
+ *   by ALL THREE purge paths.
  *
  * ItemTag, ItemVendor and RecipeItem are junction models with no `userId` of their
  * own. ItemStock also has no `userId` — despite carrying real per-location state
@@ -63,6 +64,10 @@ const userOwnedModels = parseUserOwnedModels(schemaSource)
 const PURGE_PATHS = [
   { label: 'purgeUserData', source: read('./purge.resolver.ts') },
   { label: 'clearAllData', source: read('./import.resolver.ts') },
+  // The E2E-only DELETE /e2e/cleanup endpoint is a THIRD hand-maintained copy of
+  // the same delete list. It is not a resolver, so nothing else in this suite
+  // reads it. This guard is what keeps the three lists from drifting apart.
+  { label: 'e2eCleanup', source: read('../index.ts') },
 ]
 
 describe('purge coverage against prisma/schema.prisma', () => {
@@ -85,8 +90,8 @@ describe('purge coverage against prisma/schema.prisma', () => {
     expect(userOwnedModels.length).toBe(10)
   })
 
-  it('knows about both purge paths', () => {
-    expect(PURGE_PATHS).toHaveLength(2)
+  it('knows about all three purge paths', () => {
+    expect(PURGE_PATHS).toHaveLength(3)
     for (const path of PURGE_PATHS) expect(path.source.length).toBeGreaterThan(0)
   })
 
