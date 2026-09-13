@@ -4,6 +4,7 @@ import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { splitInlineStock } from '../helpers/locationSeed'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { makeGql } from '../utils/cloud'
 
 // Seed items and a recipe for the cooking test.
@@ -17,6 +18,15 @@ async function seedDatabase(
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud: create items and recipe via GraphQL API
     const gql = makeGql(request)
+
+    // The default location must exist BEFORE any stock write. `updateItem`'s
+    // dual-write goes through `mirrorStockToDefaultLocation`, which ends in
+    // `if (!locationId) return` — with no default location the packed quantity
+    // below would be written to `Item`'s legacy columns and to no `ItemStock`
+    // row at all, and the Stock tab (which reads `ItemStock`) would show 0.
+    // See the helper's comment for why this only started mattering on
+    // 2026-09-14.
+    await ensureCloudDefaultLocation(request)
 
     const { createItem: flour } = await gql<{ createItem: { id: string } }>(
       'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',

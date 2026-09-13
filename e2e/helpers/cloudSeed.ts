@@ -33,6 +33,39 @@ const UPSERT_STOCK = `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStoc
 }`
 
 /**
+ * Read the caller's locations and return the default one.
+ *
+ * READING `locations` IS WHAT CREATES THE DEFAULT LOCATION. `ensureDefaultLocation`
+ * (location.resolver.ts) runs inside the `locations` query resolver and nowhere else,
+ * so a brand-new user has NO location until something asks for the list.
+ *
+ * Any cloud seed that writes stock must call this first. A stock write that arrives
+ * before the default location exists is dropped in silence:
+ * `mirrorStockToDefaultLocation` (apps/server/src/lib/stockDualWrite.ts) ends with
+ * `if (!locationId) return`. The item is created, `Item`'s legacy columns are set,
+ * and no `ItemStock` row is written — so the pantry renders the item below the
+ * "not stocked here" divider showing 0.
+ *
+ * This was invisible until 2026-09-14, because `/e2e/cleanup` did not delete
+ * `Location`. Every run inherited the previous run's default location, so the mirror
+ * always had somewhere to write. Once cleanup started deleting locations, the first
+ * spec that seeded stock over GraphQL before loading the app failed.
+ */
+export async function ensureCloudDefaultLocation(
+  request: APIRequestContext,
+): Promise<{ id: string; name: string }> {
+  const gql = makeGql(request)
+  const { locations } = await gql<{ locations: LocationRow[] }>(LOCATIONS_QUERY)
+  const serverDefault = locations.find((loc) => loc.isDefault)
+  if (!serverDefault) {
+    throw new Error(
+      `ensureCloudDefaultLocation: no default location after the locations query — got ${JSON.stringify(locations)}`,
+    )
+  }
+  return serverDefault
+}
+
+/**
  * Seed `fixture` into the cloud database and return
  * `Record<locationKey, serverLocationId>`.
  */
@@ -48,13 +81,7 @@ export async function seedCloudFixture(
   // 1. Reading `locations` is what runs `ensureDefaultLocation`
   //    (location.resolver.ts), so the caller's default location exists from
   //    here on. Its id is a cuid, never the local `'local'` sentinel.
-  const { locations } = await gql<{ locations: LocationRow[] }>(LOCATIONS_QUERY)
-  const serverDefault = locations.find((loc) => loc.isDefault)
-  if (!serverDefault) {
-    throw new Error(
-      `seedCloudFixture: no default location after the locations query — got ${JSON.stringify(locations)}`,
-    )
-  }
+  const serverDefault = await ensureCloudDefaultLocation(request)
   locationIds[defaultLocation.key] = serverDefault.id
 
   // The server names its default location from DEFAULT_LOCATION_NAME
