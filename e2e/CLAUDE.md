@@ -86,3 +86,102 @@ user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true` and
 `TEST_DATABASE_URL` is unset, `prisma.ts` throws rather than falling back to
 `DATABASE_URL` (covered by `apps/server/src/lib/prisma.test.ts`) — so a missing test
 database fails loudly instead of silently writing multi-user fixtures into dev.
+
+## `/e2e/cleanup` deletes `Location` and `ItemStock` — since 2026-09-14
+
+Before that date the endpoint deleted 12 models and missed both. The effect was not
+visible in a single run, so it went unnoticed:
+
+- `Location` rows stayed in the test database forever. `ensureDefaultLocation`
+  (`apps/server/src/resolvers/location.resolver.ts`) returns early when the user already
+  has any location, so it never recreated a clean default. Run 2 of a location test saw
+  run 1's locations.
+- `ItemStock` rows went away by accident, through the `ON DELETE CASCADE` on their
+  `itemId`, not because the endpoint asked for them.
+
+Both models are now in the `$transaction` list in `apps/server/src/index.ts`.
+
+**The guard that keeps the three delete lists in step** is
+`apps/server/src/resolvers/purge-coverage.test.ts`. Three paths hand-maintain the same
+list — `purgeUserData` (`purge.resolver.ts`), `clearAllData` (`import.resolver.ts`) and
+`/e2e/cleanup` (`index.ts`). The guard reads resolver source from disk, so a mock cannot
+satisfy it.
+
+**It only checks models that declare a `userId`.** `ItemStock` has none, on purpose — it
+is scoped through its `Location` (see root `CLAUDE.md` → Authorization). So the
+`itemStock` line in those three lists is covered by no test. If someone deletes that
+line, nothing fails: both of `ItemStock`'s foreign keys cascade, so the rows still go.
+The line is there to keep the three lists identical, not because the route needs it.
+
+### The consequence: a cloud seed must create the default location before it writes stock
+
+Deleting `Location` on cleanup means every cloud test now starts with **zero** locations.
+`ensureDefaultLocation` runs inside the `locations` query resolver and **nowhere else**, so
+nothing creates the default until something asks for the list.
+
+A stock write that arrives first is dropped in silence.
+`mirrorStockToDefaultLocation` (`apps/server/src/lib/stockDualWrite.ts`) ends with
+`if (!locationId) return`. The item is created, `Item`'s legacy columns are set, and no
+`ItemStock` row is written. The pantry then shows the item below the "not stocked here"
+divider with a quantity of 0, and nothing anywhere reports an error.
+
+**Call `ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) at the top of any
+cloud seed that writes stock.** `seedCloudFixture` already does.
+
+This caught `cooking.spec.ts` on 2026-09-14. Measured, not guessed: with `Location` removed
+from the cleanup list again, the cloud cooking test **fails on run 1 and passes on run 2** —
+run 1's app created the default location, and the old cleanup left it behind for run 2. So
+that test had been passing on a leaked row, and would have failed on any genuinely fresh
+database.
+
+## Seeding a fixture that runs in both modes
+
+A spec that seeds data and runs in both the `local` and `cloud` projects describes its
+fixture **once, as plain data**, and lets each mode translate it:
+
+| File | Role |
+|---|---|
+| `e2e/helpers/fixture.ts` | the `Fixture` type — locations, vendors, items, stocks, shelves, recipes |
+| `e2e/helpers/localSeed.ts` | `seedLocalFixture(page, fixture)` — writes it to IndexedDB |
+| `e2e/helpers/cloudSeed.ts` | `seedCloudFixture(request, fixture)` — writes it through GraphQL |
+
+Both return the same `Record<locationKey, realLocationId>` map.
+
+`e2e/tests/location-not-stocked-here.spec.ts` is the working example.
+
+**Entity ids are the same in both modes.** `ItemInput`, `VendorInput`, `ShelfInput` and
+`RecipeInput` all declare `id: ID!`, so the bulk import mutations accept the local
+fixture's own fixed ids.
+
+**Location ids are the exception.** The import schema has no `LocationInput` until PR 4
+of cloud locations, so `createLocation(name:)` returns a server-generated cuid. That is
+why `Fixture` references locations by a symbolic `key` (`'HOME'`, `'OFFICE'`) and never
+by an id. A spec that hardcoded `'local'` — the local default-location sentinel — would
+name nothing at all in cloud mode.
+
+**`seedCloudFixture` reconciles stock; it does not assume.** `bulkCreateItems` calls
+`mirrorStockToDefaultLocation` (`apps/server/src/resolvers/import.resolver.ts`), so every
+seeded item arrives with a stock row at the default location whether the fixture asks for
+one or not. The helper reads the real stock rows back and then:
+
+- `upsertItemStock` for every `(item, location)` pair the fixture lists
+- `removeItemFromLocation` for every pair in the database that the fixture does not list
+
+Reconciling against what the database actually holds is what keeps this working when
+PR 5 removes the dual-write. **Check it at that point** — if the mirror stops running,
+the reconcile should simply find nothing to remove.
+
+## Nothing lints or type-checks `e2e/`
+
+`pnpm lint` and `pnpm check` scan `apps/web` only, and there is no root `biome.json`.
+`pnpm build` does not cover `e2e/` either. The verification gate in root `CLAUDE.md`
+therefore says nothing about this directory.
+
+To type-check a file you edited, write a temporary `tsconfig` and run `tsc --noEmit`.
+**Scope `include` to the files you are editing.** Two files carry pre-existing errors
+that will drown yours:
+
+| File | Pre-existing errors |
+|---|---|
+| `e2e/playwright.config.ts` | 2 × `TS2580` (no `@types/node`) |
+| `e2e/tests/a11y.spec.ts` | 39 × `TS2559` on `AxeOptions` |

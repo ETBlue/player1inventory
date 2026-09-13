@@ -547,9 +547,17 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers nine files today. **A resolver
+`e2e/playwright.config.ts` — that list is opt-in and covers **12 files today**. **A resolver
 exercised by no cloud spec has never touched SQL at all**, and a manual smoke test is owed
 for anything transactional.
+
+Three of those 12 cover location surfaces, added 2026-09-14 (issue #284):
+`settings/locations.spec.ts`, `location-switcher.spec.ts` and
+`location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
+coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
+`locations` query with `ensureDefaultLocation`, `upsertItemStock`, `addItemToLocation` and
+the `itemStocks` / `PantryData` read. The warning above still holds for everything else —
+most resolvers are named by no cloud spec.
 
 > The former wording here — "cloud E2E is gated on `TEST_CLOUD_MODE` (issue #260), which is
 > set nowhere" — was true until PR 0 of cloud locations replaced those guards with the
