@@ -18,6 +18,7 @@ import { useServiceWorkerUpdate } from '@/hooks/useServiceWorkerUpdate'
 import { useTags } from '@/hooks/useTags'
 import { useVendors } from '@/hooks/useVendors'
 import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
+import { shouldRedirectToOnboarding } from './shouldRedirectToOnboarding'
 
 // Read mode once at module load — stable for this page lifetime
 const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ?? 'local') as
@@ -74,17 +75,18 @@ function RootComponent() {
   useEffect(() => {
     // Skip redirect if the user explicitly chose "Start from scratch",
     // or if E2E tests set the skip flag via addInitScript.
-    const skipOnboardingRedirect =
+    const dismissed =
       localStorage.getItem('onboarding-dismissed') === 'true' ||
       localStorage.getItem('e2e-skip-onboarding') === 'true'
     if (
-      allLoaded &&
-      isEmpty &&
-      // An empty cache offline is not the same as an empty account. Sending
-      // the user to onboarding here looks like their data was deleted.
-      !(mode === 'cloud' && offline) &&
-      pathname !== '/onboarding' &&
-      !skipOnboardingRedirect
+      shouldRedirectToOnboarding({
+        allLoaded,
+        isEmpty,
+        mode,
+        offline,
+        pathname,
+        dismissed,
+      })
     ) {
       navigate({ to: '/onboarding' })
     }
