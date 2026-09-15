@@ -19,13 +19,15 @@ async function seedDatabase(
     // Cloud: create items and recipe via GraphQL API
     const gql = makeGql(request)
 
-    // The default location must exist BEFORE any stock write. `updateItem`'s
-    // dual-write goes through `mirrorStockToDefaultLocation`, which ends in
-    // `if (!locationId) return` — with no default location the packed quantity
-    // below would be written to `Item`'s legacy columns and to no `ItemStock`
-    // row at all, and the Stock tab (which reads `ItemStock`) would show 0.
-    // See the helper's comment for why this only started mattering on
-    // 2026-09-14.
+    // Make the default location exist before the stock writes below.
+    //
+    // This started as a workaround for a server bug (issue #287):
+    // `mirrorStockToDefaultLocation` ended in `if (!locationId) return`, so a
+    // stock write that arrived before the user's first `locations` query was
+    // dropped in silence and the Stock tab showed 0. The server now creates the
+    // default location itself, so this call is no longer what makes the test
+    // pass. It stays because a seed that guarantees its own preconditions does
+    // not depend on server behaviour to be correct.
     await ensureCloudDefaultLocation(request)
 
     const { createItem: flour } = await gql<{ createItem: { id: string } }>(

@@ -1,3 +1,4 @@
+import { ensureDefaultLocation } from './defaultLocation.js'
 import { prisma } from './prisma.js'
 
 /**
@@ -75,21 +76,38 @@ function seed(value: NumberWrite | undefined): number {
   return typeof value === 'number' ? value : value.increment
 }
 
-/** The caller's default location, or null if they have none yet. */
-export async function defaultLocationId(userId: string): Promise<string | null> {
-  const location = await prisma.location.findFirst({
-    where: { userId, isDefault: true },
-    select: { id: true },
-  })
-  return location?.id ?? null
+/**
+ * The bridge's name for `ensureDefaultLocation` (lib/defaultLocation.ts): the
+ * caller's default location, created if they have none.
+ *
+ * It never returns null. It used to, and a stock write that landed on that path
+ * disappeared with no error (issue #287). The real function lives in
+ * `defaultLocation.ts` because it must outlive PR 5, which deletes this file;
+ * this alias exists so PR 3's rewrite of the call sites is the only place the
+ * name changes.
+ */
+export async function defaultLocationId(userId: string): Promise<string> {
+  return ensureDefaultLocation(userId)
 }
 
 /**
  * Mirror a stock write onto one location's `ItemStock`, creating the row if it
- * is missing. Silently does nothing when there is no location to write to —
- * a user whose account predates PR 1's backfill has no rows to keep in sync,
- * and failing their checkout over a bridge that PR 5 deletes would be worse
- * than the divergence.
+ * is missing.
+ *
+ * It does nothing when `data` is EMPTY, which is the only no-op left here. That
+ * happens on a real path: `updateItem` calls
+ * `mirrorStockToDefaultLocation` on every update, and a current client's update
+ * carries none of the five stock fields (a rename, a tag change). Upserting an
+ * empty write would stock every renamed item in the default location.
+ *
+ * A missing location is no longer a no-op. Until issue #287 this function's
+ * caller returned early when the user had no `Location`, and the write was lost
+ * with nothing logged. The comment here justified that with "a user whose
+ * account predates PR 1's backfill" — a class that does not exist: PR 1's
+ * migration (20260830000000_add_location_and_item_stock) backfills one default
+ * `Location` for every user holding a row in any of nine tables. The class that
+ * DID exist was a brand-new account writing stock before its first `locations`
+ * query. `ensureDefaultLocation` now creates the location for it.
  */
 export async function mirrorStock(
   itemId: string,
@@ -160,6 +178,5 @@ export async function mirrorStockToDefaultLocation(
 ): Promise<void> {
   if (Object.keys(data).length === 0) return
   const locationId = await defaultLocationId(userId)
-  if (!locationId) return
   await mirrorStock(itemId, locationId, data)
 }

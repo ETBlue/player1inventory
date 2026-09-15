@@ -92,6 +92,41 @@ describe('stockFake models the constraints resolvers rely on', () => {
     expect(fake.state.itemStocks[0]?.packedQuantity).toBe(5)
   })
 
+  it('a second default location for one user throws P2002, the way the partial index does', async () => {
+    // Given the user already has a default location
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+
+    // When another default is created for the same user
+    const create = fake.client.location.create({
+      data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_1' },
+    })
+
+    // Then it is rejected with Prisma's unique-violation code and no row is
+    // left behind. `ensureDefaultLocation` (lib/defaultLocation.ts) catches
+    // exactly this and re-reads the winner, so a fake that accepted the
+    // duplicate would leave that path unexercised.
+    await expect(create).rejects.toMatchObject({ code: 'P2002' })
+    expect(fake.state.locations).toHaveLength(1)
+  })
+
+  it('a default location for a DIFFERENT user is allowed', async () => {
+    // Given user_1 has a default location
+    const fake = createStockFake()
+    fake.reset([{ id: 'loc_a', userId: 'user_1', isDefault: true }], [])
+
+    // When user_2 gets one too — the index is partial and per-user, so this
+    // must pass. A fake that rejected it would make "creates the default for a
+    // new user" fail for the wrong reason.
+    const row = await fake.client.location.create({
+      data: { name: 'My Home', order: 0, isDefault: true, userId: 'user_2' },
+    })
+
+    // Then both exist
+    expect(row.userId).toBe('user_2')
+    expect(fake.state.locations).toHaveLength(2)
+  })
+
   it('location.findFirst models Prisma where semantics — an absent key filters nothing', async () => {
     // Given two users, each with a default location
     const fake = createStockFake()

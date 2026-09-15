@@ -15,8 +15,8 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 // Cloud isolation is by row ownership, not by database: every write is owned by
 // E2E_USER_ID, and `/e2e/cleanup` deletes that user's rows. As of this branch
 // that endpoint also deletes `Location`. Without it, `ensureDefaultLocation`
-// (location.resolver.ts) returns early whenever the user already has a
-// location, so run 2 would see run 1's "Office" and fail.
+// (lib/defaultLocation.ts) returns early whenever the user already has a
+// default, so run 2 would see run 1's "Office" and fail.
 //
 // Name lookups are scoped to <main>: /settings/locations is not a fullscreen
 // page, so at Playwright's default (desktop) viewport the sidebar's

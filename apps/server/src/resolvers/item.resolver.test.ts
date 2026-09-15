@@ -621,6 +621,34 @@ describe('updateItem mirrors inline stock fields onto ItemStock', () => {
     expect(stockAt(LOC_DEFAULT)?.dueDate).toBeNull()
   })
 
+  it('a user with no location yet gets one, and the stock write is not dropped (issue #287)', async () => {
+    // Given the caller has NO location at all — a brand-new account whose first
+    // stock write arrives before its first `locations` query — while a stranger
+    // does have one. Until issue #287 the mirror returned early here and the
+    // write disappeared with no error, leaving the item invisible in the pantry.
+    stockFake.reset([{ id: LOC_STRANGER, userId: 'user_other', isDefault: true }], [])
+
+    // When a stale client sends inline quantities
+    const result = await execOp(UPDATE, {
+      id: 'item_1',
+      input: { packedQuantity: 6, targetQuantity: 8 },
+    })
+
+    // Then a default location was created for the CALLER
+    expect(result?.errors).toBeUndefined()
+    const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
+    expect(created).toMatchObject({ isDefault: true, name: 'My Home' })
+
+    // And the stock landed in it — one row, at the new location, not the
+    // stranger's
+    expect(stockFake.state.itemStocks).toHaveLength(1)
+    expect(stockAt(created?.id ?? '')).toMatchObject({
+      packedQuantity: 6,
+      targetQuantity: 8,
+    })
+    expect(stockAt(LOC_STRANGER)).toBeUndefined()
+  })
+
   it('mirroring an item with no row yet creates exactly one, and a second update reuses it', async () => {
     // Given no stock rows at all
     stockFake.reset(stockFake.state.locations, [])

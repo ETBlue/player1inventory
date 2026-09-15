@@ -93,8 +93,8 @@ Before that date the endpoint deleted 12 models and missed both. The effect was 
 visible in a single run, so it went unnoticed:
 
 - `Location` rows stayed in the test database forever. `ensureDefaultLocation`
-  (`apps/server/src/resolvers/location.resolver.ts`) returns early when the user already
-  has any location, so it never recreated a clean default. Run 2 of a location test saw
+  (`apps/server/src/lib/defaultLocation.ts`) returns early when the user already has a
+  default location, so it never recreated a clean default. Run 2 of a location test saw
   run 1's locations.
 - `ItemStock` rows went away by accident, through the `ON DELETE CASCADE` on their
   `itemId`, not because the endpoint asked for them.
@@ -113,26 +113,36 @@ is scoped through its `Location` (see root `CLAUDE.md` → Authorization). So th
 line, nothing fails: both of `ItemStock`'s foreign keys cascade, so the rows still go.
 The line is there to keep the three lists identical, not because the route needs it.
 
-### The consequence: a cloud seed must create the default location before it writes stock
+### The consequence: every cloud test now starts with zero locations
 
-Deleting `Location` on cleanup means every cloud test now starts with **zero** locations.
-`ensureDefaultLocation` runs inside the `locations` query resolver and **nowhere else**, so
-nothing creates the default until something asks for the list.
+Deleting `Location` on cleanup means every cloud test starts with **zero** locations. A
+cloud seed that writes stock therefore writes before anything has created a default
+location.
 
-A stock write that arrives first is dropped in silence.
-`mirrorStockToDefaultLocation` (`apps/server/src/lib/stockDualWrite.ts`) ends with
-`if (!locationId) return`. The item is created, `Item`'s legacy columns are set, and no
-`ItemStock` row is written. The pantry then shows the item below the "not stocked here"
-divider with a quantity of 0, and nothing anywhere reports an error.
-
-**Call `ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) at the top of any
-cloud seed that writes stock.** `seedCloudFixture` already does.
+**Until 2026-09-16 that write was dropped in silence** (issue #287).
+`mirrorStockToDefaultLocation` (`apps/server/src/lib/stockDualWrite.ts`) ended with
+`if (!locationId) return`. The item was created, `Item`'s legacy columns were set, and no
+`ItemStock` row was written. The pantry then showed the item below the "not stocked here"
+divider with a quantity of 0, and nothing anywhere reported an error.
 
 This caught `cooking.spec.ts` on 2026-09-14. Measured, not guessed: with `Location` removed
 from the cleanup list again, the cloud cooking test **fails on run 1 and passes on run 2** —
 run 1's app created the default location, and the old cleanup left it behind for run 2. So
 that test had been passing on a leaked row, and would have failed on any genuinely fresh
 database.
+
+**The server no longer drops the write.** `ensureDefaultLocation`
+(`apps/server/src/lib/defaultLocation.ts`) creates the default location when the user has
+none, and every stock write path reaches it — `updateItem`, `bulkCreateItems`,
+`bulkUpsertItems`, `checkout` and `consumeRecipes`. Seed order no longer decides whether
+stock survives.
+
+**`ensureCloudDefaultLocation(request)` (`e2e/helpers/cloudSeed.ts`) is still there, and
+still worth calling first.** It is no longer a workaround: `seedCloudFixture` needs the
+default location's id (to map the fixture's default key onto) and its name (to decide
+whether to rename it), so the call has its own reason to exist. `cooking.spec.ts` also
+still calls it — a seed that guarantees its own preconditions does not depend on server
+behaviour to be correct.
 
 ## Seeding a fixture that runs in both modes
 
@@ -162,7 +172,8 @@ name nothing at all in cloud mode.
 **`seedCloudFixture` reconciles stock; it does not assume.** `bulkCreateItems` calls
 `mirrorStockToDefaultLocation` (`apps/server/src/resolvers/import.resolver.ts`), so every
 seeded item arrives with a stock row at the default location whether the fixture asks for
-one or not. The helper reads the real stock rows back and then:
+one or not — and since issue #287 that is true even when the user had no location at all
+when the import ran. The helper reads the real stock rows back and then:
 
 - `upsertItemStock` for every `(item, location)` pair the fixture lists
 - `removeItemFromLocation` for every pair in the database that the fixture does not list

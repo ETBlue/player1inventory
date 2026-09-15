@@ -182,9 +182,12 @@ afterAll(async () => {
 })
 
 // The caller's default location, resolved by `defaultLocationId` in
-// `lib/stockDualWrite.ts`. Every user has exactly one (`ensureDefaultLocation`
-// creates it lazily), so a fake that returned `null` here would silently skip
-// the dual-write and leave the assertions below unable to fail.
+// `lib/stockDualWrite.ts`, which delegates to `ensureDefaultLocation` in
+// `lib/defaultLocation.ts`. That function never returns null — it creates the
+// location when the user has none (issue #287). This mock stands in for the
+// "already has one" branch, which is the common path. The bug itself is covered
+// by the no-location tests in `item.resolver.test.ts`, `cart.resolver.test.ts`
+// and `recipe.resolver.test.ts`, which use the stateful fake.
 const DEFAULT_LOCATION = { id: 'loc_default', userId: 'user_import_test' }
 
 beforeEach(() => {

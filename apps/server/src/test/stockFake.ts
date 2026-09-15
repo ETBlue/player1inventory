@@ -15,6 +15,13 @@
 //     It guards a FUTURE writer that creates unconditionally, and because an
 //     unreachable guard invites deletion as dead code it is pinned directly by
 //     `stockFake.test.ts` rather than left resting on a claim.
+//   - `location.create` enforces the partial unique index PR 1's migration
+//     adds — CREATE UNIQUE INDEX ON "Location" ("userId") WHERE "isDefault".
+//     A second default for the same user throws P2002, the way Postgres does.
+//     `ensureDefaultLocation` (lib/defaultLocation.ts) depends on that: it
+//     catches P2002 and re-reads the winner. A fake that accepted the duplicate
+//     would leave that path untested, and a fake with no `create` at all would
+//     make "creates the default when the user has none" impossible to write.
 //   - `findFirst` / `findUnique` model Prisma's own `where` semantics
 //     (`where.x === undefined || row.x === where.x`), never a hardcoded
 //     ownership or default-flag match. A fake that hardcoded
@@ -33,6 +40,9 @@ export interface FakeLocation {
   id: string
   userId: string
   isDefault: boolean
+  // Only the rows the fake CREATES carry these. Fixtures may leave them out.
+  name?: string
+  order?: number
 }
 
 export interface FakeStock {
@@ -63,6 +73,15 @@ export class UniqueConstraintError extends Error {
     super(
       `Unique constraint failed on the fields: (\`itemId\`,\`locationId\`) — (${itemId}, ${locationId})`,
     )
+  }
+}
+
+// P2002 from the partial unique index on ("userId") WHERE "isDefault" — the
+// error a user's SECOND default location raises.
+export class DefaultLocationConstraintError extends Error {
+  code = 'P2002'
+  constructor(userId: string) {
+    super(`Unique constraint failed on the fields: (\`userId\`) — (${userId})`)
   }
 }
 
@@ -161,6 +180,22 @@ export function createStockFake() {
         state.locations.find((l) => matchesLocation(l, where)) ?? null,
       findMany: async ({ where = {} }: { where?: Where } = {}) =>
         state.locations.filter((l) => matchesLocation(l, where)),
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const userId = data.userId as string
+        const isDefault = Boolean(data.isDefault)
+        if (isDefault && state.locations.some((l) => l.userId === userId && l.isDefault)) {
+          throw new DefaultLocationConstraintError(userId)
+        }
+        const row: FakeLocation = {
+          id: `loc-${++seq}`,
+          userId,
+          isDefault,
+          name: data.name as string,
+          order: data.order as number,
+        }
+        state.locations.push(row)
+        return row
+      },
     },
     itemStock: {
       findUnique: async ({ where }: { where: Where }) =>
