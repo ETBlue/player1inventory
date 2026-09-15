@@ -3,6 +3,14 @@ import 'fake-indexeddb/auto'
 import { beforeEach, vi } from 'vitest'
 import '../i18n'
 
+// The service worker registration module is a virtual module supplied by
+// vite-plugin-pwa at build time. It does not exist under Vitest, so every
+// test that (directly or indirectly, e.g. via __root.tsx) loads
+// useServiceWorkerUpdate needs this stub or the import fails to resolve.
+vi.mock('virtual:pwa-register', () => ({
+  registerSW: () => () => Promise.resolve(),
+}))
+
 // Prevent the empty-DB redirect to /onboarding from firing in unit and story
 // tests. E2E tests set this flag via addInitScript; here we set it globally so
 // route-level stories and integration tests that start with an empty DB keep

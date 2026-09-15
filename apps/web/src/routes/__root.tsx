@@ -13,6 +13,7 @@ import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { useItems } from '@/hooks/useItems'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useNavigationTracker } from '@/hooks/useNavigationTracker'
+import { useServiceWorkerUpdate } from '@/hooks/useServiceWorkerUpdate'
 import { useTags } from '@/hooks/useTags'
 import { useVendors } from '@/hooks/useVendors'
 import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
@@ -44,6 +45,8 @@ function RootComponent() {
   useNavigationTracker()
   // Sync language preference on app load
   useLanguage()
+  // Ask the user to reload when a new version is ready. Never auto-reloads.
+  useServiceWorkerUpdate()
 
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })

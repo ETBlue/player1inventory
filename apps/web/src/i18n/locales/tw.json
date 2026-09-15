@@ -806,5 +806,13 @@
   "locationSwitcher": {
     "triggerLabel": "切換據點（目前：{{name}}）",
     "manage": "管理據點"
+  },
+  "pwa": {
+    "updateAvailable": "有新版本可以使用。",
+    "reload": "重新載入",
+    "offlineTitle": "離線中",
+    "offlineSyncedAt": "顯示 {{time}} 的資料",
+    "offlineNeverSynced": "目前沒有資料可顯示，請連線後再讀取。",
+    "writeBlocked": "目前離線中，暫時無法儲存變更。"
   }
 }

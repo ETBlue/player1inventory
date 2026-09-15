@@ -54,7 +54,8 @@
     "react-i18next": "^16.5.6",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "workbox-window": "^7.4.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",

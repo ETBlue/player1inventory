@@ -806,5 +806,13 @@
   "locationSwitcher": {
     "triggerLabel": "Switch location (current: {{name}})",
     "manage": "Manage locations"
+  },
+  "pwa": {
+    "updateAvailable": "A new version is available.",
+    "reload": "Reload",
+    "offlineTitle": "Offline",
+    "offlineSyncedAt": "Showing data from {{time}}",
+    "offlineNeverSynced": "Showing no data. Connect to load your items.",
+    "writeBlocked": "You are offline. Changes cannot be saved right now."
   }
 }
