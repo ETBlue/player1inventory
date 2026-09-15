@@ -1918,7 +1918,9 @@ test.describe('PWA offline', () => {
   test('user can open the app with no network in local mode', async ({ page, context }) => {
     // Given the user visited once while online, so the app files are cached
     await page.goto('/')
-    await page.evaluate(() => navigator.serviceWorker.ready)
+    // Return a plain value. A ServiceWorkerRegistration cannot be sent back
+    // to the test process, so returning it directly throws.
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => true))
 
     // When the network goes away and the app is opened again
     await context.setOffline(true)
@@ -1957,7 +1959,40 @@ Expected: three tests pass. The first run is slow because it builds the app.
 
 - [ ] **Step 5: Add the banner to the accessibility scan**
 
-In `e2e/tests/a11y.spec.ts`, add a test that loads a cloud page while offline and runs the same `AXE_OPTIONS` check, so the banner's contrast is checked in both light and dark mode. Follow the existing pattern in that file exactly.
+First read `e2e/tests/a11y.spec.ts` and copy the shape of the existing
+`test.describe('dark mode a11y')` block, including how it calls `injectAxe`,
+`checkA11y`, and `AXE_OPTIONS`. Then add this block, filling in the same calls
+that file already uses:
+
+```ts
+test.describe('offline banner a11y', () => {
+  test.use({ baseURL: PWA_WEB_URL })
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`offline banner passes axe in ${theme} mode`, async ({ page, context }) => {
+      // Given the app is in cloud mode with the chosen theme
+      await page.addInitScript((value) => {
+        localStorage.setItem('theme-preference', value)
+        localStorage.setItem('data-mode', 'cloud')
+      }, theme)
+      await page.goto('/')
+
+      // When the network goes away and the banner appears
+      await context.setOffline(true)
+      await page.reload()
+      await expect(page.getByRole('status')).toBeVisible()
+
+      // Then the banner has no accessibility violations
+      // (use the same injectAxe / checkA11y / AXE_OPTIONS calls as the
+      //  existing blocks in this file)
+    })
+  }
+})
+```
+
+This block needs `PWA_WEB_URL` imported from `../constants`, and it only runs
+in the `pwa` Playwright project, because the dev server has no service worker.
+Add `'**/a11y.spec.ts'` to the `pwa` project's `testMatch` array so it runs.
 
 - [ ] **Step 6: Run the full E2E gate**
 
