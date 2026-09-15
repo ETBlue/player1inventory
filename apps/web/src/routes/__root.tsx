@@ -10,6 +10,7 @@ import { Layout } from '@/components/global/Layout'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
+import { useIsOffline } from '@/hooks/useIsOffline'
 import { useItems } from '@/hooks/useItems'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useNavigationTracker } from '@/hooks/useNavigationTracker'
@@ -27,15 +28,20 @@ const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ?? 'local') as
 // must not mount (it calls useAuth() which requires ClerkProvider context).
 const isE2ETestMode = !!import.meta.env.VITE_E2E_TEST_USER_ID
 
-function CloudAuthGuard() {
+export function CloudAuthGuard() {
   const { isSignedIn, isLoaded } = useAuth()
   const navigate = useNavigate()
+  const offline = useIsOffline()
 
   useEffect(() => {
+    // Do not redirect while offline. Clerk cannot confirm the session
+    // without a network, and a sign-in page cannot be finished offline.
+    // The user's cached data is on the device and should stay reachable.
+    if (offline) return
     if (isLoaded && !isSignedIn) {
       navigate({ to: '/sign-in' })
     }
-  }, [isLoaded, isSignedIn, navigate])
+  }, [isLoaded, isSignedIn, navigate, offline])
 
   return null
 }
@@ -50,6 +56,7 @@ function RootComponent() {
 
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const offline = useIsOffline()
   const itemsResult = useItems()
   const tagsResult = useTags()
   const vendorsResult = useVendors()
@@ -73,12 +80,15 @@ function RootComponent() {
     if (
       allLoaded &&
       isEmpty &&
+      // An empty cache offline is not the same as an empty account. Sending
+      // the user to onboarding here looks like their data was deleted.
+      !(mode === 'cloud' && offline) &&
       pathname !== '/onboarding' &&
       !skipOnboardingRedirect
     ) {
       navigate({ to: '/onboarding' })
     }
-  }, [allLoaded, isEmpty, pathname, navigate])
+  }, [allLoaded, isEmpty, pathname, navigate, offline])
 
   return (
     <ActiveLocationProvider>
