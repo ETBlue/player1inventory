@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { Layout } from '@/components/global/Layout'
+import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
@@ -101,6 +102,7 @@ function RootComponent() {
         </>
       )}
       <Layout>
+        {mode === 'cloud' && <OfflineBanner />}
         <Outlet />
       </Layout>
       <Toaster />
