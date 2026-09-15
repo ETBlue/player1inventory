@@ -357,10 +357,15 @@ describe('resolveToken', () => {
     const neverResolves = () => new Promise<string | null>(() => {})
 
     // When a token is requested
+    const startedAt = Date.now()
     const token = await resolveToken(neverResolves)
+    const elapsed = Date.now() - startedAt
 
-    // Then it gives up at once instead of hanging forever
+    // Then it gives up at once, without waiting for the timeout.
+    // Without the offline check this still returns null, but only after
+    // TOKEN_TIMEOUT_MS. Asserting the time is what pins the fast path.
     expect(token).toBeNull()
+    expect(elapsed).toBeLessThan(100)
   })
 
   it('gives up when Clerk is slow but the device is online', async () => {

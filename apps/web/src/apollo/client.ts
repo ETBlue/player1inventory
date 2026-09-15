@@ -26,6 +26,8 @@ export async function resolveToken(
   getToken: () => Promise<string | null>,
   timeoutMs: number = TOKEN_TIMEOUT_MS,
 ): Promise<string | null> {
+  // Return at once when offline. The timeout below would also return null,
+  // but only after waiting. There is nothing to wait for with no connection.
   if (isOffline()) return null
 
   return Promise.race([
