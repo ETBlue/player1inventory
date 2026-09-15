@@ -33,23 +33,29 @@ const UPSERT_STOCK = `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStoc
 }`
 
 /**
- * Read the caller's locations and return the default one.
+ * Read the caller's locations and return the default one, creating it if the
+ * `locations` query has never run for this user.
  *
- * READING `locations` IS WHAT CREATES THE DEFAULT LOCATION. `ensureDefaultLocation`
- * (location.resolver.ts) runs inside the `locations` query resolver and nowhere else,
- * so a brand-new user has NO location until something asks for the list.
+ * `seedCloudFixture` needs the default location's ID AND NAME: the id to map the
+ * fixture's default location key onto, the name to decide whether to rename it. So
+ * this helper is required regardless of what the server does on its own.
  *
- * Any cloud seed that writes stock must call this first. A stock write that arrives
- * before the default location exists is dropped in silence:
- * `mirrorStockToDefaultLocation` (apps/server/src/lib/stockDualWrite.ts) ends with
- * `if (!locationId) return`. The item is created, `Item`'s legacy columns are set,
- * and no `ItemStock` row is written — so the pantry renders the item below the
- * "not stocked here" divider showing 0.
+ * It began as a workaround for a server bug (issue #287, fixed 2026-09-16). A stock
+ * write that arrived before the user's first `locations` query used to be dropped in
+ * silence — `mirrorStockToDefaultLocation` (apps/server/src/lib/stockDualWrite.ts)
+ * ended with `if (!locationId) return`, so the item was created, `Item`'s legacy
+ * columns were set, and no `ItemStock` row was written. The pantry then rendered the
+ * item below the "not stocked here" divider showing 0.
  *
- * This was invisible until 2026-09-14, because `/e2e/cleanup` did not delete
+ * That is fixed at the source: `ensureDefaultLocation` (apps/server/src/lib/
+ * defaultLocation.ts) now creates the location instead of returning null, and every
+ * stock write path goes through it. A cloud seed no longer has to call this first to
+ * avoid losing writes — but calling it first is still the clearer way to write a
+ * seed, and it is how this helper gets the id it returns.
+ *
+ * The bug was invisible until 2026-09-14, because `/e2e/cleanup` did not delete
  * `Location`. Every run inherited the previous run's default location, so the mirror
- * always had somewhere to write. Once cleanup started deleting locations, the first
- * spec that seeded stock over GraphQL before loading the app failed.
+ * always had somewhere to write.
  */
 export async function ensureCloudDefaultLocation(
   request: APIRequestContext,

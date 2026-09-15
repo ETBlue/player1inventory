@@ -20,8 +20,8 @@ import { cleanupCloudData } from '../helpers/cloudTeardown'
 // Cloud isolation is by row ownership, not by database: every write is owned by
 // E2E_USER_ID, and `/e2e/cleanup` deletes that user's rows. As of this branch
 // that endpoint also deletes `Location` and `ItemStock`. Without it,
-// `ensureDefaultLocation` (location.resolver.ts) returns early whenever the user
-// already has a location, so run 2 would see run 1's "Office" and fail.
+// `ensureDefaultLocation` (lib/defaultLocation.ts) returns early whenever the
+// user already has a default, so run 2 would see run 1's "Office" and fail.
 //
 // IT IS MOUNTED TWICE, and exactly one copy is visible at any width:
 //   - `< lg`  — compact glyph trigger in the page toolbar (inside <main>); no sidebar.
