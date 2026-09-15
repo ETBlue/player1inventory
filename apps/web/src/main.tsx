@@ -13,7 +13,12 @@ import { db } from './db'
 import { bootstrapCarts } from './db/operations'
 import type { DataMode } from './lib/dataMode'
 import { DATA_MODE_STORAGE_KEY, DEFAULT_DATA_MODE } from './lib/dataMode'
+import { unregisterAllServiceWorkers } from './lib/unregisterServiceWorker'
 import { routeTree } from './routeTree.gen'
+
+// Escape route for a stuck service worker. Call from the DevTools console.
+;(window as unknown as Record<string, unknown>).__unregisterServiceWorkers =
+  unregisterAllServiceWorkers
 
 // Read mode before React mounts — determines provider tree for this page lifetime
 const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ??
