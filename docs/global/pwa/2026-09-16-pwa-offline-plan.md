@@ -212,37 +212,58 @@ git commit -m "feat(pwa): generate app icons from one source SVG"
 - Consumes: nothing
 - Produces: a working Rosario font with no request to another server
 
-- [ ] **Step 1: Download the font files**
+- [ ] **Step 1: Get the real CSS from Google**
 
-Download the Rosario variable font (weights 300 to 700, normal and italic) from Google Fonts. Put the `.woff2` files in `apps/web/public/fonts/`:
+Google serves different files depending on the browser. With a modern browser
+user-agent it returns **6 `@font-face` blocks** of woff2: three unicode ranges
+(latin, latin-ext, vietnamese) for each of normal and italic. Each one is a
+variable font covering weights 300 to 700.
+
+You must send a browser user-agent or you will get static TTF files instead.
 
 ```bash
 mkdir -p apps/web/public/fonts
+UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+curl -s -A "$UA" "https://fonts.googleapis.com/css2?family=Rosario:ital,wght@0,300..700;1,300..700&display=swap" > /tmp/rosario.css
+grep -c "@font-face" /tmp/rosario.css
 ```
 
-Expected result: `rosario-variable.woff2` and `rosario-variable-italic.woff2` in that folder.
+Expected: `6`. If you get a different number, stop and report it. Do not carry on
+with a guess.
 
-- [ ] **Step 2: Write the font CSS**
+- [ ] **Step 2: Download all six files and write the CSS**
 
-Create `apps/web/src/styles/fonts.css`:
+Keep all six. Do **not** drop the extra unicode ranges. `unicode-range` makes the
+browser download only the file it needs, so removing ranges does not save the user
+anything — it only removes character coverage.
+
+Download each `.woff2` URL from `/tmp/rosario.css` into `apps/web/public/fonts/`.
+Name each file after its style and range, for example `rosario-latin.woff2`,
+`rosario-latin-ext.woff2`, `rosario-vietnamese.woff2`, and the same three with an
+`-italic` suffix.
+
+Then create `apps/web/src/styles/fonts.css` by copying `/tmp/rosario.css` **exactly**
+and changing only the `src: url(...)` values to the local paths. Keep every
+`unicode-range` line unchanged — those lines are what make the split work.
+
+The result must look like this, with all six blocks present:
 
 ```css
+/* Rosario, self-hosted. Copied from the Google Fonts CSS, with the URLs
+   changed to local files. The unicode-range lines are kept as they were: they
+   tell the browser which file it actually needs. */
 @font-face {
   font-family: 'Rosario';
   font-style: normal;
   font-weight: 300 700;
   font-display: swap;
-  src: url('/fonts/rosario-variable.woff2') format('woff2');
+  src: url('/fonts/rosario-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
-
-@font-face {
-  font-family: 'Rosario';
-  font-style: italic;
-  font-weight: 300 700;
-  font-display: swap;
-  src: url('/fonts/rosario-variable-italic.woff2') format('woff2');
-}
+/* ...and the other five blocks, copied the same way... */
 ```
+
+Use the real `unicode-range` values from `/tmp/rosario.css`, not the example above.
 
 - [ ] **Step 3: Import it**
 
@@ -266,9 +287,11 @@ In `apps/web/index.html`, delete these three lines (currently lines 24 to 26):
 
 ```bash
 grep -rn "fonts.googleapis\|fonts.gstatic" apps/web/index.html apps/web/src
+ls apps/web/public/fonts/*.woff2 | wc -l
 ```
 
-Expected: no output. If there is output, a reference was missed.
+Expected: no grep output, and `6` font files. If the grep prints anything, a
+reference was missed. If the count is not 6, a file failed to download.
 
 - [ ] **Step 6: Check the font still renders**
 
