@@ -1,6 +1,6 @@
 # PWA + Offline — design
 
-**Date:** 2026-08-31
+**Date:** 2026-08-31 (rewritten in plain English 2026-09-16)
 **Status:** 🔲 Designed, not implemented
 **Branch:** `feature/pwa-offline`
 **Brainstorming:** [2026-08-31-brainstorming-pwa-offline.md](2026-08-31-brainstorming-pwa-offline.md)
@@ -8,229 +8,255 @@
 
 ## Goal
 
-The app installs to a mobile home screen and launches standalone. Offline:
+The user can add the app to a mobile home screen. It then opens like a normal app, without
+browser chrome. When there is no network:
 
-- **Local mode is fully usable** — browse, edit, check off shopping. Its data is already
-  entirely on-device in Dexie; only the app shell is missing today.
-- **Cloud mode renders last-synced data, read-only**, behind a banner naming when it was
-  last synced. Writes fail fast and visibly rather than hanging or silently no-opping.
+- **Local mode works fully.** The user can browse, edit, and check off shopping. Local data
+  already lives on the device in Dexie. Only the app files are missing today.
+- **Cloud mode shows the last synced data, read-only.** A banner says when the data was
+  last synced. Writes fail at once and show a message. They never hang, and they never look
+  like they worked when they did not.
 
 ## Non-goals
 
-- **Offline writes in cloud mode.** No outbox, no mutation queue, no conflict resolution.
-  That work overlaps the deferred
-  [seamless offline ↔ online migration](../backend/2026-04-04-seamless-offline-online-migration-design.md)
-  and would land as an `injectManifest` service worker (see *Escape hatch*).
-- **In-app install UI.** No Settings row, no banner. Browser defaults only. The manifest is
-  the prerequisite for adding either later, so both stay purely additive.
+- **Writing to the cloud while offline.** No queue of pending changes. No conflict
+  resolution. That work overlaps the deferred
+  [seamless offline ↔ online migration](../backend/2026-04-04-seamless-offline-online-migration-design.md).
+  If we build it later, it goes in an `injectManifest` service worker. See *If we need
+  offline writes later*.
+- **An install button inside the app.** No Settings row. No banner. We use what the browser
+  offers by default. We can add our own later.
 - **Push notifications, background sync, periodic sync.**
 
 ## Approach
 
-`vite-plugin-pwa` in **`generateSW`** mode with **`registerType: 'prompt'`**, plus a
-hand-rolled Apollo cache persistor.
+Use `vite-plugin-pwa` in **`generateSW`** mode with **`registerType: 'prompt'`**. Write the
+Apollo cache persistence ourselves.
 
-Workbox owns precache-manifest generation and per-build revisioning — the part hand-rolled
-service workers get subtly wrong, where a cached `index.html` pins hashed chunks that no
-longer exist and the app white-screens until someone manually clears storage.
+Workbox builds the list of files to cache, and gives each build a new revision. Doing that
+by hand is where hand-written service workers usually break: a cached `index.html` points
+at JS files from an older build. Those files no longer exist. The user gets a white screen,
+and only clearing browser storage fixes it.
 
-Persistence is hand-rolled deliberately: `apollo3-cache-persist@0.15.0` peer-depends on
-`@apollo/client: ^3.7.17` and the repo is on `^4.1.6`, so it does not declare support for
-the major version in use. The needed surface is small (`cache.extract()` /
-`cache.restore()` plus a debounce), it uses Dexie which the repo already ships, and it
-carries auth and privacy implications that deserve reviewable in-repo code.
+We write the cache persistence ourselves for one reason. `apollo3-cache-persist@0.15.0`
+says it works with `@apollo/client: ^3.7.17`. This repo uses `^4.1.6`. The library does not
+claim to support version 4. The code we need is small: `cache.extract()`, `cache.restore()`,
+and a debounce. It uses Dexie, which the repo already has. It also touches login and privacy,
+so we want that code in the repo where it can be reviewed.
 
-### Escape hatch
+### If we need offline writes later
 
-If offline writes are ever wanted, the outbox lives in an `injectManifest` service worker.
-The config delta from `generateSW` is small; nothing in this design forecloses it.
+The queue of pending changes would go in an `injectManifest` service worker. The config
+change from `generateSW` is small. Nothing in this design blocks it.
 
-## 1. App shell
+## 1. App files and install
 
 ### Build
 
-`vite-plugin-pwa@1.3.0` added to `apps/web/vite.config.ts`. Peer range covers `vite ^7`;
-the repo is on `^7.2.4`.
+Add `vite-plugin-pwa@1.3.0` to `apps/web/vite.config.ts`. It supports `vite ^7`, and this
+repo uses `^7.2.4`.
 
-The manifest is declared in `vite.config.ts` rather than a loose `public/manifest.json`, so
-it is typed and reviewed alongside the rest of the build config. `display: standalone`,
-`theme_color` / `background_color` sourced from the existing design tokens.
+Declare the web manifest in `vite.config.ts`, not in a separate `public/manifest.json`. That
+way it is typed, and it is reviewed with the rest of the build config. Set
+`display: standalone`. Take `theme_color` and `background_color` from the existing design
+tokens.
 
 ### Icons
 
-One source SVG committed to the repo, drawn from the design-token palette.
-`@vite-pwa/assets-generator@1.0.2` derives 192 / 512 / maskable / apple-touch as a `pnpm`
-script. Maskable gets the safe-zone padding Android's circular crop requires.
+Commit one source SVG, drawn with colors from the design tokens. Add a `pnpm` script that
+runs `@vite-pwa/assets-generator@1.0.2`. It produces the 192px, 512px, maskable, and
+apple-touch icons.
 
-The artwork is **one file, not eight** — swapping the source SVG and re-running the script
-regenerates the set.
+Android crops icons into a circle. The maskable icon needs extra padding so nothing
+important is cut off. The generator handles this.
+
+The artwork is one file, not eight. To change it, replace the SVG and run the script again.
 
 ### iOS
 
-`index.html` gains `apple-touch-icon` and `apple-mobile-web-app-*` tags. iOS Safari never
-fires `beforeinstallprompt`, so there is no install button to offer; these tags are what
-make a manual Share → Add to Home Screen produce a correct icon and a standalone window
-rather than Safari chrome.
+Add `apple-touch-icon` and `apple-mobile-web-app-*` tags to `index.html`.
+
+iOS Safari never fires `beforeinstallprompt`, so there is no install button we can show. The
+user must use Share → Add to Home Screen by hand. These tags are what make that produce a
+correct icon and a standalone window.
 
 ### Fonts
 
-**Self-host Rosario**, replacing the Google Fonts `<link>` at `index.html:24`. A runtime
-cache only helps *after* a successful online visit; a cold offline launch would fall back to
-system fonts and shift every layout. Self-hosting puts the font files in the precache and
-makes offline typography identical to online.
+**Host the Rosario font ourselves.** Remove the Google Fonts tags at `index.html:24-26` (two
+`preconnect` tags and the stylesheet `link`).
 
-This is the one change reaching outside the PWA surface. It is deliberate, not incidental.
+A runtime cache only helps after one successful online visit. If the user starts the app
+offline before that, the font is missing. The app falls back to a system font and every
+layout shifts. Hosting the font ourselves puts the files in the precache. Offline text then
+looks the same as online text.
 
-### Update flow
+This is the only change outside the PWA work. We do it on purpose, not by accident.
 
-`registerType: 'prompt'` exposes `needRefresh`. A `useServiceWorkerUpdate` hook surfaces it
-as a sonner toast with a Reload action, mounted beside the existing `<Toaster />`
-(`__root.tsx:88`). Strings go through i18n (`en.json` / `tw.json`) like everything else.
+### Updates
 
-No auto-reload: nothing is yanked out from under a user mid-edit.
+`registerType: 'prompt'` gives a `needRefresh` signal. A `useServiceWorkerUpdate` hook turns
+that into a sonner toast with a Reload button. Mount it next to the existing `<Toaster />`
+(`__root.tsx:91`). Put the text in `en.json` and `tw.json`, like all other text.
+
+The app never reloads on its own. A user who is typing is never interrupted.
 
 ## 2. Cloud mode offline (read-only)
 
-### 2.1 The Clerk spike — resolved first
+### 2.1 One question to answer first
 
-`ClerkProvider` wraps the entire cloud tree (`main.tsx:73`) and loads its script
-cross-origin. Whether `useAuth()` resolves a signed-in session with no network, from a cold
-installed-PWA launch, decides the shape of everything below. **It is not asserted here** —
-the plan's first step is a spike: cold-launch the installed build with DevTools offline and
-record what `useAuth()` reports.
+**A short experiment comes before any code in this section.** In agile writing this is
+called a "spike": you write throwaway code to answer one question, then delete it. The
+result is an answer, not a feature.
 
-**Branch A — Clerk resolves signed-in from cached state.** Key the persisted cache by Clerk
-user id; restore once Clerk resolves. Clean.
+**The question: does Clerk still know the user is signed in when there is no network?**
 
-**Branch B — Clerk cannot resolve offline.** Persist a `lastSignedInUserId` stamp while
-online and use it to select and render the cached data without a validated session.
+This matters because `ClerkProvider` wraps the whole cloud app (`main.tsx:77`). Clerk loads
+its code from another server. If Clerk cannot work offline, nothing renders offline. Then
+everything else in section 2 is useless — the cached data would exist, but no screen would
+ever show it.
 
-Branch B is a **deliberate loosening, accepted by the designer**: cached cloud data would
-render without a live session check. It is read-only, device-local, and purged on sign-out —
-the same threat model as local mode's Dexie database, already unencrypted on the device.
+**How to run it:** build the app, install it, turn off the network in DevTools, start the
+app cold (a fresh start, not a reload), and write down what `useAuth()` reports.
 
-Whatever the spike finds, the app must render sensibly when Clerk's cross-origin script
-simply does not load. It cannot be precached.
+The answer picks one of two paths:
 
-### 2.2 Two redirects must learn about offline
-
-Both currently fire on state that offline produces spuriously:
-
-| Location | Today | Change |
+| | What Clerk does | What we build |
 |---|---|---|
-| `CloudAuthGuard`, `__root.tsx:31-38` | Redirects to `/sign-in` on `isLoaded && !isSignedIn` | Only redirect when actually online |
-| Onboarding redirect, `__root.tsx:66-79` | Redirects to `/onboarding` on `allLoaded && isEmpty` | Suppress in cloud mode while offline |
+| **Path A** | Clerk reports "signed in" from its own saved state | Save the cache under the Clerk user id. Restore it after Clerk finishes loading. |
+| **Path B** | Clerk cannot answer offline | While online, save a `lastSignedInUserId` value. Offline, use it to pick the cache and show the data without checking the session. |
 
-Without the first, an offline user is bounced to a sign-in page they cannot complete while
-their cached data sits unreachable. Without the second, a cloud user whose cache restore
-came back empty is offered onboarding — which reads as data loss.
+Path B means **cached cloud data can appear without checking that the login is still
+valid**. The designer accepted this. The reasons: the data is read-only, it stays on the
+device, and sign-out deletes it. Local mode already stores an unencrypted Dexie database on
+the same device, so this is not a new kind of risk.
 
-**Online detection leans on `navigator.onLine` in its false direction only.** `false`
-reliably means no network interface; `true` notoriously does not guarantee reachability.
-Only the trustworthy half is load-bearing here.
+Either way, the app must still show something sensible when Clerk's code does not load at
+all. It comes from another server, so we cannot precache it.
 
-### 2.3 Persistence
+### 2.2 Two redirects must know about offline
 
-New: `apps/web/src/apollo/persistence.ts`.
+Both redirects react to a state that being offline can create by mistake.
 
-- `cache.extract()` on a debounce → a Dexie store.
-- `cache.restore()` **awaited before `ApolloWrapper` mounts.**
-- A `lastSyncedAt` stamp written on each successful cloud read, feeding the banner.
+| Where | What it does today | What to change |
+|---|---|---|
+| `CloudAuthGuard`, `__root.tsx:29-40` | Sends the user to `/sign-in` when `isLoaded && !isSignedIn` | Only redirect when the device is online |
+| Onboarding redirect, `__root.tsx:66-78` | Sends the user to `/onboarding` when `allLoaded && isEmpty` | Do not redirect in cloud mode while offline |
 
-**A separate Dexie database, not the app DB.** Two reasons, both concrete:
+Without the first fix, an offline user is sent to a sign-in page they cannot finish. Their
+cached data is on the device, but they cannot reach it.
 
-1. The app DB is at **v17** and the in-flight
-   [cloud-locations](../../features/locations/2026-08-30-cloud-locations-design.md) design
-   already claims **v18** for its `isDefault` migration. Adding a table here would collide
-   with an unmerged branch over a version number, and `src/db/CLAUDE.md`'s versioning rules
-   are forward-only — the collision could not simply be edited away later.
-2. It keeps a cloud-only concern out of the local-mode database, and makes the sign-out
-   purge a whole-database delete rather than a surgical table clear.
+Without the second fix, a cloud user whose cache did not restore is sent to onboarding. To
+that user it looks like all their data was deleted.
 
-**The ordering is the whole trick.** Restore after the first queries fire and they resolve
-against an empty cache and overwrite it — the persisted data is destroyed by the very
-launch meant to use it.
+**How to detect offline:** use `navigator.onLine`, but only trust it when it is `false`. A
+`false` value reliably means there is no network connection. A `true` value does not prove
+the server can be reached. We only use the half we can trust.
+
+### 2.3 Saving and restoring the cache
+
+New file: `apps/web/src/apollo/persistence.ts`.
+
+- Call `cache.extract()` on a debounce and save the result to Dexie.
+- Call `cache.restore()` and **wait for it to finish before `ApolloWrapper` mounts**.
+- Save a `lastSyncedAt` value after each successful cloud read. The banner shows it.
+
+**The order matters most here.** If restore happens after the first queries run, those
+queries return empty results and overwrite the saved cache. The launch that was supposed to
+use the saved data destroys it instead.
+
+**Use a separate Dexie database, not the app database.** Two reasons:
+
+1. The app database is now at **v18** (`Location.isDefault`, merged 2026-09-14). Adding a
+   table would mean a v19 migration for data that is not app data. The rules in
+   `src/db/CLAUDE.md` are forward-only, so that version could never be reused or edited
+   later.
+2. It keeps cloud-only data out of the local-mode database. It also makes the sign-out
+   cleanup a single database delete instead of clearing one table inside a shared database.
 
 ### 2.4 Blocking writes
 
-Two layers, deliberately asymmetric:
+Two layers. They are different on purpose.
 
-**Correctness backstop (this design):** an `ApolloLink` that fails mutations fast while
-offline with a typed error plus a toast. One chokepoint, catches everything — including
-controls added later.
+**Layer 1 — the guarantee.** Add an `ApolloLink` that fails every mutation at once while
+offline. It returns a typed error and shows a toast. This is one place in the code. It
+catches every mutation, including ones added in the future.
 
-**Polish (incremental):** a shared `useCloudWritesDisabled()` hook applied to the most
-prominent write affordances, extended over time.
+**Layer 2 — polish, added over time.** A shared `useCloudWritesDisabled()` hook that greys
+out the most visible write buttons. Apply it to more buttons later.
 
-Exhaustively disabling every mutating control up front spans pantry, shopping, cooking and
-item detail — a sprawling diff, every file a place to miss a spot, and no way to verify
-completeness. The link guard delivers the actual guarantee (nothing silently fails) in one
-reviewable place.
+We do not try to disable every write control up front. Those controls are spread across
+pantry, shopping, cooking, and item detail. That would be a very large change, every file
+would be a chance to miss one, and no one could check that the list was complete. Layer 1
+gives the real guarantee — no write ever fails silently — in one reviewable place.
 
 ### 2.5 The offline banner
 
-`OfflineBanner` in `components/global/`. Renders in cloud mode while offline:
-*"Offline — last synced 2 hours ago."*
+New component: `OfflineBanner` in `components/global/`. It shows in cloud mode while
+offline: *"Offline — last synced 2 hours ago."*
 
-- `role="status"` — announced without stealing focus.
-- Colors from existing tokens, so it cannot reintroduce the contrast failure that killed
-  `UnitBadge`.
-- Relative time and all strings through i18n.
+- Use `role="status"` so screen readers announce it without moving keyboard focus.
+- Use existing design tokens for the colors. `UnitBadge` was deleted because its
+  `opacity-75` failed the WCAG AA contrast check. This banner must not repeat that.
+- Put the relative time and all text in i18n.
 
-### 2.6 Sign-out purge
+### 2.6 Delete the cache on sign-out
 
-Hooks into the existing `clerk.signOut()` (`DataModeCard.tsx:106`): clear the cache table
-and both stamps. Restore additionally self-purges on a user-id mismatch, so a shared device
-cannot leak one account's pantry into another's.
+Hook into the existing `clerk.signOut()` call (`DataModeCard.tsx:122`). Delete the cache
+database and both saved values.
+
+Restore also checks the user id. If the saved id does not match the current user, it deletes
+the cache instead of using it. On a shared device, one account can then never see another
+account's pantry.
 
 ## 3. Testing
 
 ### E2E constraint
 
-**A service worker does not exist on the Vite dev server** unless `devOptions.enabled` is
-set — it only appears in a real build. Offline E2E therefore runs against built output
-(`vite preview`), not `pnpm dev`, which needs a preview-serving Playwright project.
-`e2e/CLAUDE.md`'s one-suite-per-machine rule still applies.
+**The Vite dev server has no service worker** unless `devOptions.enabled` is set. A service
+worker only appears in a real build. So offline E2E tests must run against the built output
+(`vite preview`), not `pnpm dev`. This needs a Playwright project that serves the preview
+build. The rule in `e2e/CLAUDE.md` still applies: only one E2E suite can run per machine.
 
 ### Mutation checks
 
-Per the repo's mutation-check rule, each test must be **watched going red**:
+The repo rule says a passing test proves nothing until you watch it fail. For each test
+below, break the source code, run the test, and check it turns **red**.
 
-| Behavior | Mutation that must turn it red |
+| Behavior | Break this, and the test must fail |
 |---|---|
-| Cache restores before the first query | Move `restore()` after mount |
-| Restore purges on user-id mismatch | Drop the id comparison |
-| `CloudAuthGuard` does not bounce offline | Delete the online guard |
-| Offline mutations fail fast | Remove the link guard |
+| Cache restores before the first query | Move `restore()` to after mount |
+| Restore deletes the cache on a user id mismatch | Remove the id comparison |
+| `CloudAuthGuard` does not redirect offline | Remove the online check |
+| Offline mutations fail at once | Remove the `ApolloLink` guard |
 
-**The fixture trap** — same shape as the documented `stockId` trap: a restore test with an
-*empty* persisted cache passes against restore-before-mount and restore-after-mount alike.
-The fixture must hold real cached data **and** run a query that would overwrite it.
-Otherwise the test is vacuous and reports as covered.
+**Warning about the test fixture.** This is the same trap as `stockId` in this repo. If the
+saved cache in the test is empty, the test passes both when restore runs first and when it
+runs last. Empty data cannot tell the two cases apart. So the fixture must contain real
+saved data **and** run a query that would overwrite it. Without that, the test always passes
+and proves nothing, but it still counts as coverage, so nobody checks it again.
 
 ### Storybook and a11y
 
-`OfflineBanner` gets `.stories.tsx` (online / offline-recent / offline-stale) plus the
-matching `.stories.test.tsx` smoke test. The banner is added to `e2e/tests/a11y.spec.ts` for
-both themes.
+`OfflineBanner` needs `.stories.tsx` with three stories: online, offline with recent data,
+offline with old data. It also needs the matching `.stories.test.tsx` smoke test. Add the
+banner to `e2e/tests/a11y.spec.ts` for both light and dark mode.
 
 ## 4. Risks
 
-1. **Stale service workers in development.** The classic footgun. An explicit
-   unregister / hard-reset path is included; `devOptions` stays off by default.
-2. **Cloudflare Pages `_redirects` vs. Workbox `navigateFallback`.** Both implement SPA
-   fallback (`apps/web/public/_redirects` is `/* /index.html 200`). They must agree, or a
-   deep link resolves differently offline than online.
-3. **Clerk's script is cross-origin and cannot be precached.** See §2.1.
-4. **iOS storage eviction.** Safari caps script-writable storage for sites without recent
-   interaction; installed web apps are generally exempt. **To be verified during
-   implementation, not asserted** — a wrong answer means a user's cached pantry quietly
-   vanishing.
+1. **An old service worker stays active during development.** This is a common problem. Add
+   a clear way to unregister it and reset. Keep `devOptions` off by default.
+2. **`_redirects` and Workbox `navigateFallback` can disagree.** Both send unknown URLs to
+   `index.html`. `apps/web/public/_redirects` contains `/* /index.html 200`. If the two
+   rules differ, a deep link behaves differently offline than online.
+3. **Clerk's code comes from another server and cannot be precached.** See section 2.1.
+4. **iOS may delete stored data.** Safari limits storage for sites the user has not opened
+   recently. Installed web apps are usually exempt. **Check this during implementation. Do
+   not assume it.** If we are wrong, a user's cached pantry disappears without warning.
 
 ## 5. Rollout
 
-Shipping a service worker to `player1inventory.etblue.tw` is the one genuinely **one-way**
-step: once registered, every future deploy is mediated by it.
+Registering a service worker on `player1inventory.etblue.tw` cannot be undone easily. After
+it is registered, it controls every later deploy for that domain.
 
-**The kill-switch (unregister path) therefore lands in the same PR as registration, never
-after.**
+**So the way to turn it off must ship in the same PR that registers it.** Do not add it
+afterwards.
