@@ -6,6 +6,7 @@ import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
 import { isOffline } from '@/hooks/useIsOffline'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
+import { offlineWriteLink } from './offlineWriteLink'
 
 /** How long to wait for Clerk before giving up, in milliseconds. */
 const TOKEN_TIMEOUT_MS = 3000
@@ -140,7 +141,7 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
   )
 
   return new ApolloClient({
-    link: splitLink,
+    link: offlineWriteLink.concat(splitLink),
     cache: cloudCache,
   })
 }
