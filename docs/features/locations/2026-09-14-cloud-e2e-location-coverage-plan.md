@@ -427,8 +427,23 @@ been passing on a leaked row and would have failed on any genuinely fresh databa
 Fix. `ensureCloudDefaultLocation(request)` was extracted from `seedCloudFixture`'s step 1
 into an exported helper in `e2e/helpers/cloudSeed.ts`, and `cooking.spec.ts`'s cloud seed
 now calls it before its first stock write. This is a test-fixture fix, not a resolver
-change — `mirrorStockToDefaultLocation`'s silent no-op is documented behaviour for accounts
-that predate PR 1's backfill, and changing it is outside this branch.
+change. Changing the server is outside this branch.
+
+**Filed as issue #287, and the documented reason for the no-op turned out to be wrong.**
+The comment on `mirrorStock` justifies the silent return by naming "a user whose account
+predates PR 1's backfill". That class is empty. PR 1's migration
+(`20260830000000_add_location_and_item_stock/migration.sql`, lines 63-75) backfills one
+default `Location` for every user holding a row in any of nine tables, so every user who
+predates the backfill and owns any data got one.
+
+The class that does exist is a **brand-new account that has not yet run a `locations`
+query**. `ensureDefaultLocation` is called from exactly one place — the `locations` query
+resolver — so any account whose first stock write arrives before its first read loses that
+write in silence. The web client always loads the app first, so a normal user is not hit
+today. An API client, a cloud E2E seed, or any future write-before-read entry point is.
+
+Issue #287 lists the five affected call sites and four options. It should be settled before
+PR 3, which rewrites four of those five call sites anyway.
 
 Open risk. The other eight older cloud specs were not audited for this, and none of them
 failed in the full run. Any future cloud seed that writes stock before loading the app
