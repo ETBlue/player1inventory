@@ -650,9 +650,10 @@ describe('checkout dual-writes onto ItemStock', () => {
     expect(mockPrisma.item.update).not.toHaveBeenCalled()
   })
 
-  it('a user with no locations still checks out — the mirror is skipped, not fatal', async () => {
-    // Given an account with no Location rows at all (one that predates PR 1's
-    // backfill). There is nothing to mirror into.
+  it('a user with no locations gets one, and the mirror still lands (issue #287)', async () => {
+    // Given an account with no Location rows at all — a brand-new account that
+    // has never run the `locations` query. Until issue #287 the mirror returned
+    // early here and the purchased quantity was dropped with no error.
     stockFake.reset([], [])
     const buyItem = makeCartItem({ itemId: 'item_milk', quantity: 2 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
@@ -667,11 +668,18 @@ describe('checkout dual-writes onto ItemStock', () => {
       { cartId: 'no-vendor' },
     )
 
-    // Then the checkout succeeds, the Item half still ran, and no orphan stock
-    // row was invented against a location id that does not exist
+    // Then the checkout succeeds, the Item half still ran, a default location
+    // was created for the caller, and the purchase landed in it
     expect(result?.errors).toBeUndefined()
     expect(mockPrisma.item.update).toHaveBeenCalledOnce()
-    expect(stockFake.state.itemStocks).toHaveLength(0)
+    const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
+    expect(created).toMatchObject({ isDefault: true, name: 'My Home' })
+    expect(stockFake.state.itemStocks).toHaveLength(1)
+    expect(stockFake.state.itemStocks[0]).toMatchObject({
+      itemId: 'item_milk',
+      locationId: created?.id,
+      packedQuantity: 2,
+    })
   })
 })
 

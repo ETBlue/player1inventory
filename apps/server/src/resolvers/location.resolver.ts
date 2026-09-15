@@ -1,11 +1,10 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
 import { requireLocationRole } from '../lib/authz.js'
+import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
 import type { Location as PrismaLocation } from '@prisma/client'
-
-const DEFAULT_LOCATION_NAME = 'My Home'
 
 // Map a Prisma Location row to the GraphQL shape. GraphQL schema types
 // createdAt/updatedAt as String! — Date objects must be explicitly
@@ -19,31 +18,6 @@ function toGraphQL(row: PrismaLocation): Location {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   } as unknown as Location
-}
-
-/**
- * Give a user a default location if they have none.
- *
- * Mirrors local mode, where `ensureDefaultLocation` is called from BOTH the
- * Dexie upgrade and `on('populate')` because a fresh database never runs
- * upgrade functions. The cloud equivalents are the migration backfill (users
- * who existed then) and this call (everyone who signs up after).
- *
- * Race-safe by the database, not by check-then-act: the migration adds a
- * partial unique index on ("userId") WHERE "isDefault", so a concurrent second
- * insert loses with P2002 and we simply proceed — the winner's row is the one
- * the subsequent read returns.
- */
-export async function ensureDefaultLocation(userId: string): Promise<void> {
-  const existing = await prisma.location.findFirst({ where: { userId } })
-  if (existing) return
-  try {
-    await prisma.location.create({
-      data: { name: DEFAULT_LOCATION_NAME, order: 0, isDefault: true, userId },
-    })
-  } catch {
-    // Lost the race; the other caller created it.
-  }
 }
 
 export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {

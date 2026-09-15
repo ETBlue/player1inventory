@@ -492,17 +492,27 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
     expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 0, unpackedQuantity: 0.25 })
   })
 
-  it('a user with no locations still cooks — the mirror is skipped, not fatal', async () => {
-    // Given an account with no Location rows (predating PR 1's backfill)
+  it('a user with no locations gets one, and the mirror still lands (issue #287)', async () => {
+    // Given an account with no Location rows — a brand-new account that has
+    // never run the `locations` query. Until issue #287 the mirror returned
+    // early here and the cooked quantities were dropped with no error.
     stockFake.reset([], [])
 
     // When they cook
     const result = await execOp(CONSUME, { input: consumeInput([COOKED_MILK]) })
 
-    // Then the cook reports success, the Item half still ran, and no orphan row
-    // was invented against a location id that does not exist
+    // Then the cook reports success, the Item half still ran, a default
+    // location was created for the caller, and the cook landed in it
     expect(result?.data?.consumeRecipes).toMatchObject({ allSucceeded: true })
     expect(mockPrisma.item.updateMany).toHaveBeenCalledOnce()
-    expect(stockFake.state.itemStocks).toHaveLength(0)
+    const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
+    expect(created).toMatchObject({ isDefault: true, name: 'My Home' })
+    expect(stockFake.state.itemStocks).toHaveLength(1)
+    expect(stockFake.state.itemStocks[0]).toMatchObject({
+      itemId: 'item_milk',
+      locationId: created?.id,
+      packedQuantity: 1,
+      unpackedQuantity: 0.5,
+    })
   })
 })

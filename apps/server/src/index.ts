@@ -50,9 +50,10 @@ if (E2E_TEST_MODE) {
       // surfacing a spurious "Conflicts detected" dialog on import tests.
       prisma.shelf.deleteMany({ where: { userId } }),
       // Locations are user-scoped too. Without this they accumulate across runs
-      // in the shared test DB, and ensureDefaultLocation (location.resolver.ts)
-      // returns early whenever the user already has one — so the next run starts
-      // with the previous run's locations instead of a fresh default.
+      // in the shared test DB, and ensureDefaultLocation
+      // (lib/defaultLocation.ts) returns early whenever the user already has a
+      // default — so the next run starts with the previous run's locations
+      // instead of a fresh default.
       prisma.location.deleteMany({ where: { userId } }),
     ])
     res.json({ ok: true })
