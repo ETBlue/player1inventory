@@ -10,6 +10,7 @@ import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
 import { cloudCache, createApolloClientForE2E } from './apollo/client'
 import { getLastSignedInUserId, restoreCache } from './apollo/persistence'
+import { bootstrapCloudMode } from './bootstrap'
 import { db } from './db'
 import { bootstrapCarts } from './db/operations'
 import type { DataMode } from './lib/dataMode'
@@ -115,13 +116,8 @@ if (mode === 'local') {
       renderApp()
     })
 } else {
-  // Cloud mode: fill the cache from the device BEFORE React mounts, so the
-  // first queries do not overwrite the stored copy with empty results.
-  restoreCache(cloudCache, getLastSignedInUserId())
-    .catch((error) => {
-      console.error('Cache restore failed:', error)
-    })
-    .finally(() => {
-      renderApp()
-    })
+  void bootstrapCloudMode(
+    () => restoreCache(cloudCache, getLastSignedInUserId()),
+    renderApp,
+  )
 }
