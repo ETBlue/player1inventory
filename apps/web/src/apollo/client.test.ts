@@ -1,10 +1,11 @@
 import type { InMemoryCache } from '@apollo/client'
 import { gql } from '@apollo/client'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createApolloClient,
   createApolloClientForE2E,
   createCache,
+  resolveToken,
 } from './client'
 
 // Mirrors the `itemStocks` selection of the PantryData operation
@@ -327,5 +328,50 @@ describe('both Apollo clients share the cache configuration', () => {
     expect(readStocks(cache, LOCATION_B)?.map((s) => s.id)).toEqual([
       'stock-b1',
     ])
+  })
+})
+
+function setOnLine(value: boolean) {
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(value)
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('resolveToken', () => {
+  it('returns the token when online', async () => {
+    // Given the device is online and Clerk answers
+    setOnLine(true)
+
+    // When a token is requested
+    const token = await resolveToken(async () => 'real-token')
+
+    // Then the real token is used
+    expect(token).toBe('real-token')
+  })
+
+  it('does not wait for Clerk when offline', async () => {
+    // Given the device is offline and Clerk never answers
+    setOnLine(false)
+    const neverResolves = () => new Promise<string | null>(() => {})
+
+    // When a token is requested
+    const token = await resolveToken(neverResolves)
+
+    // Then it gives up at once instead of hanging forever
+    expect(token).toBeNull()
+  })
+
+  it('gives up when Clerk is slow but the device is online', async () => {
+    // Given Clerk never answers, which is what a failed script load looks like
+    setOnLine(true)
+    const neverResolves = () => new Promise<string | null>(() => {})
+
+    // When a token is requested
+    const token = await resolveToken(neverResolves, 50)
+
+    // Then it stops waiting after the timeout
+    expect(token).toBeNull()
   })
 })
