@@ -133,6 +133,27 @@ the same device, so this is not a new kind of risk.
 Either way, the app must still show something sensible when Clerk's code does not load at
 all. It comes from another server, so we cannot precache it.
 
+#### Experiment result (2026-09-16)
+
+- Does the app render offline in cloud mode? **yes**
+- `useAuth()` reports: `isLoaded = false`, `isSignedIn = undefined`
+- Clerk script error: **yes**
+- Therefore we follow: **Path B**
+- Task 7b is: **needed**
+
+We could not run the real manual test (sign in with Clerk, then go offline), because this
+session has no browser and no Clerk login. Instead we built the app, served it, and used a
+Playwright script to block every request to Clerk's host
+(`fleet-monarch-29.clerk.accounts.dev`) on a fresh page load with `data-mode` set to
+`cloud` in `localStorage`. This is a **blocked-script test, not a real signed-in session**
+— it shows what happens when Clerk's code cannot be fetched at all, not what happens to an
+already-signed-in user who goes offline. The app shell rendered (sidebar and nav were
+visible), Clerk logged a `failed_to_load_clerk_js` error, and `useAuth()` stayed at
+`isLoaded: false` for at least 15 seconds. We also read the `ClerkProvider` source in
+`node_modules/@clerk/react`: it renders its `children` unconditionally, with no gate on
+Clerk having loaded, so the app shell renders regardless of Clerk's state — the risk is not
+a blank screen, it is that `isLoaded` never becomes `true`.
+
 ### 2.2 Two redirects must know about offline
 
 Both redirects react to a state that being offline can create by mistake.
