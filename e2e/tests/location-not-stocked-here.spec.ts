@@ -1,7 +1,15 @@
-import { expect, type Page, test } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
+import { seedCloudFixture } from '../helpers/cloudSeed'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { expectInDocumentOrder } from '../helpers/domOrder'
-import { seedRows } from '../helpers/locationSeed'
+import type { Fixture } from '../helpers/fixture'
+import { seedLocalFixture } from '../helpers/localSeed'
 import { CookingPage } from '../pages/CookingPage'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
@@ -29,21 +37,27 @@ import { ShoppingPage } from '../pages/ShoppingPage'
 // group counts as stocked, lands above the divider, and the assertions fail.
 // A fixture with only empty groups would pass either way and prove nothing.
 //
-// These flows are local-only. `/shopping` and `/cooking` additionally skip the
-// partition entirely in cloud mode until PR 3 — because a cloud `Cart` has no
-// `locationId` and `consumeRecipes` writes the caller's default location, not
-// because cloud items lack a `stockId` (they carry one since PR 2).//
-// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
-// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
-// client on it. It is that every fixture here seeds **IndexedDB** through
-// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
-// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
-// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
-// guards below are belt-and-braces rather than the thing that excludes it.
-// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
-
-const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home" — the active location
-const OFFICE = 'office-loc'
+// WHAT CHANGED IN cloud-locations PR "cloud E2E location coverage" (issue
+// #284): this file really does seed a database, so the old "WHY LOCAL-ONLY"
+// note was accurate as far as it went. The fixture is now described ONCE as
+// plain data (`FIXTURE` below, typed by `helpers/fixture.ts`) and translated
+// per data mode — `seedLocalFixture` writes IndexedDB, `seedCloudFixture`
+// writes Postgres through GraphQL. Location ids are never hardcoded: the seed
+// functions hand back a `key -> real id` map, because a cloud location id is a
+// server-generated cuid and the local `'local'` sentinel names nothing there.
+//
+// THE THREE PANTRY GROUP-BY TESTS RUN IN BOTH PROJECTS. The /shopping and
+// /cooking tests stay local-only, and NOT because of their fixture: both pages
+// switch the partition OFF in cloud mode until PR 3. `isUnstockedHere` in
+// src/routes/shopping/index.tsx and `isRecipeUnstockedHere` in
+// src/routes/cooking.tsx are both `!isCloud && ...`, because a cloud `Cart` has
+// no `locationId` yet and `consumeRecipes` writes the caller's default
+// location. With no partition there is no divider to assert on. Their skips
+// name that, and PR 3 is what removes them.
+//
+// Cloud isolation is by row ownership: every write is owned by E2E_USER_ID and
+// `/e2e/cleanup` deletes that user's rows, `Location` and `ItemStock` included
+// as of this branch.
 
 // Milk is stocked HERE, Coffee only at the OFFICE, Bread is stocked here but
 // belongs to no group — it keeps each view's unfiled bucket ("Unsorted" /
@@ -65,14 +79,95 @@ const ELSEWHERE_VENDOR = 'Bodega'
 const HERE_RECIPE = 'Pancakes'
 const ELSEWHERE_RECIPE = 'Cold Brew'
 
-test.beforeEach(async ({ page }) => {
+// Two locations, three items, and one "here" + one "elsewhere" group on each of
+// the three grouping axes. Seeded directly rather than driven through the UI:
+// building this by hand runs to well past the 10-step budget the E2E convention
+// sets for UI-driven setup.
+//
+// 'HOME' and 'OFFICE' are symbolic keys, not ids. HOME is the default location,
+// which is also the active one — local falls back to the `isDefault` row and so
+// does cloud (src/hooks/useActiveLocation.tsx).
+const FIXTURE: Fixture = {
+  locations: [
+    { key: 'HOME', name: 'My Home', isDefault: true },
+    { key: 'OFFICE', name: 'Office' },
+  ],
+  vendors: [
+    { id: COSTCO, name: HERE_VENDOR },
+    { id: BODEGA, name: ELSEWHERE_VENDOR },
+  ],
+  items: [
+    { id: MILK, name: 'Milk', vendorIds: [COSTCO] },
+    { id: COFFEE, name: 'Coffee', vendorIds: [BODEGA] },
+    { id: BREAD, name: 'Bread' },
+  ],
+  // The load-bearing row set: Coffee has stock at the OFFICE and none at HOME,
+  // so every group that holds only Coffee is "not stocked here".
+  stocks: [
+    { itemId: MILK, location: 'HOME' },
+    { itemId: BREAD, location: 'HOME' },
+    { itemId: COFFEE, location: 'OFFICE' },
+  ],
+  shelves: [
+    {
+      id: 'shelf-fridge',
+      name: HERE_SHELF,
+      type: 'selection',
+      order: 0,
+      itemIds: [MILK],
+    },
+    {
+      id: 'shelf-cellar',
+      name: ELSEWHERE_SHELF,
+      type: 'selection',
+      order: 1,
+      itemIds: [COFFEE],
+    },
+  ],
+  recipes: [
+    {
+      id: 'recipe-pancakes',
+      name: HERE_RECIPE,
+      items: [{ itemId: MILK, defaultAmount: 1 }],
+    },
+    {
+      id: 'recipe-cold-brew',
+      name: ELSEWHERE_RECIPE,
+      items: [{ itemId: COFFEE, defaultAmount: 1 }],
+    },
+  ],
+}
+
+/** Seed FIXTURE into whichever backend this project runs against. */
+async function seedFixture(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+): Promise<void> {
+  if (baseURL === CLOUD_WEB_URL) {
+    await seedCloudFixture(request, FIXTURE)
+    return
+  }
+  await seedLocalFixture(page, FIXTURE)
+}
+
+test.beforeEach(async ({ page, request, baseURL }) => {
   // Prevent the empty-data redirect to /onboarding so tests can navigate freely.
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
+  if (baseURL === CLOUD_WEB_URL) {
+    // Guards against a previous run that crashed before its teardown.
+    await cleanupCloudData(request)
+  }
 })
 
-test.afterEach(async ({ page }) => {
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
+    await cleanupCloudData(request)
+    return
+  }
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -98,121 +193,6 @@ test.afterEach(async ({ page }) => {
     sessionStorage.clear()
   })
 })
-
-function stock(itemId: string, locationId: string): Record<string, unknown> {
-  const now = new Date()
-  return {
-    id: `stock-${itemId}-${locationId}`,
-    itemId,
-    locationId,
-    // Global configuration lives on the Item since v16.
-    targetQuantity: 4,
-    refillThreshold: 1,
-    // 3 of a target of 4, above the refill threshold — neither empty nor low,
-    // so no health badge text competes with the divider's own "N ..." string.
-    packedQuantity: 3,
-    unpackedQuantity: 0,
-    createdAt: now,
-    updatedAt: now,
-  }
-}
-
-// Two locations, three items, and one "here" + one "elsewhere" group on each of
-// the three grouping axes. Seeded directly rather than driven through the UI:
-// building this by hand runs to well past the 10-step budget the E2E convention
-// sets for UI-driven setup.
-//
-// `seedRows` resolves on the transaction's `oncomplete`, never on a request's
-// `onsuccess` — the navigation that follows a seed aborts a still-open
-// transaction and silently discards its rows.
-async function seedFixture(page: Page) {
-  // Dexie must have created the schema before opening the database by name.
-  await page.goto('/')
-  const now = new Date()
-
-  await seedRows(page, 'locations', [
-    { id: HOME, name: 'My Home', order: 0, createdAt: now, updatedAt: now },
-    { id: OFFICE, name: 'Office', order: 1, createdAt: now, updatedAt: now },
-  ])
-
-  await seedRows(page, 'vendors', [
-    { id: COSTCO, name: HERE_VENDOR, createdAt: now },
-    { id: BODEGA, name: ELSEWHERE_VENDOR, createdAt: now },
-  ])
-
-  await seedRows(page, 'items', [
-    {
-      id: MILK,
-      name: 'Milk',
-      tagIds: [],
-      vendorIds: [COSTCO],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: COFFEE,
-      name: 'Coffee',
-      tagIds: [],
-      vendorIds: [BODEGA],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: BREAD,
-      name: 'Bread',
-      tagIds: [],
-      vendorIds: [],
-      createdAt: now,
-      updatedAt: now,
-    },
-  ])
-
-  // The load-bearing row set: Coffee has an ItemStock at the OFFICE and none at
-  // HOME, so every group that holds only Coffee is "not stocked here".
-  await seedRows(page, 'itemStocks', [
-    stock(MILK, HOME),
-    stock(BREAD, HOME),
-    stock(COFFEE, OFFICE),
-  ])
-
-  await seedRows(page, 'shelves', [
-    {
-      id: 'shelf-fridge',
-      name: HERE_SHELF,
-      type: 'selection',
-      order: 0,
-      itemIds: [MILK],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'shelf-cellar',
-      name: ELSEWHERE_SHELF,
-      type: 'selection',
-      order: 1,
-      itemIds: [COFFEE],
-      createdAt: now,
-      updatedAt: now,
-    },
-  ])
-
-  await seedRows(page, 'recipes', [
-    {
-      id: 'recipe-pancakes',
-      name: HERE_RECIPE,
-      items: [{ itemId: MILK, defaultAmount: 1 }],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'recipe-cold-brew',
-      name: ELSEWHERE_RECIPE,
-      items: [{ itemId: COFFEE, defaultAmount: 1 }],
-      createdAt: now,
-      updatedAt: now,
-    },
-  ])
-}
 
 // The describe title carries both "location" and "items" so the documented
 // verification greps (`--grep "items|shopping|cooking|settings|a11y"` and the
@@ -244,13 +224,12 @@ test.describe('location-scoped group lists — items not stocked here', () => {
   for (const { groupBy, here, elsewhere, unfiled } of pantryGroupViews) {
     test(`user sees a ${groupBy} group stocked only at another location below the divider`, async ({
       page,
+      request,
       baseURL,
     }) => {
-      test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
       // Given two locations, with "${elsewhere}" holding only an item stocked
       // at the Office and "${here}" holding one stocked in the active location
-      await seedFixture(page)
+      await seedFixture(page, request, baseURL)
       const pantry = new PantryPage(page)
 
       // When the user opens the pantry grouped by ${groupBy}
@@ -280,13 +259,22 @@ test.describe('location-scoped group lists — items not stocked here', () => {
 
   test('user sees a shopping vendor stocked only at another location below the divider', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
+    // /shopping switches the partition OFF in cloud mode: `isUnstockedHere` in
+    // src/routes/shopping/index.tsx is `!isCloud && ...`, because a cloud Cart
+    // has no locationId until PR 3 and `useVendorCartCounts()` keeps a global
+    // tally there. With no partition no divider renders at all. PR 3 removes
+    // this skip; the fixture is already mode-neutral and needs no change.
+    test.skip(
+      baseURL === CLOUD_WEB_URL,
+      'cloud skips the vendor partition until PR 3 (Cart has no locationId)',
+    )
 
     // Given "Bodega" sells only Coffee, which is stocked at the Office, while
     // "Costco" sells Milk, stocked in the active location
-    await seedFixture(page)
+    await seedFixture(page, request, baseURL)
     const shopping = new ShoppingPage(page)
 
     // When the user opens the shopping cart list
@@ -318,13 +306,22 @@ test.describe('location-scoped group lists — items not stocked here', () => {
 
   test('user sees a recipe stocked only at another location below the divider, still disabled', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
+    // /cooking switches the partition OFF in cloud mode: `isRecipeUnstockedHere`
+    // in src/routes/cooking.tsx is `!isCloud && ...`, because `consumeRecipes`
+    // writes the caller's default location rather than the active one until
+    // PR 3. With no partition no divider renders at all. PR 3 removes this
+    // skip; the fixture is already mode-neutral and needs no change.
+    test.skip(
+      baseURL === CLOUD_WEB_URL,
+      'cloud skips the recipe partition until PR 3 (consumeRecipes is not location-scoped)',
+    )
 
     // Given "Cold Brew" needs only Coffee, stocked at the Office, while
     // "Pancakes" needs Milk, stocked in the active location
-    await seedFixture(page)
+    await seedFixture(page, request, baseURL)
     const cooking = new CookingPage(page)
 
     // When the user opens the cooking page

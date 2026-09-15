@@ -33,6 +33,13 @@ if (E2E_TEST_MODE) {
       prisma.itemTag.deleteMany({ where: { item: { userId } } }),
       prisma.itemVendor.deleteMany({ where: { item: { userId } } }),
       prisma.recipeItem.deleteMany({ where: { item: { userId } } }),
+      // ItemStock has no userId — it is scoped through its Location. Both of its
+      // FKs are ON DELETE CASCADE, so these rows would go when item or location
+      // goes; the explicit delete, and its position before both, keeps this list
+      // identical to clearAllData and purgeUserData. See the ordering comment on
+      // purgeUserData (purge.resolver.ts), where the order does change the result
+      // because that path returns the deleted count.
+      prisma.itemStock.deleteMany({ where: { location: { userId } } }),
       prisma.item.deleteMany({ where: { userId } }),
       prisma.tag.deleteMany({ where: { userId } }),
       prisma.tagType.deleteMany({ where: { userId } }),
@@ -42,6 +49,11 @@ if (E2E_TEST_MODE) {
       // in the shared DB and collide (by id) with imported fixture shelves,
       // surfacing a spurious "Conflicts detected" dialog on import tests.
       prisma.shelf.deleteMany({ where: { userId } }),
+      // Locations are user-scoped too. Without this they accumulate across runs
+      // in the shared test DB, and ensureDefaultLocation (location.resolver.ts)
+      // returns early whenever the user already has one — so the next run starts
+      // with the previous run's locations instead of a fresh default.
+      prisma.location.deleteMany({ where: { userId } }),
     ])
     res.json({ ok: true })
   })

@@ -1,18 +1,27 @@
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 
 // The LocationSwitcher is a global active-location selector. PR B made it persist
 // the active location and update its trigger label; PR D made it LIVE — switching
 // the active location re-scopes the pantry to items stocked in that location.
-// These flows are local-only.//
-// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
-// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
-// client on it. It is that every fixture here seeds **IndexedDB** through
-// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
-// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
-// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
-// guards below are belt-and-braces rather than the thing that excludes it.
-// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
+//
+// Runs in BOTH projects, local and cloud.
+//
+// Every fixture here is UI-driven. `seedOfficeLocation()` below clicks through
+// /settings/locations, and items are created through the pantry's Add combobox.
+// The only `page.evaluate()` call in this file is the local-mode teardown in
+// `afterEach`.
+//
+// An earlier version of this comment said every fixture seeds IndexedDB through
+// `page.evaluate()`, and that the file is local-only for that reason. That was
+// false — no fixture here seeds anything.
+//
+// Cloud isolation is by row ownership, not by database: every write is owned by
+// E2E_USER_ID, and `/e2e/cleanup` deletes that user's rows. As of this branch
+// that endpoint also deletes `Location` and `ItemStock`. Without it,
+// `ensureDefaultLocation` (location.resolver.ts) returns early whenever the user
+// already has a location, so run 2 would see run 1's "Office" and fail.
 //
 // IT IS MOUNTED TWICE, and exactly one copy is visible at any width:
 //   - `< lg`  — compact glyph trigger in the page toolbar (inside <main>); no sidebar.
@@ -38,14 +47,23 @@ const sidebarSwitcher = (page: Page) =>
 const toolbarSwitcher = (page: Page) =>
   page.getByRole('main').getByRole('button', { name: /switch location/i })
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request, baseURL }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
+  if (baseURL === CLOUD_WEB_URL) {
+    // Guards against a previous run that crashed before its teardown.
+    await cleanupCloudData(request)
+  }
 })
 
-test.afterEach(async ({ page }) => {
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
+    await cleanupCloudData(request)
+    return
+  }
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -88,10 +106,7 @@ async function seedOfficeLocation(page: Page) {
 
 test('sidebar switcher shows the active location name and lists locations', async ({
   page,
-  baseURL,
 }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
   // Given a second location exists
   await seedOfficeLocation(page)
 
@@ -113,9 +128,7 @@ test('sidebar switcher shows the active location name and lists locations', asyn
   ).toBeVisible()
 })
 
-test('switching location persists across reload', async ({ page, baseURL }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('switching location persists across reload', async ({ page }) => {
   await seedOfficeLocation(page)
   await page.goto('/')
 
@@ -135,12 +148,7 @@ test('switching location persists across reload', async ({ page, baseURL }) => {
   await expect(sidebarSwitcher(page)).toHaveText('Office')
 })
 
-test('"Manage" navigates to the locations settings page', async ({
-  page,
-  baseURL,
-}) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
+test('"Manage" navigates to the locations settings page', async ({ page }) => {
   await page.goto('/')
   // Desktop viewport → the sidebar copy is the reachable one
   const trigger = sidebarSwitcher(page)
@@ -161,28 +169,31 @@ async function switchTo(page: Page, name: string) {
   await expect(trigger).toHaveText(name)
 }
 
-test('switching the active location re-scopes the pantry to stocked items', async ({
-  page,
-  baseURL,
-}) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
-  // Given a second location "Office" and an item created in "My Home"
-  await seedOfficeLocation(page)
-  await page.goto('/')
-
-  // Create "Yogurt" in the active (My Home) location via the Add combobox.
+// Create a brand-new item in whatever location is active right now, through the
+// pantry's Add combobox. The item ends up stocked ONLY in that location, which
+// is what lets a test hold "stocked here" and "stocked elsewhere" side by side.
+// Clicking "Create" navigates to the new item's detail page, so callers that
+// need the pantry again must navigate back themselves.
+async function createItemHere(page: Page, name: string) {
   // Add-item button: aria-label="Add item" (src/components/pantry/PantryListView.tsx)
   await page.getByRole('button', { name: 'Add item' }).click()
   const dialog = page.getByRole('dialog')
   // Combobox: role="combobox" aria-label via the Name label (NewItemDialog.tsx)
-  await dialog.getByRole('combobox').fill('Yogurt')
-  // No catalog match → "Create" button appears in the dialog footer; clicking it
-  // creates the item and navigates to its detail page.
+  await dialog.getByRole('combobox').fill(name)
+  // No catalog match -> a "Create" button appears in the dialog footer.
   await Promise.all([
     page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
     dialog.getByRole('button', { name: /create/i }).click(),
   ])
+}
+
+test('switching the active location re-scopes the pantry to stocked items', async ({
+  page,
+}) => {
+  // Given a second location "Office" and an item created in "My Home"
+  await seedOfficeLocation(page)
+  await page.goto('/')
+  await createItemHere(page, 'Yogurt')
 
   // Go back to the pantry.
   await page.goto('/')
@@ -193,7 +204,20 @@ test('switching the active location re-scopes the pantry to stocked items', asyn
   // When the user switches to the empty "Office" location
   await switchTo(page, 'Office')
 
-  // Then the pantry is empty there (Yogurt is stocked only in My Home)
+  // Then the pantry shows its empty state there — Yogurt is stocked only in
+  // My Home.
+  //
+  // ASSERT THE EMPTY STATE FIRST, and only then that Yogurt is gone. The empty
+  // state renders only after the location's stock query resolves with zero rows
+  // (PantryListView returns <LoadingSpinner /> while `isLoading`), so it proves
+  // the page settled. `toHaveCount(0)` on its own does not: it passes on the
+  // first frame where the count is 0, which right after a location switch is the
+  // loading frame, before the response arrives. That is why this test still
+  // passed here when the server's `itemStocks` query was made to ignore its
+  // `locationId` filter — it failed ~40 lines later instead, at the
+  // `aria-disabled` click, pointing at the wrong code.
+  // Empty-state title: t('pantry.empty.title') (src/components/pantry/PantryListView.tsx)
+  await expect(page.getByText('Your pantry is empty')).toBeVisible()
   await expect(
     page.getByRole('heading', { name: 'Yogurt', level: 3 }),
   ).toHaveCount(0)
@@ -217,34 +241,52 @@ test('switching the active location re-scopes the pantry to stocked items', asyn
   ).toBeVisible()
 })
 
+// TWO locations, and an item stocked in each — not one location.
+//
+// With a single location "stocked here" and "stocked anywhere" return the same
+// answer, so the test passed against a server that ignored `locationId`
+// entirely. It stayed green under exactly that mutation. The pair below is what
+// a one-location fixture cannot produce: an implementation that disables
+// nothing fails the first assertion, and one that disables everything fails the
+// second.
 test('an item already stocked in the active location is shown disabled in the Add combobox', async ({
   page,
-  baseURL,
 }) => {
-  test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
+  // Given a second location "Office"
+  await seedOfficeLocation(page)
 
-  // Given an item created in the active (My Home) location
+  // And "Oats" created in the active (My Home) location
   await page.goto('/')
-  await page.getByRole('button', { name: 'Add item' }).click()
-  let dialog = page.getByRole('dialog')
-  await dialog.getByRole('combobox').fill('Oats')
-  await Promise.all([
-    page.waitForURL(/\/items\/(?!new)[^/]+$/, { timeout: 10000 }),
-    dialog.getByRole('button', { name: /create/i }).click(),
-  ])
+  await createItemHere(page, 'Oats')
+
+  // And "Oat Milk" created while "Office" is active, so it is stocked THERE and
+  // not in My Home
   await page.goto('/')
+  await switchTo(page, 'Office')
+  await createItemHere(page, 'Oat Milk')
+
+  // Back in My Home, where Oats is stocked and Oat Milk is not
+  await page.goto('/')
+  await switchTo(page, 'My Home')
   await expect(
     page.getByRole('heading', { name: 'Oats', level: 3 }),
   ).toBeVisible()
 
-  // When the user re-opens Add and searches for the same item
+  // When the user opens Add and searches for "Oat", which matches both
   await page.getByRole('button', { name: 'Add item' }).click()
-  dialog = page.getByRole('dialog')
-  await dialog.getByRole('combobox').fill('Oats')
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('combobox').fill('Oat')
 
-  // Then the matching option is marked disabled (already stocked here)
-  const option = dialog.getByRole('option', { name: /oats/i })
-  await expect(option).toHaveAttribute('aria-disabled', 'true')
+  // Then the item stocked HERE is marked disabled
+  // aria-disabled={stocked} on role="option" (NewItemDialog.tsx)
+  await expect(
+    dialog.getByRole('option', { name: /oats/i }),
+  ).toHaveAttribute('aria-disabled', 'true')
+
+  // And the item stocked only in Office stays selectable
+  await expect(
+    dialog.getByRole('option', { name: /oat milk/i }),
+  ).toHaveAttribute('aria-disabled', 'false')
 })
 
 // ---------------------------------------------------------------------------
@@ -267,10 +309,7 @@ test.describe('desktop (>= lg): the switcher lives in the sidebar', () => {
   for (const { name, path } of pagesWithASwitcher) {
     test(`user sees exactly one switcher — in the sidebar, not the ${name} toolbar`, async ({
       page,
-      baseURL,
     }) => {
-      test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
       // Given the page at Playwright's default 1280×720 viewport (>= lg)
       await page.goto(path)
       await page.waitForLoadState('networkidle')
@@ -293,10 +332,7 @@ test.describe('mobile (< lg): the switcher stays in the page toolbar', () => {
   for (const { name, path } of pagesWithASwitcher) {
     test(`user sees exactly one switcher — in the ${name} toolbar, and there is no sidebar`, async ({
       page,
-      baseURL,
     }) => {
-      test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
       // Given the page at a mobile viewport
       await page.goto(path)
       await page.waitForLoadState('networkidle')
@@ -314,10 +350,7 @@ test.describe('mobile (< lg): the switcher stays in the page toolbar', () => {
 
   test('user can still switch the active location from the mobile toolbar', async ({
     page,
-    baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given a second location exists
     await seedOfficeLocation(page)
     await page.goto('/')
