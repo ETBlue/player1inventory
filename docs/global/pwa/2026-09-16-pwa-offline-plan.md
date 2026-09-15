@@ -910,68 +910,190 @@ had the same problem: an empty cache offline looked like deleted data."
 
 ---
 
-## Task 7b: Render the app when Clerk cannot load
+## Task 7b: Stop token requests from hanging when Clerk never loads
 
-**Run this task only if Task 1 wrote "Task 7b is: needed".** If Task 1 wrote "not needed", skip to Task 8 and say in your report that you skipped it and why.
+**Run this task only if Task 1 wrote "Task 7b is: needed".**
+
+**What Task 1 found, and why this task changed.** The experiment showed the app shell
+**does** render offline. `ClerkProviderBase` passes its `children` through with no
+condition (`node_modules/@clerk/react/dist/chunk-X4TTIHRV.mjs:2011-2023`), so a blank
+screen was never the risk. The real problem is different: `useAuth()` stays at
+`isLoaded: false` forever, and `getToken()` on a Clerk that never loaded does not fail.
+It waits.
+
+That matters because `SetContextLink` in `apps/web/src/apollo/client.ts` **awaits**
+`getToken()` before every request. A cache miss offline would therefore hang forever and
+show a loading spinner that never ends. An error is better than a spinner that never
+stops.
+
+The original version of this task rendered a second provider tree without Clerk. That is
+no longer the right fix. It only helped a cold offline start, left a user who went offline
+*during* a session on the old path, and added a second provider tree to maintain and test.
+This version is smaller, and it covers both cases.
 
 **Files:**
-- Modify: `apps/web/src/main.tsx`
+- Modify: `apps/web/src/apollo/client.ts`
+- Create: `apps/web/src/apollo/client.test.ts`
 
 **Interfaces:**
 - Consumes: `isOffline` (Task 6)
 - Produces: nothing new
 
-- [ ] **Step 1: Add a fallback tree**
+- [ ] **Step 1: Write the failing test**
 
-In `apps/web/src/main.tsx`, in the `mode === 'cloud'` branch, wrap the Clerk tree so that an offline start does not depend on Clerk loading:
+Create `apps/web/src/apollo/client.test.ts`:
 
-```tsx
-  } else if (mode === 'cloud' && isOffline()) {
-    // Clerk loads its code from another server, so it cannot start offline.
-    // Render without it. The app is read-only offline, CloudAuthGuard does
-    // not redirect offline, and the cache is chosen by the stored user id.
-    root.render(
-      <StrictMode>
-        <ApolloWrapperOffline>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider router={router} />
-          </QueryClientProvider>
-        </ApolloWrapperOffline>
-      </StrictMode>,
-    )
-  } else if (mode === 'cloud') {
+```ts
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { resolveToken } from './client'
+
+function setOnLine(value: boolean) {
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(value)
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('resolveToken', () => {
+  it('returns the token when online', async () => {
+    // Given the device is online and Clerk answers
+    setOnLine(true)
+
+    // When a token is requested
+    const token = await resolveToken(async () => 'real-token')
+
+    // Then the real token is used
+    expect(token).toBe('real-token')
+  })
+
+  it('does not wait for Clerk when offline', async () => {
+    // Given the device is offline and Clerk never answers
+    setOnLine(false)
+    const neverResolves = () => new Promise<string | null>(() => {})
+
+    // When a token is requested
+    const token = await resolveToken(neverResolves)
+
+    // Then it gives up at once instead of hanging forever
+    expect(token).toBeNull()
+  })
+
+  it('gives up when Clerk is slow but the device is online', async () => {
+    // Given Clerk never answers, which is what a failed script load looks like
+    setOnLine(true)
+    const neverResolves = () => new Promise<string | null>(() => {})
+
+    // When a token is requested
+    const token = await resolveToken(neverResolves, 50)
+
+    // Then it stops waiting after the timeout
+    expect(token).toBeNull()
+  })
+})
 ```
 
-- [ ] **Step 2: Add the offline wrapper**
+- [ ] **Step 2: Run it and confirm it fails**
 
-In `apps/web/src/apollo/ApolloWrapper.tsx`, add a second export that does not call `useAuth`:
+```bash
+(cd apps/web && pnpm vitest run src/apollo/client.test.ts)
+```
 
-```tsx
+Expected: FAIL — `resolveToken` is not exported.
+
+- [ ] **Step 3: Write it**
+
+In `apps/web/src/apollo/client.ts`, add this export:
+
+```ts
+/** How long to wait for Clerk before giving up, in milliseconds. */
+const TOKEN_TIMEOUT_MS = 3000
+
 /**
- * Apollo provider for an offline cloud start, used when Clerk cannot load.
- * It never asks for a token, because no request will succeed anyway. Reads
- * come from the restored cache. Writes are blocked by offlineWriteLink.
+ * Gets an auth token, but never waits forever.
+ *
+ * Two cases make `getToken()` hang instead of fail:
+ * - The device is offline, so Clerk cannot reach its server.
+ * - Clerk's script failed to load, so `useAuth()` stays at `isLoaded: false`.
+ *   Task 1 confirmed this happens and does not time out on its own.
+ *
+ * `SetContextLink` awaits this before every request, so a hang here shows the
+ * user a loading spinner that never stops. Returning null instead lets the
+ * request fail, which the UI can show as an error.
  */
-export function ApolloWrapperOffline({ children }: { children: React.ReactNode }) {
-  const client = useMemo(() => createApolloClient(async () => null), [])
-  return <ApolloProvider client={client}>{children}</ApolloProvider>
+export async function resolveToken(
+  getToken: () => Promise<string | null>,
+  timeoutMs: number = TOKEN_TIMEOUT_MS,
+): Promise<string | null> {
+  if (isOffline()) return null
+
+  return Promise.race([
+    getToken().catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ])
 }
 ```
 
-- [ ] **Step 3: Check it renders offline**
+Add the import:
 
-```bash
-(cd apps/web && pnpm build && pnpm preview --port 4173)
+```ts
+import { isOffline } from '@/hooks/useIsOffline'
 ```
 
-Set DevTools to Offline. Open a fresh tab at `http://localhost:4173`. The app must render, not show a blank screen.
+- [ ] **Step 4: Use it in both places**
 
-- [ ] **Step 4: Run the suite and commit**
+In the same file, change `createApolloClient` so both the HTTP auth link and the
+WebSocket `connectionParams` go through `resolveToken`:
+
+```ts
+  const authLink = new SetContextLink(async ({ headers }) => {
+    const token = await resolveToken(getToken)
+    return {
+      headers: {
+        ...headers,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  })
+```
+
+```ts
+      connectionParams: async () => {
+        const token = await resolveToken(getToken)
+        return token ? { authorization: `Bearer ${token}` } : {}
+      },
+```
+
+- [ ] **Step 5: Run the test and confirm it passes**
+
+```bash
+(cd apps/web && pnpm vitest run src/apollo/client.test.ts)
+```
+
+Expected: PASS — all three tests.
+
+- [ ] **Step 6: Mutation check — run both**
+
+1. Remove the `if (isOffline()) return null` line. The second test must **fail**.
+2. Remove the `Promise.race` and just `return getToken()`. The third test must **fail**.
+
+Restore after each. Report both.
+
+- [ ] **Step 7: Run the suite and commit**
 
 ```bash
 pnpm test
-git add apps/web/src/main.tsx apps/web/src/apollo/ApolloWrapper.tsx
-git commit -m "fix(pwa): render cloud mode offline when Clerk cannot load"
+git add apps/web/src/apollo/client.ts apps/web/src/apollo/client.test.ts
+git commit -m "fix(pwa): stop token requests hanging when Clerk never loads
+
+Task 1 found that ClerkProvider does render its children offline, so a
+blank screen was never the risk. The real problem is that useAuth() stays
+at isLoaded: false and getToken() never settles.
+
+SetContextLink awaits getToken() before every request, so a cache miss
+offline would show a loading spinner that never stops. resolveToken gives
+up after 3 seconds, or at once when the device is offline, so the request
+fails and the UI can show an error instead."
 ```
 
 ---
