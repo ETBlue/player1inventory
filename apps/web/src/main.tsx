@@ -8,7 +8,8 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
-import { createApolloClientForE2E } from './apollo/client'
+import { cloudCache, createApolloClientForE2E } from './apollo/client'
+import { getLastSignedInUserId, restoreCache } from './apollo/persistence'
 import { db } from './db'
 import { bootstrapCarts } from './db/operations'
 import type { DataMode } from './lib/dataMode'
@@ -114,5 +115,13 @@ if (mode === 'local') {
       renderApp()
     })
 } else {
-  renderApp()
+  // Cloud mode: fill the cache from the device BEFORE React mounts, so the
+  // first queries do not overwrite the stored copy with empty results.
+  restoreCache(cloudCache, getLastSignedInUserId())
+    .catch((error) => {
+      console.error('Cache restore failed:', error)
+    })
+    .finally(() => {
+      renderApp()
+    })
 }

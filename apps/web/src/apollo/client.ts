@@ -87,6 +87,14 @@ export function createCache() {
   })
 }
 
+/**
+ * One cache instance for cloud mode, created before the client.
+ *
+ * Persistence needs to fill this in BEFORE Apollo mounts. If the first
+ * queries run first, they write empty results and destroy the stored copy.
+ */
+export const cloudCache = createCache()
+
 // E2E test client: sends a static x-e2e-user-id header instead of a Clerk JWT.
 // Used by main.tsx when VITE_E2E_TEST_USER_ID is set (never in production).
 export function createApolloClientForE2E(userId: string) {
@@ -133,6 +141,6 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
 
   return new ApolloClient({
     link: splitLink,
-    cache: createCache(),
+    cache: cloudCache,
   })
 }
