@@ -33,6 +33,21 @@ describe('shouldRedirectToOnboarding', () => {
     expect(result).toBe(false)
   })
 
+  it('user can be a brand-new local user who is offline, and IS sent to onboarding', () => {
+    // Given a local user with no connection and no data. Local mode is the
+    // default and works fully offline, so an empty local database really does
+    // mean an empty account.
+    const input = { ...baseInput, mode: 'local' as const, offline: true }
+
+    // When the decision is made
+    const result = shouldRedirectToOnboarding(input)
+
+    // Then the user is sent to onboarding. Without this case, dropping the
+    // mode check and writing `if (offline) return false` would keep every
+    // other test green and strand this user on an empty pantry page.
+    expect(result).toBe(true)
+  })
+
   it('user can be a cloud user who is online with an empty account, and is sent to onboarding', () => {
     // Given a cloud user with a connection and a genuinely empty account
     const input = { ...baseInput, mode: 'cloud' as const, offline: false }

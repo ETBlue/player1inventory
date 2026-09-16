@@ -57,21 +57,32 @@ describe('cache persistence', () => {
     expect(await cacheDb.snapshots.count()).toBe(0)
   })
 
-  it('restoring keeps data that a later query would overwrite', async () => {
-    // Given user A saved a cache holding one item
+  // This file cannot test the restore-before-first-query ordering. There is no
+  // ordering inside `persistence.ts`; the order lives in `bootstrapCloudMode`
+  // and is pinned by `src/bootstrap.test.ts` with a restore the test releases
+  // by hand. What this test checks is a different, real property of
+  // `restoreCache`: it REPLACES the cache contents instead of merging into
+  // them.
+  it('restoring replaces whatever the cache already held', async () => {
+    // Given user A saved a cache holding Milk
     await saveCache(cacheWithOneItem(), 'user-a')
 
-    // When we restore and then a query writes an EMPTY result,
-    // as an offline query does
+    // And a cache that already holds a different item
     const fresh = new InMemoryCache()
-    await restoreCache(fresh, 'user-a')
-    const beforeOverwrite = fresh.readQuery({ query: QUERY })
+    fresh.writeQuery({
+      query: QUERY,
+      data: { items: [{ __typename: 'Item', id: 'item-2', name: 'Eggs' }] },
+    })
 
-    // Then the restore had already put the data in place.
-    // This is the check that fails if restore runs after the first query.
-    expect(beforeOverwrite).toEqual({
+    // When the stored copy is restored into it
+    await restoreCache(fresh, 'user-a')
+
+    // Then only the stored copy is left. Eggs is gone from the store, not
+    // merely hidden behind the new `items` field value.
+    expect(fresh.readQuery({ query: QUERY })).toEqual({
       items: [{ __typename: 'Item', id: 'item-1', name: 'Milk' }],
     })
+    expect(fresh.extract()).not.toHaveProperty('Item:item-2')
   })
 
   it('sign-out removes the stored copy', async () => {
