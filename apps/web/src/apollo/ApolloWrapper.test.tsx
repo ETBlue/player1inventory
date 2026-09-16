@@ -1,11 +1,16 @@
 import { gql } from '@apollo/client'
 import { useAuth } from '@clerk/react'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloWrapper } from './ApolloWrapper'
 import { cacheDb } from './cacheDb'
 import { cloudCache } from './cloudCache'
-import { getLastSignedInUserId, saveCache } from './persistence'
+import {
+  getLastSignedInUserId,
+  getLastSyncedAt,
+  saveCache,
+  setLastSyncedAt,
+} from './persistence'
 
 vi.mock('@clerk/react', () => ({
   useAuth: vi.fn(),
@@ -42,11 +47,31 @@ async function letWritesLand() {
   await new Promise((resolve) => setTimeout(resolve, 50))
 }
 
+function setOnLine(value: boolean) {
+  Object.defineProperty(window.navigator, 'onLine', {
+    configurable: true,
+    get: () => value,
+  })
+}
+
+function setHidden() {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => 'hidden',
+  })
+}
+
 beforeEach(() => {
   localStorage.clear()
+  setOnLine(true)
 })
 
 afterEach(async () => {
+  setOnLine(true)
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => 'visible',
+  })
   await cacheDb.snapshots.clear()
   await cloudCache.reset()
   vi.clearAllMocks()
@@ -103,5 +128,33 @@ describe('ApolloWrapper cache ownership', () => {
     await waitFor(async () => expect(await cacheDb.snapshots.count()).toBe(0))
     expect(cloudCache.extract()).not.toHaveProperty('Item:item-1')
     await waitFor(() => expect(getLastSignedInUserId()).toBe('user-b'))
+  })
+})
+
+describe('ApolloWrapper last-synced stamp', () => {
+  it('offline saving does not move the last-synced time forward', async () => {
+    // Given the last successful sync was 3 hours ago, and the device is offline
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000)
+    await setLastSyncedAt(threeHoursAgo)
+    setOnLine(false)
+    signedInAs('user-a')
+    render(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+    await waitFor(() => expect(getLastSignedInUserId()).toBe('user-a'))
+
+    // When the app saves the cache because the tab was hidden
+    setHidden()
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await letWritesLand()
+
+    // Then the stored time still points at the last real sync. Stamping it
+    // here would make the banner say the data is fresh when it is 3 hours old.
+    const stored = await getLastSyncedAt()
+    expect(stored?.getTime()).toBe(threeHoursAgo.getTime())
   })
 })

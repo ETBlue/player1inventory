@@ -1,6 +1,7 @@
 import { ApolloProvider } from '@apollo/client/react'
 import { useAuth } from '@clerk/react'
 import { useEffect, useMemo } from 'react'
+import { isOffline } from '@/hooks/useIsOffline'
 import { createApolloClient } from './client'
 import { cloudCache } from './cloudCache'
 import {
@@ -29,7 +30,12 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
     // writes while a page loads several queries at once.
     const save = () => {
       void saveCache(cloudCache, userId)
-      void setLastSyncedAt(new Date())
+      // Only stamp the time while online. Offline there is nothing to sync
+      // from, so a new stamp would make the banner claim the data is fresh
+      // when it is in fact hours old. The stamp is still coarser than the
+      // design asks for — it records when the app was last open online, not
+      // when a cloud read last succeeded.
+      if (!isOffline()) void setLastSyncedAt(new Date())
     }
 
     // `visibilitychange` is more reliable than `beforeunload` on mobile

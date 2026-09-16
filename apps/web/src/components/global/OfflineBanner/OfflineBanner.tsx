@@ -2,21 +2,14 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getLastSyncedAt } from '@/apollo/persistence'
 import { useIsOffline } from '@/hooks/useIsOffline'
+import { formatRelativeTimeWithHours } from '@/lib/formatRelativeTime'
+import { convertDetectedLanguage } from '@/lib/language'
 
 interface OfflineBannerProps {
   /** Overrides the stored value. Used by Storybook and tests. */
   lastSyncedAt?: Date | null
   /** Overrides the real connection state. Used by Storybook and tests. */
   forceOffline?: boolean
-}
-
-function formatRelative(date: Date, locale: string): string {
-  const minutes = Math.round((date.getTime() - Date.now()) / 60000)
-  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
-  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute')
-  const hours = Math.round(minutes / 60)
-  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour')
-  return formatter.format(Math.round(hours / 24), 'day')
 }
 
 /**
@@ -36,12 +29,25 @@ export function OfflineBanner({
 
   useEffect(() => {
     if (lastSyncedAt !== undefined) return
+    // Read only while offline, and read again every time the connection state
+    // changes. The banner mounts once, at app start, and the stored value
+    // keeps moving while the app is online, so a single read on mount would
+    // report the time as of app start. `offline` must stay in the dependency
+    // list AND be read here — a dependency Biome cannot see used gets removed
+    // by `biome check --write`, which is how this bug came back once already.
+    if (!offline) return
     void getLastSyncedAt().then(setStoredSyncedAt)
-  }, [lastSyncedAt])
+  }, [lastSyncedAt, offline])
 
   if (!offline) return null
 
   const syncedAt = lastSyncedAt ?? storedSyncedAt
+
+  // `i18n.language` is 'en' or 'tw'. 'tw' is a real BCP 47 subtag — it means
+  // Twi — so passing it straight to Intl does not throw; it silently formats
+  // in English. `convertDetectedLanguage` maps it to the app's Language, and
+  // the helper maps that to 'zh-TW'.
+  const language = convertDetectedLanguage(i18n.language)
 
   return (
     // <output> carries an implicit ARIA role of "status" (announces to screen
@@ -52,7 +58,7 @@ export function OfflineBanner({
       {' — '}
       {syncedAt
         ? t('pwa.offlineSyncedAt', {
-            time: formatRelative(syncedAt, i18n.language),
+            time: formatRelativeTimeWithHours(syncedAt, language),
           })
         : t('pwa.offlineNeverSynced')}
     </output>

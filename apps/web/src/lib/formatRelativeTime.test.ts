@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { formatRelativeTime } from './formatRelativeTime'
+import {
+  formatRelativeTime,
+  formatRelativeTimeWithHours,
+} from './formatRelativeTime'
 
 describe('formatRelativeTime', () => {
   const now = new Date()
@@ -59,6 +62,54 @@ describe('formatRelativeTime', () => {
     // Then the results differ
     expect(formatRelativeTime(daysAgo(3), 'en')).not.toBe(
       formatRelativeTime(daysAgo(3), 'tw'),
+    )
+  })
+})
+
+describe('formatRelativeTimeWithHours', () => {
+  const now = new Date()
+
+  function minutesAgo(n: number): Date {
+    return new Date(now.getTime() - n * 60 * 1000)
+  }
+
+  it('formats minutes in English', () => {
+    // Given a date 12 minutes ago
+    // When formatted in English
+    const result = formatRelativeTimeWithHours(minutesAgo(12), 'en')
+
+    // Then it counts in minutes, which formatRelativeTime would call "today"
+    expect(result).toMatch(/12 minutes? ago/)
+  })
+
+  it('formats hours in English', () => {
+    // Given a date 2 hours ago
+    // When formatted in English
+    const result = formatRelativeTimeWithHours(minutesAgo(120), 'en')
+
+    // Then it counts in hours
+    expect(result).toMatch(/2 hours? ago/)
+  })
+
+  it('formats hours in Traditional Chinese', () => {
+    // Given a date 2 hours ago
+    // When formatted in Traditional Chinese
+    const result = formatRelativeTimeWithHours(minutesAgo(120), 'tw')
+
+    // Then the text is Chinese. 'tw' alone is the Twi subtag and would
+    // silently give English, so the LANGUAGE_LOCALE mapping is what is
+    // being checked here.
+    expect(result).toMatch(/2 小時前/)
+  })
+
+  it('hands anything a day old or older to formatRelativeTime', () => {
+    // Given a date 3 days ago
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+
+    // When formatted both ways
+    // Then the two agree — there is one implementation of the day wording
+    expect(formatRelativeTimeWithHours(threeDaysAgo, 'tw')).toBe(
+      formatRelativeTime(threeDaysAgo, 'tw'),
     )
   })
 })
