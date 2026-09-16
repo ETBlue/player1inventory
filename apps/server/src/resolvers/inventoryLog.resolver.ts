@@ -1,8 +1,9 @@
 import { GraphQLScalarType } from 'graphql'
 import type { Prisma } from '@prisma/client'
+import { type LocationRole, requireLocationRole } from '../lib/authz.js'
 import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
-import { requireAuth } from '../context.js'
+import { type Context, requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
 
 export const JSONScalar = new GraphQLScalarType({
@@ -12,21 +13,68 @@ export const JSONScalar = new GraphQLScalarType({
   parseLiteral: () => null,
 })
 
+/**
+ * Turn the caller's `locationId` argument into the location id to query with.
+ *
+ * Two paths, and they differ in trust:
+ *
+ * - The caller named a location. That id arrives from the client, so it goes
+ *   through `requireLocationRole` before it reaches any `where`. That call is
+ *   the one authorization seam for location data (lib/authz.ts). Do NOT
+ *   replace it with a `row.userId === ctx.userId` test — root CLAUDE.md
+ *   forbids that, because it denies a legitimate `member` of a shared
+ *   location.
+ * - The caller named none. Then the log belongs to the caller's own default
+ *   location. No role check is owed: `ensureDefaultLocation` reads and writes
+ *   only rows whose `userId` is the caller's, so it cannot return someone
+ *   else's location.
+ *
+ * The argument is nullable only until the web client passes it everywhere
+ * (PR 3a Task 4). See the note in schema/inventoryLog.graphql.
+ */
+async function resolveLocationId(
+  ctx: Context,
+  locationId: string | null | undefined,
+  role: LocationRole,
+): Promise<string> {
+  if (locationId == null) return ensureDefaultLocation(requireAuth(ctx))
+  await requireLocationRole(ctx, locationId, role)
+  return locationId
+}
+
+/**
+ * `userId` in the `where` clauses below is a query SCOPE, not an authorization
+ * decision — the same distinction lib/stockDualWrite.ts records for
+ * `mirrorItemStockToItem`. Authorization is `requireLocationRole` above.
+ *
+ * When location RBAC lands, these `userId` scopes must be dropped from the
+ * three location-scoped queries: `InventoryLog.userId` records who WROTE the
+ * log, and a member reading a shared location has to see logs their
+ * co-members wrote. `inventoryLogs` keeps its `userId` — it names no location,
+ * so `userId` is the only scope it has.
+ */
+
 export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'InventoryLog'> = {
   Query: {
-    itemLogs: async (_, { itemId }, ctx) => {
+    itemLogs: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
+      const scopedLocationId = await resolveLocationId(ctx, locationId, 'viewer')
       return prisma.inventoryLog.findMany({
-        where: { itemId, userId },
+        where: { itemId, userId, locationId: scopedLocationId },
         orderBy: { occurredAt: 'asc' },
       }) as unknown as Promise<InventoryLog[]>
     },
 
-    inventoryLogCountByItem: async (_, { itemId }, ctx) => {
+    inventoryLogCountByItem: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      return prisma.inventoryLog.count({ where: { itemId, userId } })
+      const scopedLocationId = await resolveLocationId(ctx, locationId, 'viewer')
+      return prisma.inventoryLog.count({
+        where: { itemId, userId, locationId: scopedLocationId },
+      })
     },
 
+    // No location argument, and that is the intended behaviour — see the
+    // schema doc string. Export and import both need every location.
     inventoryLogs: async (_, __, ctx) => {
       const userId = requireAuth(ctx)
       return prisma.inventoryLog.findMany({
@@ -35,12 +83,15 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       }) as unknown as Promise<InventoryLog[]>
     },
 
-    lastPurchaseDates: async (_, { itemIds }, ctx) => {
+    lastPurchaseDates: async (_, { itemIds, locationId }, ctx) => {
       const userId = requireAuth(ctx)
+      // Resolved once, before the loop: the role check does not depend on the
+      // item, and repeating it per item would be one extra query per item.
+      const scopedLocationId = await resolveLocationId(ctx, locationId, 'viewer')
       const results = await Promise.all(
         itemIds.map(async (itemId) => {
           const log = await prisma.inventoryLog.findFirst({
-            where: { itemId, userId, delta: { gt: 0 } },
+            where: { itemId, userId, locationId: scopedLocationId, delta: { gt: 0 } },
             orderBy: { occurredAt: 'desc' },
           })
           return { itemId, date: log?.occurredAt?.toISOString() ?? null }
@@ -51,14 +102,15 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   },
 
   Mutation: {
-    addInventoryLog: async (_, { itemId, delta, quantity, occurredAt, note, logKey, logParams }, ctx) => {
+    addInventoryLog: async (
+      _,
+      { itemId, delta, quantity, occurredAt, locationId, note, logKey, logParams },
+      ctx,
+    ) => {
       const userId = requireAuth(ctx)
-      // PR 3a Task 3: addInventoryLog gains a `locationId` argument, routed
-      // through requireLocationRole(ctx, locationId, 'member'). Until then it
-      // writes the caller's default location, because InventoryLog.locationId
-      // is NOT NULL from this PR's migration on and every writer must supply
-      // one.
-      const locationId = await ensureDefaultLocation(userId)
+      // A write needs `member`, not `viewer`: a viewer may read a location's
+      // logs but must not add one.
+      const scopedLocationId = await resolveLocationId(ctx, locationId, 'member')
       return prisma.inventoryLog.create({
         data: {
           itemId,
@@ -66,7 +118,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
           quantity,
           occurredAt: new Date(occurredAt),
           userId,
-          locationId,
+          locationId: scopedLocationId,
           ...(note ? { note } : {}),
           ...(logKey ? { logKey } : {}),
           ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
