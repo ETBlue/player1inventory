@@ -6,18 +6,32 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
-    inventoryLog: {
-      findMany: vi.fn(),
-      findFirst: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
+// `inventoryLog` stays a plain call recorder. `location` is the STATEFUL fake
+// (src/test/stockFake.ts) because addInventoryLog now resolves a location
+// through ensureDefaultLocation, and a call recorder cannot answer "did it pick
+// the caller's default one".
+vi.mock('../lib/prisma.js', async () => {
+  const { createStockFake } = await import('../test/stockFake.js')
+  const stockFake = createStockFake()
+  return {
+    prisma: {
+      inventoryLog: {
+        findMany: vi.fn(),
+        findFirst: vi.fn(),
+        count: vi.fn(),
+        create: vi.fn(),
+      },
+      ...stockFake.client,
+      // Handle onto the fake's state, hung off the mocked client because a
+      // `vi.mock` factory is hoisted above every import and cannot close over
+      // a module-scope binding.
+      $stockFake: stockFake,
     },
-  },
-}))
+  }
+})
 
 import { prisma } from '../lib/prisma.js'
+import type { StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   inventoryLog: {
@@ -26,6 +40,28 @@ const mockPrisma = prisma as unknown as {
     count: ReturnType<typeof vi.fn>
     create: ReturnType<typeof vi.fn>
   }
+  $stockFake: StockFake
+}
+
+// THREE locations: the caller's default, the caller's other one, and a
+// stranger's. A one-location fixture cannot tell "writes the caller's DEFAULT
+// location" apart from "writes whatever location it finds first" or "ignores
+// userId" — root CLAUDE.md, "Proving a Test Works".
+const LOC_DEFAULT = 'loc_kitchen'
+const LOC_OTHER = 'loc_garage'
+const LOC_STRANGER = 'loc_theirs'
+
+function seedLocations() {
+  mockPrisma.$stockFake.reset(
+    [
+      // Not first on purpose: a resolver taking `locations[0]` would still
+      // pass if the default came first.
+      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
+      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
+      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+    ],
+    [],
+  )
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -57,6 +93,7 @@ const ctx: Context = { userId: 'user_test123' }
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  seedLocations()
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -209,6 +246,35 @@ describe('addInventoryLog', () => {
     expect(created.quantity).toBe(5)
     expect(created.occurredAt).toContain('2026-03-01')
     expect(created.note).toBe('restocked')
+
+    // And the log is written against the caller's DEFAULT location.
+    // PR 3a Task 3 replaces this with a caller-supplied locationId routed
+    // through requireLocationRole.
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ locationId: LOC_DEFAULT }),
+      }),
+    )
+  })
+
+  it('writes the caller\'s default location, not another location of theirs and not a stranger\'s', async () => {
+    // Given prisma creates and returns a log
+    mockPrisma.inventoryLog.create.mockResolvedValue(makeLog())
+
+    // When adding an inventory log
+    await execOp(
+      `mutation AddInventoryLog($itemId: ID!, $delta: Float!, $quantity: Float!, $occurredAt: String!) {
+        addInventoryLog(itemId: $itemId, delta: $delta, quantity: $quantity, occurredAt: $occurredAt) { id }
+      }`,
+      { itemId: 'item_1', delta: 1, quantity: 1, occurredAt: '2026-03-01T10:00:00.000Z' },
+    )
+
+    // Then neither the caller's non-default location nor the stranger's
+    // default was used
+    const data = mockPrisma.inventoryLog.create.mock.calls[0]?.[0]?.data as { locationId: string }
+    expect(data.locationId).toBe(LOC_DEFAULT)
+    expect(data.locationId).not.toBe(LOC_OTHER)
+    expect(data.locationId).not.toBe(LOC_STRANGER)
   })
 })
 

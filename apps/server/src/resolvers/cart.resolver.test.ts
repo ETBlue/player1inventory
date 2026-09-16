@@ -190,9 +190,14 @@ describe('vendorCart', () => {
       { vendorId: 'vendor_2' },
     )
 
-    // Then a new cart is created
+    // Then a new cart is created, in the caller's DEFAULT location.
+    // LOC_DEFAULT is not `locations[0]` in seedLocations, and LOC_STRANGER
+    // belongs to another user — so this assertion fails both for a resolver
+    // that grabs the first location and for one that ignores `userId`.
     expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'vendor_2', userId: 'user_test123' } })
+    expect(mockPrisma.cart.create).toHaveBeenCalledWith({
+      data: { id: 'vendor_2', userId: 'user_test123', locationId: LOC_DEFAULT },
+    })
   })
 
   it('user gets a new no-vendor cart created if none exists', async () => {
@@ -214,7 +219,9 @@ describe('vendorCart', () => {
     // And a never-purchased cart keeps a null lastPurchasedAt (not epoch 0)
     expect(found.lastPurchasedAt).toBeNull()
     expect(mockPrisma.cart.create).toHaveBeenCalledOnce()
-    expect(mockPrisma.cart.create).toHaveBeenCalledWith({ data: { id: 'no-vendor', userId: 'user_test123' } })
+    expect(mockPrisma.cart.create).toHaveBeenCalledWith({
+      data: { id: 'no-vendor', userId: 'user_test123', locationId: LOC_DEFAULT },
+    })
   })
 
   it('null vendorId falls back to no-vendor cart', async () => {

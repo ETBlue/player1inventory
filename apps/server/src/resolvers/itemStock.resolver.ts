@@ -155,7 +155,9 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // Only the stock row here. The global Item survives — an item removed
       // from its last location becomes an orphan: absent from the pantry but
       // still in the catalog, so it can be re-added. The location's inventory
-      // logs and cart entries cascade in PR 3, when they gain a locationId.
+      // logs and cart entries for THIS item cascade in PR 3c. PR 3a added
+      // InventoryLog.locationId and Cart.locationId, but their FK cascade
+      // fires on deleting a Location, not on removing one item from one.
       //
       // NO DUAL-WRITE onto `Item`, here or in `addItemToLocation` above, even
       // when the target IS the default location. Both mutate MEMBERSHIP, and

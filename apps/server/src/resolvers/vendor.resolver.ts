@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
@@ -15,9 +16,12 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       const userId = requireAuth(ctx)
       const vendor = await prisma.vendor.create({ data: { name, userId } })
       // Create permanent cart with same ID
+      // PR 3b: one permanent cart per (location, vendor), keyed
+      // `${locationId}:${vendorId}`. Today there is one per vendor and it sits
+      // in the caller's default location.
       await prisma.cart.upsert({
         where: { id: vendor.id },
-        create: { id: vendor.id, userId },
+        create: { id: vendor.id, userId, locationId: await ensureDefaultLocation(userId) },
         update: {},
       })
       return vendor as unknown as Vendor

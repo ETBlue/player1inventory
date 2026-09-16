@@ -61,8 +61,12 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           extensions: { code: 'BAD_USER_INPUT' },
         })
       }
-      // ItemStock cascades via the FK. Carts and inventory logs gain their
-      // locationId — and therefore their cascade — in PR 3.
+      // ItemStock, Cart and InventoryLog all cascade via their FKs, so this
+      // one delete removes the location's stock rows, its carts (and through
+      // Cart, its cart items) and its inventory logs. Cart.locationId and
+      // InventoryLog.locationId were added in PR 3a
+      // (20260916000000_add_location_to_log_and_cart). Matches local mode's
+      // deleteLocation (apps/web/src/db/operations.ts:1215).
       await prisma.location.delete({ where: { id } })
       return true
     },

@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
+import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { defaultLocationId, mirrorStock } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
@@ -12,7 +13,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const cartId = vendorId ?? 'no-vendor'
       let cart = await prisma.cart.findUnique({ where: { id: cartId } })
       if (!cart) {
-        cart = await prisma.cart.create({ data: { id: cartId, userId } })
+        // PR 3b: the cart id becomes `${locationId}:${vendorId}` and the
+        // location comes from the caller's active location, not their default.
+        // Cart.locationId is NOT NULL from PR 3a's migration on, so a value is
+        // required here even though nothing reads it yet.
+        cart = await prisma.cart.create({
+          data: { id: cartId, userId, locationId: await ensureDefaultLocation(userId) },
+        })
       }
       return cart as unknown as Cart
     },
@@ -83,9 +90,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       const now = new Date()
       // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Resolved once
       // outside the loop rather than per item — every mirror below targets the
-      // same location. NOT the cart's location: `Cart.locationId` does not
-      // exist until PR 3, so checkout credits the caller's DEFAULT location
-      // whatever they were looking at.
+      // same location. NOT the cart's location: PR 3a added `Cart.locationId`
+      // but nothing reads it until PR 3b re-keys the cart, so checkout still
+      // credits the caller's DEFAULT location whatever they were looking at.
+      // The inventory log written below uses this same id, for the same reason.
+      //
+      // Non-null whenever the loop below runs, since the loop iterates
+      // `buyingItems` and this is null only when that array is empty.
       const mirrorLocationId = buyingItems.length > 0 ? await defaultLocationId(userId) : null
 
       for (const ci of buyingItems) {
@@ -111,6 +122,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
             quantity: finalQuantity,
             occurredAt: now,
             userId,
+            // PR 3b: replace with the location the cart actually names.
+            // Same limitation stockDualWrite.ts already documents — a user who
+            // checks out while viewing their Garage still logs against their
+            // default location. The `??` branch never runs (see the comment on
+            // `mirrorLocationId` above); it is there because TypeScript cannot
+            // narrow a `T | null` from the length of a different array.
+            locationId: mirrorLocationId ?? (await defaultLocationId(userId)),
             ...(note ? { note } : {}),
             ...(logKey ? { logKey } : {}),
             ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),

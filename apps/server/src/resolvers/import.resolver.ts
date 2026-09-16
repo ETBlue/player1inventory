@@ -1,3 +1,4 @@
+import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
@@ -230,6 +231,11 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             occurredAt: new Date(occurredAt),
             note: note ?? undefined,
             userId,
+            // PR 4 rewrites the import surface to carry real locations. Until
+            // then an imported log lands in the caller's default location,
+            // which is where PR 4's flat ItemInput already puts imported stock
+            // (design §8, dual-write site 5).
+            locationId: await ensureDefaultLocation(userId),
             ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
           },
         })
@@ -251,6 +257,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             id,
             lastPurchasedAt: lastPurchasedAt ? new Date(lastPurchasedAt as string) : undefined,
             userId,
+            // PR 4 rewrites the import surface to carry real locations.
+            locationId: await ensureDefaultLocation(userId),
           },
         })
         results.push(created as unknown as Cart)
@@ -436,7 +444,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         const upserted = await prisma.inventoryLog.upsert({
           where: { id },
-          create: { id, ...data },
+          // locationId sits in `create` only, never in `update`. An upsert that
+          // carried it into `update` would move an existing log to the caller's
+          // default location on every re-import. PR 4 rewrites this surface.
+          create: { id, ...data, locationId: await ensureDefaultLocation(userId) },
           update: data,
         })
         results.push(upserted as unknown as InventoryLog)
@@ -456,7 +467,9 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
         }
         const upserted = await prisma.cart.upsert({
           where: { id },
-          create: { id, ...data },
+          // locationId in `create` only, for the same reason as the log upsert
+          // above: a re-import must not move an existing cart.
+          create: { id, ...data, locationId: await ensureDefaultLocation(userId) },
           update: data,
         })
         results.push(upserted as unknown as Cart)

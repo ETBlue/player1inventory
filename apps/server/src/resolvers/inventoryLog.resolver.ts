@@ -1,5 +1,6 @@
 import { GraphQLScalarType } from 'graphql'
 import type { Prisma } from '@prisma/client'
+import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
@@ -52,6 +53,12 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   Mutation: {
     addInventoryLog: async (_, { itemId, delta, quantity, occurredAt, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
+      // PR 3a Task 3: addInventoryLog gains a `locationId` argument, routed
+      // through requireLocationRole(ctx, locationId, 'member'). Until then it
+      // writes the caller's default location, because InventoryLog.locationId
+      // is NOT NULL from this PR's migration on and every writer must supply
+      // one.
+      const locationId = await ensureDefaultLocation(userId)
       return prisma.inventoryLog.create({
         data: {
           itemId,
@@ -59,6 +66,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
           quantity,
           occurredAt: new Date(occurredAt),
           userId,
+          locationId,
           ...(note ? { note } : {}),
           ...(logKey ? { logKey } : {}),
           ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),

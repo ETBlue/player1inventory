@@ -30,18 +30,19 @@ import { prisma } from './prisma.js'
  *
  * ── NOT LOCATION-AWARE, AND DELIBERATELY SO ──
  *
- * `checkout` and `consumeRecipes` have no location to write to in PR 2:
- * `Cart.locationId` does not exist until PR 3, and `ConsumeRecipesInput`
- * carries none either. Until then they mirror into the caller's DEFAULT
- * location (`Location.isDefault`). A reader must not mistake that for real
- * scoping — a user who checks out while viewing their Garage still moves
- * their Kitchen's stock. PR 3 replaces `defaultLocationId` at those two call
- * sites with the location the cart/consume actually names.
+ * `checkout` and `consumeRecipes` still have no location to write to.
+ * PR 3a added `Cart.locationId` but nothing reads it — the cart lookup is
+ * still keyed by vendor alone until PR 3b re-keys it — and
+ * `ConsumeRecipesInput` carries no location either. So both still mirror into
+ * the caller's DEFAULT location (`Location.isDefault`). A reader must not
+ * mistake that for real scoping — a user who checks out while viewing their
+ * Garage still moves their Kitchen's stock. PR 3b replaces `defaultLocationId`
+ * at those two call sites with the location the cart/consume actually names.
  *
  * ── AUTHORIZATION ──
  *
  * Nothing here takes a caller-supplied location id, so there is no id to
- * authorize: the target is DERIVED from the authenticated user. When PR 3
+ * authorize: the target is DERIVED from the authenticated user. When PR 3b
  * starts accepting a `locationId` from input, that id must go through
  * `requireLocationRole` (lib/authz.ts) before reaching this module — never a
  * `row.userId === ctx.userId` comparison (root CLAUDE.md).
@@ -83,7 +84,7 @@ function seed(value: NumberWrite | undefined): number {
  * It never returns null. It used to, and a stock write that landed on that path
  * disappeared with no error (issue #287). The real function lives in
  * `defaultLocation.ts` because it must outlive PR 5, which deletes this file;
- * this alias exists so PR 3's rewrite of the call sites is the only place the
+ * this alias exists so PR 3b's rewrite of the call sites is the only place the
  * name changes.
  */
 export async function defaultLocationId(userId: string): Promise<string> {
@@ -170,7 +171,7 @@ export async function mirrorItemStockToItem(
   })
 }
 
-/** `mirrorStock` against the caller's default location. PR 3 replaces this. */
+/** `mirrorStock` against the caller's default location. PR 3b replaces this. */
 export async function mirrorStockToDefaultLocation(
   userId: string,
   itemId: string,
