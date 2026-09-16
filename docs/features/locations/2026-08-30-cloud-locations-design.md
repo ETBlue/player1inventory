@@ -524,8 +524,13 @@ frozen quantities — the very invariant the dual-write decision exists to prote
 membership, which `Item`'s columns cannot express at all, so any mirror there would invent a
 value rather than reflect one.
 
-All four are marked in source with `DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts)`, so
-`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist.
+All **five** are marked in source with `DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts)`,
+so `grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist. It returns **6 markers
+across 5 files** — `import.resolver.ts` carries two, one for `bulkCreateItems` and one for
+`bulkUpsertItems`. Measured 2026-09-16.
+
+This sentence said "four" until then, while the table directly above it listed five. The
+import paths were found in PR 2's task 10b and added to the table without updating the count.
 
 ## Open questions
 
