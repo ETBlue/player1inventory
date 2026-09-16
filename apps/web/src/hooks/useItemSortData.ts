@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { getLastPurchaseDate } from '@/db/operations'
 import { useLastPurchaseDatesQuery } from '@/generated/graphql'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
+import { useCloudLocationKnown } from '@/hooks/useCloudLocationKnown'
 import { useDataMode } from '@/hooks/useDataMode'
 import { computeExpiryDate } from '@/lib/expiration'
 import { getCurrentQuantity } from '@/lib/quantityUtils'
@@ -25,9 +26,13 @@ export function useItemSortData(items: PantryItem[] | undefined) {
 
   // ── Cloud: batch Apollo query for all item purchase dates ─────────────────
   const itemIds = safeItems.map((i) => i.id)
+  // `lastPurchaseDates(locationId:)` is required. On a fresh cloud session the
+  // active id is still the `'local'` sentinel, which names no cloud Location,
+  // so the request waits for `GetLocations` — see `useCloudLocationKnown`.
+  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
   const { data: cloudDatesData } = useLastPurchaseDatesQuery({
-    variables: { itemIds },
-    skip: !isCloud || safeItems.length === 0,
+    variables: { itemIds, locationId: activeLocationId },
+    skip: !isCloud || safeItems.length === 0 || !locationKnown,
   })
   const cloudPurchaseDates = useMemo(() => {
     const map = new Map<string, Date | null>()

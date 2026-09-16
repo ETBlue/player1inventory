@@ -1,5 +1,11 @@
-query ItemLogs($itemId: ID!) {
-  itemLogs(itemId: $itemId) {
+# Every operation here names a location, and the server requires it (`ID!`). A
+# required argument is what keeps a caller from reading or writing the wrong
+# location quietly: omit it and codegen fails loudly.
+#
+# The whole-account `InventoryLogs` query — the export/import snapshot path —
+# lives in export.graphql and takes no location on purpose.
+query ItemLogs($itemId: ID!, $locationId: ID!) {
+  itemLogs(itemId: $itemId, locationId: $locationId) {
     id
     itemId
     delta
@@ -11,12 +17,12 @@ query ItemLogs($itemId: ID!) {
   }
 }
 
-query InventoryLogCountByItem($itemId: ID!) {
-  inventoryLogCountByItem(itemId: $itemId)
+query InventoryLogCountByItem($itemId: ID!, $locationId: ID!) {
+  inventoryLogCountByItem(itemId: $itemId, locationId: $locationId)
 }
 
-query LastPurchaseDates($itemIds: [ID!]!) {
-  lastPurchaseDates(itemIds: $itemIds) {
+query LastPurchaseDates($itemIds: [ID!]!, $locationId: ID!) {
+  lastPurchaseDates(itemIds: $itemIds, locationId: $locationId) {
     itemId
     date
   }
@@ -27,6 +33,7 @@ mutation AddInventoryLog(
   $delta: Float!
   $quantity: Float!
   $occurredAt: String!
+  $locationId: ID!
   $note: String
   $logKey: String
   $logParams: JSON
@@ -36,6 +43,7 @@ mutation AddInventoryLog(
     delta: $delta
     quantity: $quantity
     occurredAt: $occurredAt
+    locationId: $locationId
     note: $note
     logKey: $logKey
     logParams: $logParams

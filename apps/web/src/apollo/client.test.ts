@@ -119,6 +119,108 @@ describe('createCache — itemStocks is cached per location', () => {
   })
 })
 
+// Mirrors the `ItemLogs` operation (`apollo/operations/inventoryLogs.graphql`).
+// Two arguments, so the `keyArgs` list in `createCache` is NOT a restatement of
+// Apollo's default: drop `'locationId'` from it and both locations collapse
+// into one store entry keyed by `itemId` alone.
+const ITEM_LOGS = gql`
+  query ItemLogs($itemId: ID!, $locationId: ID!) {
+    itemLogs(itemId: $itemId, locationId: $locationId) {
+      id
+      itemId
+      delta
+      quantity
+      occurredAt
+    }
+  }
+`
+
+// Disjoint logs: no row is shared between the two locations, and the counts
+// differ (2 vs 1). A single shared row would let a collapsed cache return a
+// coincidentally-equal list.
+const logsAtA = [
+  {
+    __typename: 'InventoryLog',
+    id: 'log-a1',
+    itemId: 'item-milk',
+    delta: 2,
+    quantity: 2,
+    occurredAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    __typename: 'InventoryLog',
+    id: 'log-a2',
+    itemId: 'item-milk',
+    delta: 3,
+    quantity: 5,
+    occurredAt: '2026-03-02T00:00:00.000Z',
+  },
+]
+
+const logsAtB = [
+  {
+    __typename: 'InventoryLog',
+    id: 'log-b1',
+    itemId: 'item-milk',
+    delta: 5,
+    quantity: 5,
+    occurredAt: '2026-03-20T00:00:00.000Z',
+  },
+]
+
+type ItemLogsResult = { itemLogs: { id: string }[] }
+
+function readLogs(cache: InMemoryCache, locationId: string) {
+  return cache.readQuery<ItemLogsResult>({
+    query: ITEM_LOGS,
+    variables: { itemId: 'item-milk', locationId },
+  })?.itemLogs
+}
+
+function writeLogs(
+  cache: InMemoryCache,
+  locationId: string,
+  itemLogs: typeof logsAtA,
+) {
+  cache.writeQuery({
+    query: ITEM_LOGS,
+    variables: { itemId: 'item-milk', locationId },
+    data: { itemLogs },
+  })
+}
+
+describe('createCache — itemLogs is cached per location', () => {
+  it('user can switch back to a location and still read its own logs', () => {
+    // Given a cache holding Cloud Kitchen's two logs for Milk
+    const cache = createCache()
+    writeLogs(cache, LOCATION_A, logsAtA)
+
+    // When the user switches to Cloud Garage, whose single log is different
+    writeLogs(cache, LOCATION_B, logsAtB)
+
+    // Then Cloud Kitchen still reads back its own two rows
+    expect(readLogs(cache, LOCATION_A)?.map((l) => l.id)).toEqual([
+      'log-a1',
+      'log-a2',
+    ])
+    // And Cloud Garage reads back only its own
+    expect(readLogs(cache, LOCATION_B)?.map((l) => l.id)).toEqual(['log-b1'])
+  })
+
+  it('user never sees the previous location logs rendered as the active one', () => {
+    // Given both locations written to the cache, Cloud Garage last
+    const cache = createCache()
+    writeLogs(cache, LOCATION_A, logsAtA)
+    writeLogs(cache, LOCATION_B, logsAtB)
+
+    // When the item log page reads the active location, Cloud Garage
+    const rows = readLogs(cache, LOCATION_B) ?? []
+
+    // Then it gets Cloud Garage's one row, not Cloud Kitchen's two
+    expect(rows.map((l) => l.id)).toEqual(['log-b1'])
+  })
+})
+
 describe('both Apollo clients share the cache configuration', () => {
   // The E2E client exists to exercise the production code path; a policy applied
   // to only one of the two caches would make cloud E2E prove nothing.

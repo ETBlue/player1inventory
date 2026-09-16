@@ -5,6 +5,8 @@ import {
   useItemLogsQuery,
 } from '@/generated/graphql'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
+import { useCloudLocationId } from '@/hooks/useCloudLocationId'
+import { useCloudLocationKnown } from '@/hooks/useCloudLocationKnown'
 import { useDataMode } from '@/hooks/useDataMode'
 import type { InventoryLog } from '@/types'
 
@@ -19,10 +21,14 @@ export function useItemLogs(itemId: string) {
     enabled: !isCloud && !!itemId,
   })
 
+  // `itemLogs(locationId:)` is required, so the id must be a real cloud
+  // Location before the request goes out. On a fresh cloud session it is still
+  // the `'local'` sentinel — see `useCloudLocationKnown`.
+  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
   const cloud = useItemLogsQuery({
-    variables: { itemId },
+    variables: { itemId, locationId: activeLocationId },
     fetchPolicy: 'cache-and-network',
-    skip: !isCloud || !itemId,
+    skip: !isCloud || !itemId || !locationKnown,
   })
 
   if (isCloud) {
@@ -48,7 +54,9 @@ export function useItemLogs(itemId: string) {
     )
     return {
       data: cloudLogs,
-      isLoading: cloud.loading,
+      // A skipped query reports `loading: false`; while the location is still
+      // being resolved the log list is not loaded, it is pending.
+      isLoading: cloud.loading || !locationKnown,
       isError: !!cloud.error,
     }
   }
@@ -65,6 +73,7 @@ export function useAddInventoryLog() {
   const isCloud = mode === 'cloud'
   const queryClient = useQueryClient()
   const { activeLocationId } = useActiveLocation()
+  const resolveCloudLocationId = useCloudLocationId()
   const [cloudMutate] = useAddInventoryLogMutation()
 
   return useMutation({
@@ -78,12 +87,17 @@ export function useAddInventoryLog() {
       logParams?: Record<string, string>
     }) => {
       if (isCloud) {
+        // Resolved at CALL time, not render time — see `useCloudLocationId`.
+        // A read sent with the `'local'` sentinel self-corrects on the next
+        // render; this write would be refused with `FORBIDDEN` and lost.
+        const locationId = await resolveCloudLocationId()
         await cloudMutate({
           variables: {
             itemId: input.itemId,
             delta: input.delta,
             quantity: input.quantity,
             occurredAt: input.occurredAt.toISOString(),
+            locationId,
             ...(input.note !== undefined ? { note: input.note } : {}),
             ...(input.logKey !== undefined ? { logKey: input.logKey } : {}),
             ...(input.logParams !== undefined
