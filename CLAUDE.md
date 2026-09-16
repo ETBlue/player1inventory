@@ -226,15 +226,49 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**Final phase only** — after all steps are complete, also run related E2E tests:
+**Final phase only** — after all steps are complete, run the **whole** E2E suite:
 
 ```bash
-pnpm test:e2e --grep "<feature-areas>|a11y"
+pnpm test:e2e
 ```
 
-Identify `<feature-areas>` from the routes/components touched (e.g. `shopping`, `cooking`, `items`, `tags`, `vendors`, `settings`). Combine multiple areas with a pipe: `--grep "shopping|tags"`. Always append `|a11y` to include the axe-playwright accessibility scan on every branch finish. Playwright's `webServer` config handles server startup automatically.
+No `--grep`. Playwright's `webServer` config starts the servers for you. This runs both projects: **173 tests in `local` across 22 spec files, and 78 tests in `cloud` across 12 spec files** (measured 2026-09-16).
 
-**Derive `<feature-areas>` from spec FILE names, not route names** — `ls e2e/tests/` and pick the specs that cover what you touched. A grep built from route names alone silently skips specs whose filename does not contain them: `shelves.spec.ts`, `vendors-group.spec.ts` and `recipes-group.spec.ts` all cover the pantry page (`/`) yet match none of the example areas above, which is how two broken tests in `shelves.spec.ts` sat undetected across several branches. **When pantry group views are touched, the list must include `shelves|vendors-group|recipes-group`.**
+**Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
+
+Measured on 2026-09-16 with the example grep this section used to recommend — `items|shopping|cooking|settings|shelves|vendors-group|recipes-group|a11y`:
+
+| Project | Spec files selected | Tests selected |
+|---|---|---|
+| `local` | 19 of 22 | 136 of 173 |
+| `cloud` | 10 of 12 | 53 of 78 |
+
+| Spec file it skips entirely | Why | In the `cloud` `testMatch`? |
+|---|---|---|
+| `item-management.spec.ts` | name says `item`, the area word says `items` | yes |
+| `item-list-state-restore.spec.ts` | same singular/plural mismatch | yes |
+| `unified-item-search.spec.ts` | same singular/plural mismatch | no (local only) |
+
+It also keeps only **part** of three more files, because a stray word in one test title matched while the file name did not: `item-logs.spec.ts` (1 of 3 — one title contains "cooking"), `location-switcher.spec.ts` (6 of 14), `onboarding.spec.ts` (1 of 3 — one title contains "items").
+
+Two of the three skipped files run in cloud, so the old gate never ran them in **either** project. `item-list-state-restore.spec.ts` has **8 failing tests on `main` today** — 4 local and 4 cloud. They stayed hidden for exactly this reason (issue #280).
+
+**If you must narrow the run, pass spec paths as positional arguments — never `--grep`.** Playwright matches positional arguments against the file path, so you select whole files and cannot lose one to a word-form mismatch:
+
+```bash
+pnpm test:e2e e2e/tests/shopping.spec.ts e2e/tests/a11y.spec.ts   # full paths
+pnpm test:e2e shopping a11y                                       # path substrings
+```
+
+Always include `a11y.spec.ts` — it is the axe-playwright accessibility scan, and it should run on every branch finish. Confirm the selection with `--list` before you trust it:
+
+```bash
+pnpm test:e2e <your filters> --list | sed -nE 's/.*› ([^:]+):.*/\1/p' | sort | uniq -c
+```
+
+A narrowed run is for the fast loop while you work. The final phase runs everything.
+
+**Pick the spec FILES from what you touched, not from route names** — `ls e2e/tests/ e2e/tests/settings/` and choose. Route names alone miss specs whose filename does not contain them: `shelves.spec.ts`, `vendors-group.spec.ts` and `recipes-group.spec.ts` all cover the pantry page (`/`) yet none of them is named after a route, which is how two broken tests in `shelves.spec.ts` sat undetected across several branches. **When pantry group views are touched, the list must include `shelves`, `vendors-group` and `recipes-group`.**
 
 **Rules:**
 - If any command fails → stop and fix all errors before proceeding to the next step
@@ -438,7 +472,7 @@ git status
 - Design docs and plans are part of the feature and should be in the PR
 - A clean working tree ensures nothing is left behind
 
-**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run `pnpm test:e2e --grep "<areas>|a11y"` (always include `|a11y` to run the axe-playwright accessibility scan) — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
+**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run the whole suite with `pnpm test:e2e` (no `--grep` — see the Verification Gate for why `--grep` silently skips whole spec files) — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
 
 **Advanced: Git Worktrees**
 
@@ -596,7 +630,7 @@ you read one, do not trust it as evidence.
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers all 7 main pages in both light and dark mode (14 tests), plus 4 mobile-viewport tests at 390×844 in a `test.describe('mobile viewport a11y')` block (18 tests total). Run with `pnpm test:e2e --grep "a11y"`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **64 tests** in the `local` project (measured 2026-09-16): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, and 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
 
