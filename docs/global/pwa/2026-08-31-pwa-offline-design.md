@@ -181,6 +181,12 @@ New file: `apps/web/src/apollo/persistence.ts`.
 - Call `cache.restore()` and **wait for it to finish before `ApolloWrapper` mounts**.
 - Save a `lastSyncedAt` value after each successful cloud read. The banner shows it.
 
+**Deviation, recorded 2026-09-16.** The build does not do this. It stamps the time on the
+same 5-second timer that saves the cache, and only while the device is online. So the value
+records when the app was last open online, not when a cloud read last succeeded. The online
+guard is what stops the banner claiming that hours-old data is fresh. Making the stamp
+follow a real read is still open.
+
 **The order matters most here.** If restore happens after the first queries run, those
 queries return empty results and overwrite the saved cache. The launch that was supposed to
 use the saved data destroys it instead.
@@ -225,9 +231,24 @@ offline: *"Offline — last synced 2 hours ago."*
 Hook into the existing `clerk.signOut()` call (`DataModeCard.tsx:122`). Delete the cache
 database and both saved values.
 
-Restore also checks the user id. If the saved id does not match the current user, it deletes
-the cache instead of using it. On a shared device, one account can then never see another
-account's pantry.
+Restore also checks the user id. If the saved id does not match the id it is given, it
+deletes the cache instead of using it.
+
+**That check alone is not the cross-account protection, and the first build wrongly said it
+was.** At startup the app passes `restoreCache` the value of `getLastSignedInUserId()`, and
+that value is written by the same code that writes the id inside the snapshot, so the two
+always match. The Clerk user id of the person using the app arrives later.
+
+Three things give the real protection, all added after the 2026-09-16 review:
+
+1. `ApolloWrapper` compares the Clerk user id with the stored one. If a stored id exists and
+   differs, it calls `clearCache()` before this account saves anything.
+2. `clearCache()` also resets the in-memory `cloudCache`. Signing out does not reload the
+   page, so clearing only IndexedDB left the previous account's rows in memory, where the
+   default `cache-first` policy served them to the next account.
+3. The `ApolloWrapper` effect cleanup does not save. It runs on sign-out with the old user
+   id still in its closure, so saving there wrote the cache straight back into IndexedDB
+   one tick after `clearCache()` deleted it.
 
 ## 3. Testing
 
@@ -293,7 +314,12 @@ Commits, in order: `3e34fe66`, `6ec4e01c`, `556e1176`, `1ff6e19c`, `6d890f74`, `
 
 E2E: 69 tests passed in the `pwa` project. 135 tests passed for `--grep "pwa|a11y"`. Axe
 found no accessibility violations on the offline banner, in light mode or dark mode.
-`dist/sw.js` has 22 precache entries. This includes all 6 `rosario-*.woff2` font files.
+`dist/sw.js` has **23** precache entries. This includes all 6 `rosario-*.woff2` font
+files. 19 of the 23 are distinct files. Four icons appear twice — `pwa-64x64.png`,
+`pwa-192x192.png`, `pwa-512x512.png` and `maskable-icon-512x512.png` — because Workbox
+picks them up from `dist/` and the assets generator also injects the manifest icons. The
+count was written as 22 before the 2026-09-16 review; it was wrong, and this number was
+counted from the built file.
 
 ### 1. Task 7b was rebuilt
 
