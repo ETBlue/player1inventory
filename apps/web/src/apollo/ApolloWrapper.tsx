@@ -1,8 +1,11 @@
 import { ApolloProvider } from '@apollo/client/react'
 import { useAuth } from '@clerk/react'
 import { useEffect, useMemo } from 'react'
-import { cloudCache, createApolloClient } from './client'
+import { createApolloClient } from './client'
+import { cloudCache } from './cloudCache'
 import {
+  clearCache,
+  getLastSignedInUserId,
   saveCache,
   setLastSignedInUserId,
   setLastSyncedAt,
@@ -14,7 +17,9 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!userId) return
-    setLastSignedInUserId(userId)
+
+    let cancelled = false
+    let interval: ReturnType<typeof setInterval> | undefined
 
     // Save the cache every 5 seconds while the app is open, and once more when
     // the tab is hidden or closed.
@@ -27,19 +32,42 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
       void setLastSyncedAt(new Date())
     }
 
-    const interval = setInterval(save, 5000)
-
     // `visibilitychange` is more reliable than `beforeunload` on mobile
     // browsers, which often kill a backgrounded tab without firing unload.
     const onHide = () => {
       if (document.visibilityState === 'hidden') save()
     }
-    document.addEventListener('visibilitychange', onHide)
+
+    const start = async () => {
+      const previous = getLastSignedInUserId()
+      if (previous !== null && previous !== userId) {
+        // A different account is now signed in, in the same page session.
+        // Signing out sends the user to /sign-in without a page reload, so
+        // `cloudCache` still holds the previous account's rows and IndexedDB
+        // still holds their snapshot. Delete both before this account saves
+        // anything, or `save()` below would store the previous account's rows
+        // under this account's id.
+        await clearCache()
+        if (cancelled) return
+      }
+      setLastSignedInUserId(userId)
+
+      interval = setInterval(save, 5000)
+      document.addEventListener('visibilitychange', onHide)
+    }
+
+    void start()
 
     return () => {
-      clearInterval(interval)
+      cancelled = true
+      if (interval !== undefined) clearInterval(interval)
       document.removeEventListener('visibilitychange', onHide)
-      save()
+      // Do NOT save here. This cleanup also runs on sign-out, when `userId`
+      // changes to null, and the closure still holds the OLD user id. A save
+      // would write the whole cache straight back into IndexedDB one tick
+      // after `clearCache()` deleted it, leaving that account's pantry on a
+      // shared device. The cost of not saving is at most five seconds of
+      // cache freshness.
     }
   }, [userId])
 

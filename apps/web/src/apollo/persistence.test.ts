@@ -1,6 +1,7 @@
 import { gql, InMemoryCache } from '@apollo/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cacheDb } from './cacheDb'
+import { cloudCache } from './cloudCache'
 import { clearCache, restoreCache, saveCache } from './persistence'
 
 const QUERY = gql`
@@ -23,6 +24,7 @@ function cacheWithOneItem() {
 
 afterEach(async () => {
   await cacheDb.snapshots.clear()
+  await cloudCache.reset()
 })
 
 describe('cache persistence', () => {
@@ -82,5 +84,23 @@ describe('cache persistence', () => {
 
     // Then nothing is left on the device
     expect(await cacheDb.snapshots.count()).toBe(0)
+  })
+
+  it('sign-out also empties the cache held in memory', async () => {
+    // Given the live cloud cache holds user A's item
+    cloudCache.writeQuery({
+      query: QUERY,
+      data: { items: [{ __typename: 'Item', id: 'item-1', name: 'Milk' }] },
+    })
+    expect(cloudCache.extract()).toHaveProperty('Item:item-1')
+
+    // When the user signs out
+    await clearCache()
+
+    // Then the rows are gone from memory too. `cloudCache` is a module-level
+    // singleton that survives sign-out, so clearing only IndexedDB would let
+    // the next account read these rows through the default cache-first policy.
+    expect(cloudCache.extract()).not.toHaveProperty('Item:item-1')
+    expect(cloudCache.readQuery({ query: QUERY })).toBeNull()
   })
 })

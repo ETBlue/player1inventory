@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createApolloClient,
   createApolloClientForE2E,
-  createCache,
   resolveToken,
 } from './client'
+import { createCache } from './cloudCache'
 
 // Mirrors the `itemStocks` selection of the PantryData operation
 // (`apollo/operations/itemStocks.graphql`), trimmed to the fields the cache
