@@ -58,16 +58,18 @@ const mockPrisma = prisma as unknown as {
   $logFake: InventoryLogFake
 }
 
-// THREE locations: the caller's default, the caller's other one, and a
-// stranger's. A one-location fixture cannot tell "reads the location I asked
-// for" apart from "reads every location", nor "writes the caller's DEFAULT"
-// apart from "writes whatever location it finds first" — root CLAUDE.md,
-// "Proving a Test Works".
+// FOUR locations: the caller's default, the caller's other one, a stranger's,
+// and one belonging to the second user the cross-user tests sign in as. A
+// one-location fixture cannot tell "reads the location I asked for" apart from
+// "reads every location", nor "writes the caller's DEFAULT" apart from "writes
+// whatever location it finds first" — root CLAUDE.md, "Proving a Test Works".
 const USER = 'user_test123'
 const STRANGER = 'user_other'
+const USER_B = 'user_B'
 const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
+const LOC_USER_B = 'loc_user_b'
 
 function seedLocations() {
   mockPrisma.$stockFake.reset(
@@ -77,6 +79,7 @@ function seedLocations() {
       { id: LOC_OTHER, userId: USER, isDefault: false },
       { id: LOC_DEFAULT, userId: USER, isDefault: true },
       { id: LOC_STRANGER, userId: STRANGER, isDefault: true },
+      { id: LOC_USER_B, userId: USER_B, isDefault: true },
     ],
     [],
   )
@@ -138,22 +141,43 @@ async function execOp(query: string, variables?: Record<string, unknown>, contex
   return r.body.kind === 'single' ? r.body.singleResult : null
 }
 
-const ITEM_LOGS = `query ItemLogs($itemId: ID!, $locationId: ID) {
+const ITEM_LOGS = `query ItemLogs($itemId: ID!, $locationId: ID!) {
   itemLogs(itemId: $itemId, locationId: $locationId) { id delta quantity occurredAt }
 }`
 
-const LOG_COUNT = `query Count($itemId: ID!, $locationId: ID) {
+const LOG_COUNT = `query Count($itemId: ID!, $locationId: ID!) {
   inventoryLogCountByItem(itemId: $itemId, locationId: $locationId)
 }`
 
-const LAST_PURCHASE = `query LastPurchaseDates($itemIds: [ID!]!, $locationId: ID) {
+const LAST_PURCHASE = `query LastPurchaseDates($itemIds: [ID!]!, $locationId: ID!) {
   lastPurchaseDates(itemIds: $itemIds, locationId: $locationId) { itemId date }
 }`
 
-const ADD_LOG = `mutation AddInventoryLog($itemId: ID!, $delta: Float!, $quantity: Float!, $occurredAt: String!, $locationId: ID, $note: String) {
+const ADD_LOG = `mutation AddInventoryLog($itemId: ID!, $delta: Float!, $quantity: Float!, $occurredAt: String!, $locationId: ID!, $note: String) {
   addInventoryLog(itemId: $itemId, delta: $delta, quantity: $quantity, occurredAt: $occurredAt, locationId: $locationId, note: $note) {
     id itemId delta quantity occurredAt note
   }
+}`
+
+// The same four operations with the `locationId` ARGUMENT left out entirely.
+// `locationId` is `ID!` since PR 3a Task 4, so these are invalid documents and
+// the server rejects them before any resolver runs. They exist to prove the
+// default-location fallback Task 2 shipped is gone: with the fallback in place
+// each of these returned the caller's default location and said nothing.
+const ITEM_LOGS_NO_LOCATION = `query ItemLogs($itemId: ID!) {
+  itemLogs(itemId: $itemId) { id }
+}`
+
+const LOG_COUNT_NO_LOCATION = `query Count($itemId: ID!) {
+  inventoryLogCountByItem(itemId: $itemId)
+}`
+
+const LAST_PURCHASE_NO_LOCATION = `query LastPurchaseDates($itemIds: [ID!]!) {
+  lastPurchaseDates(itemIds: $itemIds) { itemId date }
+}`
+
+const ADD_LOG_NO_LOCATION = `mutation AddInventoryLog($itemId: ID!, $delta: Float!, $quantity: Float!, $occurredAt: String!) {
+  addInventoryLog(itemId: $itemId, delta: $delta, quantity: $quantity, occurredAt: $occurredAt) { id }
 }`
 
 type LogRow = { id: string; delta: number; quantity: number; occurredAt: string }
@@ -202,16 +226,16 @@ describe('itemLogs', () => {
     expect(result?.data?.itemLogs).toHaveLength(0)
   })
 
-  it('omitting locationId reads the caller\'s default location', async () => {
-    // Given the caller's default location is LOC_DEFAULT, not LOC_OTHER
+  it('omitting locationId is refused — it does NOT fall back to the default location', async () => {
+    // Given the caller's default location is LOC_DEFAULT, holding 3 logs for
+    // item_1. Task 2 shipped a fallback that returned exactly those.
 
     // When the user omits locationId
-    const result = await execOp(ITEM_LOGS, { itemId: 'item_1' })
+    const result = await execOp(ITEM_LOGS_NO_LOCATION, { itemId: 'item_1' })
 
-    // Then the LOC_DEFAULT logs come back, not the LOC_OTHER ones
-    expect(result?.errors).toBeUndefined()
-    const logs = result?.data?.itemLogs as LogRow[]
-    expect(logs.map((l) => l.id)).toEqual(['log_k1', 'log_k2', 'log_k3'])
+    // Then the request is refused and no rows come back at all
+    expect(errorCode(result)).toBe('GRAPHQL_VALIDATION_FAILED')
+    expect(result?.data?.itemLogs).toBeFalsy()
   })
 })
 
@@ -233,13 +257,14 @@ describe('inventoryLogCountByItem', () => {
     expect(atOther?.data?.inventoryLogCountByItem).toBe(2)
   })
 
-  it('omitting locationId counts at the caller\'s default location', async () => {
+  it('omitting locationId is refused — it does NOT count at the default location', async () => {
     // When the user omits locationId
-    const result = await execOp(LOG_COUNT, { itemId: 'item_1' })
+    const result = await execOp(LOG_COUNT_NO_LOCATION, { itemId: 'item_1' })
 
-    // Then the LOC_DEFAULT count is returned
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.inventoryLogCountByItem).toBe(3)
+    // Then the request is refused and no count comes back (the fallback
+    // returned 3 here)
+    expect(errorCode(result)).toBe('GRAPHQL_VALIDATION_FAILED')
+    expect(result?.data?.inventoryLogCountByItem).toBeFalsy()
   })
 })
 
@@ -286,13 +311,14 @@ describe('lastPurchaseDates', () => {
     expect(rows[0].date).toBeNull()
   })
 
-  it('omitting locationId reads the caller\'s default location', async () => {
+  it('omitting locationId is refused — it does NOT read the default location', async () => {
     // When the user omits locationId
-    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_1'] })
+    const result = await execOp(LAST_PURCHASE_NO_LOCATION, { itemIds: ['item_1'] })
 
-    // Then the LOC_DEFAULT date is returned
-    const rows = result?.data?.lastPurchaseDates as DateRow[]
-    expect(rows[0].date).toContain('2026-01-03')
+    // Then the request is refused and no dates come back (the fallback
+    // returned LOC_DEFAULT's 2026-01-03 here)
+    expect(errorCode(result)).toBe('GRAPHQL_VALIDATION_FAILED')
+    expect(result?.data?.lastPurchaseDates).toBeFalsy()
   })
 })
 
@@ -347,17 +373,19 @@ describe('addInventoryLog', () => {
     expect(atDefault?.data?.itemLogs).toHaveLength(0)
   })
 
-  it('omitting locationId writes the caller\'s default location, not another of theirs and not a stranger\'s', async () => {
+  it('omitting locationId is refused and writes nothing — no silent default-location write', async () => {
     // When the caller omits locationId
-    await execOp(ADD_LOG, {
+    const result = await execOp(ADD_LOG_NO_LOCATION, {
       itemId: 'item_new', delta: 1, quantity: 1, occurredAt: '2026-03-01T10:00:00.000Z',
     })
 
-    // Then the row landed at LOC_DEFAULT
-    const written = mockPrisma.$logFake.state.logs.find((l) => l.itemId === 'item_new')
-    expect(written?.locationId).toBe(LOC_DEFAULT)
-    expect(written?.locationId).not.toBe(LOC_OTHER)
-    expect(written?.locationId).not.toBe(LOC_STRANGER)
+    // Then the request is refused
+    expect(errorCode(result)).toBe('GRAPHQL_VALIDATION_FAILED')
+
+    // And NO row was written anywhere. Task 2's fallback wrote one at
+    // LOC_DEFAULT, so this assertion is what proves the fallback is gone.
+    const written = mockPrisma.$logFake.state.logs.filter((l) => l.itemId === 'item_new')
+    expect(written).toHaveLength(0)
   })
 })
 
@@ -485,29 +513,31 @@ describe('legacy null fields', () => {
 
 describe('cross-user isolation', () => {
   it('itemLogs is scoped to the requesting user — other users\' logs excluded', async () => {
-    // Given user_B has no locations yet, so ensureDefaultLocation makes one
+    // Given user_B owns LOC_USER_B and no logs anywhere, while item_1 has logs
+    // at three OTHER locations owned by two other users
 
-    // When user_B queries itemLogs for an item the stranger has logs for
-    const result = await execOp(ITEM_LOGS, { itemId: 'item_1' }, { userId: 'user_B' })
+    // When user_B queries itemLogs for that item, naming their own location
+    const result = await execOp(ITEM_LOGS, { itemId: 'item_1', locationId: LOC_USER_B }, { userId: USER_B })
 
     // Then no logs are returned for user_B
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.itemLogs).toHaveLength(0)
     expect(mockPrisma.inventoryLog.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ userId: 'user_B' }) }),
+      expect.objectContaining({ where: expect.objectContaining({ userId: USER_B }) }),
     )
   })
 
   it('lastPurchaseDates is scoped to the requesting user — other users\' logs excluded', async () => {
-    // When user_B queries lastPurchaseDates for that item
-    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_1'] }, { userId: 'user_B' })
+    // When user_B queries lastPurchaseDates for that item, naming their own
+    // location
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_1'], locationId: LOC_USER_B }, { userId: USER_B })
 
     // Then date is null for user_B (no logs belonging to them)
     expect(result?.errors).toBeUndefined()
     const rows = result?.data?.lastPurchaseDates as DateRow[]
     expect(rows[0].date).toBeNull()
     expect(mockPrisma.inventoryLog.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ userId: 'user_B' }) }),
+      expect.objectContaining({ where: expect.objectContaining({ userId: USER_B }) }),
     )
   })
 })

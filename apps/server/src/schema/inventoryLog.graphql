@@ -18,19 +18,19 @@ extend type Query {
   """
   Logs for one item at one location, oldest first.
 
-  `locationId` is nullable only until the web client passes it at every call
-  site (PR 3a Task 4). When it is omitted the caller's default location is
-  used. It must become `ID!` once no caller omits it: an omitted argument
-  reads the wrong location quietly, while a missing required argument fails
-  loudly at codegen time.
+  `locationId` is REQUIRED. It was nullable with a server-side default-location
+  fallback for one commit, while PR 3a Task 2 landed ahead of its client; Task 4
+  passed it at every call site and tightened it here. Do not make it nullable
+  again: an omitted argument reads the wrong location quietly, while a missing
+  required argument fails loudly at codegen time.
   """
-  itemLogs(itemId: ID!, locationId: ID): [InventoryLog!]!
+  itemLogs(itemId: ID!, locationId: ID!): [InventoryLog!]!
 
-  "How many logs the item has at one location. Same nullability note as itemLogs."
-  inventoryLogCountByItem(itemId: ID!, locationId: ID): Int!
+  "How many logs the item has at one location. `locationId` is required — same note as itemLogs."
+  inventoryLogCountByItem(itemId: ID!, locationId: ID!): Int!
 
-  "Most recent positive-delta log date per item, at one location. Same nullability note as itemLogs."
-  lastPurchaseDates(itemIds: [ID!]!, locationId: ID): [LastPurchaseDateResult!]!
+  "Most recent positive-delta log date per item, at one location. `locationId` is required — same note as itemLogs."
+  lastPurchaseDates(itemIds: [ID!]!, locationId: ID!): [LastPurchaseDateResult!]!
 
   """
   Every log the caller owns, across every location.
@@ -47,7 +47,7 @@ extend type Mutation {
   """
   Write one log at one location.
 
-  Same `locationId` nullability note as itemLogs. The caller needs the
+  `locationId` is required — same note as itemLogs. The caller needs the
   `member` role on the location, not `viewer`.
   """
   addInventoryLog(
@@ -55,7 +55,7 @@ extend type Mutation {
     delta: Float!
     quantity: Float!
     occurredAt: String!
-    locationId: ID
+    locationId: ID!
     note: String
     logKey: String
     logParams: JSON

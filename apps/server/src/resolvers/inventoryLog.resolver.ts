@@ -1,7 +1,6 @@
 import { GraphQLScalarType } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { type LocationRole, requireLocationRole } from '../lib/authz.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { type Context, requireAuth } from '../context.js'
 import type { InventoryLog, Resolvers } from '../generated/graphql.js'
@@ -14,30 +13,25 @@ export const JSONScalar = new GraphQLScalarType({
 })
 
 /**
- * Turn the caller's `locationId` argument into the location id to query with.
+ * Check the caller may use `locationId`, then hand it back for the `where`.
  *
- * Two paths, and they differ in trust:
+ * The id arrives from the client, so it goes through `requireLocationRole`
+ * before it reaches any query. That call is the one authorization seam for
+ * location data (lib/authz.ts). Do NOT replace it with a
+ * `row.userId === ctx.userId` test — root CLAUDE.md forbids that, because it
+ * denies a legitimate `member` of a shared location.
  *
- * - The caller named a location. That id arrives from the client, so it goes
- *   through `requireLocationRole` before it reaches any `where`. That call is
- *   the one authorization seam for location data (lib/authz.ts). Do NOT
- *   replace it with a `row.userId === ctx.userId` test — root CLAUDE.md
- *   forbids that, because it denies a legitimate `member` of a shared
- *   location.
- * - The caller named none. Then the log belongs to the caller's own default
- *   location. No role check is owed: `ensureDefaultLocation` reads and writes
- *   only rows whose `userId` is the caller's, so it cannot return someone
- *   else's location.
- *
- * The argument is nullable only until the web client passes it everywhere
- * (PR 3a Task 4). See the note in schema/inventoryLog.graphql.
+ * There is no "caller named no location" branch any more. The argument is
+ * `ID!` in the schema, so GraphQL rejects a request that omits it before this
+ * function runs. The default-location fallback that stood here for one commit
+ * (PR 3a Task 2, while the client had not caught up) was removed by Task 4:
+ * a silent fallback reads the wrong location without saying so.
  */
-async function resolveLocationId(
+async function requireLocation(
   ctx: Context,
-  locationId: string | null | undefined,
+  locationId: string,
   role: LocationRole,
 ): Promise<string> {
-  if (locationId == null) return ensureDefaultLocation(requireAuth(ctx))
   await requireLocationRole(ctx, locationId, role)
   return locationId
 }
@@ -58,7 +52,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
   Query: {
     itemLogs: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      const scopedLocationId = await resolveLocationId(ctx, locationId, 'viewer')
+      const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       return prisma.inventoryLog.findMany({
         where: { itemId, userId, locationId: scopedLocationId },
         orderBy: { occurredAt: 'asc' },
@@ -67,7 +61,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
 
     inventoryLogCountByItem: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      const scopedLocationId = await resolveLocationId(ctx, locationId, 'viewer')
+      const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       return prisma.inventoryLog.count({
         where: { itemId, userId, locationId: scopedLocationId },
       })
@@ -87,7 +81,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       const userId = requireAuth(ctx)
       // Resolved once, before the loop: the role check does not depend on the
       // item, and repeating it per item would be one extra query per item.
-      const scopedLocationId = await resolveLocationId(ctx, locationId, 'viewer')
+      const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       const results = await Promise.all(
         itemIds.map(async (itemId) => {
           const log = await prisma.inventoryLog.findFirst({
@@ -110,7 +104,7 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       const userId = requireAuth(ctx)
       // A write needs `member`, not `viewer`: a viewer may read a location's
       // logs but must not add one.
-      const scopedLocationId = await resolveLocationId(ctx, locationId, 'member')
+      const scopedLocationId = await requireLocation(ctx, locationId, 'member')
       return prisma.inventoryLog.create({
         data: {
           itemId,
