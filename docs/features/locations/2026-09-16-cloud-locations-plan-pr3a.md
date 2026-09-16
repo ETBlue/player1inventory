@@ -107,6 +107,19 @@ Restore and confirm green.
 | 1 | The plan did not mention `apps/server/scripts/verify-migration.ts`. It parks one migration **by name**, so a second location migration cannot reset past it. Whoever writes the next one must add it to the `MIGRATIONS` list. |
 | 1 | The plan did not ask for new assertions in the verify script. Without them the script proves PR 1's migration and says nothing about this one. They were added. |
 | 1 | Several existing comments said "PR 3" for work now split three ways, and two became false with this commit — `Cart.locationId` exists now. Updated in `stockDualWrite.ts`, `cart.resolver.ts`, `recipe.resolver.ts`, `itemStock.resolver.ts`, `location.resolver.ts`. |
+| 2 | **The plan pointed at the wrong fake, and the right one did not exist.** It said to check whether `stockFake.ts` models `locationId`. It does, and always did — so that check would have returned "fine". But `inventoryLog` was never in `stockFake.ts`. It was four bare `vi.fn()` call recorders inside `inventoryLog.resolver.test.ts`, with no `where` handling of any kind. A recorder returns whatever `mockResolvedValue` gave it, so it could not tell **any** scoped query from an unscoped one — not `locationId`, not `userId`, not `itemId`. Every read assertion in that file was checking the mock's own return value. Fixed by writing `apps/server/src/test/inventoryLogFake.ts`, which applies Prisma's `where` semantics key by key. |
+| 2 | **The plan's own two statements about the API conflict.** It says PR 3a's API change "ships with its own client in this same PR", which reads as a required argument — but a required argument cannot land in Task 2 without also doing Task 4, which Task 2 was told not to start. The brief's suggested escape (a schema default) is impossible: a GraphQL default must be a literal, and no literal means "the caller's default location". The workable form is a **nullable** argument with a server-side fallback. Task 4 or Task 6 must tighten it to `ID!` once every caller passes it — an omitted argument reads the wrong location quietly, while a missing required argument fails loudly at codegen. |
+
+### What this means for earlier location work
+
+The inventory-log read tests were weaker than they looked, for as long as that mock
+existed. Anyone auditing earlier location PRs should not count them as coverage.
+
+The general rule is already in root `CLAUDE.md`: "Write test doubles to model the
+constraint, not the happy path." This is the third instance in this repo, after the
+`findFirst` fake that hardcoded `i.userId === where.userId` and the `createMany` fake
+that silently deduped. **A call recorder is the weakest form** — the other two at least
+had a `where` to get wrong.
 
 **Tasks 2 and 3 are merged.** Task 3 shrank to "add the argument and the role check"
 once Task 1 had to supply a location at every write site. Both tasks live in
