@@ -99,7 +99,27 @@ Restore and confirm green.
 
 ---
 
-## Task 2 — Server: the logs read path
+## Corrections found while running this plan
+
+| Task | What the plan got wrong |
+|---|---|
+| 1 | **"Add two columns, nothing else" cannot pass Task 1's own gate.** Both columns are `NOT NULL` with no default, so Prisma's generated client requires `locationId` at every `create`. `pnpm build` failed with 8 TypeScript errors across 6 resolvers before anything else was touched. Making the field optional in Prisma while `NOT NULL` in the database would turn a compile error into a runtime 500 on every insert. So Task 3's Step 3.2 was pulled forward: nine write sites now pass `ensureDefaultLocation`, each with a marker. |
+| 1 | The plan did not mention `apps/server/scripts/verify-migration.ts`. It parks one migration **by name**, so a second location migration cannot reset past it. Whoever writes the next one must add it to the `MIGRATIONS` list. |
+| 1 | The plan did not ask for new assertions in the verify script. Without them the script proves PR 1's migration and says nothing about this one. They were added. |
+| 1 | Several existing comments said "PR 3" for work now split three ways, and two became false with this commit — `Cart.locationId` exists now. Updated in `stockDualWrite.ts`, `cart.resolver.ts`, `recipe.resolver.ts`, `itemStock.resolver.ts`, `location.resolver.ts`. |
+
+**Tasks 2 and 3 are merged.** Task 3 shrank to "add the argument and the role check"
+once Task 1 had to supply a location at every write site. Both tasks live in
+`inventoryLog.resolver.ts` and both need `requireLocationRole`, so splitting them
+would mean two agents editing the same file back to back.
+
+**One wording risk recorded by Task 1.** The migration guard says "These users have
+no default Location". That is the right diagnosis for the real failure. During the
+mutation check it named two users who *do* have one, because the backfill had been
+removed on purpose. The message describes the real-world cause, not an edit to the
+migration.
+
+## Task 2 — Server: the logs API, read and write
 
 Three queries gain a `locationId`. Read `apps/server/src/resolvers/inventoryLog.resolver.ts`
 and `apps/server/src/schema/inventoryLog.graphql` first.
@@ -144,7 +164,17 @@ Report each.
 
 ---
 
-## Task 3 — Server: the logs write path
+## Task 3 — merged into Task 2
+
+See the corrections table above.
+
+### What Task 1 already did
+
+Nine write sites supply `ensureDefaultLocation(userId)` because the column is
+`NOT NULL`. `addInventoryLog` is one of them. Markers are in place:
+`grep -rn "PR 3b:" apps/server/src` returns 4.
+
+### What Task 2 still owes from this section
 
 **Step 3.1.** `addInventoryLog` gains a `locationId` argument, routed through
 `requireLocationRole(ctx, locationId, 'member')`.
