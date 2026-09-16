@@ -1,7 +1,7 @@
 # PWA + Offline — design
 
 **Date:** 2026-08-31 (rewritten in plain English 2026-09-16)
-**Status:** 🔲 Designed, not implemented
+**Status:** ✅ Implemented
 **Branch:** `feature/pwa-offline`
 **Brainstorming:** [2026-08-31-brainstorming-pwa-offline.md](2026-08-31-brainstorming-pwa-offline.md)
 **Related:** [seamless offline ↔ online migration](../backend/2026-04-04-seamless-offline-online-migration-design.md) · [design tokens](../design-system/)
@@ -281,3 +281,95 @@ it is registered, it controls every later deploy for that domain.
 
 **So the way to turn it off must ship in the same PR that registers it.** Do not add it
 afterwards.
+
+## 6. Changes made during implementation
+
+The build matches this design in almost every part. Five things changed. Each one is
+recorded below, with the reason.
+
+Commits, in order: `3e34fe66`, `6ec4e01c`, `556e1176`, `1ff6e19c`, `6d890f74`, `5c4a48c7`,
+`fcb0fafd`, `47a8f88d`, `cfb124f7`, `51e38678`, `44268bf7`, `4a3448aa`, `f99b2e3e`,
+`e39b6e7d`, `f14881b0`, `f7a583ee`, `0bf8b76d`, `d68f8bf4`.
+
+E2E: 69 tests passed in the `pwa` project. 135 tests passed for `--grep "pwa|a11y"`. Axe
+found no accessibility violations on the offline banner, in light mode or dark mode.
+`dist/sw.js` has 22 precache entries. This includes all 6 `rosario-*.woff2` font files.
+
+### 1. Task 7b was rebuilt
+
+The design in section 2.1 guessed that `ClerkProvider` might block the app from rendering
+offline. The Task 1 experiment proved this guess wrong. `ClerkProvider` renders its children
+with no condition. It does not block anything.
+
+The real problem is different. `useAuth()` stays at `isLoaded: false` forever when offline.
+`getToken()` never finishes either. `SetContextLink` waits for `getToken()` before every
+request. So a cache miss while offline would wait forever and never resolve.
+
+The fix is a new function, `resolveToken`, in `apps/web/src/apollo/client.ts`:
+
+- If the device is offline, it returns `null` right away.
+- If the device is online, it waits up to 3 seconds for `getToken()`. After 3 seconds it
+  gives up and returns `null`.
+
+Both places that need a token use `resolveToken`. One is the HTTP auth link. The other is
+the WebSocket `connectionParams`.
+
+### 2. The onboarding redirect became a pure function
+
+The redirect logic now lives in `apps/web/src/routes/shouldRedirectToOnboarding.ts`. It is a
+plain function with no side effects. This makes it easy to test on its own. It has 7 test
+cases.
+
+### 3. The cloud startup order became `bootstrap.ts`
+
+The startup order — restore the cache, then render the app — now lives in
+`apps/web/src/bootstrap.ts`, in a function called `bootstrapCloudMode(restore, render)`.
+
+This is the most important rule in the whole design. Before this change, no test checked
+it. Now a test can prove the cache restore always finishes before React mounts.
+
+### 4. `OfflineBanner` uses `<output>`, not `role="status"` on a `<div>`
+
+The design said to use `role="status"` on a `div`. The built component uses an `<output>`
+element instead. An `<output>` element already carries the ARIA role `status`, without
+needing the attribute. Biome's `useSemanticElements` lint rule requires the real element
+instead of adding the role by hand.
+
+### 5. Testing `virtual:pwa-register` needed an alias, not just a mock
+
+`virtual:pwa-register` is a Vite virtual module. It only exists at build time, through
+`vite-plugin-pwa`. Vitest cannot resolve it. A plain `vi.mock` was not enough, because the
+import itself fails before any mock can run.
+
+The fix is an alias in `apps/web/vitest.config.ts`. It points `virtual:pwa-register` at a
+stub file, `apps/web/src/test/virtualPwaRegisterStub.ts`. This alias only affects tests. The
+real `vite.config.ts`, used for production builds, is untouched. It still uses the real
+`vite-plugin-pwa` module.
+
+### Still open
+
+Two questions from this design are not answered yet. Neither can be checked from this repo.
+Do not treat them as done.
+
+**1. iOS storage eviction (design risk 4).**
+
+Safari limits how long it keeps stored data for sites the user has not opened recently.
+Installed web apps are usually exempt from this limit, but nobody has confirmed it for this
+app.
+
+How to check it:
+
+1. Install the app on an iPhone.
+2. Use it once.
+3. Leave it alone for more than seven days.
+4. Open it again with no network connection.
+5. Check whether the cached data is still there.
+
+If the data is gone, cloud offline reads cannot be relied on for iOS. The banner text would
+then need to say so.
+
+**2. A real signed-in Clerk session going offline.**
+
+The Task 1 experiment tested a cold start with Clerk's script blocked. It did not test a
+user who is already signed in and then loses the network. That case needs a real device and
+a real Clerk login to test.

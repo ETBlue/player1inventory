@@ -40,6 +40,17 @@ pnpm design:preview    # Preview built design guide locally
 - **Code Quality**: Biome
 - **Testing**: Vitest + React Testing Library
 
+### Service worker and offline
+
+The app is a PWA. `vite-plugin-pwa` builds the service worker in `generateSW`
+mode. A service worker only exists in a real build, never on the dev server.
+
+- To test offline behavior, run `pnpm --filter web build && pnpm --filter web preview`.
+- If a bad service worker is stuck in a browser, open the DevTools console and
+  run `window.__unregisterServiceWorkers()`.
+- The cloud Apollo cache is saved in a separate Dexie database named
+  `Player1InventoryCloudCache`. It is not part of the app database.
+
 ### `apps/design` — Design guide
 - **Build**: Astro + Starlight
 - **Content**: MDX with React islands for live component demos
