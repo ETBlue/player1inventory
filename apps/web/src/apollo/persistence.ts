@@ -70,6 +70,17 @@ export async function clearCache(): Promise<void> {
   await cloudCache.reset()
   await cacheDb.snapshots.clear()
   localStorage.removeItem(LAST_SYNCED_AT_KEY)
+  // Removing LAST_USER_ID_KEY disarms the ApolloWrapper purge guard: after
+  // this, getLastSignedInUserId() reads null, so the next sign-in on this
+  // device sees `previous === null` and does not purge again. That is safe
+  // ONLY because `cloudCache` is already empty at this point (the reset
+  // above). It would stop being safe if something refilled `cloudCache`
+  // before the next sign-in. Today nothing does: the Sign Out button lives
+  // on /settings (DataModeCard.tsx), and no Apollo watch query is mounted
+  // there — the item-stock, purchase-date and cart-item queries only mount
+  // on the pantry, item and shopping pages. If a watch query is ever added
+  // to /settings, this key needs to stay, or the purge in ApolloWrapper
+  // needs to drop its `previous !== null` guard.
   localStorage.removeItem(LAST_USER_ID_KEY)
 }
 

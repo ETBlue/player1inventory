@@ -129,6 +129,30 @@ describe('ApolloWrapper cache ownership', () => {
     expect(cloudCache.extract()).not.toHaveProperty('Item:item-1')
     await waitFor(() => expect(getLastSignedInUserId()).toBe('user-b'))
   })
+
+  it('a normal cold start for the same user keeps the cached cloud data', async () => {
+    // Given user A's cache is already on the device and in memory. This is a
+    // normal cold start: the app was closed and reopened by the SAME user,
+    // not a different account signing in.
+    localStorage.setItem('cloud-cache-user-id', 'user-a')
+    fillCloudCache()
+    await saveCache(cloudCache, 'user-a')
+    expect(await cacheDb.snapshots.count()).toBe(1)
+
+    // When the same user's session starts again
+    signedInAs('user-a')
+    render(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+    await waitFor(() => expect(getLastSignedInUserId()).toBe('user-a'))
+
+    // Then the cache is kept. A stored id that matches the signed-in user
+    // must not purge anything — only a DIFFERENT stored id should.
+    expect(await cacheDb.snapshots.count()).toBe(1)
+    expect(cloudCache.extract()).toHaveProperty('Item:item-1')
+  })
 })
 
 describe('ApolloWrapper last-synced stamp', () => {
@@ -138,12 +162,20 @@ describe('ApolloWrapper last-synced stamp', () => {
     await setLastSyncedAt(threeHoursAgo)
     setOnLine(false)
     signedInAs('user-a')
+    // This is also a first sign-in on this device: no user id is stored
+    // before this render (beforeEach clears localStorage). A purge must not
+    // run just because nothing was stored yet — only a DIFFERENT stored id
+    // should trigger one. Spy on the real clearCache so a wrong purge here
+    // is caught directly, not as a side effect on the lastSyncedAt check
+    // below.
+    const clearCacheSpy = vi.spyOn(await import('./persistence'), 'clearCache')
     render(
       <ApolloWrapper>
         <div>app</div>
       </ApolloWrapper>,
     )
     await waitFor(() => expect(getLastSignedInUserId()).toBe('user-a'))
+    expect(clearCacheSpy).not.toHaveBeenCalled()
 
     // When the app saves the cache because the tab was hidden
     setHidden()

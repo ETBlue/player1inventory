@@ -103,13 +103,18 @@ describe('formatRelativeTimeWithHours', () => {
   })
 
   it('hands anything a day old or older to formatRelativeTime', () => {
-    // Given a date 3 days ago
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+    // Given a date 10 days ago. 10 days is chosen on purpose: at 10 days,
+    // formatRelativeTime switches to week wording (absDays >= 7), so a wrong
+    // formatRelativeTimeWithHours that stays in day math (instead of calling
+    // formatRelativeTime) gives a different string here. A 3-day-old date
+    // would not catch that: both a real delegation and a same-math inline
+    // day computation land on "3 days ago" by coincidence.
+    const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000)
 
     // When formatted both ways
-    // Then the two agree — there is one implementation of the day wording
-    expect(formatRelativeTimeWithHours(threeDaysAgo, 'tw')).toBe(
-      formatRelativeTime(threeDaysAgo, 'tw'),
+    // Then the two agree — there is one implementation of the day/week wording
+    expect(formatRelativeTimeWithHours(tenDaysAgo, 'tw')).toBe(
+      formatRelativeTime(tenDaysAgo, 'tw'),
     )
   })
 })
