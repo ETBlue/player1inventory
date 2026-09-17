@@ -2,13 +2,14 @@
 // resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
 //
-// Two migrations are under test, applied in order:
-//   1. 20260830000000_add_location_and_item_stock   (PR 1) — Location, ItemStock
-//   2. 20260916000000_add_location_to_log_and_cart  (PR 3a) — InventoryLog.locationId,
+// Three migrations are under test, applied in order:
+//   1. 20260830000000_add_location_and_item_stock      (PR 1)  — Location, ItemStock
+//   2. 20260916000000_add_location_to_log_and_cart     (PR 3a) — InventoryLog.locationId,
 //      Cart.locationId
-// Both must be parked together. Migration 2 references the "Location" table
-// that migration 1 creates, so resetting with only migration 1 parked would
-// fail at reset time.
+//   3. 20260917000000_rekey_cart_to_location_vendor    (PR 3b) — splits the shared
+//      'no-vendor' cart, then re-keys Cart.id to `${locationId}:${vendorId}`
+// All three must be parked together. Each one references what the previous one
+// creates, so resetting with only some of them parked would fail at reset time.
 //
 // Destructive: drops and recreates the public schema of TEST_DATABASE_URL —
 // via TEST_DIRECT_URL, since Prisma Migrate always issues DDL through
@@ -73,7 +74,9 @@ function assert(condition: boolean, message: string): void {
 // A fixture shaped like production BEFORE the migration: Item still carries
 // its five state fields inline, and there is no Location table yet.
 //
-// TEN distinct users, one per union arm plus Item's two owners:
+// THIRTEEN distinct users. Ten cover PR 1's union arms (one per arm, plus
+// Item's two owners); three more (user-k, user-l, user-m) exist only to test
+// PR 3b's 'no-vendor' split, and are described at the CartItem seed below.
 //   user-a, user-b — Item (2 rows + 1 row)
 //   user-c         — TagType only (owns no Item)
 //   user-d         — Vendor only (standalone)
@@ -86,6 +89,10 @@ function assert(condition: boolean, message: string): void {
 //   user-i         — Cart only (standalone)
 //   user-j         — InventoryLog only (FK borrows item-a1; its own userId is
 //                    distinct)
+//   user-k         — owns the shared 'no-vendor' Cart, and one CartItem on it
+//   user-l         — two CartItems on the shared 'no-vendor' Cart, owns no Cart
+//   user-m         — owns 'cart-m' and one CartItem on it; nothing on the
+//                    shared row (the control for phase A)
 //
 // Every one of the nine unioned tables (Item, TagType, Tag, Vendor, Recipe,
 // Cart, CartItem, InventoryLog, Shelf) is exercised by an owner who appears
@@ -94,8 +101,14 @@ function assert(condition: boolean, message: string): void {
 // assertion below catches it.
 const MILK_DUE_DATE = new Date('2026-09-15T00:00:00.000Z')
 
+// Set on the shared 'no-vendor' cart. It belongs to user-k, who owns that row.
+// Phase A must NOT create a second cart for user-k: phase B renames their row
+// in place, so this timestamp has to survive. A split that created a fresh cart
+// for the owner too would lose it (and would also collide on the primary key).
+const SHARED_CART_LAST_PURCHASED_AT = new Date('2026-09-10T12:00:00.000Z')
+
 async function seedFixture(): Promise<void> {
-  console.log('Seeding ten-user pre-migration fixture (covers all nine union arms)...')
+  console.log('Seeding thirteen-user pre-migration fixture (nine union arms + the PR 3b split)...')
 
   // Item — user-a (x2), user-b (x1). item-a1's refillThreshold (1) and
   // unpackedQuantity (5) are deliberately different values, so a swap between
@@ -140,14 +153,46 @@ async function seedFixture(): Promise<void> {
   // TWO owners on purpose. With one cart the "backfill picked the right
   // owner's location" assertion cannot fail: any constant location id would
   // satisfy it. See root CLAUDE.md, "Proving a Test Works".
+  //
+  // Plus the PR 3b fixture (see SHARED_CART_LAST_PURCHASED_AT below):
+  //   'no-vendor' — the ONE shared row, owned by user-k. This is the leak
+  //                 design §5 describes: the id is a literal, not a cuid, so
+  //                 the first user to open it owned it for everybody.
+  //   'cart-m'    — user-m's own vendor cart. user-m is the control: they have
+  //                 cart items, but NONE on the shared row, so phase A must
+  //                 leave them completely alone.
   await prisma.$executeRawUnsafe(`
-    INSERT INTO "Cart" ("id","userId") VALUES ('cart-i','user-i'), ('cart-a','user-a')
+    INSERT INTO "Cart" ("id","userId","lastPurchasedAt") VALUES
+      ('cart-i','user-i',NULL),
+      ('cart-a','user-a',NULL),
+      ('no-vendor','user-k','${SHARED_CART_LAST_PURCHASED_AT.toISOString()}'),
+      ('cart-m','user-m',NULL)
   `)
 
   // CartItem — user-h. FKs borrow cart-i and item-a1, but its own userId is
   // a distinct owner from both.
+  //
+  // Then the PR 3b split fixture. THREE users touch the shared 'no-vendor'
+  // cart in different ways, because a one-user fixture cannot fail here:
+  //
+  //   user-k  owns the shared row AND has an item on it. Phase A must leave
+  //           this pair alone; phase B renames their row to
+  //           `${their locationId}:no-vendor` and their item follows.
+  //   user-l  has TWO items on the shared row and owns NO cart. Phase A must
+  //           create `${their locationId}:no-vendor` and move both items to it.
+  //           This is the only assertion that can tell the split apart from
+  //           "the re-key ran".
+  //   user-m  has an item, but on their own cart. Untouched by phase A.
+  //
+  // TWO items for user-l, not one, so a split that moved only the first row
+  // is catchable.
   await prisma.$executeRawUnsafe(`
-    INSERT INTO "CartItem" ("id","cartId","itemId","quantity","userId") VALUES ('cartitem-h','cart-i','item-a1',1,'user-h')
+    INSERT INTO "CartItem" ("id","cartId","itemId","quantity","userId") VALUES
+      ('cartitem-h','cart-i','item-a1',1,'user-h'),
+      ('ci-k1','no-vendor','item-a1',2,'user-k'),
+      ('ci-l1','no-vendor','item-a1',3,'user-l'),
+      ('ci-l2','no-vendor','item-b1',4,'user-l'),
+      ('ci-m1','cart-m','item-a1',5,'user-m')
   `)
 
   // InventoryLog — user-j and user-a. BOTH rows point at item-a1, which
@@ -171,6 +216,7 @@ const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
 const MIGRATIONS = [
   '20260830000000_add_location_and_item_stock',
   '20260916000000_add_location_to_log_and_cart',
+  '20260917000000_rekey_cart_to_location_vendor',
 ] as const
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
@@ -264,6 +310,9 @@ async function main(): Promise<void> {
     'user-h', // CartItem
     'user-i', // Cart
     'user-j', // InventoryLog
+    'user-k', // Cart + CartItem — owns the shared 'no-vendor' row (PR 3b)
+    'user-l', // CartItem only — two items on the shared row (PR 3b)
+    'user-m', // Cart + CartItem — the control, nothing on the shared row (PR 3b)
   ] as const
 
   const locations = await prisma.location.findMany({ orderBy: { userId: 'asc' } })
@@ -394,11 +443,13 @@ async function main(): Promise<void> {
     'the two logs landed in DIFFERENT locations — a backfill writing one constant location id fails here',
   )
 
+  // PR 3b re-keys Cart.id, so these rows can no longer be found by their seeded
+  // ids. Each of the five users below owns exactly one cart, so `userId` is an
+  // unambiguous handle that survives the re-key.
   const carts = await prisma.cart.findMany({ include: { location: true }, orderBy: { id: 'asc' } })
-  assert(carts.length === 2, 'both seeded Cart rows survive the migration')
 
-  const cartA = carts.find((c) => c.id === 'cart-a')
-  const cartI = carts.find((c) => c.id === 'cart-i')
+  const cartA = carts.find((c) => c.userId === 'user-a')
+  const cartI = carts.find((c) => c.userId === 'user-i')
   assert(
     cartA?.location.userId === 'user-a' && cartI?.location.userId === 'user-i',
     "each cart is backfilled to its OWN owner's default location",
@@ -408,18 +459,133 @@ async function main(): Promise<void> {
     'the two carts landed in DIFFERENT locations — a constant location id fails here',
   )
 
-  // PR 3a must NOT re-key Cart.id. That is PR 3b (design §4.7). If this goes
-  // red, the re-key leaked into the additive migration and the split failed.
+  // ══════════════════════════════════════════════════════════════════════
+  // PR 3b — the 'no-vendor' split and the Cart.id re-key
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Counts ──
+  //
+  // Seeded: 4 carts ('cart-a', 'cart-i', 'no-vendor', 'cart-m') and 5 cart
+  // items. Phase A adds exactly ONE cart, user-l's, because user-l is the only
+  // user with items on the shared row who does not own it. No cart item is
+  // created or destroyed by either phase.
+  //
+  // NOTE: the PR 3b plan's assertion table says "Cart and cart-item counts are
+  // unchanged". That is true of the production rehearsal, where phase A does
+  // nothing (0 accounts have items on the shared row), but it is NOT true here
+  // and must not be: a fixture where the cart count is unchanged is a fixture
+  // where phase A did nothing.
   assert(
-    carts.map((c) => c.id).join(',') === 'cart-a,cart-i',
-    'Cart.id values are unchanged — PR 3a is additive and does not re-key (the re-key is PR 3b)',
+    carts.length === 5,
+    'cart count is 4 seeded + 1 created by the split (user-l) = 5 — an unchanged count here would mean phase A did nothing',
+  )
+  assert(
+    (await prisma.cartItem.count()) === 5,
+    'cart-item count is unchanged at 5 — the split moves rows, it never creates or drops one',
+  )
+
+  // ── The shared row is gone under its old id ──
+  assert(
+    (await prisma.cart.findUnique({ where: { id: 'no-vendor' } })) === null,
+    "no Cart row is left under the literal id 'no-vendor' — that literal was shared by every user, which is the leak design §5 describes",
+  )
+
+  // ── Each user's items point at THEIR OWN no-vendor cart ──
+  const cartK = carts.find((c) => c.userId === 'user-k')
+  const cartL = carts.find((c) => c.userId === 'user-l')
+  const cartM = carts.find((c) => c.userId === 'user-m')
+  assert(
+    cartK?.id === `${cartK?.locationId}:no-vendor` && cartK?.location.userId === 'user-k',
+    "user-k (who owned the shared row) ends up with `${their own locationId}:no-vendor`",
+  )
+  assert(
+    cartL?.id === `${cartL?.locationId}:no-vendor` && cartL?.location.userId === 'user-l',
+    "user-l (who owned no cart at all) gets a NEW `${their own locationId}:no-vendor` — this is the split, and nothing else in this script proves it ran",
+  )
+  assert(
+    cartK?.id !== cartL?.id,
+    "user-k's and user-l's no-vendor carts are DIFFERENT rows — one shared row for both is exactly the bug being fixed",
+  )
+
+  const ciK1 = await prisma.cartItem.findUnique({ where: { id: 'ci-k1' } })
+  const ciL1 = await prisma.cartItem.findUnique({ where: { id: 'ci-l1' } })
+  const ciL2 = await prisma.cartItem.findUnique({ where: { id: 'ci-l2' } })
+  const ciM1 = await prisma.cartItem.findUnique({ where: { id: 'ci-m1' } })
+  assert(ciK1?.cartId === cartK?.id, "user-k's cart item points at user-k's cart")
+  assert(
+    ciL1?.cartId === cartL?.id && ciL2?.cartId === cartL?.id,
+    "BOTH of user-l's cart items point at user-l's cart — one item moving while the other stays fails here",
+  )
+
+  // ── No user's items moved into another user's cart ──
+  //
+  // Stated as the negative as well as the positive: if the split had not run,
+  // phase B would have dragged user-l's two items onto user-k's renamed row and
+  // the assertion above would read `cartK.id`, so this restates the same fact
+  // from the other side for a reader scanning the output.
+  assert(
+    ciL1?.cartId !== cartK?.id && ciL2?.cartId !== cartK?.id,
+    "user-l's items are NOT in user-k's cart — this is what running phase B before phase A looks like",
+  )
+  assert(ciK1?.cartId !== cartL?.id, "user-k's item is not in user-l's cart either")
+
+  // ── The control user is untouched ──
+  assert(
+    cartM?.id === `${cartM?.locationId}:cart-m` && ciM1?.cartId === cartM?.id,
+    "user-m, who had no items on the shared row, keeps their own cart and item — phase A left them alone",
+  )
+
+  // ── The owner keeps their row, and its lastPurchasedAt with it ──
+  //
+  // Phase A skips the shared row's own owner. This assertion is what proves it:
+  // if phase A created a fresh cart for user-k as well, the new row would carry
+  // a NULL timestamp, and phase B's rename of the old row would then collide
+  // with it on the primary key.
+  assert(
+    cartK?.lastPurchasedAt?.toISOString() === SHARED_CART_LAST_PURCHASED_AT.toISOString(),
+    "the shared row's owner keeps their lastPurchasedAt — their row was RENAMED, not replaced",
+  )
+  assert(
+    cartL?.lastPurchasedAt === null,
+    "user-l's new cart opens with a NULL lastPurchasedAt — it must not inherit the shared row's timestamp, which belonged to user-k",
+  )
+
+  // ── Every cart id is EXACTLY the one it should be ──
+  //
+  // Checked against a table built from each cart's own locationId and its
+  // seeded vendor part, not with a `startsWith` test. `startsWith` cannot see a
+  // doubled prefix: `${loc}:${loc}:no-vendor` starts with `${loc}:` too.
+  const EXPECTED_CART_IDS: Record<string, string> = {
+    'user-a': `${cartA?.locationId}:cart-a`,
+    'user-i': `${cartI?.locationId}:cart-i`,
+    'user-k': `${cartK?.locationId}:no-vendor`,
+    'user-l': `${cartL?.locationId}:no-vendor`,
+    'user-m': `${cartM?.locationId}:cart-m`,
+  }
+  assert(
+    carts.every((c) => c.id === EXPECTED_CART_IDS[c.userId]),
+    'every Cart.id is exactly `${its own locationId}:${its original id}` — catches a missed row and a doubled prefix, which a startsWith test cannot',
+  )
+
+  // ── No orphaned cart items ──
+  //
+  // The FK is back on by the end of the migration, so a true orphan could not
+  // survive to here. The join is asserted anyway because the FK is DROPPED for
+  // the length of phase B, and an orphan created there is what a wrong
+  // statement order produces.
+  const allCartIds = new Set(carts.map((c) => c.id))
+  const allCartItems = await prisma.cartItem.findMany()
+  const orphans = allCartItems.filter((ci) => !allCartIds.has(ci.cartId))
+  assert(
+    orphans.length === 0,
+    `no CartItem points at a missing Cart${orphans.length ? ` (orphans: ${orphans.map((o) => `${o.id}->${o.cartId}`).join(', ')})` : ''}`,
   )
 
   // FK cascade from Location. Deleting user-i's location must take cart-i and,
   // through Cart -> CartItem, cartitem-h with it.
   await prisma.location.delete({ where: { id: cartI!.locationId } })
   assert(
-    (await prisma.cart.count({ where: { id: 'cart-i' } })) === 0,
+    (await prisma.cart.count({ where: { id: cartI!.id } })) === 0,
     'deleting a Location cascades to delete its Cart rows',
   )
   assert(
