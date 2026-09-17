@@ -2,7 +2,6 @@ import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { type LocationRole, requireLocationRole } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStock } from '../lib/stockDualWrite.js'
 import { type Context, requireAuth } from '../context.js'
@@ -41,22 +40,21 @@ async function requireCartLocation(
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
-    vendorCart: async (_, { vendorId = null, locationId = null }, ctx) => {
+    // `locationId` is REQUIRED since PR 3b Task 4. There is no default-location
+    // fallback any more: the web client sends the active location, and an
+    // omitted argument is now a codegen error rather than a silent read of the
+    // wrong location.
+    vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
       const userId = requireAuth(ctx)
 
-      // `locationId` is nullable for one PR-3b task only — see the doc string
-      // on this field in src/schema/cart.graphql. Task 4 passes it from the web
-      // client and tightens the schema to `ID!`.
-      const resolvedLocationId = locationId ?? (await ensureDefaultLocation(userId))
-
       // `member`, not `viewer`: this query CREATES the cart when it is missing.
-      await requireLocationRole(ctx, resolvedLocationId, 'member')
+      await requireLocationRole(ctx, locationId, 'member')
 
-      const cartId = cartIdFor(resolvedLocationId, vendorId ?? null)
+      const cartId = cartIdFor(locationId, vendorId ?? null)
       let cart = await prisma.cart.findUnique({ where: { id: cartId } })
       if (!cart) {
         cart = await prisma.cart.create({
-          data: { id: cartId, userId, locationId: resolvedLocationId },
+          data: { id: cartId, userId, locationId },
         })
       }
       return cart as unknown as Cart

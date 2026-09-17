@@ -87,10 +87,12 @@ const stockFake = mockPrisma.$stockFake
 // TWO locations for the checking-out user, plus one belonging to somebody
 // else — which is ALSO flagged isDefault. Two different assertions need this:
 //
-//   - `vendorCart` with no `locationId` falls back to the caller's DEFAULT
-//     location. One location cannot tell that apart from "whatever location it
-//     finds first", and the stranger's row is what makes "the caller's default"
-//     distinguishable from "the first default in the table".
+//   - `vendorCart` takes the location it is GIVEN. Its `locationId` is `ID!`
+//     since PR 3b Task 4 and the default-location fallback is gone, so the
+//     "viewing a NON-default location" test names LOC_OTHER — the only fixture
+//     that can tell "the location I asked for" apart from "the caller's
+//     default". LOC_STRANGER belongs to somebody else and is ALSO flagged
+//     isDefault, which is what makes the FORBIDDEN case real.
 //   - Since PR 3b Task 3 `checkout` writes the location its CART id names. One
 //     location cannot tell that apart from "the caller's default location"
 //     either, so those tests use a cart at LOC_OTHER.
@@ -172,8 +174,10 @@ describe('vendorCart', () => {
 
     // When querying vendorCart
     const result = await execOp(
-      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id lastPurchasedAt } }`,
-      { vendorId: 'vendor_1' },
+      `query VendorCart($vendorId: ID, $locationId: ID!) {
+        vendorCart(vendorId: $vendorId, locationId: $locationId) { id lastPurchasedAt }
+      }`,
+      { vendorId: 'vendor_1', locationId: LOC_DEFAULT },
     )
 
     // Then the cart is looked up by `${locationId}:${vendorId}`, not by the
@@ -198,14 +202,16 @@ describe('vendorCart', () => {
 
     // When querying vendorCart
     const result = await execOp(
-      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
-      { vendorId: 'vendor_2' },
+      `query VendorCart($vendorId: ID, $locationId: ID!) {
+        vendorCart(vendorId: $vendorId, locationId: $locationId) { id }
+      }`,
+      { vendorId: 'vendor_2', locationId: LOC_DEFAULT },
     )
 
-    // Then a new cart is created, in the caller's DEFAULT location.
-    // LOC_DEFAULT is not `locations[0]` in seedLocations, and LOC_STRANGER
-    // belongs to another user — so this assertion fails both for a resolver
-    // that grabs the first location and for one that ignores `userId`.
+    // Then a new cart is created at the location the caller NAMED. Since
+    // Task 4 there is no default-location fallback for it to be confused with;
+    // the "viewing a NON-default location" case below is what proves the
+    // resolver follows the argument rather than the caller's default.
     expect(result?.errors).toBeUndefined()
     expect(mockPrisma.cart.create).toHaveBeenCalledWith({
       data: { id: `${LOC_DEFAULT}:vendor_2`, userId: 'user_test123', locationId: LOC_DEFAULT },
@@ -220,8 +226,10 @@ describe('vendorCart', () => {
 
     // When querying vendorCart with a null vendorId
     const result = await execOp(
-      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id lastPurchasedAt } }`,
-      { vendorId: null },
+      `query VendorCart($vendorId: ID, $locationId: ID!) {
+        vendorCart(vendorId: $vendorId, locationId: $locationId) { id lastPurchasedAt }
+      }`,
+      { vendorId: null, locationId: LOC_DEFAULT },
     )
 
     // Then the new cart id is `${locationId}:no-vendor`.
@@ -247,8 +255,10 @@ describe('vendorCart', () => {
 
     // When querying vendorCart with null vendorId
     const result = await execOp(
-      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
-      { vendorId: null },
+      `query VendorCart($vendorId: ID, $locationId: ID!) {
+        vendorCart(vendorId: $vendorId, locationId: $locationId) { id }
+      }`,
+      { vendorId: null, locationId: LOC_DEFAULT },
     )
 
     // Then the no-vendor cart is returned
@@ -264,7 +274,7 @@ describe('vendorCart', () => {
 
     // When querying vendorCart with an explicit locationId
     const result = await execOp(
-      `query VendorCart($vendorId: ID, $locationId: ID) {
+      `query VendorCart($vendorId: ID, $locationId: ID!) {
         vendorCart(vendorId: $vendorId, locationId: $locationId) { id }
       }`,
       { vendorId: 'vendor_1', locationId: LOC_OTHER },
@@ -281,31 +291,33 @@ describe('vendorCart', () => {
     })
   })
 
-  it('omitting locationId still falls back to the default location', async () => {
-    // Given no locationId is passed. This fallback is TEMPORARY — the field is
-    // nullable only until PR 3b Task 4 passes it from the web client and
-    // tightens the schema to `ID!`. See src/schema/cart.graphql.
+  it('omitting locationId is refused — the default-location fallback is gone', async () => {
+    // Given a client that sends no locationId. Until PR 3b Task 4 the server
+    // fell back to the caller's default location, so a cart opened while
+    // viewing the Garage quietly returned the Kitchen's. The field is `ID!`
+    // now — see src/schema/cart.graphql.
     mockPrisma.cart.findUnique.mockResolvedValue(null)
     mockPrisma.cart.create.mockResolvedValue(makeCart({ id: `${LOC_DEFAULT}:vendor_1` }))
 
     // When querying vendorCart without one
     const result = await execOp(
-      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
+      `query VendorCartNoLocation($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
       { vendorId: 'vendor_1' },
     )
 
-    // Then the caller's default location is used
-    expect(result?.errors).toBeUndefined()
-    expect(mockPrisma.cart.findUnique).toHaveBeenCalledWith({
-      where: { id: `${LOC_DEFAULT}:vendor_1` },
-    })
+    // Then the request fails at validation and NO cart is read or written.
+    // Loud, at the schema layer, rather than a quiet read of a location the
+    // caller did not ask for.
+    expect(result?.errors?.[0]?.extensions?.code).toBe('GRAPHQL_VALIDATION_FAILED')
+    expect(mockPrisma.cart.findUnique).not.toHaveBeenCalled()
+    expect(mockPrisma.cart.create).not.toHaveBeenCalled()
   })
 
   it("asking for another user's location is FORBIDDEN", async () => {
     // Given LOC_STRANGER belongs to user_other, and is flagged isDefault there
     // When the caller names it
     const result = await execOp(
-      `query VendorCart($vendorId: ID, $locationId: ID) {
+      `query VendorCart($vendorId: ID, $locationId: ID!) {
         vendorCart(vendorId: $vendorId, locationId: $locationId) { id }
       }`,
       { vendorId: 'vendor_1', locationId: LOC_STRANGER },
@@ -741,21 +753,31 @@ describe('checkout dual-writes onto ItemStock', () => {
     // early here and the purchased quantity was dropped with no error.
     stockFake.reset([], [])
 
-    // The account opens its cart first. Since PR 3b a cart id names a location,
-    // so this is now the ONLY way such an account can reach checkout at all:
-    // vendorCart calls ensureDefaultLocation, which creates the location, and
-    // checkout then reads that location back out of the cart id it is given.
+    // The account reads its location list first. Since PR 3b Task 4 a cart id
+    // names a location AND `vendorCart` demands one, so this is the only way
+    // such an account can reach checkout at all: the `locations` query calls
+    // `ensureDefaultLocation`, which creates the row, and every location-scoped
+    // call the client makes afterwards names the id it got back. That is the
+    // real client's order too — `useCloudLocationId` and `useCloudLocationKnown`
+    // both read `GetLocations` before anything location-scoped is sent.
     mockPrisma.cart.findUnique.mockResolvedValue(null)
     mockPrisma.cart.create.mockImplementation(
       async ({ data }: { data: { id: string } }) => makeCart({ id: data.id }),
     )
-    const opened = await execOp(
-      `query VendorCart($vendorId: ID) { vendorCart(vendorId: $vendorId) { id } }`,
-      { vendorId: null },
-    )
-    expect(opened?.errors).toBeUndefined()
+    const listed = await execOp(`query Locations { locations { id isDefault name } }`)
+    expect(listed?.errors).toBeUndefined()
     const created = stockFake.state.locations.find((l) => l.userId === 'user_test123')
     expect(created).toMatchObject({ isDefault: true, name: 'My Home' })
+
+    // And opening the no-vendor cart at that location creates it under the
+    // composite id
+    const opened = await execOp(
+      `query VendorCartNewAccount($vendorId: ID, $locationId: ID!) {
+        vendorCart(vendorId: $vendorId, locationId: $locationId) { id }
+      }`,
+      { vendorId: null, locationId: created?.id },
+    )
+    expect(opened?.errors).toBeUndefined()
 
     const buyItem = makeCartItem({ cartId: `${created?.id}:no-vendor`, itemId: 'item_milk', quantity: 2 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])

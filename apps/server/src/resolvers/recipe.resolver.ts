@@ -1,7 +1,6 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireLocationRole } from '../lib/authz.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStock } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
@@ -66,20 +65,16 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
     },
     consumeRecipes: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
-      const { occurredAt, recipeIds, items, locationId = null } = input
+      const { occurredAt, recipeIds, items, locationId: consumeLocationId } = input
       const occurredAtDate = new Date(occurredAt)
 
       const itemResults: Array<{ itemId: string; success: boolean; error?: string }> = []
 
-      // The location the cook names, since PR 3b Task 3. It used to be the
+      // `consumeLocationId` is the location the cook names. It used to be the
       // caller's DEFAULT location, because `ConsumeRecipesInput` carried no
       // location at all — so cooking while viewing the Garage took the stock
-      // out of the Kitchen. Task 3 added the field.
-      //
-      // `locationId` is nullable for one PR-3b task only — see the doc string
-      // on this field in src/schema/recipe.graphql. Task 4 passes the active
-      // location from the web client and tightens the schema to `ID!`.
-      const consumeLocationId = locationId ?? (await ensureDefaultLocation(userId))
+      // out of the Kitchen. Task 3 added the field; Task 4 made it REQUIRED and
+      // removed the default-location fallback.
 
       // `member`, not `viewer`: this mutation writes stock and log rows there.
       // The id arrives from the client, so it goes through the one

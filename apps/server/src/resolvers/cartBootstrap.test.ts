@@ -91,7 +91,7 @@ async function execOp(
   return r.body.kind === 'single' ? r.body.singleResult : null
 }
 
-const CREATE_VENDOR = `mutation CreateVendor($name: String!, $locationId: ID) {
+const CREATE_VENDOR = `mutation CreateVendor($name: String!, $locationId: ID!) {
   createVendor(name: $name, locationId: $locationId) { id name }
 }`
 
@@ -128,17 +128,24 @@ describe('createVendor pre-creates the cart at ONE location', () => {
     })
   })
 
-  it('omitting locationId still falls back to the default location', async () => {
-    // Given no locationId is sent — a web client from before PR 3b Task 4
-    // When a vendor is created
-    const result = await execOp(CREATE_VENDOR, { name: 'Costco' })
+  it('omitting locationId is refused — the default-location fallback is gone', async () => {
+    // Given no locationId is sent. Until PR 3b Task 4 the server fell back to
+    // the caller's DEFAULT location, so a vendor created while viewing the
+    // Garage got its cart in the Kitchen. The argument is `ID!` now — see
+    // src/schema/vendor.graphql.
+    const result = await execOp(
+      `mutation CreateVendorNoLocation($name: String!) {
+        createVendor(name: $name) { id name }
+      }`,
+      { name: 'Costco' },
+    )
 
-    // Then the cart lands in the caller's DEFAULT location, not in the Garage
-    // (which is first in the fixture) and not in the stranger's (which is also
-    // flagged isDefault)
-    expect(result?.errors).toBeUndefined()
-    const vendorId = (result?.data?.createVendor as { id: string }).id
-    expect(cartIds()).toEqual([`${LOC_DEFAULT}:${vendorId}`])
+    // Then the request fails at validation, and neither a vendor nor a cart is
+    // written. Loud, at the schema layer, rather than a quiet write to a
+    // location the caller did not name.
+    expect(result?.errors?.[0]?.extensions?.code).toBe('GRAPHQL_VALIDATION_FAILED')
+    expect(shoppingFake.state.vendors).toHaveLength(0)
+    expect(cartIds()).toEqual([])
   })
 
   it("creating a vendor at another user's location is FORBIDDEN, and writes nothing", async () => {

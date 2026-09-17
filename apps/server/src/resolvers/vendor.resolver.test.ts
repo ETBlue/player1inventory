@@ -109,12 +109,12 @@ describe('Vendor resolvers', () => {
     // createVendor also upserts a permanent cart with the vendor ID
     mockPrisma.cart.upsert.mockResolvedValue({ id: 'v_1', userId: 'user_test123', lastPurchasedAt: null })
 
-    // When creating a vendor
+    // When creating a vendor at the caller's default location
     const result = await execOp(
-      `mutation CreateVendor($name: String!) {
-        createVendor(name: $name) { id name userId }
+      `mutation CreateVendor($name: String!, $locationId: ID!) {
+        createVendor(name: $name, locationId: $locationId) { id name userId }
       }`,
-      { name: 'Costco' },
+      { name: 'Costco', locationId: LOC_DEFAULT },
     )
 
     // Then the vendor is returned
@@ -125,10 +125,13 @@ describe('Vendor resolvers', () => {
     expect(mockPrisma.vendor.create).toHaveBeenCalledWith({
       data: { name: 'Costco', userId: 'user_test123' },
     })
-    // And a permanent cart is created/ensured for the new vendor, in the
-    // caller's DEFAULT location. LOC_DEFAULT is not first in seedLocations and
-    // LOC_STRANGER belongs to another user, so this fails both for a resolver
-    // taking the first location and for one ignoring userId.
+    // And a permanent cart is created/ensured for the new vendor, at the
+    // location the caller NAMED. `createVendor(locationId:)` is `ID!` since
+    // PR 3b Task 4 and the default-location fallback is gone.
+    //
+    // This case names the caller's default, so it cannot tell "the location I
+    // asked for" apart from "the caller's default" — the Garage case in
+    // cartBootstrap.test.ts is what does that.
     //
     // The id is `${locationId}:${vendorId}` since PR 3b. A bare 'v_1' here is
     // an id the migration's guard forbids.

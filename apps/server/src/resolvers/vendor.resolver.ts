@@ -1,7 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { requireLocationRole } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
-import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../context.js'
 import type { Resolvers, Vendor } from '../generated/graphql.js'
@@ -14,18 +13,16 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
   },
   Mutation: {
-    createVendor: async (_, { name, locationId = null }, ctx) => {
+    // `locationId` is REQUIRED since PR 3b Task 4. There is no default-location
+    // fallback any more: the web client sends the active location, so a vendor
+    // created while viewing the Garage gets its cart in the Garage.
+    createVendor: async (_, { name, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-
-      // `locationId` is nullable for one PR-3b task only — see the doc string
-      // on this field in src/schema/vendor.graphql. Task 4 passes the active
-      // location from the web client and tightens the schema to `ID!`.
-      const resolvedLocationId = locationId ?? (await ensureDefaultLocation(userId))
 
       // `member`, not `viewer`: this mutation writes a Cart row at that
       // location. The id arrives from the client, so it goes through the one
       // authorization seam (lib/authz.ts) before it reaches any query.
-      await requireLocationRole(ctx, resolvedLocationId, 'member')
+      await requireLocationRole(ctx, locationId, 'member')
 
       const vendor = await prisma.vendor.create({ data: { name, userId } })
 
@@ -35,11 +32,11 @@ export const vendorResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // mutation (cart.resolver.ts) when they become active. It is NOT done
       // lazily from a read path; local mode's comment says why.
       await prisma.cart.upsert({
-        where: { id: cartIdFor(resolvedLocationId, vendor.id) },
+        where: { id: cartIdFor(locationId, vendor.id) },
         create: {
-          id: cartIdFor(resolvedLocationId, vendor.id),
+          id: cartIdFor(locationId, vendor.id),
           userId,
-          locationId: resolvedLocationId,
+          locationId,
         },
         update: {},
       })

@@ -22,16 +22,16 @@ extend type Query {
   """
   The permanent cart for one vendor at one location, created if it is missing.
 
-  `locationId` is nullable ONLY until PR 3b Task 4. When it is omitted the
-  server falls back to the caller's default location, which is the hazard PR 3a
-  recorded on `itemLogs`: an omitted argument reads the wrong location quietly,
-  while a missing required argument fails loudly at codegen time.
+  `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
+  a fallback to the caller's default location, and that fallback is gone: an
+  omitted argument read the wrong location quietly, while a missing required
+  argument fails loudly at codegen time. That is the hazard PR 3a recorded on
+  `itemLogs`.
 
-  **PR 3b Task 4 must pass `locationId` from apps/web and tighten this to
-  `ID!`.** It is nullable now only so the web build stays green in the task that
-  re-keys the database.
+  `vendorId` stays nullable — `null` names the no-vendor cart, which is a real
+  cart, not a missing argument.
   """
-  vendorCart(vendorId: ID, locationId: ID): Cart!
+  vendorCart(vendorId: ID, locationId: ID!): Cart!
 
   """
   Every cart the caller owns, across every location.
@@ -99,15 +99,14 @@ extend type Mutation {
      location write uses. A read path would have to demand `member` on every
      location just to list them.
 
-  `locationId` is required, unlike the nullable `locationId` on `vendorCart`
-  and `createVendor`. Nothing in apps/web calls this mutation yet, so requiring
-  it cannot break the web build — there is no default-location fallback here to
-  tighten later, and Task 4 has nothing to do to this field.
+  `locationId` was required from the start, and there is no default-location
+  fallback here. `vendorCart` and `createVendor` took theirs in Task 4.
 
-  The caller is the web client's active-location effect: local mode already
-  calls `bootstrapCarts(activeLocationId)` from `ActiveLocationProvider`
+  The caller is the web client's active-location effect: local mode calls
+  `bootstrapCarts(activeLocationId)` from `ActiveLocationProvider`
   (apps/web/src/hooks/useActiveLocation.tsx) whenever the active location
-  changes. PR 3b Task 4 adds the cloud branch to that same effect.
+  changes, and since Task 4 the cloud branch of that same effect calls this
+  mutation.
   """
   bootstrapCarts(locationId: ID!): [Cart!]!
 }

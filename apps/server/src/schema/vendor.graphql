@@ -17,17 +17,14 @@ extend type Mutation {
   writes one cart for the active location and leaves the other locations to
   `bootstrapCarts`.
 
-  `locationId` is nullable ONLY until PR 3b Task 4. When it is omitted the
-  server falls back to the caller's default location, so a vendor created while
-  viewing the Garage gets its cart in the Kitchen. An omitted argument writes
-  the wrong location quietly; a missing required argument fails loudly at
-  codegen time. That is the hazard PR 3a recorded on `itemLogs`, and the reason
-  `vendorCart` carries a nullable `locationId` today too.
-
-  **PR 3b Task 4 must pass `locationId` from apps/web and tighten this to
-  `ID!`.** It is nullable now only so the web build stays green.
+  `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
+  a fallback to the caller's default location, so a vendor created while
+  viewing the Garage got its cart in the Kitchen. That fallback is gone: an
+  omitted argument writes the wrong location quietly, while a missing required
+  argument fails loudly at codegen time. That is the hazard PR 3a recorded on
+  `itemLogs`.
   """
-  createVendor(name: String!, locationId: ID): Vendor!
+  createVendor(name: String!, locationId: ID!): Vendor!
   updateVendor(id: ID!, name: String): Vendor!
   deleteVendor(id: ID!): Boolean!
 }

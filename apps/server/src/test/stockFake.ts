@@ -43,6 +43,13 @@ export interface FakeLocation {
   // Only the rows the fake CREATES carry these. Fixtures may leave them out.
   name?: string
   order?: number
+  // A real Prisma `Location` row always has these, and `location.resolver.ts`'s
+  // `toGraphQL` calls `.toISOString()` on both. A fake row without them makes
+  // the `locations` query throw `Cannot read properties of undefined`, which
+  // looks like a resolver bug and is not one. Created rows carry them; fixture
+  // rows may still leave them out, since no assertion reads them.
+  createdAt?: Date
+  updatedAt?: Date
 }
 
 export interface FakeStock {
@@ -186,12 +193,15 @@ export function createStockFake() {
         if (isDefault && state.locations.some((l) => l.userId === userId && l.isDefault)) {
           throw new DefaultLocationConstraintError(userId)
         }
+        const now = new Date()
         const row: FakeLocation = {
           id: `loc-${++seq}`,
           userId,
           isDefault,
           name: data.name as string,
           order: data.order as number,
+          createdAt: now,
+          updatedAt: now,
         }
         state.locations.push(row)
         return row
