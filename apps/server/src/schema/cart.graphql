@@ -1,3 +1,11 @@
+"""
+A shopping cart, one per (location, vendor).
+
+Since PR 3b the id is `${locationId}:${vendorId | 'no-vendor'}`, the same shape
+local mode uses (`cartIdFor` in packages/types/src/index.ts). The id is a
+cross-mode wire contract — backups round-trip by id — so it is denormalized on
+purpose alongside the `locationId` column the server queries by.
+"""
 type Cart {
   id: ID!
   lastPurchasedAt: String
@@ -11,17 +19,58 @@ type CartItem {
 }
 
 extend type Query {
-  vendorCart(vendorId: ID): Cart!
+  """
+  The permanent cart for one vendor at one location, created if it is missing.
+
+  `locationId` is nullable ONLY until PR 3b Task 4. When it is omitted the
+  server falls back to the caller's default location, which is the hazard PR 3a
+  recorded on `itemLogs`: an omitted argument reads the wrong location quietly,
+  while a missing required argument fails loudly at codegen time.
+
+  **PR 3b Task 4 must pass `locationId` from apps/web and tighten this to
+  `ID!`.** It is nullable now only so the web build stays green in the task that
+  re-keys the database.
+  """
+  vendorCart(vendorId: ID, locationId: ID): Cart!
+
+  """
+  Every cart the caller owns, across every location.
+
+  Whole-account on purpose, like `inventoryLogs`. The shopping page shows each
+  vendor's "last purchased" and the export path needs every location's carts or
+  the backup loses rows. Each row's location is recoverable from its id.
+  """
   allCarts: [Cart!]!
+
+  "Items in one cart. The cart id names the location, and the caller needs the `viewer` role on it."
   cartItems(cartId: ID!): [CartItem!]!
+
+  "How many carts hold this item, across every location. Answers \"is this item in any cart\"."
   cartItemCountByItem(itemId: ID!): Int!
+
+  "Every cart item the caller owns, across every location. The snapshot path, not a screen."
   allCartItems: [CartItem!]!
 }
 
 extend type Mutation {
+  "Add an item to a cart. The cart id names the location, and the caller needs the `member` role on it."
   addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
+
+  "Change one cart item's quantity. `id` is a CartItem id; its location comes from the row's own cartId."
   updateCartItem(id: ID!, quantity: Int!): CartItem!
+
+  "Delete one cart item. `id` is a CartItem id; its location comes from the row's own cartId."
   removeFromCart(id: ID!): Boolean!
+
+  """
+  Buy everything in the cart with a quantity above zero.
+
+  The cart id names the location and is authorized against it. The stock and
+  inventory-log writes still target the caller's DEFAULT location — PR 3b Task 3
+  moves them onto the cart's own location.
+  """
   checkout(cartId: ID!, note: String, logKey: String, logParams: JSON): Cart!
+
+  "Empty one cart, pinned items included. The cart id names the location."
   abandonCart(cartId: ID!): Cart!
 }

@@ -24,6 +24,8 @@ vi.mock('../lib/prisma.js', async () => {
       cart: {
         upsert: vi.fn(),
         delete: vi.fn(),
+        deleteMany: vi.fn(),
+        findMany: vi.fn(),
       },
       cartItem: {
         deleteMany: vi.fn(),
@@ -50,6 +52,8 @@ const mockPrisma = prisma as unknown as {
   cart: {
     upsert: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
+    deleteMany: ReturnType<typeof vi.fn>
+    findMany: ReturnType<typeof vi.fn>
   }
   cartItem: {
     deleteMany: ReturnType<typeof vi.fn>
@@ -125,10 +129,12 @@ describe('Vendor resolvers', () => {
     // caller's DEFAULT location. LOC_DEFAULT is not first in seedLocations and
     // LOC_STRANGER belongs to another user, so this fails both for a resolver
     // taking the first location and for one ignoring userId.
-    // PR 3b re-keys this cart to `${locationId}:${vendorId}`.
+    //
+    // The id is `${locationId}:${vendorId}` since PR 3b. A bare 'v_1' here is
+    // an id the migration's guard forbids.
     expect(mockPrisma.cart.upsert).toHaveBeenCalledWith({
-      where: { id: 'v_1' },
-      create: { id: 'v_1', userId: 'user_test123', locationId: LOC_DEFAULT },
+      where: { id: `${LOC_DEFAULT}:v_1` },
+      create: { id: `${LOC_DEFAULT}:v_1`, userId: 'user_test123', locationId: LOC_DEFAULT },
       update: {},
     })
   })
@@ -183,13 +189,23 @@ describe('Vendor resolvers', () => {
     expect(result?.errors?.[0]?.extensions?.code).toBe('NOT_FOUND')
   })
 
-  it('user can delete a vendor', async () => {
-    // Given Prisma operations succeed (ItemVendor rows cascade automatically)
+  it('user can delete a vendor — its cart in EVERY location goes with it', async () => {
+    // Given the vendor has a cart in two locations, and the caller also holds a
+    // cart for a DIFFERENT vendor in one of them plus their own no-vendor cart.
+    // Two locations, not one: with a single location "delete this vendor's
+    // carts" and "delete the one cart whose id ends in the vendor id" are the
+    // same set, so a resolver that handled only one location would still pass.
+    mockPrisma.cart.findMany.mockResolvedValue([
+      { id: `${LOC_DEFAULT}:v_1` },
+      { id: `${LOC_OTHER}:v_1` },
+      { id: `${LOC_DEFAULT}:v_2` },
+      { id: `${LOC_DEFAULT}:no-vendor` },
+    ])
     mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
-    mockPrisma.cart.delete.mockResolvedValue({ id: 'v_1' })
+    mockPrisma.cart.deleteMany.mockResolvedValue({ count: 2 })
     mockPrisma.vendor.delete.mockResolvedValue({ id: 'v_1' })
 
-    // When deleting a vendor
+    // When deleting the vendor
     const result = await execOp(
       `mutation DeleteVendor($id: ID!) { deleteVendor(id: $id) }`,
       { id: 'v_1' },
@@ -197,12 +213,52 @@ describe('Vendor resolvers', () => {
 
     // Then true is returned
     expect(result?.data?.deleteVendor).toBe(true)
-    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'v_1' } })
+
+    // And BOTH of that vendor's carts are deleted, in both locations
+    const expectedIds = [`${LOC_DEFAULT}:v_1`, `${LOC_OTHER}:v_1`]
+    expect(mockPrisma.cartItem.deleteMany).toHaveBeenCalledWith({
+      where: { cartId: { in: expectedIds } },
+    })
+    expect(mockPrisma.cart.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: expectedIds } },
+    })
+
+    // And the other vendor's cart and the no-vendor cart are NOT touched
+    const deletedIds = mockPrisma.cart.deleteMany.mock.calls[0][0].where.id.in as string[]
+    expect(deletedIds).not.toContain(`${LOC_DEFAULT}:v_2`)
+    expect(deletedIds).not.toContain(`${LOC_DEFAULT}:no-vendor`)
+
     expect(mockPrisma.vendor.delete).toHaveBeenCalledWith({ where: { id: 'v_1' } })
+  })
+
+  it("deleting a vendor whose id contains ':' still finds its carts", async () => {
+    // Given a vendor id that itself contains a colon. parseCartId splits on the
+    // FIRST colon only, so `${locationId}:weird:vendor` parses back to the whole
+    // vendor id. A resolver matching with endsWith or split(':')[1] fails here.
+    mockPrisma.cart.findMany.mockResolvedValue([
+      { id: `${LOC_DEFAULT}:weird:vendor` },
+      { id: `${LOC_DEFAULT}:vendor` },
+    ])
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 0 })
+    mockPrisma.cart.deleteMany.mockResolvedValue({ count: 1 })
+    mockPrisma.vendor.delete.mockResolvedValue({ id: 'weird:vendor' })
+
+    // When deleting that vendor
+    const result = await execOp(
+      `mutation DeleteVendor($id: ID!) { deleteVendor(id: $id) }`,
+      { id: 'weird:vendor' },
+    )
+
+    // Then only its own cart is deleted
+    expect(result?.data?.deleteVendor).toBe(true)
+    expect(mockPrisma.cart.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [`${LOC_DEFAULT}:weird:vendor`] } },
+    })
   })
 
   it('returns false when deleting a non-existent vendor', async () => {
     // Given Prisma throws on delete
+    mockPrisma.cart.findMany.mockResolvedValue([])
     mockPrisma.vendor.delete.mockRejectedValue(new Error('Record not found'))
 
     // When deleting a non-existent vendor
