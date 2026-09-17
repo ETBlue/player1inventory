@@ -378,6 +378,48 @@ Tell the user to delete the Neon branch afterwards.
 
 ---
 
+### Task 5 result — run 2026-09-18. PASSED.
+
+The env override was proved first: `prisma migrate status` with and without it
+reported **different hosts**. Both migrations then applied to the copy —
+`20260916000000` (PR 3a) and `20260917000000` (this PR), because production has
+not been deployed yet. That is realistic; it is what the real deploy does.
+
+**The hashes moved where they should.** This is the opposite of PR 3a, where the
+proof was that nothing changed.
+
+| Set | Rows | Before | After | Expected |
+|---|---|---|---|---|
+| `Cart.id` | 37 | `2f459450498737da` | `a95da980bc85c0b3` | **changed** — re-keyed |
+| `CartItem.cartId` | 13 | `d8fa5adb55a18fd7` | `ef345b98ff1f8625` | **changed** — repointed |
+| `CartItem.id` | 13 | `d321211b1b04b290` | `d321211b1b04b290` | **unchanged** — rows move, not recreated |
+
+The third row matters most. A changed `CartItem.id` would mean the migration
+deletes and recreates rows rather than updating them, which loses anything not
+explicitly copied.
+
+Cart shapes went from `1` literal `'no-vendor'` and `0` with a colon, to `0` and
+`37`. Counts unchanged: 37 carts, 13 cart items, 173 items, 1374 logs.
+
+| Assertion | Result |
+|---|---|
+| `Cart.id` values without a colon | 0 |
+| Rows still under the literal `'no-vendor'` | 0 |
+| `CartItem` pointing at a missing `Cart` | 0 |
+| `Cart.id` not equal to `locationId:original` | 0 |
+| **Cart ids with a doubled location prefix** | 0 |
+
+The doubled-prefix check exists because the design's original SQL would have
+produced exactly that on the carts phase A creates. Task 1 caught it in review;
+this confirms the fix against real data.
+
+**What it does not prove.** Two assertions cannot fail — the cross-user ones,
+because production has one user. And **phase A did no work at all**: zero accounts
+had items on the shared row. So this rehearsal covers the **re-key** at real scale
+and says nothing about the **split**. The split is covered only by the 13-user
+fixture in `verify:migration`, where user-l's two items moving into their own new
+cart is the assertion that proves it ran.
+
 ## Task 6 — Docs, runbook, gate, full E2E
 
 **Step 6.1. The deploy runbook.** A new doc, or a section in the status doc.
