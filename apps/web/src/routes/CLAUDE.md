@@ -14,7 +14,9 @@ The **item detail Stock tab** is the deliberate exception: it pages across **all
 
 **Cloud mode has locations (PR 2).** `Location` and `ItemStock` gained a Prisma + GraphQL backend in cloud-locations PR 1, and PR 2 moved the web client onto them: `useLocations` is dual-mode, `useItems`/`useStockedItems` read `PantryData($locationId)` and join through the same `joinItemStock` local mode calls, and `useAddItemToLocation` / `useRemoveItemFromLocation` send their cloud mutations instead of throwing. **Every `isCloud` stock bypass in the item/pantry path is deleted**, not ported — `useShowStock`, `useItemSearchTail`, `useItemSearchTailWiring` and `NewItemDialog` carry no mode branch at all any more.
 
-**What is still bypassed in cloud, and why (all PR 3):** shopping carts and cooking. A cloud `Cart` has no `locationId` and its id is still bare (`vendorId | 'no-vendor'`), and `consumeRecipes` still writes the caller's *default* location's stock, so those pages keep their global behaviour and their `isCloud` terms. The reason is the **cart and the consumption path**, never "cloud items have no `stockId`" — they carry one since PR 2, and any comment still saying otherwise is stale. Cloud inventory logs are likewise not location-scoped until PR 3, and there is no cloud `applyUnitSwitch` mutation, so the Info tab's unit switch stays sequential and converts no per-location quantities there.
+**Shopping and cooking are location-scoped in cloud too (PR 3b).** They were the last `isCloud` bypasses. A cloud `Cart` now has a `locationId` column (PR 3a) and its id is `${locationId}:${vendorId | 'no-vendor'}` (PR 3b Task 1), `checkout` writes the cart's own location (Task 3), and `ConsumeRecipesInput.locationId` is `ID!` (Tasks 3 and 4). So `useVendorCartCounts()`, `isUnstockedHere` in `shopping/index.tsx`, `isRecipeUnstockedHere` and `availableItemIds` in `cooking.tsx`, and the stocked-here gate in `shopping/$vendorId.tsx` all carry **no mode branch** any more. The reason they ever did was the **cart and the consumption path**, never "cloud items have no `stockId`" — they have carried one since PR 2.
+
+**What is still missing in cloud:** there is no cloud `applyUnitSwitch` mutation, so the Info tab's unit switch stays sequential and converts no per-location quantities there.
 
 **Multi-row writes must become atomic in cloud too — still outstanding.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side transaction, not a sequence of Apollo calls. The item unit switch is the live example — see `items/CLAUDE.md`.
 
@@ -34,7 +36,7 @@ The pantry home page (`src/routes/index.tsx`) supports two display modes and thr
 
 The partition runs **after** the existing sort, as two `.filter` passes, so order is preserved *within* each half and never overridden by a stocked-ness primary key — the shelf `order` sort in particular.
 
-The predicate is simply `getItemCount(…) === 0` — **no `stockId` guard and no cloud bypass belong here.** These views read `useStockedItems()`, which is location-scoped in **both** modes since PR 2 (cloud derives it from `PantryData`, filtered to the items with a row in this location), so an empty group *is* the signal. This is the opposite of shopping and cooking, which read `useItems()` and therefore do need an explicit `stockId` check — and which still keep an `isCloud` bypass, not because cloud items lack a `stockId` (they carry one since PR 2) but because a cloud `Cart` has no `locationId` and `consumeRecipes` still writes the caller's default location, both until PR 3. (`ShelfGroupView` partitions on `getShelfItems(id).length`, which its `getItemCount` now delegates to — a selection shelf's raw `itemIds` is location-blind and counted items stocked elsewhere.)
+The predicate is simply `getItemCount(…) === 0` — **no `stockId` guard and no cloud bypass belong here.** These views read `useStockedItems()`, which is location-scoped in **both** modes since PR 2 (cloud derives it from `PantryData`, filtered to the items with a row in this location), so an empty group *is* the signal. Shopping and cooking differ only in that they read `useItems()` and therefore do need an explicit `stockId` check; their `isCloud` bypasses are gone as of PR 3b. (`ShelfGroupView` partitions on `getShelfItems(id).length`, which its `getItemCount` now delegates to — a selection shelf's raw `itemIds` is location-blind and counted items stocked elsewhere.)
 
 The unfiled pseudo-cards split sink from hide:
 
@@ -159,7 +161,7 @@ Two-level route structure (mirrors `items/` pattern):
 
 **`'no-vendor'` sentinel:** The URL segment `no-vendor` maps to `vendorId: null` in the database. Items with no vendors assigned appear exclusively in the no-vendor cart.
 
-**Active-location scoping (PR D):** carts are per **(location × vendor)**, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId` and carries it in its query key, so switching location swaps the whole set of carts. Checkout consumes from the **active location's** `ItemStock` and stamps its `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` (`bootstrapCarts(locationId)`) whenever the active location changes; `getCart` is a pure read.
+**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud; `getCart` is a pure read.
 
 ---
 
@@ -168,7 +170,7 @@ Two-level route structure (mirrors `items/` pattern):
 Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownMenu + direction toggle in the top toolbar.
 
 **Sort options** (persisted in `?sort` + `?dir` URL params):
-- `'recent'` (default desc): sorted by each vendor cart's `lastPurchasedAt` (stamped on checkout), via `useLastPurchasedByVendor()` — vendors never checked out sort to the bottom (`?? 0`). **That hook is dual-mode.** Local mode reads Dexie's carts for the active location and keys the map by `parseCartId`'s `vendorId`. Cloud mode derives the map from the same `AllCarts` Apollo query `useAllActiveCarts()` already runs — no extra round trip, and `useCheckout()`'s `refetchQueries` already lists `AllCartsDocument`, so a cloud checkout re-sorts the list without any invalidation of its own. **Cloud cart ids are bare** (`'no-vendor'` / `<vendorId>`), so the cloud branch keys on `cart.id` directly and maps `'no-vendor'` → `null` — running `parseCartId` (or prefixing the active location) there yields keys no vendor id matches, and the comparator silently degrades to a no-op
+- `'recent'` (default desc): sorted by each vendor cart's `lastPurchasedAt` (stamped on checkout), via `useLastPurchasedByVendor()` — vendors never checked out sort to the bottom (`?? 0`). **That hook is dual-mode and both branches now do the same thing.** Local mode reads Dexie's carts for the active location and keys the map by `parseCartId`'s `vendorId`. Cloud mode derives the map from the same `AllCarts` Apollo query `useAllActiveCarts()` already runs — no extra round trip, and `useCheckout()`'s `refetchQueries` already lists `AllCartsDocument`, so a cloud checkout re-sorts the list without any invalidation of its own — then drops the carts at other locations and keys by `parseCartId`'s `vendorId` too. **Cloud cart ids stopped being bare in PR 3b**; the note that used to sit here, saying `parseCartId` must not be used on them, was true before the re-key and false after it
 - `'alpha'`: alphabetical by vendor name
 - `'count'`: total available items descending, scoped to the active location (matches the card's displayed count — see `useVendorCartCounts()` below)
 
@@ -176,11 +178,11 @@ Shows all vendors as clickable `VendorCartCard` cards. Includes a sort DropdownM
 
 **Groups with nothing stocked here sink below a divider (they are never hidden).** A vendor whose `useVendorCartCounts()` count is 0 — nothing stocked in the active location — still renders, but below a `ListSectionDivider` labelled `common.notStockedHere` ("N not stocked here"), together with the no-vendor bucket when that one sinks too. This is the same rule the three pantry group views apply, and it replaces the earlier "hide at zero" behaviour: a vendor that vanished gave no way to tell "empty *here*" from "gone". Interactivity is unchanged — the card still opens its cart, which is the path to adding items at this location.
 
-The partition runs **after** the sort, as two `.filter` passes, so the chosen sort (`recent` / `alpha` / `count` × direction) is preserved *within* each section and never overridden by a stocked-ness primary key. **Cloud mode skips the partition entirely** (`!isCloud && …`) until PR 3: `useVendorCartCounts()` keeps a global tally there because a cloud `Cart` has no `locationId`, so partitioning would split on a number that is not location-scoped. Every cloud vendor renders in the top section with no divider.
+The partition runs **after** the sort, as two `.filter` passes, so the chosen sort (`recent` / `alpha` / `count` × direction) is preserved *within* each section and never overridden by a stocked-ness primary key. **It runs in cloud too since PR 3b.** Cloud used to skip it (`!isCloud && …`) because `useVendorCartCounts()` kept a global tally there, a cloud `Cart` having no `locationId`; both are fixed, and the E2E case that proves it (`e2e/tests/location-not-stocked-here.spec.ts`) no longer carries a cloud `test.skip`.
 
 **Data:** `useAllActiveCarts()` + `useQueries` fan-out for per-cart item stats + `useVendorCartCounts()` (see `apps/web/src/hooks/CLAUDE.md`) + `useVendors()` + `useItems()`.
 
-**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** (cloud bypasses the location gate — see the hook's doc comment). This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug. The same divergence carries into the partition above: cloud keeps a global tally until PR 3 gives `Cart` a `locationId`, so no vendor sinks and a cloud user never loses a vendor they can still shop.
+**Location-scoped vs global counts (deliberate divergence):** the `VendorCartCard`'s item count and `inactiveCount` badge come from `useVendorCartCounts()`, which scopes to items stocked in the **active location** in both modes. This is intentionally different from `/settings/vendors`, whose vendor item counts still use `useVendorItemCounts()` and stay **global** (location-unaware), because vendor management is location-independent. If the two pages appear to show different counts for the same vendor, that is expected, not a bug.
 
 **Files:**
 - `src/routes/shopping.tsx` — layout (4 lines)
@@ -219,19 +221,15 @@ Row 2 (ItemListToolbar):
   indistinguishable from a genuinely inactive item unless `stockId` is checked first. This
   keeps the page in sync with the `VendorCartCard`'s count (`useVendorCartCounts()`) and
   the pantry (`getStockedItems`), both of which already exclude not-stocked-here items.
-  Cloud bypasses this gate until PR 3 — because of the **cart**, not the item. A cloud
-  item does carry a `stockId` since PR 2 (`useItems()` joins `PantryData` per location),
-  but a cloud `Cart` has no `locationId` until PR 3, so this page's cart still holds
-  items stocked in other locations and gating the list would hide rows the cart
-  genuinely contains. Matches the same bypass in `useVendorCartCounts()` and the
-  `/shopping` index page.
-- **Active/inactive split (R4):** local mode classifies items with `isInactiveHere` (not
+  **Both modes since PR 3b.** Cloud used to bypass this gate because of the **cart**,
+  not the item: a cloud `Cart` had no `locationId`, so this page's cart held items
+  stocked in other locations and gating the list would have hidden rows the cart
+  genuinely contained. PR 3a added the column and PR 3b re-keyed `Cart.id`.
+- **Active/inactive split (R4):** both modes classify items with `isInactiveHere` (not
   a bare `isInactive`) — since `vendorScopedItems` is already stocked-here-filtered above,
   `isInactiveHere`'s `stockId` check is a no-op here, but reusing it keeps the predicate
-  consistent with the card and the pantry. Cloud mode keeps the bare `isInactive` split
-  because *its* list is not stocked-here-filtered (see the gate above), so
-  `isInactiveHere`'s `stockId` check would read a genuinely inactive item stocked
-  elsewhere as active.
+  consistent with the card and the pantry. Cloud used to take the bare `isInactive` split,
+  because *its* list was not stocked-here-filtered while the cart had no location.
 
 **Cart:** `useVendorCart(cartVendorId)` — a pure read of the `(active location × vendor)` cart. The cart itself is pre-created by `ActiveLocationProvider`'s `bootstrapCarts`, not lazily on visit.
 
@@ -314,9 +312,9 @@ Row 3:            [A / T here · N empty · N low stock]
 
 **Fully unavailable recipes are disabled.** When `availableRecipeItems.length === 0` (nothing in the recipe is stocked in the active location) the recipe `Checkbox` is `disabled` and the card is dimmed `opacity-80`, matching how `ItemCard` dims an inactive item. Before this the checkbox looked enabled but was inert — `handleToggleRecipeCheckbox` computed an empty `effectiveItemIds` set and did nothing. The chevron and the name link stay live so the user can still open the recipe and see *why* it is unavailable, and the checkbox's `aria-describedby` gives non-visual users the same reason (see Row 3 above). A recipe with no items at all falls into the same branch, which is correct: it has nothing to consume either.
 
-**…and sink below a divider.** The recipe list is partitioned the same way the shopping vendor list is: recipes with something stocked here first, then a `ListSectionDivider` labelled `common.notStockedHere`, then the rest. Visibility/order and interactivity are **independent axes** — a sunk recipe is still `disabled`, still dimmed, and still carries its `aria-describedby` wiring; only its position changes. The partition runs after the sort as two `.filter` passes (order preserved within each section) and is skipped entirely in cloud mode until PR 3 — see the cloud note below.
+**…and sink below a divider.** The recipe list is partitioned the same way the shopping vendor list is: recipes with something stocked here first, then a `ListSectionDivider` labelled `common.notStockedHere`, then the rest. Visibility/order and interactivity are **independent axes** — a sunk recipe is still `disabled`, still dimmed, and still carries its `aria-describedby` wiring; only its position changes. The partition runs after the sort as two `.filter` passes (order preserved within each section), in both data modes since PR 3b — see the cloud note below.
 
-**Cloud mode bypasses the location gate until PR 3 — for the consumption path, not the items.** Cloud items *do* carry a `stockId` since PR 2, so the gate would work; but `consumeRecipes` still writes the caller's **default** location's stock (the PR-2 dual-write in `apps/server/src/lib/stockDualWrite.ts`), so cooking would consume from a location this list was not scoped to. `availableItemIds` is therefore built from **all** items in cloud — every recipe item stays checkable and consumable, preserving pre-split cloud behaviour. PR 3 gives consumption its own location and the bypass goes with it. The Row 3 status line follows from the same set: a cloud recipe always reads `T / T here` and is never disabled, with health computed off the inline stock. Covered by `src/routes/cooking.cloud.test.tsx`.
+**Cloud mode runs the same location gate since PR 3b.** It used to bypass it — for the consumption path, not the items: cloud items have carried a `stockId` since PR 2, but `consumeRecipes` wrote the caller's **default** location's stock, so cooking would have consumed from a location this list was not scoped to. PR 3b Task 3 added `ConsumeRecipesInput.locationId` and Task 4 made it required and had the client send the active location, so `availableItemIds` is built from `items.filter(isStockedHere)` in both modes and a cloud recipe with nothing stocked here is disabled and sinks below the divider exactly as a local one does. Covered by `src/routes/cooking.cloud.test.tsx` and the cloud half of `e2e/tests/location-not-stocked-here.spec.ts`.
 
 **`ItemCard` in cooking mode:**
 - `showTags={false}` hides tags, vendors, and recipe badges

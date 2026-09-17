@@ -190,8 +190,11 @@ export function useDeleteLocation() {
 
   // The server cascade matches the local one, but Apollo has no prefix-keyed
   // invalidation to mirror those five keys with — it refetches named queries.
-  // Only `GetLocations` is refetched. Cloud carts and inventory logs are not
-  // location-scoped until PR 3, so the cascade cannot touch them.
+  // Only `GetLocations` is refetched. The server cascade DOES take the
+  // location's carts and inventory logs — `Cart.locationId` and
+  // `InventoryLog.locationId` both carry `onDelete: Cascade` since PR 3a — so
+  // `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows that are
+  // already gone. Adding them to this refetch list is an open gap.
   //
   // `PantryData` and `ItemStocksForItem` DO exist since Task 7 of this PR and
   // ARE invalidated by the cascade, but are deliberately left out: the only
