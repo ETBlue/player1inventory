@@ -11,6 +11,7 @@ import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useIsOffline } from '@/hooks/useIsOffline'
 import { useItems } from '@/hooks/useItems'
 import { useLanguage } from '@/hooks/useLanguage'
@@ -18,13 +19,7 @@ import { useNavigationTracker } from '@/hooks/useNavigationTracker'
 import { useServiceWorkerUpdate } from '@/hooks/useServiceWorkerUpdate'
 import { useTags } from '@/hooks/useTags'
 import { useVendors } from '@/hooks/useVendors'
-import { DATA_MODE_STORAGE_KEY } from '@/lib/dataMode'
 import { shouldRedirectToOnboarding } from './shouldRedirectToOnboarding'
-
-// Read mode once at module load — stable for this page lifetime
-const mode = (localStorage.getItem(DATA_MODE_STORAGE_KEY) ?? 'local') as
-  | 'local'
-  | 'cloud'
 
 // E2E test mode: VITE_E2E_TEST_USER_ID bypasses Clerk, so CloudAuthGuard
 // must not mount (it calls useAuth() which requires ClerkProvider context).
@@ -59,6 +54,7 @@ function RootComponent() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const offline = useIsOffline()
+  const { mode } = useDataMode()
   const itemsResult = useItems()
   const tagsResult = useTags()
   const vendorsResult = useVendors()
@@ -91,7 +87,7 @@ function RootComponent() {
     ) {
       navigate({ to: '/onboarding' })
     }
-  }, [allLoaded, isEmpty, pathname, navigate, offline])
+  }, [allLoaded, isEmpty, pathname, navigate, offline, mode])
 
   return (
     <ActiveLocationProvider>
