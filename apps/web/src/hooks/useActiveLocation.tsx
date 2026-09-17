@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { bootstrapCarts, getLocations } from '@/db/operations'
@@ -217,19 +218,43 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   // is NOT refetched — that query creates its own cart when it is missing, so
   // the cart page is already correct without this mutation.
   //
+  // ── WHY THE REF, AND WHY A BOOLEAN IN THE DEPS ──
+  //
+  // This effect MUST NOT re-run on every render. `useLocations()` maps its
+  // cloud result through `deserializeLocation`, so `locations` is a NEW ARRAY
+  // on every render even when the data has not changed. Putting it in the
+  // dependency list makes: effect -> mutation -> `AllCarts` refetch -> render
+  // -> new `locations` identity -> effect ... an endless loop of writes. Cloud
+  // E2E caught it as `/shopping` never reaching `networkidle`.
+  //
+  // So the list holds a BOOLEAN derived from the list, and `bootstrappedRef`
+  // records what has already been done. `bootstrapCarts` is idempotent, so a
+  // repeat is harmless on the server; the loop is what is not.
+  //
   // No `cancelled` flag, unlike the local effect above: there is no follow-up
-  // step here to skip. Apollo owns the refetch, and a location switch while
-  // this is in flight simply runs the mutation again for the new location.
+  // step here to skip. Apollo owns the refetch.
+  const activeLocationIsKnown = !!locations?.some(
+    (loc) => loc.id === activeLocationId,
+  )
+  const bootstrappedRef = useRef<string | null>(null)
   useEffect(() => {
     if (mode !== 'cloud') return
-    if (!locations?.some((loc) => loc.id === activeLocationId)) return
+    // A fresh cloud session still holds the `'local'` sentinel, which names no
+    // cloud `Location`; `bootstrapCarts` asks for the `member` role on it, so
+    // an ungated call is refused with FORBIDDEN and the carts are never made.
+    // The validation effect above corrects the id, and this effect then runs
+    // again with a real one.
+    if (!activeLocationIsKnown) return
+    const key = `${mode}:${activeLocationId}`
+    if (bootstrappedRef.current === key) return
+    bootstrappedRef.current = key
     cloudBootstrapCarts({
       variables: { locationId: activeLocationId },
       refetchQueries: ['AllCarts'],
     }).catch((err) => {
       console.error('cloud bootstrapCarts failed', err)
     })
-  }, [mode, activeLocationId, locations, cloudBootstrapCarts])
+  }, [mode, activeLocationId, activeLocationIsKnown, cloudBootstrapCarts])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),

@@ -336,6 +336,41 @@ describe('the active-location effect bootstraps that location carts', () => {
     expect(recordedBootstraps).toContain(LOC_B)
   })
 
+  it('the bootstrap runs ONCE per location, not on every render', async () => {
+    // Given the Kitchen is active
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+
+    const { result } = renderHook(
+      () => ({ carts: useAllActiveCarts(), active: useActiveLocation() }),
+      { wrapper: makeWrapper() },
+    )
+    await waitFor(() => expect(recordedBootstraps).toContain(LOC_A))
+
+    // When the tree settles and several more render passes go by
+    await waitFor(() =>
+      expect(result.current.carts.data.length).toBeGreaterThan(0),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Then the mutation ran exactly once.
+    //
+    // This is the real regression. `useLocations()` maps its cloud result, so
+    // `locations` is a NEW ARRAY every render; with it in the effect's
+    // dependency list the sequence is mutation -> `AllCarts` refetch -> render
+    // -> new identity -> mutation, forever. It is invisible in an assertion
+    // that only checks the mutation happened, and cloud E2E caught it as
+    // `/shopping` never reaching `networkidle`.
+    expect(recordedBootstraps.filter((id) => id === LOC_A)).toHaveLength(1)
+
+    // And switching location bootstraps the NEW one, exactly once
+    await act(async () => {
+      result.current.active.setActiveLocationId(LOC_B)
+    })
+    await waitFor(() => expect(recordedBootstraps).toContain(LOC_B))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(recordedBootstraps.filter((id) => id === LOC_B)).toHaveLength(1)
+  })
+
   it('the bootstrap names the location, never the local sentinel', async () => {
     // Given a FRESH cloud session — no `active-location-id:cloud` slot, so the
     // active id is the `'local'` sentinel until `GetLocations` resolves
