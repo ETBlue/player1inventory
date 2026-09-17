@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react'
 import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 import * as stories from './cooking.stories'
 
 // cooking.stories uses Dexie (fake-indexeddb/auto handles this in test setup)
@@ -10,6 +11,7 @@ import * as stories from './cooking.stories'
 const {
   Default,
   WithRecipes,
+  Offline,
   WithCheckedRecipe,
   WithExpandedRecipe,
   WithActiveToolbar,
@@ -42,6 +44,34 @@ describe('Cooking stories smoke tests', () => {
     expect(
       await screen.findByRole('button', { name: /done/i }),
     ).toBeInTheDocument()
+  })
+
+  describe('Offline', () => {
+    // Storybook runs this story's own `beforeEach` field when opened for
+    // real; `composeStories` + `render()` here does not, so setup/cleanup is
+    // repeated directly — see index.stories.test.tsx for the same pattern.
+    let cleanup: () => void
+
+    beforeEach(() => {
+      cleanup = setupOfflineStory()
+    })
+
+    afterEach(() => {
+      cleanup()
+    })
+
+    it('shows the OfflineBanner with the seeded sync time', async () => {
+      render(<Offline />)
+      const banner = await screen.findByRole('status')
+      expect(banner).toHaveTextContent(/offline/i)
+      expect(banner).toHaveTextContent(/hours ago/i)
+    })
+
+    it('does not open PostLoginMigrationDialog on top of the page', async () => {
+      render(<Offline />)
+      await screen.findByRole('status')
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
   })
 
   it('WithSearch renders without error', async () => {

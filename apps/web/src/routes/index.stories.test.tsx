@@ -1,11 +1,13 @@
 import { composeStories } from '@storybook/react'
 import { render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 import * as stories from './index.stories'
 
 const {
   Default,
   WithItems,
+  Offline,
   WithSearchTail,
   ShelfGroupView,
   VendorGroupView,
@@ -50,6 +52,41 @@ describe('Pantry index stories smoke tests', () => {
   it('WithItems renders seeded items', async () => {
     render(<WithItems />)
     expect(await screen.findByText(/milk/i)).toBeInTheDocument()
+  })
+
+  describe('Offline', () => {
+    // Storybook runs this story's own `beforeEach` field when the story is
+    // opened for real, but `composeStories` + `render()` here does not — so
+    // the setup/cleanup is repeated directly, the same way
+    // PostLoginMigrationDialog's smoke test repeats its story's `beforeEach`.
+    let cleanup: () => void
+
+    beforeEach(() => {
+      cleanup = setupOfflineStory()
+    })
+
+    afterEach(() => {
+      cleanup()
+    })
+
+    it('shows the OfflineBanner with the seeded sync time', async () => {
+      render(<Offline />)
+      const banner = await screen.findByRole('status')
+      expect(banner).toHaveTextContent(/offline/i)
+      expect(banner).toHaveTextContent(/hours ago/i)
+    })
+
+    it('does not open PostLoginMigrationDialog on top of the page', async () => {
+      render(<Offline />)
+      await screen.findByRole('status')
+      // Local Dexie has seeded items and cloud mode is on, which is exactly
+      // what makes PostLoginMigrationDialog decide there is data to migrate
+      // — MIGRATION_PROMPTED_KEY (set by setupOfflineStory) is what stops it
+      // opening on top of the page. Confirmed by a mutation check: removing
+      // that key from the helper makes this assertion fail with the dialog's
+      // "Import local data to cloud?" title present.
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
   })
 
   it('WithSearchTail shows the not-stocked-here section for a search match', async () => {
