@@ -81,6 +81,38 @@ Order inside phase 4 matters: `SET NOT NULL` first, then the FK, then the index.
 nullable column is legal but says less, and building the index last means it is built once,
 over final data.
 
+## Re-keying a primary key
+
+`20260917000000_rekey_cart_to_location_vendor` rewrote `Cart.id` from the bare vendor id to
+`${locationId}:${vendorId | 'no-vendor'}`. Four rules came out of it.
+
+**1. Update the child table first, while it can still join on the OLD id.** The FK is
+`ON UPDATE CASCADE`, so it must be dropped first or the child update sets a value that does
+not exist yet and fails immediately. The order is: drop the FK, `UPDATE "CartItem"`,
+`UPDATE "Cart"`, guard, add the FK back with **exactly** the clauses the original migration
+declared, or `prisma migrate diff` reports drift against `schema.prisma`.
+
+**2. Any row the migration itself creates must be excluded from the re-key.** That file's
+phase A inserts carts whose ids are already in the new shape. Without a clause skipping them
+the re-key ran twice over them and produced `loc:loc:no-vendor`. Write the exclusion as an
+**exact** predicate (`"id" = "locationId" || ':no-vendor'`), never as a guess about the shape
+(`"id" NOT LIKE '%:%'`) — a vendor id containing `':'` would be skipped by the guess and left
+un-re-keyed.
+
+**3. Guard on three things, not one.** Every id has the separator; every id starts with its
+**own** `locationId`; every child row still names a parent. The second check is the one that
+catches a doubled prefix, which a `startsWith` test cannot see. The third catches the parent
+being updated before the child — without it that mistake surfaces as Postgres `23503`, which
+names the constraint and nothing else.
+
+**4. A re-key cannot be deployed independently of the code that reads it.** Old server code
+looks the row up by the old id, finds nothing, and falls into its `create` branch. Whether
+that fails loudly or silently inserts a duplicate depends on which old code is running.
+**Write a deploy runbook before you deploy**, and take a database branch first, because a
+re-key has no `migrate down` — the rollback is a restore, and it loses every write made
+after the snapshot. The one for this migration is
+`docs/global/backend/2026-09-18-deploy-runbook-cart-rekey.md`.
+
 ## Defensive SQL
 
 For destructive operations whose target may not exist on every database, prefer the idempotent forms — `DROP COLUMN IF EXISTS`, `DROP INDEX IF EXISTS`, `DROP TABLE IF EXISTS`. They make a migration safe to replay across drifted databases without changing the end-state.
@@ -120,8 +152,9 @@ rather than assuming the script rotted.
 Four things about it that are easy to get wrong:
 
 - **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  today `20260830000000_add_location_and_item_stock` and
-  `20260916000000_add_location_to_log_and_cart`. **Add your new migration to that list.** A
+  today `20260830000000_add_location_and_item_stock`,
+  `20260916000000_add_location_to_log_and_cart` and
+  `20260917000000_rekey_cart_to_location_vendor`. **Add your new migration to that list.** A
   migration missing from it is not parked, so `migrate reset` replays it against a database
   that has not yet seen the migrations it depends on. Add assertions for it too: without new
   assertions the script re-proves the old migration and says nothing about yours.
