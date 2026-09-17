@@ -9,6 +9,12 @@ import { cloudCache, createCache } from './cloudCache'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
 import { offlineWriteLink } from './offlineWriteLink'
 
+// `createCache` moved to `./cloudCache` so `persistence.ts` can reset the cache
+// without importing this file, which would create an import cycle. It is
+// re-exported here because callers outside this folder import it from
+// `@/apollo/client`, which is where it used to live.
+export { createCache } from './cloudCache'
+
 /** How long to wait for Clerk before giving up, in milliseconds. */
 const TOKEN_TIMEOUT_MS = 3000
 
