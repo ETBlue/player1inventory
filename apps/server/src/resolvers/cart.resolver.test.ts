@@ -85,9 +85,15 @@ const mockPrisma = prisma as unknown as {
 const stockFake = mockPrisma.$stockFake
 
 // TWO locations for the checking-out user, plus one belonging to somebody
-// else. A single-location fixture cannot tell "writes the caller's DEFAULT
-// location" apart from "writes whatever location it finds first", which is the
-// only thing checkout's mirror actually promises in PR 2.
+// else — which is ALSO flagged isDefault. Two different assertions need this:
+//
+//   - `vendorCart` with no `locationId` falls back to the caller's DEFAULT
+//     location. One location cannot tell that apart from "whatever location it
+//     finds first", and the stranger's row is what makes "the caller's default"
+//     distinguishable from "the first default in the table".
+//   - Since PR 3b Task 3 `checkout` writes the location its CART id names. One
+//     location cannot tell that apart from "the caller's default location"
+//     either, so those tests use a cart at LOC_OTHER.
 const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
@@ -608,9 +614,9 @@ describe('checkout', () => {
 // browser on a stale bundle depends on until PR 5.
 
 describe('checkout dual-writes onto ItemStock', () => {
-  // The stock the checkout is topping up, in the DEFAULT location, plus a row
-  // for the same item in the user's OTHER location. Without that second row a
-  // mirror that wrote every location — or the wrong one — would be invisible.
+  // The stock the checkout is topping up, plus a row for the same item in the
+  // user's OTHER location and in a stranger's. Without those a mirror that
+  // wrote every location — or the wrong one — would be invisible.
   function seedStocks() {
     stockFake.reset(stockFake.state.locations, [
       makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 2 }),
@@ -625,9 +631,11 @@ describe('checkout dual-writes onto ItemStock', () => {
     )
   }
 
-  it('user checking out increments the DEFAULT location\'s stock, not every location', async () => {
+  it('user checking out increments ONE location\'s stock, not every location', async () => {
     // Given Milk is stocked in both of the user's locations, and in a third
-    // belonging to somebody else
+    // belonging to somebody else. The cart is the Kitchen's, so the Kitchen is
+    // where the mirror must land — see the group below for why the cart id, and
+    // not the caller's default location, is what decides that since Task 3.
     seedStocks()
     const buyItem = makeCartItem({ itemId: 'item_milk', quantity: 3 })
     mockPrisma.cartItem.findMany.mockResolvedValue([buyItem])
@@ -642,7 +650,7 @@ describe('checkout dual-writes onto ItemStock', () => {
       { cartId: `${LOC_DEFAULT}:no-vendor` },
     )
 
-    // Then only the default location's row moved: 2 + 3
+    // Then only the cart's location moved: 2 + 3
     expect(result?.errors).toBeUndefined()
     expect(stockAt(LOC_DEFAULT)?.packedQuantity).toBe(5)
     // And the user's other location is untouched — this is the assertion a
@@ -668,7 +676,7 @@ describe('checkout dual-writes onto ItemStock', () => {
       cartId: `${LOC_DEFAULT}:no-vendor`,
     })
 
-    // Then exactly one row exists, in the default location, opening at 4 —
+    // Then exactly one row exists, in the cart's location, opening at 4 —
     // an increment against a row that does not exist yet is the increment
     expect(stockFake.state.itemStocks).toHaveLength(1)
     expect(stockFake.state.itemStocks[0]).toMatchObject({
@@ -735,7 +743,8 @@ describe('checkout dual-writes onto ItemStock', () => {
 
     // The account opens its cart first. Since PR 3b a cart id names a location,
     // so this is now the ONLY way such an account can reach checkout at all:
-    // vendorCart calls ensureDefaultLocation, which creates the location.
+    // vendorCart calls ensureDefaultLocation, which creates the location, and
+    // checkout then reads that location back out of the cart id it is given.
     mockPrisma.cart.findUnique.mockResolvedValue(null)
     mockPrisma.cart.create.mockImplementation(
       async ({ data }: { data: { id: string } }) => makeCart({ id: data.id }),
@@ -770,6 +779,109 @@ describe('checkout dual-writes onto ItemStock', () => {
       itemId: 'item_milk',
       locationId: created?.id,
       packedQuantity: 2,
+    })
+  })
+})
+
+// ─── checkout: PR 3b Task 3, the CART's location ─────────────────────────────
+//
+// Every checkout test above uses a cart at `${LOC_DEFAULT}:...`, so "the cart's
+// location" and "the caller's default location" are the same string and neither
+// group can tell the two implementations apart. These use a cart at LOC_OTHER,
+// the caller's NON-default location, which is the only fixture that can.
+//
+// Before Task 3, checkout resolved its target with `defaultLocationId(userId)`
+// and a purchase made while viewing the Garage moved the Kitchen's stock and
+// logged against the Kitchen. That was the limitation PR 3a shipped.
+
+describe("checkout writes the CART's location, not the caller's default", () => {
+  function seedStocks() {
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 2 }),
+      makeStock({ id: 'st_other', itemId: 'item_milk', locationId: LOC_OTHER, packedQuantity: 40 }),
+      makeStock({ id: 'st_stranger', itemId: 'item_milk', locationId: LOC_STRANGER, packedQuantity: 99 }),
+    ])
+  }
+
+  function stockAt(locationId: string) {
+    return stockFake.state.itemStocks.find(
+      (s) => s.itemId === 'item_milk' && s.locationId === locationId,
+    )
+  }
+
+  function arrangeBuy(cartId: string) {
+    mockPrisma.cartItem.findMany.mockResolvedValue([
+      makeCartItem({ cartId, itemId: 'item_milk', quantity: 3 }),
+    ])
+    mockPrisma.item.update.mockResolvedValue({ packedQuantity: 5, unpackedQuantity: 0 })
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.cart.update.mockResolvedValue(makeCart({ id: cartId, lastPurchasedAt: now }))
+    mockPrisma.cartItem.deleteMany.mockResolvedValue({ count: 1 })
+  }
+
+  it("user checking out at their Garage moves the GARAGE's stock", async () => {
+    // Given Milk is stocked in both of the caller's locations and in a
+    // stranger's, and the cart being checked out is the GARAGE's
+    seedStocks()
+    const cartId = `${LOC_OTHER}:no-vendor`
+    arrangeBuy(cartId)
+
+    // When they buy 3 of it
+    const result = await execOp(
+      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
+      { cartId },
+    )
+
+    // Then the GARAGE's row moved: 40 + 3
+    expect(result?.errors).toBeUndefined()
+    expect(stockAt(LOC_OTHER)?.packedQuantity).toBe(43)
+
+    // And the Kitchen — the caller's DEFAULT location — is untouched. This is
+    // the assertion that goes red if checkout resolves the default location
+    // again instead of reading the cart id.
+    expect(stockAt(LOC_DEFAULT)?.packedQuantity).toBe(2)
+    // And so is the stranger's, whose location is ALSO flagged isDefault
+    expect(stockAt(LOC_STRANGER)?.packedQuantity).toBe(99)
+  })
+
+  it('user checking out at their Garage logs the purchase against the Garage', async () => {
+    // Given the same Garage cart
+    seedStocks()
+    const cartId = `${LOC_OTHER}:no-vendor`
+    arrangeBuy(cartId)
+
+    // When they check out
+    const result = await execOp(
+      `mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`,
+      { cartId },
+    )
+
+    // Then the inventory log names the Garage, not the Kitchen. The log row and
+    // the stock move it explains must never name different locations.
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ locationId: LOC_OTHER, itemId: 'item_milk', delta: 3 }),
+    })
+  })
+
+  it('a cart at the Kitchen still writes the Kitchen', async () => {
+    // Given the cart is the caller's DEFAULT location's — the ordinary case,
+    // kept so "reads the cart id" is not confused with "always picks the
+    // non-default location"
+    seedStocks()
+    const cartId = `${LOC_DEFAULT}:no-vendor`
+    arrangeBuy(cartId)
+
+    // When they check out
+    await execOp(`mutation Checkout($cartId: ID!) { checkout(cartId: $cartId) { id } }`, {
+      cartId,
+    })
+
+    // Then the Kitchen moved and the Garage did not
+    expect(stockAt(LOC_DEFAULT)?.packedQuantity).toBe(5)
+    expect(stockAt(LOC_OTHER)?.packedQuantity).toBe(40)
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ locationId: LOC_DEFAULT }),
     })
   })
 })

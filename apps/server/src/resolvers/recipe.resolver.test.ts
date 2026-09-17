@@ -97,8 +97,14 @@ let server: ApolloServer<Context>
 const ctx: Context = { userId: 'user_test123' }
 
 // TWO locations for the cooking user, plus one belonging to somebody else that
-// is ALSO flagged isDefault. A single-location fixture cannot tell "writes the
-// caller's default location" apart from "writes the first default it finds".
+// is ALSO flagged isDefault. Two different assertions need this:
+//
+//   - A cook that omits `locationId` falls back to the caller's DEFAULT
+//     location. One location cannot tell that apart from "the first default it
+//     finds", which is what the stranger's row rules out.
+//   - Since PR 3b Task 3 a cook that SENDS a `locationId` writes there. One
+//     location cannot tell that apart from the fallback either, so the last
+//     group below sends LOC_OTHER — the caller's non-default location.
 const LOC_DEFAULT = 'loc_kitchen'
 const LOC_OTHER = 'loc_garage'
 const LOC_STRANGER = 'loc_theirs'
@@ -363,10 +369,15 @@ describe('Recipe resolvers', () => {
 
 // ─── consumeRecipes ──────────────────────────────────────────────────────────
 //
-// Two groups, on purpose. The first pins the `Item` half of PR 2's dual-write,
-// the second the `ItemStock` half. Deleting either half must turn exactly one
-// group red — that pair is what "dual-write" means, and until PR 5 it is what
-// keeps a browser on a stale bundle working.
+// Three groups, on purpose. The first pins the `Item` half of PR 2's
+// dual-write, the second the `ItemStock` half. Deleting either half must turn
+// exactly one group red — that pair is what "dual-write" means, and until PR 5
+// it is what keeps a browser on a stale bundle working.
+//
+// The third group, at the bottom of this file, pins PR 3b Task 3: WHICH
+// location those writes land in. The first two groups cannot: they omit
+// `locationId`, so for them the cook's location and the caller's default
+// location are the same string.
 
 const CONSUME = `mutation Consume($input: ConsumeRecipesInput!) {
   consumeRecipes(input: $input) { allSucceeded itemResults { itemId success } }
@@ -381,11 +392,16 @@ function consumeInput(
     quantity: number
   }>,
   recipeIds: string[] = [],
+  // Omitted by default, which is a web client from before PR 3b Task 4. The
+  // server then falls back to the caller's default location — the behaviour the
+  // group above pins. Pass it to cook somewhere else.
+  locationId?: string,
 ) {
   return {
     occurredAt: '2026-03-01T12:00:00.000Z',
     recipeIds,
     items,
+    ...(locationId !== undefined ? { locationId } : {}),
   }
 }
 
@@ -436,7 +452,9 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
   })
 
   it('user cooking writes the DEFAULT location\'s stock and leaves the others alone', async () => {
-    // Given Milk stocked in both of the user's locations and in a stranger's
+    // Given Milk stocked in both of the user's locations and in a stranger's,
+    // and a cook that sends NO locationId — a web client from before PR 3b
+    // Task 4, which is the only case that still falls back to the default
     stockFake.reset(stockFake.state.locations, [
       makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 3, unpackedQuantity: 1 }),
       makeStock({ id: 'st_other', itemId: 'item_milk', locationId: LOC_OTHER, packedQuantity: 40, unpackedQuantity: 9 }),
@@ -513,6 +531,103 @@ describe('consumeRecipes dual-writes onto ItemStock', () => {
       locationId: created?.id,
       packedQuantity: 1,
       unpackedQuantity: 0.5,
+    })
+  })
+})
+
+// ─── consumeRecipes: PR 3b Task 3, the COOK's location ───────────────────────
+//
+// Every test above omits `locationId`, so "the location the cook names" and
+// "the caller's default location" are the same string and neither group can
+// tell the two implementations apart. These pass LOC_OTHER, the caller's
+// NON-default location, which is the only fixture that can.
+//
+// Before Task 3, `ConsumeRecipesInput` carried no location at all and cooking
+// while viewing the Garage took the stock out of the Kitchen.
+
+describe("consumeRecipes writes the COOK's location, not the caller's default", () => {
+  function stockAt(locationId: string) {
+    return stockFake.state.itemStocks.find(
+      (s) => s.itemId === 'item_milk' && s.locationId === locationId,
+    )
+  }
+
+  beforeEach(() => {
+    mockPrisma.item.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.inventoryLog.create.mockResolvedValue({})
+    mockPrisma.recipe.updateMany.mockResolvedValue({ count: 1 })
+    stockFake.reset(stockFake.state.locations, [
+      makeStock({ id: 'st_default', itemId: 'item_milk', locationId: LOC_DEFAULT, packedQuantity: 3, unpackedQuantity: 1 }),
+      makeStock({ id: 'st_other', itemId: 'item_milk', locationId: LOC_OTHER, packedQuantity: 40, unpackedQuantity: 9 }),
+      makeStock({ id: 'st_stranger', itemId: 'item_milk', locationId: LOC_STRANGER, packedQuantity: 99, unpackedQuantity: 8 }),
+    ])
+  })
+
+  it("user cooking at their Garage takes the stock out of the GARAGE", async () => {
+    // Given the cook names the caller's Garage, which is NOT their default
+    // When they cook
+    const result = await execOp(CONSUME, {
+      input: consumeInput([COOKED_MILK], [], LOC_OTHER),
+    })
+
+    // Then the GARAGE's row carries the post-cooking numbers
+    expect(result?.errors).toBeUndefined()
+    expect(stockAt(LOC_OTHER)).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
+
+    // And the Kitchen — the caller's DEFAULT location — is untouched. This is
+    // the assertion that goes red if consumeRecipes resolves the default
+    // location again instead of reading the input.
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 3, unpackedQuantity: 1 })
+    // And so is the stranger's, whose location is ALSO flagged isDefault
+    expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
+  })
+
+  it('user cooking at their Garage logs it against the Garage', async () => {
+    // Given the same cook
+    // When it is submitted
+    const result = await execOp(CONSUME, {
+      input: consumeInput([COOKED_MILK], [], LOC_OTHER),
+    })
+
+    // Then the inventory log names the Garage, not the Kitchen. The log row and
+    // the stock move it explains must never name different locations.
+    expect(result?.errors).toBeUndefined()
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ locationId: LOC_OTHER, itemId: 'item_milk' }),
+    })
+  })
+
+  it("cooking at another user's location is FORBIDDEN, and writes nothing", async () => {
+    // Given a location id belonging to somebody else, which is also flagged
+    // isDefault — so a resolver that looked up "a default location" rather than
+    // checking the role could find it
+    // When the caller sends it
+    const result = await execOp(CONSUME, {
+      input: consumeInput([COOKED_MILK], [], LOC_STRANGER),
+    })
+
+    // Then the WHOLE mutation is refused, not one entry in itemResults
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+
+    // And nothing was written: not the Item columns, not the log, and no stock
+    // row anywhere. The role check runs before the first write.
+    expect(mockPrisma.item.updateMany).not.toHaveBeenCalled()
+    expect(mockPrisma.inventoryLog.create).not.toHaveBeenCalled()
+    expect(stockAt(LOC_STRANGER)).toMatchObject({ packedQuantity: 99, unpackedQuantity: 8 })
+  })
+
+  it('an explicit Kitchen still writes the Kitchen', async () => {
+    // Given the cook names the caller's DEFAULT location explicitly — kept so
+    // "reads the input" is not confused with "always picks the non-default
+    // location"
+    // When they cook
+    await execOp(CONSUME, { input: consumeInput([COOKED_MILK], [], LOC_DEFAULT) })
+
+    // Then the Kitchen moved and the Garage did not
+    expect(stockAt(LOC_DEFAULT)).toMatchObject({ packedQuantity: 1, unpackedQuantity: 0.5 })
+    expect(stockAt(LOC_OTHER)).toMatchObject({ packedQuantity: 40, unpackedQuantity: 9 })
+    expect(mockPrisma.inventoryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ locationId: LOC_DEFAULT }),
     })
   })
 })

@@ -65,9 +65,10 @@ extend type Mutation {
   """
   Buy everything in the cart with a quantity above zero.
 
-  The cart id names the location and is authorized against it. The stock and
-  inventory-log writes still target the caller's DEFAULT location — PR 3b Task 3
-  moves them onto the cart's own location.
+  The cart id names the location, is authorized against it, and — since PR 3b
+  Task 3 — is the location the stock move and the inventory log are written to.
+  Both used to go to the caller's DEFAULT location, so a checkout made while
+  viewing the Garage credited the Kitchen.
   """
   checkout(cartId: ID!, note: String, logKey: String, logParams: JSON): Cart!
 

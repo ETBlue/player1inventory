@@ -4,7 +4,7 @@ import { type LocationRole, requireLocationRole } from '../lib/authz.js'
 import { cartIdFor, parseCartId } from '../lib/cartId.js'
 import { ensureDefaultLocation } from '../lib/defaultLocation.js'
 import { prisma } from '../lib/prisma.js'
-import { defaultLocationId, mirrorStock } from '../lib/stockDualWrite.js'
+import { mirrorStock } from '../lib/stockDualWrite.js'
 import { type Context, requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
@@ -133,26 +133,21 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
 
     checkout: async (_, { cartId, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
+      // The location the CART names, since PR 3b Task 3. `requireCartLocation`
+      // parses it out of the cart id and authorizes it in one step, so the
+      // value below has already been through `requireLocationRole`.
+      //
+      // It used to be the caller's DEFAULT location, which meant a checkout
+      // made while viewing the Garage moved the Kitchen's stock and wrote an
+      // inventory log against the Kitchen. That was the limitation PR 3a
+      // shipped; Task 1's re-key of `Cart.id` is what made the real location
+      // reachable here.
+      const cartLocationId = await requireCartLocation(ctx, cartId, 'member')
       const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
       const buyingItems = cartItems.filter(ci => ci.quantity > 0)
       // Pinned items (quantity === 0) stay in the permanent cart — no migration needed
 
       const now = new Date()
-      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Resolved once
-      // outside the loop rather than per item — every mirror below targets the
-      // same location.
-      //
-      // PR 3b: still the caller's DEFAULT location, NOT the cart's. The cart id
-      // now carries its location and `requireCartLocation` above already parsed
-      // it, so the value is in reach — switching to it is PR 3b Task 3, which
-      // changes `consumeRecipes` and `mirrorItemStockToItem` in the same move.
-      // Until then a checkout made while viewing the Garage still credits the
-      // Kitchen. The inventory log written below uses this same id.
-      //
-      // Non-null whenever the loop below runs, since the loop iterates
-      // `buyingItems` and this is null only when that array is empty.
-      const mirrorLocationId = buyingItems.length > 0 ? await defaultLocationId(userId) : null
 
       for (const ci of buyingItems) {
         const updatedItem = await prisma.item.update({
@@ -161,14 +156,13 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         })
         const finalQuantity = updatedItem.packedQuantity + updatedItem.unpackedQuantity
 
-        // The same increment against the location's stock row. `increment`
-        // rather than the item's new total, so two concurrent checkouts of one
-        // item cannot lose an increment to a read-modify-write race.
-        if (mirrorLocationId) {
-          await mirrorStock(ci.itemId, mirrorLocationId, {
-            packedQuantity: { increment: ci.quantity },
-          })
-        }
+        // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). The same
+        // increment against the cart location's stock row. `increment` rather
+        // than the item's new total, so two concurrent checkouts of one item
+        // cannot lose an increment to a read-modify-write race.
+        await mirrorStock(ci.itemId, cartLocationId, {
+          packedQuantity: { increment: ci.quantity },
+        })
 
         await prisma.inventoryLog.create({
           data: {
@@ -177,13 +171,10 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
             quantity: finalQuantity,
             occurredAt: now,
             userId,
-            // PR 3b: replace with the location the cart actually names.
-            // Same limitation stockDualWrite.ts already documents — a user who
-            // checks out while viewing their Garage still logs against their
-            // default location. The `??` branch never runs (see the comment on
-            // `mirrorLocationId` above); it is there because TypeScript cannot
-            // narrow a `T | null` from the length of a different array.
-            locationId: mirrorLocationId ?? (await defaultLocationId(userId)),
+            // The cart's own location, the same one the stock mirror above
+            // wrote. A log row and the stock move it explains must never name
+            // different locations.
+            locationId: cartLocationId,
             ...(note ? { note } : {}),
             ...(logKey ? { logKey } : {}),
             ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
