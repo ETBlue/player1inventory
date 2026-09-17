@@ -46,14 +46,15 @@ import { ShoppingPage } from '../pages/ShoppingPage'
 // functions hand back a `key -> real id` map, because a cloud location id is a
 // server-generated cuid and the local `'local'` sentinel names nothing there.
 //
-// THE THREE PANTRY GROUP-BY TESTS RUN IN BOTH PROJECTS. The /shopping and
-// /cooking tests stay local-only, and NOT because of their fixture: both pages
-// switch the partition OFF in cloud mode until PR 3. `isUnstockedHere` in
-// src/routes/shopping/index.tsx and `isRecipeUnstockedHere` in
-// src/routes/cooking.tsx are both `!isCloud && ...`, because a cloud `Cart` has
-// no `locationId` yet and `consumeRecipes` writes the caller's default
-// location. With no partition there is no divider to assert on. Their skips
-// name that, and PR 3 is what removes them.
+// ALL FIVE TESTS RUN IN BOTH PROJECTS as of cloud-locations PR 3b Task 4. The
+// /shopping and /cooking cases were local-only until then, and NOT because of
+// their fixture: both pages switched the partition OFF in cloud mode, because a
+// cloud `Cart` had no `locationId` and `consumeRecipes` wrote the caller's
+// default location. With no partition there was no divider to assert on. PR 3a
+// gave `Cart` its column, PR 3b re-keyed `Cart.id` to
+// `${locationId}:${vendorId | 'no-vendor'}` and gave the cook its own location,
+// and the two `!isCloud &&` terms — with the two `test.skip` guards they forced
+// — are gone.
 //
 // Cloud isolation is by row ownership: every write is owned by E2E_USER_ID and
 // `/e2e/cleanup` deletes that user's rows, `Location` and `ItemStock` included
@@ -262,16 +263,6 @@ test.describe('location-scoped group lists — items not stocked here', () => {
     request,
     baseURL,
   }) => {
-    // /shopping switches the partition OFF in cloud mode: `isUnstockedHere` in
-    // src/routes/shopping/index.tsx is `!isCloud && ...`, because a cloud Cart
-    // has no locationId until PR 3 and `useVendorCartCounts()` keeps a global
-    // tally there. With no partition no divider renders at all. PR 3 removes
-    // this skip; the fixture is already mode-neutral and needs no change.
-    test.skip(
-      baseURL === CLOUD_WEB_URL,
-      'cloud skips the vendor partition until PR 3 (Cart has no locationId)',
-    )
-
     // Given "Bodega" sells only Coffee, which is stocked at the Office, while
     // "Costco" sells Milk, stocked in the active location
     await seedFixture(page, request, baseURL)
@@ -309,16 +300,6 @@ test.describe('location-scoped group lists — items not stocked here', () => {
     request,
     baseURL,
   }) => {
-    // /cooking switches the partition OFF in cloud mode: `isRecipeUnstockedHere`
-    // in src/routes/cooking.tsx is `!isCloud && ...`, because `consumeRecipes`
-    // writes the caller's default location rather than the active one until
-    // PR 3. With no partition no divider renders at all. PR 3 removes this
-    // skip; the fixture is already mode-neutral and needs no change.
-    test.skip(
-      baseURL === CLOUD_WEB_URL,
-      'cloud skips the recipe partition until PR 3 (consumeRecipes is not location-scoped)',
-    )
-
     // Given "Cold Brew" needs only Coffee, stocked at the Office, while
     // "Pancakes" needs Milk, stocked in the active location
     await seedFixture(page, request, baseURL)

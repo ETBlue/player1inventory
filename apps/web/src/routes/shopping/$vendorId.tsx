@@ -38,7 +38,6 @@ import {
   useVendorCart,
   useVendors,
 } from '@/hooks'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -47,7 +46,7 @@ import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { isInactive, isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
+import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
 import { sortItems } from '@/lib/sortUtils'
 import type { PantryItem } from '@/types'
 
@@ -63,8 +62,6 @@ function VendorCart() {
     vendorIdParam === 'no-vendor' ? null : vendorIdParam
 
   const { data: items = [], isLoading, refetch: refetchItems } = useItems()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
   const showStock = useShowStock()
   const { data: tags = [], isLoading: isTagsLoading } = useTags()
   const { data: tagTypes = [], isLoading: isTagTypesLoading } = useTagTypes()
@@ -137,12 +134,12 @@ function VendorCart() {
   // checked. An item with no ItemStock row here has nothing to check out
   // against, so listing it on this page was always the anomaly.
   //
-  // Cloud bypasses the location gate until PR 3 — because of the CART, not the
-  // item. A cloud item does carry a stockId since PR 2 (`useItems()` joins
-  // `PantryData` per location), but a cloud `Cart` has no `locationId` until
-  // PR 3, so this page's cart still holds items stocked in other locations.
-  // Gating the list would hide rows the cart genuinely contains. Matches the
-  // same bypass in useVendorCartCounts() and the shopping index page.
+  // BOTH MODES since PR 3b. Cloud used to bypass this gate because of the
+  // CART, not the item: a cloud `Cart` had no `locationId`, so this page's
+  // cart held items stocked in other locations and gating the list would have
+  // hidden rows the cart genuinely contained. PR 3a added the column and PR 3b
+  // re-keyed `Cart.id` to `${locationId}:${vendorId | 'no-vendor'}`, so the
+  // cart this page opens is one location's cart in both modes.
   //
   // Memoized because its identity feeds `inGroupIds` below, which is a
   // dependency of the search tail's derivation.
@@ -151,8 +148,8 @@ function VendorCart() {
       (cartVendorId === null
         ? items.filter((i) => !(i.vendorIds ?? []).length)
         : items.filter((i) => (i.vendorIds ?? []).includes(cartVendorId))
-      ).filter((i) => isCloud || isStockedHere(i)),
-    [items, cartVendorId, isCloud],
+      ).filter(isStockedHere),
+    [items, cartVendorId],
   )
 
   const searchedItems = vendorScopedItems.filter((item) =>
@@ -283,16 +280,13 @@ function VendorCart() {
     ...(cartVendorId === null ? { groupNote: renderVendorsNote } : {}),
   })
 
-  // Local mode: vendorScopedItems is already filtered to stocked-here items
-  // (above), so isInactiveHere's stockId check is a no-op here and this is
-  // equivalent to isInactive — reusing isInactiveHere keeps the predicate
-  // consistent with the card and the pantry rather than reintroducing a bare
-  // isInactive check. Cloud keeps the bare isInactive split because its list
-  // above is NOT stocked-here-filtered (the cart is not location-scoped until
-  // PR 3), so isInactiveHere's stockId check would read a genuinely inactive
-  // item stocked elsewhere as active.
-  const isInactiveForDisplay = (item: PantryItem) =>
-    isCloud ? isInactive(item) : isInactiveHere(item)
+  // `vendorScopedItems` is already filtered to stocked-here items (above) in
+  // BOTH modes since PR 3b, so `isInactiveHere`'s `stockId` check is a no-op
+  // here and this is equivalent to `isInactive` — reusing `isInactiveHere`
+  // keeps the predicate consistent with the card and the pantry. Cloud used to
+  // take a bare `isInactive` split, because its list above was not
+  // stocked-here-filtered while the cart had no location.
+  const isInactiveForDisplay = (item: PantryItem) => isInactiveHere(item)
   const activeCartItems = cartSectionItems.filter(
     (item) => !isInactiveForDisplay(item),
   )

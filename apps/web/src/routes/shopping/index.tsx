@@ -87,14 +87,10 @@ function ShoppingIndex() {
   )
 
   function cartForVendor(vendorId: string | null) {
-    // Local carts are scoped to the active location:
-    // `${locationId}:${vendorId|'no-vendor'}`. Cloud carts are **not** — the
-    // server keys them bare (`'no-vendor'` / `<vendorId>`) because locations and
-    // ItemStock have no cloud backend yet, so prefixing would match nothing.
-    const cartId = isCloud
-      ? (vendorId ?? 'no-vendor')
-      : cartIdFor(activeLocationId, vendorId)
-    return allCarts.find((c) => c.id === cartId)
+    // ONE id shape in BOTH modes since PR 3b re-keyed the cloud `Cart`:
+    // `${locationId}:${vendorId | 'no-vendor'}`. Cloud used to key carts bare
+    // (`'no-vendor'` / `<vendorId>`), which is why this used to branch.
+    return allCarts.find((c) => c.id === cartIdFor(activeLocationId, vendorId))
   }
 
   function statsForVendor(vendorId: string | null) {
@@ -117,17 +113,14 @@ function ShoppingIndex() {
     }
   }
 
-  // No-vendor card mirrors useVendorCartCounts()'s location-scoping, cloud
-  // bypass included: cloud carts have no locationId until PR 3, so the count
-  // must stay global to match what the card opens onto. See that hook.
+  // No-vendor card mirrors useVendorCartCounts()'s location-scoping, which has
+  // no mode branch since PR 3b — a cloud cart is per location now, so the count
+  // matches what the card opens onto in both modes.
   const noVendorItems = items.filter((i) => !(i.vendorIds ?? []).length)
-  const noVendorScopedItems = isCloud
-    ? noVendorItems
-    : noVendorItems.filter(isStockedHere)
+  const noVendorScopedItems = noVendorItems.filter(isStockedHere)
   const noVendorCount = noVendorScopedItems.length
-  const noVendorInactiveCount = isCloud
-    ? 0
-    : noVendorScopedItems.filter(isInactiveHere).length
+  const noVendorInactiveCount =
+    noVendorScopedItems.filter(isInactiveHere).length
   // The no-vendor bucket's zero is ambiguous: it means either nothing is
   // unfiled anywhere (genuinely empty — stay hidden) or unfiled items exist but
   // are stocked in other locations (render, below the divider).
@@ -155,15 +148,17 @@ function ShoppingIndex() {
   // location-scoped, and a vendor with nothing stocked here has no map entry at
   // all — hence the `?? 0`.
   //
-  // Cloud carts are not location-scoped until PR 3, so that hook keeps a global
-  // tally there and a "not stocked here" section would partition on a number
-  // that is not location-scoped. Cloud skips the partition entirely until then.
+  // BOTH MODES since PR 3b. Cloud used to skip the partition entirely
+  // (`!isCloud && ...`), because a cloud `Cart` had no `locationId` and
+  // `useVendorCartCounts()` kept a global tally there — partitioning would have
+  // split on a number that was not location-scoped. PR 3a added the column and
+  // PR 3b re-keyed `Cart.id`, so that count is location-scoped in cloud too.
   //
   // Partitioning with two filters rather than a sort key: filter preserves
   // relative order, so the user's chosen sort survives within each half instead
   // of being overridden by a stocked-ness primary key.
   const isUnstockedHere = (vendorId: string) =>
-    !isCloud && (vendorCartCounts.get(vendorId)?.count ?? 0) === 0
+    (vendorCartCounts.get(vendorId)?.count ?? 0) === 0
   const stockedVendors = sortedVendors.filter((v) => !isUnstockedHere(v.id))
   const unstockedVendors = sortedVendors.filter((v) => isUnstockedHere(v.id))
   const unstockedGroupCount = unstockedVendors.length + (noVendorSinks ? 1 : 0)
