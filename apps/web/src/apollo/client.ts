@@ -26,10 +26,24 @@ const httpLink = new HttpLink({
 // and it is load-bearing the moment `itemStocks` gains a second argument, at
 // which point this list must be extended or the two calls collapse into one
 // entry. The behaviour itself is guarded by `client.test.ts`, not by this line.
+//
+// The three inventory-log root fields are keyed the same way (PR 3a). Their
+// `locationId` is one of SEVERAL arguments, so unlike `itemStocks` these lists
+// are not a restatement of the default — drop `'locationId'` from one and the
+// two locations collapse into a single cache entry, which serves another
+// location's logs after a switch. `inventoryLogs` is absent on purpose: it
+// takes no arguments and is whole-account.
 export function createCache() {
   return new InMemoryCache({
     typePolicies: {
-      Query: { fields: { itemStocks: { keyArgs: ['locationId'] } } },
+      Query: {
+        fields: {
+          itemStocks: { keyArgs: ['locationId'] },
+          itemLogs: { keyArgs: ['itemId', 'locationId'] },
+          inventoryLogCountByItem: { keyArgs: ['itemId', 'locationId'] },
+          lastPurchaseDates: { keyArgs: ['itemIds', 'locationId'] },
+        },
+      },
     },
   })
 }

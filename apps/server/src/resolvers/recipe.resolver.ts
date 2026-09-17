@@ -72,8 +72,13 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Cooking has no
       // location in PR 2 — `ConsumeRecipesInput` carries none — so the mirror
       // goes to the caller's DEFAULT location regardless of which one they
-      // were viewing. PR 3 gives the input a location and this becomes it.
-      // Resolved once: every item in the batch mirrors to the same place.
+      // were viewing. PR 3b gives the input a location and this becomes it —
+      // PR 3a did not, it only added the columns.
+      // Resolved once: every item in the batch mirrors to the same place. The
+      // inventory log written below uses this same id.
+      //
+      // Non-null whenever the loop below runs, since the loop iterates `items`
+      // and this is null only when that array is empty.
       const mirrorLocationId = items.length > 0 ? await defaultLocationId(userId) : null
 
       for (const item of items) {
@@ -105,6 +110,13 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
               quantity: item.quantity,
               occurredAt: occurredAtDate,
               userId,
+              // PR 3b: replace with the location the consume actually names.
+              // ConsumeRecipesInput carries no location today, so this writes
+              // the caller's default. The `??` branch never runs (see the
+              // comment on `mirrorLocationId` above); it is there because
+              // TypeScript cannot narrow a `T | null` from the length of a
+              // different array.
+              locationId: mirrorLocationId ?? (await defaultLocationId(userId)),
               ...(item.note ? { note: item.note } : {}),
               ...(item.logKey ? { logKey: item.logKey } : {}),
               ...(item.logParams ? { logParams: item.logParams as Prisma.InputJsonValue } : {}),

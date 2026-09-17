@@ -15,18 +15,47 @@ type LastPurchaseDateResult {
 }
 
 extend type Query {
-  itemLogs(itemId: ID!): [InventoryLog!]!
-  inventoryLogCountByItem(itemId: ID!): Int!
-  lastPurchaseDates(itemIds: [ID!]!): [LastPurchaseDateResult!]!
+  """
+  Logs for one item at one location, oldest first.
+
+  `locationId` is REQUIRED. It was nullable with a server-side default-location
+  fallback for one commit, while PR 3a Task 2 landed ahead of its client; Task 4
+  passed it at every call site and tightened it here. Do not make it nullable
+  again: an omitted argument reads the wrong location quietly, while a missing
+  required argument fails loudly at codegen time.
+  """
+  itemLogs(itemId: ID!, locationId: ID!): [InventoryLog!]!
+
+  "How many logs the item has at one location. `locationId` is required — same note as itemLogs."
+  inventoryLogCountByItem(itemId: ID!, locationId: ID!): Int!
+
+  "Most recent positive-delta log date per item, at one location. `locationId` is required — same note as itemLogs."
+  lastPurchaseDates(itemIds: [ID!]!, locationId: ID!): [LastPurchaseDateResult!]!
+
+  """
+  Every log the caller owns, across every location.
+
+  Whole-account on purpose — it is the snapshot path, not a screen. Its only
+  two callers are apps/web/src/lib/exportData.ts (writes the backup file) and
+  apps/web/src/lib/importData.ts (reads the current cloud state to detect
+  conflicts). Both must see every location or the backup loses rows.
+  """
   inventoryLogs: [InventoryLog!]!
 }
 
 extend type Mutation {
+  """
+  Write one log at one location.
+
+  `locationId` is required — same note as itemLogs. The caller needs the
+  `member` role on the location, not `viewer`.
+  """
   addInventoryLog(
     itemId: ID!
     delta: Float!
     quantity: Float!
     occurredAt: String!
+    locationId: ID!
     note: String
     logKey: String
     logParams: JSON

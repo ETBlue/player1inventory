@@ -1,6 +1,14 @@
-// Verifies the Location/ItemStock migration against a REAL Postgres, because
-// the resolver test suite runs entirely against a hand-written Prisma fake and
+// Verifies the location migrations against a REAL Postgres, because the
+// resolver test suite runs entirely against a hand-written Prisma fake and
 // cannot exercise SQL at all.
+//
+// Two migrations are under test, applied in order:
+//   1. 20260830000000_add_location_and_item_stock   (PR 1) — Location, ItemStock
+//   2. 20260916000000_add_location_to_log_and_cart  (PR 3a) — InventoryLog.locationId,
+//      Cart.locationId
+// Both must be parked together. Migration 2 references the "Location" table
+// that migration 1 creates, so resetting with only migration 1 parked would
+// fail at reset time.
 //
 // Destructive: drops and recreates the public schema of TEST_DATABASE_URL —
 // via TEST_DIRECT_URL, since Prisma Migrate always issues DDL through
@@ -10,7 +18,7 @@
 // DATABASE_URL or DIRECT_URL (dev). Raw equality would miss a pooled/direct
 // or query-param variant of the same underlying database.
 import { execSync } from 'node:child_process'
-import { existsSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Prisma, PrismaClient } from '@prisma/client'
@@ -128,9 +136,12 @@ async function seedFixture(): Promise<void> {
     INSERT INTO "Tag" ("id","name","typeId","userId") VALUES ('tag-g','Cold','tt-c','user-g')
   `)
 
-  // Cart — user-i, standalone.
+  // Cart — user-i (standalone) and user-a (who also owns items).
+  // TWO owners on purpose. With one cart the "backfill picked the right
+  // owner's location" assertion cannot fail: any constant location id would
+  // satisfy it. See root CLAUDE.md, "Proving a Test Works".
   await prisma.$executeRawUnsafe(`
-    INSERT INTO "Cart" ("id","userId") VALUES ('cart-i','user-i')
+    INSERT INTO "Cart" ("id","userId") VALUES ('cart-i','user-i'), ('cart-a','user-a')
   `)
 
   // CartItem — user-h. FKs borrow cart-i and item-a1, but its own userId is
@@ -139,33 +150,53 @@ async function seedFixture(): Promise<void> {
     INSERT INTO "CartItem" ("id","cartId","itemId","quantity","userId") VALUES ('cartitem-h','cart-i','item-a1',1,'user-h')
   `)
 
-  // InventoryLog — user-j. FK borrows item-a1, but its own userId is a
-  // distinct owner.
+  // InventoryLog — user-j and user-a. BOTH rows point at item-a1, which
+  // user-a owns. Two things ride on that:
+  //   - log-j's own userId (user-j) differs from its item's owner (user-a), so
+  //     a backfill that joined through "Item"."userId" instead of
+  //     "InventoryLog"."userId" puts log-j in user-a's location and the
+  //     assertion goes red.
+  //   - two logs with two different owners mean a backfill writing one
+  //     constant location cannot pass either.
   await prisma.$executeRawUnsafe(`
-    INSERT INTO "InventoryLog" ("id","itemId","delta","quantity","occurredAt","userId") VALUES ('log-j','item-a1',1,3,NOW(),'user-j')
+    INSERT INTO "InventoryLog" ("id","itemId","delta","quantity","occurredAt","userId") VALUES
+      ('log-j','item-a1',1,3,NOW(),'user-j'),
+      ('log-a','item-a1',2,5,NOW(),'user-a')
   `)
 }
 
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
-const MIGRATION = '20260830000000_add_location_and_item_stock'
-const MIGRATION_DIR = join(SERVER_DIR, 'prisma/migrations', MIGRATION)
-const PARKED_DIR = join(SERVER_DIR, '.migration-under-test')
+
+// In apply order. Adding a later location migration means adding it here.
+const MIGRATIONS = [
+  '20260830000000_add_location_and_item_stock',
+  '20260916000000_add_location_to_log_and_cart',
+] as const
+
+const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
+const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
+const parkedDir = (name: string) => join(PARKED_ROOT, name)
 
 // Idempotent by construction: safe to call from a startup self-heal check,
 // from the normal finally block, and from a SIGINT/SIGTERM handler, in any
 // combination, without throwing on a directory that isn't there.
 function restoreIfParked(): void {
-  if (!existsSync(PARKED_DIR)) return
-  if (existsSync(MIGRATION_DIR)) {
-    // Both exist — a previous restore already succeeded but the parked copy
-    // was never cleaned up (e.g. two restore calls raced). Trust the live
-    // migration directory and discard the stale parked copy.
-    console.log(`Both ${MIGRATION} and a stale parked copy exist — discarding the parked copy.`)
-    rmSync(PARKED_DIR, { recursive: true, force: true })
-    return
+  if (!existsSync(PARKED_ROOT)) return
+  for (const name of MIGRATIONS) {
+    const parked = parkedDir(name)
+    if (!existsSync(parked)) continue
+    if (existsSync(migrationDir(name))) {
+      // Both exist — a previous restore already succeeded but the parked copy
+      // was never cleaned up (e.g. two restore calls raced). Trust the live
+      // migration directory and discard the stale parked copy.
+      console.log(`Both ${name} and a stale parked copy exist — discarding the parked copy.`)
+      rmSync(parked, { recursive: true, force: true })
+      continue
+    }
+    console.log(`Restoring parked ${name}...`)
+    renameSync(parked, migrationDir(name))
   }
-  console.log(`Restoring parked ${MIGRATION}...`)
-  renameSync(PARKED_DIR, MIGRATION_DIR)
+  rmSync(PARKED_ROOT, { recursive: true, force: true })
 }
 
 let parked = false
@@ -199,8 +230,9 @@ async function main(): Promise<void> {
   // This is also the property apps/server/prisma/CLAUDE.md demands — "a
   // migration must be valid on a DB built only from committed history" — so
   // the harness now tests that directly rather than assuming it.
-  console.log(`Parking ${MIGRATION}...`)
-  renameSync(MIGRATION_DIR, PARKED_DIR)
+  console.log(`Parking ${MIGRATIONS.join(', ')}...`)
+  mkdirSync(PARKED_ROOT, { recursive: true })
+  for (const name of MIGRATIONS) renameSync(migrationDir(name), parkedDir(name))
   parked = true
 
   try {
@@ -216,7 +248,7 @@ async function main(): Promise<void> {
     parked = false
   }
 
-  console.log('Applying the migration under test...')
+  console.log('Applying the migrations under test...')
   execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
 
   console.log('Asserting...')
@@ -332,6 +364,79 @@ async function main(): Promise<void> {
   assert(
     (await prisma.itemStock.count({ where: { locationId: riceLocationId } })) === 0,
     'deleting a Location cascades to delete its ItemStock rows',
+  )
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PR 3a — InventoryLog.locationId and Cart.locationId
+  // ══════════════════════════════════════════════════════════════════════
+
+  // The backfill reached every row. Both columns are NOT NULL by now, so a
+  // missed row would have failed the migration itself; these assertions are
+  // about WHICH location each row got.
+  const logs = await prisma.inventoryLog.findMany({
+    include: { location: true },
+    orderBy: { id: 'asc' },
+  })
+  assert(logs.length === 2, 'both seeded InventoryLog rows survive the migration')
+
+  const logA = logs.find((l) => l.id === 'log-a')
+  const logJ = logs.find((l) => l.id === 'log-j')
+  assert(
+    logA?.location.userId === 'user-a' && logA?.location.isDefault === true,
+    "user-a's log is backfilled to user-a's default location",
+  )
+  assert(
+    logJ?.location.userId === 'user-j' && logJ?.location.isDefault === true,
+    "user-j's log is backfilled to user-j's default location — NOT user-a's, even though the log's item (item-a1) belongs to user-a. This is what catches a backfill that joins through Item instead of through InventoryLog.userId",
+  )
+  assert(
+    logA?.locationId !== logJ?.locationId,
+    'the two logs landed in DIFFERENT locations — a backfill writing one constant location id fails here',
+  )
+
+  const carts = await prisma.cart.findMany({ include: { location: true }, orderBy: { id: 'asc' } })
+  assert(carts.length === 2, 'both seeded Cart rows survive the migration')
+
+  const cartA = carts.find((c) => c.id === 'cart-a')
+  const cartI = carts.find((c) => c.id === 'cart-i')
+  assert(
+    cartA?.location.userId === 'user-a' && cartI?.location.userId === 'user-i',
+    "each cart is backfilled to its OWN owner's default location",
+  )
+  assert(
+    cartA?.locationId !== cartI?.locationId,
+    'the two carts landed in DIFFERENT locations — a constant location id fails here',
+  )
+
+  // PR 3a must NOT re-key Cart.id. That is PR 3b (design §4.7). If this goes
+  // red, the re-key leaked into the additive migration and the split failed.
+  assert(
+    carts.map((c) => c.id).join(',') === 'cart-a,cart-i',
+    'Cart.id values are unchanged — PR 3a is additive and does not re-key (the re-key is PR 3b)',
+  )
+
+  // FK cascade from Location. Deleting user-i's location must take cart-i and,
+  // through Cart -> CartItem, cartitem-h with it.
+  await prisma.location.delete({ where: { id: cartI!.locationId } })
+  assert(
+    (await prisma.cart.count({ where: { id: 'cart-i' } })) === 0,
+    'deleting a Location cascades to delete its Cart rows',
+  )
+  assert(
+    (await prisma.cartItem.count({ where: { id: 'cartitem-h' } })) === 0,
+    "deleting a Location cascades through Cart to its CartItem rows (cartitem-h's OWN userId is user-h, not user-i — the cascade follows the FK, not ownership)",
+  )
+
+  // Deleting user-j's location must take log-j with it, and must leave
+  // user-a's log alone.
+  await prisma.location.delete({ where: { id: logJ!.locationId } })
+  assert(
+    (await prisma.inventoryLog.count({ where: { id: 'log-j' } })) === 0,
+    'deleting a Location cascades to delete its InventoryLog rows',
+  )
+  assert(
+    (await prisma.inventoryLog.count({ where: { id: 'log-a' } })) === 1,
+    "another user's log in another location is untouched by that cascade",
   )
 
   // FK cascade: deleting an Item must cascade-delete its ItemStock rows.

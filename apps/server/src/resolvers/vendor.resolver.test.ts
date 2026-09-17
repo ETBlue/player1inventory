@@ -6,25 +6,39 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-vi.mock('../lib/prisma.js', () => ({
-  prisma: {
-    vendor: {
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+// `location` is the STATEFUL fake (src/test/stockFake.ts): createVendor's
+// permanent cart now needs a locationId, resolved through
+// ensureDefaultLocation, and a call recorder cannot answer "did it pick the
+// caller's default one".
+vi.mock('../lib/prisma.js', async () => {
+  const { createStockFake } = await import('../test/stockFake.js')
+  const stockFake = createStockFake()
+  return {
+    prisma: {
+      vendor: {
+        findMany: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      },
+      cart: {
+        upsert: vi.fn(),
+        delete: vi.fn(),
+      },
+      cartItem: {
+        deleteMany: vi.fn(),
+      },
+      ...stockFake.client,
+      // Handle onto the fake's state, hung off the mocked client because a
+      // `vi.mock` factory is hoisted above every import and cannot close over
+      // a module-scope binding.
+      $stockFake: stockFake,
     },
-    cart: {
-      upsert: vi.fn(),
-      delete: vi.fn(),
-    },
-    cartItem: {
-      deleteMany: vi.fn(),
-    },
-  },
-}))
+  }
+})
 
 import { prisma } from '../lib/prisma.js'
+import type { StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
   vendor: {
@@ -40,6 +54,26 @@ const mockPrisma = prisma as unknown as {
   cartItem: {
     deleteMany: ReturnType<typeof vi.fn>
   }
+  $stockFake: StockFake
+}
+
+// THREE locations: the caller's default, the caller's other one, and a
+// stranger's. A one-location fixture could not tell "the caller's DEFAULT
+// location" apart from "the first location" or "any location".
+const LOC_DEFAULT = 'loc_kitchen'
+const LOC_OTHER = 'loc_garage'
+const LOC_STRANGER = 'loc_theirs'
+
+function seedLocations() {
+  mockPrisma.$stockFake.reset(
+    [
+      // Not first on purpose.
+      { id: LOC_OTHER, userId: 'user_test123', isDefault: false },
+      { id: LOC_DEFAULT, userId: 'user_test123', isDefault: true },
+      { id: LOC_STRANGER, userId: 'user_other', isDefault: true },
+    ],
+    [],
+  )
 }
 
 // ─── Test setup ───────────────────────────────────────────────────────────────
@@ -49,6 +83,7 @@ const ctx: Context = { userId: 'user_test123' }
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  seedLocations()
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -86,10 +121,14 @@ describe('Vendor resolvers', () => {
     expect(mockPrisma.vendor.create).toHaveBeenCalledWith({
       data: { name: 'Costco', userId: 'user_test123' },
     })
-    // And a permanent cart is created/ensured for the new vendor
+    // And a permanent cart is created/ensured for the new vendor, in the
+    // caller's DEFAULT location. LOC_DEFAULT is not first in seedLocations and
+    // LOC_STRANGER belongs to another user, so this fails both for a resolver
+    // taking the first location and for one ignoring userId.
+    // PR 3b re-keys this cart to `${locationId}:${vendorId}`.
     expect(mockPrisma.cart.upsert).toHaveBeenCalledWith({
       where: { id: 'v_1' },
-      create: { id: 'v_1', userId: 'user_test123' },
+      create: { id: 'v_1', userId: 'user_test123', locationId: LOC_DEFAULT },
       update: {},
     })
   })

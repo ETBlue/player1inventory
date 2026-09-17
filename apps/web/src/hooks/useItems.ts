@@ -32,7 +32,6 @@ import {
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
-  useGetLocationsQuery,
   useItemStocksForItemQuery,
   useLastPurchaseDatesQuery,
   usePantryDataQuery,
@@ -51,6 +50,7 @@ import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useCloudLocationId } from './useCloudLocationId'
+import { useCloudLocationKnown } from './useCloudLocationKnown'
 import { useDataMode } from './useDataMode'
 
 // In local mode, item create/update accept the global Item fields plus stock
@@ -238,32 +238,6 @@ function joinPantryData(
   )
 }
 
-// Is `activeLocationId` a location this account actually has?
-//
-// On a fresh cloud session it is not: there is no `active-location-id:cloud`
-// slot, so it is still `DEFAULT_LOCATION_ID` — the local `'local'` sentinel —
-// until `GetLocations` resolves and `ActiveLocationProvider` corrects it
-// (`useCloudLocationId` documents the same window from the write side).
-//
-// `PantryData` must NOT be sent with an unknown id, and not merely because the
-// response is a wasted `FORBIDDEN`. Apollo keeps that request as a live
-// OBSERVER keyed by its variables, and every stock mutation refetches
-// `PantryData` BY NAME with `awaitRefetchQueries` — so the stale
-// `{locationId: 'local'}` observer is refetched too, fails again, and rejects
-// the mutation's own promise. A create then left the item written, the dialog
-// open and no navigation: the second half of the bug cloud E2E caught on
-// 2026-09-04, and the half that survives fixing the write path alone.
-//
-// `useGetLocationsQuery` rather than `useLocations()`: this must add nothing to
-// the LOCAL branch, and Apollo dedupes it against the provider's own call, so
-// the gate costs no request.
-function useCloudLocationKnown(activeLocationId: string, isCloud: boolean) {
-  const { data } = useGetLocationsQuery({ skip: !isCloud })
-  return (
-    !isCloud || !!data?.locations.some((loc) => loc.id === activeLocationId)
-  )
-}
-
 // The whole item catalog, each entry joined with the active location's stock.
 // Items not stocked here are PRESENT, with `stockId: undefined` — the search
 // tail's third bucket ("exists globally, not stocked here") is built from that
@@ -443,10 +417,14 @@ export function useLastPurchaseDate(itemId: string) {
   const isCloud = mode === 'cloud'
   const { activeLocationId } = useActiveLocation()
 
-  // Cloud: use Apollo batch query (local logs are stale in cloud mode)
+  // Cloud: use Apollo batch query (local logs are stale in cloud mode).
+  // `lastPurchaseDates(locationId:)` is required and must be a real cloud
+  // Location, so the request waits for `GetLocations` — see
+  // `useCloudLocationKnown`.
+  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
   const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
-    variables: { itemIds: [itemId] },
-    skip: !isCloud || !itemId,
+    variables: { itemIds: [itemId], locationId: activeLocationId },
+    skip: !isCloud || !itemId || !locationKnown,
   })
   const cloudDate = cloudData?.lastPurchaseDates.find(
     (r) => r.itemId === itemId,
@@ -467,7 +445,8 @@ export function useLastPurchaseDate(itemId: string) {
   if (isCloud) {
     return {
       data: cloudDate ? new Date(cloudDate) : undefined,
-      isLoading: cloudLoading,
+      // Skipped is not loaded — see `useItems`.
+      isLoading: cloudLoading || !locationKnown,
       isError: false,
     }
   }

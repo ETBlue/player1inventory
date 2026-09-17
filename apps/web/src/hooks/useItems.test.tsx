@@ -62,8 +62,9 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   return {
     ...original,
     useGetItemQuery: () => mockUseGetItemQuery(),
-    // The cloud pantry gate (`useCloudLocationKnown` in `useItems.ts`) reads the
-    // location list to check the active id is real before sending `PantryData`.
+    // The cloud location gate (`useCloudLocationKnown`) reads the location list
+    // to check the active id is real before sending `PantryData` or
+    // `LastPurchaseDates`.
     // These fixtures pin the ACTIVE location (`ActiveLocationProvider`'s
     // provider-less fallback, `DEFAULT_LOCATION_ID`), so the gate must see it in
     // the list or every cloud read here would stay `isLoading`.
@@ -431,10 +432,13 @@ describe('useLastPurchaseDate (cloud mode)', () => {
     expect(result.current.data).toBeInstanceOf(Date)
     expect(result.current.data?.toISOString()).toBe(purchaseDate.toISOString())
 
-    // And it called the Apollo query with the correct itemIds
+    // And it called the Apollo query with the correct itemIds AND the active
+    // location. This fixture has ONE location, so it cannot show that the
+    // right location was chosen — only that one is sent at all. The
+    // two-location proof is in `useInventoryLogs.cloud.test.tsx`.
     expect(mockUseLastPurchaseDatesQuery).toHaveBeenCalledWith(
       expect.objectContaining({
-        variables: { itemIds: ['item-1'] },
+        variables: { itemIds: ['item-1'], locationId: DEFAULT_LOCATION_ID },
       }),
     )
   })

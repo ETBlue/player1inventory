@@ -54,6 +54,33 @@ connection, since it ties up a connection from the pool for the whole
 callback rather than for one statement. Keep interactive transactions short
 and free of any `await` that isn't itself a `tx.*` call.
 
+## Adding a `NOT NULL` column to a table that already has rows
+
+Use four phases, in this order, in **one** migration file. This is the shape PR 1's
+`20260830000000_add_location_and_item_stock` and PR 3a's
+`20260916000000_add_location_to_log_and_cart` both use.
+
+| Phase | Statement | Why |
+|---|---|---|
+| 1 | `ALTER TABLE ... ADD COLUMN "x" TEXT` — **nullable** | No existing row can satisfy `NOT NULL` yet |
+| 2 | `UPDATE ... SET "x" = ...` — the backfill | Gives every existing row a value |
+| 3 | A `DO $$ ... RAISE EXCEPTION` guard | Fails loudly and names the bad rows |
+| 4 | `SET NOT NULL`, then the FK, then the index | Only now can the constraint hold |
+
+**Phase 3 is the one people skip.** Without it, a backfill that missed rows fails at phase 4
+with Postgres error `23502` (`column "x" of relation "y" contains null values`). That message
+names the column but not which rows, not which users, and not why. A `RAISE EXCEPTION` that
+counts the leftover rows and lists the owning `userId`s turns a guessing job into a fix.
+Postgres runs the whole file in one transaction, so raising leaves the schema untouched.
+
+Write into the SQL comment **what the guard protects against**, not just that it guards. The
+message describes a real-world cause, so read it as a diagnosis and not as a claim that the
+migration file was edited.
+
+Order inside phase 4 matters: `SET NOT NULL` first, then the FK, then the index. A FK on a
+nullable column is legal but says less, and building the index last means it is built once,
+over final data.
+
 ## Defensive SQL
 
 For destructive operations whose target may not exist on every database, prefer the idempotent forms — `DROP COLUMN IF EXISTS`, `DROP INDEX IF EXISTS`, `DROP TABLE IF EXISTS`. They make a migration safe to replay across drifted databases without changing the end-state.
@@ -90,8 +117,14 @@ see ships unnoticed.
 manual runs. Run it whenever you touch a migration, and treat a stale failure as a real signal
 rather than assuming the script rotted.
 
-Three things about it that are easy to get wrong:
+Four things about it that are easy to get wrong:
 
+- **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
+  today `20260830000000_add_location_and_item_stock` and
+  `20260916000000_add_location_to_log_and_cart`. **Add your new migration to that list.** A
+  migration missing from it is not parked, so `migrate reset` replays it against a database
+  that has not yet seen the migrations it depends on. Add assertions for it too: without new
+  assertions the script re-proves the old migration and says nothing about yours.
 - **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
   passed via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. Ask first.
 - **It refuses to run** unless `TEST_DATABASE_URL` *and* `TEST_DIRECT_URL` both resolve — by
@@ -101,6 +134,27 @@ Three things about it that are easy to get wrong:
 - **Never point it at a copy of production.** For that, use an additive-only rehearsal:
   `migrate deploy` plus read-only assertions. See the *Production-data rehearsals* section of
   `docs/features/locations/2026-08-30-cloud-locations-design.md` §7.
+
+### Prove the env override before you write to any copy
+
+A rehearsal against a production copy redirects `DATABASE_URL` / `DIRECT_URL` at the copy for
+one command. **Prove that redirect is real before the first write.** Run
+`prisma migrate status` twice, once with the override and once without, and confirm the two
+runs report **different hosts**.
+
+If the override silently falls back, the migration is applied to the dev database and the
+command still prints success. The rehearsal then reports green while having tested nothing,
+which is worse than a failure. PR 3a's rehearsal (2026-09-17) did this check first; the
+result is recorded in `docs/features/locations/cloud-locations-status.md`.
+
+Two more rules from that run:
+
+- **Use a fresh copy for every rehearsal.** A rehearsal writes to its target, so a copy that
+  has already had a migration applied cannot rehearse the next one.
+- **Check the assertion script as carefully as the migration.** One assertion there matched
+  foreign keys with `LIKE '%locationId%'`, which also caught an unrelated FK from an earlier
+  migration and reported a false FAIL. A green rehearsal with a broken assertion is worse
+  than a red one.
 
 ## Deferred data repair: cloud items with `consumeAmount = 0`
 

@@ -489,11 +489,54 @@ Additive first, so a browser running a stale bundle keeps working until the fina
 | **0** | **Prerequisite.** Fix issue #260 (two-line guard change) so cloud vendor-cart and checkout E2E run *against today's code*, establishing the baseline PR 3 is measured against. See §7. |
 | **1** | Prisma `Location` + `ItemStock`, migration §4.1–4.3, `requireLocationRole`, Location + ItemStock resolvers, GraphQL types, **plus the dedicated test database** (§7). `Item` keeps its columns and still serves them — nothing breaks. |
 | **2** | Web cloud path switches to the new types: `joinItemStock` extracted to `lib/itemStock.ts`, `PantryData` query, Apollo `keyArgs` policy, every `isCloud` bypass deleted, Dexie v18 + `isDefault`, per-mode storage key, corrected reconcile effect. |
-| **3** | Carts and logs: migration §4.5–4.7 (including the §5 `'no-vendor'` split), composite cart ids, location-scoped logs, `consumeRecipes` and `applyUnitSwitch` transactions. |
+| **3** | Carts and logs: migration §4.5–4.7 (including the §5 `'no-vendor'` split), composite cart ids, location-scoped logs, `consumeRecipes` and `applyUnitSwitch` transactions. **Split into 3a / 3b / 3c on 2026-09-16 — see below.** |
 | **4** | Import / export / post-login migration / purge (§6). |
-| **5** | **Contract:** drop the five `Item` columns and remove them from the GraphQL type and inputs. **Delete `apps/server/src/lib/stockDualWrite.ts` and all FOUR of its call sites** — see below. |
+| **5** | **Contract:** drop the five `Item` columns and remove them from the GraphQL type and inputs. **Delete `apps/server/src/lib/stockDualWrite.ts` and all FIVE of its call sites** — see below. |
 
 Mirrors how locations itself (5 PRs) and unified item search (4 PRs) landed in this repo.
+
+### Amendment 2026-09-16 — PR 3 splits into 3a, 3b and 3c
+
+PR 3 as written above carries a **primary-key re-key** alongside five other pieces of
+work. PR 2, for comparison, was 23 commits across 114 files and carried no migration at
+all. A re-key inside a diff that size cannot be reviewed line by line, and cannot be
+reverted without taking everything else with it.
+
+**The first split attempted was "migration first, resolvers second". It does not work.**
+`cart.resolver.ts:12` reads:
+
+```ts
+const cartId = vendorId ?? 'no-vendor'
+let cart = await prisma.cart.findUnique({ where: { id: cartId } })
+if (!cart) cart = await prisma.cart.create({ data: { id: cartId, userId } })
+```
+
+Once §4.7 re-keys `Cart.id` to `${locationId}:${vendorId}`, this lookup finds nothing,
+falls into the `create`, and **silently makes a duplicate cart under the old-style id**.
+Nothing raises an error. The dev database breaks on the first `migrate dev` after merge,
+and every cloud cart E2E spec breaks with it. Production is safer only because there is no
+CI and `migrate deploy` is run by hand.
+
+So the migration is split by **additive versus destructive**, the same pattern PR 1 → PR 5
+already uses.
+
+| PR | Contents | Why it stands alone |
+|---|---|---|
+| **3a** | The additive migration only — add, backfill and constrain `InventoryLog.locationId` and `Cart.locationId`, **no re-key**. Plus location-scoped inventory logs, server and client. | Every existing query keeps working. `Cart.locationId` is written here and read by nothing until 3b. |
+| **3b** | The §5 `'no-vendor'` split, the §4.7 composite re-key, the cart resolvers, `checkout`, `consumeRecipes`, and the two surviving `!isCloud` partition bypasses (`shopping/index.tsx:166`, `cooking.tsx:180`). | Coupled by the re-key. They cannot be separated. |
+| **3c** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. | Both are new features rather than location-scoping changes, and neither blocks the others. |
+
+**PR 3a is additive in the database but not in the API.** Location-scoped logs give the
+logs query a `locationId` argument, and the client starts passing the active location, to
+match local mode's `(log.locationId ?? DEFAULT_LOCATION_ID) === locationId`. The API change
+ships with its own client in the same PR. Recorded so nobody reads "additive migration" as
+"no client change".
+
+**The production rehearsal cannot test the `'no-vendor'` split.** Rehearsal 2's read-only
+half ran on 2026-09-16: **0 accounts** hold a `CartItem` on the shared row, so the split
+step touches **1 `Cart` row and 0 `CartItem` rows**. A green rehearsal on that data proves
+the split did not break anything; it does not prove the split works. The multi-user
+synthetic fixture is what tests it. PR 3b must not confuse the two.
 
 ### PR 5's teardown: five dual-write sites, not three
 
