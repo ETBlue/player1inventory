@@ -294,6 +294,54 @@ Restore one bypass. The cloud E2E case that Step 4.6 unskipped must go RED.
 
 ---
 
+### Task 4 — four findings worth keeping
+
+**1. A bug the unit tests could not see, and E2E caught.** The first cloud
+bootstrap effect listed `locations` in its dependency array. `useLocations()` maps
+its cloud result, so that array has a new identity every render: effect → mutation
+→ `AllCarts` refetch → render → effect, without end.
+
+**All 7 unit tests passed against 92 calls**, because every assertion used
+`toContain`. `/shopping` never reached `networkidle` and the cloud E2E case timed
+out. Fixed with a derived boolean plus a ref, and pinned by a test that goes red at
+`expected [...92 entries] to have a length of 1`.
+
+`toContain` cannot see "and 91 more". Assert the count when the count is the thing
+that matters.
+
+**2. `pnpm codegen` cannot check an input-object field.** A missing field
+*argument* fails GraphQL validation, so codegen catches it. A missing field of an
+*input object* is valid in the document and fails one stage later, while coercing
+the variable. So `ConsumeRecipesInput.locationId` is checked by `tsc`
+(`TS2741`), not by codegen, and the runtime error is `BAD_USER_INPUT` rather than
+`GRAPHQL_VALIDATION_FAILED`.
+
+**3. The `e2e/` seeds are a caller class no static check can reach.** They build
+GraphQL as plain template literals, so neither codegen nor `tsc` sees them. Three
+`createVendor` seeds in `shopping.spec.ts` broke, plus two that created items with
+no `ItemStock` row — which only started mattering once the cloud stocked-here gate
+went live. Only Playwright found them.
+
+**4. The plan said two bypasses; five had to go.** Removing only `isUnstockedHere`
+and `isRecipeUnstockedHere` would have left them partitioning on numbers that are
+not location-scoped. The three feeding them also lost their mode branch:
+`useVendorCartCounts.ts` (a global tally plus a hard-coded `inactiveCount: 0`),
+`cooking.tsx`'s `availableItemIds`, and `shopping/index.tsx`'s `cartForVendor`,
+which still built the bare cloud cart id. A fifth in `shopping/$vendorId.tsx` was
+false for the same reason.
+
+**Cache-key mutation repeated PR 3a's result exactly.** The hook-level test stays
+green because `cache-and-network` refetches on every switch; the cache-level test
+in `apollo/client.test.ts` goes red. Not reshaped to force a red.
+
+### A gap recorded, not fixed
+
+`useDeleteLocation`'s cloud branch refetches only `GetLocations`. Since PR 3a both
+`Cart.locationId` and `InventoryLog.locationId` cascade, so the database does
+delete the rows — but `AllCarts`, `AllCartItems` and `ItemLogs` observers can still
+hold deleted ones. Outside Task 4's scope. `removeItemFromLocation`'s per-item
+cascade stays PR 3c's, as its own comment says.
+
 ## Task 5 — Rehearsal against a production copy
 
 The copy is already in place and checked (2026-09-17). Confirm again before
