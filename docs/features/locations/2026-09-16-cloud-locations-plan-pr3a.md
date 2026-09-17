@@ -290,6 +290,54 @@ recorded. Say so rather than counting it as passed.
 
 **Step 5.4.** Tell the user to delete the Neon branch when the rehearsal is done.
 
+### Result — run 2026-09-17. PASSED.
+
+Applied `20260916000000_add_location_to_log_and_cart` to a Neon branch copied from
+production. Only that one migration, and nothing else was written.
+
+**The env override was proved before any write.** `prisma migrate status` was run
+twice, with and without `DATABASE_URL` / `DIRECT_URL` pointed at the `PROD_COPY_`
+vars. The two reported **different hosts**, so the redirect is real rather than a
+silent fall back to the dev database. Do this every time — a fallback would apply the
+migration to dev and make the rehearsal meaningless while still printing success.
+
+**`Cart.id` is byte-identical.** Proved by hashing the full sorted id sets before and
+after, not by asserting it:
+
+| Set | Rows | Before | After |
+|---|---|---|---|
+| `Cart.id` | 37 | `2f459450498737da` | `2f459450498737da` |
+| `CartItem.id` | 19 | `b17cd2b1fcbf5589` | `b17cd2b1fcbf5589` |
+| `CartItem.cartId` | 19 | `eee4bd7fa2425c6e` | `eee4bd7fa2425c6e` |
+| `InventoryLog.id` | 1364 | `6890d2b0760e75db` | `6890d2b0760e75db` |
+
+The additive/destructive split held. No re-key leaked into PR 3a.
+
+**Backfill and constraints:**
+
+| Assertion | Result |
+|---|---|
+| Logs with no `locationId` | 0 |
+| Carts with no `locationId` | 0 |
+| Logs not pointing at their owner's **default** location | 0 |
+| Carts not pointing at their owner's default location | 0 |
+| Row counts changed | none — 173 items, 1364 logs, 37 carts, 19 cart items, 1 location, 173 stocks |
+| `NOT NULL` on both columns | yes |
+| Both FKs, `ON DELETE CASCADE` | yes |
+| `InventoryLog_itemId_locationId_occurredAt_idx` created | yes |
+
+**Two assertions cannot fail on this data.** "Logs whose location belongs to another
+user" and the cart equivalent are trivially satisfied, because production has exactly
+one user. Same limitation Rehearsal 1 recorded. This rehearsal proves the migration
+works at real scale and data shape. The multi-user synthetic fixture is what tests
+cross-user scoping. Do not read this pass as covering both.
+
+**One reported FAIL was the assertion script, not the migration.** It matched foreign
+keys on `%locationId%`, which also catches `ItemStock_locationId_fkey` from PR 1, so it
+counted 3 and expected 2. Scoped to the two tables this migration touches it is exactly
+2. Recorded because a green-looking rehearsal with a broken assertion is worse than a
+red one.
+
 ---
 
 ## Task 6 — Docs, gate, and the full E2E run
