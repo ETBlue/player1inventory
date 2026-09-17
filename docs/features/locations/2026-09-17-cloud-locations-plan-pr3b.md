@@ -127,6 +127,36 @@ none. After the migration:
 
 ---
 
+## Task 1 result — `verify:migration` passed, 2026-09-18
+
+Run against `TEST_DATABASE_URL`, the dedicated test Neon branch. All three
+migrations applied, **41 assertions green**.
+
+**It needed the user's explicit consent.** Prisma's AI guardrail blocks an agent
+from running `migrate reset` without `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`.
+The user granted it for this one run, for `TEST_DATABASE_URL` only. **That consent
+does not carry to any other command or any other target.** Ask again next time.
+
+**The script's own guard is good but has one gap.** It compares by parsed host +
+pathname, not raw string, and checks both `TEST_*` vars against both dev vars. It
+does **not** check against `PROD_COPY_DATABASE_URL`. That was verified by hand
+before the run — all three hosts are distinct. Worth closing in a later PR.
+
+The assertions that carry weight for this PR:
+
+| Assertion | What it catches |
+|---|---|
+| cart count is 4 seeded + 1 from the split = 5 | an unchanged count means phase A did nothing |
+| user-l gets a NEW `${their own locationId}:no-vendor` | the split ran at all |
+| user-l's items are NOT in user-k's cart | phase B running before phase A |
+| every `Cart.id` is exactly `${own locationId}:${original id}` | a missed row **and** a doubled prefix — a `startsWith` test sees neither |
+| user-l's new cart opens `NULL` `lastPurchasedAt` | the §5 leak itself: the timestamp belonged to user-k |
+| BOTH of user-l's items move | a split that moved only the first row |
+
+**Two assertions are labelled in the script as structural invariants that cannot
+go red on their own**, and say so in their own text. They are sanity checks, not
+evidence. Do not count them.
+
 ## Task 2 — Vendor carts, at the right time
 
 Local mode decides this and cloud copies it. `createVendor`
