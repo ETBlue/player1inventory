@@ -73,4 +73,40 @@ extend type Mutation {
 
   "Empty one cart, pinned items included. The cart id names the location."
   abandonCart(cartId: ID!): Cart!
+
+  """
+  Make sure one location has its no-vendor cart and one cart per vendor, then
+  return every cart at that location.
+
+  The cloud half of local mode's `bootstrapCarts`
+  (apps/web/src/db/operations.ts). `createVendor` pre-creates a cart at ONE
+  location — the one the caller was looking at — so every other location is
+  missing that vendor's cart until something fills it in. This mutation is that
+  something.
+
+  ── WHY A MUTATION, AND NOT THE `locations` QUERY ──
+
+  1. Local mode says so. The comment on `createVendor` in
+     apps/web/src/db/operations.ts states that carts are pre-created up front
+     and NOT lazily from a read path, which is what keeps `getCart` a pure read.
+     Putting the creation inside `locations` would make a read write.
+  2. `locations` does not know which location the caller is looking at, so it
+     would have to create `locations x vendors` carts on every call. This
+     mutation creates one location's worth, when that location becomes active.
+  3. Authorization fits. One caller-supplied `locationId` goes through
+     `requireLocationRole(locationId, 'member')`, the same seam every other
+     location write uses. A read path would have to demand `member` on every
+     location just to list them.
+
+  `locationId` is required, unlike the nullable `locationId` on `vendorCart`
+  and `createVendor`. Nothing in apps/web calls this mutation yet, so requiring
+  it cannot break the web build — there is no default-location fallback here to
+  tighten later, and Task 4 has nothing to do to this field.
+
+  The caller is the web client's active-location effect: local mode already
+  calls `bootstrapCarts(activeLocationId)` from `ActiveLocationProvider`
+  (apps/web/src/hooks/useActiveLocation.tsx) whenever the active location
+  changes. PR 3b Task 4 adds the cloud branch to that same effect.
+  """
+  bootstrapCarts(locationId: ID!): [Cart!]!
 }

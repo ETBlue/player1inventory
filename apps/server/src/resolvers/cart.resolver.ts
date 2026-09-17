@@ -203,6 +203,62 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       return updatedCart as unknown as Cart
     },
 
+    /**
+     * The cloud half of local mode's `bootstrapCarts`
+     * (apps/web/src/db/operations.ts). See the doc string on this field in
+     * src/schema/cart.graphql for why it is a mutation and not part of the
+     * `locations` query.
+     *
+     * `createVendor` writes one cart, at the location the caller was looking
+     * at. Every OTHER location is missing that vendor's cart until this runs
+     * for it. The web client calls it when the active location changes, which
+     * is exactly when local mode calls its own version.
+     */
+    bootstrapCarts: async (_, { locationId }, ctx) => {
+      const userId = requireAuth(ctx)
+      // `member`, not `viewer`: this creates rows.
+      await requireLocationRole(ctx, locationId, 'member')
+
+      const vendors = await prisma.vendor.findMany({
+        where: { userId },
+        select: { id: true },
+      })
+      // The no-vendor cart first, then one per vendor — the same set local
+      // mode's `bootstrapCarts` writes.
+      const wantedIds = [
+        cartIdFor(locationId, null),
+        ...vendors.map((v) => cartIdFor(locationId, v.id)),
+      ]
+
+      const present = await prisma.cart.findMany({
+        where: { id: { in: wantedIds } },
+        select: { id: true },
+      })
+      const presentIds = new Set(present.map((c) => c.id))
+      const missing = wantedIds.filter((id) => !presentIds.has(id))
+
+      if (missing.length > 0) {
+        // `skipDuplicates`, because the read above and this write are not one
+        // transaction: `vendorCart` creates a missing cart too, so a query
+        // running in parallel can insert one of these ids between the two
+        // statements. Without the flag that race raises P2002 and the whole
+        // bootstrap fails, taking the carts that were fine with it.
+        await prisma.cart.createMany({
+          data: missing.map((id) => ({ id, userId, locationId })),
+          skipDuplicates: true,
+        })
+      }
+
+      // Scoped by `locationId`, so the caller gets this location's carts only —
+      // `allCarts` is the whole-account read. `userId` here is a query SCOPE
+      // (see the comment above this object), not the authorization decision;
+      // that was `requireLocationRole` at the top.
+      return prisma.cart.findMany({
+        where: { userId, locationId },
+        orderBy: [{ id: 'asc' }],
+      }) as unknown as Promise<Cart[]>
+    },
+
     abandonCart: async (_, { cartId }, ctx) => {
       const userId = requireAuth(ctx)
       await requireCartLocation(ctx, cartId, 'member')
