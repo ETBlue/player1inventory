@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PantryDataDocument } from '@/generated/graphql'
 import {
+  bootstrapCartsMock,
   cloudItem,
   cloudStock,
   getLocationsMock,
@@ -70,7 +71,12 @@ const pantryMock = (locationId: string) => ({
   },
 })
 
-const MOCKS = [getLocationsMock, pantryMock(LOC_A), pantryMock(LOC_B)]
+const MOCKS = [
+  bootstrapCartsMock,
+  getLocationsMock,
+  pantryMock(LOC_A),
+  pantryMock(LOC_B),
+]
 
 function makeWrapper(mocks: MockedProviderProps['mocks'] = MOCKS) {
   const queryClient = new QueryClient({

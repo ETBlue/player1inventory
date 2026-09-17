@@ -24,6 +24,7 @@ import {
 import { deserializeRecipe } from '@/lib/deserialization'
 import type { Recipe, RecipeItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
+import { useCloudLocationId } from './useCloudLocationId'
 import { useDataMode } from './useDataMode'
 
 export function useRecipes() {
@@ -306,6 +307,11 @@ export function useConsumeRecipes() {
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
   const [cloudConsumeRecipes] = useConsumeRecipesMutation()
+  // Resolved at CALL time, not render time — `ConsumeRecipesInput.locationId`
+  // is `ID!` since PR 3b Task 4 and the server takes the `member` role on it,
+  // so the `'local'` sentinel of a fresh cloud session would lose the whole
+  // cook to FORBIDDEN. See `useCloudLocationId`.
+  const resolveCloudLocationId = useCloudLocationId()
 
   return useMutation({
     mutationFn: async (input: {
@@ -327,6 +333,7 @@ export function useConsumeRecipes() {
           variables: {
             input: {
               occurredAt: input.occurredAt.toISOString(),
+              locationId: await resolveCloudLocationId(),
               recipeIds: input.recipeIds,
               items: input.items.map((item) => ({
                 itemId: item.itemId,

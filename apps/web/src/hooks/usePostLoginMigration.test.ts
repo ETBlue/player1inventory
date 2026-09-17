@@ -93,6 +93,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useUpdateLocationMutation: mutationStub,
     useDeleteLocationMutation: mutationStub,
     useReorderLocationsMutation: mutationStub,
+    // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
+    useBootstrapCartsMutation: mutationStub,
   }
 })
 

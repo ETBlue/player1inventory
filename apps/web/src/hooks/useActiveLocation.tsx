@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import { bootstrapCarts, getLocations } from '@/db/operations'
+import { useBootstrapCartsMutation } from '@/generated/graphql'
 import { useLocations } from '@/hooks/useLocations'
 import type { DataMode } from '@/lib/dataMode'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
@@ -108,6 +109,9 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   const { data: locations } = useLocations()
   const { mode } = useDataMode()
   const queryClient = useQueryClient()
+  // Always called (Rules of Hooks). Safe in local mode: main.tsx wraps every
+  // render with a no-op ApolloProvider, and the cloud effect below never fires.
+  const [cloudBootstrapCarts] = useBootstrapCartsMutation()
   const [activeLocationId, setActiveLocationIdState] = useState<string>(() =>
     readStoredLocationId(mode),
   )
@@ -192,6 +196,40 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [mode, activeLocationId, queryClient])
+
+  // The CLOUD half of the same rule (PR 3b Task 4). `createVendor` pre-creates
+  // a vendor's cart at ONE location — the one the caller was looking at — so
+  // every other location lacks that vendor's cart until something fills it in.
+  // The `bootstrapCarts` mutation is that something, and this is the moment
+  // local mode picks to call its own version: when the active location changes.
+  //
+  // Gated on the active id being in the LOADED location list. On a fresh cloud
+  // session `activeLocationId` is still the `'local'` sentinel, which names no
+  // cloud `Location`, and `bootstrapCarts` asks for the `member` role on it —
+  // so an ungated call is refused with FORBIDDEN and the carts are never
+  // created. The validation effect above then corrects the id, this effect
+  // re-runs with a real one, and the bootstrap lands. The list itself is the
+  // gate here rather than `useCloudLocationKnown`, because this component
+  // already holds the list.
+  //
+  // `AllCarts` is refetched by name so the shopping index picks up the carts
+  // that were just created; it is a read of existing rows only. `VendorCart`
+  // is NOT refetched — that query creates its own cart when it is missing, so
+  // the cart page is already correct without this mutation.
+  //
+  // No `cancelled` flag, unlike the local effect above: there is no follow-up
+  // step here to skip. Apollo owns the refetch, and a location switch while
+  // this is in flight simply runs the mutation again for the new location.
+  useEffect(() => {
+    if (mode !== 'cloud') return
+    if (!locations?.some((loc) => loc.id === activeLocationId)) return
+    cloudBootstrapCarts({
+      variables: { locationId: activeLocationId },
+      refetchQueries: ['AllCarts'],
+    }).catch((err) => {
+      console.error('cloud bootstrapCarts failed', err)
+    })
+  }, [mode, activeLocationId, locations, cloudBootstrapCarts])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),

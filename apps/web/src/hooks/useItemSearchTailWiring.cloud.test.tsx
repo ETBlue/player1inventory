@@ -11,6 +11,7 @@ import {
   PantryDataDocument,
 } from '@/generated/graphql'
 import {
+  bootstrapCartsMock,
   cloudItem,
   cloudStock,
   getLocationsMock,
@@ -86,7 +87,13 @@ const addMock = {
   },
 }
 
-const MOCKS = [getLocationsMock, pantryMock(LOC_A), pantryMock(LOC_B), addMock]
+const MOCKS = [
+  bootstrapCartsMock,
+  getLocationsMock,
+  pantryMock(LOC_A),
+  pantryMock(LOC_B),
+  addMock,
+]
 
 function makeWrapper(mocks: MockedProviderProps['mocks'] = MOCKS) {
   const queryClient = new QueryClient({

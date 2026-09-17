@@ -13,6 +13,7 @@ import {
   RemoveItemFromLocationDocument,
 } from '@/generated/graphql'
 import {
+  bootstrapCartsMock,
   cloudItem,
   cloudStock,
   getLocationsMock,
@@ -117,6 +118,7 @@ const removeMock = {
 }
 
 const MOCKS = [
+  bootstrapCartsMock,
   getLocationsMock,
   pantryMock(LOC_A),
   pantryMock(LOC_B),

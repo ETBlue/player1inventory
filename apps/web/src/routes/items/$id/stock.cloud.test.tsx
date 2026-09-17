@@ -19,6 +19,7 @@ import {
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
 import {
+  bootstrapCartsMock,
   cloudItem,
   cloudStock,
   getLocationsMock,
@@ -105,7 +106,13 @@ const addMock = {
   },
 }
 
-const MOCKS = [getLocationsMock, getRiceMock, riceStocksMock, addMock]
+const MOCKS = [
+  bootstrapCartsMock,
+  getLocationsMock,
+  getRiceMock,
+  riceStocksMock,
+  addMock,
+]
 
 function renderStockTab(mocks: MockedProviderProps['mocks'] = MOCKS) {
   const queryClient = new QueryClient({
