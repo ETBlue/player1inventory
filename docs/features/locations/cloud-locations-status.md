@@ -690,6 +690,9 @@ PR 3c is blocked by neither 3a nor 3b.
 
 ### PR 4 owes
 
+PR 4's main scope is **import, export, post-login migration and purge**, design §6. Those
+four paths still know nothing about `Location`. Plus these two:
+
 | Item | Why it matters |
 |---|---|
 | Decide whether `usePostLoginMigration`'s copy id should be validated. | The hook copies by the **unvalidated** `readStoredLocationId('local')`; the dialog warns by the **validated** `resolveLocalActiveLocationId()`. They diverge when the slot names a **deleted** location: every item uploads with zeroed stock and every cart is dropped, silently, and the one-shot ref blocks a retry. |
