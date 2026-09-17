@@ -1,7 +1,7 @@
 # Cloud Locations — Status
 
-Status: 🔄 **In Progress** — PRs 0, 1 and 2 are ✅ merged. PR 3a is ✅ built on
-`feature/cloud-locations-pr3a`. PRs 3b, 3c, 4 and 5 are 🔲 pending.
+Status: 🔄 **In Progress** — PRs 0, 1, 2 and 3a are ✅ merged. PR 3b is ✅ built on
+`feature/cloud-locations-pr3b`. PRs 3c, 4 and 5 are 🔲 pending.
 
 Docs for this feature:
 [brainstorming](2026-08-30-brainstorming-cloud-locations.md) ·
@@ -9,7 +9,15 @@ Docs for this feature:
 [PR 0 + PR 1 plan](2026-08-30-cloud-locations-plan-pr0-pr1.md) ·
 [PR 2 plan](2026-08-30-cloud-locations-plan-pr2.md) ·
 [PR 3 split brainstorming](2026-09-16-brainstorming-pr3-split.md) ·
-[PR 3a plan](2026-09-16-cloud-locations-plan-pr3a.md)
+[PR 3a plan](2026-09-16-cloud-locations-plan-pr3a.md) ·
+[PR 3b brainstorming](2026-09-17-brainstorming-pr3b.md) ·
+[PR 3b plan](2026-09-17-cloud-locations-plan-pr3b.md) ·
+[**deploy runbook**](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md)
+
+> **Nothing here is deployed yet.** PR 3b re-keys a primary key, and the migration
+> and the new server code must go out in the same deploy. Read the
+> [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md)
+> before deploying anything in this series.
 
 ---
 
@@ -29,8 +37,8 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **0** | ✅ merged — [#281](https://github.com/ETBlue/player1inventory/pull/281) | Closes issue #260. Cloud had **zero** E2E coverage of vendor carts and checkout. Both tests now run and pass. |
 | **1** | ✅ | `Location` + `ItemStock` Prisma models, the additive backfill migration, `requireLocationRole`, both GraphQL schemas, both resolver sets, purge coverage, and a dedicated E2E test database. |
 | **2** | ✅ | The web client's cloud path moves onto `Location` / `ItemStock`. Writes split client-side. A five-site server dual-write keeps `Item`'s legacy columns fed until PR 5. |
-| **3a** | ✅ built, not merged | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
-| **3b** | 🔲 Pending | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, `checkout`, `consumeRecipes`, and the two `!isCloud` partition bypasses. |
+| **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
+| **3b** | ✅ built, not merged | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
 | **3c** | 🔲 Pending | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. |
 | **4** | 🔲 Pending | Import, export, post-login migration and purge (design §6). |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
@@ -67,8 +75,9 @@ Two pieces of follow-on work sit beside the PR series:
 
 Cloud has a **cross-user `'no-vendor'` cart leak**. `Cart.id` is the primary key, and
 `'no-vendor'` is a literal string shared by every user. So `lastPurchasedAt` crosses
-accounts, and one user's checkout stamps another user's row. **PR 3b** fixes it — the
-re-key is the destructive half of the split, so it is not in PR 3a.
+accounts, and one user's checkout stamps another user's row. **PR 3b fixes it** — the
+re-key is the destructive half of the split, so it is not in PR 3a. Fixed in code, **not yet
+deployed**: the fix only reaches production when the migration runs there.
 
 ---
 
@@ -261,8 +270,9 @@ fix it, and cannot: a cloud `Cart` has no usable location until PR 3b re-keys it
 `ConsumeRecipesInput` carries no location at all. Both sites call `ensureDefaultLocation`
 and carry a marker.
 
-`grep -rn "PR 3b:" apps/server/src` returns **4 markers in 3 files** — that is PR 3b's
-checklist, the way `REMOVED IN PR 5` is PR 5's:
+`grep -rn "PR 3b:" apps/server/src` returned **4 markers in 3 files** at the end of PR 3a —
+that was PR 3b's checklist, the way `REMOVED IN PR 5` is PR 5's. **All four are gone since
+PR 3b; the grep now returns 0.** The table is kept as history:
 
 | File | Line | What it marks |
 |---|---|---|
@@ -314,6 +324,266 @@ added; without them the script proved PR 1's migration and said nothing about th
 
 **Whoever writes the next location migration must add it to that list**, or `migrate reset`
 replays it against a database that lacks what it needs.
+
+---
+
+## PR 3b ✅ — the cart re-key
+
+Branch `feature/cloud-locations-pr3b`.
+[Plan](2026-09-17-cloud-locations-plan-pr3b.md) · [brainstorming](2026-09-17-brainstorming-pr3b.md) ·
+[**deploy runbook**](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md).
+
+The commits that carry the work:
+
+| Commit | What |
+|---|---|
+| `dd311306` | `cartIdFor` / `parseCartId` made usable from the server. |
+| `2a14c8a4` | The migration — the `'no-vendor'` split, then the re-key — and the cart resolvers, in one commit. |
+| `c792a2f6` | The migration's assertions in `verify-migration.ts`. |
+| `32470f1d` | Vendor carts created at the right time: `createVendor` for the active location, `bootstrapCarts` for the rest. |
+| `60c8b65e` | Real `locationId` for `checkout` and `consumeRecipes`. |
+| `6f138032` | The web client follows the composite cart id. |
+| `49255c49` | The last three nullable `locationId` arguments tightened to `ID!`. |
+| `0ad0cdb5` | The not-stocked-here partition runs in cloud too — five `!isCloud` bypasses removed. |
+| `0e00f9cd` | The cloud bootstrap effect stopped looping on every render. |
+
+Test counts after this PR: **226** server, **2061** web. Both suites green.
+
+### The migration
+
+`apps/server/prisma/migrations/20260917000000_rekey_cart_to_location_vendor/migration.sql`.
+Hand-written, two phases, and **the order is the correctness argument**.
+
+| Phase | What |
+|---|---|
+| **A** | Split the shared `'no-vendor'` cart. One new `${their own locationId}:no-vendor` per *other* user who holds a `CartItem` on the shared row, then repoint their rows. |
+| **B** | The re-key. `CartItem` first, while it can still join on the old id, then `Cart`. |
+
+Phase A must run first. `'no-vendor'` is one literal row that one user owns. If phase B
+renamed it first, phase B's `CartItem` update joins on `cartId = Cart.id`, so **every other
+user's items would follow that row into the owner's cart**.
+
+**Four checks, in two `DO $$` guard blocks, each raising a message that names what it
+found.** One after phase A: any `CartItem` of another user left on the shared row, which
+means that user has no default `Location` — the message lists them. Three after phase B,
+before the foreign key goes back on: a `Cart.id` with no separator, a `Cart.id` that does
+not start with its own `locationId`, and a `CartItem` pointing at a `Cart` that no longer
+exists.
+
+**The doubled-prefix check exists because of a real mistake caught in review.** The design's
+original SQL had no clause excluding the carts phase A creates, so it would have re-keyed
+them a second time and written `loc:loc:no-vendor`. Task 1 added the clause; the rehearsal
+then confirmed the fix against real data. A `startsWith` test would not have seen it.
+
+### The `'no-vendor'` cross-user leak is fixed
+
+That was the live bug: `Cart.id` is the primary key and `'no-vendor'` is a literal every
+account shares, so one user's checkout stamped another user's `lastPurchasedAt`.
+
+**The assertion that proves it** — in the 13-user fixture in
+`apps/server/scripts/verify-migration.ts` — is that **user-l's new cart opens with a `NULL`
+`lastPurchasedAt` instead of inheriting user-k's.** A cart-count assertion alone would not
+catch it: the row can exist and still carry the wrong timestamp. `verify:migration` passed
+with **41 assertions** against `TEST_DATABASE_URL` on 2026-09-18.
+
+Two of those 41 are labelled in the script as structural invariants that cannot go red on
+their own, and their own text says so. They are sanity checks. Do not count them.
+
+**That run needed the user's explicit consent.** Prisma's AI guardrail blocks an agent from
+running `migrate reset` without `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`. It was
+granted for that one run, for `TEST_DATABASE_URL` only. Ask again next time.
+
+**One gap in the script's own guard.** It compares `TEST_DATABASE_URL` / `TEST_DIRECT_URL`
+against the dev vars by parsed host + pathname. It does **not** check them against
+`PROD_COPY_DATABASE_URL`. That was verified by hand before the run — all three hosts are
+distinct. Worth closing in a later PR.
+
+### The production rehearsal did not exercise the split at all
+
+Run 2026-09-18 against a fresh Neon branch of production. **Passed.** The env override was
+proved first: `prisma migrate status` with and without it reported **different hosts**. Both
+migrations then applied — `20260916000000` (PR 3a) and `20260917000000` — because production
+has not been deployed yet.
+
+The hashes moved where they should. This is the opposite of PR 3a, where the proof was that
+nothing changed.
+
+| Set | Rows | Before | After | Expected |
+|---|---|---|---|---|
+| `Cart.id` | 37 | `2f459450498737da` | `a95da980bc85c0b3` | **changed** — re-keyed |
+| `CartItem.cartId` | 13 | `d8fa5adb55a18fd7` | `ef345b98ff1f8625` | **changed** — repointed |
+| `CartItem.id` | 13 | `d321211b1b04b290` | `d321211b1b04b290` | **unchanged** — rows move, not recreated |
+
+The third row matters most. A changed `CartItem.id` would mean the migration deletes and
+recreates rows, which loses anything it does not copy by hand.
+
+Cart shapes went from 1 literal `'no-vendor'` and 0 with a colon, to 0 and 37. Counts
+unchanged: 37 carts, 13 cart items, 173 items, 1374 logs. All five assertions returned 0:
+no cart id without a colon, no row still under `'no-vendor'`, no orphan `CartItem`, no cart
+id that is not `locationId:original`, **no doubled prefix**.
+
+**What it does not prove — read this before trusting the pass.**
+
+1. **Phase A did no work at all.** Zero production accounts had a `CartItem` on the shared
+   row. The split loop ran over an empty set. So this rehearsal covers the **re-key** at
+   real scale and says **nothing** about the **split**. The only thing that tests the split
+   is the 13-user fixture in `verify:migration`.
+2. Two assertions cannot fail, because production has one user: the cross-user ones.
+
+### All 218 pre-existing server tests stayed green through Task 3
+
+That is a measurement, not a pass.
+
+Task 3 changed `checkout` and `consumeRecipes` from writing the caller's **default**
+location to writing the **real** one. Every older checkout test uses a cart at the default
+location, and every older cooking test omits `locationId`. For those fixtures "the cart's
+location" and "the caller's default location" are the **same string**, so they cannot tell
+the two implementations apart.
+
+Only the new test groups can. That is written into both groups' comment headers, so nobody
+later counts the old tests as coverage of this behaviour. This is the same shape as PR 3a's
+call-recorder finding and PR 2's one-location fixtures. It keeps recurring because a
+single-location fixture is the natural thing to write.
+
+Three new tests are **negative controls** and say so in their own text:
+`running bootstrapCarts twice creates nothing the second time`,
+`a cart at the Kitchen still writes the Kitchen`, and
+`an explicit Kitchen still writes the Kitchen`. They stay green under their mutations by
+construction. They are controls, not evidence.
+
+### The plan said two `!isCloud` bypasses; five had to go
+
+Removing only `isUnstockedHere` (`shopping/index.tsx`) and `isRecipeUnstockedHere`
+(`cooking.tsx`) would have left them partitioning on numbers that are not location-scoped.
+Three more lost their mode branch at the same time:
+
+| Site | What it was doing |
+|---|---|
+| `useVendorCartCounts.ts` | a global tally plus a hard-coded `inactiveCount: 0` |
+| `cooking.tsx` `availableItemIds` | built without the stocked-here filter in cloud |
+| `shopping/index.tsx` `cartForVendor` | still built the bare cloud cart id |
+
+A fifth bypass, the stocked-here gate in `shopping/$vendorId.tsx`, rested on the same false
+reason and went with them.
+
+The reason all five ever existed was the **cart and the consumption path**, never "cloud
+items have no `stockId`" — they have carried one since PR 2.
+
+On the server side, the matching checklist is also finished: `grep -rn "PR 3b:"
+apps/server/src` returns **0**, down from the 4 markers in 3 files PR 3a left.
+
+### The `mirrorItemStockToItem` instruction in the plan was wrong
+
+The plan listed it as a third site that should move off the default location. **Following
+that would have introduced a bug**, so it was not done:
+
+1. It writes the **reverse** direction — one location's `ItemStock` back onto `Item`'s five
+   legacy columns. Those columns exist for a browser on a stale bundle, which renders one
+   number per item and has no location concept. The default location's stock is the only
+   value correct to show it. A Garage edit mirrored there would report the Garage's numbers
+   as the Kitchen's.
+2. Its only call site (`itemStock.resolver.ts:109`) is already guarded by
+   `if (location.isDefault)`. The function never took the default as a *fallback* — the call
+   site chooses, correctly.
+3. `stockDualWrite.ts` carried **no `PR 3b:` marker**. The plan's own gate never pointed at
+   it.
+
+What that file did need was comment repair. Its "NOT LOCATION-AWARE, AND DELIBERATELY SO"
+section became false the moment `checkout` and `consumeRecipes` started passing real
+locations.
+
+### A bug the unit tests could not see, and E2E caught
+
+The first cloud bootstrap effect listed `locations` in its dependency array. `useLocations()`
+maps its cloud result, so that array has a new identity every render: effect → mutation →
+`AllCarts` refetch → render → effect, without end.
+
+**All 7 unit tests passed against 92 calls**, because every assertion used `toContain`.
+`/shopping` never reached `networkidle` and the cloud E2E case timed out. Fixed with a
+derived boolean plus a ref, and pinned by a test that goes red at
+`expected [...92 entries] to have a length of 1`.
+
+`toContain` cannot see "and 91 more". Assert the count when the count is the thing that
+matters.
+
+### Three more findings from Task 4
+
+1. **`pnpm codegen` cannot check an input-object field.** A missing field *argument* fails
+   GraphQL validation, so codegen catches it. A missing field of an *input object* is valid
+   in the document and fails one stage later, while coercing the variable. So
+   `ConsumeRecipesInput.locationId` is caught by `tsc` (`TS2741`), not by codegen, and the
+   runtime error is `BAD_USER_INPUT`, not `GRAPHQL_VALIDATION_FAILED`.
+2. **The `e2e/` seeds are a caller class no static check can reach.** They build GraphQL as
+   plain template literals, so neither codegen nor `tsc` sees them. Three `createVendor`
+   seeds in `shopping.spec.ts` broke, plus two that created items with no `ItemStock` row —
+   which only started mattering once the cloud stocked-here gate went live. Only Playwright
+   found them.
+3. **The cache-key mutation repeated PR 3a's result exactly.** The hook-level test stays
+   green because `cache-and-network` refetches on every switch; the cache-level test in
+   `apollo/client.test.ts` goes red. Not reshaped to force a red.
+
+### What cloud E2E does and does not cover — a correction
+
+The PR 3b plan claims, in its "Owed before the deploy" section, that **no cloud E2E spec
+names `checkout`, `consumeRecipes` or `bootstrapCarts`**. That claim is **false**, and it was
+copied forward into several task briefs. Measured 2026-09-18 from the cloud project's
+`testMatch`:
+
+| Path | Covered in cloud E2E? |
+|---|---|
+| `checkout` | **Yes** — 4 cases in `shopping.spec.ts` run in the cloud project. |
+| `consumeRecipes` | **Yes** — `cooking.spec.ts` and `item-logs.spec.ts` both cook in cloud. |
+| `bootstrapCarts` | **Yes** — `ActiveLocationProvider` calls it on every active-location change, so all 78 cloud tests run it. |
+
+Cloud E2E hits real Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at
+`TEST_DATABASE_URL`), so `createMany({ skipDuplicates: true })` has executed against a real
+database.
+
+**The real gap is narrower and still owed: no automated test has ever run the new server
+code against data this migration produced.** Cloud E2E starts from an empty database —
+`/e2e/cleanup` deletes everything first — so every row it reads was written by the new code
+itself. The rehearsal migrated real rows but started no application code against the result.
+**A manual smoke test is owed before the deploy.** Step 6 of the
+[deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) lists the
+exact actions, and it requires **two locations**. With one location, "the cart's location"
+and "the caller's default location" are the same string, so the location-scoping half of the
+test proves nothing.
+
+### A gap recorded, not fixed
+
+**`useDeleteLocation`'s cloud branch refetches only `GetLocations`.** Since PR 3a both
+`Cart.locationId` and `InventoryLog.locationId` cascade, so the database **does** delete the
+rows — but the open page's `AllCarts`, `AllCartItems` and `ItemLogs` observers can still hold
+rows that are already gone. A reload clears it. Outside Task 4's scope, so it was left alone
+on purpose and written down here instead.
+
+`removeItemFromLocation`'s per-item cascade stays PR 3c's, as its own comment says.
+
+### Verification, run 2026-09-18
+
+Full gate green: `pnpm lint`, the root `pnpm build` (codegen + web + server `tsc`, no
+`TS6385`), `pnpm build-storybook`, `pnpm check`, and `pnpm test` — 226 server plus 2061 web,
+all passing.
+
+Full E2E, both projects, no `--grep`: **251 tests — 234 passed, 9 skipped, 8 failed** in
+11.1 minutes. The 8 are the four `item-list-state-restore.spec.ts` cases that already fail on
+`main`, once in `local` and once in `cloud` (issue #280, left alone on purpose):
+
+| Project | Failing case |
+|---|---|
+| `local` and `cloud` | `user can navigate to item detail and back with search state preserved` |
+| `local` and `cloud` | `user can navigate to item detail and back with sort state preserved` |
+| `local` and `cloud` | `user can navigate to item detail and back with scroll position restored` |
+| `local` and `cloud` | `user can navigate to item detail and back with scroll position restored when filter panel is open` |
+
+Nothing else failed.
+
+**The two cloud cases Task 4 unskipped both pass.** They are
+`user sees a shopping vendor stocked only at another location below the divider` and
+`user sees a recipe stocked only at another location below the divider, still disabled`, in
+`e2e/tests/location-not-stocked-here.spec.ts`. Their skip reason named PR 3b and the two
+`!isCloud` partition bypasses. The skipped count dropped from 11 in PR 3a to 9 here, which
+is those two cases going live.
 
 ---
 
@@ -386,20 +656,28 @@ The main ones:
 
 ### PR 3a owes — nothing
 
-PR 3a is complete. What it left undone on purpose is listed under PR 3b below, and each
-place is marked in the source with `PR 3b:`.
+PR 3a is complete and merged as [#291](https://github.com/ETBlue/player1inventory/pull/291).
 
-### PR 3b owes
+### PR 3b owes — nothing in code. One thing before the deploy.
 
-| Item | Why it matters |
+Every item PR 3b was listed as owing is done: the `'no-vendor'` split, the composite
+`Cart.id` re-key, the cart resolvers rewritten with it, vendor carts created at the right
+time, real `locationId` for `checkout` and `consumeRecipes`, five `!isCloud` bypasses
+removed, the new migration added to `MIGRATIONS` in
+`apps/server/scripts/verify-migration.ts` with assertions, and the rehearsal against a
+production copy. `grep -rn "PR 3b:" apps/server/src` returns **0**.
+
+| Still owed | Where |
 |---|---|
-| The `'no-vendor'` split and the composite `Cart.id` re-key (`${locationId}:${vendorId}`). | `'no-vendor'` is a literal string shared by every user, so `lastPurchasedAt` crosses accounts today. PR 3a added `Cart.locationId` but did **not** re-key. |
-| Rewrite the cart resolvers together with the re-key. | `cart.resolver.ts` looks a cart up by the bare `vendorId ?? 'no-vendor'`. After the re-key that lookup finds nothing, falls into its `create`, and silently makes a duplicate cart under the old-style id. No error is raised. The re-key and the resolver cannot ship apart. |
-| Real `locationId` scoping for `checkout` and `consumeRecipes`. | Both write the caller's default location today, so a checkout made while viewing the Garage is logged against the Kitchen. `grep -rn "PR 3b:" apps/server/src` returns 4 markers in 3 files. |
-| Real `locationId` scoping for `mirrorItemStockToItem`. | Same reason. Under location RBAC targeting the default is wrong, not just coarse: a `member` has no `isDefault` row for someone else's location. |
-| Removing the two surviving `!isCloud` partition bypasses — `shopping/index.tsx:166` and `cooking.tsx:180`. | They switch off the "not stocked here" partition. Two of the five `location-not-stocked-here` cases stay `test.skip` until they go. |
-| **A rehearsal of the re-key**, against a fresh production copy. | PR 3a's rehearsal covers the additive migration only. See the rehearsal section below for why a green run still will not prove the split works. |
-| Add the new migration to `MIGRATIONS` in `apps/server/scripts/verify-migration.ts`. | The script parks migrations by name. A migration missing from that list is replayed against a database that lacks what it needs. |
+| **The manual smoke test**, before the deploy. No automated test has run the new server code against data this migration produced. It must use **two** locations. | Step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
+| **The deploy itself**, following the runbook. The migration and the new server code must go out together. Take a Neon branch of production first — a re-key has no `migrate down`. | The [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
+
+Carried forward to a later PR, not blocking:
+
+| Item | Why |
+|---|---|
+| `useDeleteLocation`'s cloud branch refetches only `GetLocations`. | `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows the database has already cascaded away. A reload clears it. See the PR 3b section above. |
+| `verify-migration.ts`'s safety guard does not check `TEST_DATABASE_URL` against `PROD_COPY_DATABASE_URL`. | It checks only the dev vars. Verified by hand for the 2026-09-18 run; a script should do it. |
 
 ### PR 3c owes
 
@@ -584,14 +862,15 @@ on `%locationId%`, which also catches `ItemStock_locationId_fkey` from PR 1, so 
 3 and expected 2. Scoped to the two tables this migration touches, the count is exactly 2.
 Recorded because a green-looking rehearsal with a broken assertion is worse than a red one.
 
-**Job 2b — rehearse PR 3b's re-key. STILL OWED.** It cannot run until PR 3b's
-`migration.sql` exists. Run it against a **fresh** copy, not the one PR 3a used — a
-rehearsal writes to its target.
+**Job 2b — rehearse PR 3b's re-key. DONE 2026-09-18. PASSED.** Run against a **fresh**
+Neon branch, not the one PR 3a used, because a rehearsal writes to its target. The full
+result — the three hashes, the five assertions, and what the run does **not** prove — is in
+the `PR 3b ✅ — the cart re-key` section above.
 
-**A green Job 2b will still not prove the split works.** Today's measurement says 0
-accounts hold a `CartItem` on the shared `'no-vendor'` row, so on production data the split
-step touches 1 `Cart` row and 0 `CartItem` rows and is never exercised. A multi-user
-synthetic fixture is what tests it.
+**The green result did not prove the split works, exactly as predicted here.** Zero
+production accounts held a `CartItem` on the shared `'no-vendor'` row, so phase A ran over
+an empty set and did no work at all. The 13-user synthetic fixture in `verify:migration` is
+the only thing that tests the split.
 
 **Never point `pnpm verify:migration` at a production copy.** `scripts/verify-migration.ts`
 opens with `migrate reset`, which drops and recreates the public schema. Rehearsal 1 avoided

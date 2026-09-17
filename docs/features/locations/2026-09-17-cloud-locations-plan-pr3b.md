@@ -251,12 +251,45 @@ evidence, and say so.
 
 ### Owed before the deploy
 
+> **This paragraph was wrong, and Task 6 corrected it.** It is kept as written
+> because it was copied into several task briefs. The corrected version is
+> directly below it.
+
 No server unit test runs against real SQL, and **no cloud E2E spec names
 `checkout`, `consumeRecipes` or `bootstrapCarts`** — the cloud `testMatch` covers
 12 files, none of them shopping or cooking. `bootstrapCarts` uses
 `createMany({ skipDuplicates: true })`, which the fake models but real Postgres
 has never executed in this repo. **One manual smoke test is owed** for those three
 paths before the production deploy. Task 6's runbook must say so.
+
+#### The correction, measured 2026-09-18
+
+The cloud project's `testMatch` **does** include `shopping.spec.ts`,
+`cooking.spec.ts` and `item-logs.spec.ts`.
+
+| Claim above | True? |
+|---|---|
+| No cloud spec exercises `checkout` | **False.** 4 cases in `shopping.spec.ts` run in cloud. |
+| No cloud spec exercises `consumeRecipes` | **False.** `cooking.spec.ts` and `item-logs.spec.ts` both cook in cloud. |
+| No cloud spec exercises `bootstrapCarts` | **False.** `ActiveLocationProvider` calls it on every active-location change, so all 78 cloud tests run it. |
+| Real Postgres has never run `createMany({ skipDuplicates: true })` | **False.** Cloud E2E hits real Postgres via `TEST_DATABASE_URL`. |
+
+The two claims that **are** true: no server *unit* test runs against real SQL, and
+a manual smoke test is owed. The real reason for the smoke test is narrower and
+more specific:
+
+**No automated test has ever run the new server code against data this migration
+produced.** Cloud E2E starts from an empty database (`/e2e/cleanup` deletes
+everything first), so every row it reads was written by the new code itself. The
+Task 5 rehearsal migrated real rows but started no application code against the
+result. That combination has been executed zero times.
+
+The smoke test is step 6 of
+`docs/global/backend/2026-09-18-deploy-runbook-cart-rekey.md`. It requires **two**
+locations: with one location, "the cart's location" and "the caller's default
+location" are the same string, so every step passes against code that ignores
+location entirely — the same trap that kept all 218 pre-existing server tests
+green through Task 3.
 
 ## Task 4 — Web client, and the two bypasses
 
