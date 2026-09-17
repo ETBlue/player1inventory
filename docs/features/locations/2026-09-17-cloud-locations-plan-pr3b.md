@@ -202,6 +202,62 @@ non-default location and reads the log back there must go RED.
 
 ---
 
+## Corrections found while running this plan
+
+### Task 3's instruction to change `mirrorItemStockToItem` was wrong
+
+The plan listed it as a site that should move from "the caller's default location"
+to "the location actually being written". **Following that would introduce a bug.**
+It was not done, and the reasoning was checked three ways:
+
+1. It writes the **reverse** direction — one location's `ItemStock` back onto
+   `Item`'s five legacy columns. Those columns exist for a browser on a stale
+   bundle, which renders **one number per item** and has no location concept. The
+   default location's stock is the only value correct to show it. A Garage edit
+   mirrored there would report the Garage's numbers as the Kitchen's.
+2. Its only call site (`itemStock.resolver.ts:109`) is already guarded by
+   `if (location.isDefault)`. The function never took the default as a *fallback* —
+   the call site chooses, correctly.
+3. `stockDualWrite.ts` carried **no `PR 3b:` marker**. The four markers were in
+   `vendor.resolver.ts` (1), `cart.resolver.ts` (2) and `recipe.resolver.ts` (1).
+   The plan's own gate — "grep returns 0" — never pointed at this function.
+
+What that file did need was comment repair. Its "NOT LOCATION-AWARE, AND
+DELIBERATELY SO" section became false the moment `checkout` and `consumeRecipes`
+started passing real locations.
+
+### Every pre-existing test stayed green through Task 3, and that is the finding
+
+All 218 of them. Not a pass — a measurement. Every older checkout test uses a cart
+at the default location, and every older cooking test omits `locationId`. For
+those fixtures "the cart's location" and "the caller's default location" are the
+**same string**, so they cannot tell the two implementations apart.
+
+Only the new test groups can. That is written into both groups' comment headers so
+nobody later counts the old ones as coverage of this behaviour.
+
+This is the same shape as PR 3a's call-recorder finding and PR 2's one-location
+fixtures. It keeps recurring because a single-location fixture is the natural
+thing to write.
+
+### Three negative controls are named as such
+
+`running bootstrapCarts twice creates nothing the second time` stays green under
+the "create nothing" mutation — removing a create cannot add a duplicate.
+`a cart at the Kitchen still writes the Kitchen` and `an explicit Kitchen still
+writes the Kitchen` stay green under their mutations, because they assert the
+default location, which is what the mutation forces. All three are controls, not
+evidence, and say so.
+
+### Owed before the deploy
+
+No server unit test runs against real SQL, and **no cloud E2E spec names
+`checkout`, `consumeRecipes` or `bootstrapCarts`** — the cloud `testMatch` covers
+12 files, none of them shopping or cooking. `bootstrapCarts` uses
+`createMany({ skipDuplicates: true })`, which the fake models but real Postgres
+has never executed in this repo. **One manual smoke test is owed** for those three
+paths before the production deploy. Task 6's runbook must say so.
+
 ## Task 4 — Web client, and the two bypasses
 
 **Step 4.1.** `apps/web/src/hooks/useShoppingCart.ts` — 537 lines, 16 `isCloud`
