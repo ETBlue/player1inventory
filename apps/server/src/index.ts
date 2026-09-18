@@ -5,15 +5,30 @@ import { clerkMiddleware, getAuth } from '@clerk/express'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
+import { isAllowedOrigin } from './lib/cors.js'
 import { prisma } from './lib/prisma.js'
 import { typeDefs } from './schema/index.js'
 import { resolvers } from './resolvers/index.js'
 import type { Context } from './context.js'
 
 const E2E_TEST_MODE = process.env.E2E_TEST_MODE === 'true'
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN
 
 const app = express()
-app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN }))
+app.use(
+  cors({
+    // A function (rather than a single string) so both the configured client
+    // origin AND any Cloudflare Pages preview origin for this project are
+    // allowed — see lib/cors.ts for the matching rules.
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin, CLIENT_ORIGIN)) {
+        callback(null, true)
+      } else {
+        callback(new Error(`Origin ${origin} is not allowed by CORS`))
+      }
+    },
+  }),
+)
 app.use(express.json({ limit: '1mb' }))
 if (!E2E_TEST_MODE) app.use(clerkMiddleware())
 
