@@ -288,6 +288,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    useCartItemCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useLastPurchaseDatesQuery: () => ({
       data: undefined,
       loading: false,

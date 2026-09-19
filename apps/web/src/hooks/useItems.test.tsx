@@ -118,6 +118,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // Cloud read paths that are `skip`ped in local mode but would still demand
     // an ApolloProvider. Stubbed so local-mode hooks can be rendered here.
     useCartItemsQuery: () => ({ data: undefined, loading: false }),
+    // Mounted unconditionally by the two count hooks since PR 3c made them
+    // dual-mode. Skipped in local mode, but a hook cannot sit behind the mode
+    // branch, so without these the real Apollo hook runs and demands a
+    // provider.
+    useInventoryLogCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCartItemCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useGetRecipesQuery: () => ({
       data: undefined,
       loading: false,

@@ -30,9 +30,11 @@ import {
   PantryDataDocument,
   useAddItemToLocationMutation,
   useApplyUnitSwitchMutation,
+  useCartItemCountByItemQuery,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
+  useInventoryLogCountByItemQuery,
   useItemStocksForItemQuery,
   useLastPurchaseDatesQuery,
   usePantryDataQuery,
@@ -613,6 +615,26 @@ function evictStockLists(cache: ApolloCache) {
   cache.gc()
 }
 
+// The extra fields `removeItemFromLocation` invalidates in CLOUD mode. Since
+// PR 3c that resolver also deletes the item's inventory logs at the location
+// and its entries in the location's carts, so every cached field that counted
+// or listed those rows now holds a number that is too high. The local branch
+// does the same through `queryClient.invalidateQueries`.
+function evictRemoveCascade(cache: ApolloCache) {
+  for (const fieldName of [
+    'inventoryLogCountByItem',
+    'cartItemCountByItem',
+    'itemLogs',
+    'inventoryLogs',
+    'lastPurchaseDates',
+    'cartItems',
+    'allCartItems',
+  ]) {
+    cache.evict({ id: 'ROOT_QUERY', fieldName })
+  }
+  cache.gc()
+}
+
 type AddToLocationVars = {
   itemId: string
   // The Stock-tab pager adds to the location on the page being viewed, which
@@ -749,7 +771,10 @@ export function useRemoveItemFromLocation() {
 
   const [cloudRemove, { loading: cloudRemoveLoading }] =
     useRemoveItemFromLocationMutation({
-      update: (cache) => evictStockLists(cache),
+      update: (cache) => {
+        evictStockLists(cache)
+        evictRemoveCascade(cache)
+      },
     })
 
   if (mode === 'cloud') {
@@ -1083,21 +1108,76 @@ export function useDeleteItem() {
 // part of the query key so the two scopes never share a cache entry; the
 // remove mutation invalidates the whole `['inventoryLogs']` / `['cartItems']`
 // families, so both re-resolve after a removal.
+//
+// BOTH MODES since PR 3c. They were Dexie-only while cloud's
+// `removeItemFromLocation` deleted the stock row alone: there was no cloud
+// cascade for the numbers to describe. Now there is, so the confirmation
+// shows them in cloud too and each hook needs a cloud branch that reads the
+// SAME rows the resolver deletes.
+//
+// The cloud log count REQUIRES a location — `inventoryLogCountByItem(locationId: ID!)`
+// — so the cloud branch is skipped when the caller omits one, and `data` stays
+// undefined rather than answering a different question. The only caller that
+// omits it is the local item-global count. The cloud cart count takes an
+// optional `locationId`: null means every location, which is the whole-account
+// form the item list uses.
 export function useInventoryLogCountByItem(
   itemId: string,
   locationId?: string,
 ) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+  // A cloud READ must not be sent with an id this account does not have — see
+  // `useCloudLocationKnown`. The Stock tab passes a location off the loaded
+  // list, so this normally resolves true on the first render.
+  const locationKnown = useCloudLocationKnown(locationId ?? '', isCloud)
+  const { data: cloudData, loading: cloudLoading } =
+    useInventoryLogCountByItemQuery({
+      variables: { itemId, locationId: locationId ?? '' },
+      skip: !isCloud || !itemId || !locationId || !locationKnown,
+    })
+
+  const localQuery = useQuery({
     queryKey: ['inventoryLogs', 'countByItem', itemId, { locationId }],
     queryFn: () => getInventoryLogCountByItem(itemId, locationId),
-    enabled: !!itemId,
+    enabled: !isCloud && !!itemId,
   })
+
+  if (isCloud) {
+    return {
+      data: cloudData?.inventoryLogCountByItem,
+      // Skipped is not loaded — see `useItems`.
+      isLoading: cloudLoading || !locationKnown,
+      isError: false,
+    }
+  }
+  return localQuery
 }
 
 export function useCartItemCountByItem(itemId: string, locationId?: string) {
-  return useQuery({
+  const { mode } = useDataMode()
+  const isCloud = mode === 'cloud'
+  const locationKnown = useCloudLocationKnown(locationId ?? '', isCloud)
+  const { data: cloudData, loading: cloudLoading } =
+    useCartItemCountByItemQuery({
+      variables: { itemId, locationId: locationId ?? null },
+      // No `locationId` is the whole-account count, which the server answers
+      // without a role check — so only a NAMED location has to be known first.
+      skip: !isCloud || !itemId || (!!locationId && !locationKnown),
+    })
+
+  const localQuery = useQuery({
     queryKey: ['cartItems', 'countByItem', itemId, { locationId }],
     queryFn: () => getCartItemCountByItem(itemId, locationId),
-    enabled: !!itemId,
+    enabled: !isCloud && !!itemId,
   })
+
+  if (isCloud) {
+    return {
+      data: cloudData?.cartItemCountByItem,
+      isLoading: cloudLoading || (!!locationId && !locationKnown),
+      isError: false,
+    }
+  }
+  return localQuery
 }
