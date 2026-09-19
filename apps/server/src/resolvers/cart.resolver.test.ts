@@ -489,6 +489,67 @@ describe('cartItemCountByItem', () => {
     // Verify it was called with userId: user_B
     expect(mockPrisma.cartItem.count).toHaveBeenCalledWith({ where: { itemId: 'item_1', userId: 'user_B' } })
   })
+
+  // The location-scoped form (PR 3c). The Stock tab's "remove from location"
+  // confirmation asks this way, so the number must equal exactly what
+  // `removeItemFromLocation` deletes — both read the location out of the cart
+  // id with the same `parseCartId`.
+  it('user can count only one location\'s cart entries for an item', async () => {
+    // Given the item sits in three of LOC_DEFAULT's carts — one of them keyed
+    // with a vendor id that itself contains ':' — and in one of LOC_OTHER's.
+    // `${LOC_OTHER}` does NOT start with `${LOC_DEFAULT}`, so the prefix trap
+    // is covered by the dedicated test below.
+    mockPrisma.cartItem.findMany.mockResolvedValue([
+      makeCartItem({ id: 'ci_1', cartId: `${LOC_DEFAULT}:no-vendor` }),
+      makeCartItem({ id: 'ci_2', cartId: `${LOC_DEFAULT}:ven_1` }),
+      makeCartItem({ id: 'ci_3', cartId: `${LOC_DEFAULT}:ven:dor` }),
+      makeCartItem({ id: 'ci_4', cartId: `${LOC_OTHER}:ven_1` }),
+    ])
+
+    // When the count is asked for LOC_DEFAULT
+    const result = await execOp(
+      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
+      { itemId: 'item_1', locationId: LOC_DEFAULT },
+    )
+
+    // Then it is 3, not 4 — the whole-account `count` path was not used
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.cartItemCountByItem).toBe(3)
+    expect(mockPrisma.cartItem.count).not.toHaveBeenCalled()
+  })
+
+  it('a location-scoped count does not include a location whose id merely starts with it', async () => {
+    // Given one cart at 'loc_a' and one at 'loc_a2'. 'loc_a2:ven_1' starts
+    // with 'loc_a', so a prefix match would count both.
+    stockFake.reset(
+      [
+        { id: 'loc_a', userId: 'user_test123', isDefault: true },
+        { id: 'loc_a2', userId: 'user_test123', isDefault: false },
+      ],
+      [],
+    )
+    mockPrisma.cartItem.findMany.mockResolvedValue([
+      makeCartItem({ id: 'ci_1', cartId: 'loc_a:no-vendor' }),
+      makeCartItem({ id: 'ci_2', cartId: 'loc_a2:ven_1' }),
+    ])
+
+    const result = await execOp(
+      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
+      { itemId: 'item_1', locationId: 'loc_a' },
+    )
+
+    expect(result?.data?.cartItemCountByItem).toBe(1)
+  })
+
+  it('a location-scoped count is refused for a location the caller holds no role on', async () => {
+    const result = await execOp(
+      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
+      { itemId: 'item_1', locationId: LOC_STRANGER },
+    )
+
+    expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.cartItem.findMany).not.toHaveBeenCalled()
+  })
 })
 
 // ─── removeFromCart ──────────────────────────────────────────────────────────
