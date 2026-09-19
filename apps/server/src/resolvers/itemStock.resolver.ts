@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
 import { requireLocationRole } from '../lib/authz.js'
+import { parseCartId } from '../lib/cartId.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorItemStockToItem } from '../lib/stockDualWrite.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -153,13 +154,19 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
     },
 
     removeItemFromLocation: async (_, { itemId, locationId }, ctx) => {
+      const userId = requireAuth(ctx)
       await requireLocationRole(ctx, locationId, 'member')
-      // Only the stock row here. The global Item survives — an item removed
-      // from its last location becomes an orphan: absent from the pantry but
-      // still in the catalog, so it can be re-added. The location's inventory
-      // logs and cart entries for THIS item cascade in PR 3c. PR 3a added
-      // InventoryLog.locationId and Cart.locationId, but their FK cascade
-      // fires on deleting a Location, not on removing one item from one.
+      // Three deletes, matching local's `removeItemFromLocation`
+      // (apps/web/src/db/operations.ts): the stock row, this item's inventory
+      // logs at this location, and this item's entries in this location's
+      // carts. The carts themselves survive — every item in the location
+      // shares them.
+      //
+      // The global Item survives too. An item removed from its last location
+      // becomes an orphan: absent from the pantry but still in the catalog, so
+      // it can be re-added. PR 3a added InventoryLog.locationId and
+      // Cart.locationId, but their FK cascade fires on deleting a Location,
+      // not on removing one item from one — so this resolver does it.
       //
       // NO DUAL-WRITE onto `Item`, here or in `addItemToLocation` above, even
       // when the target IS the default location. Both mutate MEMBERSHIP, and
@@ -177,7 +184,42 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // stock VALUE edit at the default location reaches `Item`. Membership
       // churn can leave `Item` stale until the next value edit re-syncs it, and
       // that gap is accepted for the three PRs this bridge lives.
-      await prisma.itemStock.deleteMany({ where: { itemId, locationId } })
+
+      // Cart entries first, because finding them needs a read. `CartItem` has
+      // no `locationId` column: the location lives in its cart's id,
+      // `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts). Read it back
+      // with `parseCartId`, which splits on the FIRST colon only.
+      //
+      // NOT a string prefix match. `loc-a` is a prefix of `loc-a2`, so
+      // `cartId.startsWith(locationId)` would delete the neighbouring
+      // location's entries as well, and `lib/cartId.test.ts` pins the parser
+      // against a vendor id that itself contains ':'.
+      const cartItems = await prisma.cartItem.findMany({
+        where: { itemId, userId },
+        select: { id: true, cartId: true },
+      })
+      const doomedCartItemIds = cartItems
+        .filter((row) => parseCartId(row.cartId).locationId === locationId)
+        .map((row) => row.id)
+
+      // One transaction: three deletes that must not half-apply. A stock row
+      // deleted while its logs survive leaves the location's history pointing
+      // at an item that is no longer stocked there, and a cart entry that
+      // outlives its stock row is bought into a location the item has left.
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.itemStock.deleteMany({ where: { itemId, locationId } })
+
+        // `locationId` alone, with NO `?? DEFAULT_LOCATION_ID` fallback. Local
+        // needs one because Dexie logs written before the Location feature
+        // carry none; cloud's `InventoryLog.locationId` is NOT NULL since PR
+        // 3a, so a fallback here would tell the next reader that NULLs are
+        // possible when they are not.
+        await tx.inventoryLog.deleteMany({ where: { itemId, locationId } })
+
+        if (doomedCartItemIds.length > 0) {
+          await tx.cartItem.deleteMany({ where: { id: { in: doomedCartItemIds } } })
+        }
+      })
       return true
     },
 

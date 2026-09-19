@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
+import { runInTransaction } from '../test/stockFake.js'
 import type { Context } from '../context.js'
 
 interface FakeStock {
@@ -29,11 +30,36 @@ interface FakeItem {
   dueDate: Date | null
 }
 
+// The two families `removeItemFromLocation` cascades. Only the columns the
+// resolver filters on.
+interface FakeLog {
+  id: string
+  itemId: string
+  locationId: string
+  userId: string
+}
+
+// `CartItem` has NO locationId column — the location lives in its cart's id,
+// `${locationId}:${vendorId | 'no-vendor'}`.
+interface FakeCartItem {
+  id: string
+  cartId: string
+  itemId: string
+  userId: string
+}
+
 const { state, client } = vi.hoisted(() => {
   const state = {
     locations: [] as { id: string; userId: string; isDefault: boolean }[],
     items: [] as FakeItem[],
     itemStocks: [] as FakeStock[],
+    inventoryLogs: [] as FakeLog[],
+    cartItems: [] as FakeCartItem[],
+    // Failure injection for the atomicity test. `cartItem.deleteMany` is the
+    // LAST of the three deletes, so a throw there is what proves the two
+    // before it were rolled back. A boolean rather than a function: the
+    // rollback snapshot uses `structuredClone`, which throws on a function.
+    failCartItemDeleteMany: false,
   }
   let seq = 0
 
@@ -50,7 +76,38 @@ const { state, client } = vi.hoisted(() => {
     return true
   }
 
-  const client = {
+  // Prisma's own `where` semantics on every key — `undefined ||` — so a
+  // resolver that drops `locationId` from its filter becomes visible instead
+  // of staying green against a hardcoded match.
+  function logMatches(l: FakeLog, where: Record<string, unknown>): boolean {
+    if (where.itemId !== undefined && l.itemId !== where.itemId) return false
+    if (where.locationId !== undefined && l.locationId !== where.locationId) return false
+    if (where.userId !== undefined && l.userId !== where.userId) return false
+    return true
+  }
+
+  // `id` accepts both a plain string and Prisma's `{ in: [...] }` form, which
+  // is how the cascade names the cart items it resolved through parseCartId.
+  function cartItemMatches(c: FakeCartItem, where: Record<string, unknown>): boolean {
+    if (where.itemId !== undefined && c.itemId !== where.itemId) return false
+    if (where.userId !== undefined && c.userId !== where.userId) return false
+    if (where.cartId !== undefined && c.cartId !== where.cartId) return false
+    const id = where.id
+    if (typeof id === 'string' && c.id !== id) return false
+    if (id !== null && typeof id === 'object') {
+      const list = (id as { in?: string[] }).in
+      if (list !== undefined && !list.includes(c.id)) return false
+    }
+    return true
+  }
+
+  const client: Record<string, unknown> = {
+    // The rollback implementation is stockFake's, imported rather than copied.
+    // A second copy could silently do nothing, and then every atomicity claim
+    // resting on it would report as covered. `state` is the only store this
+    // file writes into.
+    $transaction: async (arg: unknown): Promise<unknown> =>
+      runInTransaction([state as unknown as Record<string, unknown>], client, arg),
     location: {
       findFirst: async ({ where = {} }: { where?: Record<string, unknown> }) =>
         state.locations.find(
@@ -130,6 +187,25 @@ const { state, client } = vi.hoisted(() => {
         return { count: before - state.itemStocks.length }
       },
     },
+    inventoryLog: {
+      deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
+        const before = state.inventoryLogs.length
+        state.inventoryLogs = state.inventoryLogs.filter((l) => !logMatches(l, where))
+        return { count: before - state.inventoryLogs.length }
+      },
+    },
+    cartItem: {
+      findMany: async ({ where = {} }: { where?: Record<string, unknown> }) =>
+        state.cartItems.filter((c) => cartItemMatches(c, where)),
+      deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
+        if (state.failCartItemDeleteMany) {
+          throw new Error('cartItem.deleteMany exploded')
+        }
+        const before = state.cartItems.length
+        state.cartItems = state.cartItems.filter((c) => !cartItemMatches(c, where))
+        return { count: before - state.cartItems.length }
+      },
+    },
   }
   return { state, client }
 })
@@ -201,6 +277,37 @@ describe('itemStock resolvers', () => {
       stock({ id: 'st-garage', itemId: 'item-far', locationId: 'loc-a2', targetQuantity: 9, refillThreshold: 4, packedQuantity: 7 }),
       stock({ id: 'st-theirs', itemId: 'item-rice', locationId: 'loc-b', targetQuantity: 1 }),
     ]
+
+    // The two cascade families. `item-milk` is present at BOTH of user-a's
+    // locations, so "deleted here" and "deleted everywhere" are different
+    // answers — a one-location fixture cannot tell them apart.
+    state.inventoryLogs = [
+      { id: 'log-a1', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' },
+      { id: 'log-a2', itemId: 'item-milk', locationId: 'loc-a', userId: 'user-a' },
+      // Same item, the OTHER location of the SAME user. This is the row that
+      // goes red when the resolver drops `locationId` from its filter.
+      { id: 'log-far', itemId: 'item-milk', locationId: 'loc-a2', userId: 'user-a' },
+      // Same location, a different item.
+      { id: 'log-other', itemId: 'item-bread', locationId: 'loc-a', userId: 'user-a' },
+      // A stranger's row, so "the caller's location" is distinguishable from
+      // "the first location in the table".
+      { id: 'log-theirs', itemId: 'item-milk', locationId: 'loc-b', userId: 'user-b' },
+    ]
+    // Cart ids are `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts).
+    state.cartItems = [
+      { id: 'ci-a-novendor', cartId: 'loc-a:no-vendor', itemId: 'item-milk', userId: 'user-a' },
+      { id: 'ci-a-vendor', cartId: 'loc-a:ven-1', itemId: 'item-milk', userId: 'user-a' },
+      // A vendor id that itself contains ':'. `parseCartId` splits on the
+      // FIRST colon only, so this still reads as loc-a.
+      { id: 'ci-a-colon', cartId: 'loc-a:ven:dor', itemId: 'item-milk', userId: 'user-a' },
+      // loc-a2 starts with the string 'loc-a'. A prefix match would delete
+      // this row too; parsing the id will not.
+      { id: 'ci-a2', cartId: 'loc-a2:ven-1', itemId: 'item-milk', userId: 'user-a' },
+      // Same location, a different item.
+      { id: 'ci-a-other', cartId: 'loc-a:no-vendor', itemId: 'item-bread', userId: 'user-a' },
+      { id: 'ci-theirs', cartId: 'loc-b:no-vendor', itemId: 'item-milk', userId: 'user-b' },
+    ]
+    state.failCartItemDeleteMany = false
   })
 
   it('user can read the stocks of one location only', async () => {
@@ -474,5 +581,85 @@ describe('itemStock resolvers', () => {
     })
     expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
     expect(state.itemStocks.some((s) => s.id === 'st-theirs')).toBe(true)
+  })
+
+  // ─── the remove cascade (PR 3c) ─────────────────────────────────────────
+  //
+  // The cloud counterpart of local's `removeItemFromLocation`
+  // (apps/web/src/db/operations.ts): the stock row, the item's inventory logs
+  // at that location, and the item's entries in that location's carts.
+
+  const REMOVE = `mutation M($i: ID!, $l: ID!) { removeItemFromLocation(itemId: $i, locationId: $l) }`
+
+  it('user removing an item from a location also deletes its logs there', async () => {
+    // Given item-milk has two logs at loc-a and one at loc-a2
+    // When the user removes it from loc-a
+    const res = await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then only loc-a's two went. log-far proves the delete was scoped to one
+    // location, not to the item.
+    expect(res.data?.removeItemFromLocation).toBe(true)
+    expect(state.inventoryLogs.map((l) => l.id).sort()).toEqual([
+      'log-far', 'log-other', 'log-theirs',
+    ])
+  })
+
+  it('user removing an item from a location also deletes its cart entries there', async () => {
+    // Given item-milk sits in three of loc-a's carts, including one whose
+    // vendor id contains ':', and in one of loc-a2's
+    // When the user removes it from loc-a
+    const res = await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then loc-a's three went and loc-a2's stayed. 'loc-a2:ven-1' starts with
+    // 'loc-a', so a prefix match would have taken ci-a2 as well.
+    expect(res.data?.removeItemFromLocation).toBe(true)
+    expect(state.cartItems.map((c) => c.id).sort()).toEqual([
+      'ci-a-other', 'ci-a2', 'ci-theirs',
+    ])
+  })
+
+  it('a cart entry whose vendor id contains a colon is still matched to its location', async () => {
+    // Given the only cart entry left for item-milk at loc-a is the one keyed
+    // `loc-a:ven:dor` — so this test cannot pass by accident on the others
+    state.cartItems = state.cartItems.filter(
+      (c) => c.id === 'ci-a-colon' || c.id === 'ci-a2',
+    )
+
+    // When the user removes item-milk from loc-a
+    await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then it is gone: parseCartId split on the FIRST colon, reading the
+    // location as 'loc-a' and the vendor as 'ven:dor'
+    expect(state.cartItems.map((c) => c.id)).toEqual(['ci-a2'])
+  })
+
+  it('a removal that fails partway leaves every earlier delete undone', async () => {
+    // Given the last of the three deletes throws
+    state.failCartItemDeleteMany = true
+
+    // When the user removes item-milk from loc-a
+    const res = await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
+
+    // Then the mutation reports the failure
+    expect(res.errors?.[0]?.message).toMatch(/exploded/)
+    // And the stock row and the logs that were deleted BEFORE the throw are
+    // back. Without a transaction they would be gone and only the cart
+    // entries would remain, which is a half-applied removal.
+    expect(state.itemStocks.some((s) => s.id === 'st-home')).toBe(true)
+    expect(state.inventoryLogs.map((l) => l.id).sort()).toEqual([
+      'log-a1', 'log-a2', 'log-far', 'log-other', 'log-theirs',
+    ])
+    expect(state.cartItems).toHaveLength(6)
+  })
+
+  it('a refused removal deletes nothing at all', async () => {
+    // Given loc-b belongs to user-b
+    // When user-a tries to remove item-milk from it
+    const res = await run(REMOVE, { i: 'item-milk', l: 'loc-b' })
+
+    // Then the role check refused before any delete ran
+    expect(res.errors?.[0]?.message).toMatch(/Forbidden/)
+    expect(state.inventoryLogs).toHaveLength(5)
+    expect(state.cartItems).toHaveLength(6)
   })
 })

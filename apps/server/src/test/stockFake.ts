@@ -154,6 +154,72 @@ export function makeStock(
   }
 }
 
+/**
+ * The interactive (callback) form of `prisma.$transaction`, WITH rollback.
+ *
+ * Runs the callback, keeps every write if it returns, and restores the state
+ * each store held when the transaction opened if it throws. That is what
+ * Postgres does, and — the reason this exists — it is what a resolver
+ * rewritten as a sequence of plain `prisma.X` calls would NOT do. So a test
+ * that writes, throws, and asserts nothing changed can only pass when the
+ * resolver really opened a transaction.
+ *
+ * ONLY the callback form is modelled. The array form,
+ * `prisma.$transaction([p1, p2])`, throws here on purpose: by the time
+ * `$transaction` is called, JavaScript has already evaluated the array, so a
+ * fake's writes have ALREADY landed. A snapshot taken at that moment is the
+ * state AFTER those writes, and restoring it would report a rollback that
+ * did not happen — worse than not modelling the form at all.
+ * `purge.resolver.test.ts:131` and `import.resolver.test.ts:511` record the
+ * same evaluation-order fact for their own mocks. Four resolvers use the
+ * array form today (import, purge, location, index.ts) and none of them is
+ * tested through this fake.
+ *
+ * The snapshot is a DEEP copy (`structuredClone`). A shallow copy would
+ * restore each array but share the row objects inside it, so
+ * `row.packedQuantity = 8` inside a failed transaction would survive the
+ * rollback and the fake would report an atomicity it never had.
+ *
+ * After a rollback, read rows back out of the store. The restored rows are
+ * fresh copies, so a row reference captured BEFORE the transaction still holds
+ * the rolled-back values.
+ *
+ * Exported on its own so a test file with its OWN hand-written prisma mock —
+ * `itemStock.resolver.test.ts` is one — gets the same rollback without a
+ * second copy of it. A second copy could silently do nothing, and then every
+ * atomicity test resting on it would report as covered.
+ *
+ * @param stores every in-memory store the callback may write into
+ * @param txClient what the callback receives as `tx`
+ */
+export async function runInTransaction(
+  stores: RollbackStore[],
+  txClient: unknown,
+  arg: unknown,
+): Promise<unknown> {
+  if (typeof arg !== 'function') {
+    throw new Error(
+      'stockFake models only the interactive callback form of $transaction. ' +
+        'The array form cannot be rolled back here: the promises in the array ' +
+        'have already run by the time $transaction is called, so a snapshot ' +
+        'taken now would report a rollback that did not happen.',
+    )
+  }
+  const before = stores.map((store) => structuredClone(store))
+  try {
+    return await (arg as (tx: unknown) => Promise<unknown>)(txClient)
+  } catch (err) {
+    stores.forEach((store, index) => {
+      // Delete first, then reassign: a key ADDED during the transaction has
+      // no entry in the snapshot, so a plain `Object.assign` would leave it
+      // behind.
+      for (const key of Object.keys(store)) delete store[key]
+      Object.assign(store, before[index])
+    })
+    throw err
+  }
+}
+
 export function createStockFake() {
   const state: StockFakeState = { locations: [], itemStocks: [] }
   let seq = 0
@@ -289,62 +355,12 @@ export function createStockFake() {
     if (options.stores) extraStores.push(...options.stores)
   }
 
-  /**
-   * The interactive (callback) form of `prisma.$transaction`, WITH rollback.
-   *
-   * Runs the callback, keeps every write if it returns, and restores the state
-   * each store held when the transaction opened if it throws. That is what
-   * Postgres does, and — the reason this exists — it is what a resolver
-   * rewritten as a sequence of plain `prisma.X` calls would NOT do. So a test
-   * that writes, throws, and asserts nothing changed can only pass when the
-   * resolver really opened a transaction.
-   *
-   * ONLY the callback form is modelled. The array form,
-   * `prisma.$transaction([p1, p2])`, throws here on purpose: by the time
-   * `$transaction` is called, JavaScript has already evaluated the array, so a
-   * fake's writes have ALREADY landed. A snapshot taken at that moment is the
-   * state AFTER those writes, and restoring it would report a rollback that
-   * did not happen — worse than not modelling the form at all.
-   * `purge.resolver.test.ts:131` and `import.resolver.test.ts:511` record the
-   * same evaluation-order fact for their own mocks. Four resolvers use the
-   * array form today (import, purge, location, index.ts) and none of them is
-   * tested through this fake.
-   *
-   * The snapshot is a DEEP copy (`structuredClone`). A shallow copy would
-   * restore each array but share the row objects inside it, so
-   * `row.packedQuantity = 8` inside a failed transaction would survive the
-   * rollback and the fake would report an atomicity it never had.
-   *
-   * After a rollback, read rows back out of `state` (or the registered store).
-   * The restored rows are fresh copies, so a row reference captured BEFORE the
-   * transaction still holds the rolled-back values.
-   */
   async function $transaction(arg: unknown): Promise<unknown> {
-    if (typeof arg !== 'function') {
-      throw new Error(
-        'stockFake models only the interactive callback form of $transaction. ' +
-          'The array form cannot be rolled back here: the promises in the array ' +
-          'have already run by the time $transaction is called, so a snapshot ' +
-          'taken now would report a rollback that did not happen.',
-      )
-    }
-    const stores: RollbackStore[] = [
-      state as unknown as RollbackStore,
-      ...extraStores,
-    ]
-    const before = stores.map((store) => structuredClone(store))
-    try {
-      return await (arg as (tx: unknown) => Promise<unknown>)(txClient ?? client)
-    } catch (err) {
-      stores.forEach((store, index) => {
-        // Delete first, then reassign: a key ADDED during the transaction has
-        // no entry in the snapshot, so a plain `Object.assign` would leave it
-        // behind.
-        for (const key of Object.keys(store)) delete store[key]
-        Object.assign(store, before[index])
-      })
-      throw err
-    }
+    return runInTransaction(
+      [state as unknown as RollbackStore, ...extraStores],
+      txClient ?? client,
+      arg,
+    )
   }
 
   function reset(locations: FakeLocation[] = [], itemStocks: FakeStock[] = []) {
