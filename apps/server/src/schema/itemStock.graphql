@@ -26,6 +26,47 @@ extend type Mutation {
   # unchanged if the item is already stocked there.
   addItemToLocation(itemId: ID!, locationId: ID!, sourceLocationId: ID): ItemStock!
   removeItemFromLocation(itemId: ID!, locationId: ID!): Boolean!
+  # One unit switch, applied as ONE server-side transaction: the Item's
+  # configuration, every named location's converted quantities, and every
+  # recipe amount expressed in the old unit.
+  #
+  # The cloud counterpart of local's `applyUnitSwitchBatch`
+  # (apps/web/src/db/operations.ts). It has to be one mutation, not three:
+  # Apollo has no client-side transaction to borrow, so three round trips that
+  # fail partway leave the item on the NEW unit while some locations and
+  # recipes still hold OLD-unit numbers — mixed units, silently, with nothing
+  # surfaced to the user.
+  applyUnitSwitch(input: ApplyUnitSwitchInput!): Item!
+}
+
+# One stocked location whose tracked quantities the switch moves. `quantities`
+# is the SAME `ItemStockInput` `upsertItemStock` takes, so the merge rule is
+# the same one: a key that is absent leaves that column alone.
+input UnitSwitchStockConversionInput {
+  locationId: ID!
+  quantities: ItemStockInput!
+}
+
+# One recipe whose `defaultAmount` for this item is expressed in the old unit.
+# `items` is the FULL replacement list, already rewritten by the client —
+# exactly as `updateRecipe(items:)` takes it.
+input UnitSwitchRecipeUpdateInput {
+  recipeId: ID!
+  items: [RecipeItemInput!]!
+}
+
+input ApplyUnitSwitchInput {
+  itemId: ID!
+  # The Item's own update — identity plus the GLOBAL stock configuration
+  # (`targetUnit`, `amountPerPackage`, `consumeAmount`, ...).
+  #
+  # The five per-location state fields this input still carries until PR 5
+  # drops them from `Item` are IGNORED here. Per-location state comes only
+  # from `stockConversions`, which names its location; leaving a second path
+  # open would give one value two writers.
+  updates: UpdateItemInput!
+  stockConversions: [UnitSwitchStockConversionInput!]!
+  recipeUpdates: [UnitSwitchRecipeUpdateInput!]!
 }
 
 input ItemStockInput {

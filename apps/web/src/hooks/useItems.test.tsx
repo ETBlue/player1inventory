@@ -56,6 +56,9 @@ const mockCloudRemoveFromLocation = vi.fn()
 const mockCloudUpsertStock = vi
   .fn()
   .mockResolvedValue({ data: { upsertItemStock: null } })
+const mockCloudApplyUnitSwitch = vi
+  .fn()
+  .mockResolvedValue({ data: { applyUnitSwitch: null } })
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -102,6 +105,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useCreateItemMutation: () => [mockCloudCreate, {}],
     useUpdateItemMutation: () => [mockCloudUpdate, {}],
     useUpsertItemStockMutation: () => [mockCloudUpsertStock, {}],
+    // Mounted UNCONDITIONALLY by `useApplyUnitSwitch` since PR 3c made it
+    // dual-mode — a hook cannot sit behind the mode branch, so a local-mode
+    // test rendering it would otherwise reach the real Apollo hook.
+    useApplyUnitSwitchMutation: () => [mockCloudApplyUnitSwitch, {}],
     useDeleteItemMutation: (options: unknown) => {
       mockUseDeleteItemMutationOptions(options)
       return [mockCloudDelete, {}]

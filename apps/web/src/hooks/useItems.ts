@@ -29,6 +29,7 @@ import {
   ItemCountByVendorDocument,
   PantryDataDocument,
   useAddItemToLocationMutation,
+  useApplyUnitSwitchMutation,
   useCreateItemMutation,
   useDeleteItemMutation,
   useGetItemQuery,
@@ -903,34 +904,30 @@ export function useUpdateItem() {
 }
 
 // Commit a unit switch — the Item's configuration, every location's converted
-// quantities, and every recipe amount expressed in the old unit — as ONE Dexie
-// transaction (`applyUnitSwitchBatch`). Doing it as 1 + N + M separate
-// mutations can leave the item on the new unit while some rows still hold
-// old-unit numbers.
+// quantities, and every recipe amount expressed in the old unit — as ONE
+// transaction. Doing it as 1 + N + M separate writes can leave the item on the
+// new unit while some rows still hold old-unit numbers.
 //
-// The LAST local-mode-only mutation in this file, and not for want of an
-// ItemStock backend: the schema has no `applyUnitSwitch` mutation to call. The
-// design names one as a requirement — it has to be a single server-side
-// `prisma.$transaction`, since Apollo has no client-side transaction to borrow
-// — but PR 1 did not ship it, so the Info tab keeps its sequential path in
-// cloud rather than faking atomicity. It throws rather than no-op'ing so a
-// wiring mistake fails loudly instead of reporting a switch that never happened.
-const LOCAL_ONLY_UNIT_SWITCH =
-  'applyUnitSwitch is local-mode only: the cloud schema has no transactional unit-switch mutation.'
-
+// DUAL-MODE SINCE PR 3c. Local goes through one Dexie transaction
+// (`applyUnitSwitchBatch`); cloud sends one `applyUnitSwitch` mutation, which
+// the server runs inside one `prisma.$transaction`. It has to be one mutation:
+// Apollo has no client-side transaction to borrow, so three round trips that
+// fail partway would leave the same mixed units this exists to prevent.
+//
+// Until PR 3c this hook THREW in cloud, because PR 1 shipped
+// `itemStock.graphql` without the mutation the design (§2) requires.
 export function useApplyUnitSwitch() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  const resolveCloudLocationId = useCloudLocationId()
 
-  return useMutation({
-    mutationFn: (input: UnitSwitchBatchInput) => {
-      if (mode !== 'local') throw new Error(LOCAL_ONLY_UNIT_SWITCH)
-      return applyUnitSwitchBatch({
+  const localMutation = useMutation({
+    mutationFn: (input: UnitSwitchBatchInput) =>
+      applyUnitSwitchBatch({
         ...input,
         locationId: input.locationId ?? activeLocationId,
-      })
-    },
+      }),
     // One pass over every family the transaction touched. Listed in full rather
     // than relying on prefix matching so a reader can see the coverage: missing
     // one shows up as a stale screen after a successful save, not as an error.
@@ -944,6 +941,72 @@ export function useApplyUnitSwitch() {
       queryClient.invalidateQueries({ queryKey: ['recipes', 'itemCount'] })
     },
   })
+
+  // Same cache handling as the other stock writers — an eviction of the two
+  // stock list fields, plus the targeted refetches below. A unit switch changes
+  // EVERY location's row, so the evicted `itemStocksForItem` is what makes the
+  // Stock-tab pager re-read instead of showing old-unit numbers.
+  const [cloudApply, { loading: cloudApplyLoading }] =
+    useApplyUnitSwitchMutation({
+      update: (cache) => evictStockLists(cache),
+    })
+
+  if (mode === 'cloud') {
+    const runCloudSwitch = async (input: UnitSwitchBatchInput) => {
+      // Resolved at CALL time — see `useCloudLocationId`. It is the PANTRY's
+      // location, used only to name the `PantryData` refetch below; the
+      // conversions carry their own location ids, which came from the loaded
+      // stock rows.
+      const pantryLocationId = await resolveCloudLocationId(input.locationId)
+      const result = await cloudApply({
+        variables: {
+          input: {
+            itemId: input.itemId,
+            // Configuration only. The five per-location state keys are the
+            // conversions' to write, and the server ignores them here anyway.
+            updates: toConfigInput(input.updates),
+            stockConversions: input.stockConversions.map((conversion) => ({
+              locationId: conversion.locationId,
+              quantities: toStockInput(conversion.quantities),
+            })),
+            recipeUpdates: input.recipeUpdates.map((update) => ({
+              recipeId: update.recipeId,
+              items: update.items.map((recipeItem) => ({
+                itemId: recipeItem.itemId,
+                defaultAmount: recipeItem.defaultAmount,
+              })),
+            })),
+          },
+        },
+        // The same three families local mode invalidates: the catalog, this
+        // location's stock rows, and the recipes whose amounts were rewritten.
+        refetchQueries: [
+          { query: GetItemsDocument },
+          { query: GetRecipesDocument },
+          ...stockListRefetches(pantryLocationId),
+        ],
+        awaitRefetchQueries: true,
+      })
+      return result.data?.applyUnitSwitch
+    }
+
+    return {
+      mutate: (
+        input: UnitSwitchBatchInput,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        runCloudSwitch(input).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
+      mutateAsync: runCloudSwitch,
+      isPending: cloudApplyLoading,
+    }
+  }
+
+  return localMutation
 }
 
 export function useDeleteItem() {
