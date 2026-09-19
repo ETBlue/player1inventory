@@ -53,6 +53,17 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // `useVendorCart` gates its cloud read on `useCloudLocationKnown`, which
+    // reads this. This per-file factory REPLACES the one in `src/test/setup.ts`
+    // rather than layering on it, so the real Apollo hook would run and demand
+    // a provider. It reports NO locations, so `activeLocationId` — the
+    // `'local'` sentinel here — is never "known" and the cloud read stays
+    // skipped; the tests below set `data` on the query stub directly.
+    useGetLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useAllCartsQuery: () => mockUseAllCartsQuery(),
     useVendorCartQuery: () => mockUseVendorCartQuery(),
     useCartItemsQuery: () => ({
@@ -85,6 +96,11 @@ afterEach(() => {
 
 // ─── useVendorCart ────────────────────────────────────────────────────────────
 
+// The LOCATION behaviour of these hooks is proved in
+// `useShoppingCart.cloud.test.tsx`, which drives the real generated hooks
+// through `MockedProvider` with TWO locations. This file stubs the generated
+// hooks, so it can only pin the shapes each branch produces — never which
+// location a request named.
 describe('useVendorCart (cloud mode)', () => {
   it('deserializes lastPurchasedAt to Date in cloud mode', async () => {
     // Given the wire format the server sends: ISO 8601, produced by the `Cart`
@@ -93,7 +109,7 @@ describe('useVendorCart (cloud mode)', () => {
     mockUseVendorCartQuery.mockReturnValue({
       data: {
         vendorCart: {
-          id: 'vendor-1',
+          id: 'local:vendor-1',
           lastPurchasedAt: '2026-01-15T10:00:00.000Z',
         },
       },
@@ -121,7 +137,7 @@ describe('useVendorCart (cloud mode)', () => {
     localStorage.setItem('data-mode', 'cloud')
     mockUseVendorCartQuery.mockReturnValue({
       data: {
-        vendorCart: { id: 'vendor-1', lastPurchasedAt: '1787827334343' },
+        vendorCart: { id: 'local:vendor-1', lastPurchasedAt: '1787827334343' },
       },
       loading: false,
       error: undefined,
@@ -141,20 +157,29 @@ describe('useVendorCart (cloud mode)', () => {
 // ─── useLastPurchasedByVendor ─────────────────────────────────────────────────
 
 describe('useLastPurchasedByVendor (cloud mode)', () => {
-  it('user can sort by last purchased in cloud mode — the map is keyed by bare cart id', async () => {
-    // Given cloud carts with **bare** ids (`'no-vendor'` / `<vendorId>`), in
-    // both lastPurchasedAt wire formats: ISO 8601 (what the server's `Cart`
-    // type resolver sends) and the epoch-millis digit-string it sent while that
-    // resolver was missing — backups from that window still carry the latter.
+  it('user can sort by last purchased in cloud mode — the map is keyed by the parsed vendor id', async () => {
+    // Given cloud carts with COMPOSITE ids (`${locationId}:${vendorId}`) since
+    // PR 3b re-keyed `Cart.id`, in both lastPurchasedAt wire formats: ISO 8601
+    // (what the server's `Cart` type resolver sends) and the epoch-millis
+    // digit-string it sent while that resolver was missing — backups from that
+    // window still carry the latter.
+    //
+    // No `active-location-id:cloud` slot is set here and no provider is
+    // mounted, so `useActiveLocation()` returns the `'local'` sentinel — which
+    // is why every id below is prefixed `local:`. The two-location proof is in
+    // `useShoppingCart.cloud.test.tsx`.
     localStorage.setItem('data-mode', 'cloud')
     const vendor3Millis = new Date('2026-03-03T00:00:00.000Z').getTime()
     mockUseAllCartsQuery.mockReturnValue({
       data: {
         allCarts: [
-          { id: 'no-vendor', lastPurchasedAt: '2026-02-02T00:00:00.000Z' },
-          { id: 'vendor-1', lastPurchasedAt: '2026-01-15T10:00:00.000Z' },
-          { id: 'vendor-2', lastPurchasedAt: null },
-          { id: 'vendor-3', lastPurchasedAt: String(vendor3Millis) },
+          {
+            id: 'local:no-vendor',
+            lastPurchasedAt: '2026-02-02T00:00:00.000Z',
+          },
+          { id: 'local:vendor-1', lastPurchasedAt: '2026-01-15T10:00:00.000Z' },
+          { id: 'local:vendor-2', lastPurchasedAt: null },
+          { id: 'local:vendor-3', lastPurchasedAt: String(vendor3Millis) },
         ],
       },
       loading: false,

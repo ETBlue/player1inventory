@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { splitInlineStock, relocateCarts } from '../helpers/locationSeed'
 import { makeGql } from '../utils/cloud'
 
@@ -463,28 +464,67 @@ test('user can checkout from a vendor cart without affecting another vendor cart
   await expect(page.getByLabel('Remove Item B E2E')).toBeVisible()
 })
 
+// Create a cloud item AND stock it at `locationId` — the two steps
+// `useCreateItem`'s cloud branch performs (apps/web/src/hooks/useItems.ts).
+// `createItem` alone writes the Item's legacy inline columns and no `ItemStock`
+// row, so the item exists but is stocked nowhere and the pantry, the vendor
+// cart page and the vendor card's count all leave it out.
+async function createStockedItem(
+  gql: ReturnType<typeof makeGql>,
+  locationId: string,
+  input: { name: string; vendorIds?: string[] },
+): Promise<string> {
+  const { createItem } = await gql<{ createItem: { id: string } }>(
+    `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
+    { input: { targetQuantity: 1, refillThreshold: 1, ...input } },
+  )
+  await gql(
+    `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+      upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+    }`,
+    {
+      itemId: createItem.id,
+      locationId,
+      input: { packedQuantity: 0, targetQuantity: 1, refillThreshold: 1 },
+    },
+  )
+  return createItem.id
+}
+
 test.describe('cloud mode vendor carts', () => {
   test('user can see vendor cart cards (cloud mode)', async ({ page, request, baseURL }) => {
     test.skip(baseURL !== CLOUD_WEB_URL, 'cloud mode only')
     const shopping = new ShoppingPage(page)
     const gql = makeGql(request)
 
+    // `createVendor(locationId:)` is `ID!` since cloud-locations PR 3b Task 4 —
+    // the server pre-creates the vendor's cart AT that location, so the seed has
+    // to name the one the app will be viewing.
+    const home = await ensureCloudDefaultLocation(request)
+    const CREATE_VENDOR = `mutation CreateVendor($name: String!, $locationId: ID!) {
+      createVendor(name: $name, locationId: $locationId) { id }
+    }`
     const { createVendor: vendorA } = await gql<{ createVendor: { id: string } }>(
-      `mutation CreateVendor($name: String!) { createVendor(name: $name) { id } }`,
-      { name: 'Cloud Vendor A' },
+      CREATE_VENDOR,
+      { name: 'Cloud Vendor A', locationId: home.id },
     )
     const { createVendor: vendorB } = await gql<{ createVendor: { id: string } }>(
-      `mutation CreateVendor($name: String!) { createVendor(name: $name) { id } }`,
-      { name: 'Cloud Vendor B' },
+      CREATE_VENDOR,
+      { name: 'Cloud Vendor B', locationId: home.id },
     )
-    await gql(
-      `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
-      { input: { name: 'Cloud Item A', vendorIds: [vendorA.id], targetQuantity: 1, refillThreshold: 1 } },
-    )
-    await gql(
-      `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
-      { input: { name: 'Cloud Item B', vendorIds: [vendorB.id], targetQuantity: 1, refillThreshold: 1 } },
-    )
+    // Two steps per item, exactly as `useCreateItem`'s cloud branch does: the
+    // raw `createItem` mutation writes the Item's legacy inline columns and NO
+    // stock row, and since cloud-locations PR 3b this page is scoped to items
+    // stocked in the ACTIVE location — an item with no `ItemStock` row here is
+    // not listed. See the sibling seed at the top of this file.
+    await createStockedItem(gql, home.id, {
+      name: 'Cloud Item A',
+      vendorIds: [vendorA.id],
+    })
+    await createStockedItem(gql, home.id, {
+      name: 'Cloud Item B',
+      vendorIds: [vendorB.id],
+    })
 
     await shopping.navigateTo()
 
@@ -497,14 +537,18 @@ test.describe('cloud mode vendor carts', () => {
     const shopping = new ShoppingPage(page)
     const gql = makeGql(request)
 
+    // See the note on the sibling test: `locationId` is required since PR 3b.
+    const home = await ensureCloudDefaultLocation(request)
     const { createVendor: vendor } = await gql<{ createVendor: { id: string } }>(
-      `mutation CreateVendor($name: String!) { createVendor(name: $name) { id } }`,
-      { name: 'Cloud Checkout Vendor' },
+      `mutation CreateVendor($name: String!, $locationId: ID!) {
+        createVendor(name: $name, locationId: $locationId) { id }
+      }`,
+      { name: 'Cloud Checkout Vendor', locationId: home.id },
     )
-    await gql(
-      `mutation CreateItem($input: CreateItemInput!) { createItem(input: $input) { id } }`,
-      { input: { name: 'Cloud Checkout Item', vendorIds: [vendor.id], targetQuantity: 1, refillThreshold: 1 } },
-    )
+    await createStockedItem(gql, home.id, {
+      name: 'Cloud Checkout Item',
+      vendorIds: [vendor.id],
+    })
 
     await shopping.navigateToVendorCart(vendor.id)
     await shopping.addItemToCart('Cloud Checkout Item')

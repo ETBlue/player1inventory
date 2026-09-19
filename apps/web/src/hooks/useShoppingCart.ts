@@ -26,8 +26,9 @@ import {
   useVendorCartQuery,
 } from '@/generated/graphql'
 import { deserializeCart } from '@/lib/deserialization'
-import type { CartItem } from '@/types'
+import { type CartItem, parseCartId } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
+import { useCloudLocationKnown } from './useCloudLocationKnown'
 import { useDataMode } from './useDataMode'
 
 export function useCartItems(cartId: string | undefined) {
@@ -426,6 +427,11 @@ export function useVendorCart(vendorId: string | null) {
   const { mode } = useDataMode()
   const isCloud = mode === 'cloud'
   const { activeLocationId } = useActiveLocation()
+  // `vendorCart` CREATES the cart when it is missing, so the server asks for
+  // the `member` role on `locationId`. Sending the `'local'` sentinel of a
+  // fresh cloud session would be refused with FORBIDDEN and Apollo would keep
+  // that request as a live observer — see `useCloudLocationKnown`.
+  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
 
   const local = useQuery({
     queryKey: ['cart', 'vendor', vendorId, { locationId: activeLocationId }],
@@ -438,8 +444,8 @@ export function useVendorCart(vendorId: string | null) {
   })
 
   const cloud = useVendorCartQuery({
-    variables: { vendorId: vendorId },
-    skip: !isCloud,
+    variables: { vendorId: vendorId, locationId: activeLocationId },
+    skip: !isCloud || !locationKnown,
     fetchPolicy: 'cache-and-network',
   })
 
@@ -471,14 +477,20 @@ export function useAllActiveCarts() {
     enabled: !isCloud,
   })
 
+  // `allCarts` is whole-account on purpose — one query serves every location,
+  // and the export path needs all of them. The ACTIVE location's subset is
+  // filtered out of it here, which is what the local branch returns too.
+  // Filtering by `parseCartId`, never by `id.startsWith(locationId + ':')`: a
+  // location id is not a prefix-free code, so a prefix test can match a cart
+  // at a different location whose id happens to start with the same text.
   const cloud = useAllCartsQuery({ skip: !isCloud })
 
   if (isCloud) {
     return {
       data:
-        cloud.data?.allCarts?.map((c) =>
-          deserializeCart(c as Record<string, unknown>),
-        ) ?? [],
+        cloud.data?.allCarts
+          ?.filter((c) => parseCartId(c.id).locationId === activeLocationId)
+          .map((c) => deserializeCart(c as Record<string, unknown>)) ?? [],
       isLoading: cloud.loading,
       isError: !!cloud.error,
     }
@@ -512,15 +524,23 @@ export function useLastPurchasedByVendor() {
   const cloud = useAllCartsQuery({ skip: !isCloud })
 
   if (isCloud) {
-    // Cloud cart ids are **bare** (`'no-vendor'` / `<vendorId>`) — there is no
-    // `${locationId}:` prefix to parse, so `parseCartId` must not be used here
-    // (see the note in routes/shopping/index.tsx).
+    // Since PR 3b a cloud cart id is `${locationId}:${vendorId | 'no-vendor'}`,
+    // the same shape local mode uses, so `parseCartId` gives both halves. The
+    // comment that used to sit here said cloud ids were BARE and that
+    // `parseCartId` must not be used — true before the re-key, false after it.
+    //
+    // Carts at other locations are dropped. Without that filter one vendor's
+    // two carts — one per location — would both write the same map key, and
+    // whichever came last in `allCarts` would win: the shopping page would sort
+    // by another location's purchase date.
     const map = new Map<string | null, Date | null>()
     for (const cart of cloud.data?.allCarts ?? []) {
+      const { locationId, vendorId } = parseCartId(cart.id)
+      if (locationId !== activeLocationId) continue
       const { lastPurchasedAt } = deserializeCart(
         cart as Record<string, unknown>,
       )
-      map.set(cart.id === 'no-vendor' ? null : cart.id, lastPurchasedAt ?? null)
+      map.set(vendorId, lastPurchasedAt ?? null)
     }
     return {
       data: map,

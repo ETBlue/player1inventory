@@ -202,10 +202,12 @@ function RemoveFromLocationButton({
   // would delete — an item-global count would over-report.
   //
   // Both counts read Dexie, so they are shown in LOCAL mode only. Cloud's
-  // `removeItemFromLocation` deletes the stock row and nothing else — its carts
-  // and inventory logs are not location-scoped until PR 3 — so there is no
-  // cloud cascade to count, and printing the local numbers next to a cloud
-  // removal would name rows it will not touch.
+  // `removeItemFromLocation` deletes the stock row and nothing else. Cloud
+  // carts and inventory logs ARE location-scoped now (PR 3a, PR 3b), but their
+  // FK cascade fires on deleting a LOCATION, not on removing one item from one
+  // — that per-item cascade is PR 3c's. Until it lands there is no cloud
+  // cascade to count, and printing the local numbers next to a cloud removal
+  // would name rows it will not touch.
   const logCount = useInventoryLogCountByItem(itemId, location.id)
   const cartCount = useCartItemCountByItem(itemId, location.id)
   const showAffectedCounts =

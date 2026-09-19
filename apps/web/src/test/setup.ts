@@ -242,6 +242,13 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Called by `ActiveLocationProvider` on every render, in both data modes
+    // (Rules of Hooks). Without this stub the provider throws and every test
+    // that mounts it fails.
+    useBootstrapCartsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useVendorCartQuery: () => ({
       data: undefined,
       loading: false,

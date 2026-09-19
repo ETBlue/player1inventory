@@ -1,5 +1,5 @@
-query VendorCart($vendorId: ID) {
-  vendorCart(vendorId: $vendorId) {
+query VendorCart($vendorId: ID, $locationId: ID!) {
+  vendorCart(vendorId: $vendorId, locationId: $locationId) {
     id
     lastPurchasedAt
   }
@@ -66,5 +66,15 @@ mutation Checkout($cartId: ID!, $note: String, $logKey: String, $logParams: JSON
 mutation AbandonCart($cartId: ID!) {
   abandonCart(cartId: $cartId) {
     id
+  }
+}
+
+# The cloud half of local mode's `bootstrapCarts` (src/db/operations.ts).
+# `ActiveLocationProvider` calls it whenever the active location changes, so
+# every vendor has a cart at the location the user just switched to.
+mutation BootstrapCarts($locationId: ID!) {
+  bootstrapCarts(locationId: $locationId) {
+    id
+    lastPurchasedAt
   }
 }

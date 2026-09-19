@@ -17,6 +17,7 @@ import {
 import { deserializeVendor } from '@/lib/deserialization'
 import type { Vendor } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
+import { useCloudLocationId } from './useCloudLocationId'
 import { useDataMode } from './useDataMode'
 
 export function useVendors() {
@@ -52,6 +53,13 @@ export function useCreateVendor() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
+  // Resolved at CALL time, not render time. `createVendor(locationId:)` is
+  // `ID!` since PR 3b Task 4 and the server writes a `Cart` row at that
+  // location, so it demands the `member` role on it. On a fresh cloud session
+  // the render-time active id is still the `'local'` sentinel: the mutation
+  // would be refused with FORBIDDEN and the vendor would never be created.
+  // See `useCloudLocationId`.
+  const resolveCloudLocationId = useCloudLocationId()
 
   const localMutation = useMutation({
     mutationFn: (name: string) => createVendor(name, activeLocationId),
@@ -63,7 +71,14 @@ export function useCreateVendor() {
 
   const [cloudCreate, { loading: cloudCreateLoading }] =
     useCreateVendorMutation({
-      refetchQueries: [{ query: GetVendorsDocument }],
+      // `AllCarts` as well as `GetVendors`: the server pre-creates this
+      // vendor's cart at `locationId`, and the shopping index reads that list.
+      refetchQueries: [{ query: GetVendorsDocument }, 'AllCarts'],
+    })
+
+  const cloudMutate = async (name: string) =>
+    cloudCreate({
+      variables: { name, locationId: await resolveCloudLocationId() },
     })
 
   if (mode === 'cloud') {
@@ -72,14 +87,14 @@ export function useCreateVendor() {
         name: string,
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudCreate({ variables: { name } }).then(
+        cloudMutate(name).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
           },
         ),
       mutateAsync: (name: string) =>
-        cloudCreate({ variables: { name } }).then((r) => r.data?.createVendor),
+        cloudMutate(name).then((r) => r.data?.createVendor),
       isPending: cloudCreateLoading,
     }
   }

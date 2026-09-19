@@ -1,7 +1,8 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
+import { requireLocationRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
-import { defaultLocationId, mirrorStock } from '../lib/stockDualWrite.js'
+import { mirrorStock } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
 import type { Recipe, Resolvers } from '../generated/graphql.js'
 
@@ -64,22 +65,24 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
     },
     consumeRecipes: async (_, { input }, ctx) => {
       const userId = requireAuth(ctx)
-      const { occurredAt, recipeIds, items } = input
+      const { occurredAt, recipeIds, items, locationId: consumeLocationId } = input
       const occurredAtDate = new Date(occurredAt)
 
       const itemResults: Array<{ itemId: string; success: boolean; error?: string }> = []
 
-      // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Cooking has no
-      // location in PR 2 — `ConsumeRecipesInput` carries none — so the mirror
-      // goes to the caller's DEFAULT location regardless of which one they
-      // were viewing. PR 3b gives the input a location and this becomes it —
-      // PR 3a did not, it only added the columns.
-      // Resolved once: every item in the batch mirrors to the same place. The
-      // inventory log written below uses this same id.
-      //
-      // Non-null whenever the loop below runs, since the loop iterates `items`
-      // and this is null only when that array is empty.
-      const mirrorLocationId = items.length > 0 ? await defaultLocationId(userId) : null
+      // `consumeLocationId` is the location the cook names. It used to be the
+      // caller's DEFAULT location, because `ConsumeRecipesInput` carried no
+      // location at all — so cooking while viewing the Garage took the stock
+      // out of the Kitchen. Task 3 added the field; Task 4 made it REQUIRED and
+      // removed the default-location fallback.
+
+      // `member`, not `viewer`: this mutation writes stock and log rows there.
+      // The id arrives from the client, so it goes through the one
+      // authorization seam (lib/authz.ts) before any query sees it. This throws
+      // out of the WHOLE mutation rather than landing in one item's
+      // `itemResults` entry — a caller who may not write this location has not
+      // partly succeeded.
+      await requireLocationRole(ctx, consumeLocationId, 'member')
 
       for (const item of items) {
         try {
@@ -92,16 +95,15 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
             },
           })
 
+          // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts).
           // Absolute values, not a delta: the client has already computed the
           // post-cooking quantities, and `Item`'s write above sets the very
           // same two numbers. A failure here lands in this item's
           // `itemResults` entry, exactly as an `Item` write failure does.
-          if (mirrorLocationId) {
-            await mirrorStock(item.itemId, mirrorLocationId, {
-              packedQuantity: item.packedQuantity,
-              unpackedQuantity: item.unpackedQuantity,
-            })
-          }
+          await mirrorStock(item.itemId, consumeLocationId, {
+            packedQuantity: item.packedQuantity,
+            unpackedQuantity: item.unpackedQuantity,
+          })
 
           await prisma.inventoryLog.create({
             data: {
@@ -110,13 +112,10 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
               quantity: item.quantity,
               occurredAt: occurredAtDate,
               userId,
-              // PR 3b: replace with the location the consume actually names.
-              // ConsumeRecipesInput carries no location today, so this writes
-              // the caller's default. The `??` branch never runs (see the
-              // comment on `mirrorLocationId` above); it is there because
-              // TypeScript cannot narrow a `T | null` from the length of a
-              // different array.
-              locationId: mirrorLocationId ?? (await defaultLocationId(userId)),
+              // The cook's own location, the same one the stock mirror above
+              // wrote. A log row and the stock move it explains must never name
+              // different locations.
+              locationId: consumeLocationId,
               ...(item.note ? { note: item.note } : {}),
               ...(item.logKey ? { logKey: item.logKey } : {}),
               ...(item.logParams ? { logParams: item.logParams as Prisma.InputJsonValue } : {}),

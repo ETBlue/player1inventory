@@ -221,6 +221,90 @@ describe('createCache — itemLogs is cached per location', () => {
   })
 })
 
+// Mirrors the `VendorCart` operation (`apollo/operations/shopping.graphql`).
+// Two arguments, so the `keyArgs` list in `createCache` is NOT a restatement of
+// Apollo's default: drop `'locationId'` from it and both locations collapse
+// into one store entry keyed by `vendorId` alone, and the shopping page serves
+// the Kitchen's cart while the user is looking at the Garage.
+const VENDOR_CART = gql`
+  query VendorCart($vendorId: ID, $locationId: ID!) {
+    vendorCart(vendorId: $vendorId, locationId: $locationId) {
+      id
+      lastPurchasedAt
+    }
+  }
+`
+
+const VENDOR = 'vendor-costco'
+
+// One vendor, two locations, two DIFFERENT carts — the composite ids PR 3b
+// re-keyed `Cart.id` to, and different `lastPurchasedAt` values so a collapsed
+// entry cannot return a coincidentally-equal row.
+const cartAtA = {
+  __typename: 'Cart',
+  id: `${LOCATION_A}:${VENDOR}`,
+  lastPurchasedAt: '2026-06-01T00:00:00.000Z',
+}
+
+const cartAtB = {
+  __typename: 'Cart',
+  id: `${LOCATION_B}:${VENDOR}`,
+  lastPurchasedAt: '2026-01-01T00:00:00.000Z',
+}
+
+type VendorCartResult = {
+  vendorCart: { id: string; lastPurchasedAt: string | null }
+}
+
+function readCart(cache: InMemoryCache, locationId: string) {
+  return cache.readQuery<VendorCartResult>({
+    query: VENDOR_CART,
+    variables: { vendorId: VENDOR, locationId },
+  })?.vendorCart
+}
+
+function writeCart(
+  cache: InMemoryCache,
+  locationId: string,
+  vendorCart: typeof cartAtA,
+) {
+  cache.writeQuery({
+    query: VENDOR_CART,
+    variables: { vendorId: VENDOR, locationId },
+    data: { vendorCart },
+  })
+}
+
+describe('createCache — vendorCart is cached per location', () => {
+  it('user can switch back to a location and still read its own cart', () => {
+    // Given a cache holding Cloud Kitchen's cart for this vendor
+    const cache = createCache()
+    writeCart(cache, LOCATION_A, cartAtA)
+
+    // When the user switches to Cloud Garage, whose cart for the SAME vendor is
+    // a different row
+    writeCart(cache, LOCATION_B, cartAtB)
+
+    // Then Cloud Kitchen still reads back its own cart
+    expect(readCart(cache, LOCATION_A)?.id).toBe(`${LOCATION_A}:${VENDOR}`)
+    // And Cloud Garage reads back only its own
+    expect(readCart(cache, LOCATION_B)?.id).toBe(`${LOCATION_B}:${VENDOR}`)
+  })
+
+  it('user never sees the previous location cart rendered as the active one', () => {
+    // Given both locations written to the cache, Cloud Garage last
+    const cache = createCache()
+    writeCart(cache, LOCATION_A, cartAtA)
+    writeCart(cache, LOCATION_B, cartAtB)
+
+    // When the shopping page reads the active location, Cloud Kitchen
+    const row = readCart(cache, LOCATION_A)
+
+    // Then it gets the Kitchen's own purchase date, not the Garage's
+    expect(row?.lastPurchasedAt).toBe('2026-06-01T00:00:00.000Z')
+  })
+})
+
 describe('both Apollo clients share the cache configuration', () => {
   // The E2E client exists to exercise the production code path; a policy applied
   // to only one of the two caches would make cloud E2E prove nothing.

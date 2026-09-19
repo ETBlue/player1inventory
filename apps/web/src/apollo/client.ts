@@ -33,6 +33,14 @@ const httpLink = new HttpLink({
 // two locations collapse into a single cache entry, which serves another
 // location's logs after a switch. `inventoryLogs` is absent on purpose: it
 // takes no arguments and is whole-account.
+//
+// `vendorCart` joins them in PR 3b, and it has the same shape as `itemLogs`:
+// two arguments, so dropping `'locationId'` keys every location's cart for one
+// vendor into a single entry and the shopping page serves the Kitchen's cart
+// while the user is looking at the Garage. Guarded by `client.test.ts`.
+// `allCarts` and `allCartItems` are absent on purpose — no arguments,
+// whole-account; `cartItems(cartId:)` too, because a cart id already names its
+// location (`${locationId}:${vendorId | 'no-vendor'}`).
 export function createCache() {
   return new InMemoryCache({
     typePolicies: {
@@ -42,6 +50,7 @@ export function createCache() {
           itemLogs: { keyArgs: ['itemId', 'locationId'] },
           inventoryLogCountByItem: { keyArgs: ['itemId', 'locationId'] },
           lastPurchaseDates: { keyArgs: ['itemIds', 'locationId'] },
+          vendorCart: { keyArgs: ['vendorId', 'locationId'] },
         },
       },
     },

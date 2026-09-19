@@ -15,6 +15,7 @@ import {
   UpsertItemStockDocument,
 } from '@/generated/graphql'
 import {
+  bootstrapCartsMock,
   type CloudStock,
   cloudItem,
   cloudStock,
@@ -205,6 +206,7 @@ const createItemMock = {
 }
 
 const MOCKS = [
+  bootstrapCartsMock,
   getLocationsMock,
   getItemsMock,
   pantryMock(LOC_A),

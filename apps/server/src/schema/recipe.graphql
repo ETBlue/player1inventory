@@ -23,6 +23,21 @@ input ConsumeRecipesInput {
   occurredAt: String!
   recipeIds: [ID!]!
   items: [ConsumeRecipesItemInput!]!
+
+  """
+  The location the cook consumed from.
+
+  Cooking takes stock out of ONE location. Before PR 3b Task 3 this input
+  carried no location at all, so the server took it out of the caller's default
+  location — a user cooking while viewing their Garage moved their Kitchen's
+  stock and wrote the inventory log against the Kitchen.
+
+  REQUIRED since PR 3b Task 4. It was nullable for two tasks, with a fallback
+  to the caller's default location. That fallback is gone: an omitted argument
+  writes the wrong location quietly, while a missing required argument fails
+  loudly at codegen time — the hazard PR 3a recorded on `itemLogs`.
+  """
+  locationId: ID!
 }
 
 type ConsumeRecipesItemResult {

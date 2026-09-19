@@ -155,6 +155,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useRemoveFromCartMutation: mutationStub,
     useCheckoutMutation: mutationStub,
     useAbandonCartMutation: mutationStub,
+    // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
+    useBootstrapCartsMutation: mutationStub,
     useVendorCartQuery: queryStub,
     useAllCartsQuery: queryStub,
     useAllCartItemsQuery: queryStub,

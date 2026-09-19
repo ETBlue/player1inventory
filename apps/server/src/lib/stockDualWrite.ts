@@ -28,24 +28,46 @@ import { prisma } from './prisma.js'
  * `Item`'s columns and a stale bundle shows frozen quantities, which is the
  * same broken-pantry failure from the other direction.
  *
- * ── NOT LOCATION-AWARE, AND DELIBERATELY SO ──
+ * ── WHICH CALLERS ARE LOCATION-AWARE, AS OF PR 3b TASK 3 ──
  *
- * `checkout` and `consumeRecipes` still have no location to write to.
- * PR 3a added `Cart.locationId` but nothing reads it — the cart lookup is
- * still keyed by vendor alone until PR 3b re-keys it — and
- * `ConsumeRecipesInput` carries no location either. So both still mirror into
- * the caller's DEFAULT location (`Location.isDefault`). A reader must not
- * mistake that for real scoping — a user who checks out while viewing their
- * Garage still moves their Kitchen's stock. PR 3b replaces `defaultLocationId`
- * at those two call sites with the location the cart/consume actually names.
+ * | Caller | Location it writes |
+ * |---|---|
+ * | `checkout` (cart.resolver.ts) | the location the CART names |
+ * | `consumeRecipes` (recipe.resolver.ts) | the location the COOK names |
+ * | `updateItem` (item.resolver.ts) | the caller's DEFAULT location |
+ * | `importData` (import.resolver.ts) | the caller's DEFAULT location |
+ * | `upsertItemStock` (itemStock.resolver.ts) | default only, see below |
+ *
+ * The first two were the caller's default location until PR 3b Task 3. A user
+ * who checked out while viewing their Garage moved their Kitchen's stock and
+ * logged the purchase against the Kitchen. Task 1's re-key of `Cart.id` put the
+ * cart's location within reach of `checkout`; Task 3 added `locationId` to
+ * `ConsumeRecipesInput` for the other one.
+ *
+ * The last three stay default-bound ON PURPOSE, and it is not a leftover:
+ *
+ *   - `updateItem` and `importData` mirror through
+ *     `mirrorStockToDefaultLocation`. Both serve a client with NO location
+ *     concept — a stale bundle that still sends the five state fields inline,
+ *     and an old backup file. Neither has a location to name.
+ *   - `upsertItemStock` mirrors the REVERSE direction through
+ *     `mirrorItemStockToItem`, and its call site runs that only when the
+ *     location it just wrote is the default one. See that function below for
+ *     why any other location has no correct value to write.
  *
  * ── AUTHORIZATION ──
  *
- * Nothing here takes a caller-supplied location id, so there is no id to
- * authorize: the target is DERIVED from the authenticated user. When PR 3b
- * starts accepting a `locationId` from input, that id must go through
- * `requireLocationRole` (lib/authz.ts) before reaching this module — never a
- * `row.userId === ctx.userId` comparison (root CLAUDE.md).
+ * Since PR 3b Task 3 two callers DO take a caller-supplied location id, and
+ * both authorize it before they reach this module:
+ *
+ *   - `checkout` calls `requireCartLocation`, which parses the location out of
+ *     the cart id and passes it to `requireLocationRole(..., 'member')`.
+ *   - `consumeRecipes` calls `requireLocationRole(..., 'member')` on
+ *     `input.locationId` before its first write.
+ *
+ * Nothing in THIS module authorizes anything. A new caller must do the same at
+ * its own call site — never a `row.userId === ctx.userId` comparison (root
+ * CLAUDE.md).
  *
  * ── ATOMICITY ──
  *
@@ -83,9 +105,16 @@ function seed(value: NumberWrite | undefined): number {
  *
  * It never returns null. It used to, and a stock write that landed on that path
  * disappeared with no error (issue #287). The real function lives in
- * `defaultLocation.ts` because it must outlive PR 5, which deletes this file;
- * this alias exists so PR 3b's rewrite of the call sites is the only place the
- * name changes.
+ * `defaultLocation.ts` because it must outlive PR 5, which deletes this file.
+ *
+ * Since PR 3b Task 3 it has exactly ONE caller left:
+ * `mirrorStockToDefaultLocation` below. `checkout` and `consumeRecipes` used to
+ * call it and now pass a real location instead.
+ *
+ * **Do not call it from a new resolver.** Reaching for it is how a write ends up
+ * in the wrong location silently. If a resolver knows its location, pass it to
+ * `mirrorStock`; if it truly has none, say why in a comment at the call site,
+ * the way `updateItem` and `importData` do.
  */
 export async function defaultLocationId(userId: string): Promise<string> {
   return ensureDefaultLocation(userId)
@@ -171,7 +200,15 @@ export async function mirrorItemStockToItem(
   })
 }
 
-/** `mirrorStock` against the caller's default location. PR 3b replaces this. */
+/**
+ * `mirrorStock` against the caller's default location.
+ *
+ * For the two callers that genuinely have no location: `updateItem` (a stale
+ * bundle sending the five state fields inline) and `importData` (an old backup
+ * file). PR 3b Task 3 left both alone on purpose — it moved `checkout` and
+ * `consumeRecipes` off the default location because those two DO know where
+ * they are, and these two do not.
+ */
 export async function mirrorStockToDefaultLocation(
   userId: string,
   itemId: string,

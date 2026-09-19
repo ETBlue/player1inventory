@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_LOCATION_ID } from '@/types'
 import {
   useCreateVendor,
   useDeleteVendor,
@@ -127,9 +128,16 @@ describe('useCreateVendor (cloud mode)', () => {
     })
     const created = await result.current.mutateAsync('Costco')
 
-    // Then it delegates to cloudCreate
+    // Then it delegates to cloudCreate, naming a location.
+    //
+    // `createVendor(locationId:)` is `ID!` since PR 3b Task 4. The id here is
+    // the `'local'` sentinel, because no provider is mounted and setup.ts's
+    // `useApolloClient` stub returns no locations, so `useCloudLocationId`
+    // takes its documented degraded path. That makes this assertion a SHAPE
+    // check only — it cannot tell a call-time resolution from a render-time
+    // one. The fresh-session proof is in `useShoppingCart.cloud.test.tsx`.
     expect(mockCloudCreateVendor).toHaveBeenCalledWith({
-      variables: { name: 'Costco' },
+      variables: { name: 'Costco', locationId: DEFAULT_LOCATION_ID },
     })
     expect((created as { name: string } | undefined)?.name).toBe('Costco')
   })

@@ -12,7 +12,12 @@ import {
   ItemLogsDocument,
   LastPurchaseDatesDocument,
 } from '@/generated/graphql'
-import { getLocationsMock, LOC_A, LOC_B } from '@/test/cloudFixtures'
+import {
+  bootstrapCartsMock,
+  getLocationsMock,
+  LOC_A,
+  LOC_B,
+} from '@/test/cloudFixtures'
 import { DEFAULT_LOCATION_ID, type PantryItem } from '@/types'
 import {
   ActiveLocationProvider,
@@ -160,6 +165,7 @@ const addLogMock = (locationId: string) => ({
 })
 
 const MOCKS = [
+  bootstrapCartsMock,
   getLocationsMock,
   itemLogsMock(LOC_A),
   itemLogsMock(LOC_B),

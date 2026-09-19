@@ -127,20 +127,34 @@ describe('useVendorCartCounts (local mode)', () => {
 })
 
 describe('useVendorCartCounts (cloud mode)', () => {
-  it('keeps the global count and reports zero inactive, even for a targetQuantity: 0 item', () => {
+  it('counts only items stocked here, and counts the inactive ones, exactly as local does', () => {
     mockMode('cloud')
-    // Cloud items never carry a stockId. A naive stockId guard would zero this
-    // out; cloud must keep the pre-existing global count.
+    // Cloud used to keep a GLOBAL tally and report `inactiveCount: 0` always —
+    // not because a cloud item lacked a `stockId` (it has carried one since
+    // PR 2) but because a cloud `Cart` had no location, so the card's count
+    // would not have matched the cart it opened. PR 3b gave the cart its
+    // location, and the mode branch is gone.
+    //
+    // THE FIXTURE IS THE TEST: three items carry v1, and only TWO are stocked
+    // here. With all three stocked, "stocked here" and "carries the vendor"
+    // would be the same set and this would pass against the old global tally.
     mockItems([
       {
         id: '1',
         vendorIds: ['v1'],
-        stockId: undefined,
+        stockId: 'stock-1',
         targetQuantity: 0,
         ...baseStock,
       },
       {
         id: '2',
+        vendorIds: ['v1'],
+        stockId: 'stock-2',
+        targetQuantity: 3,
+        ...baseStock,
+      },
+      {
+        id: '3',
         vendorIds: ['v1'],
         stockId: undefined,
         targetQuantity: 3,
@@ -150,7 +164,10 @@ describe('useVendorCartCounts (cloud mode)', () => {
 
     const { result } = renderHook(() => useVendorCartCounts())
 
+    // Two of the three, not three
     expect(result.current.get('v1')?.count).toBe(2)
-    expect(result.current.get('v1')?.inactiveCount).toBe(0)
+    // And the targetQuantity: 0 one is counted as inactive, not hidden by a
+    // hard-coded cloud zero
+    expect(result.current.get('v1')?.inactiveCount).toBe(1)
   })
 })

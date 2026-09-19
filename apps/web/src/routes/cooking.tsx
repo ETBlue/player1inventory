@@ -27,7 +27,6 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
 import {
@@ -72,8 +71,6 @@ function CookingPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
   const { data: recipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
   const consumeRecipes = useConsumeRecipes()
@@ -110,16 +107,15 @@ function CookingPage() {
   // the item isn't stocked here, so such recipe items are shown unavailable and
   // never consumed.
   //
-  // Cloud bypasses the gate until PR 3. Cloud items DO carry a `stockId` since
-  // PR 2 (`useItems()` joins `PantryData` per location), so the gate would work
-  // — but `consumeRecipes` still writes the caller's DEFAULT location's stock
-  // (the PR-2 dual-write, `apps/server/src/lib/stockDualWrite.ts`), so cooking
-  // consumes from a location this list would not be scoped to. PR 3 gives
-  // consumption its own location and the bypass goes with it.
+  // BOTH MODES since PR 3b. Cloud used to bypass the gate — not because its
+  // items lacked a `stockId` (they have carried one since PR 2), but because
+  // `consumeRecipes` wrote the caller's DEFAULT location's stock, so cooking
+  // consumed from a location this list was not scoped to. PR 3b Task 3 gave
+  // `ConsumeRecipesInput` its own `locationId` and Task 4 made it required, so
+  // the cook takes stock out of exactly the location this list is scoped to.
   const availableItemIds = useMemo(
-    () =>
-      new Set((isCloud ? items : items.filter(isStockedHere)).map((i) => i.id)),
-    [items, isCloud],
+    () => new Set(items.filter(isStockedHere).map((i) => i.id)),
+    [items],
   )
   const isItemAvailable = (itemId: string) => availableItemIds.has(itemId)
 
@@ -170,14 +166,16 @@ function CookingPage() {
   // visible and stays disabled — position and interactivity are independent
   // axes, so this changes only where the card sits.
   //
-  // Cloud skips the partition until PR 3, because the availability set it would
-  // partition on is itself un-scoped there (see `availableItemIds` above).
+  // BOTH MODES since PR 3b. Cloud used to skip the partition
+  // (`!isCloud && ...`), because the availability set it partitions on was
+  // itself un-scoped there — see `availableItemIds` above, which no longer
+  // branches on the mode.
   //
   // Partitioning with two filters rather than a sort key: filter preserves
   // relative order, so the user's chosen sort survives within each half instead
   // of being overridden by a stocked-ness primary key.
   const isRecipeUnstockedHere = (recipe: (typeof recipes)[number]) =>
-    !isCloud && getAvailableRecipeItems(recipe).length === 0
+    getAvailableRecipeItems(recipe).length === 0
   const stockedRecipes = displayRecipes.filter((r) => !isRecipeUnstockedHere(r))
   const unstockedRecipes = displayRecipes.filter(isRecipeUnstockedHere)
 

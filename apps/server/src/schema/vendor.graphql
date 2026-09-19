@@ -9,7 +9,22 @@ extend type Query {
 }
 
 extend type Mutation {
-  createVendor(name: String!): Vendor!
+  """
+  Create a vendor and pre-create its cart at ONE location.
+
+  `locationId` is the location the caller is looking at. Local mode does the
+  same thing — `createVendor(name, locationId)` in apps/web/src/db/operations.ts
+  writes one cart for the active location and leaves the other locations to
+  `bootstrapCarts`.
+
+  `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
+  a fallback to the caller's default location, so a vendor created while
+  viewing the Garage got its cart in the Kitchen. That fallback is gone: an
+  omitted argument writes the wrong location quietly, while a missing required
+  argument fails loudly at codegen time. That is the hazard PR 3a recorded on
+  `itemLogs`.
+  """
+  createVendor(name: String!, locationId: ID!): Vendor!
   updateVendor(id: ID!, name: String): Vendor!
   deleteVendor(id: ID!): Boolean!
 }

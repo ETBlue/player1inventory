@@ -1,3 +1,11 @@
+"""
+A shopping cart, one per (location, vendor).
+
+Since PR 3b the id is `${locationId}:${vendorId | 'no-vendor'}`, the same shape
+local mode uses (`cartIdFor` in packages/types/src/index.ts). The id is a
+cross-mode wire contract — backups round-trip by id — so it is denormalized on
+purpose alongside the `locationId` column the server queries by.
+"""
 type Cart {
   id: ID!
   lastPurchasedAt: String
@@ -11,17 +19,94 @@ type CartItem {
 }
 
 extend type Query {
-  vendorCart(vendorId: ID): Cart!
+  """
+  The permanent cart for one vendor at one location, created if it is missing.
+
+  `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
+  a fallback to the caller's default location, and that fallback is gone: an
+  omitted argument read the wrong location quietly, while a missing required
+  argument fails loudly at codegen time. That is the hazard PR 3a recorded on
+  `itemLogs`.
+
+  `vendorId` stays nullable — `null` names the no-vendor cart, which is a real
+  cart, not a missing argument.
+  """
+  vendorCart(vendorId: ID, locationId: ID!): Cart!
+
+  """
+  Every cart the caller owns, across every location.
+
+  Whole-account on purpose, like `inventoryLogs`. The shopping page shows each
+  vendor's "last purchased" and the export path needs every location's carts or
+  the backup loses rows. Each row's location is recoverable from its id.
+  """
   allCarts: [Cart!]!
+
+  "Items in one cart. The cart id names the location, and the caller needs the `viewer` role on it."
   cartItems(cartId: ID!): [CartItem!]!
+
+  "How many carts hold this item, across every location. Answers \"is this item in any cart\"."
   cartItemCountByItem(itemId: ID!): Int!
+
+  "Every cart item the caller owns, across every location. The snapshot path, not a screen."
   allCartItems: [CartItem!]!
 }
 
 extend type Mutation {
+  "Add an item to a cart. The cart id names the location, and the caller needs the `member` role on it."
   addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
+
+  "Change one cart item's quantity. `id` is a CartItem id; its location comes from the row's own cartId."
   updateCartItem(id: ID!, quantity: Int!): CartItem!
+
+  "Delete one cart item. `id` is a CartItem id; its location comes from the row's own cartId."
   removeFromCart(id: ID!): Boolean!
+
+  """
+  Buy everything in the cart with a quantity above zero.
+
+  The cart id names the location, is authorized against it, and — since PR 3b
+  Task 3 — is the location the stock move and the inventory log are written to.
+  Both used to go to the caller's DEFAULT location, so a checkout made while
+  viewing the Garage credited the Kitchen.
+  """
   checkout(cartId: ID!, note: String, logKey: String, logParams: JSON): Cart!
+
+  "Empty one cart, pinned items included. The cart id names the location."
   abandonCart(cartId: ID!): Cart!
+
+  """
+  Make sure one location has its no-vendor cart and one cart per vendor, then
+  return every cart at that location.
+
+  The cloud half of local mode's `bootstrapCarts`
+  (apps/web/src/db/operations.ts). `createVendor` pre-creates a cart at ONE
+  location — the one the caller was looking at — so every other location is
+  missing that vendor's cart until something fills it in. This mutation is that
+  something.
+
+  ── WHY A MUTATION, AND NOT THE `locations` QUERY ──
+
+  1. Local mode says so. The comment on `createVendor` in
+     apps/web/src/db/operations.ts states that carts are pre-created up front
+     and NOT lazily from a read path, which is what keeps `getCart` a pure read.
+     Putting the creation inside `locations` would make a read write.
+  2. `locations` does not know which location the caller is looking at, so it
+     would have to create `locations x vendors` carts on every call. This
+     mutation creates one location's worth, when that location becomes active.
+  3. Authorization fits. One caller-supplied `locationId` goes through
+     `requireLocationRole(locationId, 'member')`, the same seam every other
+     location write uses. A read path would have to demand `member` on every
+     location just to list them.
+
+  `locationId` was required from the start, and there is no default-location
+  fallback here. `vendorCart` and `createVendor` took theirs in Task 4.
+
+  The caller is the web client's active-location effect: local mode calls
+  `bootstrapCarts(activeLocationId)` from `ActiveLocationProvider`
+  (apps/web/src/hooks/useActiveLocation.tsx) whenever the active location
+  changes, and since Task 4 the cloud branch of that same effect calls this
+  mutation.
+  """
+  bootstrapCarts(locationId: ID!): [Cart!]!
 }

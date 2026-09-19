@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PantryDataDocument } from '@/generated/graphql'
 import {
+  bootstrapCartsMock,
   cloudItem,
   cloudStock,
   getLocationsMock,
@@ -60,6 +61,7 @@ const pantryMock = (locationId: string, stocks: unknown[]) => ({
 })
 
 const MOCKS = [
+  bootstrapCartsMock,
   getLocationsMock,
   pantryMock(LOC_A, [MILK_STOCK_A]),
   pantryMock(LOC_B, [RICE_STOCK_B]),

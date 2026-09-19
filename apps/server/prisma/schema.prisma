@@ -146,8 +146,9 @@ model Cart {
   id              String    @id
   userId          String
   // The location this cart belongs to. Added in PR 3a, written by every cart
-  // writer, and read by nothing yet — on purpose. PR 3b re-keys Cart.id to
-  // `${locationId}:${vendorId}` and needs this column to build on.
+  // writer. PR 3b re-keyed Cart.id to `${locationId}:${vendorId}`, which is what
+  // the resolvers look a cart up by; this column is what `bootstrapCarts`
+  // queries by to return one location's carts.
   //
   // onDelete: Cascade. Deleting a location deletes its carts, which matches
   // local mode: deleteLocation in apps/web/src/db/operations.ts:1215 deletes

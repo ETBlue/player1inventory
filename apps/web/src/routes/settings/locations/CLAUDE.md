@@ -18,7 +18,7 @@ Location CRUD at `/settings/locations`. A **Location** is a place the user stock
 
 Global `Item`s are **not** touched — an item stocked only in the deleted location survives as an orphan (see below). If the deleted location was the active one, `useActiveLocation` falls back to the **`isDefault`** location because the stored id no longer matches any location.
 
-**Delete cascade (cloud).** The server cascade matches, but is narrower for now: Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows, and cloud carts and inventory logs are not location-scoped until PR 3, so there is nothing else for it to take. The cloud mutation refetches only `GetLocations` — see the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
+**Delete cascade (cloud).** Postgres `ON DELETE CASCADE` removes the location's `ItemStock` rows and — since PR 3a gave both tables a `locationId` with the same rule — its `Cart` rows (and their `CartItem`s, which cascade from `Cart`) and its `InventoryLog` rows. That matches what local mode deletes. What does NOT match is the client cache: the cloud mutation refetches only `GetLocations`, so `AllCarts` / `AllCartItems` / `ItemLogs` observers can still hold deleted rows. See the comment on `useDeleteLocation` for why `PantryData` / `ItemStocksForItem` are deliberately left off that list.
 
 **Un-stocking one item** is the narrower counterpart, `removeItemFromLocation(itemId, locationId)` — see the "Orphan items" section below and `src/routes/items/CLAUDE.md` for the Stock-tab UI that calls it.
 

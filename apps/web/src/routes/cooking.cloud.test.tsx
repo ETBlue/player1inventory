@@ -7,12 +7,24 @@ import {
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
+import { CLOUD_LOCATIONS, LOC_A } from '@/test/cloudFixtures'
 import { asPantryDataResult } from '@/test/pantryData'
 
-// Cloud mode has no ItemStock backend yet (deferred in the Location feature,
-// PR D): `useItems()` returns cloud items with inline stock and no `stockId`.
-// These tests pin the pre-split cooking behaviour for cloud users.
+// The cooking page in CLOUD mode, after PR 3b gave the cook its own location.
+//
+// Cloud used to bypass the location gate here — not because a cloud item had no
+// `stockId` (it has carried one since PR 2) but because `consumeRecipes` wrote
+// the caller's DEFAULT location, so the list was scoped to one location and the
+// cook took stock out of another. Task 3 added `ConsumeRecipesInput.locationId`
+// and Task 4 made it required, so both halves name the same location and the
+// gate — with its "not stocked here" divider — runs in cloud too.
+//
+// THE FIXTURE IS THE TEST. Flour is stocked at LOC_A, the active location.
+// "Cold Brew" needs Coffee, which is stocked NOWHERE the active location can
+// see, so it must sink. Without an item the gate can exclude, every assertion
+// below would pass against the old bypass.
 
 const emptyQuery = { data: undefined, loading: false, error: undefined }
 
@@ -30,10 +42,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // have to be repeated here or the real Apollo hook runs and demands a
     // provider. Placed right after `...original` so this file's own overrides
     // below still win.
+    // The REAL two-location list, so `useCloudLocationKnown` accepts LOC_A and
+    // the location-scoped cloud reads are not skipped.
     useGetLocationsQuery: () => ({
-      data: undefined,
-      loading: false,
-      error: undefined,
+      ...emptyQuery,
+      data: { locations: CLOUD_LOCATIONS },
     }),
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
@@ -51,10 +64,15 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
+    useBootstrapCartsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // The pantry hooks read `PantryData` now, not `GetItems`. The fixture
     // below is still written as an item list; `asPantryDataResult` lifts each
     // item's inline stock values into the ItemStock row the join reads.
-    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery()),
+    usePantryDataQuery: () => asPantryDataResult(mockUseGetItemsQuery(), LOC_A),
     useGetRecipesQuery: () => mockUseGetRecipesQuery(),
     useConsumeRecipesMutation: () => [mockConsumeRecipes, {}],
     useGetTagsQuery: () => emptyQuery,
@@ -93,6 +111,10 @@ describe('Use (Cooking) Page — cloud mode', () => {
 
   beforeEach(() => {
     localStorage.setItem('data-mode', 'cloud')
+    // LOC_A is the active location. Without this the provider starts on the
+    // `'local'` sentinel and corrects itself a render later, which every
+    // location-scoped read would have to wait out.
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     mockUseGetItemsQuery.mockReturnValue({
       ...emptyQuery,
       data: { items: [CLOUD_ITEM] },
@@ -112,6 +134,7 @@ describe('Use (Cooking) Page — cloud mode', () => {
 
   afterEach(() => {
     localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('cloud'))
     vi.clearAllMocks()
   })
 
@@ -126,7 +149,7 @@ describe('Use (Cooking) Page — cloud mode', () => {
   }
 
   it('user can check a recipe item in cloud mode', async () => {
-    // Given a cloud recipe whose item is not marked as stocked anywhere
+    // Given a cloud recipe whose item IS stocked in the active location
     renderPage()
     const user = userEvent.setup()
 
@@ -151,9 +174,8 @@ describe('Use (Cooking) Page — cloud mode', () => {
     )
   })
 
-  it('cloud recipe card counts every item as stocked here and stays checkable', async () => {
-    // Given a cloud recipe whose item carries inline stock and no stockId —
-    // in local mode that item would read as not stocked in the active location
+  it('cloud recipe card counts the items stocked here and stays checkable', async () => {
+    // Given a cloud recipe whose single item has an `ItemStock` row at LOC_A
     renderPage()
 
     // Then the availability line counts it as stocked here
@@ -165,31 +187,50 @@ describe('Use (Cooking) Page — cloud mode', () => {
     expect(screen.getByLabelText('Pasta')).toBeEnabled()
   })
 
-  it('every recipe renders in the top section in cloud mode, with no not-stocked-here divider', async () => {
-    // Given the seeded cloud recipe (its item carries inline stock and no
-    // stockId) plus one with no items at all — the case that has nothing
-    // "available" to count even after the item-level cloud bypass, so it is
-    // what actually pins the list-level bypass. Cloud has no locations, so
-    // nothing may be labelled "not stocked here".
-    const CLOUD_EMPTY_RECIPE = {
+  it('a recipe with nothing stocked here sinks below the divider in cloud mode', async () => {
+    // Given Pasta, whose Flour IS stocked at the active LOC_A, and Cold Brew,
+    // whose Coffee is a global item with no stock row here at all.
+    //
+    // Cloud used to skip this partition entirely, so BOTH recipes rendered in
+    // the top section and no divider existed. `asPantryDataResult` gives every
+    // item in the list a row, so Coffee is left OUT of the item list and fed to
+    // the recipe by id only — which is exactly the shape of an item stocked at
+    // another location: present in the catalog, absent from this location's
+    // `itemStocks`.
+    const COLD_BREW = {
       ...CLOUD_RECIPE,
-      id: 'recipe-empty',
-      name: 'Empty Plate',
-      items: [],
+      id: 'recipe-cold-brew',
+      name: 'Cold Brew',
+      items: [{ itemId: 'item-coffee', defaultAmount: 1 }],
     }
     mockUseGetRecipesQuery.mockReturnValue({
       ...emptyQuery,
-      data: { recipes: [CLOUD_RECIPE, CLOUD_EMPTY_RECIPE] },
+      data: { recipes: [CLOUD_RECIPE, COLD_BREW] },
     })
 
     renderPage()
 
-    // Then both recipes render and no divider is present
+    // Then both recipes still render — sinking is not hiding
     await waitFor(() =>
       expect(screen.getByLabelText('Pasta')).toBeInTheDocument(),
     )
-    expect(screen.getByLabelText('Empty Plate')).toBeInTheDocument()
-    expect(screen.queryByText(/not stocked here/i)).not.toBeInTheDocument()
+    const pasta = screen.getByLabelText('Pasta')
+    const coldBrew = screen.getByLabelText('Cold Brew')
+
+    // And the divider counts exactly the one that sank
+    const divider = screen.getByText(/1 not stocked here/i)
+
+    // And Pasta is above it while Cold Brew is below
+    expect(pasta.compareDocumentPosition(divider)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    expect(divider.compareDocumentPosition(coldBrew)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+
+    // And sinking it did not make it cookable
+    expect(coldBrew).toBeDisabled()
+    expect(pasta).toBeEnabled()
   })
 
   it('user can consume a recipe in cloud mode', async () => {
@@ -210,9 +251,13 @@ describe('Use (Cooking) Page — cloud mode', () => {
     )
     await user.click(screen.getByRole('button', { name: /confirm/i }))
 
-    // Then the consume mutation is sent with the item's consumed quantity
+    // Then the consume mutation is sent with the item's consumed quantity, and
+    // with the ACTIVE location — LOC_A, not the `'local'` sentinel and not the
+    // caller's default resolved server-side. `ConsumeRecipesInput.locationId`
+    // is `ID!` since PR 3b Task 4.
     await waitFor(() => expect(mockConsumeRecipes).toHaveBeenCalled())
     const variables = mockConsumeRecipes.mock.calls[0][0].variables
+    expect(variables.input.locationId).toBe(LOC_A)
     expect(variables.input.recipeIds).toEqual([CLOUD_RECIPE.id])
     expect(variables.input.items).toHaveLength(1)
     expect(variables.input.items[0]).toMatchObject({

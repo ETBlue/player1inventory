@@ -45,6 +45,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
+    useBootstrapCartsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useItemLogsQuery: (options?: Record<string, unknown>) => {
       capturedItemLogsQueryOptions = options
       return mockItemLogsQuery()

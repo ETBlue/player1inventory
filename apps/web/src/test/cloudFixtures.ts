@@ -9,7 +9,10 @@
 // Lives outside a `.test.ts` file on purpose: `tsconfig.app.json` excludes test
 // files from the build's type-check, so a fixture shared by five specs is worth
 // having type-checked.
-import { GetLocationsDocument } from '@/generated/graphql'
+import {
+  BootstrapCartsDocument,
+  GetLocationsDocument,
+} from '@/generated/graphql'
 
 export const LOC_A = 'clw3loc0a0000s9f8h7g6d5e4' // Cloud Kitchen — the default, active first
 export const LOC_B = 'clw3loc0b0001s9f8h7g6d5e5' // Cloud Garage
@@ -38,6 +41,24 @@ export const getLocationsMock = {
   request: { query: GetLocationsDocument },
   maxUsageCount: Number.POSITIVE_INFINITY,
   result: { data: { locations: CLOUD_LOCATIONS } },
+}
+
+// `ActiveLocationProvider` fires `bootstrapCarts` in CLOUD mode whenever the
+// active location changes (PR 3b Task 4), so every cloud test that mounts the
+// provider on a `MockedProvider` needs this — an unmatched mock is a link
+// error, and the provider's own `.catch` turns it into a console line plus a
+// test that times out waiting for data that never came.
+//
+// It returns no carts on purpose. Nothing in these fixtures reads the result;
+// the provider only refetches `AllCarts` after it, and `AllCarts` is not part
+// of any of these tests.
+export const bootstrapCartsMock = {
+  request: {
+    query: BootstrapCartsDocument,
+    variables: () => true,
+  },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: { data: { bootstrapCarts: [] } },
 }
 
 // The cloud `Item` still declares the five stock STATE fields until PR 5. The
