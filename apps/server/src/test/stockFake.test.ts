@@ -157,3 +157,156 @@ describe('stockFake models the constraints resolvers rely on', () => {
     expect(all.map((l) => l.id)).toEqual(['loc_mine', 'loc_theirs'])
   })
 })
+
+// ── $transaction, added in PR 3c ─────────────────────────────────────────────
+//
+// The fake's rollback is the thing under test here. It has to be, for the same
+// reason the duplicate-create guard above has its own test: a rollback that
+// silently does nothing is WORSE than no rollback at all, because every later
+// atomicity test would report as covered while proving nothing.
+describe('stockFake $transaction rolls back', () => {
+  function twoLocationFake() {
+    const fake = createStockFake()
+    // TWO locations with DIFFERENT quantities. With one location, "restored
+    // every row" and "restored one row" are the same assertion.
+    fake.reset(
+      [
+        { id: 'loc_kitchen', userId: 'user_1', isDefault: true },
+        { id: 'loc_garage', userId: 'user_1', isDefault: false },
+      ],
+      [
+        makeStock({
+          id: 'st_kitchen',
+          itemId: 'item_1',
+          locationId: 'loc_kitchen',
+          packedQuantity: 2,
+          unpackedQuantity: 3,
+        }),
+        makeStock({
+          id: 'st_garage',
+          itemId: 'item_1',
+          locationId: 'loc_garage',
+          packedQuantity: 7,
+          unpackedQuantity: 11,
+        }),
+      ],
+    )
+    return fake
+  }
+
+  it('a callback that throws leaves every row at its opening value', async () => {
+    // Given two stock rows with different quantities
+    const fake = twoLocationFake()
+
+    // When a transaction updates BOTH rows, creates a third, and then throws
+    await expect(
+      fake.client.$transaction(async (tx: typeof fake.client) => {
+        await tx.itemStock.update({
+          where: { itemId_locationId: { itemId: 'item_1', locationId: 'loc_kitchen' } },
+          data: { packedQuantity: 100 },
+        })
+        await tx.itemStock.update({
+          where: { itemId_locationId: { itemId: 'item_1', locationId: 'loc_garage' } },
+          data: { packedQuantity: 200 },
+        })
+        await tx.itemStock.create({
+          data: { itemId: 'item_2', locationId: 'loc_kitchen' },
+        })
+        throw new Error('write 4 failed')
+      }),
+    ).rejects.toThrow('write 4 failed')
+
+    // Then the third row is gone — the count check, which a SHALLOW copy would
+    // also pass
+    expect(fake.state.itemStocks).toHaveLength(2)
+
+    // And each row's own NESTED field is back at its opening value. This is the
+    // assertion a shallow copy fails: `state.itemStocks.slice()` restores the
+    // array but shares the row objects, so `packedQuantity: 100` survives.
+    const kitchen = fake.state.itemStocks.find((s) => s.id === 'st_kitchen')
+    const garage = fake.state.itemStocks.find((s) => s.id === 'st_garage')
+    expect(kitchen?.packedQuantity).toBe(2)
+    expect(kitchen?.unpackedQuantity).toBe(3)
+    expect(garage?.packedQuantity).toBe(7)
+    expect(garage?.unpackedQuantity).toBe(11)
+  })
+
+  it('a callback that returns keeps every write', async () => {
+    // Given the same two rows
+    const fake = twoLocationFake()
+
+    // When a transaction updates one row and returns
+    const result = await fake.client.$transaction(async (tx: typeof fake.client) => {
+      await tx.itemStock.update({
+        where: { itemId_locationId: { itemId: 'item_1', locationId: 'loc_garage' } },
+        data: { packedQuantity: 200 },
+      })
+      return 'committed'
+    })
+
+    // Then the write stands and the callback's value comes back
+    expect(result).toBe('committed')
+    expect(fake.state.itemStocks.find((s) => s.id === 'st_garage')?.packedQuantity).toBe(200)
+    // And the row the transaction did not touch is untouched
+    expect(fake.state.itemStocks.find((s) => s.id === 'st_kitchen')?.packedQuantity).toBe(2)
+  })
+
+  it('a registered store is rolled back two levels deep', async () => {
+    // Given a test file's own store, whose rows hold an ARRAY OF OBJECTS — the
+    // shape `Recipe.items` has, and the one a shallow copy cannot restore
+    const fake = twoLocationFake()
+    const extra = {
+      recipes: [
+        { id: 'r_1', items: [{ itemId: 'item_1', defaultAmount: 100 }] },
+        { id: 'r_2', items: [{ itemId: 'item_1', defaultAmount: 250 }] },
+      ],
+    }
+    fake.configureTransaction({ stores: [extra] })
+
+    // When a transaction edits a recipe item two levels down, then throws
+    await expect(
+      fake.client.$transaction(async () => {
+        extra.recipes[0].items[0].defaultAmount = 0.2
+        extra.recipes[1].items.push({ itemId: 'item_9', defaultAmount: 1 })
+        throw new Error('recipe write failed')
+      }),
+    ).rejects.toThrow('recipe write failed')
+
+    // Then the nested field is back at its opening value, and the pushed entry
+    // is gone
+    expect(extra.recipes[0].items[0].defaultAmount).toBe(100)
+    expect(extra.recipes[1].items).toHaveLength(1)
+  })
+
+  it('a key added during a failed transaction does not survive the rollback', async () => {
+    // Given a store with one key
+    const fake = twoLocationFake()
+    const extra: Record<string, unknown> = { recipes: [] }
+    fake.configureTransaction({ stores: [extra] })
+
+    // When a transaction adds a SECOND key, then throws
+    await expect(
+      fake.client.$transaction(async () => {
+        extra.carts = [{ id: 'c_1' }]
+        throw new Error('cart write failed')
+      }),
+    ).rejects.toThrow('cart write failed')
+
+    // Then the added key is gone. `Object.assign(store, snapshot)` alone would
+    // leave it behind, because the snapshot has no entry to overwrite it with.
+    expect('carts' in extra).toBe(false)
+  })
+
+  it('the array form is refused rather than faked', async () => {
+    // Given a caller reaching for prisma.$transaction([...])
+    const fake = twoLocationFake()
+
+    // When the array form is used
+    const call = fake.client.$transaction([Promise.resolve(1), Promise.resolve(2)])
+
+    // Then it throws instead of pretending to roll back. The promises in the
+    // array have already run by now, so any snapshot taken here is the state
+    // AFTER those writes.
+    await expect(call).rejects.toThrow(/only the interactive callback form/)
+  })
+})
