@@ -1,7 +1,8 @@
 # Cloud Locations — Status
 
-Status: 🔄 **In Progress** — PRs 0, 1, 2 and 3a are ✅ merged. PR 3b is ✅ built on
-`feature/cloud-locations-pr3b`. PRs 3c, 4 and 5 are 🔲 pending.
+Status: 🔄 **In Progress** — PRs 0, 1, 2 and 3a are ✅ merged. **PR 3 is now complete**:
+3b is ✅ built on `feature/cloud-locations-pr3b` and 3c is ✅ built on
+`feature/cloud-locations-pr3c`. Neither is merged or deployed. PRs 4 and 5 are 🔲 pending.
 
 Docs for this feature:
 [brainstorming](2026-08-30-brainstorming-cloud-locations.md) ·
@@ -12,6 +13,8 @@ Docs for this feature:
 [PR 3a plan](2026-09-16-cloud-locations-plan-pr3a.md) ·
 [PR 3b brainstorming](2026-09-17-brainstorming-pr3b.md) ·
 [PR 3b plan](2026-09-17-cloud-locations-plan-pr3b.md) ·
+[PR 3c brainstorming](2026-09-20-brainstorming-pr3c.md) ·
+[PR 3c plan](2026-09-20-cloud-locations-plan-pr3c.md) ·
 [**deploy runbook**](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md)
 
 > **Nothing here is deployed yet.** PR 3b re-keys a primary key, and the migration
@@ -39,7 +42,7 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **2** | ✅ | The web client's cloud path moves onto `Location` / `ItemStock`. Writes split client-side. A five-site server dual-write keeps `Item`'s legacy columns fed until PR 5. |
 | **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
 | **3b** | ✅ built, not merged | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
-| **3c** | 🔲 Pending | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. |
+| **3c** | ✅ built, not merged | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
 | **4** | 🔲 Pending | Import, export, post-login migration and purge (design §6). |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
 
@@ -587,6 +590,252 @@ is those two cases going live.
 
 ---
 
+## PR 3c ✅ — the unit switch and the remove cascade
+
+Branch `feature/cloud-locations-pr3c`, based on `6abd0948`.
+[Plan](2026-09-20-cloud-locations-plan-pr3c.md) · [brainstorming](2026-09-20-brainstorming-pr3c.md).
+
+Two features, plus the test-double work the first one needed. **No migration.** Both
+features write tables that already exist.
+
+| Commit | What |
+|---|---|
+| `d655efc4` | The Prisma fake learns to roll back a `$transaction`. |
+| `e197a6b9` | `applyUnitSwitch` — schema, resolver, client. |
+| `fb411304` | `removeItemFromLocation` cascades logs and cart entries. |
+| `35e27bc3` | `cartItemCountByItem` takes an optional `locationId`. |
+| `06b27242` | The Stock tab's cascade counts render in cloud too. |
+
+### `applyUnitSwitch` never existed in the cloud schema at all
+
+This is the fact most worth keeping. Design §2 named the mutation. PR 1 shipped
+`itemStock.graphql` **without it**. So before PR 3c a cloud unit switch left **every
+location's quantities in the old unit** — the item moved to the new unit and the numbers
+did not.
+
+**No test failed on that, and no test could**, because `buildStockConversions` gated on
+`isLocal`. The dialog listed no conversions in cloud, so the cloud branch was never asked
+to write one. The gate hid the missing mutation from every test that might have found it.
+
+Removing the gate exposed two more cloud-only gaps behind it:
+
+| Gap | What the user got |
+|---|---|
+| The cloud confirm path saved the item's configuration and the recipe amounts, but **never any quantity**. | The switch looked like it worked and silently dropped the conversions. |
+| A **unit-only** switch never opened the dialog in cloud at all. | No confirmation, no conversion. |
+
+Both are fixed. `handleConfirmAdjustments` now has one path for both modes.
+
+### The resolver is one transaction, and one authorization rule
+
+`applyUnitSwitch(input: ApplyUnitSwitchInput!): Item!`. The input mirrors local's
+`UnitSwitchBatchInput`: `itemId`, `updates`, `stockConversions` (one per location) and
+`recipeUpdates`.
+
+| Rule | Why |
+|---|---|
+| The item update, every location's conversion and every recipe rewrite run in **one** `prisma.$transaction`. | A failure partway leaves the item on the new unit while some locations and recipes hold old-unit numbers. Mixed units, silently, with no error to act on. |
+| **Every** location in `stockConversions` goes through `requireLocationRole(..., 'member')` **before** the transaction opens. One refusal fails the whole mutation with `FORBIDDEN`. | Converting only the locations the caller may write leaves the item in mixed units too — the same corruption, just authorized. Checking first means a refusal has written nothing even if rollback were broken. This cannot fire today; it is shaped this way so RBAC is one function body later. |
+
+**`applyUnitSwitch` needed its own dual-write mirror**, written with `tx` inside the
+transaction. `mirrorItemStockToItem` could **not** be reused: it uses the module-level
+`prisma`, so its write would survive a rollback and leave `Item` and `ItemStock` in
+**different units** — the exact corruption the transaction exists to prevent. The mirror
+is default-location-only, the same rule `upsertItemStock` follows, and PR 5 removes it.
+
+`buildItemUpdateData` was extracted from `updateItem` so both writers share one mapping.
+
+### The Prisma fake now models `$transaction` rollback
+
+PR 2 left `$transaction` out of `stockFake.ts` on purpose, so no test could claim
+atomicity it had not earned. `applyUnitSwitch` earns it.
+
+`runInTransaction` snapshots every registered store with `structuredClone`, keeps the
+writes when the callback returns, and restores the snapshot when it throws. It is
+**exported**, so `itemStock.resolver.test.ts` — which has its own hand-written prisma
+mock — imports it instead of keeping a second copy. A second copy could silently do
+nothing, and then every atomicity test resting on it would report as covered.
+
+**It supports only the interactive callback form**, `$transaction(async (tx) => …)`.
+The array form, `$transaction([p1, p2])`, **throws on purpose**: JavaScript evaluates the
+array before `$transaction` is called, so the writes have already landed by then, and a
+snapshot taken at that moment would report a rollback that never happened. Four resolvers
+use the array form today (import, purge, location, `index.ts`) and none is tested through
+this fake.
+
+The snapshot is a **deep** copy. A shallow copy restores each array but shares the row
+objects inside it, so a changed field would survive the rollback and the fake would report
+an atomicity it never had. `configureTransaction({ txClient, stores })` lets a test file
+register a wider mocked prisma and its own stores, so one rollback covers `item` and
+`recipe` too.
+
+### The remove cascade
+
+Cloud's `removeItemFromLocation` deleted the `ItemStock` row alone. It now deletes the
+same two families local does, in one `prisma.$transaction`:
+
+- the item's inventory logs at that location
+- the item's entries in that location's carts
+
+Two differences from local, both because the cloud schema is stricter:
+
+| Local | Cloud |
+|---|---|
+| Logs filter `(log.locationId ?? DEFAULT_LOCATION_ID) === locationId` — Dexie holds logs written before the Location feature. | `locationId` alone. `InventoryLog.locationId` is NOT NULL since PR 3a, so a fallback would tell the next reader that NULLs are possible when they are not. |
+| Cart entries are matched with `parseCartId` on the cart id. | The relation filter `where: { itemId, userId, cart: { locationId } }`, reading `Cart.locationId`. |
+
+### The cascade reads `Cart.locationId`, not the cart id
+
+Task 3 first used `parseCartId`, because the plan named it, and then flagged the better
+option. Task 4 switched it.
+
+`Cart.locationId` is the real column PR 3a added, and the cart id
+`${locationId}:${vendorId | 'no-vendor'}` is **derived from it**. Filtering the source
+column is one statement; parsing the derived string meant reading every cart entry for the
+item and filtering in memory.
+
+**Both call sites changed together** — the delete in `removeItemFromLocation` and the
+count in `cartItemCountByItem` — so one rule decides membership. If they disagreed, the
+Stock tab's dialog would show a number the removal does not match.
+
+Correcting the plan while doing it: the plan's mutation check said a vendor id containing
+`':'` catches a cart id matched by string prefix. **It does not.** `Location.id` is a cuid
+and never contains a colon, so ``startsWith(`${locationId}:`)`` and `parseCartId` give the
+same answer for every input. What a prefix match gets wrong is the **missing delimiter**:
+`'loc-a2:ven-1'.startsWith('loc-a')` is `true`. That whole question is moot now — with a
+relation filter there is no string to prefix-match.
+
+The replacement check is direct: **drop `cart: { locationId }` and the test asserting
+another location's cart entries survived goes red.** It does, in both specs.
+
+### The fakes did not model the relation filter, and had to be taught
+
+This is the third time in this series a test double could not tell the right
+implementation from a wrong one. Root `CLAUDE.md` names the other two.
+
+| Spec | What its `cartItem` double did with `cart: { locationId }` |
+|---|---|
+| `cart.resolver.test.ts` | Nothing — `count` was a plain `vi.fn()` told to resolve to a number, so the `where` clause was never read at all. |
+| `itemStock.resolver.test.ts` | Nothing — its hand-written matcher walked `where` key by key and had no `cart` key, so an unknown key was silently ignored. |
+
+Left alone, **every test in this section would have passed against a resolver with no
+location scope at all.**
+
+The fix is `apps/server/src/test/cartItemFake.ts`: one shared matcher, used by both specs,
+that resolves `cart` the way Postgres does — follow `CartItem.cartId` to its `Cart` row and
+read that row's `locationId` **column**, never the id text. A `CartItem` whose cart is
+missing from the store throws a named fixture error rather than quietly not matching,
+because `CartItem.cartId` is a NOT NULL foreign key and real Postgres cannot reach that
+state.
+
+Each spec also gained a test that only a column-reading resolver can pass: a fixture whose
+cart **id text and `locationId` column disagree**. Production cannot reach that state —
+`cartIdFor` builds the id out of the column — and that is what makes it the one fixture
+that tells the two rules apart.
+
+### `cartItemCountByItem` was not location-scoped before this PR
+
+The plan asked only whether the count **hooks** had cloud branches. The gap was larger: the
+server query counted **every** location, so the cloud dialog would have shown a number
+bigger than what the removal deletes. The query took an optional `locationId`:
+
+- no `locationId` — unchanged, the whole-account count the item list uses
+- with one — the caller needs the `viewer` role on it, and only that location's carts count
+
+### The Stock tab's confirmation line works in cloud now
+
+`Inventory logs: N · Cart entries: N` rendered in local mode only, because cloud had no
+per-item cascade to count — naming rows a cloud removal would not touch is worse than
+naming none. The cascade exists, so the `mode === 'local'` guard is gone and both count
+hooks gained a cloud branch.
+
+The cloud remove mutation also evicts the cached fields the cascade empties: the two
+counts, `itemLogs`, `inventoryLogs`, `lastPurchaseDates`, `cartItems` and `allCartItems`.
+The local branch already did the same through `queryClient.invalidateQueries`.
+
+### Mutation checks
+
+Every one went RED and was then restored.
+
+| Mutation | What failed |
+|---|---|
+| Rollback made a no-op | `expected [ ... ] to have a length of 2 but got 3` |
+| Deep copy made shallow | `expected 100 to be 2` |
+| `applyUnitSwitch`'s `$transaction` dropped | `expected "package" to be "measurement"` |
+| Only the first location's role checked | `expected undefined to be 'FORBIDDEN'` |
+| Only the default location converted | `expected 3000 to be 6` on the garage row |
+| The `isLocal` gate on `buildStockConversions` restored | red |
+| The hook's cloud branch removed | red |
+| The cascade deletes only the stock row | 4 tests |
+| `locationId` dropped from the log filter | 1 test |
+| The cascade's `$transaction` dropped | 1 test |
+| **`cart: { locationId }` dropped from the cascade delete** | 2 tests — `expected [ 'ci-a-other', 'ci-theirs' ] to deeply equal [ 'ci-a-other', 'ci-a2', 'ci-theirs' ]` |
+| **`cart: { locationId }` dropped from the count** | 2 tests — `expected 3 to be 2` |
+| **The shared matcher made to ignore `where.cart`** | 4 tests, two per spec — proof the fake does the work |
+| The `mode === 'local'` guard restored on the confirmation line | red, cloud test only |
+| The cloud count falling back to the Dexie count | red |
+
+Every fixture holds **two** of the caller's locations plus a stranger's, with different
+values, so "here" and "everywhere" are different answers. A single-location fixture cannot
+fail any of these.
+
+### `Cart.locationId` has no index — the plan said it did
+
+The PR 3c plan says `Cart.locationId` is "a real indexed column". **It is not indexed.**
+The PR 3a migration says so on purpose: *"No standalone index on `Cart`.`locationId`"*,
+because PR 3b's re-key was about to put the location into the primary key.
+
+The relation filter is still the right choice — it is about reading the source column
+instead of a derived string — but not for the index reason the plan gave. The two queries
+are driven by `CartItem_itemId_idx` and reach `Cart` by its primary key, and a user holds
+few carts, so no index was added. This is now recorded on the `Cart` model in
+`schema.prisma`.
+
+### Verification, run 2026-09-20
+
+Full gate green, each command run from the path the root `CLAUDE.md` names:
+
+| Command | Result |
+|---|---|
+| `(cd apps/web && pnpm lint)` | pass — 4 pre-existing warnings in `shopping/index.tsx`, none new |
+| `pnpm build` (root: codegen + web + server `tsc`) | pass, exit 0. `git status` showed no codegen drift |
+| `grep 'TS6385' /tmp/p1i-build-pr3c-t4.log` | no match |
+| `(cd apps/web && pnpm build-storybook)` | pass |
+| `(cd apps/web && pnpm check)` | pass — the same 4 warnings |
+| `pnpm test` | pass — **259 server + 2116 web**, 0 failures |
+
+`pnpm verify:migration` was **not** run, and no migration was written. PR 3c touches only
+tables PR 3a and PR 1 already created.
+
+Full E2E, all three projects, no `--grep`: **322 tests — 305 passed, 9 skipped, 8 failed**
+in 12.7 minutes.
+
+The 8 are the four `item-list-state-restore.spec.ts` cases that already fail on `main`,
+once in `local` and once in `cloud` (issue #280, left alone on purpose):
+
+| Project | Failing case |
+|---|---|
+| `local` and `cloud` | `user can navigate to item detail and back with search state preserved` |
+| `local` and `cloud` | `user can navigate to item detail and back with sort state preserved` |
+| `local` and `cloud` | `user can navigate to item detail and back with scroll position restored` |
+| `local` and `cloud` | `user can navigate to item detail and back with scroll position restored when filter panel is open` |
+
+Nothing else failed. The skipped count is 9, unchanged from PR 3b.
+
+**The total rose from 251 to 322 because of the PWA work, not this branch.** That work
+merged into this branch's base and added a third Playwright project:
+
+| Project | Tests |
+|---|---|
+| `local` | 175 (was 173) |
+| `cloud` | 78 (unchanged) |
+| `pwa` | 69 (new) |
+
+`e2e/constants.ts` also gained `PWA_WEB_PORT = 5176`, so **four** ports must be free before
+an E2E run, not three: 5174, 5175, 5176 and 4001.
+
+---
+
 ## Follow-on work
 
 ### Cloud E2E coverage for locations ⚠️ — issue #284 (2026-09-14)
@@ -679,14 +928,25 @@ Carried forward to a later PR, not blocking:
 | `useDeleteLocation`'s cloud branch refetches only `GetLocations`. | `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows the database has already cascaded away. A reload clears it. See the PR 3b section above. |
 | `verify-migration.ts`'s safety guard does not check `TEST_DATABASE_URL` against `PROD_COPY_DATABASE_URL`. | It checks only the dev vars. Verified by hand for the 2026-09-18 run; a script should do it. |
 
-### PR 3c owes
+### PR 3c owes — nothing in code. One smoke test before the deploy.
 
-| Item | Why it matters |
+Both features are built: `applyUnitSwitch` in the schema, the resolver and the client; and
+`removeItemFromLocation`'s three-delete cascade with its counts shown in both modes. PR 3c
+writes **no migration**, so it adds nothing to the deploy runbook's migration steps.
+
+| Still owed | Where |
 |---|---|
-| **`applyUnitSwitch` was never added to the schema.** Design §2 lists it; PR 1 shipped `itemStock.graphql` without it. | A cloud unit switch still leaves **every location's quantities in the old unit**. No test fails on it, because `buildStockConversions` gates on `isLocal`, so the dialog never lists conversions the cloud branch could not write. |
-| A cloud cascade for `removeItemFromLocation`. | The resolver deletes the `ItemStock` row only. That is why the Stock tab's confirmation line *"Inventory logs: N · Cart entries: N"* renders in local mode only. PR 3a gave `InventoryLog` and `Cart` a `locationId`, so the counts this line needs are now queryable in cloud. |
+| **A manual cloud smoke test of a removal.** No cloud E2E spec names `removeItemFromLocation`, so its `$transaction` has never run against real Postgres — every server test runs on hand-written fakes. Use **two** locations and check that the other location's logs and cart entries survive. | Fold into step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md), which already owes a two-location smoke test for PR 3b. |
+| **A manual cloud smoke test of a unit switch.** Same reason: no cloud E2E spec names `applyUnitSwitch`. Use an item stocked in **two** locations and a recipe, and check that both locations' quantities and the recipe's `defaultAmount` moved. | Same step. |
 
-PR 3c is blocked by neither 3a nor 3b.
+Carried forward, not blocking:
+
+| Item | Why |
+|---|---|
+| `consumeRecipes` is **not** wrapped in a `prisma.$transaction`. | It writes row by row, so a cooking session that fails partway can leave some items consumed and some not. Local mode has `consumeRecipesBatch`, one Dexie transaction. No PR owns this today. |
+| No cloud E2E spec covers `applyUnitSwitch` or `removeItemFromLocation`. | Belongs with issue #284's remaining work. The two manual smoke tests above are the stop-gap. |
+
+PR 3c was blocked by neither 3a nor 3b.
 
 ### PR 4 owes
 
