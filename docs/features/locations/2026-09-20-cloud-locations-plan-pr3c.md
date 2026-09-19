@@ -153,6 +153,62 @@ Mutation 3 is the one a single-location fixture cannot catch.
 
 ---
 
+## Corrections found while running this plan
+
+### Task 3's mutation check 2 named the wrong trigger
+
+The plan said a vendor id containing `':'` catches a cart id matched by string
+prefix. **It does not.** Measured both ways:
+
+| Prefix form | Result |
+|---|---|
+| `row.cartId.startsWith(locationId)` | **RED** — caught |
+| ``row.cartId.startsWith(`${locationId}:`)`` | **GREEN** — cannot be caught by a colon fixture |
+
+`Location.id` is `@default(cuid())` and a cuid never contains a colon, so
+``startsWith(`${locationId}:`)`` and `parseCartId(id).locationId === locationId`
+give the same answer for every input. A colon in the **vendor** half never
+reaches the location half.
+
+**What a prefix match actually gets wrong is the missing delimiter**:
+`'loc-a2:ven-1'.startsWith('loc-a')` is `true`. The fixture that catches it is a
+**second location whose id extends the first** (`loc-a` and `loc-a2`), not the
+colon one.
+
+The colon fixture was kept anyway — it pins `parseCartId`'s split-on-first-colon
+rule, and would fail a split-on-last-colon reading — but it is not the guard
+against a prefix match and is not counted as one.
+
+### `cartItemCountByItem` was not location-scoped, and the plan did not say so
+
+The plan asked only whether the **hooks** had cloud branches. The gap was larger:
+the server query counted **every** location, so the cloud dialog would have shown
+a number bigger than what the removal deletes. An optional `locationId` argument
+was extra scope Task 3 had to take.
+
+### The cascade should read `Cart.locationId`, not parse the id
+
+`Cart.locationId` is a real indexed column with a relation
+(`schema.prisma`, `Cart.location`). So:
+
+```ts
+prisma.cartItem.deleteMany({ where: { itemId, cart: { locationId } } })
+```
+
+is one statement against the source column, rather than reading every cart item
+for the item and filtering in memory on a string **derived** from that column.
+Task 3 used `parseCartId` because this plan named it, and flagged the better
+option rather than silently diverging.
+
+**Both call sites — the delete and the count — must change together**, so one
+rule decides membership.
+
+### Owed before this ships
+
+**No cloud E2E spec exercises `removeItemFromLocation`**, so its transaction has
+never run against real Postgres. The server suite runs entirely on hand-written
+fakes. A manual cloud smoke test of a removal is owed.
+
 ## Task 4 — Docs, gate, full E2E
 
 **Step 4.1.** Update `cloud-locations-status.md` — PR 3c done, and **PR 3 is now
