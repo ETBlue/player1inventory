@@ -17,6 +17,7 @@ import {
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 
 const meta = {
   title: 'Pages/Pantry',
@@ -63,6 +64,44 @@ function DefaultStory() {
   )
 }
 
+// Shared by WithItems and Offline — the Offline story wants the same three
+// items on the shelf, not new seed data of its own.
+async function seedBasicItems() {
+  await createItem({
+    name: 'Milk',
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 2,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  await createItem({
+    name: 'Eggs',
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 3,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  await createItem({
+    name: 'Orange Juice',
+    tagIds: [],
+    packageUnit: 'bottle',
+    targetUnit: 'package',
+    targetQuantity: 6,
+    refillThreshold: 2,
+    packedQuantity: 5,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+}
+
 function WithItemsStory() {
   const [queryClient] = useState(
     () =>
@@ -76,41 +115,45 @@ function WithItemsStory() {
     async function setup() {
       await db.delete()
       await db.open()
+      await seedBasicItems()
+      setReady(true)
+    }
+    setup()
+  }, [])
 
-      await createItem({
-        name: 'Milk',
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 4,
-        refillThreshold: 2,
-        packedQuantity: 2,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
+  if (!ready) return <div>Loading...</div>
 
-      await createItem({
-        name: 'Eggs',
-        tagIds: [],
-        targetUnit: 'package',
-        targetQuantity: 3,
-        refillThreshold: 1,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    context: { queryClient },
+  })
 
-      await createItem({
-        name: 'Orange Juice',
-        tagIds: [],
-        packageUnit: 'bottle',
-        targetUnit: 'package',
-        targetQuantity: 6,
-        refillThreshold: 2,
-        packedQuantity: 5,
-        unpackedQuantity: 0,
-        consumeAmount: 1,
-      })
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
 
+// Same seed data as WithItems, but rendered offline in cloud mode so the
+// designer can see the OfflineBanner in place at the top of the pantry page.
+function OfflineStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+      await seedBasicItems()
       setReady(true)
     }
     setup()
@@ -843,6 +886,11 @@ export const Default: Story = {
 
 export const WithItems: Story = {
   render: () => <WithItemsStory />,
+}
+
+export const Offline: Story = {
+  beforeEach: setupOfflineStory,
+  render: () => <OfflineStory />,
 }
 
 export const WithSearchTail: Story = {

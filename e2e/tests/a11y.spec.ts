@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { checkA11y, getViolations, injectAxe } from 'axe-playwright'
-import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID, PWA_WEB_URL } from '../constants'
 import { seedRows } from '../helpers/locationSeed'
 import { StockPagerPage } from '../pages/StockPagerPage'
 
@@ -1464,4 +1464,33 @@ test.describe('mobile viewport a11y', () => {
     // Then there should be no violations (including the bottom Navigation component)
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
+})
+
+test.describe('offline banner a11y', () => {
+  test.use({ baseURL: PWA_WEB_URL })
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`offline banner passes axe in ${theme} mode`, async ({ page, context }) => {
+      // Given the app is in cloud mode with the chosen theme
+      await page.addInitScript((value) => {
+        localStorage.setItem('theme-preference', value)
+        localStorage.setItem('data-mode', 'cloud')
+      }, theme)
+      await page.goto('/')
+      // Wait for the service worker to activate before going offline. A
+      // reload issued before it is active is a real network request, which
+      // fails outright (ERR_INTERNET_DISCONNECTED) instead of being served
+      // from the precache — see pwa-offline.spec.ts's own offline test.
+      await page.evaluate(() => navigator.serviceWorker.ready.then(() => true))
+
+      // When the network goes away and the banner appears
+      await context.setOffline(true)
+      await page.reload()
+      await expect(page.getByRole('status')).toBeVisible()
+
+      // Then the banner has no accessibility violations
+      await injectAxe(page)
+      await checkA11y(page, undefined, AXE_OPTIONS)
+    })
+  }
 })

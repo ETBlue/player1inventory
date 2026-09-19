@@ -11,6 +11,7 @@ import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 import type { Item } from '@/types'
 
 const meta = {
@@ -74,131 +75,142 @@ export const Default: Story = {
   render: () => <DefaultStory />,
 }
 
+// Shared by WithRecipes and Offline — the Offline story wants the same
+// several recipes on the shelf, not new seed data of its own.
+async function seedRecipesWithItems() {
+  // Create items for Pasta Carbonara
+  const flour = await createItem({
+    name: 'Eggs',
+    tagIds: [],
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 6,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+  const guanciale = await createItem({
+    name: 'Guanciale',
+    tagIds: [],
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+  const pecorino = await createItem({
+    name: 'Pecorino Romano',
+    tagIds: [],
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  // Create items for Green Smoothie
+  const spinach = await createItem({
+    name: 'Spinach',
+    tagIds: [],
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+  const banana = await createItem({
+    name: 'Banana',
+    tagIds: [],
+    targetQuantity: 3,
+    refillThreshold: 1,
+    packedQuantity: 5,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  // Create items for Oatmeal
+  const oats = await createItem({
+    name: 'Rolled Oats',
+    tagIds: [],
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 4,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+  const milk = await createItem({
+    name: 'Milk',
+    tagIds: [],
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+  const honey = await createItem({
+    name: 'Honey',
+    tagIds: [],
+    targetQuantity: 1,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+  const cinnamon = await createItem({
+    name: 'Cinnamon',
+    tagIds: [],
+    targetQuantity: 1,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  await createRecipe({
+    name: 'Pasta Carbonara',
+    items: [
+      { itemId: flour.id, defaultAmount: 2 },
+      { itemId: guanciale.id, defaultAmount: 1 },
+      { itemId: pecorino.id, defaultAmount: 1 },
+    ],
+  })
+
+  await createRecipe({
+    name: 'Green Smoothie',
+    items: [
+      { itemId: spinach.id, defaultAmount: 1 },
+      { itemId: banana.id, defaultAmount: 1 },
+    ],
+  })
+
+  await createRecipe({
+    name: 'Oatmeal',
+    items: [
+      { itemId: oats.id, defaultAmount: 1 },
+      { itemId: milk.id, defaultAmount: 1 },
+      { itemId: honey.id, defaultAmount: 1 },
+      { itemId: cinnamon.id, defaultAmount: 0 },
+    ],
+  })
+}
+
 // Story 2: Several unchecked recipes
 function WithRecipesStory() {
-  return (
-    <CookingStory
-      setup={async () => {
-        // Create items for Pasta Carbonara
-        const flour = await createItem({
-          name: 'Eggs',
-          tagIds: [],
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 6,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-        const guanciale = await createItem({
-          name: 'Guanciale',
-          tagIds: [],
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 3,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-        const pecorino = await createItem({
-          name: 'Pecorino Romano',
-          tagIds: [],
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 2,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
+  return <CookingStory setup={seedRecipesWithItems} />
+}
 
-        // Create items for Green Smoothie
-        const spinach = await createItem({
-          name: 'Spinach',
-          tagIds: [],
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 1,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-        const banana = await createItem({
-          name: 'Banana',
-          tagIds: [],
-          targetQuantity: 3,
-          refillThreshold: 1,
-          packedQuantity: 5,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-
-        // Create items for Oatmeal
-        const oats = await createItem({
-          name: 'Rolled Oats',
-          tagIds: [],
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 4,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-        const milk = await createItem({
-          name: 'Milk',
-          tagIds: [],
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 2,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-        const honey = await createItem({
-          name: 'Honey',
-          tagIds: [],
-          targetQuantity: 1,
-          refillThreshold: 1,
-          packedQuantity: 1,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-        const cinnamon = await createItem({
-          name: 'Cinnamon',
-          tagIds: [],
-          targetQuantity: 1,
-          refillThreshold: 1,
-          packedQuantity: 1,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-
-        await createRecipe({
-          name: 'Pasta Carbonara',
-          items: [
-            { itemId: flour.id, defaultAmount: 2 },
-            { itemId: guanciale.id, defaultAmount: 1 },
-            { itemId: pecorino.id, defaultAmount: 1 },
-          ],
-        })
-
-        await createRecipe({
-          name: 'Green Smoothie',
-          items: [
-            { itemId: spinach.id, defaultAmount: 1 },
-            { itemId: banana.id, defaultAmount: 1 },
-          ],
-        })
-
-        await createRecipe({
-          name: 'Oatmeal',
-          items: [
-            { itemId: oats.id, defaultAmount: 1 },
-            { itemId: milk.id, defaultAmount: 1 },
-            { itemId: honey.id, defaultAmount: 1 },
-            { itemId: cinnamon.id, defaultAmount: 0 },
-          ],
-        })
-      }}
-    />
-  )
+// Same seed data as WithRecipes, but rendered offline in cloud mode so the
+// designer can see the OfflineBanner in place above the recipe list.
+function OfflineStory() {
+  return <CookingStory setup={seedRecipesWithItems} />
 }
 
 export const WithRecipes: Story = {
   render: () => <WithRecipesStory />,
+}
+
+export const Offline: Story = {
+  beforeEach: setupOfflineStory,
+  render: () => <OfflineStory />,
 }
 
 // Story 3: One recipe available — user can check it manually

@@ -8,6 +8,8 @@ import {
   E2E_USER_ID,
   LOCAL_WEB_PORT,
   LOCAL_WEB_URL,
+  PWA_WEB_PORT,
+  PWA_WEB_URL,
 } from './constants'
 
 export default defineConfig({
@@ -21,7 +23,10 @@ export default defineConfig({
     {
       // Local mode: app reads from IndexedDB (Dexie). No backend needed.
       name: 'local',
-      testIgnore: ['**/settings/import-export-cloud.spec.ts'],
+      // pwa-offline.spec.ts needs a real service worker, which the dev
+      // server this project runs against does not have — it only runs
+      // under the 'pwa' project, against the built preview output.
+      testIgnore: ['**/settings/import-export-cloud.spec.ts', '**/pwa-offline.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
@@ -44,6 +49,13 @@ export default defineConfig({
         },
       },
       testMatch: ['**/item-management.spec.ts', '**/settings/tags.spec.ts', '**/settings/vendors.spec.ts', '**/settings/recipes.spec.ts', '**/cooking.spec.ts', '**/item-list-state-restore.spec.ts', '**/tests/shopping.spec.ts', '**/tests/item-logs.spec.ts', '**/settings/import-export-cloud.spec.ts', '**/settings/locations.spec.ts', '**/location-switcher.spec.ts', '**/location-not-stocked-here.spec.ts'],
+    },
+    {
+      // The dev server has no service worker. It only exists in a real build,
+      // so these tests run against the built output.
+      name: 'pwa',
+      use: { ...devices['Desktop Chrome'], baseURL: PWA_WEB_URL },
+      testMatch: ['**/pwa-offline.spec.ts', '**/a11y.spec.ts'],
     },
   ],
   webServer: [
@@ -88,6 +100,14 @@ export default defineConfig({
       url: CLOUD_GRAPHQL_URL,
       reuseExistingServer: false,
       timeout: 60000,
+    },
+    {
+      // PWA-mode web app — the dev server has no service worker, so these
+      // tests run against the built preview output on a dedicated port.
+      command: `pnpm --filter web build && pnpm --filter web preview --port ${PWA_WEB_PORT} --strictPort`,
+      url: PWA_WEB_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
     },
   ],
 })

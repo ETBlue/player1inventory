@@ -327,9 +327,18 @@ export const CloudMode: Story = {
   beforeEach() {
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem('active-location-id:cloud', 'cloud-kitchen')
+    // `__root.tsx` now reads the data mode at render time (not once at module
+    // load), so this story genuinely mounts PostLoginMigrationDialog. That
+    // dialog checks local Dexie for existing items on every cloud sign-in —
+    // and an earlier story in this same file (`LocalStockHarness`) can leave
+    // items behind in local Dexie, since this harness never calls
+    // `db.delete()`. `migration-prompted` stops it opening on top of the
+    // page and covering the tabs this story's `play` function clicks.
+    localStorage.setItem('migration-prompted', '1')
     return () => {
       localStorage.removeItem('data-mode')
       localStorage.removeItem('active-location-id:cloud')
+      localStorage.removeItem('migration-prompted')
     }
   },
   render: () => <CloudStockHarness />,

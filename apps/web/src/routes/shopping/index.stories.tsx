@@ -16,6 +16,7 @@ import {
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 
 const meta = {
   title: 'Pages/ShoppingIndex',
@@ -67,52 +68,58 @@ function DefaultStory() {
   return <ShoppingIndexStory setup={async () => {}} />
 }
 
+// Shared by WithVendors and Offline — the Offline story wants the same
+// vendor carts on the shelf, not new seed data of its own.
+async function seedVendorsWithItems() {
+  const costco = await createVendor('Costco')
+  const iherb = await createVendor('iHerb')
+  const familymart = await createVendor('FamilyMart')
+
+  await createItem({
+    name: 'Milk',
+    tagIds: [],
+    vendorIds: [costco.id],
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 2,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  await createItem({
+    name: 'Vitamin C',
+    tagIds: [],
+    vendorIds: [iherb.id],
+    targetUnit: 'package',
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+
+  await createItem({
+    name: 'Onigiri',
+    tagIds: [],
+    vendorIds: [familymart.id],
+    targetUnit: 'package',
+    targetQuantity: 3,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  })
+}
+
 function WithVendorsStory() {
-  return (
-    <ShoppingIndexStory
-      setup={async () => {
-        const costco = await createVendor('Costco')
-        const iherb = await createVendor('iHerb')
-        const familymart = await createVendor('FamilyMart')
+  return <ShoppingIndexStory setup={seedVendorsWithItems} />
+}
 
-        await createItem({
-          name: 'Milk',
-          tagIds: [],
-          vendorIds: [costco.id],
-          targetUnit: 'package',
-          targetQuantity: 4,
-          refillThreshold: 2,
-          packedQuantity: 1,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-
-        await createItem({
-          name: 'Vitamin C',
-          tagIds: [],
-          vendorIds: [iherb.id],
-          targetUnit: 'package',
-          targetQuantity: 2,
-          refillThreshold: 1,
-          packedQuantity: 0,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-
-        await createItem({
-          name: 'Onigiri',
-          tagIds: [],
-          vendorIds: [familymart.id],
-          targetUnit: 'package',
-          targetQuantity: 3,
-          refillThreshold: 1,
-          packedQuantity: 0,
-          unpackedQuantity: 0,
-          consumeAmount: 1,
-        })
-      }}
-    />
-  )
+// Same seed data as WithVendors, but rendered offline in cloud mode so the
+// designer can see the OfflineBanner in place above the vendor cart list.
+function OfflineStory() {
+  return <ShoppingIndexStory setup={seedVendorsWithItems} />
 }
 
 function WithVendorCartsStory() {
@@ -173,6 +180,11 @@ export const Default: Story = {
 
 export const WithVendors: Story = {
   render: () => <WithVendorsStory />,
+}
+
+export const Offline: Story = {
+  beforeEach: setupOfflineStory,
+  render: () => <OfflineStory />,
 }
 
 export const WithVendorCarts: Story = {

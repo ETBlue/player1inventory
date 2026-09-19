@@ -180,10 +180,18 @@ describe('Item detail stock tab stories smoke tests', () => {
     beforeEach(() => {
       localStorage.setItem('data-mode', 'cloud')
       localStorage.setItem('active-location-id:cloud', 'cloud-kitchen')
+      // `__root.tsx` now reads the data mode at render time, so this test
+      // genuinely mounts PostLoginMigrationDialog. An earlier test in this
+      // file (e.g. ViewingAnotherLocation) can leave items behind in local
+      // Dexie, and that dialog would otherwise open on top of the page and
+      // cover the tabs this test clicks — see the matching comment on the
+      // CloudMode story's own `beforeEach` in stock.stories.tsx.
+      localStorage.setItem('migration-prompted', '1')
     })
     afterEach(() => {
       localStorage.removeItem('data-mode')
       localStorage.removeItem('active-location-id:cloud')
+      localStorage.removeItem('migration-prompted')
     })
 
     it('pages over the cloud locations, opening on the one the item is not stocked in', async () => {

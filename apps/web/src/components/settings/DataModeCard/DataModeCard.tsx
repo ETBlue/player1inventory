@@ -3,6 +3,7 @@ import { useClerk, useUser } from '@clerk/react'
 import { Cloud, Database } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { clearCache } from '@/apollo/persistence'
 import { MigrationLocationWarningDialog } from '@/components/shared/MigrationLocationWarningDialog'
 import {
   AlertDialog,
@@ -119,6 +120,9 @@ function CloudModeSection() {
       ])
       await importLocalData(payload, 'skip', localLocationId)
     }
+    // Remove the cached cloud data before signing out. On a shared device the
+    // next person must not be able to see this account's pantry.
+    await clearCache()
     await clerk.signOut()
     if (switchToOffline) {
       localStorage.setItem('data-mode', 'local')
