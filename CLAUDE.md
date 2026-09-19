@@ -243,7 +243,7 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 pnpm test:e2e
 ```
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs both projects: **173 tests in `local` across 22 spec files, and 78 tests in `cloud` across 12 spec files** (measured 2026-09-16).
+No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **322 tests in 24 spec files** (measured 2026-09-20): **175 in `local`**, **78 in `cloud`** across 12 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 
@@ -580,13 +580,31 @@ one means anything.
 
 **Write test doubles to model the constraint, not the happy path.** A fake that cannot
 distinguish the right implementation from a wrong one passes against both, exactly like a
-weak fixture. The server suite has hit this twice in one branch:
+weak fixture. The server suite has hit this three times:
 
 - a `findFirst` fake hardcoding `i.userId === where.userId` leaves an ownership guard green
   even when `userId` is dropped from the resolver. The fix is to model Prisma's own
   semantics: `where.userId === undefined || i.userId === where.userId`
 - a `createMany` fake that silently dedupes hides the `P2002` real Postgres would throw,
   leaving a read-then-union unpinned
+- a `cartItem` fake that walks `where` key by key **ignores a key it does not know**. PR 3c
+  moved two resolvers onto the relation filter `where: { itemId, userId, cart: { locationId } }`,
+  and both fakes dropped `cart` on the floor — one was a plain `vi.fn()` told to resolve to a
+  number. Every test would have passed against a resolver with no location scope at all. The
+  fix is `src/test/cartItemFake.ts`, one shared matcher that resolves `cart` by following
+  `CartItem.cartId` to its `Cart` row and reading that row's `locationId` column
+
+**The Prisma fake models `$transaction` rollback, and only one of its two forms.**
+`src/test/stockFake.ts` exports `runInTransaction`, which snapshots every registered store
+with `structuredClone`, keeps the writes when the callback returns, and restores the
+snapshot when it throws. Import it; do not write a second copy, because a second copy that
+silently does nothing would leave every atomicity test reporting as covered.
+
+Only the **interactive callback** form is modelled — `$transaction(async (tx) => …)`. The
+array form, `$transaction([p1, p2])`, throws a clear error on purpose: JavaScript evaluates
+the array before `$transaction` is called, so the fake's writes have already landed, and a
+snapshot taken then would report a rollback that never happened. Four resolvers use the
+array form today (import, purge, location, `index.ts`); none is tested through this fake.
 
 Note also that **no *unit* test executes the resolvers against real SQL** — every server
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
@@ -641,7 +659,7 @@ you read one, do not trust it as evidence.
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **64 tests** in the `local` project (measured 2026-09-16): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, and 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **66 tests in `local` and the same 66 again in `pwa`** (measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
 
