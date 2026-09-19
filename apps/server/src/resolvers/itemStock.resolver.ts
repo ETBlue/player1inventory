@@ -1,7 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { requireAuth } from '../context.js'
 import { requireLocationRole } from '../lib/authz.js'
-import { parseCartId } from '../lib/cartId.js'
 import { prisma } from '../lib/prisma.js'
 import { mirrorItemStockToItem } from '../lib/stockDualWrite.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -185,23 +184,6 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // churn can leave `Item` stale until the next value edit re-syncs it, and
       // that gap is accepted for the three PRs this bridge lives.
 
-      // Cart entries first, because finding them needs a read. `CartItem` has
-      // no `locationId` column: the location lives in its cart's id,
-      // `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts). Read it back
-      // with `parseCartId`, which splits on the FIRST colon only.
-      //
-      // NOT a string prefix match. `loc-a` is a prefix of `loc-a2`, so
-      // `cartId.startsWith(locationId)` would delete the neighbouring
-      // location's entries as well, and `lib/cartId.test.ts` pins the parser
-      // against a vendor id that itself contains ':'.
-      const cartItems = await prisma.cartItem.findMany({
-        where: { itemId, userId },
-        select: { id: true, cartId: true },
-      })
-      const doomedCartItemIds = cartItems
-        .filter((row) => parseCartId(row.cartId).locationId === locationId)
-        .map((row) => row.id)
-
       // One transaction: three deletes that must not half-apply. A stock row
       // deleted while its logs survive leaves the location's history pointing
       // at an item that is no longer stocked there, and a cart entry that
@@ -216,9 +198,18 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         // possible when they are not.
         await tx.inventoryLog.deleteMany({ where: { itemId, locationId } })
 
-        if (doomedCartItemIds.length > 0) {
-          await tx.cartItem.deleteMany({ where: { id: { in: doomedCartItemIds } } })
-        }
+        // `cart: { locationId }` is a relation filter on `Cart.locationId`,
+        // the real column PR 3a added. `CartItem` itself has no `locationId`,
+        // so the location has to come from its cart either way; this asks the
+        // database for it in one statement instead of reading every cart entry
+        // for the item and re-deriving the location from the cart id string in
+        // JavaScript.
+        //
+        // `cartItemCountByItem` (resolvers/cart.resolver.ts) filters the SAME
+        // way. The Stock tab shows that count in the confirmation dialog, so
+        // the two must agree on what "in this location" means — a number the
+        // removal then does not match would be a lie to the user.
+        await tx.cartItem.deleteMany({ where: { itemId, userId, cart: { locationId } } })
       })
       return true
     },

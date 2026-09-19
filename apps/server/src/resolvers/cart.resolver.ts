@@ -83,21 +83,23 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     // active location.
     //
     // With one: only that location's carts. The Stock tab's remove
-    // confirmation asks this way, so the number must equal what
-    // `removeItemFromLocation` deletes — and it does, because both read the
-    // location out of the cart id with the SAME `parseCartId`.
+    // confirmation asks this way, so the number must equal exactly what
+    // `removeItemFromLocation` (resolvers/itemStock.resolver.ts) deletes.
+    // Both use the SAME filter — `cart: { locationId }` — so one rule decides
+    // membership. If the two ever disagreed, the dialog would show a number
+    // the removal does not match.
     //
-    // `CartItem` has no `locationId` column of its own; the location lives in
-    // its cart's id, `${locationId}:${vendorId | 'no-vendor'}`. `parseCartId`
-    // splits on the first colon only. A string prefix match would be wrong:
-    // `loc-a` is a prefix of `loc-a2`, so a prefix test would count the
-    // neighbouring location's rows too.
+    // `CartItem` has no `locationId` column of its own. The location lives on
+    // its CART, in `Cart.locationId`, which PR 3a added. `cart: { locationId }`
+    // is a Prisma relation filter on that column, so the database answers in
+    // one statement. Do not go back to reading every row and splitting its
+    // cart id in JavaScript: the id is derived from this column, and a filter
+    // on the derived string can drift from a filter on the source.
     cartItemCountByItem: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
       if (!locationId) return prisma.cartItem.count({ where: { itemId, userId } })
       await requireLocationRole(ctx, locationId, 'viewer')
-      const rows = await prisma.cartItem.findMany({ where: { itemId, userId } })
-      return rows.filter((row) => parseCartId(row.cartId).locationId === locationId).length
+      return prisma.cartItem.count({ where: { itemId, userId, cart: { locationId } } })
     },
 
     allCartItems: async (_, __, ctx) => {

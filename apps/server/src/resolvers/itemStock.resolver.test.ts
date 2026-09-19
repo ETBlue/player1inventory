@@ -3,6 +3,7 @@ import { ApolloServer } from '@apollo/server'
 import { typeDefs } from '../schema/index.js'
 import { resolvers } from '../resolvers/index.js'
 import { runInTransaction } from '../test/stockFake.js'
+import { cartItemMatches, type FakeCart, type FakeCartItem } from '../test/cartItemFake.js'
 import type { Context } from '../context.js'
 
 interface FakeStock {
@@ -39,14 +40,6 @@ interface FakeLog {
   userId: string
 }
 
-// `CartItem` has NO locationId column — the location lives in its cart's id,
-// `${locationId}:${vendorId | 'no-vendor'}`.
-interface FakeCartItem {
-  id: string
-  cartId: string
-  itemId: string
-  userId: string
-}
 
 const { state, client } = vi.hoisted(() => {
   const state = {
@@ -54,6 +47,10 @@ const { state, client } = vi.hoisted(() => {
     items: [] as FakeItem[],
     itemStocks: [] as FakeStock[],
     inventoryLogs: [] as FakeLog[],
+    // `Cart` rows, because `CartItem` has NO locationId column of its own.
+    // The location lives on the cart, in `Cart.locationId` (PR 3a), which is
+    // what the cascade's relation filter reads.
+    carts: [] as FakeCart[],
     cartItems: [] as FakeCartItem[],
     // Failure injection for the atomicity test. `cartItem.deleteMany` is the
     // LAST of the three deletes, so a throw there is what proves the two
@@ -86,19 +83,13 @@ const { state, client } = vi.hoisted(() => {
     return true
   }
 
-  // `id` accepts both a plain string and Prisma's `{ in: [...] }` form, which
-  // is how the cascade names the cart items it resolved through parseCartId.
-  function cartItemMatches(c: FakeCartItem, where: Record<string, unknown>): boolean {
-    if (where.itemId !== undefined && c.itemId !== where.itemId) return false
-    if (where.userId !== undefined && c.userId !== where.userId) return false
-    if (where.cartId !== undefined && c.cartId !== where.cartId) return false
-    const id = where.id
-    if (typeof id === 'string' && c.id !== id) return false
-    if (id !== null && typeof id === 'object') {
-      const list = (id as { in?: string[] }).in
-      if (list !== undefined && !list.includes(c.id)) return false
-    }
-    return true
+  // The matcher is `src/test/cartItemFake.ts`'s, imported rather than copied,
+  // so this spec and `cart.resolver.test.ts` agree on what
+  // `cart: { locationId }` means. A local copy could quietly ignore that key,
+  // and then every cascade test below would pass against a resolver with no
+  // location scope at all.
+  function matchesCartItem(c: FakeCartItem, where: Record<string, unknown>): boolean {
+    return cartItemMatches(c, where, state.carts)
   }
 
   const client: Record<string, unknown> = {
@@ -195,14 +186,12 @@ const { state, client } = vi.hoisted(() => {
       },
     },
     cartItem: {
-      findMany: async ({ where = {} }: { where?: Record<string, unknown> }) =>
-        state.cartItems.filter((c) => cartItemMatches(c, where)),
       deleteMany: async ({ where = {} }: { where?: Record<string, unknown> }) => {
         if (state.failCartItemDeleteMany) {
           throw new Error('cartItem.deleteMany exploded')
         }
         const before = state.cartItems.length
-        state.cartItems = state.cartItems.filter((c) => !cartItemMatches(c, where))
+        state.cartItems = state.cartItems.filter((c) => !matchesCartItem(c, where))
         return { count: before - state.cartItems.length }
       },
     },
@@ -293,15 +282,26 @@ describe('itemStock resolvers', () => {
       // "the first location in the table".
       { id: 'log-theirs', itemId: 'item-milk', locationId: 'loc-b', userId: 'user-b' },
     ]
-    // Cart ids are `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts).
+    // Cart ids are `${locationId}:${vendorId | 'no-vendor'}` (lib/cartId.ts),
+    // but the cascade filters on `Cart.locationId`, the column those ids are
+    // BUILT from. Both are seeded so the two stay distinguishable — see the
+    // last cart test in this file.
+    state.carts = [
+      { id: 'loc-a:no-vendor', locationId: 'loc-a' },
+      { id: 'loc-a:ven-1', locationId: 'loc-a' },
+      // A vendor id that itself contains ':'. Realistic, because `cartIdFor`
+      // puts the vendor id in verbatim.
+      { id: 'loc-a:ven:dor', locationId: 'loc-a' },
+      // 'loc-a2:ven-1' starts with the string 'loc-a'.
+      { id: 'loc-a2:ven-1', locationId: 'loc-a2' },
+      { id: 'loc-b:no-vendor', locationId: 'loc-b' },
+    ]
     state.cartItems = [
       { id: 'ci-a-novendor', cartId: 'loc-a:no-vendor', itemId: 'item-milk', userId: 'user-a' },
       { id: 'ci-a-vendor', cartId: 'loc-a:ven-1', itemId: 'item-milk', userId: 'user-a' },
-      // A vendor id that itself contains ':'. `parseCartId` splits on the
-      // FIRST colon only, so this still reads as loc-a.
       { id: 'ci-a-colon', cartId: 'loc-a:ven:dor', itemId: 'item-milk', userId: 'user-a' },
-      // loc-a2 starts with the string 'loc-a'. A prefix match would delete
-      // this row too; parsing the id will not.
+      // The OTHER location of the SAME user. This is the row that goes red
+      // when the resolver drops `cart: { locationId }` from its delete.
       { id: 'ci-a2', cartId: 'loc-a2:ven-1', itemId: 'item-milk', userId: 'user-a' },
       // Same location, a different item.
       { id: 'ci-a-other', cartId: 'loc-a:no-vendor', itemId: 'item-bread', userId: 'user-a' },
@@ -605,32 +605,43 @@ describe('itemStock resolvers', () => {
   })
 
   it('user removing an item from a location also deletes its cart entries there', async () => {
-    // Given item-milk sits in three of loc-a's carts, including one whose
-    // vendor id contains ':', and in one of loc-a2's
+    // Given item-milk sits in three of loc-a's carts and in one of loc-a2's
     // When the user removes it from loc-a
     const res = await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
 
-    // Then loc-a's three went and loc-a2's stayed. 'loc-a2:ven-1' starts with
-    // 'loc-a', so a prefix match would have taken ci-a2 as well.
+    // Then loc-a's three went and loc-a2's stayed. ci-a2 is the guard: drop
+    // `cart: { locationId }` from the resolver's delete and this assertion
+    // goes red, because every one of item-milk's entries would go.
     expect(res.data?.removeItemFromLocation).toBe(true)
     expect(state.cartItems.map((c) => c.id).sort()).toEqual([
       'ci-a-other', 'ci-a2', 'ci-theirs',
     ])
   })
 
-  it('a cart entry whose vendor id contains a colon is still matched to its location', async () => {
-    // Given the only cart entry left for item-milk at loc-a is the one keyed
-    // `loc-a:ven:dor` — so this test cannot pass by accident on the others
-    state.cartItems = state.cartItems.filter(
-      (c) => c.id === 'ci-a-colon' || c.id === 'ci-a2',
-    )
+  it('a cart entry is matched by its cart\'s locationId, not by the text of its cart id', async () => {
+    // Given a cart whose id TEXT and whose `locationId` COLUMN disagree.
+    // Production cannot reach this state — `cartIdFor` builds the id out of
+    // the column — and that is the point: it is the only fixture that can
+    // tell the two apart. Reading the column is right, because the column is
+    // the source and the id is derived from it.
+    state.carts = [
+      // Id says loc-a2. Column says loc-a.
+      { id: 'loc-a2:ven-9', locationId: 'loc-a' },
+      // Id says loc-a. Column says loc-a2.
+      { id: 'loc-a:ven-9', locationId: 'loc-a2' },
+    ]
+    state.cartItems = [
+      { id: 'ci-column-here', cartId: 'loc-a2:ven-9', itemId: 'item-milk', userId: 'user-a' },
+      { id: 'ci-column-away', cartId: 'loc-a:ven-9', itemId: 'item-milk', userId: 'user-a' },
+    ]
 
     // When the user removes item-milk from loc-a
     await run(REMOVE, { i: 'item-milk', l: 'loc-a' })
 
-    // Then it is gone: parseCartId split on the FIRST colon, reading the
-    // location as 'loc-a' and the vendor as 'ven:dor'
-    expect(state.cartItems.map((c) => c.id)).toEqual(['ci-a2'])
+    // Then the row whose CART is at loc-a went, and the row whose cart id only
+    // LOOKS like loc-a stayed. A resolver that parsed the cart id would have
+    // deleted exactly the other one.
+    expect(state.cartItems.map((c) => c.id)).toEqual(['ci-column-away'])
   })
 
   it('a removal that fails partway leaves every earlier delete undone', async () => {

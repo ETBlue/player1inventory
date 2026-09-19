@@ -6,8 +6,16 @@ import type { Context } from '../context.js'
 
 // ─── Mock Prisma ─────────────────────────────────────────────────────────────
 
-// `cart` / `cartItem` / `item` / `inventoryLog` stay plain `vi.fn()` call
-// recorders — every assertion on them is "was this called with X".
+// `cart` / `item` / `inventoryLog` and most of `cartItem` stay plain `vi.fn()`
+// call recorders — every assertion on them is "was this called with X".
+//
+// `cartItem.count` is the exception. Since PR 3c the location-scoped form of
+// `cartItemCountByItem` filters with `where: { itemId, userId, cart: {
+// locationId } }`, a RELATION filter, and a recorder told to resolve to 3
+// returns 3 no matter what the where clause says. So `count` gets a real
+// implementation over `cartItemStore` (below), driven by the shared matcher
+// in `src/test/cartItemFake.ts`. See that file for why the matcher is shared
+// with `itemStock.resolver.test.ts`.
 //
 // `location` and `itemStock` are a STATEFUL fake instead (src/test/stockFake.ts),
 // because checkout's PR-2 dual-write is only meaningful as an end state: the
@@ -54,6 +62,7 @@ vi.mock('../lib/prisma.js', async () => {
 
 import { prisma } from '../lib/prisma.js'
 import { makeStock, type StockFake } from '../test/stockFake.js'
+import { cartItemMatches, type FakeCart, type FakeCartItem } from '../test/cartItemFake.js'
 
 const mockPrisma = prisma as unknown as {
   cart: {
@@ -145,6 +154,19 @@ function makeCartItem(overrides: Partial<{
   }
 }
 
+// The rows `cartItem.count` runs against. `Cart` rows are seeded too, because
+// `CartItem` has no `locationId` column: the location lives in `Cart.locationId`
+// and the relation filter reads it from there.
+const cartItemStore: { carts: FakeCart[]; cartItems: FakeCartItem[] } = {
+  carts: [],
+  cartItems: [],
+}
+
+function seedCartItems(carts: FakeCart[], cartItems: FakeCartItem[]) {
+  cartItemStore.carts = carts
+  cartItemStore.cartItems = cartItems
+}
+
 // ─── Test setup ───────────────────────────────────────────────────────────────
 
 let server: ApolloServer<Context>
@@ -153,6 +175,14 @@ const ctx: Context = { userId: 'user_test123' }
 beforeEach(async () => {
   vi.clearAllMocks()
   seedLocations()
+  seedCartItems([], [])
+  // Set after `clearAllMocks` so the implementation is unmistakably in force
+  // for every test, whatever another test did to the mock.
+  mockPrisma.cartItem.count.mockImplementation(
+    async ({ where = {} }: { where?: Record<string, unknown> } = {}) =>
+      cartItemStore.cartItems.filter((c) => cartItemMatches(c, where, cartItemStore.carts))
+        .length,
+  )
   server = new ApolloServer<Context>({ typeDefs, resolvers })
   await server.start()
 })
@@ -457,54 +487,66 @@ describe('updateCartItem', () => {
 // ─── cartItemCountByItem ──────────────────────────────────────────────────────
 
 describe('cartItemCountByItem', () => {
-  it('user can get the count of cart items for a given item', async () => {
-    // Given prisma returns count 1
-    mockPrisma.cartItem.count.mockResolvedValue(1)
+  // Fixtures every test here shares: the item sits in two of LOC_DEFAULT's
+  // carts and one of LOC_OTHER's, and a second user holds one of their own.
+  // Three numbers are therefore distinguishable — 2 at LOC_DEFAULT, 3 for
+  // this user across every location, 4 for everybody. A single-location,
+  // single-user fixture would return the same number for all three and could
+  // not fail.
+  const COUNT_CARTS: FakeCart[] = [
+    { id: `${LOC_DEFAULT}:no-vendor`, locationId: LOC_DEFAULT },
+    { id: `${LOC_DEFAULT}:ven_1`, locationId: LOC_DEFAULT },
+    { id: `${LOC_OTHER}:ven_1`, locationId: LOC_OTHER },
+    { id: `${LOC_STRANGER}:no-vendor`, locationId: LOC_STRANGER },
+  ]
+  const COUNT_ITEMS: FakeCartItem[] = [
+    { id: 'ci_1', cartId: `${LOC_DEFAULT}:no-vendor`, itemId: 'item_1', userId: 'user_test123' },
+    { id: 'ci_2', cartId: `${LOC_DEFAULT}:ven_1`, itemId: 'item_1', userId: 'user_test123' },
+    { id: 'ci_3', cartId: `${LOC_OTHER}:ven_1`, itemId: 'item_1', userId: 'user_test123' },
+    { id: 'ci_4', cartId: `${LOC_STRANGER}:no-vendor`, itemId: 'item_1', userId: 'user_other' },
+    // A different item, so the itemId filter is not free either.
+    { id: 'ci_5', cartId: `${LOC_DEFAULT}:ven_1`, itemId: 'item_2', userId: 'user_test123' },
+  ]
 
-    // When querying the count for that item
+  it('user can get the count of cart items for a given item across every location', async () => {
+    // Given item_1 is in three of this user's carts, spread over two locations
+    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
+
+    // When querying the count with no locationId
     const result = await execOp(
       `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
       { itemId: 'item_1' },
     )
 
-    // Then the count is 1
+    // Then it is 3 — both locations, but not the other user's row and not
+    // item_2
+    expect(result?.errors).toBeUndefined()
+    expect(result?.data?.cartItemCountByItem).toBe(3)
+  })
+
+  it('count is scoped to the requesting user — other users\' carts are excluded', async () => {
+    // Given the same rows, one of which belongs to user_other
+    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
+
+    // When user_other queries the count
+    const result = await execOp(
+      `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
+      { itemId: 'item_1' },
+      { userId: 'user_other' },
+    )
+
+    // Then they see only their own row, not this user's three
     expect(result?.errors).toBeUndefined()
     expect(result?.data?.cartItemCountByItem).toBe(1)
   })
 
-  it('count is scoped to the requesting user — other users\' carts are excluded', async () => {
-    // Given prisma returns 0 for user B
-    mockPrisma.cartItem.count.mockResolvedValue(0)
-
-    // When user B queries the count
-    const result = await execOp(
-      `query CartItemCountByItem($itemId: ID!) { cartItemCountByItem(itemId: $itemId) }`,
-      { itemId: 'item_1' },
-      { userId: 'user_B' },
-    )
-
-    // Then the count is 0
-    expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItemCountByItem).toBe(0)
-    // Verify it was called with userId: user_B
-    expect(mockPrisma.cartItem.count).toHaveBeenCalledWith({ where: { itemId: 'item_1', userId: 'user_B' } })
-  })
-
   // The location-scoped form (PR 3c). The Stock tab's "remove from location"
   // confirmation asks this way, so the number must equal exactly what
-  // `removeItemFromLocation` deletes — both read the location out of the cart
-  // id with the same `parseCartId`.
+  // `removeItemFromLocation` deletes — both filter with the same
+  // `cart: { locationId }`.
   it('user can count only one location\'s cart entries for an item', async () => {
-    // Given the item sits in three of LOC_DEFAULT's carts — one of them keyed
-    // with a vendor id that itself contains ':' — and in one of LOC_OTHER's.
-    // `${LOC_OTHER}` does NOT start with `${LOC_DEFAULT}`, so the prefix trap
-    // is covered by the dedicated test below.
-    mockPrisma.cartItem.findMany.mockResolvedValue([
-      makeCartItem({ id: 'ci_1', cartId: `${LOC_DEFAULT}:no-vendor` }),
-      makeCartItem({ id: 'ci_2', cartId: `${LOC_DEFAULT}:ven_1` }),
-      makeCartItem({ id: 'ci_3', cartId: `${LOC_DEFAULT}:ven:dor` }),
-      makeCartItem({ id: 'ci_4', cartId: `${LOC_OTHER}:ven_1` }),
-    ])
+    // Given item_1 is in two of LOC_DEFAULT's carts and one of LOC_OTHER's
+    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
 
     // When the count is asked for LOC_DEFAULT
     const result = await execOp(
@@ -512,43 +554,63 @@ describe('cartItemCountByItem', () => {
       { itemId: 'item_1', locationId: LOC_DEFAULT },
     )
 
-    // Then it is 3, not 4 — the whole-account `count` path was not used
+    // Then it is 2, not the 3 the unscoped form returns. Drop
+    // `cart: { locationId }` from the resolver and this goes red.
     expect(result?.errors).toBeUndefined()
-    expect(result?.data?.cartItemCountByItem).toBe(3)
-    expect(mockPrisma.cartItem.count).not.toHaveBeenCalled()
+    expect(result?.data?.cartItemCountByItem).toBe(2)
   })
 
-  it('a location-scoped count does not include a location whose id merely starts with it', async () => {
-    // Given one cart at 'loc_a' and one at 'loc_a2'. 'loc_a2:ven_1' starts
-    // with 'loc_a', so a prefix match would count both.
-    stockFake.reset(
+  it('a location-scoped count reads the cart\'s locationId, not the text of its cart id', async () => {
+    // Given two carts whose id TEXT and whose `locationId` COLUMN disagree.
+    // Production cannot reach this state — `cartIdFor` builds the id out of
+    // the column — and that is what makes it the one fixture that can tell
+    // the two rules apart. The column is the source; the id is derived.
+    seedCartItems(
       [
-        { id: 'loc_a', userId: 'user_test123', isDefault: true },
-        { id: 'loc_a2', userId: 'user_test123', isDefault: false },
+        { id: `${LOC_OTHER}:ven_9`, locationId: LOC_DEFAULT },
+        { id: `${LOC_DEFAULT}:ven_9`, locationId: LOC_OTHER },
       ],
-      [],
+      [
+        { id: 'ci_col_here', cartId: `${LOC_OTHER}:ven_9`, itemId: 'item_1', userId: 'user_test123' },
+        { id: 'ci_col_away', cartId: `${LOC_DEFAULT}:ven_9`, itemId: 'item_1', userId: 'user_test123' },
+      ],
     )
-    mockPrisma.cartItem.findMany.mockResolvedValue([
-      makeCartItem({ id: 'ci_1', cartId: 'loc_a:no-vendor' }),
-      makeCartItem({ id: 'ci_2', cartId: 'loc_a2:ven_1' }),
-    ])
 
     const result = await execOp(
       `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
-      { itemId: 'item_1', locationId: 'loc_a' },
+      { itemId: 'item_1', locationId: LOC_DEFAULT },
     )
 
+    // Then it is 1 — the row whose CART is at LOC_DEFAULT. A resolver that
+    // parsed the cart id would have counted the other one, also giving 1, so
+    // the id assertion below names WHICH row by deleting it instead.
     expect(result?.data?.cartItemCountByItem).toBe(1)
+
+    // The count alone cannot say which row was chosen, so ask again with only
+    // the id-text match present. A parser would say 1; the column says 0.
+    seedCartItems(
+      [{ id: `${LOC_DEFAULT}:ven_9`, locationId: LOC_OTHER }],
+      [
+        { id: 'ci_col_away', cartId: `${LOC_DEFAULT}:ven_9`, itemId: 'item_1', userId: 'user_test123' },
+      ],
+    )
+    const second = await execOp(
+      `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
+      { itemId: 'item_1', locationId: LOC_DEFAULT },
+    )
+    expect(second?.data?.cartItemCountByItem).toBe(0)
   })
 
   it('a location-scoped count is refused for a location the caller holds no role on', async () => {
+    seedCartItems(COUNT_CARTS, COUNT_ITEMS)
+
     const result = await execOp(
       `query C($itemId: ID!, $locationId: ID) { cartItemCountByItem(itemId: $itemId, locationId: $locationId) }`,
       { itemId: 'item_1', locationId: LOC_STRANGER },
     )
 
     expect(result?.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
-    expect(mockPrisma.cartItem.findMany).not.toHaveBeenCalled()
+    expect(mockPrisma.cartItem.count).not.toHaveBeenCalled()
   })
 })
 
