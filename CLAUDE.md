@@ -624,6 +624,31 @@ render `0/0`. Two assertions were vacuous for exactly this reason.
 behaviour they nominally covered was deleted. A vacuous test is worse than no test — it
 is a no-test that reports as covered, so nobody looks there again.
 
+### `lint-staged` Can Silently Revert Your Fix Inside Its Own Commit
+
+`.husky` runs `lint-staged`, which runs `pnpm --filter web check --write --unsafe` on every
+staged `.ts`/`.tsx` file. **That rewrites your code after you staged it and before it is
+committed.**
+
+It has already reverted a real fix. On 2026-09-19, during the PWA offline work, Biome
+removed the `offline` dependency from a `useEffect` dependency array. That dependency was
+the whole point of the fix — without it the offline banner never re-read its sync time.
+The change was staged correctly, and the commit that claimed to make the fix did not
+contain it. The full `pnpm test` caught it. Nothing else would have.
+
+**After committing, verify with `git show`, not `git status`.** A clean working tree only
+says the tree matches the commit. It does not say the commit contains what you wrote.
+
+```bash
+git show <sha> -- path/to/file.ts | grep 'the line you added'
+```
+
+The fix there was to make the value load-bearing in a way the rule cannot argue with: read
+`offline` inside the effect body, so removing it from the dependency list is no longer
+something Biome wants to do.
+
+This failure looks exactly like an agent claiming a change it never made. It is not.
+
 ### Explanatory Comments Are Claims, Not Facts
 
 **Treat any explanatory code comment or agent self-report as unverified until you run the

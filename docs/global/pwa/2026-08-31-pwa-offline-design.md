@@ -516,3 +516,76 @@ unmounts while waiting.
 - Clerk publishes a supported load-status API.
 - A second feature needs to know whether Clerk is actually working. Then the machinery has
   more than one user and pays for itself.
+
+---
+
+## 8. Known minor issues, not fixed
+
+The review that ran before #292 merged reported 8 confirmed problems (all fixed, see
+section 6) and 7 lower-priority ones. The lower-priority list was never acted on, and the
+review file itself lived in a scratch directory that was deleted with the worktree.
+
+These were **re-checked against the code on 2026-09-20** and are real. None of them is
+urgent. They are written down so the next person does not have to find them again.
+
+### 8.1 The service worker is registered again on every language change
+
+`apps/web/src/hooks/useServiceWorkerUpdate.ts`
+
+The effect's dependency list is `[t]`. `t` comes from `useTranslation()` and changes
+identity when the user switches language, so `registerSW()` runs again. There is also no
+cleanup on unmount.
+
+The browser treats registering the same service worker URL again as a no-op, so this
+appears harmless today. It is still wrong, and it would stop being harmless if
+`registerSW` ever gained side effects.
+
+### 8.2 The manifest colors are invented, not design tokens
+
+`apps/web/vite.config.ts:32-33`
+
+```ts
+background_color: '#f7f3e8',
+theme_color: '#1f6f4a',
+```
+
+The plan said to take these from the design tokens. These two values appear nowhere in
+`apps/web/src/design-tokens/`. They came from the placeholder icon SVG.
+
+The effect is the splash screen and the status bar colour on an installed app may not
+match the real palette. Worth fixing when someone replaces the placeholder icon.
+
+### 8.3 `a11y.spec.ts` runs twice per suite
+
+`e2e/playwright.config.ts`
+
+The `pwa` project lists it in `testMatch` (line 58). The `local` project has no
+`testMatch`, so it runs every spec not named in its `testIgnore` (line 29), and
+`a11y.spec.ts` is not named there.
+
+So the whole accessibility suite runs once against the dev server and once against the
+preview build. That is wasted time, not a wrong result. Fixing it means deciding which
+project owns the non-offline a11y tests.
+
+### 8.4 A missing Clerk key is now an unhandled promise rejection
+
+`apps/web/src/main.tsx:79-80`
+
+`if (!publishableKey) throw new Error(...)` used to run at module level, so a missing key
+was a loud synchronous error. `renderApp` is now called inside `bootstrapCloudMode`, which
+is `async` and invoked with `void`, so the same throw becomes an unhandled rejection.
+
+The app still fails, and the message still reaches the console. It is just less obvious
+than it was.
+
+### 8.5 `favicon.ico` is generated but never used
+
+`@vite-pwa/assets-generator` writes `apps/web/public/favicon.ico`. Nothing references it —
+`index.html` links only `/vite.svg` and the apple-touch icon. Either reference it or stop
+generating it.
+
+### One item that could not be re-verified
+
+The review also reported that the `pwa` Playwright project needs an untracked
+`apps/web/.env.local` to pass. That could not be re-checked after the review file was
+deleted, so it is recorded here as unconfirmed rather than dropped.
