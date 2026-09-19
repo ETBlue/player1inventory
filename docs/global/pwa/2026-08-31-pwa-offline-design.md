@@ -414,3 +414,105 @@ then need to say so.
 The Task 1 experiment tested a cold start with Clerk's script blocked. It did not test a
 user who is already signed in and then loses the network. That case needs a real device and
 a real Clerk login to test.
+
+---
+
+## 7. Considered and deferred: gate the token wait on `isLoaded`
+
+Analysed on 2026-09-20, after the timeout was raised from 3 seconds to 10. Written down so
+nobody has to work it out again.
+
+### The idea
+
+`resolveToken` times out on `getToken()`. A more precise version would read `isLoaded` from
+`useAuth()` and treat "Clerk is broken" and "the network is slow" as two different things.
+
+### The catch, which is the important part
+
+**This does not remove the timeout. It moves it.**
+
+`isLoaded: false` is not only the broken state. It is also the normal state for the first
+few hundred milliseconds of a **successful** start, while Clerk's script loads. So this is
+wrong:
+
+```ts
+if (!isLoaded) return null   // breaks every cold start
+```
+
+It would send the first requests of every session unauthenticated. The real shape is "wait
+for `isLoaded`, with a deadline" — the same timer, watching a different signal.
+
+### What it would genuinely buy
+
+Once `isLoaded` is `true`, Clerk works, so a slow `getToken()` is only a slow network and
+can be waited on for as long as it takes. A short deadline on `isLoaded` is safe, because
+loading a script does not depend on per-request latency.
+
+| Situation | Today (10s on `getToken`) | With `isLoaded` |
+|---|---|---|
+| Clerk works, network slow | 10s limit, then fails | waits as long as needed |
+| Clerk blocked or down | 10s, then fails | about 2s, then fails |
+| Offline | returns `null` at once | unchanged |
+
+Both cases improve. The gain is real.
+
+### When the 10 second wait actually happens
+
+Narrower than it looks. `isOffline()` returns `null` at once, so a genuinely offline start
+never reaches the timer.
+
+The wait only happens when `navigator.onLine` is `true` **and Clerk is unreachable**: an ad
+blocker blocking Clerk's script, a captive portal, a DNS failure, or a Clerk outage. The ad
+blocker case is the plausible one.
+
+In that state, five hooks use `cache-and-network` — `useInventoryLogs`, `useRecipes`,
+`useShoppingCart`, `useVendors`, `useTags` — so they reach the link on every load whatever
+the cache holds. They run at the same time, so it is roughly 10 seconds of spinner and then
+errors. With the change, about 2.
+
+### What it would cost
+
+The logic is easy. The wiring is not.
+
+The Apollo client is created once, and `isLoaded` changes later:
+
+```tsx
+const client = useMemo(() => createApolloClient(() => getToken()), [getToken])
+```
+
+A value captured there is frozen. It would need a live reference, updated every render:
+
+```tsx
+const authRef = useRef({ isLoaded, getToken })
+authRef.current = { isLoaded, getToken }
+const client = useMemo(() => createApolloClient(() => authRef.current), [])
+```
+
+Then `resolveToken` has to **wait for a ref to change**, which has no built-in mechanism.
+Either poll it every 50ms or so until the deadline, or hold a deferred promise that an
+effect resolves when `isLoaded` flips. Both work. Both add something that can leak a timer
+or never settle if the component unmounts mid-wait.
+
+It also needs new tests: loads then succeeds, never loads, loads slowly then succeeds, and
+unmounts while waiting.
+
+### Decision: not now
+
+1. **No evidence anyone hits it.** The case is online-but-Clerk-blocked, and it has never
+   been reported.
+2. **It trades a simple race for stateful machinery** — a mutable ref plus an awaited state
+   change, inside the render tree. That is a class of bug (stale refs, leaked timers,
+   promises that never settle) the current five-line function cannot have.
+3. **`clerkStatus` is not public.** `@clerk/react@6.1.0` tracks a `clerkStatus` internally
+   (`dist/chunk-X4TTIHRV.mjs`), but it is absent from the published types, so it is not
+   something to build on. If Clerk ever exposes a supported load-status API, this whole
+   design gets cheap and obviously correct, with no deadline-on-`isLoaded` guesswork.
+
+### Build it if any of these happen
+
+- A user reports a save failing on a slow connection. That means 10 seconds is still too
+  short, and splitting on `isLoaded` is the right fix rather than raising the number again.
+- Reports of the app hanging for 10 seconds and then failing, which points at an ad blocker.
+- Clerk publishes a supported load-status API.
+- A second feature needs to know whether Clerk is actually working. Then the machinery has
+  more than one user and pays for itself.
