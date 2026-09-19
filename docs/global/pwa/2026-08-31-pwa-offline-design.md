@@ -334,11 +334,26 @@ request. So a cache miss while offline would wait forever and never resolve.
 The fix is a new function, `resolveToken`, in `apps/web/src/apollo/client.ts`:
 
 - If the device is offline, it returns `null` right away.
-- If the device is online, it waits up to 3 seconds for `getToken()`. After 3 seconds it
-  gives up and returns `null`.
+- If the device is online, it waits up to 10 seconds for `getToken()`. After that it gives
+  up and returns `null`.
 
 Both places that need a token use `resolveToken`. One is the HTTP auth link. The other is
 the WebSocket `connectionParams`.
+
+**Why 10 seconds and not 3.** The first version used 3 seconds. That was raised before
+merge, for a reason that has nothing to do with offline users.
+
+The timeout exists for one case: Clerk's script never loaded, so `getToken()` never
+settles. But it fires on any slow `getToken()`. Clerk session tokens are short-lived, so
+`getToken()` reaches the network to refresh them from time to time. On a bad mobile
+connection that refresh can take several seconds.
+
+With a 3 second limit, a signed-in user who is **online** could get an unauthenticated
+request and a failed load. That is the only way this design can hurt someone who is not
+offline. A user waiting a few extra seconds is a much smaller problem than a signed-in user
+being treated as signed out.
+
+10 seconds is still bounded, so the spinner-that-never-ends case is still fixed.
 
 ### 2. The onboarding redirect became a pure function
 

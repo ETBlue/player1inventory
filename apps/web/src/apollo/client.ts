@@ -15,8 +15,21 @@ import { offlineWriteLink } from './offlineWriteLink'
 // `@/apollo/client`, which is where it used to live.
 export { createCache } from './cloudCache'
 
-/** How long to wait for Clerk before giving up, in milliseconds. */
-const TOKEN_TIMEOUT_MS = 3000
+/**
+ * How long to wait for Clerk before giving up, in milliseconds.
+ *
+ * This is deliberately generous. The timeout exists for one case: Clerk's
+ * script never loaded, so `getToken()` never settles. It is NOT meant to fire
+ * on a slow but working connection.
+ *
+ * Clerk session tokens are short-lived, so `getToken()` hits the network to
+ * refresh them from time to time. On a bad mobile connection that refresh can
+ * take several seconds. If this value were low, a signed-in user who is ONLINE
+ * would get an unauthenticated request and a failed load. A user staring at a
+ * spinner for a few extra seconds is a much smaller problem than a user who is
+ * signed in being told they are not.
+ */
+const TOKEN_TIMEOUT_MS = 10_000
 
 /**
  * Gets an auth token, but never waits forever.
