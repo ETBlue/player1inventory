@@ -144,6 +144,13 @@ Entity names are displayed in title case using Tailwind's `capitalize` class (`t
 
 For any **non-trivial** coding task (feature, bug fix, refactoring, test, etc.), always use a subagent — never implement directly in the main conversation. Trivial edits (rename a variable, fix a typo, add one line) may be done in the main session. See global `~/.claude/CLAUDE.md` for the full subagent policy.
 
+**Pass the report structure down.** Every subagent brief must tell the subagent to
+report in the shape described under *Pull Requests and Agent Reports* below. A
+subagent's report is what the main session repeats to the user, and what later
+becomes the PR description — so a report missing its traps or its known gaps loses
+them for good. The brief should also ask, explicitly, what the plan got wrong: an
+agent that silently works around a bad instruction leaves the next one to hit it.
+
 ### Documentation Updates
 
 Before creating a PR, update all relevant documentation:
@@ -724,17 +731,69 @@ Always include scope in commit messages:
 
 Apply the **Commit Splitting** rule — one commit per logical concern. See `### Commit Splitting` (in AI Agent SOP, above).
 
-### Pull Requests
+### Pull Requests and Agent Reports
 
-Include these sections in PR description:
+**One structure, two audiences.** The same shape applies to a PR description and to
+what an agent reports back — a subagent to the main session, or the main session to
+the user. Both are read by someone deciding whether to trust the work.
+
+Use these sections, in this order. **Omit a section that would be empty.** An empty
+heading is worse than no heading: it reads as "nothing went wrong" when it means
+"nothing was written".
 
 ```
 ## Summary
-- <bullet points of what changed>
+Three things, in this order:
+1. Where this sits in the bigger picture, and what problem it solves.
+2. How it relates to other branches and PRs — what blocks it, what it blocks,
+   what must merge or deploy first.
+3. What the user actually gets once this is merged AND deployed.
+
+## Solutions
+What was explored, what was adopted, what was abandoned — and why each.
+
+## Bugs found and fixed
+Defects that existed before this work, or that this work introduced and then fixed.
+
+## Traps discovered and avoided
+Things that would have been wrong, caught before they shipped.
+
+## Other insights
+Anything a future reader needs that fits nowhere above.
 
 ## Test Plan
-- [ ] <verification steps>
+- [ ] <verification steps, with real numbers>
+
+## Known gaps
+What is still missing, still owed, or still unproven.
 ```
+
+**Why the Summary has those three parts.** A reader who was not in the session
+cannot reconstruct any of them from a diff. "What changed" is visible in the files;
+where it sits, what it depends on, and what a user gains are not.
+
+**Point 3 is the one most often skipped, and it is the honest test.** If a PR
+gives the user nothing yet — groundwork, a column nothing reads, a fake that only
+tests can see — say exactly that. "Nothing user-visible; it unblocks X" is a
+complete and useful answer. Inventing a user benefit is worse than admitting there
+is none.
+
+**"Merged AND deployed" is deliberate.** A merged PR that has not been deployed
+gives the user nothing. Say which of the two has happened.
+
+**Distinguish Solutions from Traps.** A *solution* is a choice between workable
+options — say what you picked, what you rejected, and why. A *trap* is something
+that would have been wrong: a test that could not fail, a fixture that could not
+tell two implementations apart, a comment asserting something untrue. Traps are
+worth their own section because they are the part nobody can see in the diff.
+
+**Test Plan carries real numbers**, not "tests pass". Counts before and after,
+the exact command, the exact failure text. See *Proving a Test Works* above — "I
+added tests" and "I verified these tests fail without the behaviour" are different
+claims, and only the second one means anything.
+
+**Known gaps is not optional when gaps exist.** A PR that says nothing is missing,
+when something is, has made its reviewer's job harder rather than easier.
 
 After creating the PR, attach it to the relevant milestone. **Use `gh api` — `gh milestone` is not a valid subcommand and `gh pr edit --milestone` does not work here:**
 
