@@ -945,6 +945,8 @@ Carried forward, not blocking:
 |---|---|
 | `consumeRecipes` is **not** wrapped in a `prisma.$transaction`. | It writes row by row, so a cooking session that fails partway can leave some items consumed and some not. Local mode has `consumeRecipesBatch`, one Dexie transaction. No PR owns this today. |
 | No cloud E2E spec covers `applyUnitSwitch` or `removeItemFromLocation`. | Belongs with issue #284's remaining work. The two manual smoke tests above are the stop-gap. |
+| **`matchesStock` in `apps/server/src/test/stockFake.ts` ignores an unknown `where` key and matches every row.** | It checks `id`, `itemId`, `locationId` and the compound key, then returns `true`. So `deleteMany({ where: { location: { userId } } })` routed through this fake would delete **all** stock rows and the test would pass. **No caller today** — the purge tests use their own `vi.fn()` and assert the call shape with `toHaveBeenCalledWith`, which does catch a dropped filter. But `clearAllData`, `purgeUserData` and `/e2e/cleanup` all use that filter shape, so pointing any of them at `stockFake` later would be silently wrong. Found 2026-09-20 while checking whether PR 3c's relation-filter gap existed elsewhere. |
+| **`configureTransaction`'s plain-data rule is documented, not enforced.** | A store registered for rollback is deep-copied with `structuredClone`, which **throws** on a function or a class instance. The rule lives in a comment above `RollbackStore`. A future test registering a store containing a `vi.fn()` gets a `DataCloneError` from inside the fake, which reads as a fake bug rather than a fixture mistake. |
 
 PR 3c was blocked by neither 3a nor 3b.
 
