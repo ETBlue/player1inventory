@@ -961,7 +961,7 @@ four paths still know nothing about `Location`. Plus these two:
 ### PR 5 owes
 
 Drop the five `Item` columns, remove them from the GraphQL type and inputs, and tear down
-**all five** dual-write sites:
+**all six** dual-write sites:
 
 | # | Site | Direction |
 |---|---|---|
@@ -970,8 +970,16 @@ Drop the five `Item` columns, remove them from the GraphQL type and inputs, and 
 | 3 | `item.resolver.ts` `updateItem` | `Item` → also `ItemStock` |
 | 4 | `itemStock.resolver.ts` `upsertItemStock` → `mirrorItemStockToItem` | **`ItemStock` → `Item`** (the reverse mirror) |
 | 5 | `import.resolver.ts` `bulkCreateItems` and `bulkUpsertItems` | `Item` → also `ItemStock` |
+| 6 | `itemStock.resolver.ts` `applyUnitSwitch` | **`ItemStock` → `Item`**, written with `tx` inside the transaction. **Added by PR 3c.** |
 
-`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist. `addItemToLocation` and
+`grep -rn "REMOVED IN PR 5" apps/server/src` is the checklist. It returns **7 markers across
+5 files**, not 6 — `import.resolver.ts` carries two (create and upsert) and
+`itemStock.resolver.ts` carries two (the `upsertItemStock` reverse mirror and
+`applyUnitSwitch`'s). Count the markers, not the files.
+
+**Site 6 cannot call `mirrorItemStockToItem`.** That helper uses the module-level `prisma`,
+so its write would survive a `$transaction` rollback and leave `Item` and `ItemStock` in
+**different units**. PR 3c wrote it inline with `tx` for that reason. PR 5 deletes both. `addItemToLocation` and
 `removeItemFromLocation` have **no** mirror on purpose: they change membership, which
 `Item`'s columns cannot express.
 
