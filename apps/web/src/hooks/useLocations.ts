@@ -29,7 +29,30 @@ export function useLocations() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetLocationsQuery({ skip: !isCloud })
+  // `cache-and-network`, matching every other cloud list hook
+  // (`useInventoryLogs`, `useRecipes`, `useShoppingCart`, `useTags`,
+  // `useVendors`). Apollo's default is `cache-first`, and the cloud cache is
+  // PERSISTED to IndexedDB and restored before React mounts
+  // (`apollo/persistence.ts`, which has no TTL and no schema version). A
+  // complete `ROOT_QUERY.locations` array in that snapshot satisfied
+  // `cache-first` outright, so no `GetLocations` request was sent at all and a
+  // location created on another device never appeared on this one. The three
+  // mutations' `refetchQueries` only ever helped the device that made the
+  // change.
+  //
+  // NO `errorPolicy` here, on purpose — measured, not assumed. With
+  // `cache-and-network` the network leg runs on every mount, and offline it
+  // fails. Under the DEFAULT policy (`'none'`) Apollo keeps serving the cached
+  // result: `data` still holds the locations and only `error` is set. Setting
+  // `errorPolicy: 'all'` does the opposite here — it moves the cached list into
+  // `previousData` and leaves `data` undefined, which would empty the location
+  // switcher and the settings list for an offline user whose cache is fine.
+  // Pinned by "user offline still sees the cached locations and no error" in
+  // `useLocations.test.tsx`.
+  const cloud = useGetLocationsQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
@@ -37,7 +60,11 @@ export function useLocations() {
         deserializeLocation(l as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Report an error only when there is nothing to show. Offline, the
+      // `cache-and-network` network leg fails on every mount while `data`
+      // still holds the cached locations; calling that an error would let a
+      // consumer put an error state in front of a list the user can read.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

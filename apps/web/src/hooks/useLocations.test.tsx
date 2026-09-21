@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createCache } from '@/apollo/cloudCache'
 import { LocationList } from '@/components/location/LocationList'
 import { db } from '@/db'
 import {
@@ -22,6 +23,7 @@ import {
   UpdateLocationDocument,
 } from '@/generated/graphql'
 import { DEFAULT_LOCATION_ID } from '@/types'
+import { useCloudLocationKnown } from './useCloudLocationKnown'
 import * as dataModeHooks from './useDataMode'
 import {
   CLOUD_LOCATION_ORDER_NOT_UPDATABLE,
@@ -376,5 +378,121 @@ describe('cloud default-location delete guard', () => {
     expect(
       screen.getByRole('button', { name: /delete cloud office/i }),
     ).toBeInTheDocument()
+  })
+})
+
+// The cloud Apollo cache is PERSISTED to IndexedDB (`Player1InventoryCloudCache`)
+// and restored before React mounts (`main.tsx` → `bootstrap.ts` →
+// `apollo/persistence.ts`). `persistence.ts` has no TTL and no schema version,
+// so a restored snapshot can be arbitrarily old. Under the default
+// `cache-first` policy Apollo finds a COMPLETE `ROOT_QUERY.locations` array in
+// that snapshot and sends no request at all — a location added on another
+// device never appears, and the network tab shows no `GetLocations` request.
+//
+// The fixture is the test: the warm cache holds ONE location and the mocked
+// server holds TWO. With `cache-first` the hook returns the cached one and
+// stops; only a policy that also hits the network can reach the second.
+describe('useLocations (cloud) — a stale persisted cache', () => {
+  function makeCloudWrapper(
+    mocks: MockedProviderProps['mocks'],
+    cache: ReturnType<typeof createCache>,
+  ) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    return ({ children }: { children: ReactNode }) => (
+      <MockedProvider
+        mocks={mocks}
+        cache={cache}
+        mockLinkDefaultOptions={{ delay: 0 }}
+      >
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </MockedProvider>
+    )
+  }
+
+  function warmCache(locations: typeof CLOUD_LOCATIONS) {
+    const cache = createCache()
+    cache.writeQuery({ query: GetLocationsDocument, data: { locations } })
+    return cache
+  }
+
+  beforeEach(async () => {
+    await seedLocalLocations()
+    mockMode('cloud')
+  })
+
+  it('user sees a location added on another device after reopening the app', async () => {
+    // Given a restored cache holding only the location this device knew about,
+    // while the account now has two
+    const cache = warmCache([CLOUD_LOCATIONS[0]])
+    const { result } = renderHook(() => useLocations(), {
+      wrapper: makeCloudWrapper([getLocationsMock], cache),
+    })
+
+    // When the hook mounts
+    // Then it goes to the network anyway and the new location shows up
+    await waitFor(() => expect(result.current.data).toHaveLength(2))
+    expect(result.current.data?.map((l) => l.name)).toEqual([
+      'Cloud Warehouse',
+      'Cloud Office',
+    ])
+  })
+
+  it('user offline still sees the cached locations and no error', async () => {
+    // Given a warm cache and a network that fails every request
+    const cache = warmCache(CLOUD_LOCATIONS)
+    const { result } = renderHook(() => useLocations(), {
+      wrapper: makeCloudWrapper(
+        [
+          {
+            request: { query: GetLocationsDocument },
+            maxUsageCount: Number.POSITIVE_INFINITY,
+            error: new Error('Failed to fetch'),
+          },
+        ],
+        cache,
+      ),
+    })
+
+    // When the failed request has settled
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // Then the cached list is still returned and no error is reported, so an
+    // offline user keeps their locations instead of an empty list.
+    // This is also why the hook sets no `errorPolicy`: measured on Apollo
+    // Client 4.1.6, the DEFAULT `'none'` keeps the cached result in `data`
+    // after a failed network leg, while `errorPolicy: 'all'` moves it to
+    // `previousData` and leaves `data` undefined.
+    expect(result.current.data?.map((l) => l.name)).toEqual([
+      'Cloud Warehouse',
+      'Cloud Office',
+    ])
+    expect(result.current.isError).toBe(false)
+  })
+
+  it('the `useCloudLocationKnown` gate sees a location the refetch discovers', async () => {
+    // Given a stale cache that knows only the first location, and a gate asked
+    // about the second — mounted BEFORE `useLocations()`, the order in which a
+    // `cache-first` observer could get stuck on the stale entry
+    const cache = warmCache([CLOUD_LOCATIONS[0]])
+    const { result } = renderHook(
+      () => {
+        const known = useCloudLocationKnown(CLOUD_OTHER_ID, true)
+        const locations = useLocations()
+        return { known, locations }
+      },
+      { wrapper: makeCloudWrapper([getLocationsMock], cache) },
+    )
+
+    // Then the gate starts closed, because the stale cache has no such location
+    expect(result.current.known).toBe(false)
+
+    // When `useLocations()` refetches, both observers read the same
+    // `ROOT_QUERY.locations` entry, so the gate opens on the same write
+    await waitFor(() => expect(result.current.known).toBe(true))
+    expect(result.current.locations.data).toHaveLength(2)
   })
 })

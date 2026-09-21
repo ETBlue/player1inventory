@@ -20,6 +20,15 @@ import { useGetLocationsQuery } from '@/generated/graphql'
 // the LOCAL branch, and Apollo dedupes it against the provider's own call, so
 // the gate costs no request.
 //
+// It stays on the DEFAULT `cache-first` even though `useLocations()` moved to
+// `cache-and-network` (2026-09-21, the stale-list-on-another-device fix). Both
+// observers read the same `ROOT_QUERY.locations` cache entry, so the fresh list
+// that the provider's network leg writes is broadcast to this gate too — it
+// picks up a location added on another device without paying for a second
+// request. Pinned by "the `useCloudLocationKnown` gate sees a location the
+// refetch discovers" in `useLocations.test.tsx`, which mounts this gate BEFORE
+// `useLocations()` so a stuck `cache-first` read would show up.
+//
 // Callers: `useItems` / `useStockedItems` (`PantryData`), `useItemLogs`
 // (`ItemLogs`), `useLastPurchaseDate` and `useItemSortData`
 // (`LastPurchaseDates`). Every one of those root fields takes a required
