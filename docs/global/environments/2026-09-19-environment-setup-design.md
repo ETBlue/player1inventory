@@ -139,6 +139,69 @@ Using the development instance for previews is the intended use of that instance
 workaround. It also means preview sign-ins create users in the development pool, which is
 what you want: **a preview must not create or read production users.**
 
+## Which Neon branch to fork for staging
+
+A Neon branch is a copy-on-write clone of a parent branch. The parent decides two things:
+the schema the branch starts with, and the rows it starts with.
+
+**Fork from the production branch, then delete the rows.**
+
+### Why not the dev branch
+
+Your local dev database is usually *ahead* of production. You run `prisma migrate dev`
+while building a feature, so dev already holds migrations that have never been released.
+A migration that applies cleanly against dev proves nothing about production.
+
+### Why not production's data
+
+Railway applies migrations on every deploy (`railway.toml`):
+
+```toml
+releaseCommand = "pnpm --filter server exec prisma migrate deploy"
+```
+
+So a staging branch that starts at production's migration state makes every preview deploy
+a migration rehearsal against the exact schema production has. That is worth keeping. The
+**data** is not.
+
+Preview signs in through the **development** Clerk instance (`pk_test`). Production rows
+are owned by **production** Clerk user ids. `userId` is the Clerk user id — see
+`apps/server/src/index.ts`:
+
+```ts
+const auth = getAuth(req)
+return { userId: auth.userId ?? null }
+```
+
+The two Clerk instances have separate user pools, so the ids never match. Every resolver
+scopes by `userId`, directly or through `location`. A preview user therefore **sees none of
+the copied data**. You would store real personal data behind a public preview URL and get
+nothing back for it.
+
+Check whether your Neon plan offers schema-only branches — that does this in one step. If
+not, fork the branch and truncate the tables.
+
+### Re-fork when production migrates
+
+The rehearsal only works while the staging branch matches production. The moment a PR's
+migration is applied to staging, it no longer does. Re-create the staging branch from
+production after each production migration. Neon branches are copy-on-write, so this is
+fast and cheap.
+
+### Concurrent PRs share one database
+
+The design above has **one** Railway preview service, so every open PR's preview points at
+the same staging branch. Two PRs carrying different migrations will collide: the second
+`migrate deploy` may fail, or the first PR's schema change may break the second PR's
+preview.
+
+With one or two PRs open at a time this is acceptable. It is written down so that when it
+happens it is recognised, not debugged as a code bug. The industry answer is a database
+branch per PR — Neon's GitHub integration creates one on PR open and deletes it on close —
+but that only helps if each PR also gets its own API service, which is the cost this design
+already chose not to pay.
+
+
 ## Rejected: satellite domains
 
 Clerk can add another domain to a production instance as a satellite domain.
@@ -180,7 +243,8 @@ discovered later.
 
 Each step leaves the system working. Do not start step 3 before step 2.
 
-1. Create the staging Neon branch.
+1. Create the staging Neon branch — fork it from **production**, then delete the rows.
+   See [Which Neon branch to fork for staging](#which-neon-branch-to-fork-for-staging).
 2. Create the Railway preview service with the variables above. Confirm it starts and
    answers a GraphQL query.
 3. Set the Cloudflare Pages **Preview** variables. Redeploy a preview.
@@ -190,8 +254,9 @@ Each step leaves the system working. Do not start step 3 before step 2.
 
 ## Still open
 
-- **Does the staging database need seed data?** An empty database sends a new preview user
-  straight to onboarding. That may be the correct behaviour for testing. Not decided.
+- **Does the staging database need seed data?** The staging branch is forked from
+  production and emptied, so a new preview user lands on onboarding. That may be the
+  correct behaviour for testing. Not decided.
 - **Should preview deployments be restricted?** A Cloudflare Pages preview URL is public to
   anyone who has the link. With the development Clerk instance and a staging database,
   nothing production is exposed, but the preview app itself is reachable. Not decided.
