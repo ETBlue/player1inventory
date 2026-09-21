@@ -546,7 +546,7 @@ database.
 code against data this migration produced.** Cloud E2E starts from an empty database —
 `/e2e/cleanup` deletes everything first — so every row it reads was written by the new code
 itself. The rehearsal migrated real rows but started no application code against the result.
-**A manual smoke test is owed before the deploy.** Step 6 of the
+**A manual smoke test is OVERDUE — the deploy already happened.** Step 6 of the
 [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) lists the
 exact actions, and it requires **two locations**. With one location, "the cart's location"
 and "the caller's default location" are the same string, so the location-scoping half of the
@@ -907,7 +907,7 @@ The main ones:
 
 PR 3a is complete and merged as [#291](https://github.com/ETBlue/player1inventory/pull/291).
 
-### PR 3b owes — nothing in code. One thing before the deploy.
+### PR 3b owes — nothing in code. One OVERDUE smoke test.
 
 Every item PR 3b was listed as owing is done: the `'no-vendor'` split, the composite
 `Cart.id` re-key, the cart resolvers rewritten with it, vendor carts created at the right
@@ -918,7 +918,7 @@ production copy. `grep -rn "PR 3b:" apps/server/src` returns **0**.
 
 | Still owed | Where |
 |---|---|
-| **The manual smoke test**, before the deploy. No automated test has run the new server code against data this migration produced. It must use **two** locations. | Step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
+| **The manual smoke test — OVERDUE.** The deploy happened on 2026-09-19 and this was never run. No automated test has run the new server code against data this migration produced. It must use **two** locations. | Step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
 | ~~**The deploy itself**~~ — **DONE, and verified 2026-09-21.** | See below |
 
 Carried forward to a later PR, not blocking:
@@ -927,6 +927,37 @@ Carried forward to a later PR, not blocking:
 |---|---|
 | `useDeleteLocation`'s cloud branch refetches only `GetLocations`. | `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows the database has already cascaded away. A reload clears it. See the PR 3b section above. |
 | `verify-migration.ts`'s safety guard does not check `TEST_DATABASE_URL` against `PROD_COPY_DATABASE_URL`. | It checks only the dev vars. Verified by hand for the 2026-09-18 run; a script should do it. |
+
+### The smoke tests are overdue, not pending — read this first
+
+**Every PR in this series deploys itself.** Railway auto-deploys `main`. So "before the
+deploy" is never a thing that can be scheduled — by the time a PR is merged, it is live.
+
+| PR | Deployed | Smoke test |
+|---|---|---|
+| 3a | 2026-09-19 or earlier | folded into 3b's |
+| 3b | 2026-09-19, verified 2026-09-21 | **overdue** |
+| 3c | on merge of #297, 2026-09-21 | **overdue**, and only possible now — `applyUnitSwitch` did not exist in production before this |
+
+**PR 3c's deploy is not verified.** PRs 3a and 3b were checked against a branch of
+production on 2026-09-21, before #297 merged. Nothing has checked 3c. It ships no
+migration, so there is no schema change to verify — but `applyUnitSwitch` and the remove
+cascade are now live and have never run against real Postgres anywhere.
+
+**The three smoke tests, all needing two locations:**
+
+1. **Checkout and cooking** (PR 3b) — check the log lands at the cart's location, not the
+   default one.
+2. **Removing an item from a location** (PR 3c) — check the *other* location's logs and
+   cart entries survive.
+3. **A unit switch** (PR 3c) — check *both* locations' quantities converted and the
+   recipe's `defaultAmount` moved with them.
+
+**Two locations is not optional.** With one, "the cart's location" and "the caller's
+default location" are the same value, so the test passes against either implementation.
+That failure has appeared four times in this series.
+
+---
 
 ### PRs 3a and 3b are deployed and verified — 2026-09-21
 
@@ -971,7 +1002,7 @@ dashboard was never checked.
 
 ---
 
-### PR 3c owes — nothing in code. One smoke test before the deploy.
+### PR 3c owes — nothing in code. Two OVERDUE smoke tests.
 
 Both features are built: `applyUnitSwitch` in the schema, the resolver and the client; and
 `removeItemFromLocation`'s three-delete cascade with its counts shown in both modes. PR 3c
