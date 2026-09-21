@@ -919,7 +919,7 @@ production copy. `grep -rn "PR 3b:" apps/server/src` returns **0**.
 | Still owed | Where |
 |---|---|
 | **The manual smoke test**, before the deploy. No automated test has run the new server code against data this migration produced. It must use **two** locations. | Step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
-| **The deploy itself**, following the runbook. The migration and the new server code must go out together. Take a Neon branch of production first — a re-key has no `migrate down`. | The [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
+| ~~**The deploy itself**~~ — **DONE, and verified 2026-09-21.** | See below |
 
 Carried forward to a later PR, not blocking:
 
@@ -927,6 +927,49 @@ Carried forward to a later PR, not blocking:
 |---|---|
 | `useDeleteLocation`'s cloud branch refetches only `GetLocations`. | `AllCarts`, `AllCartItems` and `ItemLogs` observers can hold rows the database has already cascaded away. A reload clears it. See the PR 3b section above. |
 | `verify-migration.ts`'s safety guard does not check `TEST_DATABASE_URL` against `PROD_COPY_DATABASE_URL`. | It checks only the dev vars. Verified by hand for the 2026-09-18 run; a script should do it. |
+
+### PRs 3a and 3b are deployed and verified — 2026-09-21
+
+**They deployed automatically when their PRs merged.** Railway is set to *"Auto deploys
+when pushed to GitHub"* on `main`, and `railway.toml` runs `prisma migrate deploy` as the
+release command. The deploy log for 2026-09-19 reads `11 migrations found` and `No pending
+migrations to apply` — and the repo has exactly 11, ending with
+`20260917000000_rekey_cart_to_location_vendor`.
+
+**Verified read-only against a branch of production, 2026-09-21.** All five checks from the
+runbook's section 4, plus four more:
+
+| Check | Result |
+|---|---|
+| `Cart.id` values without a colon | 0 |
+| Rows still under the literal id `'no-vendor'` | 0 |
+| `CartItem` pointing at a missing `Cart` | 0 |
+| **Cart ids with a doubled location prefix** | 0 |
+| `Cart.id` whose prefix is not its own `locationId` | 0 |
+| `InventoryLog` rows with no `locationId` | 0 |
+| `Cart` rows with no `locationId` | 0 |
+| Items with no `ItemStock` row anywhere | 0 |
+| Cart items whose cart belongs to another user | 0 — *cannot fail, production has one user* |
+
+Counts at verification: 41 carts, 20 cart items, 1 location, 1379 logs, 174 stocks, 174
+items. **Up from the pre-migration snapshot** (37 carts, 13 cart items, 173 items), so the
+app has been used through the re-keyed schema and the new rows are well-formed too.
+
+The doubled-prefix check is the one worth noting: the design's original SQL would have
+produced exactly that on the carts phase A creates. Caught in review, confirmed on a copy,
+now confirmed on production.
+
+**The deploy was safe by Railway's design, not by luck.** The release command runs after
+the build and before the new instance takes traffic, so the old-code-plus-new-schema state
+the runbook guards against cannot occur.
+
+**A correction, recorded so the reasoning error is visible.** Several documents in this
+series said "merged but not deployed". That came from one observation — a Neon branch taken
+on 2026-09-18 that lacked the previous migration — treated as proof rather than as one of
+several explanations. It was simply taken before Railway finished deploying. The Railway
+dashboard was never checked.
+
+---
 
 ### PR 3c owes — nothing in code. One smoke test before the deploy.
 
