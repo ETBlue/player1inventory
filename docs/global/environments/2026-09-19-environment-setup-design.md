@@ -1,10 +1,70 @@
 # Environment setup — design
 
 **Date:** 2026-09-19
-**Status:** 🔲 Designed, not implemented
+**Status:** ⏸️ Designed — decided **not to build yet** (2026-09-21). See [Decision](#decision-2026-09-21-not-building-this-yet).
 **Branch:** `docs/environment-setup`
 **Brainstorming:** [2026-09-19-brainstorming-environment-setup.md](2026-09-19-brainstorming-environment-setup.md)
 **Related:** [#294 CORS for preview origins](https://github.com/ETBlue/player1inventory/pull/294) · [e2e/CLAUDE.md](../../../e2e/CLAUDE.md)
+
+## Decision (2026-09-21): not building this yet
+
+**The preview tier described below is not being built.** The design stands and is ready to
+follow when it is needed. This section says why it is not needed today, and what would
+change that.
+
+### The current state fails safe
+
+Preview ships `pk_live` and points at the production API, but the Clerk **production**
+instance refuses to issue a token for a `pages.dev` origin (`origin_invalid`). No token
+means no authenticated request, so **a preview cannot read or write production data.** It
+stops before it starts.
+
+Local mode on preview is unaffected — IndexedDB only, no Clerk, no API. That is what a
+preview is actually used for here, and it keeps working. Each preview deployment is also
+its own origin, so preview local data never mixes with production local data.
+
+### What is given up
+
+Cloud mode cannot be tested before merge. Cloud bugs reach production first.
+
+Today there is one cloud user and production is that user's own instance, so the same
+person finds the bug either way. The preview URL is rarely used. That is a fair trade.
+
+### Migration safety does not depend on this
+
+An earlier draft argued that a staging branch forked from production would make every
+preview deploy a migration rehearsal. That is true but redundant. Migration safety is
+already covered, and better:
+
+- `pnpm --filter server verify:migration` applies migrations to real Postgres and asserts
+  the result
+- `apps/server/prisma/CLAUDE.md` documents production-data rehearsals — additive-only, a
+  fresh copy each time, and proving the `DATABASE_URL` override is real before the first
+  write
+- Risky migrations get a deploy runbook
+
+A preview tier would be a weaker version of all of that. It is not the reason to build one.
+
+### The one risk of leaving it
+
+**The protection is a side effect, not a guard that was built on purpose.** It holds only
+while nobody "fixes" the `origin_invalid` error.
+
+The tempting wrong fix is adding the preview domain as a **satellite domain** on the
+production instance. Searching that error code leads there. It would work, and it would
+point every preview at production users and production data — test rows in a real pantry.
+See [Rejected: satellite domains](#rejected-satellite-domains).
+
+**Do not resolve `origin_invalid` on a preview URL by changing the Clerk production
+instance.** On a preview, that error is the system working correctly.
+
+### When to revisit
+
+Build the preview tier when any of these becomes true:
+
+- a second person contributes, so "I will find it on production" stops being true
+- cloud-mode bugs start reaching production often enough to cost more than a Railway service
+- cloud gains a user who is not the developer
 
 ## Goal
 
@@ -240,6 +300,9 @@ a personal project. It is written here so it stays a decision rather than a surp
 discovered later.
 
 ## Order of work
+
+**On hold** — see [Decision](#decision-2026-09-21-not-building-this-yet). These steps are
+the recipe for when the tier is built, not a task list for today.
 
 Each step leaves the system working. Do not start step 3 before step 2.
 
