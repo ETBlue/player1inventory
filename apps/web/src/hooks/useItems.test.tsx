@@ -56,6 +56,9 @@ const mockCloudRemoveFromLocation = vi.fn()
 const mockCloudUpsertStock = vi
   .fn()
   .mockResolvedValue({ data: { upsertItemStock: null } })
+const mockCloudApplyUnitSwitch = vi
+  .fn()
+  .mockResolvedValue({ data: { applyUnitSwitch: null } })
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -102,6 +105,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useCreateItemMutation: () => [mockCloudCreate, {}],
     useUpdateItemMutation: () => [mockCloudUpdate, {}],
     useUpsertItemStockMutation: () => [mockCloudUpsertStock, {}],
+    // Mounted UNCONDITIONALLY by `useApplyUnitSwitch` since PR 3c made it
+    // dual-mode — a hook cannot sit behind the mode branch, so a local-mode
+    // test rendering it would otherwise reach the real Apollo hook.
+    useApplyUnitSwitchMutation: () => [mockCloudApplyUnitSwitch, {}],
     useDeleteItemMutation: (options: unknown) => {
       mockUseDeleteItemMutationOptions(options)
       return [mockCloudDelete, {}]
@@ -111,6 +118,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // Cloud read paths that are `skip`ped in local mode but would still demand
     // an ApolloProvider. Stubbed so local-mode hooks can be rendered here.
     useCartItemsQuery: () => ({ data: undefined, loading: false }),
+    // Mounted unconditionally by the two count hooks since PR 3c made them
+    // dual-mode. Skipped in local mode, but a hook cannot sit behind the mode
+    // branch, so without these the real Apollo hook runs and demands a
+    // provider.
+    useInventoryLogCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCartItemCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useGetRecipesQuery: () => ({
       data: undefined,
       loading: false,

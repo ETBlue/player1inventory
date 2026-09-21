@@ -30,8 +30,8 @@ query AllCartItems {
   }
 }
 
-query CartItemCountByItem($itemId: ID!) {
-  cartItemCountByItem(itemId: $itemId)
+query CartItemCountByItem($itemId: ID!, $locationId: ID) {
+  cartItemCountByItem(itemId: $itemId, locationId: $locationId)
 }
 
 mutation AddToCart($cartId: ID!, $itemId: ID!, $quantity: Int!) {

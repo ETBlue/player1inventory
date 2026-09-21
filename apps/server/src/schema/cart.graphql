@@ -45,8 +45,16 @@ extend type Query {
   "Items in one cart. The cart id names the location, and the caller needs the `viewer` role on it."
   cartItems(cartId: ID!): [CartItem!]!
 
-  "How many carts hold this item, across every location. Answers \"is this item in any cart\"."
-  cartItemCountByItem(itemId: ID!): Int!
+  """
+  How many carts hold this item.
+
+  With no `locationId`, the count covers every location and answers "is this
+  item in any cart". With one, it counts only that location's carts — the
+  number the Stock tab's "remove from location" confirmation shows, so it must
+  match exactly what `removeItemFromLocation` deletes. The caller needs the
+  `viewer` role on the named location.
+  """
+  cartItemCountByItem(itemId: ID!, locationId: ID): Int!
 
   "Every cart item the caller owns, across every location. The snapshot path, not a screen."
   allCartItems: [CartItem!]!

@@ -150,6 +150,15 @@ model Cart {
   // the resolvers look a cart up by; this column is what `bootstrapCarts`
   // queries by to return one location's carts.
   //
+  // Since PR 3c it is also read THROUGH CartItem, as the relation filter
+  // `where: { cart: { locationId } }` — `cartItemCountByItem` and
+  // `removeItemFromLocation`'s cascade both use it. There is still NO
+  // standalone index on this column (see the PR 3a migration, which says so on
+  // purpose). Those two queries are driven by `CartItem_itemId_idx` and reach
+  // `Cart` by its primary key, and a user holds few carts, so an index was not
+  // added. Add one if a query ever filters `Cart` by `locationId` alone over
+  // many rows.
+  //
   // onDelete: Cascade. Deleting a location deletes its carts, which matches
   // local mode: deleteLocation in apps/web/src/db/operations.ts:1215 deletes
   // the location's carts and their cart items. CartItem already cascades from

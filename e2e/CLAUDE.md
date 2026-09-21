@@ -8,8 +8,10 @@ each one has already cost a session by presenting as a code regression.
 
 `pnpm test:e2e` cannot run concurrently in two worktrees (or two agent sessions). The
 ports are plain constants in `e2e/constants.ts` — `LOCAL_WEB_PORT 5175`,
-`CLOUD_WEB_PORT 5174`, `CLOUD_SERVER_PORT 4001` — with no env override, and every
-`webServer` entry sets `reuseExistingServer: false`. Cloud specs additionally share one
+`CLOUD_WEB_PORT 5174`, `CLOUD_SERVER_PORT 4001` and `PWA_WEB_PORT 5176` — with no env
+override, and every `webServer` entry sets `reuseExistingServer: false`. **There are four
+ports, not three.** `PWA_WEB_PORT` arrived with the PWA work and is easy to miss when
+checking whether the machine is free. Cloud specs additionally share one
 dev database under the same `E2E_USER_ID`, so a concurrent run cross-contaminates rows
 even when the ports happen to work out.
 
@@ -21,7 +23,8 @@ collision. It happened on 2026-08-27 between two worktrees.
 **Before running E2E,** check the ports are free *and stay* free:
 
 ```bash
-lsof -nP -iTCP:5175 -sTCP:LISTEN     # identify the owner with: ps -o command -p <pid>
+for p in 5175 5174 5176 4001; do lsof -nP -iTCP:$p -sTCP:LISTEN; done
+# identify the owner with: ps -o command -p <pid>
 ```
 
 The process path names which worktree owns it. Wait for a **sustained** quiet window

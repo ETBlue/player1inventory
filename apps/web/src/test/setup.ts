@@ -107,6 +107,12 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Called UNCONDITIONALLY by `useApplyUnitSwitch` since PR 3c made it
+    // dual-mode — a hook cannot sit behind the `mode === 'cloud'` branch.
+    useApplyUnitSwitchMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useCreateItemMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
@@ -278,6 +284,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       error: undefined,
     }),
     useInventoryLogCountByItemQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useCartItemCountByItemQuery: () => ({
       data: undefined,
       loading: false,
       error: undefined,

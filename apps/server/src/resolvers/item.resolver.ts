@@ -2,8 +2,8 @@ import { GraphQLError } from 'graphql'
 import { prisma } from '../lib/prisma.js'
 import { mirrorStockToDefaultLocation } from '../lib/stockDualWrite.js'
 import { requireAuth } from '../context.js'
-import type { Item, Resolvers } from '../generated/graphql.js'
-import type { ExpirationMode, TargetUnit } from '@prisma/client'
+import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
+import type { ExpirationMode, Prisma, TargetUnit } from '@prisma/client'
 import type { Item as PrismaItem, ItemTag, ItemVendor } from '@prisma/client'
 
 // Map a Prisma item (with junction rows included) to the GraphQL Item shape.
@@ -49,6 +49,37 @@ function numOr(v: number | null | undefined): number | undefined {
 // Coerce InputMaybe<string> → string | undefined
 function strOr(v: string | null | undefined): string | undefined {
   return v ?? undefined
+}
+
+/**
+ * Build the `prisma.item.update` data for an `UpdateItemInput`.
+ *
+ * Only keys the input actually CARRIED become columns. An absent key means
+ * "leave it alone", a key present with null means "clear it" — which is why
+ * every line tests `!== undefined` on the input rather than on the value.
+ *
+ * Extracted from `updateItem` so `applyUnitSwitch`
+ * (itemStock.resolver.ts) writes the Item half of a unit switch through the
+ * same mapping instead of a second copy that could drift from it.
+ */
+export function buildItemUpdateData(input: UpdateItemInput): Prisma.ItemUpdateInput {
+  const { dueDate, expirationMode, targetUnit, ...rest } = input
+  return {
+    ...(rest.name !== undefined && rest.name !== null ? { name: rest.name } : {}),
+    ...(targetUnit !== undefined && targetUnit !== null ? { targetUnit: toTargetUnit(targetUnit) } : {}),
+    ...(rest.targetQuantity !== undefined ? { targetQuantity: numOr(rest.targetQuantity) } : {}),
+    ...(rest.refillThreshold !== undefined ? { refillThreshold: numOr(rest.refillThreshold) } : {}),
+    ...(rest.packedQuantity !== undefined ? { packedQuantity: numOr(rest.packedQuantity) } : {}),
+    ...(rest.unpackedQuantity !== undefined ? { unpackedQuantity: numOr(rest.unpackedQuantity) } : {}),
+    ...(rest.consumeAmount !== undefined ? { consumeAmount: numOr(rest.consumeAmount) } : {}),
+    ...(rest.packageUnit !== undefined ? { packageUnit: strOr(rest.packageUnit) } : {}),
+    ...(rest.measurementUnit !== undefined ? { measurementUnit: strOr(rest.measurementUnit) } : {}),
+    ...(rest.amountPerPackage !== undefined ? { amountPerPackage: numOr(rest.amountPerPackage) } : {}),
+    ...(rest.estimatedDueDays !== undefined ? { estimatedDueDays: numOr(rest.estimatedDueDays) } : {}),
+    ...(rest.expirationThreshold !== undefined ? { expirationThreshold: numOr(rest.expirationThreshold) } : {}),
+    ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+    ...(expirationMode !== undefined ? { expirationMode: toExpirationMode(expirationMode) } : {}),
+  }
 }
 
 export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
@@ -145,27 +176,9 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
       }
 
-      const { tagIds, vendorIds, dueDate, expirationMode, targetUnit, ...rest } = input
+      const { tagIds, vendorIds, dueDate, ...rest } = input
 
-      await prisma.item.update({
-        where: { id },
-        data: {
-          ...(rest.name !== undefined && rest.name !== null ? { name: rest.name } : {}),
-          ...(targetUnit !== undefined && targetUnit !== null ? { targetUnit: toTargetUnit(targetUnit) } : {}),
-          ...(rest.targetQuantity !== undefined ? { targetQuantity: numOr(rest.targetQuantity) } : {}),
-          ...(rest.refillThreshold !== undefined ? { refillThreshold: numOr(rest.refillThreshold) } : {}),
-          ...(rest.packedQuantity !== undefined ? { packedQuantity: numOr(rest.packedQuantity) } : {}),
-          ...(rest.unpackedQuantity !== undefined ? { unpackedQuantity: numOr(rest.unpackedQuantity) } : {}),
-          ...(rest.consumeAmount !== undefined ? { consumeAmount: numOr(rest.consumeAmount) } : {}),
-          ...(rest.packageUnit !== undefined ? { packageUnit: strOr(rest.packageUnit) } : {}),
-          ...(rest.measurementUnit !== undefined ? { measurementUnit: strOr(rest.measurementUnit) } : {}),
-          ...(rest.amountPerPackage !== undefined ? { amountPerPackage: numOr(rest.amountPerPackage) } : {}),
-          ...(rest.estimatedDueDays !== undefined ? { estimatedDueDays: numOr(rest.estimatedDueDays) } : {}),
-          ...(rest.expirationThreshold !== undefined ? { expirationThreshold: numOr(rest.expirationThreshold) } : {}),
-          ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
-          ...(expirationMode !== undefined ? { expirationMode: toExpirationMode(expirationMode) } : {}),
-        },
-      })
+      await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
 
       // DUAL-WRITE, REMOVED IN PR 5 (lib/stockDualWrite.ts). Unlike checkout and
       // consumeRecipes this is a LEGACY path: a current client sends the five

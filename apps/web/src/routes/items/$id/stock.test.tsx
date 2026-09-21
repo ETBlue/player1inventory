@@ -74,6 +74,18 @@ const mockUseItemStocksForItemQuery = vi.fn(() => ({
   loading: false,
   error: undefined,
 }))
+// The two cascade counts the remove confirmation names. Since PR 3c they run
+// in cloud mode too, so the cloud test below drives them.
+const mockUseInventoryLogCountByItemQuery = vi.fn(() => ({
+  data: undefined as unknown,
+  loading: false,
+  error: undefined,
+}))
+const mockUseCartItemCountByItemQuery = vi.fn(() => ({
+  data: undefined as unknown,
+  loading: false,
+  error: undefined,
+}))
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -161,7 +173,9 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useAllCartsQuery: queryStub,
     useAllCartItemsQuery: queryStub,
     useItemLogsQuery: queryStub,
-    useInventoryLogCountByItemQuery: queryStub,
+    useInventoryLogCountByItemQuery: () =>
+      mockUseInventoryLogCountByItemQuery(),
+    useCartItemCountByItemQuery: () => mockUseCartItemCountByItemQuery(),
     useLastPurchaseDatesQuery: queryStub,
     useAddInventoryLogMutation: mutationStub,
     useGetShelvesQuery: queryStub,
@@ -214,6 +228,16 @@ describe('Item stock tab', () => {
       error: undefined,
     })
     mockUseItemStocksForItemQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+    mockUseInventoryLogCountByItemQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    })
+    mockUseCartItemCountByItemQuery.mockReturnValue({
       data: undefined,
       loading: false,
       error: undefined,
@@ -1195,6 +1219,83 @@ describe('Item stock tab', () => {
     expect(
       await screen.findByRole('button', { name: /add to location/i }),
     ).toBeInTheDocument()
+  })
+
+  it('cloud mode: the remove confirmation names the cascade the cloud resolver deletes', async () => {
+    const user = userEvent.setup()
+
+    // Given cloud mode, with LOCAL logs and cart entries that must NOT be the
+    // numbers shown. Local says 5 logs and 2 cart entries at the default
+    // location; cloud says 3 and 1 for the cloud location. Different numbers,
+    // so "read the cloud count" and "read the Dexie count" are distinguishable.
+    localStorage.setItem('data-mode', 'cloud')
+    const localItem = await createItem({ name: 'Cloud Milk', tagIds: [] })
+    for (const delta of [1, 2, 3, 4, 5]) {
+      await addInventoryLog({
+        itemId: localItem.id,
+        locationId: DEFAULT_LOCATION_ID,
+        delta,
+        quantity: delta,
+        occurredAt: new Date(),
+      })
+    }
+    const localCartId = cartIdFor(DEFAULT_LOCATION_ID, null)
+    await db.shoppingCarts.put({ id: localCartId })
+    await addToCart(localCartId, localItem.id, 1)
+
+    const cloudItem = {
+      id: 'item-cloud-cascade',
+      name: 'Cloud Milk',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+    }
+    mockUseGetItemQuery.mockReturnValue({
+      data: { item: cloudItem },
+      loading: false,
+      error: undefined,
+    })
+    seedCloud(cloudItem.id, {
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+    })
+    mockUseInventoryLogCountByItemQuery.mockReturnValue({
+      data: { inventoryLogCountByItem: 3 },
+      loading: false,
+      error: undefined,
+    })
+    mockUseCartItemCountByItemQuery.mockReturnValue({
+      data: { cartItemCountByItem: 1 },
+      loading: false,
+      error: undefined,
+    })
+
+    renderStockTab(cloudItem.id)
+
+    // Local data in cloud mode opens the "Import local data to cloud?"
+    // dialog, which is what the local fixture above triggers. Skip it — the
+    // local rows only exist here so the numbers below can be told apart from
+    // the cloud ones.
+    await user.click(await screen.findByRole('button', { name: /^skip$/i }))
+    await screen.findByLabelText(/^packed/i)
+
+    // When the user asks to remove the item from the cloud location
+    await user.click(
+      await screen.findByRole('button', { name: /remove from location/i }),
+    )
+
+    // Then the confirmation shows the CLOUD numbers. Before PR 3c this line
+    // was hidden in cloud mode entirely.
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/inventory logs: 3/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/cart entries: 1/i)).toBeInTheDocument()
   })
 
   it('cloud mode: pages over the CLOUD locations, not the local ones', async () => {

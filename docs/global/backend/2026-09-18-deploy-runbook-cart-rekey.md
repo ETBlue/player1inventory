@@ -6,8 +6,38 @@
 **Feature status:** [`docs/features/locations/cloud-locations-status.md`](../../features/locations/cloud-locations-status.md)
 **Plan:** [`docs/features/locations/2026-09-17-cloud-locations-plan-pr3b.md`](../../features/locations/2026-09-17-cloud-locations-plan-pr3b.md)
 
-This runbook is for **one** deploy: the one that re-keys `Cart.id` in the cloud
-database. Read all of section 1 before you start. Follow sections 2 to 6 in order.
+> ## THIS DEPLOY ALREADY HAPPENED, AND IT WAS CORRECT
+>
+> **Verified 2026-09-21 against a branch of production.** All five checks in section 4
+> pass, plus four more. The re-key is applied and every `Cart.id` is well-formed.
+>
+> **It deployed automatically.** Railway is set to *"Auto deploys when pushed to GitHub"*
+> on `main`, and `railway.toml` runs `prisma migrate deploy` as the release command. So
+> merging PR #293 deployed it. Nobody followed sections 2 or 3.
+>
+> **That was safe, by Railway's design rather than by luck.** The release command runs
+> **after the build and before the new instance takes traffic**, so the old-code-plus-new-
+> schema state that sections 1.2 and 1.3 describe **cannot occur**. The duplicate-cart
+> failure in section 5.2 needs exactly that state.
+>
+> **One step was genuinely skipped:** section 2.3's Neon branch, which exists only as a
+> rollback point. There is nothing to roll back.
+>
+> **This document was written believing the deploy was manual.** That belief came from one
+> observation — a Neon branch taken on 2026-09-18 that lacked the previous migration —
+> which was simply taken before Railway finished deploying. The inference was never
+> checked against the Railway dashboard.
+>
+> **What it is still good for:** section 4 is a verification checklist worth re-running
+> after any future migration. Section 5.2's repair is still correct if a duplicate cart
+> ever appears by another route. Section 6's manual smoke tests are still owed.
+>
+> **What the next migration author should take from it:** Railway removes the ordering
+> hazard, so a future runbook should be a *verification* document, not a deploy-order one.
+
+This runbook was written for **one** deploy: the one that re-keys `Cart.id` in the cloud
+database. Read the box above first. Sections 2 and 3 are now history rather than
+instructions.
 
 **Rule for every command below: never paste a database connection string or a
 database hostname into a chat, a commit, a document, or a screenshot.** Refer to

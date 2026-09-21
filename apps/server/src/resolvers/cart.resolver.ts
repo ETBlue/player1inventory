@@ -78,11 +78,28 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       return prisma.cartItem.findMany({ where: { cartId, userId } }) as unknown as Promise<CartItem[]>
     },
 
-    // Whole-account, across every location: it answers "is this item in any
-    // cart", which the item list shows regardless of the active location.
-    cartItemCountByItem: async (_, { itemId }, ctx) => {
+    // With no `locationId`: whole-account, across every location. It answers
+    // "is this item in any cart", which the item list shows regardless of the
+    // active location.
+    //
+    // With one: only that location's carts. The Stock tab's remove
+    // confirmation asks this way, so the number must equal exactly what
+    // `removeItemFromLocation` (resolvers/itemStock.resolver.ts) deletes.
+    // Both use the SAME filter — `cart: { locationId }` — so one rule decides
+    // membership. If the two ever disagreed, the dialog would show a number
+    // the removal does not match.
+    //
+    // `CartItem` has no `locationId` column of its own. The location lives on
+    // its CART, in `Cart.locationId`, which PR 3a added. `cart: { locationId }`
+    // is a Prisma relation filter on that column, so the database answers in
+    // one statement. Do not go back to reading every row and splitting its
+    // cart id in JavaScript: the id is derived from this column, and a filter
+    // on the derived string can drift from a filter on the source.
+    cartItemCountByItem: async (_, { itemId, locationId }, ctx) => {
       const userId = requireAuth(ctx)
-      return prisma.cartItem.count({ where: { itemId, userId } })
+      if (!locationId) return prisma.cartItem.count({ where: { itemId, userId } })
+      await requireLocationRole(ctx, locationId, 'viewer')
+      return prisma.cartItem.count({ where: { itemId, userId, cart: { locationId } } })
     },
 
     allCartItems: async (_, __, ctx) => {

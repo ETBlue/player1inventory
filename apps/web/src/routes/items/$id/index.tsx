@@ -21,11 +21,10 @@ import {
   useUpdateItem,
 } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
-import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
+import { useRecipes } from '@/hooks/useRecipes'
 import type { TrackedQuantities } from '@/lib/quantityUtils'
 import { convertTrackedQuantities } from '@/lib/quantityUtils'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
@@ -203,18 +202,14 @@ function ItemInfoTab() {
   const [savedAt, setSavedAt] = useState(0)
 
   const { data: allRecipes } = useRecipes()
-  const updateRecipe = useUpdateRecipe()
-  // Local mode's atomic unit switch: one Dexie transaction over the item, every
-  // location's stock and every affected recipe.
+  // The atomic unit switch — the item, every location's stock and every
+  // affected recipe in one transaction. Dual-mode since PR 3c.
   const applyUnitSwitch = useApplyUnitSwitch()
 
   // Every location's stock row for this item, plus the locations to name and
-  // order them by. Both hooks are dual-mode since PR 2, so cloud returns real
-  // rows here — but `buildStockConversions` still gates on `isLocal` and yields
-  // nothing in cloud, because there is no cloud mutation to APPLY a conversion
-  // with (see `handleConfirmAdjustments`).
-  const { mode } = useDataMode()
-  const isLocal = mode === 'local'
+  // order them by. Both hooks are dual-mode since PR 2, and since PR 3c so is
+  // `useApplyUnitSwitch` — so `buildStockConversions` runs in BOTH modes and
+  // the dialog lists the same conversions either way.
   const { data: stocks } = useItemStocks(id)
   const { data: locations } = useLocations()
 
@@ -316,7 +311,7 @@ function ItemInfoTab() {
     // holds the ACTIVE location's quantities (already rescaled in its local
     // state by the toggle), which are the wrong numbers for every other row.
     const buildStockConversions = (): StockConversion[] => {
-      if (!isLocal || !targetUnitChanged || !stocks) return []
+      if (!targetUnitChanged || !stocks) return []
       const amountPerPackage = Number(values.amountPerPackage)
       const order = new Map(locations?.map((l, i) => [l.id, i]))
       return stocks
@@ -363,14 +358,15 @@ function ItemInfoTab() {
     await doSave(values)
   }
 
-  // Writes in dependency order — the item's own configuration first, then the
-  // per-location rows and the recipe amounts that are expressed in it — and
-  // navigates away only once every write has landed.
+  // Writes the item's own configuration, the per-location rows and the recipe
+  // amounts expressed in it — and navigates away only once every write has
+  // landed.
   //
-  // In local mode all three groups go through ONE Dexie transaction. They are
-  // not independent edits: a failure partway would leave the item on the new
-  // unit while some locations and recipes still hold old-unit numbers — mixed
-  // units, silently, with nothing surfaced to the user.
+  // ONE transaction in BOTH modes since PR 3c: a Dexie transaction locally, a
+  // `prisma.$transaction` in cloud behind the `applyUnitSwitch` mutation. They
+  // are not independent edits — a failure partway would leave the item on the
+  // new unit while some locations and recipes still hold old-unit numbers,
+  // mixed units, silently, with nothing surfaced to the user.
   const handleConfirmAdjustments = async () => {
     if (!pending) return
 
@@ -390,43 +386,15 @@ function ItemInfoTab() {
       ]
     })
 
-    if (isLocal) {
-      await applyUnitSwitch.mutateAsync({
-        itemId: id,
-        updates: buildInfoUpdates(pending.values) as Partial<Item>,
-        stockConversions: pending.conversions.map((conversion) => ({
-          locationId: conversion.locationId,
-          quantities: conversion.after as Partial<StockFields>,
-        })),
-        recipeUpdates,
-      })
-    } else {
-      // Cloud stays sequential. There is no client-side transaction to borrow:
-      // each Apollo mutation is its own server round-trip, so wrapping them
-      // would fake an atomicity that does not exist.
-      //
-      // Cloud DOES have per-location ItemStock since PR 1, so the old reason —
-      // "there is nothing to convert" — no longer holds. What holds instead is
-      // that the schema has no `applyUnitSwitch` mutation: the design names one
-      // as a requirement (§2) but PR 1 shipped `itemStock.graphql` without it,
-      // so `useApplyUnitSwitch` throws in cloud and `buildStockConversions`
-      // gates itself on `isLocal` rather than listing conversions this branch
-      // could not write. A cloud unit switch therefore leaves every location's
-      // tracked quantities in the OLD unit. PR 3 owes the mutation.
-      //
-      // When it lands, this must NOT stay a sequence of Apollo calls: the item
-      // update, the per-location stock conversions and the recipe rewrites need
-      // one combined GraphQL mutation wrapping all three in a single
-      // server-side transaction, the cloud counterpart of
-      // `applyUnitSwitchBatch`.
-      await persistInfo(pending.values)
-      for (const update of recipeUpdates) {
-        await updateRecipe.mutateAsync({
-          id: update.recipeId,
-          updates: { items: update.items },
-        })
-      }
-    }
+    await applyUnitSwitch.mutateAsync({
+      itemId: id,
+      updates: buildInfoUpdates(pending.values) as Partial<Item>,
+      stockConversions: pending.conversions.map((conversion) => ({
+        locationId: conversion.locationId,
+        quantities: conversion.after as Partial<StockFields>,
+      })),
+      recipeUpdates,
+    })
 
     setPending(null)
     finishSave()

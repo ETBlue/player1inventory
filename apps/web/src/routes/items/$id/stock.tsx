@@ -29,7 +29,6 @@ import {
 } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
-import { useDataMode } from '@/hooks/useDataMode'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
@@ -197,23 +196,19 @@ function RemoveFromLocationButton({
   onRemove: () => Promise<void>
 }) {
   const { t } = useTranslation()
-  const { mode } = useDataMode()
   // Scoped to this page, so the confirmation counts exactly the rows removal
   // would delete — an item-global count would over-report.
   //
-  // Both counts read Dexie, so they are shown in LOCAL mode only. Cloud's
-  // `removeItemFromLocation` deletes the stock row and nothing else. Cloud
-  // carts and inventory logs ARE location-scoped now (PR 3a, PR 3b), but their
-  // FK cascade fires on deleting a LOCATION, not on removing one item from one
-  // — that per-item cascade is PR 3c's. Until it lands there is no cloud
-  // cascade to count, and printing the local numbers next to a cloud removal
-  // would name rows it will not touch.
+  // BOTH MODES since PR 3c. Cloud's `removeItemFromLocation` now cascades the
+  // same two families local does — the item's inventory logs at this location
+  // and its entries in this location's carts — and both count hooks gained a
+  // cloud branch reading the same rows the resolver deletes. The counts were
+  // local-only before that, because naming rows a cloud removal would not
+  // touch is worse than naming none.
   const logCount = useInventoryLogCountByItem(itemId, location.id)
   const cartCount = useCartItemCountByItem(itemId, location.id)
   const showAffectedCounts =
-    mode === 'local' &&
-    logCount.data !== undefined &&
-    cartCount.data !== undefined
+    logCount.data !== undefined && cartCount.data !== undefined
 
   return (
     <DeleteButton

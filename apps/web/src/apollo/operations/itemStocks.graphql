@@ -88,3 +88,32 @@ mutation AddItemToLocation($itemId: ID!, $locationId: ID!, $sourceLocationId: ID
 mutation RemoveItemFromLocation($itemId: ID!, $locationId: ID!) {
   removeItemFromLocation(itemId: $itemId, locationId: $locationId)
 }
+
+# One transactional unit switch — the Item's configuration, every location's
+# converted quantities, and every recipe amount expressed in the old unit. The
+# cloud counterpart of local's `applyUnitSwitchBatch` (db/operations.ts).
+#
+# The selection set matches `UpdateItem`'s so both operations agree in the
+# normalized cache.
+mutation ApplyUnitSwitch($input: ApplyUnitSwitchInput!) {
+  applyUnitSwitch(input: $input) {
+    id
+    name
+    tagIds
+    vendorIds
+    packageUnit
+    measurementUnit
+    amountPerPackage
+    targetUnit
+    targetQuantity
+    refillThreshold
+    packedQuantity
+    unpackedQuantity
+    consumeAmount
+    expirationMode
+    dueDate
+    estimatedDueDays
+    expirationThreshold
+    updatedAt
+  }
+}
