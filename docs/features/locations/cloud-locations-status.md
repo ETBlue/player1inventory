@@ -1,8 +1,8 @@
 # Cloud Locations — Status
 
-Status: 🔄 **In Progress** — PRs 0, 1, 2 and 3a are ✅ merged. **PR 3 is now complete**:
-3b is ✅ built on `feature/cloud-locations-pr3b` and 3c is ✅ built on
-`feature/cloud-locations-pr3c`. Neither is merged or deployed. PRs 4 and 5 are 🔲 pending.
+Status: 🔄 **In Progress** — PRs 0, 1, 2, 3a, 3b and 3c are ✅ **merged and deployed to
+production**. **PR 3 is complete.** PRs 4 and 5 are 🔲 pending. Three manual smoke tests
+are **OVERDUE** — see *The smoke tests are overdue, not pending* below.
 
 Docs for this feature:
 [brainstorming](2026-08-30-brainstorming-cloud-locations.md) ·
@@ -17,10 +17,12 @@ Docs for this feature:
 [PR 3c plan](2026-09-20-cloud-locations-plan-pr3c.md) ·
 [**deploy runbook**](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md)
 
-> **Nothing here is deployed yet.** PR 3b re-keys a primary key, and the migration
-> and the new server code must go out in the same deploy. Read the
-> [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md)
-> before deploying anything in this series.
+> **Everything through PR 3c is already live in production.** Railway auto-deploys
+> `main`, and `railway.toml` runs `prisma migrate deploy` as its release command, so each
+> PR deploys itself the moment it merges. PR 3b's primary-key re-key **has already run** —
+> deployed 2026-09-19, verified read-only against a branch of production on 2026-09-21.
+> The [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) is
+> now a record of a deploy that happened, not a plan for one.
 
 ---
 
@@ -41,8 +43,8 @@ PR 1 and PR 5 already use: additive changes first, destructive changes last.
 | **1** | ✅ | `Location` + `ItemStock` Prisma models, the additive backfill migration, `requireLocationRole`, both GraphQL schemas, both resolver sets, purge coverage, and a dedicated E2E test database. |
 | **2** | ✅ | The web client's cloud path moves onto `Location` / `ItemStock`. Writes split client-side. A five-site server dual-write keeps `Item`'s legacy columns fed until PR 5. |
 | **3a** | ✅ merged — [#291](https://github.com/ETBlue/player1inventory/pull/291) | The **additive** migration: `InventoryLog.locationId` and `Cart.locationId` added, backfilled and constrained. No `Cart.id` re-key. Inventory logs scoped by location, server and client. |
-| **3b** | ✅ built, not merged | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
-| **3c** | ✅ built, not merged | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
+| **3b** | ✅ merged — [#293](https://github.com/ETBlue/player1inventory/pull/293) — deployed 2026-09-19 | The destructive half: the `'no-vendor'` split, the composite `Cart.id` re-key, the cart resolvers, vendor carts at the right time, `checkout`, `consumeRecipes`, and **five** `!isCloud` bypasses (the plan said two). |
+| **3c** | ✅ merged — [#297](https://github.com/ETBlue/player1inventory/pull/297) — deployed 2026-09-21, **deploy unverified** | `applyUnitSwitch` and `removeItemFromLocation`'s cloud cascade. Two new features, blocked by neither 3a nor 3b. **PR 3 ends here.** |
 | **4** | 🔲 Pending | Import, export, post-login migration and purge (design §6). |
 | **5** | 🔲 Pending | **Contract step:** drop the five `Item` columns, remove them from the GraphQL type and inputs, delete `apps/server/src/lib/stockDualWrite.ts` and all of its call sites. |
 
@@ -405,8 +407,15 @@ distinct. Worth closing in a later PR.
 
 Run 2026-09-18 against a fresh Neon branch of production. **Passed.** The env override was
 proved first: `prisma migrate status` with and without it reported **different hosts**. Both
-migrations then applied — `20260916000000` (PR 3a) and `20260917000000` — because production
-has not been deployed yet.
+migrations then applied — `20260916000000` (PR 3a) and `20260917000000`.
+
+**Why that copy lacked PR 3a's migration was never established, and the explanation written
+here at the time was wrong.** PR 3a merged on 2026-09-17, one day *before* the copy was
+taken, and Railway deploys `main` automatically — so production should already have had
+`20260916000000`. This document originally read the copy's missing migration as proof that
+production was undeployed. It is not proof; it is one observation with several possible
+explanations, and the Railway dashboard was never checked. See *A correction, recorded so
+the reasoning error is visible* below.
 
 The hashes moved where they should. This is the opposite of PR 3a, where the proof was that
 nothing changed.
