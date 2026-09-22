@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { ItemCard } from '.'
 import {
   mockItem,
+  mockLastPurchase,
   mockMultipleTags,
   mockMultipleTagTypes,
   mockRecipes,
@@ -16,6 +17,9 @@ const meta: Meta<typeof ItemCard> = {
   title: 'Components/Item/ItemCard/Variants',
   component: ItemCard,
   decorators: [sharedDecorator],
+  // Every story inherits the date; a story that wants another one
+  // overrides it in its own `args`.
+  args: { lastPurchaseDate: mockLastPurchase },
 }
 
 export default meta

@@ -100,7 +100,9 @@ function CookingPage() {
   const [newRecipeDialogOpen, setNewRecipeDialogOpen] = useState(false)
   const [newRecipeInitialName, setNewRecipeInitialName] = useState('')
 
-  const { expiryDates } = useItemSortData(items)
+  // One request for the whole recipe list's dates. `purchaseDates` feeds each
+  // `ItemCard`'s expiry estimate; the card no longer fetches its own (#305).
+  const { expiryDates, purchaseDates } = useItemSortData(items)
 
   // An item is consumable in the active location only if it has stock there.
   // `useItems()` joins the active-location ItemStock; `stockId` is undefined when
@@ -667,6 +669,7 @@ function CookingPage() {
                   >
                     <div className={available ? '' : 'opacity-50'}>
                       <ItemCard
+                        lastPurchaseDate={purchaseDates?.get(item.id)}
                         item={item}
                         tags={itemTags}
                         tagTypes={tagTypes}

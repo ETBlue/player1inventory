@@ -359,7 +359,7 @@ All passing, verified in the main session.
 
 ## Known gaps
 
-- **The per-card "last purchased" date stays stale** — [#305](https://github.com/ETBlue/player1inventory/issues/305).
+- ~~**The per-card "last purchased" date stays stale**~~ — **fixed** by [#305](https://github.com/ETBlue/player1inventory/issues/305), see the section below.
 - **The resume refetch fires only on `visibilitychange`.** It does not listen to `pageshow`
   (bfcache restore) or to the `online` event. A user who comes back while offline and then
   regains signal will not refetch until the next resume.
@@ -372,3 +372,106 @@ All passing, verified in the main session.
 - `48993e82` — `feat(cloud): refetch when the app comes back to the front`
 - `77554492` — `perf(cloud): stop sending one request per card on resume`
 - `d413984c` — `docs(hooks): record the isLoading guard and the resume refetch`
+
+---
+
+# Follow-up 2: the per-card query is gone (issue #305)
+
+- **Date:** 2026-09-22
+- **Branch:** `refactor/itemcard-batch-purchase-dates`
+- **Status:** ✅ Fixed
+
+Removes the cause instead of working around it. **Both workarounds above are deleted.**
+
+## What changed
+
+`ItemCard` no longer runs a query. It takes the date as a **required** prop:
+
+```ts
+lastPurchaseDate: Date | null | undefined
+```
+
+Every container that renders `<ItemCard` already called `useItemSortData`, which reads
+every visible item's date in **one** request. They now pass `purchaseDates?.get(item.id)`.
+
+**16 render sites across 10 files** — not 5 files, as the task brief claimed. The five the
+brief missed were `routes/settings/vendors/$id/items.tsx`,
+`routes/settings/shelves/$shelfId/items.tsx`, `routes/settings/tags/$id/items.tsx`,
+`routes/settings/recipes/$id/items.tsx` and `routes/shopping/$vendorId.tsx`. All of them
+already called `useItemSortData`, so nothing new had to be wired.
+
+### Deleted
+
+| Thing | Where it was |
+|---|---|
+| `useLastPurchaseDate` | `hooks/useItems.ts` |
+| `onQueryUpdated` opt-out on the resume refetch | `apollo/ApolloWrapper.tsx` |
+| `SKIP_RESUME_REFETCH_KEY`, `SKIP_RESUME_REFETCH_CONTEXT` | `apollo/constants.ts` |
+
+`grep -rn "SKIP_RESUME_REFETCH" apps/web/src` now returns nothing. `useLastPurchaseDate`
+survives only in five comments that say it is gone and why, so nobody re-adds it.
+
+The query also moved off `cache-first` by disappearing: the batch query it now reads is on
+`cache-and-network`, so the "Expires in N days" estimate refreshes with the rest of the
+pantry. Before, it showed whatever the restored IndexedDB snapshot held.
+
+## Search-tail rows have no date, on purpose
+
+Five files have a `renderTailItemCard`. Its bucket-3 rows are items **not stocked in the
+active location**, so they are not in the array passed to `useItemSortData` and
+`purchaseDates.get(id)` returns `undefined`. This matches the old behaviour — no stock here
+means no purchase here — and the expiry chip needs `currentQuantity > 0` anyway, which such
+a row never has. A comment at each of the five sites says so.
+
+## Freshness did not get worse
+
+The old per-card key was `['items', itemId, 'lastPurchase', { locationId }]`; the new source
+is `['sort', 'purchaseDates', …]`. Checkout invalidates **both** (`useShoppingCart.ts:279`,
+with `:320` / `:365` evicting the `lastPurchaseDates` root field in cloud), and purge
+invalidates `['sort']` (`useItems.ts`). No refresh trigger was lost.
+
+## Test added
+
+Net **+3 web tests** (2206 → 2209): four new `ItemCard` prop tests, one new story plus its
+smoke test, the card-count test became `it.each([3, 30])`, and three tests for the deleted
+hook were removed.
+
+### Mutation checks
+
+Re-run independently in the main session:
+
+| Mutation | Result |
+|---|---|
+| Add a per-card `useLastPurchaseDatesQuery` back into `ItemCard` | **RED, 3 tests** — both card-count cases and the resume test: `expected undefined to be 1` |
+| Delete one `lastPurchaseDate={…}` prop in `PantryListView.tsx` | **RED at compile time** — `error TS2741: Property 'lastPurchaseDate' is missing … but required in type 'ItemCardProps'` |
+
+Reported by the agent, not independently re-run: passing `undefined` to `computeExpiryDate`
+gave `Unable to find an element with the text: Expires in 10 days`; adding
+`onQueryUpdated: () => true` back gave `expected "refetchQueries" to be called with
+arguments: [ { include: 'active' } ]`; deleting a story's date override gave `Unable to find
+an element with the text: Expires in 5 days`.
+
+**The card-count test uses `it.each([3, 30])` for a reason.** A single fixture size cannot
+tell "one request" from "one request per card". With the mutation applied the counts were
+`expected 4 to be 1` at 3 cards and `expected 31 to be 1` at 30 — the scaling is what the
+test measures.
+
+**Two tests stay green under the date mutation and are named as negative controls**, not as
+coverage: removing a date cannot make an absent expiry chip appear.
+
+## Known gaps
+
+- **Tests and stories get no `tsc` enforcement for the required prop.**
+  `apps/web/tsconfig.app.json` excludes `**/*.test.tsx` and `**/*.stories.tsx`, so the
+  compiler checks the 16 production sites only. A future test that omits the prop compiles
+  and simply renders no expiry chip.
+- **A *wrong* expression would not be caught.** `tsc` catches a missing prop. Passing
+  `expiryDates?.get(item.id)` instead of `purchaseDates?.get(item.id)` type-checks, and no
+  test would fail. Catching that needs a container-level test per view.
+- **No E2E run.** The change is prop plumbing with no new route or UI element, so no spec
+  was expected to need updating, but that was not verified by running them.
+
+## PR / commit
+
+- `df809206` — `refactor(items): read the batch purchase date in ItemCard instead of querying per card`
+- `1d1ab601` — `docs(hooks): drop the per-card purchase-date query and its two workarounds`

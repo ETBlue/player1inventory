@@ -40,6 +40,13 @@ export const sharedDecorator: Decorator = (Story) => (
   </QueryClientProvider>
 )
 
+// `ItemCard` takes `lastPurchaseDate` as a REQUIRED prop since #305 — it no
+// longer runs its own `LastPurchaseDates` query. Stories supply it directly.
+// `mockLastPurchase` is 10 days ago, so an item with `estimatedDueDays` renders
+// a real "Expires in N days" chip instead of the blank a Storybook-less hook
+// used to give.
+export const mockLastPurchase = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+
 export const mockItem: PantryItem = {
   id: '1',
   name: 'Yogurt (plain)',

@@ -4,6 +4,7 @@ import { ItemCard } from '.'
 import {
   mockDualUnitItem,
   mockItem,
+  mockLastPurchase,
   mockTags,
   mockTagTypes,
   sharedDecorator,
@@ -13,6 +14,9 @@ const meta: Meta<typeof ItemCard> = {
   title: 'Components/Item/ItemCard/Pantry',
   component: ItemCard,
   decorators: [sharedDecorator],
+  // Every story inherits the date; a story that wants another one
+  // overrides it in its own `args`.
+  args: { lastPurchaseDate: mockLastPurchase },
 }
 
 export default meta
@@ -100,13 +104,26 @@ export const ExpiringRelative: Story = {
   args: {
     item: {
       ...mockDualUnitItem,
-      // estimatedDueDays triggers relative display mode ("Expires in X days")
-      // dueDate is used as fallback since last-purchase hook has no data in Storybook
-      estimatedDueDays: 2,
-      dueDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
+      // `estimatedDueDays` selects the relative mode ("Expires in X days").
+      // The chip counts from `lastPurchaseDate`, overridden here to 2 days ago
+      // so 5 days are left. `dueDate` is ignored in this mode.
+      estimatedDueDays: 7,
     },
+    lastPurchaseDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
     tags: [],
     tagTypes: [],
+  },
+}
+
+// The container has no date for this item — a search-tail row that is not
+// stocked in the active location, or `purchaseDates` before it resolves. In
+// the relative mode there is nothing to count from, so the chip is absent.
+// Compare with `ExpiringRelative` above: same item, only the prop changed.
+export const ExpiringRelativeNoPurchaseDate: Story = {
+  name: 'Expiring — Relative, no purchase date (no chip)',
+  args: {
+    ...ExpiringRelative.args,
+    lastPurchaseDate: null,
   },
 }
 

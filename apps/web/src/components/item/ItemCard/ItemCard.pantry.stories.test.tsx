@@ -11,6 +11,7 @@ const {
   StatusError,
   ExpiringSoon,
   ExpiringRelative,
+  ExpiringRelativeNoPurchaseDate,
   WithQuickUpdate,
   WithQuickUpdatePending,
 } = composeStories(stories)
@@ -58,11 +59,22 @@ describe('ItemCard pantry stories smoke tests', () => {
     )
   })
 
-  it('ExpiringRelative renders without error', async () => {
+  it('ExpiringRelative shows the estimate counted from lastPurchaseDate', async () => {
     render(<ExpiringRelative />)
     await waitFor(() =>
       expect(screen.getByText('Purple grapes')).toBeInTheDocument(),
     )
+    // estimatedDueDays 7, bought 2 days ago
+    expect(screen.getByText('Expires in 5 days')).toBeInTheDocument()
+  })
+
+  it('ExpiringRelativeNoPurchaseDate shows no estimate', async () => {
+    render(<ExpiringRelativeNoPurchaseDate />)
+    await waitFor(() =>
+      expect(screen.getByText('Purple grapes')).toBeInTheDocument(),
+    )
+    // Same item as above. Without a date there is nothing to count from.
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
   })
 
   it('renders the quick update button', async () => {

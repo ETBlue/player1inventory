@@ -269,6 +269,7 @@ function VendorItemsTab() {
                   className={key === 'assigned' ? 'bg-background-surface' : ''}
                 >
                   <ItemCard
+                    lastPurchaseDate={allPurchaseDates?.get(item.id)}
                     mode="tag-assignment"
                     item={item}
                     tags={itemTags}

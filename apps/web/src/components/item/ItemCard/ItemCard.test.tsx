@@ -7,9 +7,15 @@ import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
 import { ItemCard } from '.'
 
-vi.mock('@/hooks', () => ({
-  useLastPurchaseDate: () => ({ data: new Date() }),
-}))
+// `ItemCard` fetches nothing. Since #305 the last purchase date arrives as a
+// REQUIRED prop, fed by the container's single `useItemSortData` batch query,
+// so the `vi.mock('@/hooks')` that used to stand in for the per-card
+// `useLastPurchaseDate` is gone.
+//
+// Today's date is what that mock returned, so the "days from purchase" cases
+// below still count forward from now. A function, not a module-level constant,
+// so every render gets a fresh value exactly as the old mock did.
+const lastPurchaseToday = () => new Date()
 
 describe('ItemCard - Unit Display Logic', () => {
   it('returns package unit when tracking in packages', () => {
@@ -181,6 +187,7 @@ describe('ItemCard - Tag Sorting', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={tags}
         tagTypes={tagTypes}
@@ -225,7 +232,12 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Message should show even though 30 days > 7 day threshold
@@ -258,7 +270,12 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     const messageEl = screen.getByText(/Expires in 3 days/i)
@@ -295,7 +312,12 @@ describe('ItemCard - Tag Sorting', () => {
 
     // When the card renders
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Then badge shows plain foreground text, not error styling
@@ -332,7 +354,12 @@ describe('ItemCard - Tag Sorting', () => {
 
     // When the card renders
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Then badge shows error styling (plain colored text, no bg pill) (regression guard)
@@ -364,7 +391,12 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Should show converted packed quantity: 3 bottles × 500g = 1500g,
@@ -389,7 +421,12 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Should show packed quantity without conversion: 5 packs, with the
@@ -416,7 +453,12 @@ describe('ItemCard - Tag Sorting', () => {
     }
 
     await renderWithRouter(
-      <ItemCard item={item as Item} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item as Item}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Should show simple count with converted packed: 2000 / 2000, unit trailing
@@ -443,6 +485,7 @@ describe('ItemCard - Shopping mode', () => {
   it('shows unchecked checkbox when not in cart (shopping mode)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -461,6 +504,7 @@ describe('ItemCard - Shopping mode', () => {
   it('shows checked checkbox when item is in cart (shopping mode)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -481,6 +525,7 @@ describe('ItemCard - Shopping mode', () => {
   it('shows stepper with quantity when item is in cart (shopping mode)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -507,6 +552,7 @@ describe('ItemCard - Shopping mode', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -526,6 +572,7 @@ describe('ItemCard - Shopping mode', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -546,6 +593,7 @@ describe('ItemCard - Shopping mode', () => {
   it('- button is disabled at quantity 1 when minControlAmount=1 (shopping mode)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -565,7 +613,14 @@ describe('ItemCard - Shopping mode', () => {
   })
 
   it('does not show checkbox in pantry mode (default)', async () => {
-    await renderWithRouter(<ItemCard item={mockItem} tags={[]} tagTypes={[]} />)
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={mockItem}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
@@ -608,6 +663,7 @@ describe('ItemCard - vendor and recipe display', () => {
   it('shows vendor and recipe counts alongside tag count when collapsed', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -627,6 +683,7 @@ describe('ItemCard - vendor and recipe display', () => {
   it('omits zero-count entries in collapsed state', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -645,6 +702,7 @@ describe('ItemCard - vendor and recipe display', () => {
   it('shows vendor badges when expanded', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -659,6 +717,7 @@ describe('ItemCard - vendor and recipe display', () => {
   it('shows recipe badges when expanded', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -676,6 +735,7 @@ describe('ItemCard - vendor and recipe display', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -695,6 +755,7 @@ describe('ItemCard - vendor and recipe display', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -724,6 +785,7 @@ describe('ItemCard - vendor and recipe display', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={{
           id: 'item-1',
           name: 'Milk',
@@ -754,6 +816,7 @@ describe('ItemCard - vendor and recipe display', () => {
   it('hides tag/vendor/recipe count when showTagSummary={false}', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -811,6 +874,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -835,6 +899,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -859,6 +924,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -884,6 +950,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -909,6 +976,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -934,6 +1002,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
 
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -956,6 +1025,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
     // Given activeTagIds that does not include the tag
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -974,6 +1044,7 @@ describe('ItemCard - keyboard interaction on badges', () => {
     // Given activeTagIds that includes the tag
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -1013,6 +1084,7 @@ describe('ItemCard - Cooking mode', () => {
   it('hides tags in cooking mode', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={mockTags}
         tagTypes={mockTagTypes}
@@ -1030,6 +1102,7 @@ describe('ItemCard - Cooking mode', () => {
   it('shows checkbox when onCheckboxToggle is provided in cooking mode', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -1048,6 +1121,7 @@ describe('ItemCard - Cooking mode', () => {
   it('shows amount stepper when checked in cooking mode', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -1067,6 +1141,7 @@ describe('ItemCard - Cooking mode', () => {
   it('minus button is disabled at amount 0 (default minControlAmount=0)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -1086,6 +1161,7 @@ describe('ItemCard - Cooking mode', () => {
   it('minus button is enabled at amount 1 with default minControlAmount=0', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -1127,6 +1203,7 @@ describe('ItemCard - showTags and showExpiration props', () => {
   it('shows tags in shopping mode when showTags is not set (mode no longer gates tags)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[mockTag]}
         tagTypes={[mockTagType]}
@@ -1139,6 +1216,7 @@ describe('ItemCard - showTags and showExpiration props', () => {
   it('hides tags when showTags={false} regardless of mode', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[mockTag]}
         tagTypes={[mockTagType]}
@@ -1155,6 +1233,7 @@ describe('ItemCard - showTags and showExpiration props', () => {
     }
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={itemWithExpiry}
         tags={[]}
         tagTypes={[]}
@@ -1171,9 +1250,114 @@ describe('ItemCard - showTags and showExpiration props', () => {
       dueDate: new Date(Date.now() + 10 * 86400000),
     }
     await renderWithRouter(
-      <ItemCard item={itemWithExpiry} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={itemWithExpiry}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
     expect(screen.getByText(/Expires/i)).toBeInTheDocument()
+  })
+})
+
+// ─── the lastPurchaseDate prop (#305) ────────────────────────────────────────
+//
+// `ItemCard` used to run `useLastPurchaseDate(item.id)` — one `LastPurchaseDates`
+// request per card. It now takes the date from its container, which reads every
+// visible item's date in ONE request via `useItemSortData`. These tests prove
+// the value actually reaches the expiry estimate, so the deleted query did not
+// silently take the date off the screen with it.
+//
+// The fixture uses `expirationMode: 'days from purchase'` ON PURPOSE. In `'date'`
+// mode `computeExpiryDate` returns `item.dueDate` and ignores the purchase date
+// entirely, so a `'date'`-mode fixture would render the same chip whatever this
+// prop held — it could not tell a working prop from an ignored one.
+describe('ItemCard - lastPurchaseDate prop', () => {
+  const DAY = 86400000
+
+  const perishable: Item = {
+    id: 'item-yogurt',
+    name: 'Yogurt',
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 2,
+    refillThreshold: 1,
+    // > 0, or the expiry chip is suppressed regardless of the date
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    expirationMode: 'days from purchase',
+    estimatedDueDays: 30,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  it('user sees an expiry estimate counted from the date the container passed', async () => {
+    // Given an item that expires 30 days after purchase, bought 20 days ago
+    // When the card is rendered with that purchase date
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={new Date(Date.now() - 20 * DAY)}
+        item={perishable}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then 10 days are left
+    expect(screen.getByText('Expires in 10 days')).toBeInTheDocument()
+  })
+
+  it('user sees a different estimate when the container passes a different date', async () => {
+    // Given the SAME item, bought 25 days ago instead of 20
+    // When the card is rendered
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={new Date(Date.now() - 25 * DAY)}
+        item={perishable}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then 5 days are left. Paired with the test above, this is what rules out
+    // a card that renders a constant: the item is identical, only the prop moved.
+    expect(screen.getByText('Expires in 5 days')).toBeInTheDocument()
+    expect(screen.queryByText('Expires in 10 days')).not.toBeInTheDocument()
+  })
+
+  it('user sees no expiry estimate when the container has no date for this item', async () => {
+    // Given a container with no purchase date for this item — what a
+    // search-tail row not stocked in the active location gets
+    // When the card is rendered
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={null}
+        item={perishable}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then no estimate is shown, because there is nothing to count from
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
+  })
+
+  it('user sees no expiry estimate when the container is still loading dates', async () => {
+    // Given `purchaseDates` has not resolved yet, so `.get()` gives undefined
+    // When the card is rendered
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={undefined}
+        item={perishable}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then no estimate is shown
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
   })
 })
 
@@ -1203,6 +1387,7 @@ describe('ItemCard tag badge variants', () => {
     // Given activeTagIds that does not include the tag
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[mockTag]}
         tagTypes={[mockTagType]}
@@ -1220,6 +1405,7 @@ describe('ItemCard tag badge variants', () => {
     // Given activeTagIds that includes the tag
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[mockTag]}
         tagTypes={[mockTagType]}
@@ -1236,7 +1422,12 @@ describe('ItemCard tag badge variants', () => {
   it('renders tag badge with tint variant when activeTagIds is not provided', async () => {
     // Given no activeTagIds prop (default unselected)
     await renderWithRouter(
-      <ItemCard item={mockItem} tags={[mockTag]} tagTypes={[mockTagType]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={mockItem}
+        tags={[mockTag]}
+        tagTypes={[mockTagType]}
+      />,
     )
 
     // Then badge defaults to tint (unselected appearance)
@@ -1262,7 +1453,12 @@ describe('ItemCard - inactive item progress bar', () => {
 
   it('renders progress bar fill with inactive color for inactive item', async () => {
     const { container } = await renderWithRouter(
-      <ItemCard item={inactiveItem} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={inactiveItem}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Inactive item with packedQuantity=2 > 0 renders the target=0 full-bar branch
@@ -1280,7 +1476,12 @@ describe('ItemCard - inactive item progress bar', () => {
     }
 
     const { container } = await renderWithRouter(
-      <ItemCard item={itemWithThreshold} tags={[]} tagTypes={[]} />,
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={itemWithThreshold}
+        tags={[]}
+        tagTypes={[]}
+      />,
     )
 
     // Card should NOT have error or warning tint background styling
@@ -1313,6 +1514,7 @@ describe('ItemCard - loading states', () => {
       const [isPending, setIsPending] = useState(false)
       return (
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={mockItem}
           tags={[]}
           tagTypes={[]}
@@ -1347,6 +1549,7 @@ describe('ItemCard - loading states', () => {
       const [isPending, setIsPending] = useState(false)
       return (
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={mockItem}
           tags={[]}
           tagTypes={[]}
@@ -1384,6 +1587,7 @@ describe('ItemCard - loading states', () => {
       const [isPending, setIsPending] = useState(false)
       return (
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={mockItem}
           tags={[]}
           tagTypes={[]}
@@ -1421,6 +1625,7 @@ describe('ItemCard - loading states', () => {
       const [isPending, setIsPending] = useState(false)
       return (
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={mockItem}
           tags={[]}
           tagTypes={[]}
@@ -1458,6 +1663,7 @@ describe('ItemCard - loading states', () => {
       const [isPending, setIsPending] = useState(false)
       return (
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={mockItem}
           tags={[]}
           tagTypes={[]}
@@ -1491,6 +1697,7 @@ describe('ItemCard - loading states', () => {
   it('replaces checkbox with spinner when isPending is true (unchecked item)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -1508,6 +1715,7 @@ describe('ItemCard - loading states', () => {
   it('replaces checkbox with spinner when isPending is true (checked item)', async () => {
     await renderWithRouter(
       <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
         item={mockItem}
         tags={[]}
         tagTypes={[]}
@@ -1557,7 +1765,12 @@ describe('ItemCard - showStock', () => {
       // Given an item with stock in the active location
       // When the card renders with the default showStock
       const { container } = await renderWithRouter(
-        <ItemCard item={lowStockItem} tags={[]} tagTypes={[]} />,
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={lowStockItem}
+          tags={[]}
+          tagTypes={[]}
+        />,
       )
 
       // Then every stock-derived rendering is present. The unit is part of
@@ -1571,7 +1784,12 @@ describe('ItemCard - showStock', () => {
       // Given an item below its refill threshold
       // When the card renders with the default showStock
       const { container } = await renderWithRouter(
-        <ItemCard item={lowStockItem} tags={[]} tagTypes={[]} />,
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={lowStockItem}
+          tags={[]}
+          tagTypes={[]}
+        />,
       )
 
       // Then the whole card is tinted from stock health
@@ -1584,7 +1802,12 @@ describe('ItemCard - showStock', () => {
       // Given an inactive item (targetQuantity 0)
       // When the card renders with the default showStock
       const { container } = await renderWithRouter(
-        <ItemCard item={inactiveItem} tags={[]} tagTypes={[]} />,
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={inactiveItem}
+          tags={[]}
+          tagTypes={[]}
+        />,
       )
 
       // Then the card is dimmed and announces "Inactive" to screen readers
@@ -1599,6 +1822,7 @@ describe('ItemCard - showStock', () => {
       // When the card renders with showStock={false}
       await renderWithRouter(
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={lowStockItem}
           tags={[]}
           tagTypes={[]}
@@ -1615,6 +1839,7 @@ describe('ItemCard - showStock', () => {
       // When the card renders with showStock={false}
       await renderWithRouter(
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={lowStockItem}
           tags={[]}
           tagTypes={[]}
@@ -1632,6 +1857,7 @@ describe('ItemCard - showStock', () => {
       // When the card renders with showStock={false}
       const { container } = await renderWithRouter(
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={lowStockItem}
           tags={[]}
           tagTypes={[]}
@@ -1648,6 +1874,7 @@ describe('ItemCard - showStock', () => {
       // When the card renders with showStock={false}
       const { container } = await renderWithRouter(
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={lowStockItem}
           tags={[]}
           tagTypes={[]}
@@ -1667,6 +1894,7 @@ describe('ItemCard - showStock', () => {
       // When the card renders with showStock={false}
       const { container } = await renderWithRouter(
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={inactiveItem}
           tags={[]}
           tagTypes={[]}
@@ -1684,6 +1912,7 @@ describe('ItemCard - showStock', () => {
       // When the card renders with showStock={false}
       await renderWithRouter(
         <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
           item={{ ...lowStockItem, tagIds: ['tag-1'] }}
           tags={[{ id: 'tag-1', name: 'Fruit', typeId: 'type-1' }]}
           tagTypes={[{ id: 'type-1', name: 'Category', color: TagColor.blue }]}

@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SKIP_RESUME_REFETCH_CONTEXT } from '@/apollo/constants'
 import { db } from '@/db'
 import {
   addInventoryLog,
@@ -31,7 +30,6 @@ import {
   useInventoryLogCountByItem,
   useItem,
   useItems,
-  useLastPurchaseDate,
   useRemoveItemFromLocation,
   useStockedItems,
   useUpdateItem,
@@ -424,75 +422,6 @@ describe('useDeleteItem (cloud mode)', () => {
         ]),
       }),
     )
-  })
-})
-
-// ─── useLastPurchaseDate ──────────────────────────────────────────────────────
-
-describe('useLastPurchaseDate (cloud mode)', () => {
-  it('user can get last purchase date via Apollo in cloud mode', async () => {
-    // Given cloud mode and Apollo returns a last purchase date for the item
-    localStorage.setItem('data-mode', 'cloud')
-    const purchaseDate = new Date('2026-03-31T00:00:00.000Z')
-    mockUseLastPurchaseDatesQuery.mockReturnValue({
-      data: {
-        lastPurchaseDates: [
-          { itemId: 'item-1', date: purchaseDate.toISOString() },
-        ],
-      },
-      loading: false,
-      error: undefined,
-    })
-
-    // When the hook is called with an item id
-    const { result } = renderHook(() => useLastPurchaseDate('item-1'), {
-      wrapper: createWrapper(),
-    })
-
-    // Then it returns the date from Apollo as a Date object
-    await waitFor(() => expect(result.current.data).toBeDefined())
-    expect(result.current.data).toBeInstanceOf(Date)
-    expect(result.current.data?.toISOString()).toBe(purchaseDate.toISOString())
-
-    // And it called the Apollo query with the correct itemIds AND the active
-    // location. This fixture has ONE location, so it cannot show that the
-    // right location was chosen — only that one is sent at all. The
-    // two-location proof is in `useInventoryLogs.cloud.test.tsx`.
-    expect(mockUseLastPurchaseDatesQuery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variables: { itemIds: ['item-1'], locationId: DEFAULT_LOCATION_ID },
-      }),
-    )
-
-    // And it carries the marker that keeps it out of the resume refetch in
-    // `apollo/ApolloWrapper.tsx`. This query runs once per `ItemCard`, so
-    // without the marker a pantry of 40 items would send 40 requests every
-    // time the user comes back to the app. What the marker DOES is measured
-    // in `apollo/ApolloWrapper.test.tsx`; this only proves it is set here.
-    expect(mockUseLastPurchaseDatesQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ context: SKIP_RESUME_REFETCH_CONTEXT }),
-    )
-  })
-
-  it('returns undefined when Apollo returns null date in cloud mode', async () => {
-    // Given cloud mode and Apollo returns null for the item's last purchase date
-    localStorage.setItem('data-mode', 'cloud')
-    mockUseLastPurchaseDatesQuery.mockReturnValue({
-      data: {
-        lastPurchaseDates: [{ itemId: 'item-1', date: null }],
-      },
-      loading: false,
-      error: undefined,
-    })
-
-    // When the hook is called
-    const { result } = renderHook(() => useLastPurchaseDate('item-1'), {
-      wrapper: createWrapper(),
-    })
-
-    // Then data is undefined (no purchase on record)
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(result.current.data).toBeUndefined()
   })
 })
 
