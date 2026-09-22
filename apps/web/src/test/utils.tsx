@@ -46,3 +46,18 @@ export const expectDocumentOrder = (nodes: [string, Node][]) => {
     ).toBe(true)
   }
 }
+
+/**
+ * Returns the `h-<n>` / `w-<n>` classes an element carries, sorted so two
+ * elements can be compared directly.
+ *
+ * Used to pin the Stock-tab and quick-update-dialog rule that a
+ * `StockProgressRow`'s Clear/Fill arrows are the same square as the
+ * `QuantityStepper` `+`/`−` buttons on the same surface. Comparing the two
+ * lists to each other, rather than to a hardcoded 'h-8', keeps the check alive
+ * if a surface later moves to a different size.
+ */
+export const sizeClasses = (el: Element): string[] =>
+  Array.from(el.classList)
+    .filter((c) => /^[hw]-\d+$/.test(c))
+    .sort()

@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './StockProgressRow.stories'
 
-const { Ok, Low, Inactive, MeasurementUnit } = composeStories(stories)
+const { Ok, DefaultSize, Low, Inactive, MeasurementUnit } =
+  composeStories(stories)
 
 const STATUS_CLASSES = {
   ok: 'bg-status-ok-background-muted',
@@ -36,6 +37,25 @@ describe('StockProgressRow stories smoke tests', () => {
     expect(
       screen.getByRole('button', { name: 'Fill to Full' }),
     ).toHaveAttribute('type', 'button')
+  })
+
+  it('DefaultSize renders the arrows one size up from Ok', () => {
+    const { unmount } = render(<Ok />)
+    expect(screen.getByRole('button', { name: 'Clear' })).toHaveClass(
+      'h-7',
+      'w-7',
+    )
+    unmount()
+
+    render(<DefaultSize />)
+    expect(screen.getByRole('button', { name: 'Clear' })).toHaveClass(
+      'h-8',
+      'w-8',
+    )
+    expect(screen.getByRole('button', { name: 'Fill to Full' })).toHaveClass(
+      'h-8',
+      'w-8',
+    )
   })
 
   it('Low renders the warning status fill', () => {

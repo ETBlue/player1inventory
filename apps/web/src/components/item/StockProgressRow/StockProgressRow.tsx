@@ -21,6 +21,16 @@ export interface StockProgressRowProps {
   fillDisabled: boolean
   clearLabel: string
   fillLabel: string
+  // Pairs the Clear/Fill buttons' Button `size` with the `size` the caller
+  // passes to its QuantityStepper, so the arrow buttons and the stepper's
+  // `+`/`−` buttons stacked directly above and below them are the same square.
+  // Take the same values and the same mapping as QuantityStepper: 'sm'
+  // (default) is QuickUpdateDialog's shape — icon-sm buttons (h-7), which is
+  // also what this row used to hardcode, so the dialog is unchanged by adding
+  // this prop. 'default' is ItemForm's Stock tab — icon buttons (h-8), which
+  // its steppers already use; before this prop the Stock tab's arrows were 4px
+  // shorter than its own `+`/`−` buttons.
+  size?: 'sm' | 'default'
 }
 
 export function StockProgressRow({
@@ -40,7 +50,12 @@ export function StockProgressRow({
   fillDisabled,
   clearLabel,
   fillLabel,
+  size = 'sm',
 }: StockProgressRowProps) {
+  // Same mapping as QuantityStepper — keep the two in step, and do not add a
+  // third size here without adding it there.
+  const buttonSize = size === 'default' ? 'icon' : 'icon-sm'
+
   // `type="button"` matters here for the same reason it does on QuantityStepper:
   // ItemForm renders this row inside its `<form>`, where an untyped `<button>`
   // defaults to "submit" and fires the form's native submit event on click.
@@ -49,7 +64,7 @@ export function StockProgressRow({
       <Button
         type="button"
         variant="neutral-outline"
-        size="icon-sm"
+        size={buttonSize}
         aria-label={clearLabel}
         disabled={clearDisabled}
         onClick={onClear}
@@ -77,7 +92,7 @@ export function StockProgressRow({
       <Button
         type="button"
         variant="neutral-outline"
-        size="icon-sm"
+        size={buttonSize}
         aria-label={fillLabel}
         disabled={fillDisabled}
         onClick={onFill}

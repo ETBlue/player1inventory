@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { expectDocumentOrder } from '@/test/utils'
+import { expectDocumentOrder, sizeClasses } from '@/test/utils'
 import { ItemForm } from '.'
 
 describe('ItemForm — create mode (no onDirtyChange)', () => {
@@ -942,6 +942,34 @@ describe('ItemForm — stock tab field order', () => {
         screen.getByRole('spinbutton', { name: /refill when below/i }),
       ],
     ])
+  })
+
+  it('renders the Clear and Fill arrows as the same square as the steppers', () => {
+    // Given a stock-only form
+    render(
+      <ItemForm
+        initialValues={stockValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    // When the progress row's arrow buttons and one stepper button are
+    // located
+    const clear = screen.getByRole('button', { name: 'Clear' })
+    const fill = screen.getByRole('button', { name: 'Fill to Full' })
+    const increase = screen.getByRole('button', { name: 'Increase packed' })
+
+    // Then all three carry the same h-/w- size classes. This tab passes
+    // size="default" to both components, so all three are h-8 w-8. Comparing
+    // the arrows to the stepper — not to a hardcoded 'h-8' — keeps the guard
+    // alive if the tab later moves to the other size. Before the
+    // StockProgressRow `size` prop existed the arrows were stuck at h-7 while
+    // the steppers were h-8.
+    expect(sizeClasses(increase)).not.toHaveLength(0)
+    expect(sizeClasses(clear)).toEqual(sizeClasses(increase))
+    expect(sizeClasses(fill)).toEqual(sizeClasses(increase))
   })
 })
 

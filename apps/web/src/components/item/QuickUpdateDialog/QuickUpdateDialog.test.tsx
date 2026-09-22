@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { expectDocumentOrder } from '@/test/utils'
+import { expectDocumentOrder, sizeClasses } from '@/test/utils'
 import type { PantryItem } from '@/types'
 import { QuickUpdateDialog } from '.'
 
@@ -741,5 +741,26 @@ describe('QuickUpdateDialog — Expires on field', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
     expect('dueDate' in payload).toBe(false)
+  })
+})
+
+describe('QuickUpdateDialog — progress row button size', () => {
+  it('user sees the Clear and Fill arrows as the same square as the steppers', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the arrow buttons and one stepper button are located
+    const clear = screen.getByRole('button', { name: 'Clear' })
+    const fill = screen.getByRole('button', { name: 'Fill to Full' })
+    const increase = screen.getByRole('button', { name: 'Increase packed' })
+
+    // Then all three carry the same h-/w- size classes. This dialog passes no
+    // `size` to StockProgressRow or to QuantityStepper, so both fall back to
+    // 'sm' (h-7 w-7). Comparing the arrows to the stepper — not to a
+    // hardcoded 'h-7' — keeps the guard alive if the dialog later moves to
+    // the other size.
+    expect(sizeClasses(increase)).not.toHaveLength(0)
+    expect(sizeClasses(clear)).toEqual(sizeClasses(increase))
+    expect(sizeClasses(fill)).toEqual(sizeClasses(increase))
   })
 })

@@ -864,6 +864,10 @@ export function ItemForm({
           )}
 
           <StockProgressRow
+            // Matches the `size="default"` on this tab's four QuantitySteppers,
+            // so the Clear/Fill arrows are the same h-8 square as the `+`/`−`
+            // buttons above and below them.
+            size="default"
             quantityLabel={progressQuantityLabel}
             unitLabel={progressUnitLabel}
             current={currentStockQuantity}

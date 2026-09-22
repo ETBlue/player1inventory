@@ -41,6 +41,16 @@ export const Ok: Story = {
   },
 }
 
+// Same fixture as Ok, only the button size differs — put the two side by side
+// in Storybook to eyeball the h-7 (dialog) and h-8 (Stock tab) squares.
+export const DefaultSize: Story = {
+  name: 'Ok — size="default" (h-8 arrows, ItemForm Stock tab)',
+  args: {
+    ...Ok.args,
+    size: 'default',
+  },
+}
+
 export const Low: Story = {
   name: 'Warning — at or below refill threshold',
   args: {
