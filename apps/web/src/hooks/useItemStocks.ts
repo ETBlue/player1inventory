@@ -47,9 +47,19 @@ export function useItemStocks(itemId: string) {
     enabled: !!itemId && !isCloud,
   })
 
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  //
+  // This is the SAME document and variables `useItem` reads, and the item
+  // detail layout (`routes/items/$id.tsx`) mounts `useItem` on every sub-route,
+  // so the pair costs one request — Apollo deduplicates identical in-flight
+  // operations.
   const cloud = useItemStocksForItemQuery({
     variables: { itemId },
     skip: !isCloud || !itemId,
+    fetchPolicy: 'cache-and-network',
   })
 
   const cloudData = useMemo(
@@ -64,7 +74,9 @@ export function useItemStocks(itemId: string) {
     return {
       data: cloudData,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

@@ -30,9 +30,14 @@ export function useItemSortData(items: PantryItem[] | undefined) {
   // active id is still the `'local'` sentinel, which names no cloud Location,
   // so the request waits for `GetLocations` — see `useCloudLocationKnown`.
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
+  // `cache-and-network` — see the comment on `useItems` in `hooks/useItems.ts`.
+  // This is the BATCH form: every visible item's date in ONE request. The
+  // per-card `useLastPurchaseDate` keeps `cache-first` on purpose, because its
+  // one-item variable set would cost a request per card.
   const { data: cloudDatesData } = useLastPurchaseDatesQuery({
     variables: { itemIds, locationId: activeLocationId },
     skip: !isCloud || safeItems.length === 0 || !locationKnown,
+    fetchPolicy: 'cache-and-network',
   })
   const cloudPurchaseDates = useMemo(() => {
     const map = new Map<string, Date | null>()

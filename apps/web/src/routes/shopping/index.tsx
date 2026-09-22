@@ -64,7 +64,15 @@ function ShoppingIndex() {
   // Cloud mode: fetch all cart items in one Apollo query, then group by cartId.
   // Using allCartItems (vs. per-cart cartItems) avoids an N+1 fan-out and ensures
   // every vendor card reflects its own cart, not the first cart's items.
-  const { data: allCartItemsData } = useAllCartItemsQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from, so the vendor cards
+  // would show the cart contents this device last saw. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  const { data: allCartItemsData } = useAllCartItemsQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
   const cloudCartItemsGrouped = new Map<
     string,
     { id: string; cartId: string; itemId: string; quantity: number }[]

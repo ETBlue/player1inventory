@@ -64,7 +64,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     usePantryDataQuery: () => mockUsePantryDataQuery(),
     useGetVendorsQuery: () => mockUseGetVendorsQuery(),
     useAllCartsQuery: () => mockUseAllCartsQuery(),
-    useAllCartItemsQuery: () => mockUseAllCartItemsQuery(),
+    // The OPTIONS are forwarded, not dropped, so the fetch-policy test at the
+    // bottom of this file can read what the route actually passed.
+    useAllCartItemsQuery: (options?: unknown) =>
+      mockUseAllCartItemsQuery(options),
     useGetTagsQuery: () => emptyQuery,
     useGetTagTypesQuery: () => emptyQuery,
     useGetRecipesQuery: () => emptyQuery,
@@ -352,5 +355,31 @@ describe('Shopping index page — cloud mode', () => {
     expect(zeta.compareDocumentPosition(alpha)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
+  })
+  // `AllCartItems` is the ONE cloud read in this app that is issued straight
+  // from a route rather than from a hook in `src/hooks/`, so it is not in
+  // `hooks/cloudFetchPolicy.cloud.test.tsx`, where every other cloud read gets
+  // a real-Apollo stale-cache fixture. This is the weaker guard the shape
+  // allows: it reads the options the route passed, so it goes RED if the
+  // `fetchPolicy` line is deleted, but it does not re-prove what
+  // `cache-and-network` does — the 20 cases in that file already do.
+  //
+  // Why it matters here: without it, `cache-first` reads the restored
+  // IndexedDB snapshot and sends nothing, so every vendor card on the shopping
+  // index reports the cart contents this device last saw.
+  it('the cloud cart-items read asks the network on every mount', async () => {
+    // Given the shopping index rendered in cloud mode
+    renderShoppingIndex()
+    await screen.findByText(/costco/i)
+
+    // Then `AllCartItems` was issued with `cache-and-network` and no
+    // `errorPolicy` — `errorPolicy: 'all'` would move the cached list into
+    // `previousData` and leave `data` undefined for an offline user (measured
+    // on Apollo Client 4.1.6, pinned in `useLocations.test.tsx`).
+    const options = mockUseAllCartItemsQuery.mock.calls.at(-1)?.[0] as
+      | Record<string, unknown>
+      | undefined
+    expect(options?.fetchPolicy).toBe('cache-and-network')
+    expect(options?.errorPolicy).toBeUndefined()
   })
 })

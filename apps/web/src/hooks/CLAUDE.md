@@ -1,5 +1,48 @@
 # Custom Hooks
 
+## Cloud read fetch policy
+
+**Every cloud READ query in this app runs on `fetchPolicy: 'cache-and-network'`, with two named exceptions.**
+
+Apollo's default is `cache-first`. That is wrong here because the cloud Apollo cache is
+persisted to IndexedDB (`Player1InventoryCloudCache`) and restored **before React mounts**
+(`main.tsx` → `bootstrap.ts` → `apollo/persistence.ts`). The snapshot has no TTL and no
+schema version, so `cache-first` finds a complete answer in it and **sends no request at
+all**. The data stays at whatever this device last saw. On an iOS home-screen PWA there is
+no reload button and no pull-to-refresh, so nothing else asks either. Fixed 2026-09-22 —
+see `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+
+**The policy always comes in a pair.** With `cache-and-network` the network leg runs on
+every mount and **fails offline**, so every cloud branch reports
+`isError: !!cloud.error && !cloud.data` — never bare `!!cloud.error`. A failed refetch over
+a good cache is not an error state; reporting one would put an error screen in front of
+data the user can read, which is exactly what the offline work exists to prevent.
+
+**Never add `errorPolicy: 'all'`.** Measured on Apollo Client 4.1.6: the default `'none'`
+leaves the cached result in `data` after a failed network leg, while `'all'` moves it to
+`previousData` and leaves `data` **undefined** — it blanks the screen for an offline user.
+It is pinned RED by tests in `useLocations.test.tsx` and `cloudFetchPolicy.cloud.test.tsx`.
+
+**Two queries stay on `cache-first`, both on purpose:**
+
+| Query | Why |
+|---|---|
+| `useCloudLocationKnown` (`GetLocations`) | Observes the same document and variables as `useLocations`, so it rides that hook's cache write for free. |
+| `useLastPurchaseDate` (`LastPurchaseDates`, `itemIds: [one]`) | Called once per `ItemCard`. `lastPurchaseDates` is keyed by `['itemIds','locationId']` (`apollo/cloudCache.ts`), so each card owns a separate cache entry and deduplication cannot merge them — `cache-and-network` here would send one request **per visible card** on every pantry mount. The batch call in `useItemSortData` refreshes the same dates for the whole list in one request. The per-card entry is knowingly left stale. |
+
+**Two hooks reading one document still cost one request.** `useItems`/`useStockedItems`
+(`PantryData`), `useItem`/`useItemStocks` (`ItemStocksForItem`) and
+`useAllActiveCarts`/`useLastPurchasedByVendor` (`AllCarts`) each carry the policy on both
+halves. Apollo's `queryDeduplication` (on by default, never disabled in
+`apollo/client.ts`) collapses the identical in-flight operation. Measured in
+`cloudFetchPolicy.cloud.test.tsx` → `two hooks on one document still cost one request`.
+Giving the network leg to only one of a pair would work too, but then the pair breaks the
+moment the other half mounts alone.
+
+**The one cloud read outside `src/hooks/`** is `useAllCartItemsQuery` in
+`routes/shopping/index.tsx`. Its policy is pinned by an options-capture test in
+`routes/shopping/index.cloud.test.tsx` instead of the real-Apollo fixture the hooks get.
+
 **Navigation:**
 - `useAppNavigation()` (`src/hooks/useAppNavigation.ts`) - Tracks navigation history in sessionStorage, provides `goBack()` function for smart back navigation to previous app page (fallback to home). Uses `router.history.push(previousUrl)` to preserve full URL (including search params) when going back.
 - `useNavigationTracker()` (`src/hooks/useNavigationTracker.ts`) - Global hook (used in `__root.tsx`) that records every page visit as a full URL (`pathname + searchStr`) in sessionStorage. When params change on the same page, updates the last entry in place rather than appending a new one.
