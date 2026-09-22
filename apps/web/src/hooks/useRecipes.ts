@@ -37,7 +37,14 @@ export function useRecipes() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetRecipesQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  const cloud = useGetRecipesQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
@@ -45,7 +52,9 @@ export function useRecipes() {
         deserializeRecipe(r as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -66,9 +75,14 @@ export function useRecipe(id: string) {
     enabled: !!id && !isCloud,
   })
 
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
   const cloud = useGetRecipeQuery({
     variables: { id },
     skip: !isCloud || !id,
+    fetchPolicy: 'cache-and-network',
   })
 
   if (isCloud) {
@@ -77,7 +91,9 @@ export function useRecipe(id: string) {
         ? deserializeRecipe(cloud.data.recipe as Record<string, unknown>)
         : (cloud.data?.recipe as null | undefined),
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -380,7 +396,9 @@ export function useItemCountByRecipe(recipeId: string) {
     return {
       data: cloud.data?.itemCountByRecipe as number | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

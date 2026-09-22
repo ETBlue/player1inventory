@@ -44,16 +44,23 @@ export function useCartItems(cartId: string | undefined) {
     enabled: !!cartId && !isCloud,
   })
 
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
   const cloud = useCartItemsQuery({
     variables: { cartId: cartId ?? '' },
     skip: !isCloud || !cartId,
+    fetchPolicy: 'cache-and-network',
   })
 
   if (isCloud) {
     return {
       data: cloud.data?.cartItems as CartItem[] | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -455,7 +462,9 @@ export function useVendorCart(vendorId: string | null) {
         ? deserializeCart(cloud.data.vendorCart as Record<string, unknown>)
         : undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -483,7 +492,14 @@ export function useAllActiveCarts() {
   // Filtering by `parseCartId`, never by `id.startsWith(locationId + ':')`: a
   // location id is not a prefix-free code, so a prefix test can match a cart
   // at a different location whose id happens to start with the same text.
-  const cloud = useAllCartsQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  const cloud = useAllCartsQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
@@ -492,7 +508,9 @@ export function useAllActiveCarts() {
           ?.filter((c) => parseCartId(c.id).locationId === activeLocationId)
           .map((c) => deserializeCart(c as Record<string, unknown>)) ?? [],
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -521,7 +539,18 @@ export function useLastPurchasedByVendor() {
   // Same query useAllActiveCarts runs, so Apollo serves it from cache — no
   // extra round trip — and checkout's refetchQueries already lists AllCarts,
   // so the map refreshes on checkout without invalidation of its own.
-  const cloud = useAllCartsQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  //
+  // Carrying the policy here too costs nothing: this hook and
+  // `useAllActiveCarts` only ever mount together (`routes/shopping/index.tsx`),
+  // and Apollo deduplicates the identical in-flight operation into one request.
+  const cloud = useAllCartsQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     // Since PR 3b a cloud cart id is `${locationId}:${vendorId | 'no-vendor'}`,
@@ -545,7 +574,9 @@ export function useLastPurchasedByVendor() {
     return {
       data: map,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

@@ -32,7 +32,14 @@ export function useShelvesQuery() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetShelvesQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  const cloud = useGetShelvesQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
@@ -40,7 +47,9 @@ export function useShelvesQuery() {
         deserializeShelf(s as Record<string, unknown>),
       ),
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -61,9 +70,14 @@ export function useShelfQuery(id: string) {
     enabled: !!id && !isCloud,
   })
 
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
   const cloud = useGetShelfQuery({
     variables: { id },
     skip: !isCloud || !id,
+    fetchPolicy: 'cache-and-network',
   })
 
   if (isCloud) {
@@ -72,7 +86,9 @@ export function useShelfQuery(id: string) {
         ? deserializeShelf(cloud.data.shelf as Record<string, unknown>)
         : undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

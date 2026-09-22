@@ -57,7 +57,9 @@ export function useItemLogs(itemId: string) {
       // A skipped query reports `loading: false`; while the location is still
       // being resolved the log list is not loaded, it is pending.
       isLoading: cloud.loading || !locationKnown,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

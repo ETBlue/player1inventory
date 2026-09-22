@@ -42,13 +42,22 @@ export function useTagTypes() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetTagTypesQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  const cloud = useGetTagTypesQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
       data: cloud.data?.tagTypes as TagType[] | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -205,13 +214,22 @@ export function useTags() {
     enabled: !isCloud,
   })
 
-  const cloud = useGetTagsQuery({ skip: !isCloud })
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  const cloud = useGetTagsQuery({
+    skip: !isCloud,
+    fetchPolicy: 'cache-and-network',
+  })
 
   if (isCloud) {
     return {
       data: cloud.data?.tags as Tag[] | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -247,16 +265,23 @@ export function useTagsByType(typeId: string) {
     enabled: !!typeId && !isCloud,
   })
 
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
   const cloud = useGetTagsByTypeQuery({
     variables: { typeId },
     skip: !isCloud || !typeId,
+    fetchPolicy: 'cache-and-network',
   })
 
   if (isCloud) {
     return {
       data: cloud.data?.tagsByType as Tag[] | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -458,7 +483,9 @@ export function useItemCountByTag(tagId: string) {
     return {
       data: cloud.data?.itemCountByTag as number | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 
@@ -479,16 +506,23 @@ export function useTagCountByType(typeId: string) {
     enabled: !!typeId && !isCloud,
   })
 
+  // `cache-and-network` — Apollo's default `cache-first` never refreshes the
+  // IndexedDB snapshot the cloud cache is restored from. See the comment on
+  // `useItems` in `hooks/useItems.ts` and
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
   const cloud = useTagCountByTypeQuery({
     variables: { typeId },
     skip: !isCloud || !typeId,
+    fetchPolicy: 'cache-and-network',
   })
 
   if (isCloud) {
     return {
       data: cloud.data?.tagCountByType as number | undefined,
       isLoading: cloud.loading,
-      isError: !!cloud.error,
+      // Offline the network leg fails on every mount while the cached data
+      // is still good — an error only when there is nothing to show.
+      isError: !!cloud.error && !cloud.data,
     }
   }
 

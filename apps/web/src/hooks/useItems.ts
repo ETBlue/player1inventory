@@ -257,9 +257,31 @@ export function useItems() {
   })
 
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
+  // `cache-and-network`, NOT Apollo's default `cache-first`. The cloud Apollo
+  // cache is persisted to IndexedDB and restored before React mounts
+  // (`apollo/persistence.ts`, no TTL, no schema version). A complete
+  // `PantryData` entry in that snapshot satisfies `cache-first` outright, so no
+  // request is sent and the pantry shows whatever stock this device last saw —
+  // the bug the user hit in the iOS home-screen PWA, where there is no reload
+  // button to ask with. See
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`.
+  //
+  // `useStockedItems` below asks for the SAME document with the SAME variables
+  // and also carries this policy. That costs ONE request, not two: Apollo
+  // deduplicates in-flight identical operations (`queryDeduplication`, on by
+  // default). Measured — `useItems.cloud.test.tsx` counts the requests the mock
+  // link served in "the catalog and the pantry list together cost ONE request"
+  // and in the warm-cache test beside it.
+  //
+  // NO `errorPolicy` here, on purpose. Measured on Apollo Client 4.1.6: under
+  // the default `'none'` a failed network leg leaves the cached result in
+  // `data`, while `errorPolicy: 'all'` moves it to `previousData` and leaves
+  // `data` undefined — which would empty the pantry for an offline user whose
+  // cache is fine. Pinned RED by a test in `useLocations.test.tsx`.
   const cloud = usePantryDataQuery({
     variables: { locationId: activeLocationId },
     skip: !isCloud || !locationKnown,
+    fetchPolicy: 'cache-and-network',
   })
 
   const cloudData = useMemo(
@@ -275,7 +297,11 @@ export function useItems() {
       // flash an empty pantry on every cloud page load.
       isLoading: cloud.loading || !locationKnown,
       isFetching: !locationKnown || cloud.networkStatus < 7, // 7 = NetworkStatus.ready
-      isError: !!cloud.error,
+      // Report an error only when there is nothing to show. With
+      // `cache-and-network` the network leg runs on every mount and fails
+      // offline; calling that an error would put an error state in front of a
+      // pantry the user can read.
+      isError: !!cloud.error && !cloud.data,
       refetch: cloud.refetch,
     }
   }
@@ -310,9 +336,12 @@ export function useStockedItems() {
   })
 
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
+  // Same policy and same reason as `useItems` above, including why the two
+  // together still cost one request.
   const cloud = usePantryDataQuery({
     variables: { locationId: activeLocationId },
     skip: !isCloud || !locationKnown,
+    fetchPolicy: 'cache-and-network',
   })
 
   const cloudData = useMemo(
@@ -326,7 +355,8 @@ export function useStockedItems() {
       // See `useItems` above — skipped is not loaded.
       isLoading: cloud.loading || !locationKnown,
       isFetching: !locationKnown || cloud.networkStatus < 7, // 7 = NetworkStatus.ready
-      isError: !!cloud.error,
+      // See `useItems` above — offline is not an error while the cache answers.
+      isError: !!cloud.error && !cloud.data,
       refetch: cloud.refetch,
     }
   }
@@ -362,10 +392,19 @@ export function useItem(id: string) {
     enabled: !!id && !isCloud,
   })
 
-  const cloud = useGetItemQuery({ variables: { id }, skip: !isCloud || !id })
+  // Both on `cache-and-network` — see `useItems` above for why the default
+  // `cache-first` leaves a restored snapshot unrefreshed. `ItemStocksForItem`
+  // is the same document and variables `useItemStocks` reads for the Stock
+  // tab's pager, and Apollo's deduplication keeps the pair at one request.
+  const cloud = useGetItemQuery({
+    variables: { id },
+    skip: !isCloud || !id,
+    fetchPolicy: 'cache-and-network',
+  })
   const cloudStocks = useItemStocksForItemQuery({
     variables: { itemId: id },
     skip: !isCloud || !id,
+    fetchPolicy: 'cache-and-network',
   })
 
   const cloudData = useMemo(() => {
@@ -387,7 +426,11 @@ export function useItem(id: string) {
     return {
       data: cloudData,
       isLoading: cloud.loading || cloudStocks.loading,
-      isError: !!cloud.error || !!cloudStocks.error,
+      // Each half reports an error only when its own cached answer is missing
+      // — see `useItems` above.
+      isError:
+        (!!cloud.error && !cloud.data) ||
+        (!!cloudStocks.error && !cloudStocks.data),
     }
   }
 
@@ -425,6 +468,17 @@ export function useLastPurchaseDate(itemId: string) {
   // Location, so the request waits for `GetLocations` — see
   // `useCloudLocationKnown`.
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
+  // LEFT ON `cache-first`, unlike the other cloud reads fixed in
+  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`. This hook
+  // is called once per `ItemCard`, with `itemIds: [itemId]` — one variable set
+  // per card. `lastPurchaseDates` is keyed by `['itemIds', 'locationId']`
+  // (`apollo/cloudCache.ts`), so each card owns a separate cache entry and
+  // Apollo's deduplication cannot merge them. `cache-and-network` here would
+  // send one request PER VISIBLE CARD on every pantry mount. The batch call in
+  // `useItemSortData` covers the same dates for the whole list in one request
+  // and IS refreshed; this per-card entry stays stale until something refetches
+  // it. Recorded as a known gap in the bug doc rather than traded for a request
+  // storm.
   const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
     variables: { itemIds: [itemId], locationId: activeLocationId },
     skip: !isCloud || !itemId || !locationKnown,
@@ -1133,8 +1187,13 @@ export function useInventoryLogCountByItem(
   const locationKnown = useCloudLocationKnown(locationId ?? '', isCloud)
   const { data: cloudData, loading: cloudLoading } =
     useInventoryLogCountByItemQuery({
+      // `cache-and-network` — see `useItems` above. This count is shown in a
+      // deletion confirmation, so a stale number would name rows that are not
+      // there. Only the Stock tab's CURRENT page renders it, so it is one
+      // request, not one per location.
       variables: { itemId, locationId: locationId ?? '' },
       skip: !isCloud || !itemId || !locationId || !locationKnown,
+      fetchPolicy: 'cache-and-network',
     })
 
   const localQuery = useQuery({
@@ -1160,10 +1219,13 @@ export function useCartItemCountByItem(itemId: string, locationId?: string) {
   const locationKnown = useCloudLocationKnown(locationId ?? '', isCloud)
   const { data: cloudData, loading: cloudLoading } =
     useCartItemCountByItemQuery({
+      // `cache-and-network` — same confirmation dialog, same reason as
+      // `useInventoryLogCountByItem` above.
       variables: { itemId, locationId: locationId ?? null },
       // No `locationId` is the whole-account count, which the server answers
       // without a role check — so only a NAMED location has to be known first.
       skip: !isCloud || !itemId || (!!locationId && !locationKnown),
+      fetchPolicy: 'cache-and-network',
     })
 
   const localQuery = useQuery({
