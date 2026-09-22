@@ -489,9 +489,26 @@ describe('QuickUpdateDialog — title', () => {
   })
 })
 
+// Asserts that every node precedes the next one in document order. Fails
+// naming the pair that is out of order, so a swapped row says which two rows
+// swapped instead of only "expected true".
+const expectDocumentOrder = (nodes: [string, Node][]) => {
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const [currentName, current] = nodes[i] as [string, Node]
+    const [nextName, next] = nodes[i + 1] as [string, Node]
+    const precedes = Boolean(
+      current.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    expect(
+      precedes,
+      `expected "${currentName}" to come before "${nextName}" in the DOM`,
+    ).toBe(true)
+  }
+}
+
 describe('QuickUpdateDialog — stock settings layout', () => {
-  it('user reads the progress bar above the Target/Refill/Packed/Unpacked/Expires-on rows', () => {
-    // Given the dialog is open for a date-mode item, so all five grid rows render
+  it('user reads Packed, Unpacked and Expires on above the progress bar, with Target and Refill below it', () => {
+    // Given the dialog is open for a date-mode item, so all six rows render
     renderDialog(
       makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
     )
@@ -500,27 +517,59 @@ describe('QuickUpdateDialog — stock settings layout', () => {
     // row are located. Fill to Full is the trailing control of the
     // progress-bar row, so it stands in for the row itself.
     const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
-    const order: Node[] = [
-      fillToFull,
-      targetInput(),
-      refillInput(),
-      packedInput(),
-      unpackedInput(),
-      screen.getByLabelText(/expires on/i),
-    ]
 
-    // Then each element precedes the next in document order — the progress
-    // bar reading all four values comes first, then the two stock settings
-    // lead the grid, then the Packed/Unpacked quantities, then Expires on
-    // last.
-    for (let i = 0; i < order.length - 1; i++) {
-      const current = order[i] as Node
-      const next = order[i + 1] as Node
-      expect(
-        current.compareDocumentPosition(next) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy()
-    }
+    // Then each element precedes the next in document order — the two
+    // quantities the user edits most often lead, Expires on follows them,
+    // and Target/Refill sit below the progress bar they configure.
+    expectDocumentOrder([
+      ['Packed', packedInput()],
+      ['Unpacked', unpackedInput()],
+      ['Expires on', screen.getByLabelText(/expires on/i)],
+      ['progress bar (Fill to Full)', fillToFull],
+      ['Target', targetInput()],
+      ['Refill below', refillInput()],
+    ])
+  })
+
+  it('user reads the same order with the Expires on row absent', () => {
+    // Given an item NOT in date mode — the row is not rendered, so the
+    // remaining five rows must still hold their order. This is the case the
+    // date-mode fixture above cannot cover.
+    renderDialog(makeItem())
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+    // When the five rendered rows are located
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+
+    // Then Packed and Unpacked still lead, and Target/Refill still follow
+    // the progress bar
+    expectDocumentOrder([
+      ['Packed', packedInput()],
+      ['Unpacked', unpackedInput()],
+      ['progress bar (Fill to Full)', fillToFull],
+      ['Target', targetInput()],
+      ['Refill below', refillInput()],
+    ])
+  })
+
+  it('user sees the progress bar share the steppers grid as a full-width row', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the grid ancestor of the progress row is resolved. Fill to Full
+    // sits inside StockProgressRow's own `grid`, so walk up one more level
+    // to reach the dialog body grid the steppers live in.
+    const bodyGrid = packedInput().closest('.grid')
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+    const progressRow = fillToFull.closest('.grid')
+    const spanningCell = progressRow?.parentElement
+
+    // Then the progress row is wrapped in a cell of that same grid, and the
+    // cell spans all three columns — a cell in only column 1 would squeeze
+    // the bar into the label column's width
+    expect(progressRow).not.toBe(bodyGrid)
+    expect(spanningCell?.parentElement).toBe(bodyGrid)
+    expect(spanningCell).toHaveClass('col-span-3')
   })
 
   it('user sees all four steppers share one grid so their columns line up', () => {

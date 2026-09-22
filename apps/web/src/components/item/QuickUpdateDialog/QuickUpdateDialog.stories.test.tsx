@@ -293,10 +293,25 @@ describe('QuickUpdateDialog — stock settings row', () => {
 })
 
 describe('QuickUpdateDialog — Expires on field (date mode)', () => {
-  it('shows the stored due date, last, at full width, in date mode', () => {
+  it('shows the stored due date in date mode, between Unpacked and the progress bar', () => {
     render(<WithExpirationDate />)
     const dueDateInput = screen.getByLabelText(/expires on/i)
     expect(dueDateInput).toHaveValue('2026-09-15')
+
+    // The row sits after Unpacked and before the progress bar — Fill to Full
+    // is the progress row's trailing control, so it stands in for that row.
+    const unpacked = screen.getByRole('spinbutton', {
+      name: 'Unpacked (gallon)',
+    })
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+    expect(
+      unpacked.compareDocumentPosition(dueDateInput) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      dueDateInput.compareDocumentPosition(fillToFull) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 
   it('does not show the field for a story without date mode', () => {
