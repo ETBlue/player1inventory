@@ -54,7 +54,10 @@ export function useTagTypes() {
   if (isCloud) {
     return {
       data: cloud.data?.tagTypes as TagType[] | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -226,7 +229,10 @@ export function useTags() {
   if (isCloud) {
     return {
       data: cloud.data?.tags as Tag[] | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -278,7 +284,10 @@ export function useTagsByType(typeId: string) {
   if (isCloud) {
     return {
       data: cloud.data?.tagsByType as Tag[] | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -482,7 +491,10 @@ export function useItemCountByTag(tagId: string) {
   if (isCloud) {
     return {
       data: cloud.data?.itemCountByTag as number | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -519,7 +531,10 @@ export function useTagCountByType(typeId: string) {
   if (isCloud) {
     return {
       data: cloud.data?.tagCountByType as number | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,

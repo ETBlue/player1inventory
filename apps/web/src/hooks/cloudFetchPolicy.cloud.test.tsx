@@ -228,6 +228,8 @@ type Case = {
   freshValue: unknown
   /** Reads `isError`; omitted for hooks that do not report one. */
   readError?: (result: unknown) => boolean
+  /** Set for hooks that return no `isLoading` — they skip the spinner block. */
+  noLoading?: true
   /**
    * Mount `ActiveLocationProvider`? Default true.
    *
@@ -568,7 +570,9 @@ const CASES: Case[] = [
         ?.toISOString(),
     staleValue: '2026-01-01T00:00:00.000Z',
     freshValue: '2026-09-20T00:00:00.000Z',
-    // `useItemSortData` reports no error state of its own.
+    // `useItemSortData` reports no error state of its own, and no `isLoading`
+    // either — it returns only `quantities`, `expiryDates` and `purchaseDates`.
+    noLoading: true,
   },
   {
     name: 'useInventoryLogCountByItem / InventoryLogCountByItem',
@@ -791,6 +795,69 @@ describe.each(CASES)('$name — a stale persisted cache', (c) => {
     // `data` undefined, which would blank the screen for an offline user.
     expect(c.read(result.current)).toEqual(c.freshValue)
     if (c.readError) expect(c.readError(result.current)).toBe(false)
+  })
+})
+
+// ─── `isLoading` must mean "nothing to show", not "a request is in flight" ───
+//
+// `cache-and-network` hands back the restored snapshot AND keeps Apollo's
+// `loading` true until the network answers. Ten components return a spinner
+// straight out of `if (isLoading)` — `PantryListView.tsx:239`,
+// `ShelfGroupView.tsx:151`, `routes/items/$id.tsx:90` and seven more — so
+// passing Apollo's `loading` through would hide data the user can already read
+// behind a spinner on every mount, for as long as the network takes.
+//
+// THE FIXTURE IS THE TEST, again. Every case here serves its link answer after
+// a DELAY, so the network leg is genuinely in flight when the assertion runs.
+// Without the delay the request could already have settled and `loading` would
+// be false for the ordinary reason — a test that cannot fail.
+const SLOW_NETWORK_MS = 60
+
+const LOADING_CASES = CASES.filter((c) => !c.noLoading)
+
+describe.each(LOADING_CASES)('$name — cached data is not a spinner', (c) => {
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+  })
+
+  it('user reopening the app reads cached data while the refresh is still running', async () => {
+    // Given a restored cache and a server that takes its time to answer
+    const cache = warmCache(c, c.stale)
+    const mocks = [
+      ...baseMocks,
+      ...(c.extraMocks ?? []),
+      {
+        request: {
+          query: c.document,
+          ...(c.variables ? { variables: c.variables } : {}),
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        delay: SLOW_NETWORK_MS,
+        result: { data: c.fresh },
+      },
+    ]
+    const { result } = renderHook(c.use, {
+      wrapper: makeWrapper(mocks, cache, c.withProvider ?? true),
+    })
+
+    // Then the cached answer is already on screen
+    expect(c.read(result.current)).toEqual(c.staleValue)
+
+    // And the hook does NOT report loading, even though the network leg is
+    // still running. The value is still the STALE one, which is what proves
+    // the leg had not answered yet when this assertion ran.
+    expect(c.read(result.current)).not.toEqual(c.freshValue)
+    expect((result.current as HookResult).isLoading).toBe(false)
+
+    // When the slow answer finally lands, the fresh value replaces it — so a
+    // request really was in flight above, rather than never sent at all
+    await waitFor(() => expect(c.read(result.current)).toEqual(c.freshValue))
+    expect((result.current as HookResult).isLoading).toBe(false)
   })
 })
 

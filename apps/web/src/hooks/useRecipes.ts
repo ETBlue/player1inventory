@@ -51,7 +51,10 @@ export function useRecipes() {
       data: cloud.data?.recipes.map((r) =>
         deserializeRecipe(r as Record<string, unknown>),
       ),
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -90,7 +93,10 @@ export function useRecipe(id: string) {
       data: cloud.data?.recipe
         ? deserializeRecipe(cloud.data.recipe as Record<string, unknown>)
         : (cloud.data?.recipe as null | undefined),
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -395,7 +401,10 @@ export function useItemCountByRecipe(recipeId: string) {
   if (isCloud) {
     return {
       data: cloud.data?.itemCountByRecipe as number | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
