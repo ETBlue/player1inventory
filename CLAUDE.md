@@ -439,6 +439,51 @@ gh pr merge <number> --merge --delete-branch
 
 This automatically deletes the remote branch after merging. Alternative approaches are fine as long as the branch gets deleted.
 
+**Never use `--delete-branch` when another open PR is stacked on that branch.** Deleting
+the base branch does not retarget the child PR. GitHub **closes** it, and a closed PR
+cannot have its base changed either, so the usual recovery fails twice:
+
+```
+Cannot change the base branch of a closed pull request. (updatePullRequest)
+Could not open the pull request. (reopenPullRequest)
+```
+
+This happened on 2026-09-22 with #304 and #306.
+
+**For a stacked PR, merge the base without deleting its branch, retarget the child, then
+delete:**
+
+```bash
+gh pr merge <base-pr> --merge            # no --delete-branch
+gh pr edit <child-pr> --base main
+git push origin --delete <base-branch>
+```
+
+**If it has already happened**, push the deleted branch back at its old tip so the child
+can be reopened. The tip is the merge commit's second parent:
+
+```bash
+git rev-parse <merge-sha>^2                                   # the old branch tip
+git push --no-verify origin "<tip-sha>:refs/heads/<base-branch>"
+gh pr reopen <child-pr>
+gh pr edit <child-pr> --base main
+git push origin --delete <base-branch>
+```
+
+`--no-verify` is right **only** here: the ref points at a commit already merged into `main`,
+so `pre-push` would re-run the whole suite to prove nothing. Do not reach for it otherwise.
+
+**Two more things `gh pr merge` gets wrong in this repo:**
+
+- **`--delete-branch` fails when the target branch is checked out somewhere else**, including
+  another worktree: `fatal: 'main' is already checked out at …`. **The merge itself still
+  succeeds** — only the local cleanup step fails, so check `gh pr view <n> --json state`
+  before retrying. Delete the remote branch by hand with
+  `git push origin --delete <branch>`.
+- **After merging, `main` in the shared checkout is still behind.** `git branch -d` then
+  refuses with "not fully merged", because it cannot see the commits as merged. Run
+  `git merge --ff-only origin/main` first.
+
 Local cleanup after the remote branch is deleted:
 ```bash
 git branch -d <branch-name>
