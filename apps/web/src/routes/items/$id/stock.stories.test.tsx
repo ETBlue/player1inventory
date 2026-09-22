@@ -102,6 +102,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 const {
   PackageItem,
   MeasurementItem,
+  DateModeItem,
   MultipleLocations,
   ViewingAnotherLocation,
   NotStockedHere,
@@ -121,6 +122,13 @@ describe('Item detail stock tab stories smoke tests', () => {
   it('MeasurementItem renders the Packed stock field after setup', async () => {
     render(<MeasurementItem />)
     expect(await screen.findByLabelText(/^packed/i)).toBeInTheDocument()
+  })
+
+  it('DateModeItem renders the "Expires on" row holding the stored date', async () => {
+    render(<DateModeItem />)
+
+    const dueDate = await screen.findByLabelText(/expires on/i)
+    expect(dueDate).toHaveValue('2030-06-30')
   })
 
   it('MultipleLocations opens on the active location with a dot per location', async () => {

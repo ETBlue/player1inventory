@@ -107,6 +107,35 @@ const seedMeasurementItem = async () => {
   return item.id
 }
 
+// Date mode: the only shape in which the Stock tab renders the "Expires on"
+// row. The two halves live on different tables — `expirationMode` is global
+// (on `Item`), the date itself is per-location (on `ItemStock`) — and both are
+// needed, so setting only one leaves the row hidden or empty.
+//
+// `createItem` splits one flat object across both: `expirationMode` goes to
+// the `Item`, `dueDate` goes through `pickStockFields` to the default
+// location's `ItemStock`.
+//
+// The date is far in the future ON PURPOSE. A near date would drift into the
+// "expiring soon", then "expired", state as real time passes, so the story
+// would slowly stop showing what it is named after.
+const seedDateModeItem = async () => {
+  const item = await createItem({
+    name: 'Yogurt',
+    tagIds: [],
+    packageUnit: 'cup',
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 2,
+    packedQuantity: 2,
+    unpackedQuantity: 1,
+    consumeAmount: 1,
+    expirationMode: 'date',
+    dueDate: new Date('2030-06-30'),
+  })
+  return item.id
+}
+
 // Three locations, stocked in all of them with different quantities.
 const seedStockedEverywhere = async () => {
   const cabin = await createLocation('Cabin')
@@ -154,6 +183,15 @@ export const PackageItem: Story = {
 
 export const MeasurementItem: Story = {
   render: () => <LocalStockHarness seed={seedMeasurementItem} />,
+}
+
+// The route-level counterpart of `ItemForm`'s `StockSectionDateMode` story:
+// same row, but reached through the real Stock tab, so it shows the row in its
+// real position — Packed, Unpacked, "Expires on", then the progress bar,
+// Target Quantity and Refill When Below.
+export const DateModeItem: Story = {
+  name: 'Date mode — "Expires on" row',
+  render: () => <LocalStockHarness seed={seedDateModeItem} />,
 }
 
 export const MultipleLocations: Story = {
