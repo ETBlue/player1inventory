@@ -18,6 +18,21 @@ every mount and **fails offline**, so every cloud branch reports
 a good cache is not an error state; reporting one would put an error screen in front of
 data the user can read, which is exactly what the offline work exists to prevent.
 
+**The pair has a second half: `isLoading` must mean "nothing to show yet", not "a request
+is in flight".** With `cache-and-network` Apollo hands back the restored snapshot AND keeps
+`loading: true` until the network answers. Ten components return a spinner straight out of
+`if (isLoading)` (`PantryListView.tsx:239`, `ShelfGroupView.tsx:151`,
+`routes/items/$id.tsx:90` and seven more), so passing Apollo's `loading` through hid
+readable data behind a spinner on every cloud mount. Every cloud branch now reports
+`isLoading: cloud.loading && !cloud.data` — 24 sites across nine hook files. Use
+`isFetching` when you want "a request is in flight"; `useItems` and `useStockedItems`
+expose it (`cloud.networkStatus < 7`) and no component reads it yet.
+
+`useLastPurchaseDate` is the one cloud read without the guard. It is still on `cache-first`
+(see the table below), which reports `loading: false` as soon as it serves a cached answer,
+so the guard would be dead code no test could fail on. Add it if that query ever moves to
+`cache-and-network`.
+
 **Never add `errorPolicy: 'all'`.** Measured on Apollo Client 4.1.6: the default `'none'`
 leaves the cached result in `data` after a failed network leg, while `'all'` moves it to
 `previousData` and leaves `data` **undefined** — it blanks the screen for an offline user.
@@ -28,7 +43,41 @@ It is pinned RED by tests in `useLocations.test.tsx` and `cloudFetchPolicy.cloud
 | Query | Why |
 |---|---|
 | `useCloudLocationKnown` (`GetLocations`) | Observes the same document and variables as `useLocations`, so it rides that hook's cache write for free. |
-| `useLastPurchaseDate` (`LastPurchaseDates`, `itemIds: [one]`) | Called once per `ItemCard`. `lastPurchaseDates` is keyed by `['itemIds','locationId']` (`apollo/cloudCache.ts`), so each card owns a separate cache entry and deduplication cannot merge them — `cache-and-network` here would send one request **per visible card** on every pantry mount. The batch call in `useItemSortData` refreshes the same dates for the whole list in one request. The per-card entry is knowingly left stale. |
+| `useLastPurchaseDate` (`LastPurchaseDates`, `itemIds: [one]`) | Called once per `ItemCard`. `lastPurchaseDates` is keyed by `['itemIds','locationId']` (`apollo/cloudCache.ts`), so each card owns a separate cache entry and deduplication cannot merge them — `cache-and-network` here would send one request **per visible card** on every pantry mount. The batch call in `useItemSortData` refreshes the same dates for the whole list in one request. The per-card entry is knowingly left stale. For the same reason it also opts out of the resume refetch — see the table below. |
+
+**Coming back to the app refetches every active query, apart from one that opts out.**
+`cache-and-network` refreshes a query when its component **mounts**, and resuming a
+backgrounded PWA mounts nothing — so an app left open stayed as stale as the moment it was
+last opened. `apollo/ApolloWrapper.tsx` handles this: its `visibilitychange` listener (which
+already saved the cache on hide) calls `client.refetchQueries({ include: 'active', … })`
+when the app becomes visible. Four rules, all pinned by tests in `ApolloWrapper.test.tsx`:
+
+| Rule | Why |
+|---|---|
+| Online only (`isOffline()` returns early) | Every request would fail. The hooks keep showing cached data either way, and the failures cost battery and mobile data. |
+| At most once per `RESUME_REFETCH_MIN_GAP_MS` (30 s) | People switch apps constantly on mobile. Rows cannot meaningfully change in a shorter gap. |
+| The gap clock starts at **mount**, not at 0 | Every query on screen already ran a network leg at mount, so a glance away and back a few seconds after launch must not fire a second round. |
+| A query can opt out with `SKIP_RESUME_REFETCH_CONTEXT` | `useLastPurchaseDate` runs once per `ItemCard`, so a pantry of 40 items sent 40 `LastPurchaseDates` requests on every resume. Measured with a counting `ApolloLink`: 20 cards produced 20 requests. |
+
+**The opt-out is a context marker, not the operation name.** `SKIP_RESUME_REFETCH_CONTEXT`
+lives in `apollo/constants.ts`; the query sets it as its `context`, and `onQueryUpdated`
+returns `false` when it is present. Matching on the operation name would be wrong here:
+`useItemSortData` runs the **same** `LastPurchaseDates` operation in its batch form, and
+that one must keep refreshing on resume — it is what keeps the whole list's dates current.
+Two tests in `ApolloWrapper.test.tsx` (`ApolloWrapper resume refetch cost`) measure real
+requests through a counting link: 3 cards plus 1 batch send 4 requests at mount and exactly
+1 more on resume, while an unmarked query is refetched. `useItems.test.tsx` pins that the
+hook actually sets the marker. Remove the opt-out when `ItemCard` reads the date from
+`useItemSortData`'s batch result instead of running its own query.
+
+It stamps no `setLastSyncedAt`: `save()` already stamps every 5 seconds while online, so a
+stamp here would be replaced by a coarser one within five seconds. Local mode is untouched
+— the effect returns early on `!userId`, so the listener is never attached.
+
+This is also why the `isLoading` guard above is not optional. A refetch sets `loading` true
+again while keeping `data`, so without the guard every resume would drop a spinner over the
+pantry the user was reading. Pinned by `cloudFetchPolicy.cloud.test.tsx` → `a resume
+refetch does not put a spinner over the pantry`.
 
 **Two hooks reading one document still cost one request.** `useItems`/`useStockedItems`
 (`PantryData`), `useItem`/`useItemStocks` (`ItemStocksForItem`) and

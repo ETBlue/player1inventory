@@ -1,10 +1,13 @@
-import { gql } from '@apollo/client'
+import { ApolloClient, ApolloLink, gql, Observable } from '@apollo/client'
+import { ApolloProvider, useQuery } from '@apollo/client/react'
 import { useAuth } from '@clerk/react'
 import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApolloWrapper } from './ApolloWrapper'
+import { LastPurchaseDatesDocument } from '@/generated/graphql'
+import { ApolloWrapper, RESUME_REFETCH_MIN_GAP_MS } from './ApolloWrapper'
 import { cacheDb } from './cacheDb'
-import { cloudCache } from './cloudCache'
+import { cloudCache, createCache } from './cloudCache'
+import { SKIP_RESUME_REFETCH_CONTEXT } from './constants'
 import {
   getLastSignedInUserId,
   getLastSyncedAt,
@@ -58,6 +61,13 @@ function setHidden() {
   Object.defineProperty(document, 'visibilityState', {
     configurable: true,
     get: () => 'hidden',
+  })
+}
+
+function setVisible() {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => 'visible',
   })
 }
 
@@ -188,5 +198,329 @@ describe('ApolloWrapper last-synced stamp', () => {
     // here would make the banner say the data is fresh when it is 3 hours old.
     const stored = await getLastSyncedAt()
     expect(stored?.getTime()).toBe(threeHoursAgo.getTime())
+  })
+})
+
+// ─── refetch when the app comes back ────────────────────────────────────────
+//
+// A home-screen PWA on iOS has no reload button and no pull-to-refresh, so
+// returning to the app is the only way the user can ask for fresh data.
+// `fetchPolicy: 'cache-and-network'` only refreshes a query when its component
+// MOUNTS, and resuming a backgrounded app mounts nothing.
+//
+// The clock is controlled with a `Date.now` spy rather than fake timers: the
+// wrapper's 5-second save interval and Dexie's writes both run on real timers
+// here, and freezing those would change what the rest of the effect does.
+describe('ApolloWrapper refetch on resume', () => {
+  let refetchSpy: ReturnType<typeof vi.spyOn>
+  let nowSpy: ReturnType<typeof vi.spyOn>
+  let now = 0
+
+  function advance(ms: number) {
+    now += ms
+  }
+
+  /** Fire the event the browser fires when the app comes back to the front. */
+  function resume() {
+    setVisible()
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+  }
+
+  async function mountSignedIn() {
+    signedInAs('user-a')
+    render(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+    // The listener is registered inside an async `start()`, so waiting for
+    // the stored user id is what proves it is attached.
+    await waitFor(() => expect(getLastSignedInUserId()).toBe('user-a'))
+  }
+
+  beforeEach(() => {
+    now = 1_700_000_000_000
+    nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    refetchSpy = vi
+      .spyOn(ApolloClient.prototype, 'refetchQueries')
+      .mockReturnValue(
+        Promise.resolve([]) as unknown as ReturnType<
+          ApolloClient['refetchQueries']
+        >,
+      )
+  })
+
+  afterEach(() => {
+    refetchSpy.mockRestore()
+    nowSpy.mockRestore()
+  })
+
+  it('user returning to the app after a while gets fresh data', async () => {
+    // Given the app is open and signed in
+    await mountSignedIn()
+
+    // When the user leaves it long enough for the data to have moved on, and
+    // comes back
+    advance(RESUME_REFETCH_MIN_GAP_MS + 1)
+    resume()
+
+    // Then every query on screen is refetched, apart from the ones that opt
+    // out through `onQueryUpdated`. `include: 'active'` is what makes this
+    // reach the mounted components; anything narrower would leave the pantry
+    // showing what the device last saw. WHICH queries the callback lets
+    // through is measured in "ApolloWrapper resume refetch cost" below — this
+    // assertion only pins the shape of the call.
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+    expect(refetchSpy).toHaveBeenCalledWith({
+      include: 'active',
+      onQueryUpdated: expect.any(Function),
+    })
+  })
+
+  it('user returning while offline sends no requests', async () => {
+    // Given the app is open and the device has no connection
+    await mountSignedIn()
+    setOnLine(false)
+
+    // When the user comes back after a long gap
+    advance(RESUME_REFETCH_MIN_GAP_MS + 1)
+    resume()
+
+    // Then nothing is requested. Every request would fail, the hooks would go
+    // on showing cached data either way, and the failures cost battery and
+    // data on a metered link.
+    expect(refetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('user glancing away and straight back does not trigger a refetch', async () => {
+    // Given the app is open. Mount already ran a network leg for every query
+    // on screen, so the clock starts there.
+    await mountSignedIn()
+
+    // When the user switches away and returns within the minimum gap
+    advance(RESUME_REFETCH_MIN_GAP_MS - 1)
+    resume()
+
+    // Then nothing is refetched — the data cannot be meaningfully older
+    expect(refetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('user returning twice refetches only after the gap has passed again', async () => {
+    // Given the app refetched once on an earlier resume
+    await mountSignedIn()
+    advance(RESUME_REFETCH_MIN_GAP_MS + 1)
+    resume()
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+
+    // When the user comes back again too soon after THAT refetch
+    advance(RESUME_REFETCH_MIN_GAP_MS - 1)
+    resume()
+
+    // Then it is still one refetch — the gap is measured from the last
+    // refetch, not from mount
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+
+    // And when enough time has passed since that refetch, it runs again
+    advance(2)
+    resume()
+    expect(refetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('hiding the app never refetches', async () => {
+    // Given the app is open and a long time has passed
+    await mountSignedIn()
+    advance(RESUME_REFETCH_MIN_GAP_MS + 1)
+
+    // When the app goes to the background
+    setHidden()
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    // Then it saves the cache but asks for nothing. Only becoming VISIBLE
+    // refetches.
+    expect(refetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('local mode refetches nothing, because nobody is signed in', async () => {
+    // Given nobody is signed in — local mode never reaches the cloud
+    signedInAs(null)
+    render(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+    await letWritesLand()
+
+    // When the app comes back after a long gap
+    advance(RESUME_REFETCH_MIN_GAP_MS + 1)
+    resume()
+
+    // Then no listener was ever attached, so nothing is requested
+    expect(refetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ─── the resume refetch skips the per-card purchase-date query ──────────────
+//
+// `useLastPurchaseDate` runs ONE `LastPurchaseDates` query per `ItemCard`,
+// with `itemIds: [itemId]`. `lastPurchaseDates` is keyed by
+// `['itemIds', 'locationId']`, so every card owns a separate cache entry and
+// Apollo cannot merge the requests. Refetching every active query on resume
+// therefore costs one request per visible card.
+//
+// These tests measure REAL requests through a counting `ApolloLink`, not calls
+// to `refetchQueries`. A test that only checks `refetchQueries` was called says
+// nothing about which queries it actually sent.
+//
+// The counting client is separate from the one `ApolloWrapper` builds, because
+// the wrapper's client talks to a real HTTP/WS link. The link between them is
+// the options object: the spy captures exactly what the wrapper passes, and the
+// counting client is then driven with that same object.
+describe('ApolloWrapper resume refetch cost', () => {
+  const GET_ITEMS = gql`
+    query GetItemsProbe {
+      itemsProbe {
+        id
+      }
+    }
+  `
+
+  /** The fake pantry's cards. Stable ids, so they can be React keys. */
+  const CARD_IDS = ['item-a', 'item-b', 'item-c']
+  const CARD_COUNT = CARD_IDS.length
+
+  type RefetchOptions = Parameters<ApolloClient['refetchQueries']>[0]
+
+  function buildCountingClient() {
+    const counts: Record<string, number> = {}
+    const link = new ApolloLink((operation) => {
+      const name = operation.operationName ?? 'unnamed'
+      counts[name] = (counts[name] ?? 0) + 1
+      return new Observable((observer) => {
+        observer.next({
+          data:
+            name === 'GetItemsProbe'
+              ? { itemsProbe: [] }
+              : { lastPurchaseDates: [] },
+        })
+        observer.complete()
+      })
+    })
+    // The REAL cache config, so `lastPurchaseDates`' `keyArgs` are the ones
+    // production uses. With a default cache the per-card entries would still
+    // be separate, but this keeps the fixture honest.
+    return { client: new ApolloClient({ link, cache: createCache() }), counts }
+  }
+
+  function PantryProbe() {
+    // One batch query, as `useItemSortData` sends it: every visible item in a
+    // single request, NO skip marker.
+    useQuery(LastPurchaseDatesDocument, {
+      variables: { itemIds: CARD_IDS, locationId: 'loc-a' },
+      fetchPolicy: 'cache-and-network',
+    })
+    // One query per card, as `useLastPurchaseDate` sends it, marked to skip.
+    return (
+      <>
+        {CARD_IDS.map((itemId) => (
+          <CardProbe key={itemId} itemId={itemId} />
+        ))}
+        <ItemsProbe />
+      </>
+    )
+  }
+
+  function CardProbe({ itemId }: { itemId: string }) {
+    useQuery(LastPurchaseDatesDocument, {
+      variables: { itemIds: [itemId], locationId: 'loc-a' },
+      context: SKIP_RESUME_REFETCH_CONTEXT,
+    })
+    return null
+  }
+
+  /** Stands in for every other active query: no marker, must be refetched. */
+  function ItemsProbe() {
+    useQuery(GET_ITEMS)
+    return null
+  }
+
+  /**
+   * Renders the probe queries, then resumes the app and applies the options
+   * the wrapper passed to `refetchQueries` to the counting client.
+   *
+   * Returns the request counts before and after the resume.
+   */
+  async function measureResume() {
+    const { client: countingClient, counts } = buildCountingClient()
+    render(
+      <ApolloProvider client={countingClient}>
+        <PantryProbe />
+      </ApolloProvider>,
+    )
+    await waitFor(() => expect(counts.LastPurchaseDates).toBe(CARD_COUNT + 1))
+    await waitFor(() => expect(counts.GetItemsProbe).toBe(1))
+    const before = { ...counts }
+
+    let captured: RefetchOptions | undefined
+    const spy = vi
+      .spyOn(ApolloClient.prototype, 'refetchQueries')
+      .mockImplementation((options) => {
+        captured = options as RefetchOptions
+        return Promise.resolve([]) as unknown as ReturnType<
+          ApolloClient['refetchQueries']
+        >
+      })
+
+    let now = 1_700_000_000_000
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    signedInAs('user-a')
+    render(
+      <ApolloWrapper>
+        <div>app</div>
+      </ApolloWrapper>,
+    )
+    await waitFor(() => expect(getLastSignedInUserId()).toBe('user-a'))
+    now += RESUME_REFETCH_MIN_GAP_MS + 1
+    setVisible()
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(captured).toBeDefined()
+
+    // Restore before driving the counting client, or the spy would swallow
+    // this call too and nothing would be measured.
+    spy.mockRestore()
+    nowSpy.mockRestore()
+    await act(async () => {
+      await countingClient.refetchQueries(
+        captured as NonNullable<RefetchOptions>,
+      )
+    })
+    return { before, after: { ...counts } }
+  }
+
+  it('user returning to the app sends no per-card purchase-date request', async () => {
+    // Given a pantry showing 3 cards: 3 per-card queries plus 1 batch query
+    // When the user comes back after a long gap
+    const { before, after } = await measureResume()
+
+    // Then only the batch query went out. 3 per-card requests were saved.
+    // A pantry of 40 items would have saved 40.
+    expect(before.LastPurchaseDates).toBe(CARD_COUNT + 1)
+    expect(after.LastPurchaseDates).toBe(CARD_COUNT + 2)
+  })
+
+  it('user returning to the app still refreshes every other query', async () => {
+    // Given the same pantry, which also has an unmarked query on screen
+    // When the user comes back after a long gap
+    const { before, after } = await measureResume()
+
+    // Then the unmarked query WAS refetched. Without this half, a guard that
+    // skipped everything would pass the test above.
+    expect(before.GetItemsProbe).toBe(1)
+    expect(after.GetItemsProbe).toBe(2)
   })
 })

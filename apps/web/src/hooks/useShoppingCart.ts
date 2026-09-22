@@ -57,7 +57,10 @@ export function useCartItems(cartId: string | undefined) {
   if (isCloud) {
     return {
       data: cloud.data?.cartItems as CartItem[] | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -461,7 +464,10 @@ export function useVendorCart(vendorId: string | null) {
       data: cloud.data?.vendorCart
         ? deserializeCart(cloud.data.vendorCart as Record<string, unknown>)
         : undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -507,7 +513,10 @@ export function useAllActiveCarts() {
         cloud.data?.allCarts
           ?.filter((c) => parseCartId(c.id).locationId === activeLocationId)
           .map((c) => deserializeCart(c as Record<string, unknown>)) ?? [],
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -573,7 +582,10 @@ export function useLastPurchasedByVendor() {
     }
     return {
       data: map,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,

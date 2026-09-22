@@ -56,7 +56,10 @@ export function useItemLogs(itemId: string) {
       data: cloudLogs,
       // A skipped query reports `loading: false`; while the location is still
       // being resolved the log list is not loaded, it is pending.
-      isLoading: cloud.loading || !locationKnown,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: (cloud.loading && !cloud.data) || !locationKnown,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,

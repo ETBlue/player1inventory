@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { isOffline } from '@/hooks/useIsOffline'
 import { createApolloClient } from './client'
 import { cloudCache } from './cloudCache'
+import { SKIP_RESUME_REFETCH_KEY } from './constants'
 import {
   clearCache,
   getLastSignedInUserId,
@@ -11,6 +12,16 @@ import {
   setLastSignedInUserId,
   setLastSyncedAt,
 } from './persistence'
+
+// How long the app has to have been away before coming back refetches.
+//
+// There is no reload button in an iOS home-screen PWA and no pull-to-refresh,
+// so returning to the app is the only "give me fresh data" gesture the user
+// has. But on mobile people leave and return constantly — a refetch on every
+// switch would spend battery and mobile data to re-read rows that cannot have
+// changed in the meantime. 30 seconds is the smallest gap that still feels
+// like "I went away and came back" rather than "I glanced at a notification".
+export const RESUME_REFETCH_MIN_GAP_MS = 30_000
 
 export function ApolloWrapper({ children }: { children: React.ReactNode }) {
   const { getToken, userId } = useAuth()
@@ -38,10 +49,71 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
       if (!isOffline()) void setLastSyncedAt(new Date())
     }
 
+    // Every query on screen already ran its network leg at mount, so treat
+    // mount as the most recent refresh. Starting at 0 would fire a second
+    // round of requests the first time the user glances away and back, a few
+    // seconds after launch.
+    let lastResumeRefetchAt = Date.now()
+
+    // Coming back to the app is the user's only way to ask for fresh data in
+    // a home-screen PWA. `fetchPolicy: 'cache-and-network'` refreshes a query
+    // when its component MOUNTS, and returning to a backgrounded app mounts
+    // nothing, so without this the data stays as old as the moment the app
+    // was last opened.
+    const onShow = () => {
+      // Offline, every request would fail. The hooks would keep showing
+      // cached data (`isError: !!error && !data`), but the failures are pure
+      // waste, and on a metered or flaky link they are not free.
+      if (isOffline()) return
+      const now = Date.now()
+      if (now - lastResumeRefetchAt < RESUME_REFETCH_MIN_GAP_MS) return
+      lastResumeRefetchAt = now
+      // `include: 'active'` = every query some mounted component is watching.
+      // The promise rejects when any one of them fails — offline, a dropped
+      // link, an expired token. There is nothing to do about it here: the
+      // cached data stays on screen and the next resume tries again. Catch it
+      // so it is never an unhandled rejection.
+      //
+      // `setLastSyncedAt` is NOT stamped here on purpose. `save()` above
+      // already stamps every 5 seconds while online, so a stamp here would be
+      // overwritten by a less precise one within five seconds anyway.
+      //
+      // `onQueryUpdated` lets a query opt out. Returning `false` skips it;
+      // returning `true` refetches it, which is what every other query gets.
+      //
+      // Only `useLastPurchaseDate` opts out today (`hooks/useItems.ts`). It
+      // runs once per `ItemCard` with `variables: { itemIds: [itemId] }`, and
+      // `lastPurchaseDates` is keyed by `['itemIds', 'locationId']` in
+      // `cloudCache.ts`, so every card owns a separate cache entry and Apollo
+      // cannot merge them. Without this skip a pantry of 40 items sends 40
+      // `LastPurchaseDates` requests on every resume, on a phone, possibly on
+      // mobile data. Measured with a counting `ApolloLink`: 20 cards produced
+      // 20 requests per resume.
+      //
+      // The opt-out is a CONTEXT marker, not the operation name, because
+      // `useItemSortData` runs the SAME `LastPurchaseDates` operation in its
+      // batch form — every visible item's date in one request, on
+      // `cache-and-network`. Skipping by name would skip that one too and
+      // leave the whole list's dates stale on resume. The marker skips only
+      // the per-card copies, so the batch still refreshes here.
+      //
+      // The cost accepted: the per-card date stays as old as the last mount.
+      // Remove this opt-out when `ItemCard` reads the date from
+      // `useItemSortData`'s batch result instead of running its own query.
+      void client
+        .refetchQueries({
+          include: 'active',
+          onQueryUpdated: (q) =>
+            q.options.context?.[SKIP_RESUME_REFETCH_KEY] !== true,
+        })
+        .catch(() => {})
+    }
+
     // `visibilitychange` is more reliable than `beforeunload` on mobile
     // browsers, which often kill a backgrounded tab without firing unload.
-    const onHide = () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') save()
+      if (document.visibilityState === 'visible') onShow()
     }
 
     const start = async () => {
@@ -59,7 +131,7 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
       setLastSignedInUserId(userId)
 
       interval = setInterval(save, 5000)
-      document.addEventListener('visibilitychange', onHide)
+      document.addEventListener('visibilitychange', onVisibilityChange)
     }
 
     void start()
@@ -67,7 +139,7 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
       if (interval !== undefined) clearInterval(interval)
-      document.removeEventListener('visibilitychange', onHide)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       // Do NOT save here. This cleanup also runs on sign-out, when `userId`
       // changes to null, and the closure still holds the OLD user id. A save
       // would write the whole cache straight back into IndexedDB one tick
@@ -75,7 +147,7 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
       // shared device. The cost of not saving is at most five seconds of
       // cache freshness.
     }
-  }, [userId])
+  }, [userId, client])
 
   return <ApolloProvider client={client}>{children}</ApolloProvider>
 }

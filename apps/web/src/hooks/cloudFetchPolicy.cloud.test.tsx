@@ -1,10 +1,11 @@
 import type { DocumentNode } from '@apollo/client'
+import { useApolloClient } from '@apollo/client/react'
 import {
   MockedProvider,
   type MockedProviderProps,
 } from '@apollo/client/testing/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCache } from '@/apollo/cloudCache'
@@ -97,6 +98,14 @@ import { useItemCountByVendor, useVendors } from './useVendors'
 // Restore the REAL generated Apollo hooks. `src/test/setup.ts` stubs every one
 // of them and a stub ignores `fetchPolicy` entirely, so nothing here could fail.
 vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
+
+// Same reason, for `useApolloClient`. `setup.ts` replaces it with a no-op
+// object that has no `refetchQueries`, and the resume test below needs the
+// real client the `MockedProvider` created.
+vi.mock(
+  '@apollo/client/react',
+  async (importOriginal) => await importOriginal(),
+)
 
 vi.mock('./useDataMode', () => ({ useDataMode: vi.fn() }))
 
@@ -228,6 +237,8 @@ type Case = {
   freshValue: unknown
   /** Reads `isError`; omitted for hooks that do not report one. */
   readError?: (result: unknown) => boolean
+  /** Set for hooks that return no `isLoading` — they skip the spinner block. */
+  noLoading?: true
   /**
    * Mount `ActiveLocationProvider`? Default true.
    *
@@ -568,7 +579,9 @@ const CASES: Case[] = [
         ?.toISOString(),
     staleValue: '2026-01-01T00:00:00.000Z',
     freshValue: '2026-09-20T00:00:00.000Z',
-    // `useItemSortData` reports no error state of its own.
+    // `useItemSortData` reports no error state of its own, and no `isLoading`
+    // either — it returns only `quantities`, `expiryDates` and `purchaseDates`.
+    noLoading: true,
   },
   {
     name: 'useInventoryLogCountByItem / InventoryLogCountByItem',
@@ -791,6 +804,172 @@ describe.each(CASES)('$name — a stale persisted cache', (c) => {
     // `data` undefined, which would blank the screen for an offline user.
     expect(c.read(result.current)).toEqual(c.freshValue)
     if (c.readError) expect(c.readError(result.current)).toBe(false)
+  })
+})
+
+// ─── `isLoading` must mean "nothing to show", not "a request is in flight" ───
+//
+// `cache-and-network` hands back the restored snapshot AND keeps Apollo's
+// `loading` true until the network answers. Ten components return a spinner
+// straight out of `if (isLoading)` — `PantryListView.tsx:239`,
+// `ShelfGroupView.tsx:151`, `routes/items/$id.tsx:90` and seven more — so
+// passing Apollo's `loading` through would hide data the user can already read
+// behind a spinner on every mount, for as long as the network takes.
+//
+// THE FIXTURE IS THE TEST, again. Every case here serves its link answer after
+// a DELAY, so the network leg is genuinely in flight when the assertion runs.
+// Without the delay the request could already have settled and `loading` would
+// be false for the ordinary reason — a test that cannot fail.
+const SLOW_NETWORK_MS = 60
+
+const LOADING_CASES = CASES.filter((c) => !c.noLoading)
+
+describe.each(LOADING_CASES)('$name — cached data is not a spinner', (c) => {
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+  })
+
+  it('user reopening the app reads cached data while the refresh is still running', async () => {
+    // Given a restored cache and a server that takes its time to answer
+    const cache = warmCache(c, c.stale)
+    const mocks = [
+      ...baseMocks,
+      ...(c.extraMocks ?? []),
+      {
+        request: {
+          query: c.document,
+          ...(c.variables ? { variables: c.variables } : {}),
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        delay: SLOW_NETWORK_MS,
+        result: { data: c.fresh },
+      },
+    ]
+    const { result } = renderHook(c.use, {
+      wrapper: makeWrapper(mocks, cache, c.withProvider ?? true),
+    })
+
+    // Then the cached answer is already on screen
+    expect(c.read(result.current)).toEqual(c.staleValue)
+
+    // And the hook does NOT report loading, even though the network leg is
+    // still running. The value is still the STALE one, which is what proves
+    // the leg had not answered yet when this assertion ran.
+    expect(c.read(result.current)).not.toEqual(c.freshValue)
+    expect((result.current as HookResult).isLoading).toBe(false)
+
+    // When the slow answer finally lands, the fresh value replaces it — so a
+    // request really was in flight above, rather than never sent at all
+    await waitFor(() => expect(c.read(result.current)).toEqual(c.freshValue))
+    expect((result.current as HookResult).isLoading).toBe(false)
+  })
+})
+
+// The two halves of this branch depend on each other, and this is the test
+// that pins the join. `ApolloWrapper` refetches every ACTIVE query when the app
+// comes back to the front (`refetchQueries({ include: 'active' })`), because a
+// home-screen PWA has no reload button. A refetch sets Apollo's `loading` true
+// again while keeping the cached `data`. Without the `&& !cloud.data` guard,
+// every resume would drop a spinner over a pantry the user was reading.
+describe('a resume refetch does not put a spinner over the pantry', () => {
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+  })
+
+  it('user coming back to the app keeps reading the pantry while it refreshes', async () => {
+    // Given a warm cache, and a server whose answer grows by one item each
+    // time it is asked — so a second answer proves a second request
+    const BREAD = cloudItem('item-bread', 'Bread')
+    const BREAD_STOCK_A = cloudStock('stock-bread-a', 'item-bread', LOC_A, {
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+    })
+    let call = 0
+    const cache = createCache()
+    cache.writeQuery({
+      query: GetLocationsDocument,
+      data: { locations: CLOUD_LOCATIONS },
+    })
+    cache.writeQuery({
+      query: PantryDataDocument,
+      variables: { locationId: LOC_A },
+      data: { items: [MILK], itemStocks: [MILK_STOCK_A] },
+    })
+    const mocks = [
+      ...baseMocks,
+      {
+        request: {
+          query: PantryDataDocument,
+          variables: { locationId: LOC_A },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        delay: SLOW_NETWORK_MS,
+        result: () => {
+          call += 1
+          return call === 1
+            ? {
+                data: {
+                  items: [MILK, RICE],
+                  itemStocks: [MILK_STOCK_A, RICE_STOCK_A],
+                },
+              }
+            : {
+                data: {
+                  items: [MILK, RICE, BREAD],
+                  itemStocks: [MILK_STOCK_A, RICE_STOCK_A, BREAD_STOCK_A],
+                },
+              }
+        },
+      },
+    ]
+
+    const { result } = renderHook(
+      () => ({ items: useItems(), client: useApolloClient() }),
+      { wrapper: makeWrapper(mocks, cache, true) },
+    )
+
+    // Given the pantry has finished its mount refresh and shows two items
+    await waitFor(() =>
+      expect(names(result.current.items)).toEqual(['Milk', 'Rice']),
+    )
+    expect(result.current.items.isLoading).toBe(false)
+
+    // When the app comes back to the front and `ApolloWrapper` refetches
+    // everything active
+    act(() => {
+      void result.current.client.refetchQueries({ include: 'active' })
+    })
+
+    // Apollo does not flip the query to loading synchronously — measured, it
+    // arrives a tick later as `networkStatus: 4`. `isFetching` is the field
+    // that reports it, so waiting on `isFetching` is what proves the refetch
+    // is genuinely in flight when `isLoading` is read below. Asserting
+    // straight after `act()` would read the state from BEFORE the refetch and
+    // could not fail.
+    await waitFor(() => expect(result.current.items.isFetching).toBe(true))
+
+    // Then the list the user was reading is still on screen, and no spinner
+    // replaces it, even though the refetch has not answered yet
+    expect(result.current.items.isLoading).toBe(false)
+    expect(names(result.current.items)).toEqual(['Milk', 'Rice'])
+
+    // And the refetch really was in flight — the third item arrives
+    await waitFor(() =>
+      expect(names(result.current.items)).toEqual(['Milk', 'Rice', 'Bread']),
+    )
+    expect(call).toBe(2)
   })
 })
 

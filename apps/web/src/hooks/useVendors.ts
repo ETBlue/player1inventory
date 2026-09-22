@@ -44,7 +44,10 @@ export function useVendors() {
       data: cloud.data?.vendors.map((v) =>
         deserializeVendor(v as Record<string, unknown>),
       ),
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -230,7 +233,10 @@ export function useItemCountByVendor(vendorId: string) {
   if (isCloud) {
     return {
       data: cloud.data?.itemCountByVendor as number | undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,

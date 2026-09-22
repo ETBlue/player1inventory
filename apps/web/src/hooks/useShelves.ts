@@ -46,7 +46,10 @@ export function useShelvesQuery() {
       data: cloud.data?.shelves.map((s) =>
         deserializeShelf(s as Record<string, unknown>),
       ),
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,
@@ -85,7 +88,10 @@ export function useShelfQuery(id: string) {
       data: cloud.data?.shelf
         ? deserializeShelf(cloud.data.shelf as Record<string, unknown>)
         : undefined,
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Offline the network leg fails on every mount while the cached data
       // is still good — an error only when there is nothing to show.
       isError: !!cloud.error && !cloud.data,

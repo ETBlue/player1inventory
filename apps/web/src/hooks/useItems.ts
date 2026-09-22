@@ -1,6 +1,7 @@
 import type { ApolloCache } from '@apollo/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import { SKIP_RESUME_REFETCH_CONTEXT } from '@/apollo/constants'
 import type { UnitSwitchBatchInput } from '@/db/operations'
 import {
   addItemToLocation,
@@ -292,10 +293,19 @@ export function useItems() {
   if (isCloud) {
     return {
       data: cloudData,
+      // `isLoading` means "there is nothing to show yet", NOT "a request is
+      // in flight". With `cache-and-network` Apollo keeps `loading: true` for
+      // the whole network leg even while it already hands back the restored
+      // snapshot, and ten components return a spinner from `if (isLoading)`
+      // (e.g. `PantryListView.tsx:239`). Without `&& !cloud.data` every one of
+      // them would hide readable data behind a spinner on every mount until
+      // the server answers. `isFetching` below is the field that means "a
+      // request is in flight".
+      //
       // Still loading while the location is being resolved — a skipped query
       // reports `loading: false`, and reporting "loaded, no items" there would
       // flash an empty pantry on every cloud page load.
-      isLoading: cloud.loading || !locationKnown,
+      isLoading: (cloud.loading && !cloud.data) || !locationKnown,
       isFetching: !locationKnown || cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       // Report an error only when there is nothing to show. With
       // `cache-and-network` the network leg runs on every mount and fails
@@ -352,8 +362,9 @@ export function useStockedItems() {
   if (isCloud) {
     return {
       data: cloudData,
-      // See `useItems` above — skipped is not loaded.
-      isLoading: cloud.loading || !locationKnown,
+      // See `useItems` above — skipped is not loaded, and cached data is not
+      // a spinner.
+      isLoading: (cloud.loading && !cloud.data) || !locationKnown,
       isFetching: !locationKnown || cloud.networkStatus < 7, // 7 = NetworkStatus.ready
       // See `useItems` above — offline is not an error while the cache answers.
       isError: !!cloud.error && !cloud.data,
@@ -425,7 +436,11 @@ export function useItem(id: string) {
   if (isCloud) {
     return {
       data: cloudData,
-      isLoading: cloud.loading || cloudStocks.loading,
+      // Each half reports loading only when its own cached answer is missing
+      // — see `useItems` above.
+      isLoading:
+        (cloud.loading && !cloud.data) ||
+        (cloudStocks.loading && !cloudStocks.data),
       // Each half reports an error only when its own cached answer is missing
       // — see `useItems` above.
       isError:
@@ -479,9 +494,16 @@ export function useLastPurchaseDate(itemId: string) {
   // and IS refreshed; this per-card entry stays stale until something refetches
   // it. Recorded as a known gap in the bug doc rather than traded for a request
   // storm.
+  //
+  // `SKIP_RESUME_REFETCH_CONTEXT` keeps the same request storm out of the
+  // resume refetch in `apollo/ApolloWrapper.tsx`, which otherwise refetches
+  // every active query. The marker is a context flag rather than the operation
+  // name because `useItemSortData` runs the same `LastPurchaseDates` operation
+  // in its batch form, and that one SHOULD refresh on resume.
   const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
     variables: { itemIds: [itemId], locationId: activeLocationId },
     skip: !isCloud || !itemId || !locationKnown,
+    context: SKIP_RESUME_REFETCH_CONTEXT,
   })
   const cloudDate = cloudData?.lastPurchaseDates.find(
     (r) => r.itemId === itemId,
@@ -503,6 +525,13 @@ export function useLastPurchaseDate(itemId: string) {
     return {
       data: cloudDate ? new Date(cloudDate) : undefined,
       // Skipped is not loaded — see `useItems`.
+      //
+      // No `&& !cloudData` guard here, unlike every other cloud hook. This
+      // query is the one read still on the default `cache-first` (see the
+      // comment above the query), and `cache-first` reports `loading: false`
+      // as soon as it serves a cached answer — so the guard would be dead
+      // code no test could fail on. Add it if this ever moves to
+      // `cache-and-network`.
       isLoading: cloudLoading || !locationKnown,
       isError: false,
     }
@@ -1205,8 +1234,9 @@ export function useInventoryLogCountByItem(
   if (isCloud) {
     return {
       data: cloudData?.inventoryLogCountByItem,
-      // Skipped is not loaded — see `useItems`.
-      isLoading: cloudLoading || !locationKnown,
+      // Skipped is not loaded, and cached data is not a spinner — see
+      // `useItems`.
+      isLoading: (cloudLoading && !cloudData) || !locationKnown,
       isError: false,
     }
   }
@@ -1237,7 +1267,9 @@ export function useCartItemCountByItem(itemId: string, locationId?: string) {
   if (isCloud) {
     return {
       data: cloudData?.cartItemCountByItem,
-      isLoading: cloudLoading || (!!locationId && !locationKnown),
+      // Cached data is not a spinner — see `useItems`.
+      isLoading:
+        (cloudLoading && !cloudData) || (!!locationId && !locationKnown),
       isError: false,
     }
   }

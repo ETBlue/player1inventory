@@ -59,7 +59,10 @@ export function useLocations() {
       data: cloud.data?.locations.map((l) =>
         deserializeLocation(l as Record<string, unknown>),
       ),
-      isLoading: cloud.loading,
+      // `&& !cloud.data` — with `cache-and-network` Apollo keeps
+      // `loading: true` over cached data. Reporting that as loading puts a
+      // spinner in front of a list the user can already read. See `useItems`.
+      isLoading: cloud.loading && !cloud.data,
       // Report an error only when there is nothing to show. Offline, the
       // `cache-and-network` network leg fails on every mount while `data`
       // still holds the cached locations; calling that an error would let a
