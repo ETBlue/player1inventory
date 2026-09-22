@@ -7,6 +7,7 @@ const {
   CreateMode,
   InfoSection,
   StockSection,
+  StockSectionDateMode,
   EditMode,
   EditMeasurementMode,
   EditValidationError,
@@ -40,6 +41,16 @@ describe('ItemForm stories smoke tests', () => {
       screen.getByRole('spinbutton', { name: /target quantity/i }),
     ).toBeInTheDocument()
     expect(screen.queryByLabelText(/package unit/i)).not.toBeInTheDocument()
+  })
+
+  it('StockSectionDateMode shows the "Expires on" row with its stored date', () => {
+    render(<StockSectionDateMode />)
+    // The row only renders when `expirationMode === 'date'`, so this query
+    // fails if the fixture's mode changes. Same locator the row-order tests in
+    // ItemForm.test.tsx and QuickUpdateDialog.test.tsx use.
+    const dueDate = screen.getByLabelText(/expires on/i)
+    expect(dueDate).toBeInTheDocument()
+    expect(dueDate).toHaveValue('2026-10-15')
   })
 
   it('EditMode renders without error', () => {

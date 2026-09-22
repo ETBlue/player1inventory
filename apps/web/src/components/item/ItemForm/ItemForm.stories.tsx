@@ -69,6 +69,25 @@ export const StockSection: Story = {
   },
 }
 
+// The only fixture in this file with `expirationMode: 'date'`. Every other
+// story spreads `editValues`, which is `'days from purchase'`, so without this
+// one the conditional "Expires on" row renders in no story at all. It sits
+// between Unpacked and the progress bar — the shared row order pinned by
+// `ItemForm.test.tsx` and `QuickUpdateDialog.test.tsx`.
+export const StockSectionDateMode: Story = {
+  name: 'Stock Section (date mode — "Expires on" row)',
+  args: {
+    initialValues: {
+      ...editValues,
+      expirationMode: 'date',
+      // The YYYY-MM-DD string an `<input type="date">` needs — the same shape
+      // `itemToFormValues` builds in `routes/items/$id/stock.tsx`.
+      dueDate: '2026-10-15',
+    },
+    sections: ['stock'],
+  },
+}
+
 export const EditMode: Story = {
   name: 'Edit Mode (all sections)',
   args: {
