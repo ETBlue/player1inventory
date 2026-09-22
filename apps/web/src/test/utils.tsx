@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
 import type React from 'react'
+import { expect } from 'vitest'
 
 export const renderWithRouter = async (ui: React.ReactElement) => {
   const queryClient = new QueryClient({
@@ -24,3 +25,39 @@ export const renderWithRouter = async (ui: React.ReactElement) => {
   await router.load()
   return result
 }
+
+// Asserts that every node precedes the next one in document order. The
+// failure message names the pair that is out of order, so a swapped row says
+// which two rows swapped instead of only "expected true".
+//
+// Shared by QuickUpdateDialog.test.tsx and ItemForm.test.tsx: both pin the
+// same row order (see `components/CLAUDE.md`, "Row order (designer ruling,
+// 2026-09-22)"), so one failure message format serves both.
+export const expectDocumentOrder = (nodes: [string, Node][]) => {
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const [currentName, current] = nodes[i] as [string, Node]
+    const [nextName, next] = nodes[i + 1] as [string, Node]
+    const precedes = Boolean(
+      current.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    expect(
+      precedes,
+      `expected "${currentName}" to come before "${nextName}" in the DOM`,
+    ).toBe(true)
+  }
+}
+
+/**
+ * Returns the `h-<n>` / `w-<n>` classes an element carries, sorted so two
+ * elements can be compared directly.
+ *
+ * Used to pin the Stock-tab and quick-update-dialog rule that a
+ * `StockProgressRow`'s Clear/Fill arrows are the same square as the
+ * `QuantityStepper` `+`/`−` buttons on the same surface. Comparing the two
+ * lists to each other, rather than to a hardcoded 'h-8', keeps the check alive
+ * if a surface later moves to a different size.
+ */
+export const sizeClasses = (el: Element): string[] =>
+  Array.from(el.classList)
+    .filter((c) => /^[hw]-\d+$/.test(c))
+    .sort()

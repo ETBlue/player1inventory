@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { expectDocumentOrder, sizeClasses } from '@/test/utils'
 import type { PantryItem } from '@/types'
 import { QuickUpdateDialog } from '.'
 
@@ -490,8 +491,8 @@ describe('QuickUpdateDialog — title', () => {
 })
 
 describe('QuickUpdateDialog — stock settings layout', () => {
-  it('user reads the progress bar above the Target/Refill/Packed/Unpacked/Expires-on rows', () => {
-    // Given the dialog is open for a date-mode item, so all five grid rows render
+  it('user reads Packed, Unpacked and Expires on above the progress bar, with Target and Refill below it', () => {
+    // Given the dialog is open for a date-mode item, so all six rows render
     renderDialog(
       makeItem({ expirationMode: 'date', dueDate: new Date('2026-09-01') }),
     )
@@ -500,27 +501,59 @@ describe('QuickUpdateDialog — stock settings layout', () => {
     // row are located. Fill to Full is the trailing control of the
     // progress-bar row, so it stands in for the row itself.
     const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
-    const order: Node[] = [
-      fillToFull,
-      targetInput(),
-      refillInput(),
-      packedInput(),
-      unpackedInput(),
-      screen.getByLabelText(/expires on/i),
-    ]
 
-    // Then each element precedes the next in document order — the progress
-    // bar reading all four values comes first, then the two stock settings
-    // lead the grid, then the Packed/Unpacked quantities, then Expires on
-    // last.
-    for (let i = 0; i < order.length - 1; i++) {
-      const current = order[i] as Node
-      const next = order[i + 1] as Node
-      expect(
-        current.compareDocumentPosition(next) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy()
-    }
+    // Then each element precedes the next in document order — the two
+    // quantities the user edits most often lead, Expires on follows them,
+    // and Target/Refill sit below the progress bar they configure.
+    expectDocumentOrder([
+      ['Packed', packedInput()],
+      ['Unpacked', unpackedInput()],
+      ['Expires on', screen.getByLabelText(/expires on/i)],
+      ['progress bar (Fill to Full)', fillToFull],
+      ['Target', targetInput()],
+      ['Refill below', refillInput()],
+    ])
+  })
+
+  it('user reads the same order with the Expires on row absent', () => {
+    // Given an item NOT in date mode — the row is not rendered, so the
+    // remaining five rows must still hold their order. This is the case the
+    // date-mode fixture above cannot cover.
+    renderDialog(makeItem())
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+    // When the five rendered rows are located
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+
+    // Then Packed and Unpacked still lead, and Target/Refill still follow
+    // the progress bar
+    expectDocumentOrder([
+      ['Packed', packedInput()],
+      ['Unpacked', unpackedInput()],
+      ['progress bar (Fill to Full)', fillToFull],
+      ['Target', targetInput()],
+      ['Refill below', refillInput()],
+    ])
+  })
+
+  it('user sees the progress bar share the steppers grid as a full-width row', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the grid ancestor of the progress row is resolved. Fill to Full
+    // sits inside StockProgressRow's own `grid`, so walk up one more level
+    // to reach the dialog body grid the steppers live in.
+    const bodyGrid = packedInput().closest('.grid')
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+    const progressRow = fillToFull.closest('.grid')
+    const spanningCell = progressRow?.parentElement
+
+    // Then the progress row is wrapped in a cell of that same grid, and the
+    // cell spans all three columns — a cell in only column 1 would squeeze
+    // the bar into the label column's width
+    expect(progressRow).not.toBe(bodyGrid)
+    expect(spanningCell?.parentElement).toBe(bodyGrid)
+    expect(spanningCell).toHaveClass('col-span-3')
   })
 
   it('user sees all four steppers share one grid so their columns line up', () => {
@@ -708,5 +741,26 @@ describe('QuickUpdateDialog — Expires on field', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const payload = onSubmit.mock.calls[0]?.[0] as QuickUpdatePayload
     expect('dueDate' in payload).toBe(false)
+  })
+})
+
+describe('QuickUpdateDialog — progress row button size', () => {
+  it('user sees the Clear and Fill arrows as the same square as the steppers', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // When the arrow buttons and one stepper button are located
+    const clear = screen.getByRole('button', { name: 'Clear' })
+    const fill = screen.getByRole('button', { name: 'Fill to Full' })
+    const increase = screen.getByRole('button', { name: 'Increase packed' })
+
+    // Then all three carry the same h-/w- size classes. This dialog passes no
+    // `size` to StockProgressRow or to QuantityStepper, so both fall back to
+    // 'sm' (h-7 w-7). Comparing the arrows to the stepper — not to a
+    // hardcoded 'h-7' — keeps the guard alive if the dialog later moves to
+    // the other size.
+    expect(sizeClasses(increase)).not.toHaveLength(0)
+    expect(sizeClasses(clear)).toEqual(sizeClasses(increase))
+    expect(sizeClasses(fill)).toEqual(sizeClasses(increase))
   })
 })

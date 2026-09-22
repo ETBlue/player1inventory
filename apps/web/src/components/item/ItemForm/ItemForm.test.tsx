@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { expectDocumentOrder, sizeClasses } from '@/test/utils'
 import { ItemForm } from '.'
 
 describe('ItemForm — create mode (no onDirtyChange)', () => {
@@ -858,72 +859,117 @@ describe('ItemForm — a consume amount of 0 is no step, not a step of 1', () =>
   })
 })
 
-// Task 2: the Stock tab now renders each of the four fields through the
-// shared QuantityStepper, reordered to Target → Refill → Packed → Unpacked,
-// with a StockProgressRow (Clear · bar · label · Fill to Full) previewing the
-// live, not-yet-saved form state above them.
+// The Stock tab renders each of the four fields through the shared
+// QuantityStepper. Row order (designer ruling, 2026-09-22): Packed →
+// Unpacked → Expires on (date mode only) → StockProgressRow → Target
+// Quantity → Refill When Below, the same order QuickUpdateDialog uses. See
+// `docs/features/pantry/2026-08-27-brainstorming-quick-update-stock-settings.md`
+// (addendum 2026-09-22).
 describe('ItemForm — stock tab field order', () => {
-  it('renders the four stock fields in Target, Refill, Packed, Unpacked order', () => {
-    // Given a stock-only form (no "Expires on" row to interleave)
-    const { container } = render(
+  const stockValues = {
+    packedQuantity: 1,
+    unpackedQuantity: 1,
+    targetQuantity: 4,
+    refillThreshold: 1,
+    consumeAmount: 1,
+    name: 'Milk',
+  }
+
+  it('renders Packed, Unpacked and Expires on above the progress row, with Target and Refill below it', () => {
+    // Given a stock-only form for a date-mode item, so all six rows render
+    render(
       <ItemForm
-        initialValues={{
-          packedQuantity: 1,
-          unpackedQuantity: 1,
-          targetQuantity: 4,
-          refillThreshold: 1,
-          consumeAmount: 1,
-          name: 'Milk',
-        }}
+        initialValues={{ ...stockValues, expirationMode: 'date' }}
         sections={['stock']}
         onSubmit={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
     )
 
-    // Then the four field labels appear in the Constraint-7 order
-    const fieldIds = Array.from(container.querySelectorAll('label'))
-      .map((label) => label.getAttribute('for'))
-      .filter((id): id is string => id !== null)
-    expect(fieldIds).toEqual([
-      'targetQuantity',
-      'refillThreshold',
-      'packedQuantity',
-      'unpackedQuantity',
+    // When the four steppers, the due date input and the progress row are
+    // located. Fill to Full is the trailing control of the progress row, so
+    // it stands in for the row itself.
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+
+    // Then each element precedes the next in document order — the two
+    // quantities the user edits most often lead, Expires on follows them,
+    // and Target/Refill sit below the progress bar they configure
+    expectDocumentOrder([
+      ['Packed', screen.getByRole('spinbutton', { name: /^packed/i })],
+      ['Unpacked', screen.getByRole('spinbutton', { name: /^unpacked/i })],
+      ['Expires on', screen.getByLabelText(/expires on/i)],
+      ['progress row (Fill to Full)', fillToFull],
+      [
+        'Target Quantity',
+        screen.getByRole('spinbutton', { name: /target quantity/i }),
+      ],
+      [
+        'Refill When Below',
+        screen.getByRole('spinbutton', { name: /refill when below/i }),
+      ],
     ])
   })
 
-  it('renders the progress row above the four stock fields', () => {
-    // Given a stock-only form. Fill to Full is the trailing control of the
-    // progress row, so it stands in for the row itself.
+  it('renders the same order with the Expires on row absent', () => {
+    // Given an item NOT in date mode — the "Expires on" row is not rendered,
+    // so the remaining five rows must still hold their order. This is the
+    // case the date-mode fixture above cannot cover.
     render(
       <ItemForm
-        initialValues={{
-          packedQuantity: 1,
-          unpackedQuantity: 1,
-          targetQuantity: 4,
-          refillThreshold: 1,
-          consumeAmount: 1,
-          name: 'Milk',
-        }}
+        initialValues={stockValues}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+    // When the five rendered rows are located
+    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
+
+    // Then Packed and Unpacked still lead, and Target/Refill still follow
+    // the progress row
+    expectDocumentOrder([
+      ['Packed', screen.getByRole('spinbutton', { name: /^packed/i })],
+      ['Unpacked', screen.getByRole('spinbutton', { name: /^unpacked/i })],
+      ['progress row (Fill to Full)', fillToFull],
+      [
+        'Target Quantity',
+        screen.getByRole('spinbutton', { name: /target quantity/i }),
+      ],
+      [
+        'Refill When Below',
+        screen.getByRole('spinbutton', { name: /refill when below/i }),
+      ],
+    ])
+  })
+
+  it('renders the Clear and Fill arrows as the same square as the steppers', () => {
+    // Given a stock-only form
+    render(
+      <ItemForm
+        initialValues={stockValues}
         sections={['stock']}
         onSubmit={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
     )
 
-    // When the progress row's Fill to Full button and the Target field are
+    // When the progress row's arrow buttons and one stepper button are
     // located
-    const fillToFull = screen.getByRole('button', { name: 'Fill to Full' })
-    const targetInput = screen.getByRole('spinbutton', {
-      name: /target quantity/i,
-    })
+    const clear = screen.getByRole('button', { name: 'Clear' })
+    const fill = screen.getByRole('button', { name: 'Fill to Full' })
+    const increase = screen.getByRole('button', { name: 'Increase packed' })
 
-    // Then the progress row precedes the field, in document order
-    expect(
-      fillToFull.compareDocumentPosition(targetInput) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+    // Then all three carry the same h-/w- size classes. This tab passes
+    // size="default" to both components, so all three are h-8 w-8. Comparing
+    // the arrows to the stepper — not to a hardcoded 'h-8' — keeps the guard
+    // alive if the tab later moves to the other size. Before the
+    // StockProgressRow `size` prop existed the arrows were stuck at h-7 while
+    // the steppers were h-8.
+    expect(sizeClasses(increase)).not.toHaveLength(0)
+    expect(sizeClasses(clear)).toEqual(sizeClasses(increase))
+    expect(sizeClasses(fill)).toEqual(sizeClasses(increase))
   })
 })
 

@@ -235,120 +235,27 @@ export function QuickUpdateDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <DialogMain className="space-y-4">
-          {/* Progress bar + clear/fill actions */}
-          <StockProgressRow
-            quantityLabel={quantityLabel}
-            unitLabel={unitLabel}
-            current={localTotal}
-            target={localTarget}
-            status={localProgressStatus}
-            targetUnit={item.targetUnit}
-            packed={localDisplayPacked}
-            unpacked={localUnpacked}
-            {...(item.measurementUnit
-              ? { measurementUnit: item.measurementUnit }
-              : {})}
-            {...(item.amountPerPackage
-              ? { amountPerPackage: item.amountPerPackage }
-              : {})}
-            onClear={() => {
-              setLocalPacked(0)
-              setLocalUnpacked(0)
-            }}
-            onFill={() => {
-              setLocalPacked(fillToFullState.packedQuantity)
-              setLocalUnpacked(fillToFullState.unpackedQuantity)
-            }}
-            clearDisabled={isPending || isAtZero}
-            fillDisabled={isPending || isAtFull}
-            clearLabel={t('common.clear')}
-            fillLabel={t('common.fillToFull')}
-          />
-
+        <DialogMain>
           <div className="grid grid-cols-[auto_auto_auto] items-center gap-2">
-            {/* Stock settings — the same per-location target/refill pair the item
-                form owns, editable here so a low-stock warning can be tuned from
-                the pantry list. Shares one grid with the Packed/Unpacked rows
-                below rather than opening a second one, so all four steppers line
-                up in one column: label, joined stepper, then a muted hint on
-                these two rows and Unpack/Pack on the two below. */}
-            {/* Target row */}
-            <span className="text-sm text-foreground-muted shrink-0">
-              {t('pantry.quickUpdate.targetLabel')}{' '}
-              <span className="text-xs font-normal">({unpackedUnit})</span>
-            </span>
-            <QuantityStepper
-              value={localTarget}
-              onStep={setLocalTarget}
-              step={targetStep}
-              round={normalizeTarget}
-              decreaseLabel={t('pantry.quickUpdate.decreaseTarget')}
-              increaseLabel={t('pantry.quickUpdate.increaseTarget')}
-              disabled={isPending}
-              inputProps={{
-                step: targetStep,
-                'aria-label': targetAriaLabel,
-                value: localTarget,
-                onChange: (e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalTarget(
-                    Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
-                  )
-                },
-                onBlur: (e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalTarget(
-                    Math.max(
-                      0,
-                      Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
-                    ),
-                  )
-                },
-              }}
-            />
-            <span className="text-xs text-foreground-muted">
-              {t('pantry.quickUpdate.targetHint')}
-            </span>
+            {/* ONE grid for the whole body, the progress bar included. The
+                label column and the stepper column have to line up above AND
+                below the bar, and two adjacent grids size their columns
+                independently — so the bar joins this grid as a `col-span-3`
+                row instead of sitting outside it as a sibling. Column 3
+                carries Unpack on row 1, Pack on row 2, the "Expires on" hint
+                on row 3, and the two muted stock-setting hints on rows 5-6.
 
-            {/* Refill row */}
-            <span className="text-sm text-foreground-muted shrink-0">
-              {t('pantry.quickUpdate.refillLabel')}{' '}
-              <span className="text-xs font-normal">({unpackedUnit})</span>
-            </span>
-            <QuantityStepper
-              value={localRefill}
-              onStep={setLocalRefill}
-              step={step}
-              round={normalizeRefill}
-              decreaseLabel={t('pantry.quickUpdate.decreaseRefill')}
-              increaseLabel={t('pantry.quickUpdate.increaseRefill')}
-              disabled={isPending}
-              inputProps={{
-                step,
-                'aria-label': refillAriaLabel,
-                value: localRefill,
-                onChange: (e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalRefill(
-                    Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
-                  )
-                },
-                onBlur: (e) => {
-                  const parsed = Number.parseFloat(e.target.value)
-                  setLocalRefill(
-                    Math.max(
-                      0,
-                      Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
-                    ),
-                  )
-                },
-              }}
-            />
-            <span className="text-xs text-foreground-muted">
-              {t('pantry.quickUpdate.refillHint')}
-            </span>
-
+                Row order (designer ruling, 2026-09-22): Packed and Unpacked
+                are the values edited most often, so they lead, and "Expires
+                on" is per-location state updated at the same time. Target and
+                Refill below configure the bar — `getStockPreview`
+                (`lib/quantityUtils.ts`) passes `targetQuantity` through as the
+                bar's `target` (its denominator) and derives the colour from
+                `refillThreshold` via `getStockStatus` — so they follow it
+                rather than precede it. `ItemForm`'s Stock tab uses the same
+                order on purpose. Reasoning:
+                `docs/features/pantry/2026-08-27-brainstorming-quick-update-stock-settings.md`
+                (addendum 2026-09-22). */}
             {/* Packed row — label format matches item info tab */}
             <span className="text-sm text-foreground-muted shrink-0">
               {t('pantry.quickUpdate.packedLabel')}{' '}
@@ -436,11 +343,11 @@ export function QuickUpdateDialog({
                 that is genuinely per-location — "when THIS one expires".
                 The mode that gates it is global (set on the Info tab) and is
                 read here, never written. Mirrors the same block in
-                ItemForm's Stock tab. Joins the same grid as the four rows
-                above (a fragment, not a wrapping element, so the three
-                cells land in their own grid columns rather than as one
-                item) so its label/hint line up with Target/Refill/Packed/
-                Unpacked. */}
+                ItemForm's Stock tab. Joins the same grid as every other
+                row (a fragment, not a wrapping element, so the three cells
+                land in their own grid columns rather than as one item) so
+                its label/hint line up with Packed and Unpacked above it and
+                with Target/Refill below the progress bar. */}
             {item.expirationMode === 'date' && (
               <>
                 <Label
@@ -461,6 +368,120 @@ export function QuickUpdateDialog({
                 </span>
               </>
             )}
+
+            {/* Progress bar + clear/fill actions. `my-2` on the spanning row
+                restores the 16px this row had as a `space-y-4` sibling: the
+                grid contributes 8px of `gap-2` and the margin adds the other
+                8px (grid-item margins add to the gap, they do not collapse). */}
+            <div className="col-span-3 my-2">
+              <StockProgressRow
+                quantityLabel={quantityLabel}
+                unitLabel={unitLabel}
+                current={localTotal}
+                target={localTarget}
+                status={localProgressStatus}
+                targetUnit={item.targetUnit}
+                packed={localDisplayPacked}
+                unpacked={localUnpacked}
+                {...(item.measurementUnit
+                  ? { measurementUnit: item.measurementUnit }
+                  : {})}
+                {...(item.amountPerPackage
+                  ? { amountPerPackage: item.amountPerPackage }
+                  : {})}
+                onClear={() => {
+                  setLocalPacked(0)
+                  setLocalUnpacked(0)
+                }}
+                onFill={() => {
+                  setLocalPacked(fillToFullState.packedQuantity)
+                  setLocalUnpacked(fillToFullState.unpackedQuantity)
+                }}
+                clearDisabled={isPending || isAtZero}
+                fillDisabled={isPending || isAtFull}
+                clearLabel={t('common.clear')}
+                fillLabel={t('common.fillToFull')}
+              />
+            </div>
+
+            {/* Stock settings — the same per-location target/refill pair the
+                item form owns, editable here so a low-stock warning can be
+                tuned from the pantry list. */}
+            {/* Target row */}
+            <span className="text-sm text-foreground-muted shrink-0">
+              {t('pantry.quickUpdate.targetLabel')}{' '}
+              <span className="text-xs font-normal">({unpackedUnit})</span>
+            </span>
+            <QuantityStepper
+              value={localTarget}
+              onStep={setLocalTarget}
+              step={targetStep}
+              round={normalizeTarget}
+              decreaseLabel={t('pantry.quickUpdate.decreaseTarget')}
+              increaseLabel={t('pantry.quickUpdate.increaseTarget')}
+              disabled={isPending}
+              inputProps={{
+                step: targetStep,
+                'aria-label': targetAriaLabel,
+                value: localTarget,
+                onChange: (e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalTarget(
+                    Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
+                  )
+                },
+                onBlur: (e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalTarget(
+                    Math.max(
+                      0,
+                      Number.isNaN(parsed) ? 0 : normalizeTarget(parsed),
+                    ),
+                  )
+                },
+              }}
+            />
+            <span className="text-xs text-foreground-muted">
+              {t('pantry.quickUpdate.targetHint')}
+            </span>
+
+            {/* Refill row */}
+            <span className="text-sm text-foreground-muted shrink-0">
+              {t('pantry.quickUpdate.refillLabel')}{' '}
+              <span className="text-xs font-normal">({unpackedUnit})</span>
+            </span>
+            <QuantityStepper
+              value={localRefill}
+              onStep={setLocalRefill}
+              step={step}
+              round={normalizeRefill}
+              decreaseLabel={t('pantry.quickUpdate.decreaseRefill')}
+              increaseLabel={t('pantry.quickUpdate.increaseRefill')}
+              disabled={isPending}
+              inputProps={{
+                step,
+                'aria-label': refillAriaLabel,
+                value: localRefill,
+                onChange: (e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalRefill(
+                    Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
+                  )
+                },
+                onBlur: (e) => {
+                  const parsed = Number.parseFloat(e.target.value)
+                  setLocalRefill(
+                    Math.max(
+                      0,
+                      Number.isNaN(parsed) ? 0 : normalizeRefill(parsed),
+                    ),
+                  )
+                },
+              }}
+            />
+            <span className="text-xs text-foreground-muted">
+              {t('pantry.quickUpdate.refillHint')}
+            </span>
           </div>
         </DialogMain>
 
