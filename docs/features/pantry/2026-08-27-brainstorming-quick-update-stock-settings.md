@@ -200,3 +200,67 @@ full-width block after its four fields.
 - The shared-grid test in `QuickUpdateDialog.test.tsx` was extended to also
   assert the due date input's grid ancestor is the same element as the
   steppers', rather than adding a second, disconnected test.
+
+## Addendum — 2026-09-22 (Packed and Unpacked lead; the progress row moves down)
+
+A seventh change. It **reverses the "progress row moved to lead both surfaces"
+addendum above** (2026-08-27, the fourth change): the progress row no longer
+reads first on either surface.
+
+**The new order, on both surfaces:**
+
+| # | Row | Rendered when |
+| --- | --- | --- |
+| 1 | Packed | always |
+| 2 | Unpacked | always |
+| 3 | Expires on | only when `expirationMode === 'date'` |
+| 4 | Progress row (`StockProgressRow`) | always |
+| 5 | Target (`ItemForm`: "Target Quantity") | always |
+| 6 | Refill below (`ItemForm`: "Refill When Below") | always |
+
+**Why (the user's reason).** Packed and Unpacked are the fields the user edits
+most often, so they come first. Target and Refill are more like configuration
+of the progress bar than daily input, so they sit under the bar they configure.
+
+**This applies to both surfaces**, so they stay consistent:
+
+- `QuickUpdateDialog` — the pantry quick edit dialog
+  (`src/components/item/QuickUpdateDialog/QuickUpdateDialog.tsx`)
+- the item detail **Stock tab** — `ItemForm`'s `sections={['stock']}` block
+  (`src/components/item/ItemForm/ItemForm.tsx`), routed by
+  `src/routes/items/$id/stock.tsx`
+
+**Where "Expires on" went, and why.** Directly after Unpacked, above the
+progress bar. It is per-location state the user updates when they buy
+something — the same kind of value as Packed and Unpacked — not configuration
+of the bar. The alternative offered was to keep it last, after Refill; the user
+chose this position. The render gate (`expirationMode === 'date'`) and the
+conditional `dueDate` payload key are unchanged.
+
+**What the claim about Target and Refill actually rests on.** In
+`getStockPreview` (`src/lib/quantityUtils.ts`) `targetQuantity` is passed
+through to `StockProgressRow`'s `target` prop, which `ItemProgressBar` uses as
+the denominator (the segment count in segmented mode, `current / target` in
+continuous mode). `refillThreshold` feeds `getStockStatus`, which returns
+`warning` when the quantity is **exactly at** a non-zero threshold and `error`
+when it is **below** it — so the threshold is the level the bar's colour is
+judged against, amber at it and red under it.
+
+**What did not change.** State, steppers, rounding, `numericInputProps`, the
+Pack/Unpack handlers, disabled conditions, the `dueDate` render gate and
+payload rule, i18n strings, and `StockProgressRow` itself. Both moves were pure
+reorderings of existing JSX.
+
+**Two layout differences between the surfaces remain, on purpose.**
+`QuickUpdateDialog` is one `grid-cols-[auto_auto_auto]` grid, so its progress
+row joins that grid in a `col-span-3 my-2` cell to keep the columns aligned
+above and below the bar. The Stock tab is a `space-y-2` stack of sibling blocks
+with each label above its stepper, so it needs no grid cell and no `my-2` —
+`space-y-2` already spaces the siblings evenly.
+
+**Tests.** Document order is pinned on both surfaces by two tests each — one
+date-mode fixture covering all six rows, one non-date-mode fixture covering the
+five rows that remain when "Expires on" is absent
+(`QuickUpdateDialog.test.tsx`, `ItemForm.test.tsx`). Both files use the shared
+`expectDocumentOrder` helper in `src/test/utils.tsx`, whose failure message
+names the two rows that are out of order.

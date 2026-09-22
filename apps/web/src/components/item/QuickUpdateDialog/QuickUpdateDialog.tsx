@@ -246,11 +246,16 @@ export function QuickUpdateDialog({
                 on row 3, and the two muted stock-setting hints on rows 5-6.
 
                 Row order (designer ruling, 2026-09-22): Packed and Unpacked
-                are the values edited most often, so they lead. Target and
-                Refill below configure the bar — Target is its denominator,
-                Refill below is the mark that turns it amber (see
-                `getStockPreview` in `lib/quantityUtils.ts`) — so they follow
-                it rather than precede it. */}
+                are the values edited most often, so they lead, and "Expires
+                on" is per-location state updated at the same time. Target and
+                Refill below configure the bar — `getStockPreview`
+                (`lib/quantityUtils.ts`) passes `targetQuantity` through as the
+                bar's `target` (its denominator) and derives the colour from
+                `refillThreshold` via `getStockStatus` — so they follow it
+                rather than precede it. `ItemForm`'s Stock tab uses the same
+                order on purpose. Reasoning:
+                `docs/features/pantry/2026-08-27-brainstorming-quick-update-stock-settings.md`
+                (addendum 2026-09-22). */}
             {/* Packed row — label format matches item info tab */}
             <span className="text-sm text-foreground-muted shrink-0">
               {t('pantry.quickUpdate.packedLabel')}{' '}
