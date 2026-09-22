@@ -217,7 +217,14 @@ export const RemoveFromLocationConfirmation: Story = {
 // `GetLocations` and `ItemStocksForItem` rather than seeding Dexie. The item is
 // stocked in the second cloud location only, so the tab opens on the
 // not-stocked empty state and the pager is what reaches its stock.
-export const CLOUD_ITEM = {
+//
+// These three fixtures must stay module-local. CSF treats EVERY named export
+// of a stories file as a story, so exporting a plain object put three
+// unrenderable entries in the sidebar (`pages-item-stock--cloud-item`,
+// `--cloud-locations`, `--cloud-stocks`), each of which threw on open.
+// `stock.stories.test.tsx` keeps its own `vi.hoisted` copies and imports
+// nothing from here.
+const CLOUD_ITEM = {
   id: 'item-cloud-1',
   name: 'Cloud Milk',
   tagIds: [],
@@ -242,7 +249,7 @@ export const CLOUD_ITEM = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 }
 
-export const CLOUD_LOCATIONS = [
+const CLOUD_LOCATIONS = [
   {
     id: 'cloud-kitchen',
     name: 'Cloud Kitchen',
@@ -261,7 +268,7 @@ export const CLOUD_LOCATIONS = [
   },
 ]
 
-export const CLOUD_STOCKS = [
+const CLOUD_STOCKS = [
   {
     id: 'stock-cloud-garage',
     itemId: CLOUD_ITEM.id,

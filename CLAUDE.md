@@ -170,6 +170,14 @@ Before creating a PR, update all relevant documentation:
 
 **Smoke tests:** every `.stories.tsx` has a matching `.stories.test.tsx` using `composeStories` + React Testing Library. Assert a key UI element (role, text, heading) — not `container.firstChild` or `'Loading...'`.
 
+**Never `export` a fixture from a `.stories.tsx`.** CSF treats **every** named export as a story, so an exported plain object becomes a sidebar entry that fails to render when opened. Keep fixtures module-local (`const`, no `export`). `stock.stories.tsx` exported three (`CLOUD_ITEM`, `CLOUD_LOCATIONS`, `CLOUD_STOCKS`) and produced three broken entries — `pages-item-stock--cloud-item`, `--cloud-locations`, `--cloud-stocks`. If a fixture really must be shared, put it in a separate module (like `@/test/cloudFixtures.ts`) or list it in the meta's `excludeStories`.
+
+`pnpm build-storybook` compiles such a file without complaint, so it proves nothing here. The sidebar is built from `apps/web/storybook-static/index.json`; check that file for the story ids:
+
+```bash
+node -e "console.log(Object.keys(require('./apps/web/storybook-static/index.json').entries).filter(k=>k.startsWith('pages-item-stock')))"
+```
+
 **Apollo context in route stories:** stories that render routes calling Apollo hooks with `skip:true` (e.g. local-mode guards) need `<ApolloProvider client={noopApolloClient}>` around the `RouterProvider`. Tests pass without it because `setup.ts` stubs all Apollo hooks via `vi.mock`. Import the shared stub:
 ```ts
 import { noopApolloClient } from '@/test/apolloStub'
