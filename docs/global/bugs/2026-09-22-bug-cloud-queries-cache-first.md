@@ -69,8 +69,9 @@ file by hand.
 
 ## Scope note
 
-This fixes **a page load, not a live update**. An app already open will still not see
-another device's change until something remounts. Refetch-on-resume is separate work.
+The first fix (PR #304) covered **a page load, not a live update**. An app already open
+still did not see another device's change until something remounted. Refetch on resume
+was done next, in the follow-up below.
 
 ## Fix applied
 
@@ -186,3 +187,188 @@ All passing. Verified in the main session, not only reported.
 - `96be54e9` — `fix(cloud): refetch cloud reads on mount instead of serving a stale cache`
 - `70f8a818` — `docs(hooks): record the cloud read fetch policy`
 - PR: *TBD*
+
+---
+
+# Follow-up: the spinner regression, and refetch on resume
+
+- **Date:** 2026-09-22
+- **Branch:** `fix/loading-guard-and-resume-refetch`, stacked on `fix/cloud-queries-cache-first`
+- **Status:** ✅ Fixed
+
+Two changes that had to land together. The first repairs damage the fetch-policy fix did.
+The second is what the user originally asked for.
+
+## Change 1: `cache-and-network` hid cached data behind a spinner
+
+`cache-and-network` delivers cached data **and** keeps Apollo's `loading` true until the
+network answers. Measured directly with the test harness:
+
+```
+PROBE >>> isLoading = true | cached data present = ["Milk"]
+```
+
+The hooks passed that straight through (`isLoading: cloud.loading || !locationKnown`), and
+**ten components** gate their whole render on it — `PantryListView.tsx:239`,
+`ShelfGroupView.tsx:151`, `routes/items/$id.tsx:90` and seven more:
+
+```ts
+if (isLoading) {
+  return <LoadingSpinner />
+}
+```
+
+So PR #304 made the pantry hide data it already had, on every mount, until the network
+answered. On a slow connection that is seconds of spinner over data in memory. It undoes
+part of what the PWA offline work was for.
+
+**Fix:** `isLoading` now means "nothing to show", not "a request is in flight".
+
+```ts
+isLoading: (cloud.loading && !cloud.data) || !locationKnown
+```
+
+Applied at **24 sites**. One is left alone on purpose: `useLastPurchaseDate` is still on
+`cache-first`, which reports `loading: false` as soon as it serves a cached answer, so the
+guard there would be dead code no test could fail on.
+
+`isFetching` keeps its meaning — "a request is in flight". It exists on `useItems` and
+`useStockedItems` only, and no component read it before this work.
+
+### The count in the first brief was wrong
+
+The brief said 22 hooks, from `grep "isLoading: cloud\.loading"`. That pattern misses three
+sites that destructure the field instead (`isLoading: cloudLoading || ...`), two of which
+needed the guard. The real number is **25 cloud `isLoading` sites, 24 guarded**. A grep on
+`isLoading:` alone finds them all.
+
+## Change 2: refetch when the app comes back to the front
+
+`apps/web/src/apollo/ApolloWrapper.tsx` already listened to `visibilitychange` to save the
+cache when hidden. It now also refetches when the app becomes visible:
+
+| Guard | Reason |
+|---|---|
+| `document.visibilityState === 'visible'` | Only on resume, not on hide |
+| `if (isOffline()) return` | An offline resume must not fire failing requests |
+| At least `RESUME_REFETCH_MIN_GAP_MS` (30 seconds) since the last one | People switch apps constantly on mobile. 30 seconds is the shortest gap that reads as "I went away and came back" rather than "I glanced at a notification" |
+
+The gap clock starts at **mount**, not at zero. Starting at zero would refetch on a resume
+three seconds after launch, when every query on screen had just run its network leg.
+
+`setLastSyncedAt` is **not** stamped after a resume refetch. `save()` already stamps every
+5 seconds while online, so a stamp here would be replaced within five seconds.
+
+Local mode is untouched — the effect still returns early on `!userId`.
+
+## Change 3: the resume refetch must skip one query
+
+`refetchQueries({ include: 'active' })` refetches every active query whatever its fetch
+policy. `useLastPurchaseDate` runs once per `ItemCard`, so a large pantry would send one
+request per card on every resume. Measured with a counting `ApolloLink`:
+
+```
+cards=20 | active=20 | requests before resume=0 | after=20 | delta=20
+```
+
+**Fix:** the per-card query carries a context marker and the resume refetch skips it.
+
+```ts
+onQueryUpdated: (q) => q.options.context?.[SKIP_RESUME_REFETCH_KEY] !== true
+```
+
+### Why not skip by operation name
+
+The obvious guard is `q.queryName !== 'LastPurchaseDates'`. **It is wrong**, and it was what
+the task brief asked for. There is only one operation with that name
+(`apollo/operations/inventoryLogs.graphql:24`), and **two** hooks run it:
+
+| Caller | Variables | Should refresh on resume? |
+|---|---|---|
+| `useLastPurchaseDate` (`useItems.ts:503`) | `itemIds: [oneId]`, one query per card | No — this is the cost |
+| `useItemSortData` (`useItemSortData.ts:40`) | `itemIds: [all visible ids]`, one query total | Yes — it feeds the list's sort and expiry dates |
+
+A name-based guard skips both, so the whole list's dates would stop refreshing. Confirmed
+by mutation, in the main session as well as by the implementing agent: swapping the context
+check for the name check gives `AssertionError: expected 4 to be 5` — the batch request was
+skipped too.
+
+The per-card date stays stale. That is an accepted trade, tracked in
+[issue #305](https://github.com/ETBlue/player1inventory/issues/305), which removes the
+per-card query entirely by making `ItemCard` read `useItemSortData`'s batch result. Both
+this skip and the `cache-first` comment go away with it.
+
+## Test added
+
+**33 new tests.** 24 `isLoading` cases and 1 join test in `cloudFetchPolicy.cloud.test.tsx`,
+6 in `ApolloWrapper.test.tsx` for the resume path, 2 more there for the skip, plus 1
+assertion in `useItems.test.tsx` that the hook really sets the marker.
+
+**The fixture is the test, twice over:**
+
+- Every `isLoading` case serves its answer after a **60 ms delay**, so the network leg is
+  genuinely in flight when the assertion runs. Without the delay the request could already
+  have settled, `loading` would be false for the ordinary reason, and the test could not
+  fail.
+- The skip tests count **real requests** through a counting `ApolloLink`, with 3 marked
+  per-card queries, 1 unmarked batch query and 1 unrelated query. A test that only checked
+  "`refetchQueries` was called" would prove nothing, and a guard that skipped everything
+  would still pass it.
+
+### Mutation checks
+
+Re-run independently in the main session, not only reported by the agent:
+
+| Mutation | Result |
+|---|---|
+| Remove `&& !cloud.data` from `usePantryDataQuery` in `useStockedItems` | **RED** — `cached data is not a spinner`: `expected true to be false` |
+| Replace `if (isOffline()) return` with `if (false) return` | **RED** — `user returning while offline sends no requests`: `expected "refetchQueries" to not be called at all, but actually been called 1 times` |
+| Swap the context check for `q.queryName !== 'LastPurchaseDates'` | **RED** — `user returning to the app sends no per-card purchase-date request`: `expected 4 to be 5` |
+
+Reported by the agents, not independently re-run: removing all 24 guards turned exactly 24
+tests RED; removing `onQueryUpdated` entirely gave `expected 8 to be 5`;
+`onQueryUpdated: () => false` gave `expected 4 to be 5` and `expected 1 to be 2`; removing
+the context marker from `useItems.ts` turned the `useItems.test.tsx` assertion RED. The
+resume path has six more mutations covering the visibility check, the gap check, the hidden
+case, the mount-time clock and the `!userId` early return.
+
+### A test that was passing for the wrong reason
+
+The first version of the join test asserted `isLoading === false` immediately after
+`act(() => client.refetchQueries(...))`. It stayed green under mutation. A probe showed
+why:
+
+```
+PROBE before refetch loading= false ns= 7
+PROBE after  refetch loading= false ns= 7   ← still the pre-refetch state
+PROBE +10ms          loading= true  ns= 4
+```
+
+Apollo does not flip a query to loading synchronously, so `act()` returned before the
+loading state was delivered and the assertion was reading the state from *before* the
+refetch. Fixed by waiting on `isFetching === true` first.
+
+### Suite
+
+| Suite | Before this branch | After |
+|---|---|---|
+| web | 2173 tests in 248 files | **2206 tests in 248 files** |
+| server | 259 tests in 20 files | 259 tests in 20 files |
+
+All passing, verified in the main session.
+
+## Known gaps
+
+- **The per-card "last purchased" date stays stale** — [#305](https://github.com/ETBlue/player1inventory/issues/305).
+- **The resume refetch fires only on `visibilitychange`.** It does not listen to `pageshow`
+  (bfcache restore) or to the `online` event. A user who comes back while offline and then
+  regains signal will not refetch until the next resume.
+- **No E2E coverage.** Proving the resume path needs a real backgrounded app; proving the
+  spinner needs a slow network in a browser.
+
+## PR / commit
+
+- `c74da651` — `fix(cloud): stop hiding cached data behind a spinner`
+- `48993e82` — `feat(cloud): refetch when the app comes back to the front`
+- `77554492` — `perf(cloud): stop sending one request per card on resume`
+- `d413984c` — `docs(hooks): record the isLoading guard and the resume refetch`
