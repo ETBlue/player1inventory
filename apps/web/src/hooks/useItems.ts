@@ -1,6 +1,7 @@
 import type { ApolloCache } from '@apollo/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import { SKIP_RESUME_REFETCH_CONTEXT } from '@/apollo/constants'
 import type { UnitSwitchBatchInput } from '@/db/operations'
 import {
   addItemToLocation,
@@ -493,9 +494,16 @@ export function useLastPurchaseDate(itemId: string) {
   // and IS refreshed; this per-card entry stays stale until something refetches
   // it. Recorded as a known gap in the bug doc rather than traded for a request
   // storm.
+  //
+  // `SKIP_RESUME_REFETCH_CONTEXT` keeps the same request storm out of the
+  // resume refetch in `apollo/ApolloWrapper.tsx`, which otherwise refetches
+  // every active query. The marker is a context flag rather than the operation
+  // name because `useItemSortData` runs the same `LastPurchaseDates` operation
+  // in its batch form, and that one SHOULD refresh on resume.
   const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
     variables: { itemIds: [itemId], locationId: activeLocationId },
     skip: !isCloud || !itemId || !locationKnown,
+    context: SKIP_RESUME_REFETCH_CONTEXT,
   })
   const cloudDate = cloudData?.lastPurchaseDates.find(
     (r) => r.itemId === itemId,

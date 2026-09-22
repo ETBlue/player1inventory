@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SKIP_RESUME_REFETCH_CONTEXT } from '@/apollo/constants'
 import { db } from '@/db'
 import {
   addInventoryLog,
@@ -461,6 +462,15 @@ describe('useLastPurchaseDate (cloud mode)', () => {
       expect.objectContaining({
         variables: { itemIds: ['item-1'], locationId: DEFAULT_LOCATION_ID },
       }),
+    )
+
+    // And it carries the marker that keeps it out of the resume refetch in
+    // `apollo/ApolloWrapper.tsx`. This query runs once per `ItemCard`, so
+    // without the marker a pantry of 40 items would send 40 requests every
+    // time the user comes back to the app. What the marker DOES is measured
+    // in `apollo/ApolloWrapper.test.tsx`; this only proves it is set here.
+    expect(mockUseLastPurchaseDatesQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ context: SKIP_RESUME_REFETCH_CONTEXT }),
     )
   })
 
