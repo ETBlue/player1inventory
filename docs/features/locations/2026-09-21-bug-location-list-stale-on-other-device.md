@@ -131,4 +131,4 @@ passing. Web was 2116 before.
 
 - `c663bdeb` — `fix(locations): refetch the cloud location list on mount`
 - `3d38bdc0` — `docs(hooks): record the cloud location list fetch policy`
-- PR: *filled in below once opened*
+- PR: [#301](https://github.com/ETBlue/player1inventory/pull/301)
