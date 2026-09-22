@@ -136,6 +136,12 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   function renderTailItemCard(item: PantryItem) {
     return (
       <ItemCard
+        // Bucket-3 rows (NOT stocked here) are absent from the sort-data
+        // source, so this is `undefined` for them. That matches what the
+        // old per-card query returned — no stock here means no purchase
+        // here — and the expiry chip is hidden anyway, because it also
+        // requires `currentQuantity > 0`.
+        lastPurchaseDate={purchaseDates?.get(item.id)}
         item={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         tagTypes={tagTypes}
@@ -261,6 +267,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
 
   const renderItemCard = (item: PantryItem) => (
     <ItemCard
+      lastPurchaseDate={purchaseDates?.get(item.id)}
       key={item.id}
       item={item}
       tags={tags.filter((t) => item.tagIds.includes(t.id))}

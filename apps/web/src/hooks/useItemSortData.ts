@@ -31,12 +31,12 @@ export function useItemSortData(items: PantryItem[] | undefined) {
   // so the request waits for `GetLocations` — see `useCloudLocationKnown`.
   const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
   // `cache-and-network` — see the comment on `useItems` in `hooks/useItems.ts`.
-  // This is the BATCH form: every visible item's date in ONE request. The
-  // per-card `useLastPurchaseDate` keeps `cache-first` on purpose, because its
-  // one-item variable set would cost a request per card. For the same reason
-  // that one also opts out of the resume refetch in `apollo/ApolloWrapper.tsx`
-  // while THIS query does not — it is the copy that keeps the list's dates
-  // fresh when the user comes back to the app.
+  // This is the ONLY `LastPurchaseDates` query in the app: every visible item's
+  // date in ONE request. `ItemCard` used to run its own one-item copy per card,
+  // which cost a request per visible card, so it was pinned to `cache-first`
+  // and opted out of the resume refetch. Since #305 the card takes the date as
+  // a prop from the `purchaseDates` map returned below, both workarounds are
+  // gone, and this query is what keeps every card's date fresh.
   const { data: cloudDatesData } = useLastPurchaseDatesQuery({
     variables: { itemIds, locationId: activeLocationId },
     skip: !isCloud || safeItems.length === 0 || !locationKnown,

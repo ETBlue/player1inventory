@@ -15,7 +15,6 @@ import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { useLastPurchaseDate } from '@/hooks'
 import { computeExpiryDate, inferExpirationMode } from '@/lib/expiration'
 import {
   getCurrentQuantity,
@@ -31,6 +30,18 @@ interface ItemCardProps {
   item: PantryItem
   tags: Tag[]
   tagTypes: TagType[]
+  // The active location's last purchase date for this item, or null/undefined
+  // when there is none. REQUIRED, and not optional, on purpose: it feeds
+  // `computeExpiryDate`, so a call site that forgot it would silently drop the
+  // "Expires in N days" estimate with no compiler error.
+  //
+  // The card does NOT fetch this itself. Every container already calls
+  // `useItemSortData(items)`, which reads every visible item's date in ONE
+  // request; pass `purchaseDates?.get(item.id)` from there. A per-card query
+  // meant one request per card, because `lastPurchaseDates` is keyed by
+  // `['itemIds', 'locationId']` in `apollo/cloudCache.ts` and Apollo could not
+  // merge one-item variable sets (issue #305).
+  lastPurchaseDate: Date | null | undefined
   onTagClick?: (tagId: string) => void
   showTags?: boolean
   mode?:
@@ -71,6 +82,7 @@ export function ItemCard({
   item,
   tags,
   tagTypes,
+  lastPurchaseDate,
   onTagClick,
   showTags = true,
   mode = 'pantry',
@@ -94,9 +106,10 @@ export function ItemCard({
   showStock = true,
   highlightedName,
 }: ItemCardProps) {
-  const { data: lastPurchase } = useLastPurchaseDate(item.id)
-
-  const estimatedDueDate = computeExpiryDate(item, lastPurchase ?? undefined)
+  const estimatedDueDate = computeExpiryDate(
+    item,
+    lastPurchaseDate ?? undefined,
+  )
 
   const currentQuantity = getCurrentQuantity(item)
   const status = getStockStatus(currentQuantity, item.refillThreshold)

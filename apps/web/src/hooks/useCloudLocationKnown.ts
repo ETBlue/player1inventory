@@ -30,7 +30,7 @@ import { useGetLocationsQuery } from '@/generated/graphql'
 // `useLocations()` so a stuck `cache-first` read would show up.
 //
 // Callers: `useItems` / `useStockedItems` (`PantryData`), `useItemLogs`
-// (`ItemLogs`), `useLastPurchaseDate` and `useItemSortData`
+// (`ItemLogs`), `useItemSortData`
 // (`LastPurchaseDates`). Every one of those root fields takes a required
 // `locationId`.
 export function useCloudLocationKnown(

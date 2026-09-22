@@ -4,7 +4,6 @@ import { useEffect, useMemo } from 'react'
 import { isOffline } from '@/hooks/useIsOffline'
 import { createApolloClient } from './client'
 import { cloudCache } from './cloudCache'
-import { SKIP_RESUME_REFETCH_KEY } from './constants'
 import {
   clearCache,
   getLastSignedInUserId,
@@ -78,35 +77,12 @@ export function ApolloWrapper({ children }: { children: React.ReactNode }) {
       // already stamps every 5 seconds while online, so a stamp here would be
       // overwritten by a less precise one within five seconds anyway.
       //
-      // `onQueryUpdated` lets a query opt out. Returning `false` skips it;
-      // returning `true` refetches it, which is what every other query gets.
-      //
-      // Only `useLastPurchaseDate` opts out today (`hooks/useItems.ts`). It
-      // runs once per `ItemCard` with `variables: { itemIds: [itemId] }`, and
-      // `lastPurchaseDates` is keyed by `['itemIds', 'locationId']` in
-      // `cloudCache.ts`, so every card owns a separate cache entry and Apollo
-      // cannot merge them. Without this skip a pantry of 40 items sends 40
-      // `LastPurchaseDates` requests on every resume, on a phone, possibly on
-      // mobile data. Measured with a counting `ApolloLink`: 20 cards produced
-      // 20 requests per resume.
-      //
-      // The opt-out is a CONTEXT marker, not the operation name, because
-      // `useItemSortData` runs the SAME `LastPurchaseDates` operation in its
-      // batch form — every visible item's date in one request, on
-      // `cache-and-network`. Skipping by name would skip that one too and
-      // leave the whole list's dates stale on resume. The marker skips only
-      // the per-card copies, so the batch still refreshes here.
-      //
-      // The cost accepted: the per-card date stays as old as the last mount.
-      // Remove this opt-out when `ItemCard` reads the date from
-      // `useItemSortData`'s batch result instead of running its own query.
-      void client
-        .refetchQueries({
-          include: 'active',
-          onQueryUpdated: (q) =>
-            q.options.context?.[SKIP_RESUME_REFETCH_KEY] !== true,
-        })
-        .catch(() => {})
+      // Every active query is refetched, with no opt-out. There used to be
+      // one: `ItemCard` ran its own `LastPurchaseDates` query per card, so a
+      // pantry of 40 items sent 40 requests here. `ItemCard` now takes the
+      // date as a prop from `useItemSortData`'s batch query (#305), so the
+      // only `LastPurchaseDates` query on screen is that single batch one.
+      void client.refetchQueries({ include: 'active' }).catch(() => {})
     }
 
     // `visibilitychange` is more reliable than `beforeunload` on mobile

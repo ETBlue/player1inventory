@@ -3,11 +3,13 @@ import { ApolloProvider, useQuery } from '@apollo/client/react'
 import { useAuth } from '@clerk/react'
 import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ItemCard } from '@/components/item/ItemCard'
 import { LastPurchaseDatesDocument } from '@/generated/graphql'
+import { renderWithRouter } from '@/test/utils'
+import type { PantryItem } from '@/types'
 import { ApolloWrapper, RESUME_REFETCH_MIN_GAP_MS } from './ApolloWrapper'
 import { cacheDb } from './cacheDb'
 import { cloudCache, createCache } from './cloudCache'
-import { SKIP_RESUME_REFETCH_CONTEXT } from './constants'
 import {
   getLastSignedInUserId,
   getLastSyncedAt,
@@ -19,6 +21,13 @@ vi.mock('@clerk/react', () => ({
   useAuth: vi.fn(),
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
+
+// Restore the REAL generated Apollo hooks. `src/test/setup.ts` stubs every one
+// of them, and a stub sends no request — so `ApolloWrapper resume refetch cost`
+// below would count 0 requests from `ItemCard` whether the card queried or not,
+// and could not fail. With the real hooks, a card that runs its own
+// `LastPurchaseDates` query shows up in the counts.
+vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
 
 const QUERY = gql`
   query GetItems {
@@ -266,17 +275,16 @@ describe('ApolloWrapper refetch on resume', () => {
     advance(RESUME_REFETCH_MIN_GAP_MS + 1)
     resume()
 
-    // Then every query on screen is refetched, apart from the ones that opt
-    // out through `onQueryUpdated`. `include: 'active'` is what makes this
-    // reach the mounted components; anything narrower would leave the pantry
-    // showing what the device last saw. WHICH queries the callback lets
-    // through is measured in "ApolloWrapper resume refetch cost" below — this
-    // assertion only pins the shape of the call.
+    // Then every query on screen is refetched, with no opt-out.
+    // `include: 'active'` is what makes this reach the mounted components;
+    // anything narrower would leave the pantry showing what the device last
+    // saw. What it COSTS is measured in "ApolloWrapper resume refetch cost"
+    // below — this assertion only pins the shape of the call.
+    //
+    // The exact object matters. `toHaveBeenCalledWith` on a plain object is a
+    // deep-equality check, so a reintroduced `onQueryUpdated` fails here.
     expect(refetchSpy).toHaveBeenCalledTimes(1)
-    expect(refetchSpy).toHaveBeenCalledWith({
-      include: 'active',
-      onQueryUpdated: expect.any(Function),
-    })
+    expect(refetchSpy).toHaveBeenCalledWith({ include: 'active' })
   })
 
   it('user returning while offline sends no requests', async () => {
@@ -363,17 +371,27 @@ describe('ApolloWrapper refetch on resume', () => {
   })
 })
 
-// ─── the resume refetch skips the per-card purchase-date query ──────────────
+// ─── the pantry sends ONE purchase-date request, whatever the card count ────
 //
-// `useLastPurchaseDate` runs ONE `LastPurchaseDates` query per `ItemCard`,
-// with `itemIds: [itemId]`. `lastPurchaseDates` is keyed by
-// `['itemIds', 'locationId']`, so every card owns a separate cache entry and
-// Apollo cannot merge the requests. Refetching every active query on resume
-// therefore costs one request per visible card.
+// `ItemCard` used to run its own `LastPurchaseDates` query with
+// `itemIds: [itemId]`. `lastPurchaseDates` is keyed by `['itemIds','locationId']`
+// in `cloudCache.ts`, so every card owned a separate cache entry that Apollo
+// could not merge: 20 cards measured 20 requests, and the resume refetch sent
+// 20 more. Two workarounds existed only because of that — a `cache-first` pin
+// on the per-card query, and a context marker in `apollo/constants.ts` that let
+// it opt out of the resume refetch here. Both are deleted (#305): the card
+// takes the date as a prop from
+// `useItemSortData`'s single batch query.
 //
 // These tests measure REAL requests through a counting `ApolloLink`, not calls
 // to `refetchQueries`. A test that only checks `refetchQueries` was called says
 // nothing about which queries it actually sent.
+//
+// They render REAL `ItemCard`s, not a stand-in, and this file restores the real
+// generated Apollo hooks above — so a card that fetched for itself would be
+// counted here. The card count is a parameter and both 3 and 30 are measured:
+// a fixture with ONE card size could not tell "one request" from "one request
+// per card".
 //
 // The counting client is separate from the one `ApolloWrapper` builds, because
 // the wrapper's client talks to a real HTTP/WS link. The link between them is
@@ -388,11 +406,24 @@ describe('ApolloWrapper resume refetch cost', () => {
     }
   `
 
-  /** The fake pantry's cards. Stable ids, so they can be React keys. */
-  const CARD_IDS = ['item-a', 'item-b', 'item-c']
-  const CARD_COUNT = CARD_IDS.length
-
   type RefetchOptions = Parameters<ApolloClient['refetchQueries']>[0]
+
+  const cardIds = (n: number) =>
+    Array.from({ length: n }, (_, i) => `item-${i}`)
+
+  const cardItem = (id: string): PantryItem => ({
+    id,
+    name: `Item ${id}`,
+    tagIds: [],
+    targetUnit: 'package',
+    targetQuantity: 2,
+    refillThreshold: 1,
+    packedQuantity: 2,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
 
   function buildCountingClient() {
     const counts: Record<string, number> = {}
@@ -415,53 +446,60 @@ describe('ApolloWrapper resume refetch cost', () => {
     return { client: new ApolloClient({ link, cache: createCache() }), counts }
   }
 
-  function PantryProbe() {
-    // One batch query, as `useItemSortData` sends it: every visible item in a
-    // single request, NO skip marker.
-    useQuery(LastPurchaseDatesDocument, {
-      variables: { itemIds: CARD_IDS, locationId: 'loc-a' },
+  function PantryProbe({ ids }: { ids: string[] }) {
+    // The ONE batch query, as `useItemSortData` sends it: every visible item in
+    // a single request. Its `purchaseDates` map feeds each card's prop.
+    const { data } = useQuery(LastPurchaseDatesDocument, {
+      variables: { itemIds: ids, locationId: 'loc-a' },
       fetchPolicy: 'cache-and-network',
     })
-    // One query per card, as `useLastPurchaseDate` sends it, marked to skip.
+    const dates = new Map<string, Date>(
+      (
+        (data as { lastPurchaseDates?: { itemId: string; date: string }[] })
+          ?.lastPurchaseDates ?? []
+      )
+        .filter((r) => r.date)
+        .map((r) => [r.itemId, new Date(r.date)]),
+    )
     return (
       <>
-        {CARD_IDS.map((itemId) => (
-          <CardProbe key={itemId} itemId={itemId} />
+        {ids.map((id) => (
+          <ItemCard
+            key={id}
+            item={cardItem(id)}
+            lastPurchaseDate={dates.get(id)}
+            tags={[]}
+            tagTypes={[]}
+          />
         ))}
         <ItemsProbe />
       </>
     )
   }
 
-  function CardProbe({ itemId }: { itemId: string }) {
-    useQuery(LastPurchaseDatesDocument, {
-      variables: { itemIds: [itemId], locationId: 'loc-a' },
-      context: SKIP_RESUME_REFETCH_CONTEXT,
-    })
-    return null
-  }
-
-  /** Stands in for every other active query: no marker, must be refetched. */
+  /** Stands in for every other active query: must be refetched on resume. */
   function ItemsProbe() {
     useQuery(GET_ITEMS)
     return null
   }
 
   /**
-   * Renders the probe queries, then resumes the app and applies the options
-   * the wrapper passed to `refetchQueries` to the counting client.
+   * Renders `cardCount` real cards plus the batch query, then resumes the app
+   * and applies the options the wrapper passed to `refetchQueries` to the
+   * counting client.
    *
    * Returns the request counts before and after the resume.
    */
-  async function measureResume() {
+  async function measureResume(cardCount: number) {
     const { client: countingClient, counts } = buildCountingClient()
-    render(
+    await renderWithRouter(
       <ApolloProvider client={countingClient}>
-        <PantryProbe />
+        <PantryProbe ids={cardIds(cardCount)} />
       </ApolloProvider>,
     )
-    await waitFor(() => expect(counts.LastPurchaseDates).toBe(CARD_COUNT + 1))
     await waitFor(() => expect(counts.GetItemsProbe).toBe(1))
+    // Settle: any per-card request would have been sent by now.
+    await letWritesLand()
     const before = { ...counts }
 
     let captured: RefetchOptions | undefined
@@ -502,24 +540,27 @@ describe('ApolloWrapper resume refetch cost', () => {
     return { before, after: { ...counts } }
   }
 
-  it('user returning to the app sends no per-card purchase-date request', async () => {
-    // Given a pantry showing 3 cards: 3 per-card queries plus 1 batch query
+  it.each([
+    3, 30,
+  ])('user sees %i cards and the pantry sends ONE purchase-date request', async (cardCount) => {
+    // Given a pantry showing `cardCount` real ItemCards
     // When the user comes back after a long gap
-    const { before, after } = await measureResume()
+    const { before, after } = await measureResume(cardCount)
 
-    // Then only the batch query went out. 3 per-card requests were saved.
-    // A pantry of 40 items would have saved 40.
-    expect(before.LastPurchaseDates).toBe(CARD_COUNT + 1)
-    expect(after.LastPurchaseDates).toBe(CARD_COUNT + 2)
+    // Then exactly one request went out at mount and one more on resume,
+    // no matter how many cards are on screen. 30 cards used to cost 30 of
+    // each.
+    expect(before.LastPurchaseDates).toBe(1)
+    expect(after.LastPurchaseDates).toBe(2)
   })
 
   it('user returning to the app still refreshes every other query', async () => {
-    // Given the same pantry, which also has an unmarked query on screen
+    // Given the same pantry, which also has another query on screen
     // When the user comes back after a long gap
-    const { before, after } = await measureResume()
+    const { before, after } = await measureResume(3)
 
-    // Then the unmarked query WAS refetched. Without this half, a guard that
-    // skipped everything would pass the test above.
+    // Then that query WAS refetched. Without this half, a wrapper that
+    // refetched nothing at all would pass the test above.
     expect(before.GetItemsProbe).toBe(1)
     expect(after.GetItemsProbe).toBe(2)
   })

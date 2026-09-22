@@ -204,6 +204,12 @@ export function PantryListView() {
   function renderTailItemCard(item: PantryItem) {
     return (
       <ItemCard
+        // Bucket-3 rows (NOT stocked here) are absent from the sort-data
+        // source, so this is `undefined` for them. That matches what the
+        // old per-card query returned — no stock here means no purchase
+        // here — and the expiry chip is hidden anyway, because it also
+        // requires `currentQuantity > 0`.
+        lastPurchaseDate={allPurchaseDates?.get(item.id)}
         item={item}
         tags={tags.filter((t) => item.tagIds.includes(t.id))}
         tagTypes={tagTypes}
@@ -318,6 +324,7 @@ export function PantryListView() {
           <div className="bg-background-base flex flex-col gap-px mb-4">
             {activeItems.map((item) => (
               <ItemCard
+                lastPurchaseDate={allPurchaseDates?.get(item.id)}
                 key={item.id}
                 item={item}
                 tags={tags.filter((t) => item.tagIds.includes(t.id))}
@@ -344,6 +351,7 @@ export function PantryListView() {
 
             {inactiveItems.map((item) => (
               <ItemCard
+                lastPurchaseDate={allPurchaseDates?.get(item.id)}
                 key={item.id}
                 item={item}
                 tags={tags.filter((t) => item.tagIds.includes(t.id))}

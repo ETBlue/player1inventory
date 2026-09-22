@@ -27,7 +27,6 @@ import {
 import * as dataModeHooks from './useDataMode'
 import { useAddInventoryLog, useItemLogs } from './useInventoryLogs'
 import { useItemSortData } from './useItemSortData'
-import { useLastPurchaseDate } from './useItems'
 
 // The REAL generated hooks, driven through `MockedProvider` with the real
 // documents. `src/test/setup.ts` stubs every generated hook, and a stubbed
@@ -256,21 +255,9 @@ describe('cloud inventory-log reads are scoped to the active location', () => {
     expect(result.current.data?.map((l) => l.id)).toEqual(['log-b1'])
   })
 
-  it('user in a NON-DEFAULT location gets that location last purchase date', async () => {
-    // Given Cloud Garage is active. Milk was last bought 2026-03-02 in Cloud
-    // Kitchen and 2026-03-20 in Cloud Garage.
-    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)
-
-    // When the last purchase date is read
-    const { result } = renderHook(() => useLastPurchaseDate('item-milk'), {
-      wrapper: makeWrapper(),
-    })
-
-    // Then it is Cloud Garage's date, not Cloud Kitchen's
-    await waitFor(() => expect(result.current.data).toBeDefined())
-    expect(result.current.data?.toISOString()).toBe('2026-03-20T00:00:00.000Z')
-  })
-
+  // The per-item `useLastPurchaseDate` used to be proved here too. It is gone
+  // (#305) — `ItemCard` takes the date as a prop from the batch query below,
+  // which this next test already covers with the same two-location fixture.
   it('sorting data in a NON-DEFAULT location uses that location purchase dates', async () => {
     // Given Cloud Garage is active and the list holds both items
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_B)

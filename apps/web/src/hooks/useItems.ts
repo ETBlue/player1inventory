@@ -1,7 +1,6 @@
 import type { ApolloCache } from '@apollo/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { SKIP_RESUME_REFETCH_CONTEXT } from '@/apollo/constants'
 import type { UnitSwitchBatchInput } from '@/db/operations'
 import {
   addItemToLocation,
@@ -37,7 +36,6 @@ import {
   useGetItemQuery,
   useInventoryLogCountByItemQuery,
   useItemStocksForItemQuery,
-  useLastPurchaseDatesQuery,
   usePantryDataQuery,
   useRemoveItemFromLocationMutation,
   useUpdateItemMutation,
@@ -471,73 +469,6 @@ export function useItemWithQuantity(id: string) {
     lastPurchaseDate: lastPurchaseQuery.data,
     isLoading: itemQuery.isLoading,
   }
-}
-
-export function useLastPurchaseDate(itemId: string) {
-  const { mode } = useDataMode()
-  const isCloud = mode === 'cloud'
-  const { activeLocationId } = useActiveLocation()
-
-  // Cloud: use Apollo batch query (local logs are stale in cloud mode).
-  // `lastPurchaseDates(locationId:)` is required and must be a real cloud
-  // Location, so the request waits for `GetLocations` — see
-  // `useCloudLocationKnown`.
-  const locationKnown = useCloudLocationKnown(activeLocationId, isCloud)
-  // LEFT ON `cache-first`, unlike the other cloud reads fixed in
-  // `docs/global/bugs/2026-09-22-bug-cloud-queries-cache-first.md`. This hook
-  // is called once per `ItemCard`, with `itemIds: [itemId]` — one variable set
-  // per card. `lastPurchaseDates` is keyed by `['itemIds', 'locationId']`
-  // (`apollo/cloudCache.ts`), so each card owns a separate cache entry and
-  // Apollo's deduplication cannot merge them. `cache-and-network` here would
-  // send one request PER VISIBLE CARD on every pantry mount. The batch call in
-  // `useItemSortData` covers the same dates for the whole list in one request
-  // and IS refreshed; this per-card entry stays stale until something refetches
-  // it. Recorded as a known gap in the bug doc rather than traded for a request
-  // storm.
-  //
-  // `SKIP_RESUME_REFETCH_CONTEXT` keeps the same request storm out of the
-  // resume refetch in `apollo/ApolloWrapper.tsx`, which otherwise refetches
-  // every active query. The marker is a context flag rather than the operation
-  // name because `useItemSortData` runs the same `LastPurchaseDates` operation
-  // in its batch form, and that one SHOULD refresh on resume.
-  const { data: cloudData, loading: cloudLoading } = useLastPurchaseDatesQuery({
-    variables: { itemIds: [itemId], locationId: activeLocationId },
-    skip: !isCloud || !itemId || !locationKnown,
-    context: SKIP_RESUME_REFETCH_CONTEXT,
-  })
-  const cloudDate = cloudData?.lastPurchaseDates.find(
-    (r) => r.itemId === itemId,
-  )?.date
-
-  // Local: TanStack Query + Dexie, scoped to the active location
-  const localQuery = useQuery({
-    queryKey: [
-      'items',
-      itemId,
-      'lastPurchase',
-      { locationId: activeLocationId },
-    ],
-    queryFn: () => getLastPurchaseDate(itemId, activeLocationId),
-    enabled: !isCloud && !!itemId,
-  })
-
-  if (isCloud) {
-    return {
-      data: cloudDate ? new Date(cloudDate) : undefined,
-      // Skipped is not loaded — see `useItems`.
-      //
-      // No `&& !cloudData` guard here, unlike every other cloud hook. This
-      // query is the one read still on the default `cache-first` (see the
-      // comment above the query), and `cache-first` reports `loading: false`
-      // as soon as it serves a cached answer — so the guard would be dead
-      // code no test could fail on. Add it if this ever moves to
-      // `cache-and-network`.
-      isLoading: cloudLoading || !locationKnown,
-      isError: false,
-    }
-  }
-
-  return localQuery
 }
 
 /**
