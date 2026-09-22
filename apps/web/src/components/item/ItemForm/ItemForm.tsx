@@ -713,103 +713,17 @@ export function ItemForm({
 
       {showStock && (
         <div className="space-y-2">
-          <StockProgressRow
-            quantityLabel={progressQuantityLabel}
-            unitLabel={progressUnitLabel}
-            current={currentStockQuantity}
-            target={targetQuantity}
-            status={stockStatus}
-            targetUnit={targetUnit}
-            packed={displayPackedQuantity}
-            unpacked={unpackedQuantity}
-            {...(measurementUnit ? { measurementUnit } : {})}
-            {...(amountPerPackage
-              ? { amountPerPackage: Number(amountPerPackage) }
-              : {})}
-            onClear={() => {
-              setPackedQuantity(0)
-              setUnpackedQuantity(0)
-            }}
-            onFill={() => {
-              setPackedQuantity(fillToFullState.packedQuantity)
-              setUnpackedQuantity(fillToFullState.unpackedQuantity)
-            }}
-            clearDisabled={isPending || isStockAtZero}
-            fillDisabled={isPending || isStockAtFull}
-            clearLabel={t('common.clear')}
-            fillLabel={t('common.fillToFull')}
-          />
-
-          <div>
-            <Label htmlFor="targetQuantity">
-              {t('items.form.targetQuantity.label')}{' '}
-              <UnitInline
-                unit={
-                  targetUnit === 'measurement'
-                    ? measurementUnit || undefined
-                    : packageUnit || undefined
-                }
-              />
-            </Label>
-            <QuantityStepper
-              value={targetQuantity}
-              onStep={setTargetQuantity}
-              step={targetUnit === 'package' ? 1 : stepperStep}
-              round={normalizeTargetStep}
-              decreaseLabel={t('items.form.targetQuantity.decrease')}
-              increaseLabel={t('items.form.targetQuantity.increase')}
-              disabled={isPending}
-              size="default"
-              inputProps={{
-                id: 'targetQuantity',
-                step: targetUnit === 'package' ? 1 : quantityStep,
-                ...numericInputProps(
-                  'targetQuantity',
-                  targetQuantity,
-                  setTargetQuantity,
-                ),
-              }}
-            />
-            <p className="text-xs text-foreground-muted">
-              {t('items.form.targetQuantity.hint')}
-            </p>
-          </div>
-
-          <div>
-            <Label htmlFor="refillThreshold">
-              {t('items.form.refillThreshold.label')}{' '}
-              <UnitInline
-                unit={
-                  targetUnit === 'measurement'
-                    ? measurementUnit || undefined
-                    : packageUnit || undefined
-                }
-              />
-            </Label>
-            <QuantityStepper
-              value={refillThreshold}
-              onStep={setRefillThreshold}
-              step={stepperStep}
-              round={(n) => roundToStep(n, stepperStep)}
-              decreaseLabel={t('items.form.refillThreshold.decrease')}
-              increaseLabel={t('items.form.refillThreshold.increase')}
-              disabled={isPending}
-              size="default"
-              inputProps={{
-                id: 'refillThreshold',
-                step: quantityStep,
-                ...numericInputProps(
-                  'refillThreshold',
-                  refillThreshold,
-                  setRefillThreshold,
-                ),
-              }}
-            />
-            <p className="text-xs text-foreground-muted">
-              {t('items.form.refillThreshold.hint')}
-            </p>
-          </div>
-
+          {/* Row order (designer ruling, 2026-09-22): Packed → Unpacked →
+              Expires on (date mode only) → progress bar → Target Quantity →
+              Refill When Below. Packed and Unpacked are the values edited most
+              often, so they lead, and "Expires on" is per-location state
+              updated at the same time. Target and Refill configure the bar —
+              `getStockPreview` (`lib/quantityUtils.ts`) passes
+              `targetQuantity` as the bar's `target` (its denominator) and
+              derives the colour from `refillThreshold` — so they follow it.
+              `QuickUpdateDialog` uses the same order on purpose. Reasoning:
+              `docs/features/pantry/2026-08-27-brainstorming-quick-update-stock-settings.md`
+              (addendum 2026-09-22). */}
           <div>
             <Label htmlFor="packedQuantity">
               {t('items.form.packedQuantity.label')}{' '}
@@ -948,6 +862,103 @@ export function ItemForm({
               </p>
             </div>
           )}
+
+          <StockProgressRow
+            quantityLabel={progressQuantityLabel}
+            unitLabel={progressUnitLabel}
+            current={currentStockQuantity}
+            target={targetQuantity}
+            status={stockStatus}
+            targetUnit={targetUnit}
+            packed={displayPackedQuantity}
+            unpacked={unpackedQuantity}
+            {...(measurementUnit ? { measurementUnit } : {})}
+            {...(amountPerPackage
+              ? { amountPerPackage: Number(amountPerPackage) }
+              : {})}
+            onClear={() => {
+              setPackedQuantity(0)
+              setUnpackedQuantity(0)
+            }}
+            onFill={() => {
+              setPackedQuantity(fillToFullState.packedQuantity)
+              setUnpackedQuantity(fillToFullState.unpackedQuantity)
+            }}
+            clearDisabled={isPending || isStockAtZero}
+            fillDisabled={isPending || isStockAtFull}
+            clearLabel={t('common.clear')}
+            fillLabel={t('common.fillToFull')}
+          />
+
+          <div>
+            <Label htmlFor="targetQuantity">
+              {t('items.form.targetQuantity.label')}{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <QuantityStepper
+              value={targetQuantity}
+              onStep={setTargetQuantity}
+              step={targetUnit === 'package' ? 1 : stepperStep}
+              round={normalizeTargetStep}
+              decreaseLabel={t('items.form.targetQuantity.decrease')}
+              increaseLabel={t('items.form.targetQuantity.increase')}
+              disabled={isPending}
+              size="default"
+              inputProps={{
+                id: 'targetQuantity',
+                step: targetUnit === 'package' ? 1 : quantityStep,
+                ...numericInputProps(
+                  'targetQuantity',
+                  targetQuantity,
+                  setTargetQuantity,
+                ),
+              }}
+            />
+            <p className="text-xs text-foreground-muted">
+              {t('items.form.targetQuantity.hint')}
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="refillThreshold">
+              {t('items.form.refillThreshold.label')}{' '}
+              <UnitInline
+                unit={
+                  targetUnit === 'measurement'
+                    ? measurementUnit || undefined
+                    : packageUnit || undefined
+                }
+              />
+            </Label>
+            <QuantityStepper
+              value={refillThreshold}
+              onStep={setRefillThreshold}
+              step={stepperStep}
+              round={(n) => roundToStep(n, stepperStep)}
+              decreaseLabel={t('items.form.refillThreshold.decrease')}
+              increaseLabel={t('items.form.refillThreshold.increase')}
+              disabled={isPending}
+              size="default"
+              inputProps={{
+                id: 'refillThreshold',
+                step: quantityStep,
+                ...numericInputProps(
+                  'refillThreshold',
+                  refillThreshold,
+                  setRefillThreshold,
+                ),
+              }}
+            />
+            <p className="text-xs text-foreground-muted">
+              {t('items.form.refillThreshold.hint')}
+            </p>
+          </div>
         </div>
       )}
 

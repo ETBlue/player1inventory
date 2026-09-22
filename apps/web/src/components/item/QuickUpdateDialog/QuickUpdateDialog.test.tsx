@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { expectDocumentOrder } from '@/test/utils'
 import type { PantryItem } from '@/types'
 import { QuickUpdateDialog } from '.'
 
@@ -488,23 +489,6 @@ describe('QuickUpdateDialog — title', () => {
     )
   })
 })
-
-// Asserts that every node precedes the next one in document order. Fails
-// naming the pair that is out of order, so a swapped row says which two rows
-// swapped instead of only "expected true".
-const expectDocumentOrder = (nodes: [string, Node][]) => {
-  for (let i = 0; i < nodes.length - 1; i++) {
-    const [currentName, current] = nodes[i] as [string, Node]
-    const [nextName, next] = nodes[i + 1] as [string, Node]
-    const precedes = Boolean(
-      current.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
-    )
-    expect(
-      precedes,
-      `expected "${currentName}" to come before "${nextName}" in the DOM`,
-    ).toBe(true)
-  }
-}
 
 describe('QuickUpdateDialog — stock settings layout', () => {
   it('user reads Packed, Unpacked and Expires on above the progress bar, with Target and Refill below it', () => {
