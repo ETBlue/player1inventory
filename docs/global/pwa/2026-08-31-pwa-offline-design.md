@@ -389,8 +389,8 @@ real `vite.config.ts`, used for production builds, is untouched. It still uses t
 
 ### Still open
 
-Two questions from this design are not answered yet. Neither can be checked from this repo.
-Do not treat them as done.
+One question from this design is not answered yet. It cannot be checked from this repo.
+Do not treat it as done.
 
 **1. iOS storage eviction (design risk 4).**
 
@@ -409,11 +409,32 @@ How to check it:
 If the data is gone, cloud offline reads cannot be relied on for iOS. The banner text would
 then need to say so.
 
-**2. A real signed-in Clerk session going offline.**
+The app was installed on an iPhone on 2026-09-19, so this can be checked from
+**2026-09-26** onwards.
 
-The Task 1 experiment tested a cold start with Clerk's script blocked. It did not test a
-user who is already signed in and then loses the network. That case needs a real device and
-a real Clerk login to test.
+### Answered: a real signed-in Clerk session going offline
+
+**Verified on production, 2026-09-21.** This was the second open question. It is now closed.
+
+The Task 1 experiment had only tested a cold start with Clerk's script blocked. It did not
+test a user who was already signed in and then lost the network. That needed a real device
+and a real Clerk login.
+
+What was tested, and what happened:
+
+| Step | Result |
+|---|---|
+| Sign in to cloud mode on the production domain, then go offline | The offline banner appeared |
+| Read the pantry while offline | The pantry still read from the restored cache |
+| Try to update something while offline | A toast appeared and the update did not go through |
+
+All three match the design. The third is `offlineWriteLink`
+(`apps/web/src/apollo/offlineWriteLink.ts`), which is first in the link chain
+(`client.ts:109`) so a write is stopped before it reaches the network.
+
+This also confirms the part the Task 1 experiment could not reach: an already-signed-in
+session that loses the network does not hang. `resolveToken` returns at once when
+`navigator.onLine` is false, rather than waiting out the 10 second timeout.
 
 ---
 
