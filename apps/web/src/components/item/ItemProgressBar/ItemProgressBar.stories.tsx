@@ -373,3 +373,50 @@ export const RefillThresholdFractional: Story = {
     </div>
   ),
 }
+
+export const RefillThresholdFractionalPackageTarget: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">
+          2000 ml in 300 ml packages (6.67 packages, 6 segments), refill at 900
+          ml (3 packages)
+        </p>
+        <ItemProgressBar
+          current={1500}
+          target={2000}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={300}
+          refillThreshold={900}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          Same item, refill at 1950 ml (6.5 packages, clamps to the end)
+        </p>
+        <ItemProgressBar
+          current={1500}
+          target={2000}
+          status="warning"
+          targetUnit="measurement"
+          amountPerPackage={300}
+          refillThreshold={1950}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          0.6 L in 0.1 L packages (6 segments), refill at 0.3 L
+        </p>
+        <ItemProgressBar
+          current={0.4}
+          target={0.6}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={0.1}
+          refillThreshold={0.3}
+        />
+      </div>
+    </div>
+  ),
+}

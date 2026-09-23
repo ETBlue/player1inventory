@@ -459,6 +459,69 @@ describe('ItemProgressBar refill threshold marker', () => {
     expect(getMarker(container)).toHaveAttribute('data-threshold', '6')
   })
 
+  it('keeps item units on a continuous bar even when the item has package info', () => {
+    // Given a measurement item with 500 per package and target 20000. That is
+    // 40 packages, above the 30-segment limit, so the bar is continuous.
+    const { container } = render(
+      <ItemProgressBar
+        current={12000}
+        target={20000}
+        targetUnit="measurement"
+        amountPerPackage={500}
+        refillThreshold={5000}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(0)
+
+    // Then the marker uses item units: 5000 / 20000 = 25%.
+    // Dividing by the package size here would put it at 10 / 20000 = 0.05%.
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '5000')
+    expect(marker.style.left).toBe('25%')
+  })
+
+  it('treats a scaled threshold with a float error as a whole number', () => {
+    // Given 0.1 per package, target 3 (30 segments) and threshold 0.3.
+    // In JavaScript 0.3 / 0.1 is 2.9999999999999996, not 3.
+    const { container } = render(
+      <ItemProgressBar
+        current={2}
+        target={3}
+        targetUnit="measurement"
+        amountPerPackage={0.1}
+        refillThreshold={0.3}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(30)
+
+    // Then the marker sits in the gap after segment 3
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '3')
+    // (jsdom rewrites `calc(3 * (100% + 2px) / 30 - 1px)` into this form)
+    expect(marker.style.left).toBe('calc(-1px + 0.1 * (100% + 2px))')
+  })
+
+  it('draws every segment when the package target has a float error', () => {
+    // Given 0.1 per package and target 0.6. In JavaScript 0.6 / 0.1 is
+    // 5.999999999999999, which would floor to 5 segments.
+    const { container } = render(
+      <ItemProgressBar
+        current={0.4}
+        target={0.6}
+        targetUnit="measurement"
+        amountPerPackage={0.1}
+        refillThreshold={0.3}
+      />,
+    )
+
+    // Then all 6 segments are drawn, and the marker is after segment 3
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(6)
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '3')
+    // (jsdom rewrites `calc(3 * (100% + 2px) / 6 - 1px)` into this form)
+    expect(marker.style.left).toBe('calc(-1px + 0.5 * (100% + 2px))')
+  })
+
   it('clamps on a continuous bar too', () => {
     const { container } = render(
       <ItemProgressBar current={33} target={40} refillThreshold={55} />,

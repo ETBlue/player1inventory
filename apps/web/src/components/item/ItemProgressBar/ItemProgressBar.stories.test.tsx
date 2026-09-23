@@ -18,6 +18,7 @@ const {
   WithRefillThresholdContinuous,
   RefillThresholdAtTarget,
   RefillThresholdFractional,
+  RefillThresholdFractionalPackageTarget,
 } = composeStories(stories)
 
 describe('ItemProgressBar stories smoke tests', () => {
@@ -101,5 +102,17 @@ describe('ItemProgressBar stories smoke tests', () => {
     render(<RefillThresholdFractional />)
     expect(screen.getByText('Refill at 750')).toBeInTheDocument()
     expect(screen.getByText('Refill at 1.5')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdFractionalPackageTarget draws 6 segments per bar', () => {
+    const { container } = render(<RefillThresholdFractionalPackageTarget />)
+    expect(screen.getByText('Refill at 900')).toBeInTheDocument()
+    expect(screen.getByText('Refill at 1950')).toBeInTheDocument()
+    expect(screen.getByText('Refill at 0.3')).toBeInTheDocument()
+    // Three bars, 6 segments each
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(18)
+    expect(
+      container.querySelectorAll('[data-testid="refill-marker"]'),
+    ).toHaveLength(3)
   })
 })

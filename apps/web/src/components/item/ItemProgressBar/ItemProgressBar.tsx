@@ -22,6 +22,17 @@ interface ProgressBarProps {
 const SEGMENT_GAP_PX = 2
 
 /**
+ * Round away floating-point noise from a division, to 6 decimal places.
+ * In JavaScript `0.3 / 0.1` is `2.9999999999999996` and `0.6 / 0.1` is
+ * `5.999999999999999`. Without rounding, a whole package count looks
+ * fractional: the bar draws one segment too few, and the refill tick misses
+ * the gap between segments.
+ */
+function roundPackages(n: number): number {
+  return Math.round(n * 1e6) / 1e6
+}
+
+/**
  * CSS `left` value for the refill tick. The tick is centred on this point.
  *
  * `threshold` and `target` must use the same unit as the bar:
@@ -345,7 +356,7 @@ export function ItemProgressBar({
   // as the package count (e.g. "5 bottles" with no known volume = 5 segments).
   const needsConversion = hasPackageInfo && targetUnit === 'measurement'
   const scale = needsConversion ? amountPerPackage : 1
-  const packageTarget = needsConversion ? target / scale : target
+  const packageTarget = needsConversion ? roundPackages(target / scale) : target
   const useContinuous =
     (targetUnit === 'measurement' && !hasPackageInfo) ||
     packageTarget > SEGMENTED_MODE_MAX_TARGET
@@ -354,14 +365,13 @@ export function ItemProgressBar({
   // fractional length, so a 6.67-package target draws 6 segments.
   const segmentCount = Math.floor(packageTarget)
   const markerTarget = useContinuous ? target : segmentCount
-  const markerThreshold =
-    refillThreshold === undefined
-      ? 0
-      : useContinuous
-        ? refillThreshold
-        : refillThreshold / scale
-  const showMarker =
-    refillThreshold !== undefined && refillThreshold > 0 && markerTarget > 0
+  const threshold = refillThreshold ?? 0
+  // The tick uses the bar's own unit: item units on a continuous bar,
+  // packages on a segmented bar.
+  const markerThreshold = useContinuous
+    ? threshold
+    : roundPackages(threshold / scale)
+  const showMarker = threshold > 0 && markerTarget > 0
 
   return (
     <div className="relative flex-1">
