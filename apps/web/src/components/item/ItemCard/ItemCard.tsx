@@ -267,6 +267,9 @@ export function ItemCard({
               {...(item.amountPerPackage
                 ? { amountPerPackage: item.amountPerPackage }
                 : {})}
+              // `item` is the joined per-location row, so this is the
+              // active location's threshold.
+              refillThreshold={item.refillThreshold}
             />
           )}
         </Link>

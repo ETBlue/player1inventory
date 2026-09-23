@@ -36,6 +36,7 @@ export const Ok: Story = {
     targetUnit: 'package',
     packed: 3,
     unpacked: 0,
+    refillThreshold: 2,
     clearDisabled: false,
     fillDisabled: false,
   },
@@ -62,6 +63,9 @@ export const Low: Story = {
     targetUnit: 'package',
     packed: 1,
     unpacked: 0,
+    // Warning means stock is exactly AT a non-zero threshold, so the tick
+    // sits right where the fill ends.
+    refillThreshold: 1,
     clearDisabled: false,
     fillDisabled: false,
   },
@@ -98,6 +102,7 @@ export const MeasurementUnit: Story = {
     unpacked: 0.5,
     measurementUnit: 'L',
     amountPerPackage: 1,
+    refillThreshold: 0.75,
     clearDisabled: false,
     fillDisabled: false,
   },

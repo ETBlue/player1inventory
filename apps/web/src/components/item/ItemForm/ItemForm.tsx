@@ -880,6 +880,8 @@ export function ItemForm({
             {...(amountPerPackage
               ? { amountPerPackage: Number(amountPerPackage) }
               : {})}
+            // Live form state, so the tick moves before the form is saved.
+            refillThreshold={refillThreshold}
             onClear={() => {
               setPackedQuantity(0)
               setUnpackedQuantity(0)

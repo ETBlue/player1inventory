@@ -1205,6 +1205,46 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
     expect(progressStatus()).toBe('warning')
   })
 
+  it('user sees the refill tick move as soon as Refill When Below is edited', async () => {
+    // Given a saved threshold of 2 against 1 packed, 0 unpacked and a target
+    // of 6 — every number on screen differs from the threshold
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        initialValues={{
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          targetQuantity: 6,
+          refillThreshold: 2,
+          consumeAmount: 1,
+          packageUnit: 'pack',
+          targetUnit: 'package',
+          name: 'Milk',
+        }}
+        sections={['stock']}
+        onSubmit={vi.fn()}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '2',
+    )
+
+    // When the user raises Refill When Below by one step, without saving
+    await user.click(
+      screen.getByRole('button', { name: 'Increase refill threshold' }),
+    )
+
+    // Then the tick follows the live form state, not the saved value
+    expect(screen.getByLabelText(/refill when below/i)).toHaveValue(3)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '3',
+    )
+    expect(screen.getByText('Refill at 3')).toBeInTheDocument()
+  })
+
   it('Fill to Full targets the form field the user just edited, not the saved target', async () => {
     // Given an item saved with a target of 4, everything empty
     const user = userEvent.setup()

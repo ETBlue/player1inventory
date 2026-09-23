@@ -53,3 +53,24 @@ describe('StockProgressRow size', () => {
     expect(fillButton()).toHaveClass('h-7', 'w-7')
   })
 })
+
+describe('StockProgressRow refill threshold', () => {
+  it('forwards refillThreshold to the progress bar', () => {
+    // Given a threshold (2) that differs from current (3), target (4) and
+    // unpacked (0), so the test cannot pass by reading the wrong number
+    render(<StockProgressRow {...baseProps} refillThreshold={2} />)
+
+    // Then the bar draws its refill tick at 2 packages
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '2',
+    )
+    expect(screen.getByText('Refill at 2')).toBeInTheDocument()
+  })
+
+  it('draws no tick when refillThreshold is not passed', () => {
+    render(<StockProgressRow {...baseProps} />)
+
+    expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
+  })
+})

@@ -1926,3 +1926,86 @@ describe('ItemCard - showStock', () => {
     })
   })
 })
+
+describe('ItemCard - refill threshold marker', () => {
+  it('user can see the refill tick on a package-tracked card', async () => {
+    // Given an item whose threshold (4) differs from current (7), target (9)
+    // and unpacked (0), so the test cannot pass by reading the wrong number
+    const item: Item = {
+      id: 'item-refill-pkg',
+      name: 'Eggs',
+      packageUnit: 'carton',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 9,
+      refillThreshold: 4,
+      packedQuantity: 7,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then the bar draws the tick at 4 packages, and announces it
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '4',
+    )
+    expect(screen.getByText('Refill at 4')).toBeInTheDocument()
+    // The bar sits inside the card's <Link>, so the sr-only text joins the
+    // link's accessible name after the quantity text. It reads as one
+    // sentence. Pin it, so a change to the name is a decision, not an accident.
+    expect(screen.getByRole('link')).toHaveAccessibleName(
+      'Eggs 7 / 9 carton Refill at 4',
+    )
+  })
+
+  it('user can see the refill tick in packages on a measurement-tracked card', async () => {
+    // Given 750 g threshold, 500 g per bottle, 2000 g target (4 segments).
+    // Current is 1200 g. None of 750, 1.5, 1200, 2000 or 4 coincide.
+    const item: Item = {
+      id: 'item-refill-measure',
+      name: 'Olive Oil',
+      packageUnit: 'bottle',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      tagIds: [],
+      targetQuantity: 2000,
+      refillThreshold: 750,
+      packedQuantity: 2,
+      unpackedQuantity: 200,
+      consumeAmount: 50,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then the segmented bar puts the tick at 1.5 packages, and the
+    // screen-reader text keeps the value the user typed (750)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '1.5',
+    )
+    expect(screen.getByText('Refill at 750')).toBeInTheDocument()
+  })
+})

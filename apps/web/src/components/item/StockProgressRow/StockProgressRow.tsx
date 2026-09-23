@@ -15,6 +15,9 @@ export interface StockProgressRowProps {
   unpacked: number
   measurementUnit?: string
   amountPerPackage?: number
+  // Refill threshold in the item's tracking unit (same unit as `target`).
+  // Forwarded to ItemProgressBar, which draws a tick at it.
+  refillThreshold?: number
   onClear: () => void
   onFill: () => void
   clearDisabled: boolean
@@ -44,6 +47,7 @@ export function StockProgressRow({
   unpacked,
   measurementUnit,
   amountPerPackage,
+  refillThreshold,
   onClear,
   onFill,
   clearDisabled,
@@ -87,6 +91,7 @@ export function StockProgressRow({
           unpacked={unpacked}
           {...(measurementUnit ? { measurementUnit } : {})}
           {...(amountPerPackage ? { amountPerPackage } : {})}
+          {...(refillThreshold !== undefined ? { refillThreshold } : {})}
         />
       </div>
       <Button
