@@ -3,7 +3,7 @@
 - **Date:** 2026-09-21
 - **Environment:** production, cloud mode on both devices
 - **Reported by:** ETBlue
-- **Status:** ✅ Fixed
+- **Status:** ✅ Fixed, and **confirmed working in production by the reporter on 2026-09-23**
 
 ## Bug description
 
@@ -111,21 +111,26 @@ one and stops. Only a policy that goes to the network can reach the second.
 Suite after the fix: **2119 web tests in 247 files, 259 server tests in 20 files**, all
 passing. Web was 2116 before.
 
+## Verified in production
+
+The reporter confirmed on **2026-09-23** that the original steps now work: a location
+added on one device appears on the other after a reload. That closes the "not proven in
+a real browser" gap this document opened with — the fix was only ever pinned by unit
+tests against a hand-built `InMemoryCache`, never against an actual restore from
+`Player1InventoryCloudCache`.
+
 ## Known gaps
 
-- **This fixes a page load, not a live update.** A device with the app already open
-  still will not see another device's change until it reloads. There is no polling and
-  no subscription on `GetLocations`.
-- **No E2E coverage of the multi-device path.** Proving it end to end needs two browser
-  contexts sharing one cloud account, which `e2e/tests/settings/locations.spec.ts` does
-  not do.
-- **The five sibling hooks report `isError: !!cloud.error` with no `data` guard.** They
-  keep their cached `data`, so nothing empties, but they will report an error offline.
-  Left alone — out of scope for this fix.
-- **`isLoading` is untouched.** It is now `true` during the network leg even when cached
-  data is present. No consumer of `useLocations()` reads `isLoading` or `isError` today
-  (all seven call sites destructure `data` only), so nothing renders a spinner over a
-  list it already has. A future consumer that does would see one.
+**Three of the four gaps this document originally listed have since been closed by other
+PRs.** They are kept here, marked, so the record stays readable rather than looking like
+nothing was ever owed.
+
+| Original gap | Status |
+|---|---|
+| **This fixes a page load, not a live update.** A device with the app already open would not see another device's change until it reloaded. | ✅ **Closed by [#306](https://github.com/ETBlue/player1inventory/pull/306).** Coming back to the app now refreshes everything on screen, when it was away 30 seconds or more and the device is online. |
+| **The five sibling hooks report `isError: !!cloud.error` with no `data` guard**, so they report an error offline even with good cached data. | ✅ **Closed by [#304](https://github.com/ETBlue/player1inventory/pull/304).** `grep -rn "isError:.*cloud.error" apps/web/src/hooks/` now returns `!!cloud.error && !cloud.data` at every site. |
+| **`isLoading` is untouched** — `true` during the network leg even when cached data is present, so a future consumer would flash a spinner over a list it already has. | ✅ **Closed by [#306](https://github.com/ETBlue/player1inventory/pull/306).** `useLocations` now reads `isLoading: cloud.loading && !cloud.data`. |
+| **No E2E coverage of the multi-device path.** | 🔲 **Still open.** Proving it end to end needs two browser contexts sharing one cloud account. [#311](https://github.com/ETBlue/player1inventory/pull/311) added four cloud E2E tests for location-scoped writes, but none of them simulates a second device with its own persisted Apollo cache. |
 
 ## PR / commit
 
