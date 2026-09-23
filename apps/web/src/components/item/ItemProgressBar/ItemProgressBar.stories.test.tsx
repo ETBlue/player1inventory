@@ -14,6 +14,10 @@ const {
   Inactive,
   InactiveWithStock,
   MeasurementWithPackages,
+  WithRefillThreshold,
+  WithRefillThresholdContinuous,
+  RefillThresholdAtTarget,
+  RefillThresholdFractional,
 } = composeStories(stories)
 
 describe('ItemProgressBar stories smoke tests', () => {
@@ -73,5 +77,29 @@ describe('ItemProgressBar stories smoke tests', () => {
     expect(
       screen.getAllByText(/500g target, 100g\/pack → 5 segments/),
     ).toHaveLength(2)
+  })
+
+  it('WithRefillThreshold renders the refill text', () => {
+    render(<WithRefillThreshold />)
+    expect(screen.getByText('Refill at 2')).toBeInTheDocument()
+    expect(screen.getByText('Refill at 3')).toBeInTheDocument()
+  })
+
+  it('WithRefillThresholdContinuous renders the refill text', () => {
+    render(<WithRefillThresholdContinuous />)
+    expect(screen.getByText('Refill at 10')).toBeInTheDocument()
+    expect(screen.getByText('Refill at 1.5')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdAtTarget renders the refill text', () => {
+    render(<RefillThresholdAtTarget />)
+    expect(screen.getByText('Refill at 6')).toBeInTheDocument()
+    expect(screen.getByText('Refill at 9')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdFractional renders the refill text', () => {
+    render(<RefillThresholdFractional />)
+    expect(screen.getByText('Refill at 750')).toBeInTheDocument()
+    expect(screen.getByText('Refill at 1.5')).toBeInTheDocument()
   })
 })

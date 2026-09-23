@@ -266,3 +266,110 @@ export const MeasurementWithPackages: Story = {
     </div>
   ),
 }
+
+export const WithRefillThreshold: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Segmented (4/5), refill at 2</p>
+        <ItemProgressBar
+          current={4}
+          target={5}
+          status="ok"
+          refillThreshold={2}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Segmented (1/8), refill at 3 - Warning</p>
+        <ItemProgressBar
+          current={1}
+          target={8}
+          status="warning"
+          refillThreshold={3}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const WithRefillThresholdContinuous: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Continuous (33/40), refill at 10</p>
+        <ItemProgressBar
+          current={33}
+          target={40}
+          status="ok"
+          refillThreshold={10}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Measurement (1.2/5 L), refill at 1.5</p>
+        <ItemProgressBar
+          current={1.2}
+          target={5}
+          status="error"
+          targetUnit="measurement"
+          refillThreshold={1.5}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const RefillThresholdAtTarget: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Segmented (3/6), refill at 6 (= target)</p>
+        <ItemProgressBar
+          current={3}
+          target={6}
+          status="warning"
+          refillThreshold={6}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          Segmented (3/4), refill at 9 (above target)
+        </p>
+        <ItemProgressBar
+          current={3}
+          target={4}
+          status="warning"
+          refillThreshold={9}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const RefillThresholdFractional: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">
+          2000 ml in 500 ml packages (1800/2000), refill at 750 ml
+        </p>
+        <ItemProgressBar
+          current={1800}
+          target={2000}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={500}
+          refillThreshold={750}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Segmented (2.5/3), refill at 1.5</p>
+        <ItemProgressBar
+          current={2.5}
+          target={3}
+          status="ok"
+          refillThreshold={1.5}
+        />
+      </div>
+    </div>
+  ),
+}
