@@ -390,7 +390,7 @@ describe('ItemProgressBar refill threshold marker', () => {
     // Then the marker sits at 750 / 500 = 1.5 packages
     expect(getMarker(container)).toHaveAttribute('data-threshold', '1.5')
     // And the screen-reader text uses the value the user typed
-    expect(screen.getByText('Refill at 750')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
   })
 
   it('draws no marker when the threshold is 0', () => {
@@ -398,7 +398,7 @@ describe('ItemProgressBar refill threshold marker', () => {
       <ItemProgressBar current={3} target={5} refillThreshold={0} />,
     )
     expect(getMarker(container)).toBeNull()
-    expect(screen.queryByText(/Refill at/)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
   })
 
   it('draws no marker when the threshold is negative', () => {
@@ -411,7 +411,7 @@ describe('ItemProgressBar refill threshold marker', () => {
   it('draws no marker when the prop is missing', () => {
     const { container } = render(<ItemProgressBar current={3} target={5} />)
     expect(getMarker(container)).toBeNull()
-    expect(screen.queryByText(/Refill at/)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
   })
 
   it('draws no marker when target is 0 (inactive item)', () => {
@@ -426,7 +426,7 @@ describe('ItemProgressBar refill threshold marker', () => {
       <ItemProgressBar current={3} target={0} refillThreshold={2} />,
     )
     expect(getMarker(full.container)).toBeNull()
-    expect(screen.queryByText(/Refill at/)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
   })
 
   it('clamps the marker to the right end when threshold >= target', () => {
@@ -438,7 +438,7 @@ describe('ItemProgressBar refill threshold marker', () => {
     // Then the marker sits at the end of the bar (5)
     expect(getMarker(container)).toHaveAttribute('data-threshold', '5')
     // And the screen-reader text still says the real value
-    expect(screen.getByText('Refill at 9')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 9')).toBeInTheDocument()
   })
 
   it('clamps to the drawn segments when the package target is fractional', () => {

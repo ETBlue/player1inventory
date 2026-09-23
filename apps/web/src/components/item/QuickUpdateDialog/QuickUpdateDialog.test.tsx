@@ -415,7 +415,7 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
       'data-threshold',
       '3',
     )
-    expect(screen.getByText('Refill at 3')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 3')).toBeInTheDocument()
   })
 })
 

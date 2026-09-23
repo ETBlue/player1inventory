@@ -1961,12 +1961,12 @@ describe('ItemCard - refill threshold marker', () => {
       'data-threshold',
       '4',
     )
-    expect(screen.getByText('Refill at 4')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 4')).toBeInTheDocument()
     // The bar sits inside the card's <Link>, so the sr-only text joins the
     // link's accessible name after the quantity text. It reads as one
     // sentence. Pin it, so a change to the name is a decision, not an accident.
     expect(screen.getByRole('link')).toHaveAccessibleName(
-      'Eggs 7 / 9 carton Refill at 4',
+      'Eggs 7 / 9 carton Refill when below 4',
     )
   })
 
@@ -2006,6 +2006,6 @@ describe('ItemCard - refill threshold marker', () => {
       'data-threshold',
       '1.5',
     )
-    expect(screen.getByText('Refill at 750')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
   })
 })

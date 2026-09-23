@@ -54,10 +54,10 @@ For segmented bars on measurement items, the threshold is divided by
 ### Accessibility
 
 The tick is visual only (`aria-hidden`). Screen-reader-only text next to the bar
-gives the number, for example "Refill at 2". The text has no unit, because
+gives the number, for example "Refill when below 2". The text has no unit, because
 `ItemProgressBar` does not know the package unit name. The quantity text next to
 the bar (`3 / 5 packs`) already names the unit. The string is translated
-(`common.refillAt`, EN and TW).
+(`common.refillWhenBelow`, EN and TW).
 
 ## Testing
 
@@ -85,7 +85,7 @@ The build differs from the plan above in these places.
 | Float error | The package target and the scaled threshold are rounded to 6 decimal places. In JavaScript `0.3 / 0.1` is `2.9999999999999996` and `0.6 / 0.1` is `5.999999999999999`. Without rounding, the tick missed the gap between segments, and the bar drew 5 segments instead of 6. |
 | Continuous bar with package info | A measurement item above 30 packages gets a continuous bar. The tick then uses item units, not packages: target 20000, 500 per package, threshold 5000 puts the tick at 25%. |
 | Right end | At the right end the tick uses `-translate-x-full`, so it stays inside the bar. Everywhere else it uses `-translate-x-1/2`. |
-| Link accessible name | On `ItemCard` the bar is inside the card `<Link>`. The sr-only text joins the link's accessible name, which now ends with "Refill at N", for example "Eggs 7 / 9 carton Refill at 4". A test in `ItemCard.test.tsx` pins this name. |
+| Link accessible name | On `ItemCard` the bar is inside the card `<Link>`. The sr-only text joins the link's accessible name, which now ends with "Refill when below N", for example "Eggs 7 / 9 carton Refill when below 4". A test in `ItemCard.test.tsx` pins this name. |
 | Forwarding | `StockProgressRow` forwards the prop with `!== undefined` (`{...(refillThreshold !== undefined ? { refillThreshold } : {})}`), so `0` still reaches the bar, and the bar decides that `0` means no tick. `QuickUpdateDialog` and the Stock tab pass the live, unsaved value. |
 
 ### Known limits (accepted)

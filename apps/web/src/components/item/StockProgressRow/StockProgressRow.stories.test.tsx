@@ -25,7 +25,7 @@ describe('StockProgressRow stories smoke tests', () => {
       'data-threshold',
       '2',
     )
-    expect(screen.getByText('Refill at 2')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Clear' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Fill to Full' })).toBeEnabled()
   })
@@ -88,7 +88,7 @@ describe('StockProgressRow stories smoke tests', () => {
       'data-threshold',
       '0.75',
     )
-    expect(screen.getByText('Refill at 0.75')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 0.75')).toBeInTheDocument()
     // And no stray bare-unit node is left behind by the removed badge
     expect(screen.queryByText('L')).not.toBeInTheDocument()
   })

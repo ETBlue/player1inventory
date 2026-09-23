@@ -101,8 +101,8 @@ describe('GroupCard', () => {
       />,
     )
 
-    // Then the bar has no refill tick and no "Refill at" text
+    // Then the bar has no refill tick and no "Refill when below" text
     expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
-    expect(screen.queryByText(/Refill at/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Refill when below/)).not.toBeInTheDocument()
   })
 })

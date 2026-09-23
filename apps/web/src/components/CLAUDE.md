@@ -145,7 +145,7 @@ Two channels, neither of them colour (designer ruling, 2026-08-16 — every dot 
 - **Clamps at the end:** a threshold at or above the target puts the tick at the right edge. There the tick uses `-translate-x-full`, so it stays inside the bar. Everywhere else it uses `-translate-x-1/2` (centred on the point).
 - **Segmented bar:** it draws `floor(packageTarget)` segments (for example target 2000 with 300 per package is 6.67 packages, so 6 segments). The tick clamps to the end of the last drawn segment. A whole-number threshold sits in the gap after that segment. A fractional one sits inside a segment. The scaled threshold is rounded to 6 decimal places before the whole-number check, because `0.3 / 0.1` is `2.9999999999999996`.
 - **Test hooks:** the tick is `data-testid="refill-marker"`, `aria-hidden="true"`. Its `data-threshold` is the clamped threshold **in packages on a segmented bar** and **in item units on a continuous bar**. The exported `getRefillMarkerLeft({ threshold, target, segmented })` returns the CSS `left` value.
-- **Screen readers:** a `sr-only` span reads `common.refillAt` ("Refill at N") with the **unscaled** value the user typed, for example "Refill at 750", not "Refill at 1.5". It has no unit, because the bar does not know the unit name.
+- **Screen readers:** a `sr-only` span reads `common.refillWhenBelow` ("Refill when below N") with the **unscaled** value the user typed, for example "Refill when below 750", not "Refill when below 1.5". It has no unit, because the bar does not know the unit name.
 
 Callers:
 
@@ -155,7 +155,7 @@ Callers:
 | `StockProgressRow` | its own `refillThreshold` prop, forwarded |
 | `GroupCard` | nothing, on purpose — a group has no single threshold |
 
-**`ItemCard`'s bar is inside the card `<Link>`**, so the sr-only text joins the link's accessible name. The name now ends with "Refill at N", for example `"Eggs 7 / 9 carton Refill at 4"`. A test in `ItemCard.test.tsx` pins this exact name, so a change to it must be on purpose.
+**`ItemCard`'s bar is inside the card `<Link>`**, so the sr-only text joins the link's accessible name. The name now ends with "Refill when below N", for example `"Eggs 7 / 9 carton Refill when below 4"`. A test in `ItemCard.test.tsx` pins this exact name, so a change to it must be on purpose.
 
 **`StockProgressRow`** (`src/components/item/StockProgressRow/StockProgressRow.tsx`) — the Clear · `x / y` label · `ItemProgressBar` · Fill-to-Full row shared by `QuickUpdateDialog` and `ItemForm`'s Stock tab: `grid grid-cols-[auto_1fr_auto]`, a `space-y-1` middle column (the `flex gap-1 items-baseline text-xs text-right text-foreground-muted` label line with a leading spacer and a single span reading `` `${quantityLabel} ${unitLabel}` ``) over the bar. Purely presentational — it takes every display value as a prop (`quantityLabel`, `unitLabel`, `current`, `target`, `status`, `targetUnit`, `packed`, `unpacked`, optional `measurementUnit`/`amountPerPackage`/`refillThreshold`, optional `size`, `onClear`/`onFill`, `clearDisabled`/`fillDisabled`, `clearLabel`/`fillLabel`) and computes nothing itself — both callers derive them from the shared `getStockPreview` (`lib/quantityUtils.ts`). Its two action buttons are `type="button"` for the same reason `QuantityStepper`'s are.
 

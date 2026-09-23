@@ -65,7 +65,7 @@ describe('StockProgressRow refill threshold', () => {
       'data-threshold',
       '2',
     )
-    expect(screen.getByText('Refill at 2')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
   })
 
   it('draws no tick when refillThreshold is not passed', () => {

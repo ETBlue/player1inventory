@@ -82,33 +82,33 @@ describe('ItemProgressBar stories smoke tests', () => {
 
   it('WithRefillThreshold renders the refill text', () => {
     render(<WithRefillThreshold />)
-    expect(screen.getByText('Refill at 2')).toBeInTheDocument()
-    expect(screen.getByText('Refill at 3')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 3')).toBeInTheDocument()
   })
 
   it('WithRefillThresholdContinuous renders the refill text', () => {
     render(<WithRefillThresholdContinuous />)
-    expect(screen.getByText('Refill at 10')).toBeInTheDocument()
-    expect(screen.getByText('Refill at 1.5')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 10')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 1.5')).toBeInTheDocument()
   })
 
   it('RefillThresholdAtTarget renders the refill text', () => {
     render(<RefillThresholdAtTarget />)
-    expect(screen.getByText('Refill at 6')).toBeInTheDocument()
-    expect(screen.getByText('Refill at 9')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 6')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 9')).toBeInTheDocument()
   })
 
   it('RefillThresholdFractional renders the refill text', () => {
     render(<RefillThresholdFractional />)
-    expect(screen.getByText('Refill at 750')).toBeInTheDocument()
-    expect(screen.getByText('Refill at 1.5')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 1.5')).toBeInTheDocument()
   })
 
   it('RefillThresholdFractionalPackageTarget draws 6 segments per bar', () => {
     const { container } = render(<RefillThresholdFractionalPackageTarget />)
-    expect(screen.getByText('Refill at 900')).toBeInTheDocument()
-    expect(screen.getByText('Refill at 1950')).toBeInTheDocument()
-    expect(screen.getByText('Refill at 0.3')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 900')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 1950')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 0.3')).toBeInTheDocument()
     // Three bars, 6 segments each
     expect(container.querySelectorAll('[data-segment]')).toHaveLength(18)
     expect(

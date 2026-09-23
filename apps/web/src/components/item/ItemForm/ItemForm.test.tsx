@@ -1242,7 +1242,7 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
       'data-threshold',
       '3',
     )
-    expect(screen.getByText('Refill at 3')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 3')).toBeInTheDocument()
   })
 
   it('Fill to Full targets the form field the user just edited, not the saved target', async () => {

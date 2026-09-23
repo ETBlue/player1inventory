@@ -36,7 +36,7 @@
     "notInThisList_other": "{{count}} not in this list",
     "expiresOn": "Expires on",
     "expiresOnHint": "When the stock in this location expires",
-    "refillAt": "Refill at {{value}}"
+    "refillWhenBelow": "Refill when below {{value}}"
   },
   "shopping": {
     "title": "Shopping",

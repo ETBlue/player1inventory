@@ -400,7 +400,7 @@ export function ItemProgressBar({
             segmented={!useContinuous}
           />
           <span className="sr-only">
-            {t('common.refillAt', { value: refillThreshold })}
+            {t('common.refillWhenBelow', { value: refillThreshold })}
           </span>
         </>
       )}

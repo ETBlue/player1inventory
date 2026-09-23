@@ -36,7 +36,7 @@
     "notInThisList_other": "不在此清單的 {{count}} 項",
     "expiresOn": "到期日",
     "expiresOnHint": "這個據點的庫存到期時間",
-    "refillAt": "低於 {{value}} 時補貨"
+    "refillWhenBelow": "低於 {{value}} 時補貨"
   },
   "shopping": {
     "title": "購物",
