@@ -162,6 +162,14 @@ Both return the same `Record<locationKey, realLocationId>` map.
 
 `e2e/tests/location-not-stocked-here.spec.ts` is the working example.
 
+**A cloud-only spec uses `seedCloudFixture` on its own.**
+`e2e/tests/location-scoped-writes.spec.ts` does that. It has no local twin and no
+browser: it calls the four location-scoped write mutations through `makeGql` and reads
+the result back the same way, because the behaviour it tests is which `locationId` the
+server writes a row to. It is listed in the `cloud` project's `testMatch` AND in the
+`local` project's `testIgnore` (`e2e/playwright.config.ts`), so it runs in exactly one
+project. `settings/import-export-cloud.spec.ts` is configured the same way.
+
 **Entity ids are the same in both modes.** `ItemInput`, `VendorInput`, `ShelfInput` and
 `RecipeInput` all declare `id: ID!`, so the bulk import mutations accept the local
 fixture's own fixed ids.
