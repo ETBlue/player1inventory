@@ -18,8 +18,8 @@ Draw a thin vertical tick on the item progress bar at the refill threshold.
 
 - The tick is a little taller than the bar (the bar is 8px, the tick about 12px),
   so it stays visible when the bar is filled.
-- It uses a strong foreground color that meets WCAG AA non-text contrast (3:1)
-  in light and dark mode.
+- It uses the `foreground-default` color token, which meets WCAG AA non-text
+  contrast (3:1) in light and dark mode.
 - **Segmented bar** (target ≤ 30 packages): with threshold 2, the tick sits in the
   gap after segment 2: `[■][■]|[■][ ][ ]`. A fractional threshold (for example
   1.5 packages, from a measurement-unit item) sits inside a segment.
@@ -54,7 +54,10 @@ For segmented bars on measurement items, the threshold is divided by
 ### Accessibility
 
 The tick is visual only (`aria-hidden`). Screen-reader-only text next to the bar
-gives the number, for example "Refill at 2 packs".
+gives the number, for example "Refill at 2". The text has no unit, because
+`ItemProgressBar` does not know the package unit name. The quantity text next to
+the bar (`3 / 5 packs`) already names the unit. The string is translated
+(`common.refillAt`, EN and TW).
 
 ## Testing
 
@@ -66,7 +69,11 @@ gives the number, for example "Refill at 2 packs".
   Fixtures must use a threshold that differs from every other number on the card,
   so a test cannot pass by reading the wrong value.
 - Storybook stories for the new states, with smoke tests.
-- `a11y.spec.ts` checks contrast in light and dark mode.
+- `a11y.spec.ts` still runs, but it does **not** prove the tick's contrast. axe
+  checks text contrast only, not non-text contrast (WCAG 1.4.11). The tick uses
+  the `foreground-default` token (`oklch(30% …)` light, `oklch(90% …)` dark),
+  which is far above 3:1 on the card surface in both themes. Check this by eye
+  in Storybook in both themes.
 
 ## Rejected
 
