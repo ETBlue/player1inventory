@@ -1,8 +1,11 @@
 # Cloud Locations — Status
 
 Status: 🔄 **In Progress** — PRs 0, 1, 2, 3a, 3b and 3c are ✅ **merged and deployed to
-production**. **PR 3 is complete.** PRs 4 and 5 are 🔲 pending. Three manual smoke tests
-are **OVERDUE** — see *The smoke tests are overdue, not pending* below.
+production**. **PR 3 is complete.** PRs 4 and 5 are 🔲 pending. The three overdue smoke
+tests were **automated on 2026-09-23** as `e2e/tests/location-scoped-writes.spec.ts` (4
+cloud test cases). One narrower check is still owed: nothing has run the new server code
+against data the PR 3b migration produced — see *The smoke tests are overdue, not pending*
+below.
 
 Docs for this feature:
 [brainstorming](2026-08-30-brainstorming-cloud-locations.md) ·
@@ -916,7 +919,7 @@ The main ones:
 
 PR 3a is complete and merged as [#291](https://github.com/ETBlue/player1inventory/pull/291).
 
-### PR 3b owes — nothing in code. One OVERDUE smoke test.
+### PR 3b owes — nothing in code. One narrowed smoke test.
 
 Every item PR 3b was listed as owing is done: the `'no-vendor'` split, the composite
 `Cart.id` re-key, the cart resolvers rewritten with it, vendor carts created at the right
@@ -927,7 +930,7 @@ production copy. `grep -rn "PR 3b:" apps/server/src` returns **0**.
 
 | Still owed | Where |
 |---|---|
-| **The manual smoke test — OVERDUE.** The deploy happened on 2026-09-19 and this was never run. No automated test has run the new server code against data this migration produced. It must use **two** locations. | Step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
+| **The manual smoke test — NARROWED, still owed.** Its location-scoping half is now automated: `e2e/tests/location-scoped-writes.spec.ts` (2026-09-23) checks with **two** locations that `checkout` and `consumeRecipes` write the log at the cart's / cook's location and leave the default location's logs and stock untouched, against real Postgres. What that does **not** cover is the original point of this item: cloud E2E starts from an empty database, so every row it reads was written by the new code. Nothing has yet run the new code against rows the re-key migration converted. | Step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md) |
 | ~~**The deploy itself**~~ — **DONE, and verified 2026-09-21.** | See below |
 
 Carried forward to a later PR, not blocking:
@@ -945,26 +948,35 @@ deploy" is never a thing that can be scheduled — by the time a PR is merged, i
 | PR | Deployed | Smoke test |
 |---|---|---|
 | 3a | 2026-09-19 or earlier | folded into 3b's |
-| 3b | 2026-09-19, verified 2026-09-21 | **overdue** |
-| 3c | on merge of #297, 2026-09-21 | **overdue**, and only possible now — `applyUnitSwitch` did not exist in production before this |
+| 3b | 2026-09-19, verified 2026-09-21 | **automated 2026-09-23**, except the migrated-data check below |
+| 3c | on merge of #297, 2026-09-21 | **automated 2026-09-23** |
 
 **PR 3c's deploy is not verified.** PRs 3a and 3b were checked against a branch of
 production on 2026-09-21, before #297 merged. Nothing has checked 3c. It ships no
 migration, so there is no schema change to verify — but `applyUnitSwitch` and the remove
 cascade are now live and have never run against real Postgres anywhere.
 
-**The three smoke tests, all needing two locations:**
+**The three smoke tests, all needing two locations — automated on 2026-09-23** as
+`e2e/tests/location-scoped-writes.spec.ts`, 4 cloud test cases:
 
-1. **Checkout and cooking** (PR 3b) — check the log lands at the cart's location, not the
-   default one.
-2. **Removing an item from a location** (PR 3c) — check the *other* location's logs and
-   cart entries survive.
-3. **A unit switch** (PR 3c) — check *both* locations' quantities converted and the
-   recipe's `defaultAmount` moved with them.
+1. **Checkout and cooking** (PR 3b) — the log lands at the cart's / cook's location, not
+   the default one. Two tests, one per resolver.
+2. **Removing an item from a location** (PR 3c) — the *other* location's stock row,
+   inventory logs and cart entries survive.
+3. **A unit switch** (PR 3c) — *both* locations' quantities converted and the recipe's
+   `defaultAmount` moved with them.
 
 **Two locations is not optional.** With one, "the cart's location" and "the caller's
 default location" are the same value, so the test passes against either implementation.
-That failure has appeared four times in this series.
+That failure has appeared four times in this series. The spec therefore seeds a
+**non-default** second location, performs every action there, and asserts on both
+locations. Each of the four tests was mutation-checked: five separate breakages of the
+server resolvers were applied one at a time and each turned the owning test red.
+
+**What is still owed:** the spec runs against a dedicated Neon test branch that
+`/e2e/cleanup` empties first, so every row it reads was written by the new code. Nothing
+has yet run the new code against rows the PR 3b re-key migration converted. That check
+remains manual and belongs to step 6 of the deploy runbook.
 
 ---
 
@@ -1011,7 +1023,7 @@ dashboard was never checked.
 
 ---
 
-### PR 3c owes — nothing in code. Two OVERDUE smoke tests.
+### PR 3c owes — nothing. Both smoke tests were automated on 2026-09-23.
 
 Both features are built: `applyUnitSwitch` in the schema, the resolver and the client; and
 `removeItemFromLocation`'s three-delete cascade with its counts shown in both modes. PR 3c
@@ -1019,15 +1031,15 @@ writes **no migration**, so it adds nothing to the deploy runbook's migration st
 
 | Still owed | Where |
 |---|---|
-| **A manual cloud smoke test of a removal.** No cloud E2E spec names `removeItemFromLocation`, so its `$transaction` has never run against real Postgres — every server test runs on hand-written fakes. Use **two** locations and check that the other location's logs and cart entries survive. | Fold into step 6 of the [deploy runbook](../../global/backend/2026-09-18-deploy-runbook-cart-rekey.md), which already owes a two-location smoke test for PR 3b. |
-| **A manual cloud smoke test of a unit switch.** Same reason: no cloud E2E spec names `applyUnitSwitch`. Use an item stocked in **two** locations and a recipe, and check that both locations' quantities and the recipe's `defaultAmount` moved. | Same step. |
+| ~~**A manual cloud smoke test of a removal.**~~ **DONE — automated 2026-09-23.** `removeItemFromLocation`'s `$transaction` now runs against real Postgres in `e2e/tests/location-scoped-writes.spec.ts`, with **two** locations: the other location's stock row, inventory logs and cart entries are all asserted to survive. | `e2e/tests/location-scoped-writes.spec.ts` |
+| ~~**A manual cloud smoke test of a unit switch.**~~ **DONE — automated 2026-09-23.** Same spec: an item stocked in **two** locations with different quantities, plus a recipe. Both locations' numbers and the recipe's `defaultAmount` are asserted after the switch. | `e2e/tests/location-scoped-writes.spec.ts` |
 
 Carried forward, not blocking:
 
 | Item | Why |
 |---|---|
 | `consumeRecipes` is **not** wrapped in a `prisma.$transaction`. | It writes row by row, so a cooking session that fails partway can leave some items consumed and some not. Local mode has `consumeRecipesBatch`, one Dexie transaction. No PR owns this today. |
-| No cloud E2E spec covers `applyUnitSwitch` or `removeItemFromLocation`. | Belongs with issue #284's remaining work. The two manual smoke tests above are the stop-gap. |
+| ~~No cloud E2E spec covers `applyUnitSwitch` or `removeItemFromLocation`.~~ **CLOSED 2026-09-23.** | `e2e/tests/location-scoped-writes.spec.ts` names both, and `checkout` and `consumeRecipes` as well. Part of issue #284. |
 | **`matchesStock` in `apps/server/src/test/stockFake.ts` ignores an unknown `where` key and matches every row.** | It checks `id`, `itemId`, `locationId` and the compound key, then returns `true`. So `deleteMany({ where: { location: { userId } } })` routed through this fake would delete **all** stock rows and the test would pass. **No caller today** — the purge tests use their own `vi.fn()` and assert the call shape with `toHaveBeenCalledWith`, which does catch a dropped filter. But `clearAllData`, `purgeUserData` and `/e2e/cleanup` all use that filter shape, so pointing any of them at `stockFake` later would be silently wrong. Found 2026-09-20 while checking whether PR 3c's relation-filter gap existed elsewhere. |
 | **`configureTransaction`'s plain-data rule is documented, not enforced.** | A store registered for rollback is deep-copied with `structuredClone`, which **throws** on a function or a class instance. The rule lives in a comment above `RollbackStore`. A future test registering a store containing a `vi.fn()` gets a `DataCloneError` from inside the fake, which reads as a fake bug rather than a fixture mistake. |
 

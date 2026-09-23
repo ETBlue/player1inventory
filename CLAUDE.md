@@ -258,7 +258,7 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 pnpm test:e2e
 ```
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **322 tests in 24 spec files** (measured 2026-09-20): **175 in `local`**, **78 in `cloud`** across 12 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
+No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **326 tests in 25 spec files** (measured 2026-09-23): **175 in `local`**, **82 in `cloud`** across 13 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 
@@ -670,17 +670,29 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **12 files today**. **A resolver
+`e2e/playwright.config.ts` — that list is opt-in and covers **13 files today**. **A resolver
 exercised by no cloud spec has never touched SQL at all**, and a manual smoke test is owed
 for anything transactional.
 
-Three of those 12 cover location surfaces, added 2026-09-14 (issue #284):
+Four of those 13 cover location surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
 `locations` query with `ensureDefaultLocation`, `upsertItemStock`, `addItemToLocation` and
-the `itemStocks` / `PantryData` read. The warning above still holds for everything else —
-most resolvers are named by no cloud spec.
+the `itemStocks` / `PantryData` read.
+
+The fourth is `location-scoped-writes.spec.ts`, added 2026-09-23 — 4 cloud test cases, and
+the first real-SQL coverage of the four location-scoped WRITE resolvers PRs 3b and 3c
+shipped: `checkout` (cart.resolver.ts), `consumeRecipes` (recipe.resolver.ts), and
+`removeItemFromLocation` + `applyUnitSwitch` (itemStock.resolver.ts). It replaces the three
+manual smoke tests those PRs owed. It is the only cloud spec with no browser at all — it
+calls GraphQL through `makeGql` and asserts server state the same way, because what it
+tests is which `locationId` a row is written to, and `InventoryLog` exposes no `locationId`
+field to read back. It is therefore in the `local` project's `testIgnore` as well as the
+`cloud` project's `testMatch`.
+
+The warning above still holds for everything else — most resolvers are named by no cloud
+spec.
 
 > The former wording here — "cloud E2E is gated on `TEST_CLOUD_MODE` (issue #260), which is
 > set nowhere" — was true until PR 0 of cloud locations replaced those guards with the
