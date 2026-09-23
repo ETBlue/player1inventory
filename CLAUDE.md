@@ -252,18 +252,24 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**Final phase only** — after all steps are complete, run the **whole** E2E suite. Run the
-three projects as **three separate commands**, not one:
+**Final phase only** — after all steps are complete, run the **whole** E2E suite with one
+command:
 
 ```bash
-pnpm test:e2e --project=local
-pnpm test:e2e --project=cloud
-pnpm test:e2e --project=pwa
+pnpm test:e2e:all
 ```
 
-**Do not run the bare `pnpm test:e2e` as your gate on this machine.** One invocation starts
-**four** web servers plus the API server and keeps them all alive for the whole run. The
-machine starves, and the run reports failures nobody caused.
+`e2e/run-all.sh` runs the three projects — `local`, `cloud`, `pwa` — as three separate
+Playwright invocations, one after another. It does **not** stop at the first failing
+project: all three run, and a summary table at the end gives each project's result, elapsed
+time and test counts. It exits non-zero if any project failed. Each project writes its own
+HTML report (`playwright-report/local`, `/cloud`, `/pwa`), and the reporter never opens a
+browser, so the command is safe to run non-interactively.
+
+**Do not run the bare `pnpm test:e2e` as your gate on this machine.** One invocation runs
+all three projects together and keeps every server alive for the whole run — three web
+servers plus the API server. The machine starves, and the run reports failures nobody
+caused.
 
 Measured 2026-09-23 at `main` `b22b53ec`, same commit, same machine:
 
@@ -281,9 +287,41 @@ symptoms — `Test timeout of 30000ms exceeded`, `element is not stable`, `eleme
 detached from the DOM, retrying` — not assertion failures. The 8 real ones were all issue
 #280, fixed on 2026-09-23. Separate runs are now fully green: **172 + 76 + 69 = 317**.
 
-Separate invocations cost about **14 minutes** against roughly 11 for the combined run, and
-they tell the truth. A gate that reports failures nobody caused gets ignored, which is
-worse than having no gate. This is issue #302.
+Separate invocations used to cost about **14 minutes** against roughly 11 for the combined
+run, and they tell the truth. A gate that reports failures nobody caused gets ignored, which
+is worse than having no gate.
+
+**A filtered run used to start all four servers. Since 2026-09-24 it does not.** Playwright
+starts every `webServer` entry whatever `--project` says — there is no per-project
+`webServer` — so `--project=local` also started the cloud web app, the API server, and a
+full `pnpm --filter web build` for a PWA preview it never opened.
+`e2e/playwright.config.ts` now builds `webServer` from the projects named on the command
+line:
+
+| Command | Servers started |
+|---|---|
+| `--project=local` | `5175` |
+| `--project=cloud` | `5174` + `4001` |
+| `--project=pwa` | `5176`, after the production build |
+| no `--project`, or `--ui` / `--debug`, or an unrecognised value such as a glob | all four |
+
+The fallback is to start everything, so a parsing mistake costs a slow run and never a
+missing server.
+
+Startup cost removed, measured 2026-09-24 on this machine. Same commit, same three tests
+per row, four servers forced by passing a glob instead of an exact project name:
+
+| Command | Before (4 servers) | After |
+|---|---|---|
+| `--project=local e2e/tests/onboarding.spec.ts` | 19s, 20s, 19s | **6s, 7s, 7s** |
+| `--project=cloud e2e/tests/item-logs.spec.ts` | 41s | **32s** |
+| `--project=pwa e2e/tests/pwa-offline.spec.ts` | 16s | **11s** |
+
+The whole gate, `pnpm test:e2e:all`, measured 2026-09-24: **12m39s**, all three green —
+local 170 passed / 5 skipped in 3m18s, cloud 76 passed / 6 skipped in 7m58s, pwa 69 passed
+in 1m23s. The two `offline banner a11y` tests moved from "runs in both `local` and `pwa`"
+to "runs in `pwa` only", which is why local now passes 170 where it passed 172 before —
+see **A11y Testing** below. This is issue #302.
 
 `workers: 1` and `fullyParallel: false` are already set in `e2e/playwright.config.ts`, so
 the contention is between the concurrent **servers**, not concurrent tests. Passing
@@ -787,7 +825,7 @@ you read one, do not trust it as evidence.
 
 **Biome lint (`pnpm lint`):** 37 a11y rules enabled in `apps/web/biome.json` — catches static violations (missing alt text, invalid ARIA, bad roles) at write time.
 
-**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **66 tests in `local` and the same 66 again in `pwa`** (measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
+**axe-playwright (`e2e/tests/a11y.spec.ts`):** Runtime a11y checks via `axe-core` targeting WCAG AA (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) — the target is explicit via `AXE_OPTIONS` in the spec file. Covers **66 tests in `pwa`, and the same file collects 66 under `local` but runs 64** (counts measured 2026-09-20): 15 top-level page scans, 13 in `test.describe('detail page a11y')`, 27 in `test.describe('dark mode a11y')`, 9 mobile-viewport scans at 390×844 in `test.describe('mobile viewport a11y')`, and 2 in `test.describe('offline banner a11y')`. **Those last 2 run only in `pwa`** (since 2026-09-24, issue #302). They set `baseURL: PWA_WEB_URL`, so under `local` they ran against the same server with the same code — an exact duplicate — and they were the only reason a `--project=local` run needed the PWA preview server at all. A describe-level `test.skip` now skips them outside `pwa`. It has to be at describe level: the file's top-level `beforeEach` also calls `page.goto('/')`, so a body-level skip runs too late and the hook still hits port 5176. Run with `pnpm test:e2e a11y.spec.ts` — select it by path, not `--grep`. Dark mode is triggered by `page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))` in a `test.describe('dark mode a11y')` block.
 
 When adding a new page/route, add a corresponding test to `e2e/tests/a11y.spec.ts` for both light and dark mode.
 

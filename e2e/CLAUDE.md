@@ -32,6 +32,69 @@ The process path names which worktree owns it. Wait for a **sustained** quiet wi
 session's next launch. **Never kill the other session's server.** A run showing
 `ERR_CONNECTION_REFUSED` is void — re-run it alone before believing any failure.
 
+## A filtered run starts only the servers that project needs
+
+Since 2026-09-24 (issue #302), `e2e/playwright.config.ts` builds its `webServer`
+array from the projects named on the command line:
+
+| Command | Servers started |
+|---|---|
+| `--project=local` | `5175` |
+| `--project=cloud` | `5174` + `4001` |
+| `--project=pwa` | `5176` (runs `pnpm --filter web build` first) |
+| no `--project` | all four |
+
+Before that change Playwright started **all four** servers whatever `--project`
+said, because there is no per-project `webServer`. Three local-mode tests ran a
+full production build for a PWA preview they never opened.
+
+**The fallback is to start everything.** The config cannot read the selection
+with confidence when `--ui` or `--debug` is passed, or when a `--project` value
+is not exactly `local`, `cloud` or `pwa` — a glob counts as unrecognised. In
+those cases it starts all four, so a parsing mistake costs a slow run and never
+a missing server.
+
+**One spec crossed projects, and it had to be fixed for this to be true.**
+`a11y.spec.ts` runs in both `local` and `pwa`, and its `offline banner a11y`
+block sets `test.use({ baseURL: PWA_WEB_URL })` for its two tests. Under `local`
+those two hit port `5176`, which a `--project=local` run no longer starts, and
+they failed with `net::ERR_CONNECTION_REFUSED at http://localhost:5176/`. They
+now carry a **describe-level** `test.skip` that skips them outside the `pwa`
+project. They ran against the same server with the same code in both projects,
+so nothing is lost — `pwa` still runs them.
+
+**The skip must be at describe level, not in the test body.** The file's
+top-level `beforeEach` also calls `page.goto('/')`, so a body-level
+`test.skip(...)` runs after that hook has already hit `5176`. Measured: with the
+skip in the body, `--project=local ... --grep "offline banner"` still reported
+**2 failed**; with it at describe level, **2 skipped**. Describe level needs
+`test.info().project.name` — the callback form of `test.skip` is handed
+fixtures, not a `TestInfo`.
+
+**Two consequences for the port check above.** A `--project=local` run leaves
+`5174`, `5176` and `4001` free, so seeing them free does not mean nobody is
+running E2E. And `pnpm test:e2e:all` (`e2e/run-all.sh`) runs the three projects
+one after another, so it touches all four ports over its lifetime but rarely
+more than two at a time.
+
+## `pnpm test:e2e:all` runs the three projects in one command
+
+`e2e/run-all.sh` runs `local`, `cloud` and `pwa` as three separate Playwright
+invocations. It does three things a plain `a && b && c` gets wrong:
+
+1. It does **not** stop at the first failing project. All three run, and a
+   summary table at the end lists each project's result and elapsed time. The
+   script exits non-zero if any project failed.
+2. It gives each project its own HTML report directory
+   (`playwright-report/local`, `/cloud`, `/pwa`) via
+   `PLAYWRIGHT_HTML_OUTPUT_DIR`. One shared directory would let run 3 overwrite
+   runs 1 and 2.
+3. It sets `PLAYWRIGHT_HTML_OPEN=never`, so a failure does not open a browser
+   and block a non-interactive run.
+
+Extra arguments are passed to every project run, e.g.
+`pnpm test:e2e:all --reporter=line`.
+
 ## A stale `generated/graphql.ts` breaks E2E with symptoms that point elsewhere
 
 `apps/web/src/generated/graphql.ts` is gitignored, so a checkout or worktree can carry a
