@@ -75,6 +75,24 @@ the bar (`3 / 5 packs`) already names the unit. The string is translated
   which is far above 3:1 on the card surface in both themes. Check this by eye
   in Storybook in both themes.
 
+## Implementation notes (2026-09-23)
+
+The build differs from the plan above in these places.
+
+| Topic | What was built |
+|---|---|
+| Segment count | A segmented bar draws `floor(packageTarget)` segments. `Array.from` drops the fraction, so target 2000 with 300 per package (6.67 packages) draws 6 segments. The tick uses the same 6 as its target, so a threshold of 1950 (6.5 packages) clamps to the end of segment 6. |
+| Float error | The package target and the scaled threshold are rounded to 6 decimal places. In JavaScript `0.3 / 0.1` is `2.9999999999999996` and `0.6 / 0.1` is `5.999999999999999`. Without rounding, the tick missed the gap between segments, and the bar drew 5 segments instead of 6. |
+| Continuous bar with package info | A measurement item above 30 packages gets a continuous bar. The tick then uses item units, not packages: target 20000, 500 per package, threshold 5000 puts the tick at 25%. |
+| Right end | At the right end the tick uses `-translate-x-full`, so it stays inside the bar. Everywhere else it uses `-translate-x-1/2`. |
+| Link accessible name | On `ItemCard` the bar is inside the card `<Link>`. The sr-only text joins the link's accessible name, which now ends with "Refill at N", for example "Eggs 7 / 9 carton Refill at 4". A test in `ItemCard.test.tsx` pins this name. |
+| Forwarding | `StockProgressRow` forwards the prop with `!== undefined` (`{...(refillThreshold !== undefined ? { refillThreshold } : {})}`), so `0` still reaches the bar, and the bar decides that `0` means no tick. `QuickUpdateDialog` and the Stock tab pass the live, unsaved value. |
+
+### Known limits (accepted)
+
+- **Package target below 1 draws no tick.** This bug existed before this work. On a segmented bar with `packageTarget < 1` (for example target 200 with 500 per package), `floor(packageTarget)` is 0, so the bar draws 0 segments. With 0 segments there is nothing to place a tick on, so no tick is drawn.
+- **A very small threshold on a continuous bar can sit about 1px past the left edge.** The tick is 2px wide and centred on its point, so near 0% half of it is left of the bar. This is cosmetic and accepted.
+
 ## Rejected
 
 - **Threshold as text** (`3 / 5 packs · refill at 2`): makes the user compare two
