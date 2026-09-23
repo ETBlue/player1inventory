@@ -3,6 +3,8 @@ import type { APIRequestContext } from '@playwright/test'
 import { PantryPage } from '../pages/PantryPage'
 import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
 import { makeGql } from '../utils/cloud'
+import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
+import { splitInlineStock } from '../helpers/locationSeed'
 
 // Seed tag types directly into IndexedDB.
 // Clears existing tagTypes and tags first to avoid conflicts with Dexie's default
@@ -203,12 +205,39 @@ async function seedItems(
 ) {
   if (options?.baseURL === CLOUD_WEB_URL && options.request) {
     const gql = makeGql(options.request)
+    // The pantry lists STOCKED items, not catalog items — it reads `ItemStock`.
+    // The `createItem` resolver (apps/server/src/resolvers/item.resolver.ts)
+    // writes one `prisma.item.create` and no stock row, so an item seeded with
+    // `createItem` alone never appears in the pantry. The app's `useCreateItem`
+    // hook runs `createItem` then `upsertItemStock`; this seed does the same.
+    const { id: locationId } = await ensureCloudDefaultLocation(options.request)
     // Seed in parallel — 40 sequential round-trips would otherwise blow past the
-    // test timeout before the page is even navigated to.
+    // test timeout before the page is even navigated to. Each item's stock write
+    // still awaits its own `createItem`; different items are independent.
     await Promise.all(
-      names.map((name) =>
-        gql('mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }', { name }),
-      ),
+      names.map(async (name) => {
+        const { createItem } = await gql<{ createItem: { id: string } }>(
+          'mutation CreateItem($name: String!) { createItem(input: { name: $name }) { id } }',
+          { name },
+        )
+        await gql(
+          `mutation ($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+            upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+          }`,
+          {
+            itemId: createItem.id,
+            locationId,
+            // Matches the all-zero quantities the local branch seeds below, so
+            // both modes render the same `0/0` cards.
+            input: {
+              targetQuantity: 0,
+              refillThreshold: 0,
+              packedQuantity: 0,
+              unpackedQuantity: 0,
+            },
+          },
+        )
+      }),
     )
     return
   }
@@ -252,6 +281,12 @@ async function seedItems(
 
     db.close()
   }, names)
+
+  // The pantry lists STOCKED items — `getStockedItems` filters on `itemStocks`,
+  // so an item written to the `items` store alone is an orphan: in the catalog,
+  // absent from the pantry. `splitInlineStock` creates the missing stock row at
+  // the default location for every seeded item.
+  await splitInlineStock(page)
 }
 
 test('user can navigate to item detail and back with search state preserved', async ({ page, request, baseURL }) => {
