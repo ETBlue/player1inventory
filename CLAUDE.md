@@ -277,7 +277,7 @@ Measured on 2026-09-16 with the example grep this section used to recommend — 
 
 It also keeps only **part** of three more files, because a stray word in one test title matched while the file name did not: `item-logs.spec.ts` (1 of 3 — one title contains "cooking"), `location-switcher.spec.ts` (6 of 14), `onboarding.spec.ts` (1 of 3 — one title contains "items").
 
-Two of the three skipped files run in cloud, so the old gate never ran them in **either** project. `item-list-state-restore.spec.ts` has **8 failing tests on `main` today** — 4 local and 4 cloud. They stayed hidden for exactly this reason (issue #280).
+Two of the three skipped files run in cloud, so the old gate never ran them in **either** project. That is how `item-list-state-restore.spec.ts` sat with **8 failing tests on `main`** — 4 local and 4 cloud — for weeks (issue #280). **Fixed 2026-09-23**: its `seedItems` wrote a catalog item and no stock row, so the pantry, which lists stocked items, showed nothing. See `docs/global/bugs/2026-09-23-bug-state-restore-seed-no-itemstock.md`. The lesson about `--grep` stands. The spec was last edited on 2026-06-12 (`5d3ad0a6`); the pantry moved onto `getStockedItems` two days later, on 2026-06-14 (`7ae21ebb`). So these four tests were broken from that commit onward and no gate run reported it.
 
 **If you must narrow the run, pass spec paths as positional arguments — never `--grep`.** Playwright matches positional arguments against the file path, so you select whole files and cannot lose one to a word-form mismatch:
 

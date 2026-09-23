@@ -147,6 +147,46 @@ whether to rename it), so the call has its own reason to exist. `cooking.spec.ts
 still calls it — a seed that guarantees its own preconditions does not depend on server
 behaviour to be correct.
 
+## A seed that writes an item must also write its stock — in BOTH modes
+
+The pantry lists **stocked** items, not catalog items. `getStockedItems` filters on
+`ItemStock`, so an item with no stock row at the active location is an orphan: in the
+catalog, absent from the pantry. A seed that writes only the item is not a smaller seed,
+it is a broken one — and the failure lands much later, on a locator timeout for a card
+that never rendered.
+
+Both halves of a dual-mode seed need their own fix, and a fix to one half looks like it
+worked because the other project's four failures are reported separately:
+
+| Mode | Writes | What to add |
+|---|---|---|
+| local | `db.transaction('items', 'readwrite')` | `await splitInlineStock(page)` from `helpers/locationSeed.ts`, after the item write |
+| cloud | `createItem` over GraphQL | `upsertItemStock` after each `createItem`, with the location id from `ensureCloudDefaultLocation(request)` (`helpers/cloudSeed.ts`) |
+
+`splitInlineStock` touches IndexedDB only and does **nothing** for the cloud branch.
+
+**The cloud half is not a server bug.** The `createItem` resolver
+(`apps/server/src/resolvers/item.resolver.ts`) is a single `prisma.item.create` on
+purpose — creating a catalog item and stocking it are two operations. The app's
+`useCreateItem` hook runs `createItem` then `upsertItemStock` unless `catalogOnly`. A
+seed that skips the second call is doing half of what the app does.
+
+Keep the cloud seed parallel. 40 sequential round trips blow the test timeout. Await each
+item's own `createItem` before its `upsertItemStock`; different items are independent:
+
+```ts
+await Promise.all(names.map(async (name) => {
+  const { createItem } = await gql(CREATE_ITEM, { name })
+  await gql(UPSERT_STOCK, { itemId: createItem.id, locationId, input: { /* … */ } })
+}))
+```
+
+This cost 8 failing tests on `main` for weeks — `item-list-state-restore.spec.ts`, 4
+local and 4 cloud (issue #280, fixed 2026-09-23). `settings/vendors.spec.ts` already
+calls `splitInlineStock`. `settings/recipes.spec.ts` seeds items without stock and is
+correct as written, because it asserts only on catalog views (the recipe-detail Items tab
+reads `useItems()`), never on the pantry.
+
 ## Seeding a fixture that runs in both modes
 
 A spec that seeds data and runs in both the `local` and `cloud` projects describes its
