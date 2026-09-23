@@ -22,6 +22,7 @@ shown anywhere on the card.
 | 1 | How should the card show the refill threshold? | Tick marker on the progress bar / text only (`3 / 5 packs · refill at 2`) / both | **Tick marker on the bar** |
 | 2 | Where should the marker appear? | Everywhere `ItemProgressBar` is used for an item / item cards only | **Everywhere**: item cards, the Quick Update dialog, and the item Stock tab |
 | 3 | Approve the design? | — | **Approved** |
+| 4 | (After Task 1) The screen-reader text said "Refill at N" in EN but "低於 N 時補貨" ("refill when below N") in TW. Which wording? | Keep both / change EN to match TW / change TW to match EN | **Change EN to match**: "Refill when below N". It now matches TW and the form label "Refill When Below". The i18n key is `common.refillWhenBelow`. |
 
 ## Decision
 
