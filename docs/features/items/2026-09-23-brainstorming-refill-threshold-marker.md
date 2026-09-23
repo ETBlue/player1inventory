@@ -23,6 +23,7 @@ shown anywhere on the card.
 | 2 | Where should the marker appear? | Everywhere `ItemProgressBar` is used for an item / item cards only | **Everywhere**: item cards, the Quick Update dialog, and the item Stock tab |
 | 3 | Approve the design? | — | **Approved** |
 | 4 | (After Task 1) The screen-reader text said "Refill at N" in EN but "低於 N 時補貨" ("refill when below N") in TW. Which wording? | Keep both / change EN to match TW / change TW to match EN | **Change EN to match**: "Refill when below N". It now matches TW and the form label "Refill When Below". The i18n key is `common.refillWhenBelow`. |
+| 5 | (User feature request, after review) Show the tick when the threshold is 0? | Yes / no (the approved rule) | **Yes, at the left end, inside the bar.** Negative and missing still show none. Target 0 still shows none. |
 
 ## Decision
 
