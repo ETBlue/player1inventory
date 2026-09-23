@@ -252,11 +252,42 @@ in the gate. That is exactly how three failing purge tests sat on `main` unnotic
 
 **Run the root `pnpm build`, not `(cd apps/web && pnpm build)`.** The root build is the *full* build — it runs `pnpm codegen` (regenerating GraphQL types from the current schema + operations, catching codegen drift) and type-checks **both** `apps/web` and `apps/server` via `tsc`. The web-only build skips codegen and the server, and `pnpm test` (vitest/esbuild), `pnpm check` (Biome), and `pnpm build-storybook` all skip a full type-check — so type-flow errors (e.g. `possibly null` from `.filter(Boolean)`) and codegen mismatches slip through every other check and only fail in the Cloudflare production build. The root `pnpm build` mirrors that production build and catches them locally.
 
-**Final phase only** — after all steps are complete, run the **whole** E2E suite:
+**Final phase only** — after all steps are complete, run the **whole** E2E suite. Run the
+three projects as **three separate commands**, not one:
 
 ```bash
-pnpm test:e2e
+pnpm test:e2e --project=local
+pnpm test:e2e --project=cloud
+pnpm test:e2e --project=pwa
 ```
+
+**Do not run the bare `pnpm test:e2e` as your gate on this machine.** One invocation starts
+**four** web servers plus the API server and keeps them all alive for the whole run. The
+machine starves, and the run reports failures nobody caused.
+
+Measured 2026-09-23 at `main` `b22b53ec`, same commit, same machine:
+
+| How it was run | Failed | Real bugs among them |
+|---|---|---|
+| `pnpm test:e2e` (all three projects at once) | **36** | 8 |
+| `--project=local` alone | 4 | 4 |
+| `--project=cloud` alone | 4 | 4 |
+| `--project=pwa` alone | 0 | 0 |
+
+**28 of the 36 were phantom.** Three things prove it rather than suggest it: the failing
+set **moved between runs on the same commit**; `item-management.spec.ts` failed 8 tests in
+the full run and passed **21 of 21** when run alone; and the errors were starvation
+symptoms — `Test timeout of 30000ms exceeded`, `element is not stable`, `element was
+detached from the DOM, retrying` — not assertion failures. The 8 real ones were all issue
+#280, fixed on 2026-09-23. Separate runs are now fully green: **172 + 76 + 69 = 317**.
+
+Separate invocations cost about **14 minutes** against roughly 11 for the combined run, and
+they tell the truth. A gate that reports failures nobody caused gets ignored, which is
+worse than having no gate. This is issue #302.
+
+`workers: 1` and `fullyParallel: false` are already set in `e2e/playwright.config.ts`, so
+the contention is between the concurrent **servers**, not concurrent tests. Passing
+`--workers=N` on the command line does nothing.
 
 No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **326 tests in 25 spec files** (measured 2026-09-23): **175 in `local`**, **82 in `cloud`** across 13 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
