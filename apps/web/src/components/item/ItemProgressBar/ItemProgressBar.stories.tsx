@@ -345,6 +345,33 @@ export const RefillThresholdAtTarget: Story = {
   ),
 }
 
+// Threshold 0: the tick sits at the left end, inside the bar. A stock of 0
+// is never below 0, so these bars never warn.
+export const RefillThresholdZero: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Segmented (2/6), refill at 0</p>
+        <ItemProgressBar
+          current={2}
+          target={6}
+          status="ok"
+          refillThreshold={0}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Continuous (12/40), refill at 0</p>
+        <ItemProgressBar
+          current={12}
+          target={40}
+          status="ok"
+          refillThreshold={0}
+        />
+      </div>
+    </div>
+  ),
+}
+
 export const RefillThresholdFractional: Story = {
   render: () => (
     <div className="space-y-4 max-w-md">

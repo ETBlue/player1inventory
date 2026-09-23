@@ -68,6 +68,17 @@ describe('StockProgressRow refill threshold', () => {
     expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
   })
 
+  it('forwards a threshold of 0, so the bar draws the tick at the left end', () => {
+    // A truthiness check (`refillThreshold ? ... : {}`) would drop 0 here
+    render(<StockProgressRow {...baseProps} refillThreshold={0} />)
+
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '0',
+    )
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
   it('draws no tick when refillThreshold is not passed', () => {
     render(<StockProgressRow {...baseProps} />)
 

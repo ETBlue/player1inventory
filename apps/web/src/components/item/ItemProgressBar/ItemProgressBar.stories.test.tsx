@@ -17,6 +17,7 @@ const {
   WithRefillThreshold,
   WithRefillThresholdContinuous,
   RefillThresholdAtTarget,
+  RefillThresholdZero,
   RefillThresholdFractional,
   RefillThresholdFractionalPackageTarget,
 } = composeStories(stories)
@@ -96,6 +97,18 @@ describe('ItemProgressBar stories smoke tests', () => {
     render(<RefillThresholdAtTarget />)
     expect(screen.getByText('Refill when below 6')).toBeInTheDocument()
     expect(screen.getByText('Refill when below 9')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdZero draws a tick at the left end of both bars', () => {
+    const { container } = render(<RefillThresholdZero />)
+    expect(screen.getAllByText('Refill when below 0')).toHaveLength(2)
+    const markers = container.querySelectorAll<HTMLElement>(
+      '[data-testid="refill-marker"]',
+    )
+    expect(markers).toHaveLength(2)
+    for (const marker of markers) {
+      expect(marker.style.left).toBe('0%')
+    }
   })
 
   it('RefillThresholdFractional renders the refill text', () => {

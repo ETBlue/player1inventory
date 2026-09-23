@@ -2,6 +2,7 @@ import { act, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { joinItemStock } from '@/lib/itemStock'
 import { renderWithRouter } from '@/test/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
@@ -2007,5 +2008,76 @@ describe('ItemCard - refill threshold marker', () => {
       '1.5',
     )
     expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
+  })
+
+  it('user can see the refill tick at the left end when the threshold is 0', async () => {
+    // Given an item stocked here with target 6 and refill threshold 0
+    const item: Item = {
+      id: 'item-refill-zero',
+      name: 'Rice',
+      packageUnit: 'bag',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 6,
+      refillThreshold: 0,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then the tick is drawn at 0 and announced
+    const marker = screen.getByTestId('refill-marker')
+    expect(marker).toHaveAttribute('data-threshold', '0')
+    expect(marker.style.left).toBe('0%')
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
+  it('user sees no refill tick on an item not stocked at the active location', async () => {
+    // Given an item with a real threshold (3), joined to a location where it
+    // has no stock row. joinItemStock gives it ZERO_STOCK: target 0 and
+    // threshold 0.
+    const item: Item = {
+      id: 'item-refill-elsewhere',
+      name: 'Flour',
+      packageUnit: 'bag',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 3,
+      packedQuantity: 4,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    const joined = joinItemStock(item, undefined, 'loc-other')
+    expect(joined.targetQuantity).toBe(0)
+    expect(joined.refillThreshold).toBe(0)
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={null}
+        item={joined}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then there is no tick and no refill text
+    expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Refill when below/)).not.toBeInTheDocument()
   })
 })

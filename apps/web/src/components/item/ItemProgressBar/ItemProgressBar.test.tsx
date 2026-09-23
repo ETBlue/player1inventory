@@ -393,12 +393,53 @@ describe('ItemProgressBar refill threshold marker', () => {
     expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
   })
 
-  it('draws no marker when the threshold is 0', () => {
+  it('draws the marker at the left end when the threshold is 0 (segmented)', () => {
+    // Given a segmented bar (target 5) with refill threshold 0
     const { container } = render(
       <ItemProgressBar current={3} target={5} refillThreshold={0} />,
     )
-    expect(getMarker(container)).toBeNull()
-    expect(screen.queryByText(/Refill when below/)).toBeNull()
+
+    // Then one marker is drawn at 0, left-aligned so it stays inside the bar
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '0')
+    expect(marker.style.left).toBe('0%')
+    expect(marker).toHaveClass('translate-x-0')
+    expect(marker).not.toHaveClass('-translate-x-1/2')
+    expect(marker).not.toHaveClass('-translate-x-full')
+    // And the screen-reader text says 0
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
+  it('draws the marker at the left end when the threshold is 0 (continuous)', () => {
+    // Given a continuous bar (target 40 > 30) with refill threshold 0
+    const { container } = render(
+      <ItemProgressBar current={33} target={40} refillThreshold={0} />,
+    )
+
+    // Then the marker sits at 0%, left-aligned inside the bar
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '0')
+    expect(marker.style.left).toBe('0%')
+    expect(marker).toHaveClass('translate-x-0')
+    expect(marker).not.toHaveClass('-translate-x-1/2')
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
+  it('centres the marker in the middle and right-aligns it at the end', () => {
+    // Given a threshold in the middle of the bar
+    const middle = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={2} />,
+    )
+    // Then the marker is centred on its point
+    expect(getMarker(middle.container)).toHaveClass('-translate-x-1/2')
+    middle.unmount()
+
+    // Given a threshold at the target
+    const end = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={5} />,
+    )
+    // Then the marker is right-aligned so it stays inside the bar
+    expect(getMarker(end.container)).toHaveClass('-translate-x-full')
   })
 
   it('draws no marker when the threshold is negative', () => {
@@ -426,6 +467,34 @@ describe('ItemProgressBar refill threshold marker', () => {
       <ItemProgressBar current={3} target={0} refillThreshold={2} />,
     )
     expect(getMarker(full.container)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
+    full.unmount()
+
+    // Target 0 and threshold 0: what an item not stocked at the active
+    // location gets from joinItemStock's ZERO_STOCK
+    const notStocked = render(
+      <ItemProgressBar current={0} target={0} refillThreshold={0} />,
+    )
+    expect(getMarker(notStocked.container)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
+  })
+
+  it('draws no marker when the segmented bar has no segments', () => {
+    // Given 500 per package and target 300: 0.6 packages floors to 0
+    // segments. Target is above 0, so the early return does not apply.
+    const { container } = render(
+      <ItemProgressBar
+        current={100}
+        target={300}
+        targetUnit="measurement"
+        amountPerPackage={500}
+        refillThreshold={0}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(0)
+
+    // Then there is no bar to mark, so no marker is drawn
+    expect(getMarker(container)).toBeNull()
     expect(screen.queryByText(/Refill when below/)).toBeNull()
   })
 
@@ -558,6 +627,19 @@ describe('getRefillMarkerLeft', () => {
     expect(
       getRefillMarkerLeft({ threshold: 1.5, target: 4, segmented: true }),
     ).toBe('calc(1.5 * (100% - 6px) / 4 + 2px)')
+  })
+
+  it('continuous: left edge when threshold is 0', () => {
+    expect(
+      getRefillMarkerLeft({ threshold: 0, target: 40, segmented: false }),
+    ).toBe('0%')
+  })
+
+  it('segmented: left edge when threshold is 0', () => {
+    // Not the "gap after segment 0" formula, which gives -1px
+    expect(
+      getRefillMarkerLeft({ threshold: 0, target: 5, segmented: true }),
+    ).toBe('0%')
   })
 
   it('segmented: right edge when threshold equals target', () => {

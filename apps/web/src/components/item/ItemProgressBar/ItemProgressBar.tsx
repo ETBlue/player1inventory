@@ -33,7 +33,8 @@ function roundPackages(n: number): number {
 }
 
 /**
- * CSS `left` value for the refill tick. The tick is centred on this point.
+ * CSS `left` value for the refill tick. The tick is centred on this point,
+ * except at the two ends, where it is aligned to stay inside the bar.
  *
  * `threshold` and `target` must use the same unit as the bar:
  * - segmented: packages, and `target` is the number of segments drawn
@@ -47,6 +48,9 @@ function roundPackages(n: number): number {
  *   `x * (W + 2px) / n - 1px`.
  * - A fractional threshold goes inside segment `k = floor(x)`:
  *   `k * (s + 2px) + (x - k) * s`, which simplifies to `x * s + k * 2px`.
+ * - A threshold of 0 (or below) goes to the left edge. The whole-number
+ *   formula above would give `-1px` there, the centre of a gap that does not
+ *   exist.
  * - A threshold at or above the target goes to the right edge.
  */
 export function getRefillMarkerLeft({
@@ -60,6 +64,7 @@ export function getRefillMarkerLeft({
 }): string {
   const x = Math.min(threshold, target)
   if (x >= target) return '100%'
+  if (x <= 0) return '0%'
   if (!segmented) return `${(x / target) * 100}%`
   const k = Math.floor(x)
   if (x === k) {
@@ -79,6 +84,7 @@ function RefillMarker({
 }) {
   const x = Math.min(threshold, target)
   const atEnd = x >= target
+  const atStart = !atEnd && x <= 0
   return (
     <div
       data-testid="refill-marker"
@@ -86,9 +92,13 @@ function RefillMarker({
       aria-hidden="true"
       className={cn(
         'pointer-events-none absolute -top-0.5 h-3 w-2 rounded-full bg-foreground-muted border border-accessory-default',
-        // At the right end, keep the tick inside the bar instead of
-        // centring it on the edge.
-        atEnd ? '-translate-x-full' : '-translate-x-1/2',
+        // At either end, keep the tick inside the bar instead of centring
+        // it on the edge.
+        atEnd
+          ? '-translate-x-full'
+          : atStart
+            ? 'translate-x-0'
+            : '-translate-x-1/2',
       )}
       style={{ left: getRefillMarkerLeft({ threshold, target, segmented }) }}
     />
@@ -371,7 +381,10 @@ export function ItemProgressBar({
   const markerThreshold = useContinuous
     ? threshold
     : roundPackages(threshold / scale)
-  const showMarker = threshold > 0 && markerTarget > 0
+  // A threshold of 0 draws a tick too, at the left end. A missing or
+  // negative threshold draws none. A bar with no segments has nothing to mark.
+  const showMarker =
+    refillThreshold !== undefined && refillThreshold >= 0 && markerTarget > 0
 
   return (
     <div className="relative flex-1">
