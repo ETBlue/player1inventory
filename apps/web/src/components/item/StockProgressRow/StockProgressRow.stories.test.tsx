@@ -20,6 +20,12 @@ describe('StockProgressRow stories smoke tests', () => {
     // The unit trails the quantity inside ONE span — it is no longer a
     // separate badge element, so it is queried as part of the same string.
     expect(screen.getByText('3 / 4 pack')).toBeInTheDocument()
+    // The refill tick is drawn and announced
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '2',
+    )
+    expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Clear' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Fill to Full' })).toBeEnabled()
   })
@@ -77,6 +83,12 @@ describe('StockProgressRow stories smoke tests', () => {
     render(<MeasurementUnit />)
     // Loose-stock reading with a measurement unit: "1 (+0.5) / 2 L"
     expect(screen.getByText('1 (+0.5) / 2 L')).toBeInTheDocument()
+    // The refill tick sits inside the first segment (0.75 L at 1 L a pack)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '0.75',
+    )
+    expect(screen.getByText('Refill when below 0.75')).toBeInTheDocument()
     // And no stray bare-unit node is left behind by the removed badge
     expect(screen.queryByText('L')).not.toBeInTheDocument()
   })

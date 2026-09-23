@@ -14,6 +14,12 @@ const {
   Inactive,
   InactiveWithStock,
   MeasurementWithPackages,
+  WithRefillThreshold,
+  WithRefillThresholdContinuous,
+  RefillThresholdAtTarget,
+  RefillThresholdZero,
+  RefillThresholdFractional,
+  RefillThresholdFractionalPackageTarget,
 } = composeStories(stories)
 
 describe('ItemProgressBar stories smoke tests', () => {
@@ -73,5 +79,53 @@ describe('ItemProgressBar stories smoke tests', () => {
     expect(
       screen.getAllByText(/500g target, 100g\/pack → 5 segments/),
     ).toHaveLength(2)
+  })
+
+  it('WithRefillThreshold renders the refill text', () => {
+    render(<WithRefillThreshold />)
+    expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 3')).toBeInTheDocument()
+  })
+
+  it('WithRefillThresholdContinuous renders the refill text', () => {
+    render(<WithRefillThresholdContinuous />)
+    expect(screen.getByText('Refill when below 10')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 1.5')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdAtTarget renders the refill text', () => {
+    render(<RefillThresholdAtTarget />)
+    expect(screen.getByText('Refill when below 6')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 9')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdZero draws a tick at the left end of both bars', () => {
+    const { container } = render(<RefillThresholdZero />)
+    expect(screen.getAllByText('Refill when below 0')).toHaveLength(2)
+    const markers = container.querySelectorAll<HTMLElement>(
+      '[data-testid="refill-marker"]',
+    )
+    expect(markers).toHaveLength(2)
+    for (const marker of markers) {
+      expect(marker.style.left).toBe('0%')
+    }
+  })
+
+  it('RefillThresholdFractional renders the refill text', () => {
+    render(<RefillThresholdFractional />)
+    expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 1.5')).toBeInTheDocument()
+  })
+
+  it('RefillThresholdFractionalPackageTarget draws 6 segments per bar', () => {
+    const { container } = render(<RefillThresholdFractionalPackageTarget />)
+    expect(screen.getByText('Refill when below 900')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 1950')).toBeInTheDocument()
+    expect(screen.getByText('Refill when below 0.3')).toBeInTheDocument()
+    // Three bars, 6 segments each
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(18)
+    expect(
+      container.querySelectorAll('[data-testid="refill-marker"]'),
+    ).toHaveLength(3)
   })
 })

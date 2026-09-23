@@ -386,6 +386,37 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
     // Then the packed quantity fills to the edited target
     expect(packedInput()).toHaveValue(6)
   })
+
+  it('user sees the refill tick move as soon as the refill threshold is edited', async () => {
+    // Given a stored threshold of 2 against 1 packed, 0 unpacked and a
+    // target of 6 — every number on screen differs from the threshold
+    const user = userEvent.setup()
+    renderDialog(
+      makeItem({
+        targetQuantity: 6,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+      }),
+    )
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '2',
+    )
+
+    // When the user raises the refill threshold by one step
+    await user.click(
+      screen.getByRole('button', { name: 'Increase refill threshold' }),
+    )
+
+    // Then the tick follows the unsaved value, not the stored one
+    expect(refillInput()).toHaveValue(3)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '3',
+    )
+    expect(screen.getByText('Refill when below 3')).toBeInTheDocument()
+  })
 })
 
 describe('QuickUpdateDialog — reopening the dialog', () => {

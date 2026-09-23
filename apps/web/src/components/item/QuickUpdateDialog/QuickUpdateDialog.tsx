@@ -389,6 +389,9 @@ export function QuickUpdateDialog({
                 {...(item.amountPerPackage
                   ? { amountPerPackage: item.amountPerPackage }
                   : {})}
+                // The live stepper value, not item.refillThreshold, so the
+                // tick moves before Update is pressed.
+                refillThreshold={localRefill}
                 onClear={() => {
                   setLocalPacked(0)
                   setLocalUnpacked(0)

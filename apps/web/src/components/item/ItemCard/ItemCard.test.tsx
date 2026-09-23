@@ -2,6 +2,7 @@ import { act, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { joinItemStock } from '@/lib/itemStock'
 import { renderWithRouter } from '@/test/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 import { DEFAULT_PACKAGE_UNIT, TagColor } from '@/types'
@@ -1924,5 +1925,159 @@ describe('ItemCard - showStock', () => {
       expect(screen.getByText('Bananas')).toBeInTheDocument()
       expect(screen.getByTestId('tag-badge-Fruit')).toBeInTheDocument()
     })
+  })
+})
+
+describe('ItemCard - refill threshold marker', () => {
+  it('user can see the refill tick on a package-tracked card', async () => {
+    // Given an item whose threshold (4) differs from current (7), target (9)
+    // and unpacked (0), so the test cannot pass by reading the wrong number
+    const item: Item = {
+      id: 'item-refill-pkg',
+      name: 'Eggs',
+      packageUnit: 'carton',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 9,
+      refillThreshold: 4,
+      packedQuantity: 7,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then the bar draws the tick at 4 packages, and announces it
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '4',
+    )
+    expect(screen.getByText('Refill when below 4')).toBeInTheDocument()
+    // The bar sits inside the card's <Link>, so the sr-only text joins the
+    // link's accessible name after the quantity text. It reads as one
+    // sentence. Pin it, so a change to the name is a decision, not an accident.
+    expect(screen.getByRole('link')).toHaveAccessibleName(
+      'Eggs 7 / 9 carton Refill when below 4',
+    )
+  })
+
+  it('user can see the refill tick in packages on a measurement-tracked card', async () => {
+    // Given 750 g threshold, 500 g per bottle, 2000 g target (4 segments).
+    // Current is 1200 g. None of 750, 1.5, 1200, 2000 or 4 coincide.
+    const item: Item = {
+      id: 'item-refill-measure',
+      name: 'Olive Oil',
+      packageUnit: 'bottle',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      tagIds: [],
+      targetQuantity: 2000,
+      refillThreshold: 750,
+      packedQuantity: 2,
+      unpackedQuantity: 200,
+      consumeAmount: 50,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then the segmented bar puts the tick at 1.5 packages, and the
+    // screen-reader text keeps the value the user typed (750)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '1.5',
+    )
+    expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
+  })
+
+  it('user can see the refill tick at the left end when the threshold is 0', async () => {
+    // Given an item stocked here with target 6 and refill threshold 0
+    const item: Item = {
+      id: 'item-refill-zero',
+      name: 'Rice',
+      packageUnit: 'bag',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 6,
+      refillThreshold: 0,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={item}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then the tick is drawn at 0 and announced
+    const marker = screen.getByTestId('refill-marker')
+    expect(marker).toHaveAttribute('data-threshold', '0')
+    expect(marker.style.left).toBe('0%')
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
+  it('user sees no refill tick on an item not stocked at the active location', async () => {
+    // Given an item with a real threshold (3), joined to a location where it
+    // has no stock row. joinItemStock gives it ZERO_STOCK: target 0 and
+    // threshold 0.
+    const item: Item = {
+      id: 'item-refill-elsewhere',
+      name: 'Flour',
+      packageUnit: 'bag',
+      targetUnit: 'package',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 3,
+      packedQuantity: 4,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    const joined = joinItemStock(item, undefined, 'loc-other')
+    expect(joined.targetQuantity).toBe(0)
+    expect(joined.refillThreshold).toBe(0)
+
+    // When the card renders
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={null}
+        item={joined}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+
+    // Then there is no tick and no refill text
+    expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Refill when below/)).not.toBeInTheDocument()
   })
 })

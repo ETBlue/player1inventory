@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { ItemProgressBar } from '.'
+import { getRefillMarkerLeft, ItemProgressBar } from '.'
 
 describe('ItemProgressBar with partial segments', () => {
   it('renders partial fill in second segment for dual-unit item', () => {
@@ -342,5 +342,315 @@ describe('ItemProgressBar with partial segments', () => {
     expect(segments).toHaveLength(3)
     // First segment should be 100% filled
     expect(segments[0]).toHaveAttribute('data-fill', '100')
+  })
+})
+
+describe('ItemProgressBar refill threshold marker', () => {
+  const getMarker = (container: HTMLElement) =>
+    container.querySelector('[data-testid="refill-marker"]')
+
+  it('draws one marker at the threshold on a segmented bar', () => {
+    // Given a segmented bar (current 4, target 5) with refill threshold 2
+    const { container } = render(
+      <ItemProgressBar current={4} target={5} refillThreshold={2} />,
+    )
+
+    // Then exactly one marker is drawn, at threshold 2
+    const markers = container.querySelectorAll('[data-testid="refill-marker"]')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toHaveAttribute('data-threshold', '2')
+    expect(markers[0]).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('positions the marker by percentage on a continuous bar', () => {
+    // Given a continuous bar (target 40 > 30) with threshold 10
+    const { container } = render(
+      <ItemProgressBar current={33} target={40} refillThreshold={10} />,
+    )
+
+    // Then the marker sits at 10/40 = 25% of the width
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '10')
+    expect(marker.style.left).toBe('25%')
+  })
+
+  it('scales the marker to packages but reads out the unscaled value', () => {
+    // Given a measurement item: 500 per package, target 2000 (4 segments),
+    // threshold 750
+    const { container } = render(
+      <ItemProgressBar
+        current={1800}
+        target={2000}
+        targetUnit="measurement"
+        amountPerPackage={500}
+        refillThreshold={750}
+      />,
+    )
+
+    // Then the marker sits at 750 / 500 = 1.5 packages
+    expect(getMarker(container)).toHaveAttribute('data-threshold', '1.5')
+    // And the screen-reader text uses the value the user typed
+    expect(screen.getByText('Refill when below 750')).toBeInTheDocument()
+  })
+
+  it('draws the marker at the left end when the threshold is 0 (segmented)', () => {
+    // Given a segmented bar (target 5) with refill threshold 0
+    const { container } = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={0} />,
+    )
+
+    // Then one marker is drawn at 0, left-aligned so it stays inside the bar
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '0')
+    expect(marker.style.left).toBe('0%')
+    expect(marker).toHaveClass('translate-x-0')
+    expect(marker).not.toHaveClass('-translate-x-1/2')
+    expect(marker).not.toHaveClass('-translate-x-full')
+    // And the screen-reader text says 0
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
+  it('draws the marker at the left end when the threshold is 0 (continuous)', () => {
+    // Given a continuous bar (target 40 > 30) with refill threshold 0
+    const { container } = render(
+      <ItemProgressBar current={33} target={40} refillThreshold={0} />,
+    )
+
+    // Then the marker sits at 0%, left-aligned inside the bar
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '0')
+    expect(marker.style.left).toBe('0%')
+    expect(marker).toHaveClass('translate-x-0')
+    expect(marker).not.toHaveClass('-translate-x-1/2')
+    expect(screen.getByText('Refill when below 0')).toBeInTheDocument()
+  })
+
+  it('centres the marker in the middle and right-aligns it at the end', () => {
+    // Given a threshold in the middle of the bar
+    const middle = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={2} />,
+    )
+    // Then the marker is centred on its point
+    expect(getMarker(middle.container)).toHaveClass('-translate-x-1/2')
+    middle.unmount()
+
+    // Given a threshold at the target
+    const end = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={5} />,
+    )
+    // Then the marker is right-aligned so it stays inside the bar
+    expect(getMarker(end.container)).toHaveClass('-translate-x-full')
+  })
+
+  it('draws no marker when the threshold is negative', () => {
+    const { container } = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={-1} />,
+    )
+    expect(getMarker(container)).toBeNull()
+  })
+
+  it('draws no marker when the prop is missing', () => {
+    const { container } = render(<ItemProgressBar current={3} target={5} />)
+    expect(getMarker(container)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
+  })
+
+  it('draws no marker when target is 0 (inactive item)', () => {
+    // Both target === 0 branches: empty track and full bar
+    const empty = render(
+      <ItemProgressBar current={0} target={0} refillThreshold={2} />,
+    )
+    expect(getMarker(empty.container)).toBeNull()
+    empty.unmount()
+
+    const full = render(
+      <ItemProgressBar current={3} target={0} refillThreshold={2} />,
+    )
+    expect(getMarker(full.container)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
+    full.unmount()
+
+    // Target 0 and threshold 0: what an item not stocked at the active
+    // location gets from joinItemStock's ZERO_STOCK
+    const notStocked = render(
+      <ItemProgressBar current={0} target={0} refillThreshold={0} />,
+    )
+    expect(getMarker(notStocked.container)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
+  })
+
+  it('draws no marker when the segmented bar has no segments', () => {
+    // Given 500 per package and target 300: 0.6 packages floors to 0
+    // segments. Target is above 0, so the early return does not apply.
+    const { container } = render(
+      <ItemProgressBar
+        current={100}
+        target={300}
+        targetUnit="measurement"
+        amountPerPackage={500}
+        refillThreshold={0}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(0)
+
+    // Then there is no bar to mark, so no marker is drawn
+    expect(getMarker(container)).toBeNull()
+    expect(screen.queryByText(/Refill when below/)).toBeNull()
+  })
+
+  it('clamps the marker to the right end when threshold >= target', () => {
+    // Given threshold 9 above target 5
+    const { container } = render(
+      <ItemProgressBar current={3} target={5} refillThreshold={9} />,
+    )
+
+    // Then the marker sits at the end of the bar (5)
+    expect(getMarker(container)).toHaveAttribute('data-threshold', '5')
+    // And the screen-reader text still says the real value
+    expect(screen.getByText('Refill when below 9')).toBeInTheDocument()
+  })
+
+  it('clamps to the drawn segments when the package target is fractional', () => {
+    // Given 300 per package and target 2000 (6.67 packages). Only 6 segments
+    // are drawn, because Array.from floors a fractional length.
+    const { container } = render(
+      <ItemProgressBar
+        current={600}
+        target={2000}
+        targetUnit="measurement"
+        amountPerPackage={300}
+        refillThreshold={1950}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(6)
+
+    // Then the marker (1950 / 300 = 6.5) clamps to the end of segment 6
+    expect(getMarker(container)).toHaveAttribute('data-threshold', '6')
+  })
+
+  it('keeps item units on a continuous bar even when the item has package info', () => {
+    // Given a measurement item with 500 per package and target 20000. That is
+    // 40 packages, above the 30-segment limit, so the bar is continuous.
+    const { container } = render(
+      <ItemProgressBar
+        current={12000}
+        target={20000}
+        targetUnit="measurement"
+        amountPerPackage={500}
+        refillThreshold={5000}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(0)
+
+    // Then the marker uses item units: 5000 / 20000 = 25%.
+    // Dividing by the package size here would put it at 10 / 20000 = 0.05%.
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '5000')
+    expect(marker.style.left).toBe('25%')
+  })
+
+  it('treats a scaled threshold with a float error as a whole number', () => {
+    // Given 0.1 per package, target 3 (30 segments) and threshold 0.3.
+    // In JavaScript 0.3 / 0.1 is 2.9999999999999996, not 3.
+    const { container } = render(
+      <ItemProgressBar
+        current={2}
+        target={3}
+        targetUnit="measurement"
+        amountPerPackage={0.1}
+        refillThreshold={0.3}
+      />,
+    )
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(30)
+
+    // Then the marker sits in the gap after segment 3
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '3')
+    // (jsdom rewrites `calc(3 * (100% + 2px) / 30 - 1px)` into this form)
+    expect(marker.style.left).toBe('calc(-1px + 0.1 * (100% + 2px))')
+  })
+
+  it('draws every segment when the package target has a float error', () => {
+    // Given 0.1 per package and target 0.6. In JavaScript 0.6 / 0.1 is
+    // 5.999999999999999, which would floor to 5 segments.
+    const { container } = render(
+      <ItemProgressBar
+        current={0.4}
+        target={0.6}
+        targetUnit="measurement"
+        amountPerPackage={0.1}
+        refillThreshold={0.3}
+      />,
+    )
+
+    // Then all 6 segments are drawn, and the marker is after segment 3
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(6)
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '3')
+    // (jsdom rewrites `calc(3 * (100% + 2px) / 6 - 1px)` into this form)
+    expect(marker.style.left).toBe('calc(-1px + 0.5 * (100% + 2px))')
+  })
+
+  it('clamps on a continuous bar too', () => {
+    const { container } = render(
+      <ItemProgressBar current={33} target={40} refillThreshold={55} />,
+    )
+    const marker = getMarker(container) as HTMLElement
+    expect(marker).toHaveAttribute('data-threshold', '40')
+    expect(marker.style.left).toBe('100%')
+  })
+})
+
+describe('getRefillMarkerLeft', () => {
+  it('continuous: returns threshold / target as a percentage', () => {
+    expect(
+      getRefillMarkerLeft({ threshold: 10, target: 40, segmented: false }),
+    ).toBe('25%')
+  })
+
+  it('continuous: clamps to 100% when threshold > target', () => {
+    expect(
+      getRefillMarkerLeft({ threshold: 55, target: 40, segmented: false }),
+    ).toBe('100%')
+  })
+
+  it('segmented whole number: centre of the gap after that segment', () => {
+    // 5 segments, gap 2px. Gap after segment 2 is centred at
+    // 2 * (100% + 2px) / 5 - 1px
+    expect(
+      getRefillMarkerLeft({ threshold: 2, target: 5, segmented: true }),
+    ).toBe('calc(2 * (100% + 2px) / 5 - 1px)')
+  })
+
+  it('segmented fraction: inside the segment, skipping earlier gaps', () => {
+    // 4 segments, threshold 1.5: half way through segment index 1
+    expect(
+      getRefillMarkerLeft({ threshold: 1.5, target: 4, segmented: true }),
+    ).toBe('calc(1.5 * (100% - 6px) / 4 + 2px)')
+  })
+
+  it('continuous: left edge when threshold is 0', () => {
+    expect(
+      getRefillMarkerLeft({ threshold: 0, target: 40, segmented: false }),
+    ).toBe('0%')
+  })
+
+  it('segmented: left edge when threshold is 0', () => {
+    // Not the "gap after segment 0" formula, which gives -1px
+    expect(
+      getRefillMarkerLeft({ threshold: 0, target: 5, segmented: true }),
+    ).toBe('0%')
+  })
+
+  it('segmented: right edge when threshold equals target', () => {
+    expect(
+      getRefillMarkerLeft({ threshold: 5, target: 5, segmented: true }),
+    ).toBe('100%')
+  })
+
+  it('segmented: right edge when threshold is above target', () => {
+    expect(
+      getRefillMarkerLeft({ threshold: 7, target: 5, segmented: true }),
+    ).toBe('100%')
   })
 })

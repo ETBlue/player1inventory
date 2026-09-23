@@ -36,6 +36,8 @@ describe('ItemCard pantry stories smoke tests', () => {
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )
+    // The fixture's refillThreshold (1) draws the refill tick on the bar
+    expect(screen.getByText('Refill when below 1')).toBeInTheDocument()
   })
 
   it('StatusWarning renders without error', async () => {

@@ -83,4 +83,26 @@ describe('GroupCard', () => {
     // Then onClick fires for each activation
     expect(handleClick).toHaveBeenCalledTimes(2)
   })
+
+  // NEGATIVE CONTROL, not coverage. GroupCard passes no refillThreshold to its
+  // bar on purpose: a group mixes items with different thresholds, so one tick
+  // would mean nothing. This test only records that decision. It stays green
+  // whether or not any caller code exists, because nothing here draws a tick.
+  it('negative control: a group bar draws no refill tick, even with a refill total', () => {
+    // Given a group card with pack totals and a non-zero refill total
+    render(
+      <GroupCard
+        name="Pasta"
+        itemCount={9}
+        onClick={() => {}}
+        totalPackedQuantity={5}
+        totalTargetInPacks={9}
+        totalRefillInPacks={3}
+      />,
+    )
+
+    // Then the bar has no refill tick and no "Refill when below" text
+    expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Refill when below/)).not.toBeInTheDocument()
+  })
 })

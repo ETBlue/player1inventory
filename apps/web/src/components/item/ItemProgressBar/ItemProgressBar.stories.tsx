@@ -266,3 +266,184 @@ export const MeasurementWithPackages: Story = {
     </div>
   ),
 }
+
+export const WithRefillThreshold: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Segmented (4/5), refill at 2</p>
+        <ItemProgressBar
+          current={4}
+          target={5}
+          status="ok"
+          refillThreshold={2}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Segmented (1/8), refill at 3 - Warning</p>
+        <ItemProgressBar
+          current={1}
+          target={8}
+          status="warning"
+          refillThreshold={3}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const WithRefillThresholdContinuous: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Continuous (33/40), refill at 10</p>
+        <ItemProgressBar
+          current={33}
+          target={40}
+          status="ok"
+          refillThreshold={10}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Measurement (1.2/5 L), refill at 1.5</p>
+        <ItemProgressBar
+          current={1.2}
+          target={5}
+          status="error"
+          targetUnit="measurement"
+          refillThreshold={1.5}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const RefillThresholdAtTarget: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Segmented (3/6), refill at 6 (= target)</p>
+        <ItemProgressBar
+          current={3}
+          target={6}
+          status="warning"
+          refillThreshold={6}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          Segmented (3/4), refill at 9 (above target)
+        </p>
+        <ItemProgressBar
+          current={3}
+          target={4}
+          status="warning"
+          refillThreshold={9}
+        />
+      </div>
+    </div>
+  ),
+}
+
+// Threshold 0: the tick sits at the left end, inside the bar. A stock of 0
+// is never below 0, so these bars never warn.
+export const RefillThresholdZero: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">Segmented (2/6), refill at 0</p>
+        <ItemProgressBar
+          current={2}
+          target={6}
+          status="ok"
+          refillThreshold={0}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Continuous (12/40), refill at 0</p>
+        <ItemProgressBar
+          current={12}
+          target={40}
+          status="ok"
+          refillThreshold={0}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const RefillThresholdFractional: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">
+          2000 ml in 500 ml packages (1800/2000), refill at 750 ml
+        </p>
+        <ItemProgressBar
+          current={1800}
+          target={2000}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={500}
+          refillThreshold={750}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">Segmented (2.5/3), refill at 1.5</p>
+        <ItemProgressBar
+          current={2.5}
+          target={3}
+          status="ok"
+          refillThreshold={1.5}
+        />
+      </div>
+    </div>
+  ),
+}
+
+export const RefillThresholdFractionalPackageTarget: Story = {
+  render: () => (
+    <div className="space-y-4 max-w-md">
+      <div>
+        <p className="text-sm mb-2">
+          2000 ml in 300 ml packages (6.67 packages, 6 segments), refill at 900
+          ml (3 packages)
+        </p>
+        <ItemProgressBar
+          current={1500}
+          target={2000}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={300}
+          refillThreshold={900}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          Same item, refill at 1950 ml (6.5 packages, clamps to the end)
+        </p>
+        <ItemProgressBar
+          current={1500}
+          target={2000}
+          status="warning"
+          targetUnit="measurement"
+          amountPerPackage={300}
+          refillThreshold={1950}
+        />
+      </div>
+      <div>
+        <p className="text-sm mb-2">
+          0.6 L in 0.1 L packages (6 segments), refill at 0.3 L
+        </p>
+        <ItemProgressBar
+          current={0.4}
+          target={0.6}
+          status="ok"
+          targetUnit="measurement"
+          amountPerPackage={0.1}
+          refillThreshold={0.3}
+        />
+      </div>
+    </div>
+  ),
+}
