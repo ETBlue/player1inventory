@@ -85,7 +85,7 @@ function RefillMarker({
       data-threshold={x}
       aria-hidden="true"
       className={cn(
-        'pointer-events-none absolute -top-0.5 h-3 w-0.5 rounded-full bg-foreground-default',
+        'pointer-events-none absolute -top-0.5 h-3 w-2 rounded-full bg-foreground-muted border border-accessory-default',
         // At the right end, keep the tick inside the bar instead of
         // centring it on the edge.
         atEnd ? '-translate-x-full' : '-translate-x-1/2',

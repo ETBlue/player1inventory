@@ -16,10 +16,12 @@ Draw a thin vertical tick on the item progress bar at the refill threshold.
 
 ### What the user sees
 
-- The tick is a little taller than the bar (the bar is 8px, the tick about 12px),
-  so it stays visible when the bar is filled.
-- It uses the `foreground-default` color token, which meets WCAG AA non-text
-  contrast (3:1) in light and dark mode.
+- The tick is a small pill, 8px wide and 12px tall. It is a little taller than
+  the bar (8px), so it stays visible when the bar is filled.
+- It uses the `foreground-muted` fill with an `accessory-default` border. That
+  fill meets WCAG AA non-text contrast (3:1) in light and dark mode.
+- (Changed by the designer after review, 2026-09-23. The first build was a 2px
+  line in `foreground-default`.)
 - **Segmented bar** (target ≤ 30 packages): with threshold 2, the tick sits in the
   gap after segment 2: `[■][■]|[■][ ][ ]`. A fractional threshold (for example
   1.5 packages, from a measurement-unit item) sits inside a segment.
@@ -71,8 +73,9 @@ the bar (`3 / 5 packs`) already names the unit. The string is translated
 - Storybook stories for the new states, with smoke tests.
 - `a11y.spec.ts` still runs, but it does **not** prove the tick's contrast. axe
   checks text contrast only, not non-text contrast (WCAG 1.4.11). The tick uses
-  the `foreground-default` token (`oklch(30% …)` light, `oklch(90% …)` dark),
-  which is far above 3:1 on the card surface in both themes. Check this by eye
+  the `foreground-muted` token (`oklch(40% …)` light, `oklch(80% …)` dark). The
+  app already uses that token for text on cards, where it passes 4.5:1, so it is
+  above 3:1 in both themes. Check this by eye
   in Storybook in both themes.
 
 ## Implementation notes (2026-09-23)
@@ -91,7 +94,8 @@ The build differs from the plan above in these places.
 ### Known limits (accepted)
 
 - **Package target below 1 draws no tick.** This bug existed before this work. On a segmented bar with `packageTarget < 1` (for example target 200 with 500 per package), `floor(packageTarget)` is 0, so the bar draws 0 segments. With 0 segments there is nothing to place a tick on, so no tick is drawn.
-- **A very small threshold on a continuous bar can sit about 1px past the left edge.** The tick is 2px wide and centred on its point, so near 0% half of it is left of the bar. This is cosmetic and accepted.
+- **A very small threshold on a continuous bar can sit about 4px past the left edge.** The tick is 8px wide and centred on its point, so near 0% half of it is left of the bar. This is cosmetic and accepted.
+- **On a bar with many segments, the tick can cover a whole segment.** At 30 segments on a phone-width card (about 300px), a segment is about 8px wide, the same as the tick. The tick then hides that segment's fill.
 
 ## Rejected
 
