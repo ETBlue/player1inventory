@@ -282,3 +282,44 @@ half can fail:
    not testing what its comment claims.
 
 Report which mutations ran and that each went red.
+
+### CORRECTED AFTER TASK 2 — mutate the SOURCE, not only the fixture
+
+Task 2 ran the fixture change above and reported, correctly, that it proves
+less than a mutation check should. Root `CLAUDE.md`, *Proving a Test Works*,
+says to delete or invert the behaviour **in the source**. A fixture change
+proves the assertion reads the seeded value. It does not prove that deleting
+the app code under test makes the test fail.
+
+**From task 3 on, run both.**
+
+| Check | What it changes | What it proves |
+|---|---|---|
+| Fixture sensitivity | the seeded quantity | the assertion reads the value the cloud seed wrote, through the cloud path |
+| **Source mutation** | the app code that computes the number | the test fails when the behaviour it names is gone |
+
+For the three group views the badge number comes from `getOutOfStockCount`,
+passed into `GroupCard` as `outOfStockCount`:
+
+- `apps/web/src/components/pantry/RecipeGroupView.tsx` line 102
+- `apps/web/src/components/pantry/VendorGroupView.tsx` line 92
+- `apps/web/src/components/pantry/ShelfGroupView.tsx` line 223
+- rendered at `apps/web/src/components/shared/GroupCard/GroupCard.tsx` line 100
+
+Find where `getOutOfStockCount` is defined and force it to return `0`. The
+`N empty` badge should disappear and the cloud test should go red. Restore
+afterwards and confirm green.
+
+**Task 2 is owed this check.** Task 7 must run it for `recipes-group.spec.ts`
+and record the result, or say plainly that it was not run.
+
+### What these three group specs cannot catch
+
+They seed **one** location. With one location, "count items stocked here" and
+"count every item" return the same number, so no location-scoping mutation can
+go red in them. That is fine — they exist to cover badge and total maths, which
+has no cloud coverage at all today. Location scoping is covered by
+`location-not-stocked-here.spec.ts` and `location-scoped-writes.spec.ts`.
+
+Do not describe these three specs as location coverage. Task 7 should say this
+in `e2e/CLAUDE.md`.
