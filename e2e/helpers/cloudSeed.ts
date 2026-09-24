@@ -136,12 +136,19 @@ export async function seedCloudFixture(
         // step 4 writes the real per-location numbers; whatever these become on
         // `Item`'s legacy columns, the cloud pantry has read `ItemStock` since
         // PR 2.
-        targetUnit: 'package',
+        //
+        // `targetUnit` and `consumeAmount` are the exception: they are global
+        // item CONFIGURATION, not per-location state, so `ItemStockInput` has
+        // no field for them and step 4 cannot set them. What is written here is
+        // what the item keeps. The `?? 'package'` and `?? 1` fallbacks are the
+        // values this seed hardcoded before the fields existed, so a fixture
+        // that omits them is seeded exactly as before.
+        targetUnit: item.targetUnit ?? 'package',
         targetQuantity: 0,
         refillThreshold: 0,
         packedQuantity: 0,
         unpackedQuantity: 0,
-        consumeAmount: 1,
+        consumeAmount: item.consumeAmount ?? 1,
         createdAt: now,
         updatedAt: now,
       })),

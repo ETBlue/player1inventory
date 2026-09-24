@@ -75,6 +75,27 @@ export async function seedLocalFixture(
         name: item.name,
         tagIds: [],
         vendorIds: item.vendorIds ?? [],
+        // Both keys are OMITTED when the fixture leaves them out, which is
+        // exactly what this seed has always written. Writing `undefined`
+        // instead of omitting is not the same thing: Dexie would store the key.
+        //
+        // What an omitted key means downstream is NOT the `ItemForm`
+        // DEFAULT_VALUES of 'package' and 1. Both item routes build the form's
+        // `initialValues` themselves and always supply the key:
+        // `itemToFormValues` passes `consumeAmount: item.consumeAmount ?? 0`
+        // and `targetUnit: item.targetUnit` with no fallback
+        // (apps/web/src/routes/items/$id/index.tsx lines 51 and 61, and the
+        // same pair in $id/stock.tsx). So an omitted key reaches the form as 0
+        // and as undefined, and DEFAULT_VALUES never applies.
+        //
+        // Cloud is different: `seedCloudFixture` must send a value, so an
+        // omitted key becomes 'package' and 1 there. The two modes therefore
+        // DISAGREE for a fixture that leaves these out. A spec that cares about
+        // either value must set it explicitly.
+        ...(item.targetUnit !== undefined ? { targetUnit: item.targetUnit } : {}),
+        ...(item.consumeAmount !== undefined
+          ? { consumeAmount: item.consumeAmount }
+          : {}),
         createdAt: now,
         updatedAt: now,
       })),

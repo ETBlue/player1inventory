@@ -27,6 +27,28 @@ export type FixtureItem = {
   id: string
   name: string
   vendorIds?: string[]
+  /**
+   * The item's global step size. Set it only when the spec depends on it.
+   *
+   * 0 means "no step size configured". It is NOT the same as 1. `ItemForm`
+   * (apps/web/src/components/item/ItemForm/ItemForm.tsx line 355) computes
+   * `quantityStep = consumeAmount > 0 ? consumeAmount : 'any'`, and that value
+   * becomes the `step` attribute of three number inputs: Unpacked (line 802),
+   * Target Quantity (line 921, only while `targetUnit === 'measurement'`) and
+   * Refill When Below (line 956). So 0 gives `step="any"` and the input keeps a
+   * decimal the user typed, while any value above 0 gives `step={consumeAmount}`
+   * and the value snaps to it.
+   *
+   * A spec that types a decimal therefore needs an explicit 0. Omitting the
+   * field does NOT give the same result in both modes — see the comment on the
+   * items seed in localSeed.ts.
+   */
+  consumeAmount?: number
+  /**
+   * 'package' or 'measurement'. Set it only when the spec depends on it.
+   * Omitting it also differs between the two modes — same comment.
+   */
+  targetUnit?: 'package' | 'measurement'
 }
 
 export type FixtureStock = {
