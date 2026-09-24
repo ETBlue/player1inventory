@@ -301,25 +301,38 @@ up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.t
 `vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
 `item-stock-pager.spec.ts`. `--list` reports **96 cloud tests**, up from 76+6 skipped.
 
-### `consumeAmount` and `targetUnit` — set them, or the two modes seed different data
+### `consumeAmount` and `targetUnit` — both helpers default to the product values
 
-`FixtureItem` (`e2e/helpers/fixture.ts`) takes both as optional fields. **A fixture that
-omits them does not get the same item in the two modes:**
+`FixtureItem` (`e2e/helpers/fixture.ts`) takes both as optional fields. **An omitted
+field gives the same item in both modes:**
 
-| Field omitted | Local seeds | Cloud seeds |
+| Field omitted | Both helpers seed | Matches |
 |---|---|---|
-| `consumeAmount` | no key at all → the form reads `0` → `step="any"` | `1` (`cloudSeed.ts` fallback) → `step="1"` |
-| `targetUnit` | no key at all → `undefined` | `'package'` (`cloudSeed.ts` fallback) |
+| `consumeAmount` | `1` | `createItem` (`consumeAmount ?? 1`), Prisma `@default(1)`, Dexie v16 + v17 |
+| `targetUnit` | `'package'` | `createItem` (`targetUnit ?? 'package'`) |
 
-The fallbacks are what the cloud seed hardcoded before the fields existed, so older
-fixtures are seeded exactly as before. **Setting both explicitly is what makes the two
-modes match.** `consumeAmount` drives `quantityStep` in
-`apps/web/src/components/item/ItemForm/ItemForm.tsx` line 355, which becomes the `step`
-attribute of three number inputs (Unpacked line 802, Target Quantity line 921 while
-`targetUnit === 'measurement'`, Refill When Below line 956). `0` is not the same as `1`.
+**The field exists on `FixtureItem` so a spec can ask for something else** — a
+`'measurement'` item, or a step other than 1. It is not there to paper over a difference
+between the modes; there is none.
+
+`seedLocalFixture` used to omit the key entirely, which produced `undefined` — a state
+the app never creates. `createItem` defaults to 1, the Dexie v16 upgrade backfills
+`undefined` to 1, and v17 backfills 0 and every non-finite value to 1. `seedCloudFixture`
+already hardcoded `1` and `'package'`, so **cloud was right and local was the odd one
+out.** Fixed 2026-09-24.
+
+**Do not seed `consumeAmount: 0`.** `ItemForm.tsx` line 342 is
+`consumeAmount <= 0 ? t('validation.positiveNumber') : undefined`, so a 0 opens the form
+with a validation error. For about 24 hours (2026-08-23 to 2026-08-24) both create paths
+did default to 0, meaning "unconfigured". The designer reversed that on 2026-08-24 — a new
+item must be valid by nature — and the Dexie v17 upgrade migrates those rows to 1.
+
+`consumeAmount` also drives `quantityStep` (`ItemForm.tsx` line 355), which becomes the
+`step` attribute of three number inputs (Unpacked line 802, Target Quantity line 921 while
+`targetUnit === 'measurement'`, Refill When Below line 956).
 
 Do **not** write that `step` makes a decimal-input test pass. Measured on 2026-09-24:
-setting `consumeAmount: 1` in `item-stock-input.spec.ts` left its decimal test green.
+`item-stock-input.spec.ts`'s decimal test is green at `consumeAmount: 0` and at `1`.
 `step` affects validity and the spinner, not the text the browser keeps while the field
 has focus. The rounding `consumeAmount` drives is `roundToStep`, passed as
 `normalizeOnBlur` (`ItemForm.tsx` lines 277-280 and 806-809), and it runs only on blur.

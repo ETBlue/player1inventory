@@ -448,6 +448,7 @@ Every task found something the plan got wrong. This table is the summary; the
 | 10 | Task 4 | — | The repo root has **no** `tsconfig.json`, so a temporary type-check config for `e2e/` cannot `extend` one. Write a standalone config with its own `compilerOptions`. |
 | 11 | Task 7 | local would end at 170 passed / **3** skipped. | It ended at 170 passed / **5** skipped — unchanged from the baseline. The plan's own next sentence already said why: those skips fire on `baseURL === CLOUD_WEB_URL` and never counted in `local`. |
 | 12 | Task 7 | cloud would end at 89 passed / **6** skipped. | 89 passed / **7** skipped. `item-stock-pager.spec.ts` test 2 stays local-only, and its skip now fires in `cloud` where the whole file used to be absent. |
+| 13 | Follow-up, 2026-09-24 | Corrections 1 and 6 said "the two modes disagree" about an omitted `consumeAmount` / `targetUnit`, and left both helpers as they were. | Symmetric wording, asymmetric fact. `seedCloudFixture` wrote `1` and `'package'`, which **matches the product** — `createItem` writes `consumeAmount ?? 1` and `targetUnit ?? 'package'`, Prisma declares `@default(1)`, Dexie v16 backfills `undefined` to 1 and v17 backfills 0 to 1. `seedLocalFixture` wrote no key at all, giving `undefined`, a state the app never creates. **Cloud was right; local was wrong.** `seedLocalFixture` now defaults the same way. `item-stock-input.spec.ts` also seeded `consumeAmount: 0`, which `ItemForm.tsx` line 342 marks invalid — changed to 1. |
 
 ### Corrections to Task 7's own brief
 
