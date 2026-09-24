@@ -128,6 +128,33 @@ changing behaviour for existing fixtures. A converted spec that cares about
 either value must set it explicitly — setting `consumeAmount: 0` and
 `targetUnit: 'package'` is what makes the modes match.
 
+**CORRECTED AGAIN AFTER TASK 5 — the premise of this trap is false.**
+
+Task 5 ran the mutation this plan asked for: set `consumeAmount: 1` in the
+fixture and run the decimal test in cloud. **It stayed green.** So
+`consumeAmount: 0` is NOT what makes that test pass, and the plan's mutation
+check item 3 cannot be satisfied as written.
+
+Why: `step` on an `<input type="number">` affects validity and the spinner, not
+the text the browser keeps while the field has focus. The rounding that
+`consumeAmount` drives is `roundToStep(n, consumeAmount)`, passed as
+`normalizeOnBlur` (`ItemForm.tsx` lines 277-280 and 806-809). It runs only when
+the field is left, and the decimal test never blurs.
+
+**What survives.** Setting `consumeAmount` and `targetUnit` explicitly is still
+right, because it keeps the two modes seeding the same data. That was always the
+real reason. The claim that the decimal test depends on it was wrong.
+
+**A separate finding worth its own work.** Task 5 mutated the source two ways,
+including restoring the literal pre-`2fe372a1` code this file exists to guard.
+The decimal test (test 3) **stayed green under both**. Test 1 went red under
+both. So test 1 is what pins the swallowed-keystroke bug, and test 3 proves
+something narrower: while the field is focused, the controlled component keeps
+the exact text typed. Task 5 recorded this in a comment above test 3.
+
+Making test 3 a real guard — blur the field and assert the rounding, or assert
+`step` directly — is **not** part of this plan. Task 7 should record it as owed.
+
 Two more corrections from task 1:
 
 - `ItemForm.tsx` lives at `apps/web/src/components/item/ItemForm/ItemForm.tsx`,
@@ -280,6 +307,10 @@ half can fail:
 3. **`consumeAmount`** (`item-stock-input`): set it to `1` in the fixture and
    confirm the decimal-input test goes red. If it stays green, the assertion is
    not testing what its comment claims.
+
+   **RESULT: it stayed green.** Measured in task 5. See the correction at the
+   end of trap 1. The assertion was not testing what its comment claimed, and
+   the comment has been rewritten to say what was measured.
 
 Report which mutations ran and that each went red.
 
