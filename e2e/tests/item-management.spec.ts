@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { CLOUD_WEB_URL } from '../constants'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -14,9 +15,7 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
   } else {
     // Local mode: clear IndexedDB, localStorage, and sessionStorage.
     // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.

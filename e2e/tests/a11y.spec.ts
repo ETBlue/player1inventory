@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { checkA11y, getViolations, injectAxe } from 'axe-playwright'
-import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID, PWA_WEB_URL } from '../constants'
+import { CLOUD_WEB_URL, PWA_WEB_URL } from '../constants'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { seedRows } from '../helpers/locationSeed'
 import { StockPagerPage } from '../pages/StockPagerPage'
 
@@ -112,9 +113,7 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
     return
   }
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.

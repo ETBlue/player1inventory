@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
 import { PantryPage } from '../pages/PantryPage'
-import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { CLOUD_WEB_URL } from '../constants'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { makeGql } from '../utils/cloud'
 import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
 import { splitInlineStock } from '../helpers/locationSeed'
@@ -162,17 +163,13 @@ test.beforeEach(async ({ page, request, baseURL }) => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
   if (baseURL === CLOUD_WEB_URL) {
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
   }
 })
 
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
     return
   }
 
