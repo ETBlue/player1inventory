@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 import { test, expect } from '@playwright/test'
-import { CLOUD_SERVER_URL, E2E_USER_ID } from '../../constants'
+import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import { makeGql } from '../../utils/cloud'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
@@ -18,9 +18,7 @@ const LOCAL_FIXTURE_PATH = path.resolve(__dirname, '../../fixtures/local-backup.
 const cloudFixture = JSON.parse(fs.readFileSync(CLOUD_FIXTURE_PATH, 'utf-8')) as any
 
 test.beforeEach(async ({ request }) => {
-  await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-    headers: { 'x-e2e-user-id': E2E_USER_ID },
-  })
+  await cleanupCloudData(request)
 })
 
 // Prevent the empty-data redirect to /onboarding so the settings/import UI stays
@@ -32,9 +30,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test.afterEach(async ({ request }) => {
-  await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-    headers: { 'x-e2e-user-id': E2E_USER_ID },
-  })
+  await cleanupCloudData(request)
 })
 
 // Helper: seed all fixture entities via GraphQL bulk create mutations
@@ -151,9 +147,7 @@ test('user can export and re-import cloud data (cloud → cloud)', async ({ page
   if (!downloadPath) throw new Error('Download path is null')
 
   // Then: clear all cloud data
-  await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-    headers: { 'x-e2e-user-id': E2E_USER_ID },
-  })
+  await cleanupCloudData(request)
 
   // When: import the downloaded file
   await settings.navigateTo()

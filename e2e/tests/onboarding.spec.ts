@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../constants'
+import { CLOUD_WEB_URL } from '../constants'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { OnboardingPage } from '../pages/OnboardingPage'
 
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
     return
   }
   // Local mode for onboarding tests: clear all object stores within the DB

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import { CLOUD_SERVER_URL, CLOUD_WEB_URL, E2E_USER_ID } from '../../constants'
+import { CLOUD_WEB_URL } from '../../constants'
+import { cleanupCloudData } from '../../helpers/cloudTeardown'
 import { splitInlineStock } from '../../helpers/locationSeed'
 import { ItemPage } from '../../pages/ItemPage'
 import { PantryPage } from '../../pages/PantryPage'
@@ -41,18 +42,14 @@ test.beforeEach(async ({ page, request, baseURL }) => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
   if (baseURL === CLOUD_WEB_URL) {
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
   }
 })
 
 test.afterEach(async ({ page, request, baseURL }) => {
   if (baseURL === CLOUD_WEB_URL) {
     // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
-      headers: { 'x-e2e-user-id': E2E_USER_ID },
-    })
+    await cleanupCloudData(request)
   } else {
     // Local mode: clear IndexedDB, localStorage, and sessionStorage.
     await page.goto('/')
