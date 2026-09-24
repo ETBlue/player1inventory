@@ -1467,7 +1467,21 @@ test.describe('mobile viewport a11y', () => {
 })
 
 test.describe('offline banner a11y', () => {
+  // These two tests need a real service worker, so they point at the PWA preview
+  // server (PWA_WEB_URL) instead of the project's own baseURL. This file runs in
+  // BOTH the `local` and the `pwa` project, so without the skip below the two
+  // tests run twice against the same server with the same code — an exact
+  // duplicate. Running them only under `pwa` also lets `--project=local` start
+  // one server instead of also building and starting the PWA preview; see the
+  // webServer mapping in e2e/playwright.config.ts.
+  //
+  // If a11y.spec.ts is ever dropped from the `pwa` project's testMatch, these two
+  // tests stop running anywhere. Move them into pwa-offline.spec.ts at that point.
   test.use({ baseURL: PWA_WEB_URL })
+  // The skip must sit at describe level, not inside the test body: this file's
+  // top-level beforeEach also calls page.goto('/'), so a body-level skip runs
+  // too late and the hook still hits port 5176.
+  test.skip(() => test.info().project.name !== 'pwa', 'the pwa project runs this against the PWA preview server')
 
   for (const theme of ['light', 'dark'] as const) {
     test(`offline banner passes axe in ${theme} mode`, async ({ page, context }) => {
