@@ -153,6 +153,44 @@ user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true` and
 `DATABASE_URL` (covered by `apps/server/src/lib/prisma.test.ts`) — so a missing test
 database fails loudly instead of silently writing multi-user fixtures into dev.
 
+## Every cloud spec uses `cleanupCloudData` — since 2026-09-25
+
+`e2e/helpers/cloudTeardown.ts` exports `cleanupCloudData(request)`. It is the only
+version of the cloud teardown now. Call it from `beforeEach` and `afterEach`, guarded on
+`baseURL === CLOUD_WEB_URL`. The helper does **not** guard itself — without the guard a
+local run would fire a cloud cleanup.
+
+Until 2026-09-25, 11 spec files hand-rolled the same request at 19 call sites:
+
+```ts
+await request.delete(`${CLOUD_SERVER_URL}/e2e/cleanup`, {
+  headers: { 'x-e2e-user-id': E2E_USER_ID },
+})
+```
+
+**The bodies were identical. The one difference: the hand-rolled version never checked
+the response.** A cleanup that stops working — the server is down, or a new model joins
+the schema but not the delete list — returned quietly there and the test carried on. Rows
+from the last test survived into the next one, and the failure landed much later, in some
+other test, looking like an unrelated bug. `cleanupCloudData` throws instead, so the
+failure lands on the test that owns the cleanup.
+
+Measured on 2026-09-25 by pointing the helper at a path that 404s
+(`/e2e/cleanup-MUTATION-PROOF`) and running one cloud test:
+
+| Version | What the run reported |
+|---|---|
+| `cleanupCloudData` | `[cloud] item-management.spec.ts:47 user can create an item` failed with `Error: cleanupCloudData: DELETE /e2e/cleanup returned 404 Not Found`, stack pointing at the `afterEach` call site |
+| hand-rolled | no cleanup error at all — the run failed one test later, inside `ItemPage.save` on a `waitForURL` timeout, with a page snapshot naming nothing about cleanup |
+
+The section right below this one is a real case of the same failure: `/e2e/cleanup` was
+deleting no `Location` rows at all, and the symptom was `cooking.spec.ts` reading `0` on
+the Stock tab where the test expected `6`.
+
+**Note the error message hardcodes the literal path `/e2e/cleanup`** rather than printing
+the URL it actually called. In the proof above that made the message disagree with the
+404 body. It is cosmetic, but do not read the message as proof of which URL was hit.
+
 ## `/e2e/cleanup` deletes `Location` and `ItemStock` — since 2026-09-14
 
 Before that date the endpoint deleted 12 models and missed both. The effect was not
@@ -388,10 +426,15 @@ mutation did go red.
 therefore says nothing about this directory.
 
 To type-check a file you edited, write a temporary `tsconfig` and run `tsc --noEmit`.
-**Scope `include` to the files you are editing.** Two files carry pre-existing errors
+**Scope `include` to the files you are editing.** Three files carry pre-existing errors
 that will drown yours:
 
 | File | Pre-existing errors |
 |---|---|
 | `e2e/playwright.config.ts` | 2 × `TS2580` (no `@types/node`) |
-| `e2e/tests/a11y.spec.ts` | 39 × `TS2559` on `AxeOptions` |
+| `e2e/tests/a11y.spec.ts` | 63 × `TS2559` on `AxeOptions` |
+| `e2e/tests/settings/import-export-cloud.spec.ts` | 3 × `TS2307` on `node:fs`, `node:path`, `node:url` (no `@types/node`) |
+
+Counts measured 2026-09-25. The a11y figure was **39** when this table was written; the
+file has grown since. Do not trust the number — take your own baseline first. Run `tsc`
+on the unchanged files, keep the output, then diff it against the run after your edit.
