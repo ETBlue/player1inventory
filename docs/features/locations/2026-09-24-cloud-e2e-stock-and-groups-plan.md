@@ -177,6 +177,29 @@ Two more corrections from task 1:
 The two agree **only if the fixture lists the default location first.** Put a
 comment in the converted fixture saying so.
 
+**CORRECTED AFTER TASK 6 — the rule holds, but the failing project is the
+opposite of what this said.** Task 6 moved the default location to the middle of
+the array and ran both projects:
+
+| Project | Result |
+|---|---|
+| `cloud` | **4 passed, 1 skipped — unchanged, green** |
+| `local` | **1 failed** — `Previous location` expected disabled, received enabled. The pager opened on page 2. |
+
+Cloud is insensitive because `seedCloudFixture` **never creates** the default
+location. It reads back the one `ensureDefaultLocation` already made at
+`order: 0` (`apps/server/src/lib/defaultLocation.ts` line 52) and skips
+`isDefault` entries in its creation loop (`cloudSeed.ts` line 106). So the
+array position of the default is discarded before `createLocation` is reached,
+and only the relative order of the **non-default** locations follows the array.
+
+Local is the sensitive one: `seedLocalFixture` writes `order: index` for every
+location, default included.
+
+So reordering the array is **invisible in cloud** and makes the two modes test
+different page orders, with only local reporting it. That is worse than a plain
+failure, not better. Keep the default first.
+
 ### 3. The three group specs seed no location at all
 
 `shelves.spec.ts`, `vendors-group.spec.ts` and `recipes-group.spec.ts` write
