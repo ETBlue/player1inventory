@@ -317,17 +317,21 @@ per row, four servers forced by passing a glob instead of an exact project name:
 | `--project=cloud e2e/tests/item-logs.spec.ts` | 41s | **32s** |
 | `--project=pwa e2e/tests/pwa-offline.spec.ts` | 16s | **11s** |
 
-The whole gate, `pnpm test:e2e:all`, measured 2026-09-24: **12m39s**, all three green —
-local 170 passed / 5 skipped in 3m18s, cloud 76 passed / 6 skipped in 7m58s, pwa 69 passed
-in 1m23s. The two `offline banner a11y` tests moved from "runs in both `local` and `pwa`"
-to "runs in `pwa` only", which is why local now passes 170 where it passed 172 before —
-see **A11y Testing** below. This is issue #302.
+The whole gate, `pnpm test:e2e:all`, measured 2026-09-24 after five specs joined the
+`cloud` project (issue #284): **13m49s**, all three green — local 170 passed / 5 skipped in
+3m16s, cloud **89 passed / 7 skipped** in 9m08s, pwa 69 passed in 1m25s. Cloud gained 13
+passing tests and one skip that run only there. Earlier the same day, before those five
+specs, it was 12m39s with cloud at 76 passed / 6 skipped.
+
+The two `offline banner a11y` tests moved from "runs in both `local` and `pwa`" to "runs in
+`pwa` only", which is why local now passes 170 where it passed 172 before — see
+**A11y Testing** below. This is issue #302.
 
 `workers: 1` and `fullyParallel: false` are already set in `e2e/playwright.config.ts`, so
 the contention is between the concurrent **servers**, not concurrent tests. Passing
 `--workers=N` on the command line does nothing.
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **326 tests in 25 spec files** (measured 2026-09-23): **175 in `local`**, **82 in `cloud`** across 13 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
+No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **340 tests in 25 spec files** (measured 2026-09-24): **175 in `local`**, **96 in `cloud`** across 18 spec files, and **69 in `pwa`**. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 
@@ -739,11 +743,11 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **13 files today**. **A resolver
-exercised by no cloud spec has never touched SQL at all**, and a manual smoke test is owed
-for anything transactional.
+`e2e/playwright.config.ts` — that list is opt-in and covers **18 files today** (of 25 spec
+files in `e2e/tests/`). **A resolver exercised by no cloud spec has never touched SQL at
+all**, and a manual smoke test is owed for anything transactional.
 
-Four of those 13 cover location surfaces. Three were added 2026-09-14 (issue #284):
+Nine of those 18 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
@@ -759,6 +763,16 @@ calls GraphQL through `makeGql` and asserts server state the same way, because w
 tests is which `locationId` a row is written to, and `InventoryLog` exposes no `locationId`
 field to read back. It is therefore in the `local` project's `testIgnore` as well as the
 `cloud` project's `testMatch`.
+
+Five more joined on 2026-09-24, also issue #284 — `recipes-group.spec.ts`,
+`vendors-group.spec.ts`, `shelves.spec.ts` (2 cloud test cases each),
+`item-stock-input.spec.ts` (3) and `item-stock-pager.spec.ts` (4 of its 5). They give the
+first real-SQL coverage of the group views' badge and total maths — `getOutOfStockCount`,
+`getLowStockCount` and the packed totals in `RecipeGroupView`, `VendorGroupView` and
+`ShelfGroupView` — and of the Stock-tab number inputs and all-locations pager against real
+per-location `ItemStock` rows. **The three group specs seed one location, so they are not
+location coverage**: with one location "count stock here" and "count all stock" give the
+same answer. `item-stock-pager.spec.ts` seeds several and is.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.

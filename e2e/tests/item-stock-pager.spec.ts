@@ -1,33 +1,146 @@
-import { expect, type Page, test } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
+import { seedCloudFixture } from '../helpers/cloudSeed'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
+import type { Fixture, FixtureLocation } from '../helpers/fixture'
+import { seedLocalFixture } from '../helpers/localSeed'
 import { readRows, seedRows } from '../helpers/locationSeed'
+import { readStockAt } from '../helpers/stockReadback'
 import { StockPagerPage } from '../pages/StockPagerPage'
 
 // The item-detail Stock tab (`/items/$id/stock`) is an all-locations pager
 // (Location feature, PR E): one page per location, opening on the ACTIVE one,
 // with "Add to location" on a not-stocked page and "Remove from location" on a
-// stocked one. Every flow here is local-only.//
-// WHY LOCAL-ONLY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
-// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
-// client on it. It is that every fixture here seeds **IndexedDB** through
-// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
-// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
-// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
-// guards below are belt-and-braces rather than the thing that excludes it.
-// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
+// stocked one.
+//
+// FOUR OF THE FIVE TESTS RUN IN BOTH PROJECTS as of cloud-locations issue #284
+// task 6. They used to be local-only, and the old header blamed the fixture:
+// every seed wrote IndexedDB through `page.evaluate()`, which a cloud-mode app
+// never reads. That is now fixed the same way the other converted specs fix it
+// — the fixture is described ONCE as plain data (helpers/fixture.ts) and
+// translated per mode, by `seedLocalFixture` into IndexedDB or by
+// `seedCloudFixture` into Postgres through GraphQL. Location ids are never
+// hardcoded: the seed helpers return a `key -> real id` map, because a cloud
+// location id is a server-generated cuid and the local `'local'` sentinel names
+// nothing there.
+//
+// WHAT THE CLOUD RUN ADDS: this is the FIRST spec in this branch that seeds more
+// than one location, so it is the first that can catch a location-scoping
+// regression in the Stock tab. `stock.tsx` line 283 picks the viewed page's row
+// with `stocks.find((s) => s.locationId === viewed.id)`; the fixture below
+// stocks Milk at ONE location and pages to another, so code that ignored
+// location and showed any stock row would fail test 1. Also covered in cloud
+// for the first time: `addItemToLocation` copy-on-add, `removeItemFromLocation`
+// from the last location, and the pager's own page ORDER over server-assigned
+// `Location.order` values.
+//
+// THE ONE LOCAL-ONLY TEST is "user can remove an item from a location and lose
+// only that location's logs and cart entries". Its skip reason is written out
+// on the test itself — read it there before trying to convert it.
 
-const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home"
-const OFFICE = 'office-loc'
+const HOME = 'HOME'
+const OFFICE = 'OFFICE'
+const STORAGE = 'STORAGE'
 const ITEM = 'item-milk'
 
-test.beforeEach(async ({ page }) => {
+// KEEP THE DEFAULT LOCATION FIRST IN EVERY `locations` ARRAY BELOW.
+//
+// The two modes assign `Location.order` differently, and they agree only in
+// that one arrangement:
+//
+//   local  — `seedLocalFixture` writes `order: index` for every location
+//            (helpers/localSeed.ts line 50), so the ARRAY order is the order,
+//            default location included.
+//   cloud  — the default location is pinned at `order: 0` by
+//            `ensureDefaultLocation` (apps/server/src/lib/defaultLocation.ts
+//            line 52) whatever the array says, because `seedCloudFixture` does
+//            not create it — it reads back the one the server made. Every other
+//            location is then appended by `createLocation` at `maxOrder + 1`
+//            (apps/server/src/resolvers/location.resolver.ts lines 40-42), in
+//            the array's own order.
+//
+// MEASURED 2026-09-24, by moving `HOME_LOCATION` to the middle of the page-order
+// test's array and running both projects:
+//
+//   cloud — 4 passed, 1 skipped. UNCHANGED. Cloud ignores where the array puts
+//           the default location; only the non-default ones move.
+//   local — 1 FAILED. The pager opened on page 2, so "Previous location" was
+//           enabled where the test expects it disabled.
+//
+// So the mode that breaks is LOCAL, not cloud. Reordering this array does not
+// look like a product bug in cloud at all — it silently makes the two modes
+// test different page orders, and only local says so.
+const HOME_LOCATION: FixtureLocation = {
+  key: HOME,
+  name: 'My Home',
+  isDefault: true,
+}
+const OFFICE_LOCATION: FixtureLocation = { key: OFFICE, name: 'Office' }
+const STORAGE_LOCATION: FixtureLocation = { key: STORAGE, name: 'Storage' }
+
+// Seed one item and the requested locations. `stockedIn` decides which of them
+// get an ItemStock row — an item is "stocked at" a location iff that row exists.
+//
+// The quantities are the ones the hand-written seed this fixture replaces wrote:
+// a target of 4 and a refill threshold of 1 everywhere, and a packed quantity of
+// `index + 1` so the rows are not interchangeable. Test 1 reads the target back
+// after copy-on-add, so the 4 is load-bearing.
+function makeFixture(
+  locations: FixtureLocation[],
+  stockedIn: string[],
+): Fixture {
+  return {
+    locations,
+    vendors: [],
+    items: [{ id: ITEM, name: 'Milk' }],
+    stocks: stockedIn.map((key, index) => ({
+      itemId: ITEM,
+      location: key,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: index + 1,
+      unpackedQuantity: 0,
+    })),
+    shelves: [],
+    recipes: [],
+  }
+}
+
+/** Seed the fixture into whichever backend this project runs against. */
+async function seedFixture(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+  fixture: Fixture,
+): Promise<Record<string, string>> {
+  if (baseURL === CLOUD_WEB_URL) {
+    return seedCloudFixture(request, fixture)
+  }
+  return seedLocalFixture(page, fixture)
+}
+
+test.beforeEach(async ({ page, request, baseURL }) => {
   // Prevent the empty-data redirect to /onboarding so tests can navigate freely.
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
+  if (baseURL === CLOUD_WEB_URL) {
+    // Guards against a previous run that crashed before its teardown.
+    await cleanupCloudData(request)
+  }
 })
 
-test.afterEach(async ({ page }) => {
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
+    await cleanupCloudData(request)
+    return
+  }
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -54,71 +167,6 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-function stock(
-  id: string,
-  locationId: string,
-  packedQuantity = 0,
-): Record<string, unknown> {
-  const now = new Date()
-  return {
-    id,
-    itemId: ITEM,
-    locationId,
-    // Configuration (targetUnit / consumeAmount / units) is a global Item
-    // field since v16 — a stock row carries per-location state only.
-    targetQuantity: 4,
-    refillThreshold: 1,
-    packedQuantity,
-    unpackedQuantity: 0,
-    createdAt: now,
-    updatedAt: now,
-  }
-}
-
-// Seed one item and the requested locations. `stockedIn` decides which of them
-// get an ItemStock row — an item is "stocked at" a location iff that row exists.
-async function seedFixture(
-  page: Page,
-  {
-    locations,
-    stockedIn,
-  }: {
-    locations: Array<{ id: string; name: string }>
-    stockedIn: string[]
-  },
-) {
-  // Dexie must have created the schema before we open the database by name.
-  await page.goto('/')
-  const now = new Date()
-
-  await seedRows(
-    page,
-    'locations',
-    locations.map((l, order) => ({
-      id: l.id,
-      name: l.name,
-      order,
-      createdAt: now,
-      updatedAt: now,
-    })),
-  )
-  await seedRows(page, 'items', [
-    {
-      id: ITEM,
-      name: 'Milk',
-      tagIds: [],
-      vendorIds: [],
-      createdAt: now,
-      updatedAt: now,
-    },
-  ])
-  await seedRows(
-    page,
-    'itemStocks',
-    stockedIn.map((locationId, i) => stock(`stock-${i}`, locationId, i + 1)),
-  )
-}
-
 // The describe title must contain "items". The project's documented E2E gate grep is
 // `--grep "items|shopping|cooking|settings|a11y"`, and Playwright matches it against
 // the joined title path — project, FILE PATH, describes, test title. Every other file
@@ -131,18 +179,16 @@ async function seedFixture(
 test.describe('items stock tab — location pager', () => {
   test('user can add an item to a location from the not-stocked page', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given Milk is stocked only in My Home, and a second location exists
-    await seedFixture(page, {
-      locations: [
-        { id: HOME, name: 'My Home' },
-        { id: OFFICE, name: 'Office' },
-      ],
-      stockedIn: [HOME],
-    })
+    const locationIds = await seedFixture(
+      page,
+      request,
+      baseURL,
+      makeFixture([HOME_LOCATION, OFFICE_LOCATION], [HOME]),
+    )
 
     const stockTab = new StockPagerPage(page)
     await stockTab.navigateTo(ITEM)
@@ -153,7 +199,10 @@ test.describe('items stock tab — location pager', () => {
     // When the user pages to Office
     await stockTab.goToNext()
 
-    // Then that page is the not-stocked empty state with an Add CTA
+    // Then that page is the not-stocked empty state with an Add CTA. This is
+    // the location-scoping assertion: Milk HAS a stock row, just not at this
+    // location, so an implementation that ignored `viewed.id` would show the
+    // form here.
     await expect(stockTab.getNotStockedEmptyState()).toBeVisible()
     await expect(stockTab.getStockForm()).toHaveCount(0)
 
@@ -167,34 +216,74 @@ test.describe('items stock tab — location pager', () => {
 
     // And a stock row now exists for (Milk × Office) — copy-on-add inherits the
     // source location's goals but starts the quantities at zero
-    const stocks = await readRows(page, 'itemStocks')
-    const office = stocks.find((s) => s.locationId === OFFICE)
-    expect(office).toBeDefined()
-    expect(office?.targetQuantity).toBe(4)
-    expect(office?.packedQuantity).toBe(0)
+    await expect
+      .poll(async () => {
+        const office = await readStockAt(
+          page,
+          request,
+          baseURL,
+          ITEM,
+          locationIds[OFFICE],
+        )
+        if (!office) return undefined
+        return {
+          targetQuantity: office.targetQuantity,
+          packedQuantity: office.packedQuantity,
+        }
+      })
+      .toEqual({ targetQuantity: 4, packedQuantity: 0 })
   })
 
   test('user can remove an item from a location and lose only that location’s logs and cart entries', async ({
     page,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
+    // LOCAL-ONLY, and NOT because the fixture writes IndexedDB — the other four
+    // tests in this file did too and now run in both projects. Two separate
+    // reasons, either of which is enough:
+    //
+    // 1. THE CLOUD CASE IS ALREADY COVERED, against real SQL.
+    //    `e2e/tests/location-scoped-writes.spec.ts` line 254 — "user can remove
+    //    an item from one location and the other location keeps its stock, logs
+    //    and cart entries" — asserts the same behaviour from the opposite side,
+    //    and it runs in the `cloud` project today.
+    //
+    // 2. A CLOUD SEED CANNOT BUILD THIS FIXTURE THROUGH THE BULK IMPORT.
+    //    The point of the test is a log and a cart entry at a NON-DEFAULT
+    //    location, and the import surface cannot place one there:
+    //      - `InventoryLogInput` (apps/server/src/schema/import.graphql) has no
+    //        `locationId` field at all.
+    //      - `bulkCreateInventoryLogs` and `bulkCreateShoppingCarts`
+    //        (apps/server/src/resolvers/import.resolver.ts) both hardcode
+    //        `locationId: await ensureDefaultLocation(userId)`.
+    //    So every imported log and cart lands at the default location, and the
+    //    fixture would silently become "both rows are at My Home" — a test that
+    //    still passes while proving nothing.
+    //
+    // TO CONVERT IT ANYWAY, a cloud seed would have to skip the bulk import for
+    // these two entity types and drive `addInventoryLog(..., locationId:)` and
+    // `vendorCart(vendorId, locationId)` + `addToCart` instead, which is what
+    // `location-scoped-writes.spec.ts` already does. Do that only if PR 4 gives
+    // the import surface real locations and this coverage is still wanted here.
+    test.skip(
+      baseURL === CLOUD_WEB_URL,
+      'covered in cloud by location-scoped-writes.spec.ts:254; the bulk import cannot place a log or a cart at a non-default location',
+    )
 
     // Given Milk is stocked in both locations, with one log and one cart entry
     // in each
-    await seedFixture(page, {
-      locations: [
-        { id: HOME, name: 'My Home' },
-        { id: OFFICE, name: 'Office' },
-      ],
-      stockedIn: [HOME, OFFICE],
-    })
+    const locationIds = await seedLocalFixture(
+      page,
+      makeFixture([HOME_LOCATION, OFFICE_LOCATION], [HOME, OFFICE]),
+    )
+    const home = locationIds[HOME]
+    const office = locationIds[OFFICE]
     const now = new Date()
     await seedRows(page, 'inventoryLogs', [
       {
         id: 'log-home',
         itemId: ITEM,
-        locationId: HOME,
+        locationId: home,
         delta: 1,
         quantity: 1,
         note: 'Home purchase',
@@ -204,7 +293,7 @@ test.describe('items stock tab — location pager', () => {
       {
         id: 'log-office',
         itemId: ITEM,
-        locationId: OFFICE,
+        locationId: office,
         delta: 2,
         quantity: 2,
         note: 'Office purchase',
@@ -213,14 +302,14 @@ test.describe('items stock tab — location pager', () => {
       },
     ])
     await seedRows(page, 'shoppingCarts', [
-      { id: `${HOME}:no-vendor` },
-      { id: `${OFFICE}:no-vendor` },
+      { id: `${home}:no-vendor` },
+      { id: `${office}:no-vendor` },
     ])
     await seedRows(page, 'cartItems', [
-      { id: 'ci-home', cartId: `${HOME}:no-vendor`, itemId: ITEM, quantity: 1 },
+      { id: 'ci-home', cartId: `${home}:no-vendor`, itemId: ITEM, quantity: 1 },
       {
         id: 'ci-office',
-        cartId: `${OFFICE}:no-vendor`,
+        cartId: `${office}:no-vendor`,
         itemId: ITEM,
         quantity: 3,
       },
@@ -254,7 +343,7 @@ test.describe('items stock tab — location pager', () => {
 
     // And at the data layer, only this location's rows were destroyed
     const stocks = await readRows(page, 'itemStocks')
-    expect(stocks.map((s) => s.locationId)).toEqual([OFFICE])
+    expect(stocks.map((s) => s.locationId)).toEqual([office])
 
     const logs = await readRows(page, 'inventoryLogs')
     expect(logs.map((l) => l.id)).toEqual(['log-office'])
@@ -266,25 +355,25 @@ test.describe('items stock tab — location pager', () => {
     // location, so removing one item must not delete them
     const carts = await readRows(page, 'shoppingCarts')
     expect(carts.map((c) => c.id)).toEqual(
-      expect.arrayContaining([`${HOME}:no-vendor`, `${OFFICE}:no-vendor`]),
+      expect.arrayContaining([`${home}:no-vendor`, `${office}:no-vendor`]),
     )
   })
 
   test('user can page between locations with the dots and the chevrons', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
-    // Given three locations, with Milk stocked only in the first
-    await seedFixture(page, {
-      locations: [
-        { id: HOME, name: 'My Home' },
-        { id: OFFICE, name: 'Office' },
-        { id: 'storage-loc', name: 'Storage' },
-      ],
-      stockedIn: [HOME],
-    })
+    // Given three locations, with Milk stocked only in the first.
+    // The default location is listed FIRST on purpose — see the comment on
+    // HOME_LOCATION above. This test asserts page order, and that is the one
+    // arrangement where the two modes assign the same `Location.order`.
+    await seedFixture(
+      page,
+      request,
+      baseURL,
+      makeFixture([HOME_LOCATION, OFFICE_LOCATION, STORAGE_LOCATION], [HOME]),
+    )
 
     const stockTab = new StockPagerPage(page)
     await stockTab.navigateTo(ITEM)
@@ -341,18 +430,16 @@ test.describe('items stock tab — location pager', () => {
 
   test('user can re-add an item removed from its last location', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given Milk is stocked in My Home only, and it shows in the pantry
-    await seedFixture(page, {
-      locations: [
-        { id: HOME, name: 'My Home' },
-        { id: OFFICE, name: 'Office' },
-      ],
-      stockedIn: [HOME],
-    })
+    await seedFixture(
+      page,
+      request,
+      baseURL,
+      makeFixture([HOME_LOCATION, OFFICE_LOCATION], [HOME]),
+    )
     await page.goto('/')
     await expect(
       page.getByRole('heading', { name: 'Milk', level: 3 }),
@@ -391,15 +478,16 @@ test.describe('items stock tab — location pager', () => {
 
   test('user with a single location sees no pager chrome', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given only the default location exists
-    await seedFixture(page, {
-      locations: [{ id: HOME, name: 'My Home' }],
-      stockedIn: [HOME],
-    })
+    await seedFixture(
+      page,
+      request,
+      baseURL,
+      makeFixture([HOME_LOCATION], [HOME]),
+    )
 
     const stockTab = new StockPagerPage(page)
     await stockTab.navigateTo(ITEM)

@@ -75,6 +75,24 @@ export async function seedLocalFixture(
         name: item.name,
         tagIds: [],
         vendorIds: item.vendorIds ?? [],
+        // These two are global item CONFIGURATION, not per-location state, so
+        // they belong on the item row. When the fixture omits them this writes
+        // the PRODUCT defaults: 'package' and 1.
+        //
+        // 1 is the default everywhere a real item is born:
+        // `createItem` (apps/web/src/db/operations.ts) writes
+        // `consumeAmount: consumeAmount ?? 1`, Prisma declares
+        // `consumeAmount Float @default(1)` (apps/server/prisma/schema.prisma
+        // line 83), and the Dexie v17 upgrade backfills every 0 to 1. A 0
+        // means "no step size configured" and makes `ItemForm` show the
+        // "Must be greater than 0." error, so a fixture that omits the field
+        // must not get one.
+        //
+        // `seedCloudFixture` applies the same two fallbacks for an omitted
+        // key, so both modes seed the same item. A fixture that wants
+        // something else sets it explicitly.
+        targetUnit: item.targetUnit ?? 'package',
+        consumeAmount: item.consumeAmount ?? 1,
         createdAt: now,
         updatedAt: now,
       })),

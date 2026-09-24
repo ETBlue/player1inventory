@@ -27,6 +27,29 @@ export type FixtureItem = {
   id: string
   name: string
   vendorIds?: string[]
+  /**
+   * The item's global step size. Omitting it gives **1** in both modes — the
+   * product default (`createItem` writes `consumeAmount ?? 1`, Prisma declares
+   * `@default(1)`). Set it only when the spec needs a different step.
+   *
+   * 0 means "no step size configured" and is NOT the same as 1. `ItemForm`
+   * (apps/web/src/components/item/ItemForm/ItemForm.tsx line 355) computes
+   * `quantityStep = consumeAmount > 0 ? consumeAmount : 'any'`, and that value
+   * becomes the `step` attribute of three number inputs: Unpacked (line 802),
+   * Target Quantity (line 921, only while `targetUnit === 'measurement'`) and
+   * Refill When Below (line 956). A 0 also makes the form show the
+   * "Must be greater than 0." error (line 342), which no app-created item hits.
+   *
+   * Do NOT set 0 to make a decimal-input test pass. Measured 2026-09-24: the
+   * decimal test in `item-stock-input.spec.ts` is green at 0 and at 1. `step`
+   * does not change the text the browser keeps while the field has focus.
+   */
+  consumeAmount?: number
+  /**
+   * 'package' or 'measurement'. Omitting it gives **'package'** in both modes,
+   * matching `createItem`. Set it only when the spec needs 'measurement'.
+   */
+  targetUnit?: 'package' | 'measurement'
 }
 
 export type FixtureStock = {
