@@ -9,9 +9,8 @@ import { seedCloudFixture } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import type { Fixture } from '../helpers/fixture'
 import { seedLocalFixture } from '../helpers/localSeed'
-import { readRows } from '../helpers/locationSeed'
+import { readStockAt } from '../helpers/stockReadback'
 import { StockFormPage } from '../pages/StockFormPage'
-import { makeGql } from '../utils/cloud'
 
 // The number inputs on the item-detail Stock tab (`/items/$id/stock`).
 //
@@ -38,9 +37,10 @@ import { makeGql } from '../utils/cloud'
 //
 // WHAT THE CLOUD RUN ADDS: the same three keystroke assertions against a real
 // per-location `ItemStock` row in Postgres, plus the save round trip through
-// `upsertItemStock`. The two readbacks are mode-aware — `readRows` in local,
-// the `itemStocksForItem` query in cloud, because a cloud run has no IndexedDB
-// to read.
+// `upsertItemStock`. The two readbacks go through `readStockAt`
+// (helpers/stockReadback.ts), which reads IndexedDB in local and the
+// `itemStocksForItem` query in cloud — a cloud run has no IndexedDB to read.
+// `item-stock-pager.spec.ts` shares that helper.
 //
 // WHAT THIS SPEC CANNOT CATCH: it seeds ONE location, so no location-scoping
 // mutation can make it go red. `location-not-stocked-here.spec.ts` and
@@ -48,24 +48,6 @@ import { makeGql } from '../utils/cloud'
 
 const HOME = 'HOME'
 const ITEM = 'item-milk'
-
-// Every stock field of `itemStocksForItem` this spec reads back. The local
-// IndexedDB row carries the same key names, so one type covers both modes.
-type StockRow = {
-  locationId: string
-  packedQuantity: number
-  targetQuantity: number
-  refillThreshold: number
-}
-
-const STOCKS_FOR_ITEM = `query ($itemId: ID!) {
-  itemStocksForItem(itemId: $itemId) {
-    locationId
-    packedQuantity
-    targetQuantity
-    refillThreshold
-  }
-}`
 
 // One location, one item, one stock row — every quantity at 0, which is what a
 // plain `createItem` leaves behind and exactly the state the bug needed.
@@ -123,32 +105,6 @@ async function seedFixture(
     return seedCloudFixture(request, fixture)
   }
   return seedLocalFixture(page, fixture)
-}
-
-/**
- * Read this item's stock row at `locationId` back from whichever backend this
- * project runs against.
- *
- * A cloud run has no IndexedDB to read, so `readRows` would return nothing and
- * every assertion built on it would be vacuous. `itemStocksForItem` is the
- * server-side twin — the same query the Stock-tab pager uses.
- */
-async function readStockAt(
-  page: Page,
-  request: APIRequestContext,
-  baseURL: string | undefined,
-  locationId: string,
-): Promise<StockRow | undefined> {
-  if (baseURL === CLOUD_WEB_URL) {
-    const gql = makeGql(request)
-    const { itemStocksForItem } = await gql<{ itemStocksForItem: StockRow[] }>(
-      STOCKS_FOR_ITEM,
-      { itemId: ITEM },
-    )
-    return itemStocksForItem.find((stock) => stock.locationId === locationId)
-  }
-  const rows = (await readRows(page, 'itemStocks')) as unknown as StockRow[]
-  return rows.find((stock) => stock.locationId === locationId)
 }
 
 test.beforeEach(async ({ page, request, baseURL }) => {
@@ -253,6 +209,7 @@ test.describe('items stock tab — number input editing', () => {
           page,
           request,
           baseURL,
+          ITEM,
           locationIds[HOME],
         )
         return stock?.packedQuantity
@@ -334,6 +291,7 @@ test.describe('items stock tab — number input editing', () => {
           page,
           request,
           baseURL,
+          ITEM,
           locationIds[HOME],
         )
         return { target: stock?.targetQuantity, refill: stock?.refillThreshold }
