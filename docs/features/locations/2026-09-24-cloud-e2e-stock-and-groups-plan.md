@@ -298,17 +298,37 @@ the app code under test makes the test fail.
 | Fixture sensitivity | the seeded quantity | the assertion reads the value the cloud seed wrote, through the cloud path |
 | **Source mutation** | the app code that computes the number | the test fails when the behaviour it names is gone |
 
-For the three group views the badge number comes from `getOutOfStockCount`,
-passed into `GroupCard` as `outOfStockCount`:
+For the three group views the badge number comes from `getOutOfStockCount`.
+**Mutate the DEFINITION, not the call site:**
 
-- `apps/web/src/components/pantry/RecipeGroupView.tsx` line 102
-- `apps/web/src/components/pantry/VendorGroupView.tsx` line 92
-- `apps/web/src/components/pantry/ShelfGroupView.tsx` line 223
-- rendered at `apps/web/src/components/shared/GroupCard/GroupCard.tsx` line 100
+| View | `getOutOfStockCount` defined at |
+|---|---|
+| `apps/web/src/components/pantry/RecipeGroupView.tsx` | line **50** |
+| `apps/web/src/components/pantry/VendorGroupView.tsx` | line **41** |
+| `apps/web/src/components/pantry/ShelfGroupView.tsx` | line **71** |
 
-Find where `getOutOfStockCount` is defined and force it to return `0`. The
-`N empty` badge should disappear and the cloud test should go red. Restore
-afterwards and confirm green.
+Force it to return `0`. The `N empty` badge should disappear and the cloud test
+should go red. Restore afterwards and confirm green.
+
+**CORRECTED AFTER TASK 4.** An earlier version of this section gave lines 102,
+92 and 223 — those are the **call sites**, where the value is passed as the
+`outOfStockCount` prop. For `ShelfGroupView.tsx` that is worse than imprecise:
+line 223 is `renderUnsortedCard`, which uses a **different** function,
+`getUnsortedOutOfStockCount` (defined at line 126). Mutating there changes only
+the Unsorted card, and the test **stays green** — a mutation that proves nothing
+while looking like proof.
+
+Two more notes from the tasks that ran:
+
+- **A fixture mutation and a source mutation can produce identical failure
+  text.** Both make `getByText('1 empty')` time out. A report must name the file
+  and line it changed; the error message alone does not identify which check ran.
+- **The repo root has no `tsconfig.json`**, so a temporary type-check config
+  cannot `extend` one. Write a standalone config with its own `compilerOptions`.
+
+The badge is rendered by `apps/web/src/components/shared/GroupCard/GroupCard.tsx`.
+Line 100 builds the label text, but the `> 0` guard on line **96** is what decides
+whether the badge renders at all — that guard is what makes the mutation go red.
 
 **Task 2 is owed this check.** Task 7 must run it for `recipes-group.spec.ts`
 and record the result, or say plainly that it was not run.
