@@ -296,6 +296,78 @@ Reconciling against what the database actually holds is what keeps this working 
 PR 5 removes the dual-write. **Check it at that point** — if the mirror stops running,
 the reconcile should simply find nothing to remove.
 
+**The `cloud` project's `testMatch` is 18 files today** (`e2e/playwright.config.ts`),
+up from 13 on 2026-09-23. The five added on 2026-09-24 are `recipes-group.spec.ts`,
+`vendors-group.spec.ts`, `shelves.spec.ts`, `item-stock-input.spec.ts` and
+`item-stock-pager.spec.ts`. `--list` reports **96 cloud tests**, up from 76+6 skipped.
+
+### `consumeAmount` and `targetUnit` — set them, or the two modes seed different data
+
+`FixtureItem` (`e2e/helpers/fixture.ts`) takes both as optional fields. **A fixture that
+omits them does not get the same item in the two modes:**
+
+| Field omitted | Local seeds | Cloud seeds |
+|---|---|---|
+| `consumeAmount` | no key at all → the form reads `0` → `step="any"` | `1` (`cloudSeed.ts` fallback) → `step="1"` |
+| `targetUnit` | no key at all → `undefined` | `'package'` (`cloudSeed.ts` fallback) |
+
+The fallbacks are what the cloud seed hardcoded before the fields existed, so older
+fixtures are seeded exactly as before. **Setting both explicitly is what makes the two
+modes match.** `consumeAmount` drives `quantityStep` in
+`apps/web/src/components/item/ItemForm/ItemForm.tsx` line 355, which becomes the `step`
+attribute of three number inputs (Unpacked line 802, Target Quantity line 921 while
+`targetUnit === 'measurement'`, Refill When Below line 956). `0` is not the same as `1`.
+
+Do **not** write that `step` makes a decimal-input test pass. Measured on 2026-09-24:
+setting `consumeAmount: 1` in `item-stock-input.spec.ts` left its decimal test green.
+`step` affects validity and the spinner, not the text the browser keeps while the field
+has focus. The rounding `consumeAmount` drives is `roundToStep`, passed as
+`normalizeOnBlur` (`ItemForm.tsx` lines 277-280 and 806-809), and it runs only on blur.
+
+### Location order is assigned differently in the two modes — keep the default first
+
+| Helper | How it assigns `order` |
+|---|---|
+| `seedLocalFixture` | `order: index` for **every** location, default included (`localSeed.ts` line 50) |
+| `seedCloudFixture` | never creates the default — it reads back the one `ensureDefaultLocation` made at `order: 0` and `continue`s past `isDefault` entries in its creation loop (`cloudSeed.ts` line 106). `createLocation` appends `maxOrder + 1`. |
+
+So only the relative order of the **non-default** locations follows the array in cloud.
+Moving the default entry elsewhere in the array is **invisible in cloud** and changes the
+page order in local. Measured on 2026-09-24 with `item-stock-pager.spec.ts`: default moved
+to the middle gave cloud **4 passed, 1 skipped — unchanged**, and local **1 failed**
+(`Previous location` expected disabled, received enabled — the pager opened on page 2).
+
+A fixture that does not list the default first therefore makes the two modes test
+different page orders, and only local reports it. **Keep the default location first.**
+
+### `e2e/helpers/stockReadback.ts` — mode-aware stock readback
+
+A cloud run has no IndexedDB. `readRows(page, 'itemStocks')` returns `[]` there, so any
+assertion built on it is vacuous — it passes against every implementation.
+
+Use `readStocksForItem(page, request, baseURL, itemId)` or
+`readStockAt(page, request, baseURL, itemId, locationId)` instead. Local reads IndexedDB
+and filters by `itemId`; cloud queries `itemStocksForItem(itemId)`, the same query the
+Stock-tab pager uses (`apps/web/src/hooks/useItemStocks.ts`). Both return the same
+`StockRow` shape, because the Dexie row and the GraphQL type use the same key names.
+
+Reach for it in any dual-mode spec that asserts on stock rows rather than on rendered
+text. `item-stock-input.spec.ts` and `item-stock-pager.spec.ts` are the two users today.
+
+### The three group specs are NOT location coverage
+
+`shelves.spec.ts`, `vendors-group.spec.ts` and `recipes-group.spec.ts` seed **one**
+location. With one location, "count items stocked here" and "count every item" return the
+same number, so no location-scoping mutation can go red in them.
+
+They exist to cover badge and total maths — the `N empty` / `N low stock` badges and the
+packed total — which had **no** cloud coverage at all before 2026-09-24. Do not count them
+toward location coverage. That is what `location-not-stocked-here.spec.ts` and
+`location-scoped-writes.spec.ts` are for.
+
+`item-stock-pager.spec.ts` is different: it seeds several locations, and its scoping
+mutation did go red.
+
 ## Nothing lints or type-checks `e2e/`
 
 `pnpm lint` and `pnpm check` scan `apps/web` only, and there is no root `biome.json`.
