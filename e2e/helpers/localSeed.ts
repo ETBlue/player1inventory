@@ -75,27 +75,24 @@ export async function seedLocalFixture(
         name: item.name,
         tagIds: [],
         vendorIds: item.vendorIds ?? [],
-        // Both keys are OMITTED when the fixture leaves them out, which is
-        // exactly what this seed has always written. Writing `undefined`
-        // instead of omitting is not the same thing: Dexie would store the key.
+        // These two are global item CONFIGURATION, not per-location state, so
+        // they belong on the item row. When the fixture omits them this writes
+        // the PRODUCT defaults: 'package' and 1.
         //
-        // What an omitted key means downstream is NOT the `ItemForm`
-        // DEFAULT_VALUES of 'package' and 1. Both item routes build the form's
-        // `initialValues` themselves and always supply the key:
-        // `itemToFormValues` passes `consumeAmount: item.consumeAmount ?? 0`
-        // and `targetUnit: item.targetUnit` with no fallback
-        // (apps/web/src/routes/items/$id/index.tsx lines 51 and 61, and the
-        // same pair in $id/stock.tsx). So an omitted key reaches the form as 0
-        // and as undefined, and DEFAULT_VALUES never applies.
+        // 1 is the default everywhere a real item is born:
+        // `createItem` (apps/web/src/db/operations.ts) writes
+        // `consumeAmount: consumeAmount ?? 1`, Prisma declares
+        // `consumeAmount Float @default(1)` (apps/server/prisma/schema.prisma
+        // line 83), and the Dexie v17 upgrade backfills every 0 to 1. A 0
+        // means "no step size configured" and makes `ItemForm` show the
+        // "Must be greater than 0." error, so a fixture that omits the field
+        // must not get one.
         //
-        // Cloud is different: `seedCloudFixture` must send a value, so an
-        // omitted key becomes 'package' and 1 there. The two modes therefore
-        // DISAGREE for a fixture that leaves these out. A spec that cares about
-        // either value must set it explicitly.
-        ...(item.targetUnit !== undefined ? { targetUnit: item.targetUnit } : {}),
-        ...(item.consumeAmount !== undefined
-          ? { consumeAmount: item.consumeAmount }
-          : {}),
+        // `seedCloudFixture` applies the same two fallbacks for an omitted
+        // key, so both modes seed the same item. A fixture that wants
+        // something else sets it explicitly.
+        targetUnit: item.targetUnit ?? 'package',
+        consumeAmount: item.consumeAmount ?? 1,
         createdAt: now,
         updatedAt: now,
       })),

@@ -64,9 +64,10 @@ const MELON = 'dddddddd-0000-0000-0000-000000000005'
 const FIXTURE_BADGES: Fixture = {
   locations: [{ key: 'HOME', name: 'My Home', isDefault: true }],
   vendors: [],
-  // `targetUnit` and `consumeAmount` are set explicitly because an omitted key
-  // does NOT mean the same thing in both modes — local omits it, cloud sends
-  // 'package' and 1 (see the items seed comment in helpers/localSeed.ts).
+  // `targetUnit` and `consumeAmount` are written out rather than left to the
+  // helpers' defaults, so a reader can see what this spec runs against. They
+  // are the defaults: both seed helpers write 'package' and 1 for an omitted
+  // key, matching `createItem` (see the items seed comment in localSeed.ts).
   items: [
     { id: MILK, name: 'Milk', targetUnit: 'package', consumeAmount: 1 },
     { id: EGGS, name: 'Eggs', targetUnit: 'package', consumeAmount: 1 },

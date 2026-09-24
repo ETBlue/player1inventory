@@ -46,10 +46,10 @@ const SOY_SAUCE = 'item-soy-sauce'
 const FIXTURE_CARD: Fixture = {
   locations: [{ key: 'HOME', name: 'My Home', isDefault: true }],
   vendors: [],
-  // `targetUnit` and `consumeAmount` are set explicitly because an omitted key
-  // does NOT mean the same thing in both modes — local omits it, cloud sends
-  // 'package' and 1 (see the items seed comment in helpers/localSeed.ts). These
-  // are the values the old hand-written seed wrote.
+  // `targetUnit` and `consumeAmount` are written out rather than left to the
+  // helpers' defaults, so a reader can see what this spec runs against. They
+  // are the defaults: both seed helpers write 'package' and 1 for an omitted
+  // key, matching `createItem` (see the items seed comment in localSeed.ts).
   items: [
     {
       id: SPAGHETTI,

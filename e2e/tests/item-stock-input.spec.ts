@@ -52,32 +52,37 @@ const ITEM = 'item-milk'
 // One location, one item, one stock row — every quantity at 0, which is what a
 // plain `createItem` leaves behind and exactly the state the bug needed.
 //
-// `consumeAmount: 0` is the create default since 6302ee97 — an item is born
-// with no consume step — and it is what the hand-written seed this fixture
-// replaces wrote. `ItemForm`
-// (apps/web/src/components/item/ItemForm/ItemForm.tsx line 355) computes
-// `quantityStep = consumeAmount > 0 ? consumeAmount : 'any'`, and Unpacked
-// (line 802) takes that as its `step` attribute, so 0 gives `step="any"`.
+// `consumeAmount: 1` is the product default. `createItem` writes
+// `consumeAmount ?? 1` (apps/web/src/db/operations.ts), Prisma declares
+// `@default(1)`, and the Dexie v17 upgrade backfills every 0 to 1. An item
+// created by the app therefore never holds 0.
 //
-// DO NOT claim the decimal test below depends on it. MEASURED 2026-09-24 in the
-// `cloud` project: setting this to 1 (so the input renders `step="1"`) left that
-// test GREEN. The `step` attribute of `<input type="number">` does not change
-// the text the browser keeps while the field is focused, and the app's rounding
-// — `roundToStep(n, consumeAmount)` — is passed as `normalizeOnBlur`
-// (ItemForm.tsx lines 277-280, 806-809), which runs only when the field is left.
-// The decimal test never blurs. Keep the 0 for fidelity with the old seed, not
-// as a guard.
+// This fixture used to seed 0. That was wrong: `ItemForm`
+// (apps/web/src/components/item/ItemForm/ItemForm.tsx line 342) computes
+// `consumeAmount <= 0 ? t('validation.positiveNumber') : undefined`, so a 0
+// opened the form with a validation error on the Info tab — a state the app
+// itself cannot produce for a new item. For about 24 hours (2026-08-23 to
+// 2026-08-24) both create paths did default to 0; the designer reversed that
+// on 2026-08-24, because a new item must be valid by nature.
 //
-// Both `consumeAmount` and `targetUnit` are set explicitly because an omitted
-// key does NOT mean the same thing in both modes: local omits it and the form
-// reads 0 / undefined, cloud sends 1 and 'package' (see the items seed comment
-// in helpers/localSeed.ts). The values below are the ones the hand-written seed
-// this fixture replaces wrote.
+// DO NOT claim the decimal test below depends on this value. MEASURED
+// 2026-09-24 in the `cloud` project: the test is GREEN at 0 and GREEN at 1.
+// `consumeAmount` feeds `quantityStep` (ItemForm.tsx line 355), which becomes
+// the Unpacked input's `step` attribute (line 802). `step` affects validity and
+// the spinner, not the text the browser keeps while the field has focus. The
+// rounding `consumeAmount` drives — `roundToStep(n, consumeAmount)` — is passed
+// as `normalizeOnBlur` (ItemForm.tsx lines 277-280, 806-809) and runs only when
+// the field is left. The decimal test never blurs.
+//
+// Both fields are written out rather than left to the helpers' defaults, so a
+// reader can see what this spec runs against. Omitting them gives the same
+// values in both modes — 'package' and 1 — since `seedLocalFixture` and
+// `seedCloudFixture` default the same way.
 const FIXTURE: Fixture = {
   locations: [{ key: HOME, name: 'My Home', isDefault: true }],
   vendors: [],
   items: [
-    { id: ITEM, name: 'Milk', targetUnit: 'package', consumeAmount: 0 },
+    { id: ITEM, name: 'Milk', targetUnit: 'package', consumeAmount: 1 },
   ],
   stocks: [
     {
@@ -317,6 +322,10 @@ test.describe('items stock tab — number input editing', () => {
   // ("backspace a quantity showing 0") went red on both. So the keystroke
   // behaviour IS pinned — by that test, not by this one. Do not count this one
   // as coverage of it. Recorded as a known gap in the task 5 report.
+  //
+  // Those two runs used the old `consumeAmount: 0` fixture. The finding does
+  // not depend on it: the same test was also measured green at
+  // `consumeAmount: 1`, so neither value changes what it proves.
   test('user can type a decimal into Unpacked without it being rounded mid-keystroke', async ({
     page,
     request,
