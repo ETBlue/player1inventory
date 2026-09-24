@@ -97,16 +97,44 @@ That spec seeds `consumeAmount: 0` on purpose (line 93, with a comment).
 `step="any"`, anything above makes it `step={consumeAmount}`.
 
 `Fixture` has **no** `consumeAmount` field. `seedCloudFixture` hardcodes `1`
-(`cloudSeed.ts` line 144) and `seedLocalFixture` writes nothing, which
-`ItemForm` defaults to `1` (line 85).
+(`cloudSeed.ts` line 144) and `seedLocalFixture` writes nothing.
 
 **So moving that spec onto `Fixture` as it stands silently changes the seed, and
 the fixture stops testing the decimal input it was written for — while still
 passing.** `FixtureItem` needs an optional `consumeAmount` first, honoured by
-both seed helpers.
+both seed helpers. Task 1 added it.
 
 The same applies to `targetUnit: 'package'` (line 89), which local does not write
 and cloud hardcodes.
+
+**CORRECTED AFTER TASK 1.** An earlier version of this trap said a locally
+seeded item with no `consumeAmount` reaches the form as `1`, because
+`ItemForm`'s `DEFAULT_VALUES.consumeAmount` is `1` (`ItemForm.tsx` line 85).
+That is wrong. Those defaults only apply when `initialValues` leaves the key
+out, and both item routes always supply it:
+
+- `apps/web/src/routes/items/$id/index.tsx` line 61 — `consumeAmount: item.consumeAmount ?? 0`
+- `apps/web/src/routes/items/$id/stock.tsx` line 61 — the same
+
+So the real starting state, for a fixture that sets neither field, is:
+
+| Field omitted | Local reaches the form as | Cloud reaches the form as |
+|---|---|---|
+| `consumeAmount` | `0` → `step="any"` | `1` → `step="1"` |
+| `targetUnit` | `undefined` | `'package'` |
+
+**The two modes already disagree.** Task 1 preserved that on purpose rather than
+changing behaviour for existing fixtures. A converted spec that cares about
+either value must set it explicitly — setting `consumeAmount: 0` and
+`targetUnit: 'package'` is what makes the modes match.
+
+Two more corrections from task 1:
+
+- `ItemForm.tsx` lives at `apps/web/src/components/item/ItemForm/ItemForm.tsx`,
+  not under `routes/items/`.
+- `consumeAmount` feeds `quantityStep`, which three inputs use: Unpacked (line
+  802) and Refill When Below (line 956) always, and Target Quantity (line 921)
+  only while `targetUnit === 'measurement'`. Packed does not use it.
 
 ### 2. Location order is assigned differently in the two modes
 
