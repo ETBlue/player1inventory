@@ -1,7 +1,17 @@
-import { expect, type Page, test } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
-import { readRows, seedRows } from '../helpers/locationSeed'
+import { seedCloudFixture } from '../helpers/cloudSeed'
+import { cleanupCloudData } from '../helpers/cloudTeardown'
+import type { Fixture } from '../helpers/fixture'
+import { seedLocalFixture } from '../helpers/localSeed'
+import { readRows } from '../helpers/locationSeed'
 import { StockFormPage } from '../pages/StockFormPage'
+import { makeGql } from '../utils/cloud'
 
 // The number inputs on the item-detail Stock tab (`/items/$id/stock`).
 //
@@ -19,28 +29,145 @@ import { StockFormPage } from '../pages/StockFormPage'
 // real browser re-renders the input the way the user saw. Do not delete this
 // file on the grounds that ItemForm.test.tsx "already covers it".
 //
-// The fixture, and therefore every test here, is local-only.
+// RUNS IN BOTH PROJECTS as of cloud-locations issue #284 task 5. It used to
+// seed IndexedDB by hand through `seedRows`, which writes nothing a cloud-mode
+// app reads, and the three tests carried a `test.skip` on
+// `baseURL === CLOUD_WEB_URL`. The fixture is now described ONCE as plain data
+// (helpers/fixture.ts) and translated per mode — `seedLocalFixture` writes
+// IndexedDB, `seedCloudFixture` writes Postgres through GraphQL.
 //
-// WHY, corrected in cloud-locations PR 2: it is NOT that cloud lacks a
-// Location/ItemStock backend — it has had one since PR 1, and PR 2 put the web
-// client on it. It is that the fixture seeds **IndexedDB** through
-// `page.evaluate()`, which writes nothing a cloud-mode app reads. Cloud coverage
-// needs a GraphQL- or UI-driven seed, and the `cloud` project's `testMatch` in
-// `e2e/playwright.config.ts` does not select this file, so the `test.skip`
-// guards below are belt-and-braces rather than the thing that excludes it.
-// Recorded as a gap in `docs/features/locations/2026-08-30-cloud-locations-plan-pr2.md`.
+// WHAT THE CLOUD RUN ADDS: the same three keystroke assertions against a real
+// per-location `ItemStock` row in Postgres, plus the save round trip through
+// `upsertItemStock`. The two readbacks are mode-aware — `readRows` in local,
+// the `itemStocksForItem` query in cloud, because a cloud run has no IndexedDB
+// to read.
+//
+// WHAT THIS SPEC CANNOT CATCH: it seeds ONE location, so no location-scoping
+// mutation can make it go red. `location-not-stocked-here.spec.ts` and
+// `location-scoped-writes.spec.ts` cover that.
 
-const HOME = 'local' // DEFAULT_LOCATION_ID, seeded as "My Home"
+const HOME = 'HOME'
 const ITEM = 'item-milk'
 
-test.beforeEach(async ({ page }) => {
+// Every stock field of `itemStocksForItem` this spec reads back. The local
+// IndexedDB row carries the same key names, so one type covers both modes.
+type StockRow = {
+  locationId: string
+  packedQuantity: number
+  targetQuantity: number
+  refillThreshold: number
+}
+
+const STOCKS_FOR_ITEM = `query ($itemId: ID!) {
+  itemStocksForItem(itemId: $itemId) {
+    locationId
+    packedQuantity
+    targetQuantity
+    refillThreshold
+  }
+}`
+
+// One location, one item, one stock row — every quantity at 0, which is what a
+// plain `createItem` leaves behind and exactly the state the bug needed.
+//
+// `consumeAmount: 0` is the create default since 6302ee97 — an item is born
+// with no consume step — and it is what the hand-written seed this fixture
+// replaces wrote. `ItemForm`
+// (apps/web/src/components/item/ItemForm/ItemForm.tsx line 355) computes
+// `quantityStep = consumeAmount > 0 ? consumeAmount : 'any'`, and Unpacked
+// (line 802) takes that as its `step` attribute, so 0 gives `step="any"`.
+//
+// DO NOT claim the decimal test below depends on it. MEASURED 2026-09-24 in the
+// `cloud` project: setting this to 1 (so the input renders `step="1"`) left that
+// test GREEN. The `step` attribute of `<input type="number">` does not change
+// the text the browser keeps while the field is focused, and the app's rounding
+// — `roundToStep(n, consumeAmount)` — is passed as `normalizeOnBlur`
+// (ItemForm.tsx lines 277-280, 806-809), which runs only when the field is left.
+// The decimal test never blurs. Keep the 0 for fidelity with the old seed, not
+// as a guard.
+//
+// Both `consumeAmount` and `targetUnit` are set explicitly because an omitted
+// key does NOT mean the same thing in both modes: local omits it and the form
+// reads 0 / undefined, cloud sends 1 and 'package' (see the items seed comment
+// in helpers/localSeed.ts). The values below are the ones the hand-written seed
+// this fixture replaces wrote.
+const FIXTURE: Fixture = {
+  locations: [{ key: HOME, name: 'My Home', isDefault: true }],
+  vendors: [],
+  items: [
+    { id: ITEM, name: 'Milk', targetUnit: 'package', consumeAmount: 0 },
+  ],
+  stocks: [
+    {
+      itemId: ITEM,
+      location: HOME,
+      // Every quantity at zero: the field the user backspaces shows "0".
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+    },
+  ],
+  shelves: [],
+  recipes: [],
+}
+
+/** Seed the fixture into whichever backend this project runs against. */
+async function seedFixture(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+  fixture: Fixture,
+): Promise<Record<string, string>> {
+  if (baseURL === CLOUD_WEB_URL) {
+    return seedCloudFixture(request, fixture)
+  }
+  return seedLocalFixture(page, fixture)
+}
+
+/**
+ * Read this item's stock row at `locationId` back from whichever backend this
+ * project runs against.
+ *
+ * A cloud run has no IndexedDB to read, so `readRows` would return nothing and
+ * every assertion built on it would be vacuous. `itemStocksForItem` is the
+ * server-side twin — the same query the Stock-tab pager uses.
+ */
+async function readStockAt(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+  locationId: string,
+): Promise<StockRow | undefined> {
+  if (baseURL === CLOUD_WEB_URL) {
+    const gql = makeGql(request)
+    const { itemStocksForItem } = await gql<{ itemStocksForItem: StockRow[] }>(
+      STOCKS_FOR_ITEM,
+      { itemId: ITEM },
+    )
+    return itemStocksForItem.find((stock) => stock.locationId === locationId)
+  }
+  const rows = (await readRows(page, 'itemStocks')) as unknown as StockRow[]
+  return rows.find((stock) => stock.locationId === locationId)
+}
+
+test.beforeEach(async ({ page, request, baseURL }) => {
   // Prevent the empty-data redirect to /onboarding so tests can navigate freely.
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
+  if (baseURL === CLOUD_WEB_URL) {
+    // Guards against a previous run that crashed before its teardown.
+    await cleanupCloudData(request)
+  }
 })
 
-test.afterEach(async ({ page }) => {
+test.afterEach(async ({ page, request, baseURL }) => {
+  if (baseURL === CLOUD_WEB_URL) {
+    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
+    await cleanupCloudData(request)
+    return
+  }
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -67,49 +194,6 @@ test.afterEach(async ({ page }) => {
   })
 })
 
-// One location, one item, one stock row — every quantity at 0, which is what a
-// plain `createItem` leaves behind and exactly the state the bug needed.
-// `seedRows` resolves on `tx.oncomplete`, never on `request.onsuccess`: an
-// IDBRequest succeeds while its transaction is still open, and the navigation
-// that follows a seed aborts it, silently discarding the rows.
-async function seedFixture(page: Page) {
-  // Dexie must have created the schema before we open the database by name.
-  await page.goto('/')
-  const now = new Date()
-
-  await seedRows(page, 'locations', [
-    { id: HOME, name: 'My Home', order: 0, createdAt: now, updatedAt: now },
-  ])
-  await seedRows(page, 'items', [
-    {
-      id: ITEM,
-      name: 'Milk',
-      tagIds: [],
-      vendorIds: [],
-      targetUnit: 'package',
-      // The create default since 6302ee97 — an item is born with no consume
-      // step, so Unpacked's blur-time rounding falls back to a step of 1.
-      consumeAmount: 0,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ])
-  await seedRows(page, 'itemStocks', [
-    {
-      id: 'stock-home',
-      itemId: ITEM,
-      locationId: HOME,
-      // Every quantity at zero: the field the user backspaces shows "0".
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      targetQuantity: 0,
-      refillThreshold: 0,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ])
-}
-
 // The describe title must contain "items". The project's documented E2E gate grep is
 // `--grep "items|shopping|cooking|settings|a11y"` and Playwright matches it against
 // the joined title path — project, file path, describes, test title. The filename
@@ -118,12 +202,11 @@ async function seedFixture(page: Page) {
 test.describe('items stock tab — number input editing', () => {
   test('user can backspace a quantity showing 0 without losing the keystroke or the caret', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given Milk is stocked at My Home with a Packed quantity of 0
-    await seedFixture(page)
+    const locationIds = await seedFixture(page, request, baseURL, FIXTURE)
     const form = new StockFormPage(page)
     await form.navigateTo(ITEM)
 
@@ -166,8 +249,13 @@ test.describe('items stock tab — number input editing', () => {
     // Then the new quantity is persisted to this location's stock row
     await expect
       .poll(async () => {
-        const stocks = await readRows(page, 'itemStocks')
-        return stocks.find((s) => s.locationId === HOME)?.packedQuantity
+        const stock = await readStockAt(
+          page,
+          request,
+          baseURL,
+          locationIds[HOME],
+        )
+        return stock?.packedQuantity
       })
       .toBe(5)
   })
@@ -177,7 +265,7 @@ test.describe('items stock tab — number input editing', () => {
   // grid-cols-2 pair of plain number inputs. This is the round-trip guard for
   // that rebuild: it drives the buttons (not the keyboard), saves, and
   // re-navigates to a fresh mount of the tab so the assertion reads values
-  // the loader pulled back off IndexedDB — not values still sitting in the
+  // the loader pulled back off the backend — not values still sitting in the
   // component's already-correct in-memory state. A stepper whose `onStep`
   // got disconnected from its input, or a submit that dropped the field,
   // would still show the right number on screen right up until save; only
@@ -187,12 +275,11 @@ test.describe('items stock tab — number input editing', () => {
   // hide behind a symmetric assertion.
   test('user can adjust Target and Refill with the +/- steppers and have them persist through save and reload', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given Milk is stocked at My Home with Target and Refill both at 0
-    await seedFixture(page)
+    const locationIds = await seedFixture(page, request, baseURL, FIXTURE)
     const form = new StockFormPage(page)
     await form.navigateTo(ITEM)
 
@@ -243,14 +330,18 @@ test.describe('items stock tab — number input editing', () => {
     // not merely reflected on screen, and not swapped between the two fields
     await expect
       .poll(async () => {
-        const stocks = await readRows(page, 'itemStocks')
-        const stock = stocks.find((s) => s.locationId === HOME)
+        const stock = await readStockAt(
+          page,
+          request,
+          baseURL,
+          locationIds[HOME],
+        )
         return { target: stock?.targetQuantity, refill: stock?.refillThreshold }
       })
       .toEqual({ target: 3, refill: 2 })
 
     // When the Stock tab is freshly re-navigated to (a new mount, reading
-    // whatever the loader pulls back off IndexedDB)
+    // whatever the loader pulls back off the backend)
     await form.navigateTo(ITEM)
 
     // Then it shows the persisted values, each in its own field — the round
@@ -259,14 +350,22 @@ test.describe('items stock tab — number input editing', () => {
     await expect(form.getRefillInput()).toHaveValue('2')
   })
 
+  // WEAKER THAN IT LOOKS — measured, not guessed. This test stayed GREEN under
+  // both source mutations run on 2026-09-24 in the `cloud` project:
+  //   1. `ItemForm.tsx` line 285 forced to `const text = String(value)`
+  //   2. the whole pre-2fe372a1 shape — no draft text AND
+  //      `onChange: e => setValue(Number(e.target.value))`
+  // Mutation 2 is exactly the bug this file guards, and the test above
+  // ("backspace a quantity showing 0") went red on both. So the keystroke
+  // behaviour IS pinned — by that test, not by this one. Do not count this one
+  // as coverage of it. Recorded as a known gap in the task 5 report.
   test('user can type a decimal into Unpacked without it being rounded mid-keystroke', async ({
     page,
+    request,
     baseURL,
   }) => {
-    test.skip(baseURL === CLOUD_WEB_URL, 'local-mode fixture: seeds IndexedDB')
-
     // Given Milk is stocked at My Home with an Unpacked quantity of 0
-    await seedFixture(page)
+    await seedFixture(page, request, baseURL, FIXTURE)
     const form = new StockFormPage(page)
     await form.navigateTo(ITEM)
 
