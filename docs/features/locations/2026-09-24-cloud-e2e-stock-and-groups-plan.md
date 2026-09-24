@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-24
 **Issue:** #284
-**Status:** 🔲 Pending
+**Status:** ✅ Implemented
 
 ## Goal
 
@@ -298,16 +298,26 @@ runs the whole gate.
 
 Expected counts after all tasks:
 
-| Project | Before | After |
-|---|---|---|
-| local | 170 passed, 5 skipped | 170 passed, 3 skipped |
-| cloud | 76 passed, 6 skipped | **89 passed**, 6 skipped |
-| pwa | 69 passed | 69 passed |
+| Project | Before | Predicted | **Measured 2026-09-24** |
+|---|---|---|---|
+| local | 170 passed, 5 skipped | 170 passed, 3 skipped | **170 passed, 5 skipped** (3m16s) |
+| cloud | 76 passed, 6 skipped | 89 passed, 6 skipped | **89 passed, 7 skipped** (9m08s) |
+| pwa | 69 passed | 69 passed | **69 passed** (1m25s) |
 
-The local skipped count drops by 2 because `item-stock-input`'s three skips and
-`item-stock-pager`'s five become one — those skips fire on `baseURL ===
-CLOUD_WEB_URL`, so they never fired in `local` anyway. Confirm the real numbers
-rather than trusting this table.
+Whole gate: `pnpm test:e2e:all`, **13m49s**, all three projects PASS.
+
+**Two of the three predictions were wrong on the skip counts.**
+
+- **local stayed at 5 skips, not 3.** The plan's own reasoning contradicted its
+  table: `item-stock-input`'s and `item-stock-pager`'s skips fire on
+  `baseURL === CLOUD_WEB_URL`, so they never counted in `local` to begin with.
+  Removing them could not lower a number they never raised. Local's 5 are
+  `a11y.spec.ts`'s 2 offline-banner cases (skipped outside `pwa`),
+  `shopping.spec.ts` lines 496 and 536 (`cloud mode only`), and
+  `settings/tags.spec.ts` line 154 (an unconditional `test.skip`).
+- **cloud went to 7 skips, not 6.** `item-stock-pager.spec.ts` test 2 stays
+  local-only, and that skip now fires in `cloud` where the whole file used to be
+  absent. 96 cloud tests = 89 passed + 7 skipped.
 
 Cloud gains 13: 2 + 2 + 2 + 3 + 4.
 
@@ -387,6 +397,25 @@ whether the badge renders at all — that guard is what makes the mutation go re
 **Task 2 is owed this check.** Task 7 must run it for `recipes-group.spec.ts`
 and record the result, or say plainly that it was not run.
 
+**RAN IN TASK 7 — it went red.** `getOutOfStockCount` in
+`apps/web/src/components/pantry/RecipeGroupView.tsx` line 50 was replaced with
+`const getOutOfStockCount = (_recipeId: string) => 0`, then
+`pnpm test:e2e --project=cloud e2e/tests/recipes-group.spec.ts` was run:
+
+```
+1 failed
+  [cloud] › e2e/tests/recipes-group.spec.ts:200:1 › user sees out-of-stock badge on recipe group card
+  Locator: getByText('1 empty')
+  Expected: visible
+  Timeout: 5000ms
+  Error: element(s) not found
+1 passed (25.5s)
+```
+
+The source was restored and the same command re-run: **2 passed (20.5s)**. The
+other test in the file (line 188, "user sees recipe group card") does not assert
+the badge, so it correctly stayed green under the mutation.
+
 ### What these three group specs cannot catch
 
 They seed **one** location. With one location, "count items stocked here" and
@@ -397,3 +426,91 @@ has no cloud coverage at all today. Location scoping is covered by
 
 Do not describe these three specs as location coverage. Task 7 should say this
 in `e2e/CLAUDE.md`.
+
+---
+
+## Corrections found while running this plan
+
+Every task found something the plan got wrong. This table is the summary; the
+`CORRECTED AFTER TASK n` blocks above carry the detail and the measurements.
+
+| # | Found in | What the plan said | What is true |
+|---|---|---|---|
+| 1 | Task 1 | A locally seeded item with no `consumeAmount` reaches the form as `1`, because `ItemForm`'s `DEFAULT_VALUES.consumeAmount` is `1`. | Those defaults apply only when `initialValues` leaves the key out, and both item routes always supply it (`routes/items/$id/index.tsx` line 61 and `routes/items/$id/stock.tsx` line 61, both `item.consumeAmount ?? 0`). Local reaches the form as `0` → `step="any"`; cloud as `1` → `step="1"`. **The two modes already disagreed.** |
+| 2 | Task 1 | `ItemForm.tsx` lives under `routes/items/`. | It lives at `apps/web/src/components/item/ItemForm/ItemForm.tsx`. |
+| 3 | Task 1 | `consumeAmount` feeds one input. | It feeds `quantityStep`, which three inputs use: Unpacked (line 802) and Refill When Below (line 956) always, Target Quantity (line 921) only while `targetUnit === 'measurement'`. Packed does not use it. |
+| 4 | Task 2 | Mutation check = change the fixture. | A fixture change proves only that the assertion reads the seeded value. Root `CLAUDE.md` asks for a **source** mutation. From task 3 on both were run. |
+| 5 | Task 4 | Mutate `getOutOfStockCount` at `RecipeGroupView.tsx:102`, `VendorGroupView.tsx:92`, `ShelfGroupView.tsx:223`. | Those are the **call sites**. The definitions are at lines **50**, **41** and **71**. `ShelfGroupView.tsx:223` is worse than imprecise: it is `renderUnsortedCard`, which uses a different function, `getUnsortedOutOfStockCount` (line 126). Mutating there changes only the Unsorted card and **the test stays green** — a mutation that looks like proof and is not. |
+| 6 | Task 5 | `consumeAmount: 0` is load-bearing in `item-stock-input.spec.ts`; setting it to `1` makes the decimal test go red. | **It stayed green.** `step` affects validity and the spinner, not the text the browser keeps while the field has focus. The rounding `consumeAmount` drives is `roundToStep`, passed as `normalizeOnBlur` (`ItemForm.tsx` lines 277-280 and 806-809), and it runs only on blur — which that test never does. Setting both fields explicitly is still right, but for the other reason: it keeps the two modes seeding the same data. |
+| 7 | Task 5 | Test 3 (decimal input) is what guards the pre-`2fe372a1` swallowed-keystroke bug. | Test 3 stayed green under **both** source mutations, including the literal pre-`2fe372a1` code. **Test 1** went red under both. Test 3 proves something narrower: while the field is focused, the controlled component keeps the exact text typed. |
+| 8 | Task 6 | Reordering the `locations` array so the default is not first breaks the **cloud** run. | The opposite. Cloud is **insensitive** — `seedCloudFixture` never creates the default, it reads back the one `ensureDefaultLocation` made at `order: 0` and skips `isDefault` entries in its creation loop. Local is the sensitive one (`order: index` for every location). Measured: default moved to the middle gave cloud **4 passed, 1 skipped — unchanged** and local **1 failed**. The rule "keep the default first" stands; only the reason changed, and the silent case is worse than a plain failure. |
+| 9 | Task 4 | — | A fixture mutation and a source mutation produce **identical** failure text (both time out on `getByText('1 empty')`). A report must name the file and line it changed; the error message alone does not identify which check ran. |
+| 10 | Task 4 | — | The repo root has **no** `tsconfig.json`, so a temporary type-check config for `e2e/` cannot `extend` one. Write a standalone config with its own `compilerOptions`. |
+| 11 | Task 7 | local would end at 170 passed / **3** skipped. | It ended at 170 passed / **5** skipped — unchanged from the baseline. The plan's own next sentence already said why: those skips fire on `baseURL === CLOUD_WEB_URL` and never counted in `local`. |
+| 12 | Task 7 | cloud would end at 89 passed / **6** skipped. | 89 passed / **7** skipped. `item-stock-pager.spec.ts` test 2 stays local-only, and its skip now fires in `cloud` where the whole file used to be absent. |
+
+### Corrections to Task 7's own brief
+
+| What the brief said | What is true |
+|---|---|
+| "`e2e/CLAUDE.md` says the cloud `testMatch` is 13 files. Find and fix every stale count in this file." | `e2e/CLAUDE.md` carried **no** `testMatch` file count at all. The only stale counts were in the root `CLAUDE.md` (the `13 files today` paragraph and the `82 in cloud across 13 spec files` line). The count was **added** to `e2e/CLAUDE.md` as new information, not fixed. |
+| "The specs still not in cloud: `unified-item-search`, `onboarding`, `settings/shelves`, `settings-global-pages`, `settings/import-export-local`." | Correct as far as it goes, but the full set of the 7 files outside the cloud `testMatch` also includes `a11y.spec.ts` (runs in `local` + `pwa`) and `pwa-offline.spec.ts` (`pwa` only). Neither is a candidate for cloud. |
+
+## Still owed
+
+### 1. `item-stock-input.spec.ts` test 3 is not a guard
+
+The decimal-input test stayed green under both source mutations task 5 ran,
+including the literal pre-`2fe372a1` code the file exists to guard. Test 1 is
+what pins that bug.
+
+To make test 3 a real guard, either blur the field and assert the rounding, or
+assert the `step` attribute directly. Not done, and not part of this plan.
+
+### 2. Seven spec files run in no cloud project
+
+Verified against `e2e/playwright.config.ts` on 2026-09-24 — 25 spec files in
+`e2e/tests/`, 18 in the cloud `testMatch`:
+
+| Spec | Why it is not in cloud |
+|---|---|
+| `unified-item-search.spec.ts` | no cloud awareness; needs a cloud fixture written from nothing |
+| `onboarding.spec.ts` | not attempted |
+| `settings/shelves.spec.ts` | not attempted |
+| `settings-global-pages.spec.ts` | not attempted |
+| `settings/import-export-local.spec.ts` | local mode is what it tests; `settings/import-export-cloud.spec.ts` is its cloud twin |
+| `a11y.spec.ts` | runs in `local` and `pwa`; a cloud copy would scan the same markup |
+| `pwa-offline.spec.ts` | `pwa` only, by design |
+
+### 3. Deliberately left local-only: `item-stock-pager.spec.ts` test 2
+
+"user can remove an item from a location and lose only that location's logs and
+cart entries". Two reasons, both verified:
+
+1. The cloud case is already covered by `location-scoped-writes.spec.ts` line
+   254, stated from the other side: "the other location keeps its stock, logs
+   and cart entries".
+2. The bulk import **cannot** seed a log or a cart at a non-default location.
+   `InventoryLogInput` (`apps/server/src/schema/import.graphql`) has no
+   `locationId` field; `bulkCreateInventoryLogs` (`import.resolver.ts` line 238)
+   and `bulkCreateShoppingCarts` (line 261) both hardcode
+   `ensureDefaultLocation(userId)`.
+
+### 4. Deliberately deferred: the cloud teardown refactor
+
+11 spec files still hand-roll a raw `request.delete(...)` against the
+`/e2e/cleanup` endpoint, across **19 call sites**, instead of calling
+`cleanupCloudData` from
+`e2e/helpers/cloudTeardown.ts`. Counted on 2026-09-24:
+
+| | Files | Call sites |
+|---|---|---|
+| hand-rolled `request.delete(.../e2e/cleanup)` | 11 | 19 |
+| already on `cleanupCloudData` | 9 | — |
+
+(`a11y`, `item-management`, `onboarding`, `cooking`, `item-logs`,
+`item-list-state-restore`, `shopping`, `settings/import-export-cloud`,
+`settings/vendors`, `settings/recipes`, `settings/tags`.)
+
+It gets its own PR. Folding it in here would bury a real failure in a large
+diff with no test behind it.
