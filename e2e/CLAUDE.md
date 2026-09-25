@@ -369,11 +369,29 @@ item must be valid by nature — and the Dexie v17 upgrade migrates those rows t
 `step` attribute of three number inputs (Unpacked line 802, Target Quantity line 921 while
 `targetUnit === 'measurement'`, Refill When Below line 956).
 
-Do **not** write that `step` makes a decimal-input test pass. Measured on 2026-09-24:
-`item-stock-input.spec.ts`'s decimal test is green at `consumeAmount: 0` and at `1`.
-`step` affects validity and the spinner, not the text the browser keeps while the field
-has focus. The rounding `consumeAmount` drives is `roundToStep`, passed as
-`normalizeOnBlur` (`ItemForm.tsx` lines 277-280 and 806-809), and it runs only on blur.
+Do **not** write that `step` makes a decimal-input test pass. `step` affects validity and
+the spinner, not the text the browser keeps while the field has focus. The rounding
+`consumeAmount` drives is `roundToStep`, passed as `normalizeOnBlur` (`ItemForm.tsx` lines
+277-280 and 806-809), and it runs only on blur.
+
+**`item-stock-input.spec.ts`'s decimal test reaches that rounding since 2026-09-25 (issue
+#318).** It used to type `2.5`, assert the text while the field was still focused, and
+stop. That version was green at `consumeAmount: 0` and at `1`, and green under both source
+mutations measured on 2026-09-24 — including the whole pre-`2fe372a1` shape, the bug the
+file exists to guard. It now presses `Tab` as well and asserts the field settles to `3`,
+because `roundToStep(2.5, 1)` is `3` — `roundToStep` rounds to the step's decimal places,
+not to a multiple of it (`apps/web/src/lib/quantityUtils.ts` line 14).
+
+Measured 2026-09-25 in the `cloud` project, with `normalizeOnBlur` unwired at the Unpacked
+call site (`ItemForm.tsx` line 809):
+
+| Spec version | Result |
+|---|---|
+| before issue #318 | **3 passed** — the rounding never ran, so nothing could see it go |
+| after | **1 failed**: `expect(locator).toHaveValue(expected) failed / Expected: "3" / Received: "2.5"` |
+
+So that test now depends on the fixture's `consumeAmount: 1`. It is still not a `step`
+test.
 
 ### Location order is assigned differently in the two modes — keep the default first
 
