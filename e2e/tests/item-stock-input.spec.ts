@@ -65,14 +65,24 @@ const ITEM = 'item-milk'
 // 2026-08-24) both create paths did default to 0; the designer reversed that
 // on 2026-08-24, because a new item must be valid by nature.
 //
-// DO NOT claim the decimal test below depends on this value. MEASURED
-// 2026-09-24 in the `cloud` project: the test is GREEN at 0 and GREEN at 1.
-// `consumeAmount` feeds `quantityStep` (ItemForm.tsx line 355), which becomes
-// the Unpacked input's `step` attribute (line 802). `step` affects validity and
-// the spinner, not the text the browser keeps while the field has focus. The
-// rounding `consumeAmount` drives — `roundToStep(n, consumeAmount)` — is passed
-// as `normalizeOnBlur` (ItemForm.tsx lines 277-280, 806-809) and runs only when
-// the field is left. The decimal test never blurs.
+// THE DECIMAL TEST BELOW NOW DEPENDS ON THIS VALUE — through the blur, not
+// through `step`. Keep the two apart:
+//
+//   `step`              — `consumeAmount` feeds `quantityStep`
+//                         (ItemForm.tsx line 355), which becomes the Unpacked
+//                         input's `step` attribute (line 802). It affects
+//                         validity and the spinner, NOT the text the browser
+//                         keeps while the field has focus. No test here rides
+//                         on it.
+//   `normalizeOnBlur`   — `roundToStep(n, consumeAmount)` (ItemForm.tsx lines
+//                         277-280 and 806-809). It runs only when the field is
+//                         left. `roundToStep` rounds to the step's DECIMAL
+//                         PLACES (quantityUtils.ts line 14), so a step of 1
+//                         settles 2.5 to 3, and a step of 0 leaves it at 2.5.
+//
+// Until issue #318 the decimal test never blurred, so it was green at 0 and at
+// 1 and caught neither of the two source mutations run on 2026-09-24. It blurs
+// now, and 1 is the only fixture value its blur assertion is written for.
 //
 // Both fields are written out rather than left to the helpers' defaults, so a
 // reader can see what this spec runs against. Omitting them gives the same
@@ -313,25 +323,56 @@ test.describe('items stock tab — number input editing', () => {
     await expect(form.getRefillInput()).toHaveValue('2')
   })
 
-  // WEAKER THAN IT LOOKS — measured, not guessed. This test stayed GREEN under
-  // both source mutations run on 2026-09-24 in the `cloud` project:
-  //   1. `ItemForm.tsx` line 285 forced to `const text = String(value)`
-  //   2. the whole pre-2fe372a1 shape — no draft text AND
-  //      `onChange: e => setValue(Number(e.target.value))`
-  // Mutation 2 is exactly the bug this file guards, and the test above
-  // ("backspace a quantity showing 0") went red on both. So the keystroke
-  // behaviour IS pinned — by that test, not by this one. Do not count this one
-  // as coverage of it. Recorded as a known gap in the task 5 report.
+  // TWO HALVES OF ONE RULE, and the second half is what makes this a guard.
+  // `roundToStep` moved from `onChange` to `onBlur` in 2fe372a1, because
+  // rounding on every keystroke destroyed a part-typed decimal ("2.5" landed
+  // on 3 before the "5" was pressed). So the rule has a direction each way:
   //
-  // Those two runs used the old `consumeAmount: 0` fixture. The finding does
-  // not depend on it: the same test was also measured green at
-  // `consumeAmount: 1`, so neither value changes what it proves.
-  test('user can type a decimal into Unpacked without it being rounded mid-keystroke', async ({
+  //   while the field is FOCUSED  -> the exact text typed survives, unrounded
+  //   once the field is LEFT      -> it settles to `roundToStep(n, consumeAmount)`
+  //
+  // The blur half was added on 2026-09-25 (issue #318); before that this test
+  // asserted only the focused half. Measured in the `cloud` project, three
+  // mutations on ItemForm.tsx:
+  //
+  //   A. line 285 forced to `const text = String(value)`
+  //      -> test 1 RED, this test GREEN (2026-09-24 and 2026-09-25 alike)
+  //   B. the whole pre-2fe372a1 shape — no draft text, plus
+  //      `onChange: e => setValue(Number(e.target.value))`
+  //      -> test 1 RED. This test was reported GREEN on 2026-09-24 against the
+  //      then-`consumeAmount: 0` fixture; re-run on 2026-09-25 against the
+  //      current `consumeAmount: 1` fixture it is RED, and it fails on the
+  //      FOCUSED assertion below, reading "02.5" — the restored "0" with the
+  //      typed text after it, which is the bug itself.
+  //   C. `normalizeOnBlur` unwired at the Unpacked call site (line 809)
+  //      -> test 1 GREEN, and so was every assertion this test had before the
+  //      blur was added: the whole spec passed 3 of 3. With the blur it is RED:
+  //      `Expected: "3" / Received: "2.5"`.
+  //
+  // So B is caught by test 1 above whatever this test does. C was caught by
+  // nothing in this spec at all until the blur was added. Other spec files
+  // were not run against C, so do not read this as "the only guard in the
+  // repo". jsdom does assert the same blur rounding (ItemForm.test.tsx lines
+  // 584 and 616) — but only a real browser re-renders the input the way the
+  // user saw it, which is why this file exists (see the file header).
+  //
+  // This test DOES depend on the fixture's `consumeAmount: 1`. `roundToStep`
+  // rounds to the step's DECIMAL PLACES, not to a multiple of it
+  // (apps/web/src/lib/quantityUtils.ts line 14), so a step of 1 has 0 decimal
+  // places and 2.5 settles to 3. At `consumeAmount: 0` the helper returns the
+  // value untouched and the blur assertion would read 2.5 — but 0 is not a
+  // legal fixture value here (see the FIXTURE comment above).
+  //
+  // `step` is NOT what this test rides on. `step` affects validity and the
+  // spinner, not the text the browser keeps while the field has focus, and it
+  // is already asserted in jsdom (ItemForm.test.tsx lines 769 and 844).
+  test('user can type a decimal into Unpacked without it being rounded mid-keystroke, and it settles to the consume step on blur', async ({
     page,
     request,
     baseURL,
   }) => {
-    // Given Milk is stocked at My Home with an Unpacked quantity of 0
+    // Given Milk is stocked at My Home with an Unpacked quantity of 0, and a
+    // consume amount of 1
     await seedFixture(page, request, baseURL, FIXTURE)
     const form = new StockFormPage(page)
     await form.navigateTo(ITEM)
@@ -349,5 +390,15 @@ test.describe('items stock tab — number input editing', () => {
     // 0 and clobbered the field — the next keystroke then landed on that "0".
     await expect(unpacked).toHaveValue('2.5')
     await expect(unpacked).toBeFocused()
+
+    // When the user leaves the field
+    await unpacked.press('Tab')
+
+    // Then the rounding runs — once, now, and not a keystroke earlier.
+    // `roundToStep(2.5, 1)` is 3. The field reads back off the numeric state
+    // here, because blur deletes the draft text, so "3" also proves the state
+    // moved and not only the text on screen.
+    await expect(unpacked).not.toBeFocused()
+    await expect(unpacked).toHaveValue('3')
   })
 })
