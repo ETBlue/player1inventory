@@ -213,9 +213,75 @@ satisfy it.
 
 **It only checks models that declare a `userId`.** `ItemStock` has none, on purpose — it
 is scoped through its `Location` (see root `CLAUDE.md` → Authorization). So the
-`itemStock` line in those three lists is covered by no test. If someone deletes that
-line, nothing fails: both of `ItemStock`'s foreign keys cascade, so the rows still go.
-The line is there to keep the three lists identical, not because the route needs it.
+`itemStock` line in those three lists is covered by no test that can fail on the DATA. If
+someone deletes that line, the rows still go: both of `ItemStock`'s foreign keys cascade.
+Measured 2026-09-25 — with `prisma.itemStock.deleteMany` removed from `index.ts`,
+`cleanup-endpoint.spec.ts` still read back an empty `itemStocksForItem`. The line is there
+to keep the three lists identical, not because the route needs it.
+
+## `purge-coverage.test.ts` is a SOURCE-TEXT check — what it cannot see
+
+The guard asserts the string `prisma.location.deleteMany(` **appears** in the file. It
+never starts the server, never calls the route, and never reads the `where` clause. So
+this satisfies the guard, answers HTTP 200, and deletes nothing:
+
+```ts
+prisma.location.deleteMany({ where: { userId: someWrongValue } })
+```
+
+Measured 2026-09-25 with exactly that mutation on the `location` line of `/e2e/cleanup`:
+
+| Check | Result |
+|---|---|
+| `purge-coverage.test.ts` | **5 passed** — it cannot see the filter |
+| `cleanup-endpoint.spec.ts` | **failed**: `models that deleted nothing: {...,"locations":0}` |
+
+That pair is the reason the spec below exists (issue #319).
+
+## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
+
+`e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
+every model `/e2e/cleanup` deletes** — all 14 — calls the route, and asserts every returned
+count is at least 1, then reads the data back and asserts empty. It is cloud-only and has
+no browser: it is in the `cloud` project's `testMatch` and the `local` project's
+`testIgnore`, like `location-scoped-writes.spec.ts`.
+
+**The route now returns per-model deleted counts.** `prisma.deleteMany` already returns
+`{ count }`; `index.ts` used to throw those away and answer `{ ok: true }`. It now answers
+`{ ok: true, deleted: { inventoryLogs, cartItems, carts, itemTags, itemVendors,
+recipeItems, itemStocks, items, tags, tagTypes, vendors, recipes, shelves, locations } }`.
+The route is mounted only under `E2E_TEST_MODE`, so production is unaffected.
+
+**Order matters for the counts, not only for the deletes.** Every child is deleted before
+its parent, so each count is the number of rows that statement removed. Move
+`item.deleteMany` above `itemTag.deleteMany` and the `ItemTag` rows go by `ON DELETE
+CASCADE` instead, reporting 0.
+
+**`cleanupCloudData` checks the KEYS, never the counts.** It runs in the `beforeEach` and
+`afterEach` of every cloud spec, where zero rows is normal and correct — the `beforeEach`
+call usually deletes nothing at all. A "count above zero" check there would fail every
+clean run. So the helper asserts only that the body carries a numeric count for every key
+in its own `CLEANUP_MODEL_KEYS` list, and throws naming the missing model otherwise. The
+"at least 1" assertion lives in the spec, which seeds first.
+
+**What the spec proves, and what it does not:**
+
+| Failure | Caught by | Measured 2026-09-25 |
+|---|---|---|
+| Wrong `where` on a listed model | the spec only | `purge-coverage` 5 passed; spec failed with `"locations":0` |
+| A model with a `userId` dropped from the list | both | `purge-coverage` 1 failed / 4 passed; spec failed with `no deleted count for shelves` |
+| `ItemStock` dropped from the list | the spec only, and only on the reported COUNT | `purge-coverage` 5 passed; spec failed with `no deleted count for itemStocks`. The rows themselves still went, by cascade. |
+| The seed silently writing nothing | the seed assertion, and the count assertion too | `createShelf` removed → failed at `expect(before.shelves).toHaveLength(1)`, before the route was called. The seed assertion is not the only guard here — a dead seed also makes every count 0. What it adds is that the failure names the seed instead of blaming the route. |
+
+**Three models are never read back**: `ItemTag`, `ItemVendor` and `RecipeItem`. GraphQL
+exposes them only through `Item.tagIds`, `Item.vendorIds` and `Recipe.items`, and all three
+parents are gone by the time the readback runs. Their `deleted` counts are the only check
+on them. `ItemStock`'s readback is weak for the cascade reason above; its count is what
+speaks for it.
+
+**`Location` is read back LAST, because reading it recreates one.** The `locations` query
+runs `ensureDefaultLocation`, so the readback asserts exactly one location and that its id
+is neither of the two the spec seeded. `afterEach` deletes that fresh row.
 
 ### The consequence: every cloud test now starts with zero locations
 
