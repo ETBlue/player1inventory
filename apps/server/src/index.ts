@@ -41,7 +41,35 @@ if (E2E_TEST_MODE) {
       res.status(400).json({ error: 'Missing x-e2e-user-id header' })
       return
     }
-    await prisma.$transaction([
+    // Every `deleteMany` result is `{ count }`. The counts used to be thrown
+    // away, and that is what made a WRONG `where` clause invisible: the route
+    // answered 200 either way. `purge-coverage.test.ts` cannot see it either —
+    // it is a source-text check that only asks whether the string
+    // `prisma.<model>.deleteMany(` appears in this file, never what filter the
+    // call carries. So the counts are returned, and
+    // `e2e/tests/cleanup-endpoint.spec.ts` seeds one row of every model below
+    // and asserts each count is at least 1.
+    //
+    // ORDER MATTERS FOR THE COUNTS, not only for the deletes. Every child is
+    // deleted before its parent, so each count is the number of rows this
+    // statement removed. Move `item.deleteMany` above `itemTag.deleteMany` and
+    // the ItemTag rows go by ON DELETE CASCADE instead, reporting 0.
+    const [
+      inventoryLogs,
+      cartItems,
+      carts,
+      itemTags,
+      itemVendors,
+      recipeItems,
+      itemStocks,
+      items,
+      tags,
+      tagTypes,
+      vendors,
+      recipes,
+      shelves,
+      locations,
+    ] = await prisma.$transaction([
       prisma.inventoryLog.deleteMany({ where: { userId } }),
       prisma.cartItem.deleteMany({ where: { userId } }),
       prisma.cart.deleteMany({ where: { userId } }),
@@ -71,7 +99,30 @@ if (E2E_TEST_MODE) {
       // instead of a fresh default.
       prisma.location.deleteMany({ where: { userId } }),
     ])
-    res.json({ ok: true })
+    // One key per model the transaction above deletes — 14. The key names match
+    // `CLEANUP_MODEL_KEYS` in e2e/helpers/cloudTeardown.ts, which checks that
+    // every one of them is present in this body. The 11 names shared with
+    // `PurgeResult` (apps/server/src/schema/purge.graphql) are spelled the same
+    // way there.
+    res.json({
+      ok: true,
+      deleted: {
+        inventoryLogs: inventoryLogs.count,
+        cartItems: cartItems.count,
+        carts: carts.count,
+        itemTags: itemTags.count,
+        itemVendors: itemVendors.count,
+        recipeItems: recipeItems.count,
+        itemStocks: itemStocks.count,
+        items: items.count,
+        tags: tags.count,
+        tagTypes: tagTypes.count,
+        vendors: vendors.count,
+        recipes: recipes.count,
+        shelves: shelves.count,
+        locations: locations.count,
+      },
+    })
   })
 }
 
