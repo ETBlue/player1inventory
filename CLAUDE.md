@@ -743,11 +743,11 @@ Note also that **no *unit* test executes the resolvers against real SQL** — ev
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
 branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **18 files today** (of 25 spec
+`e2e/playwright.config.ts` — that list is opt-in and covers **19 files today** (of 26 spec
 files in `e2e/tests/`). **A resolver exercised by no cloud spec has never touched SQL at
 all**, and a manual smoke test is owed for anything transactional.
 
-Nine of those 18 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
+Nine of those 19 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
@@ -773,6 +773,15 @@ first real-SQL coverage of the group views' badge and total maths — `getOutOfS
 per-location `ItemStock` rows. **The three group specs seed one location, so they are not
 location coverage**: with one location "count stock here" and "count all stock" give the
 same answer. `item-stock-pager.spec.ts` seeds several and is.
+
+`cleanup-endpoint.spec.ts` joined on 2026-09-25 (issue #319) — 1 cloud test case, no
+browser, like `location-scoped-writes.spec.ts`. It is not resolver coverage: its subject is
+the `DELETE /e2e/cleanup` route in `apps/server/src/index.ts`. It seeds one row of all 14
+models that route deletes, calls it, and asserts every returned deleted count is at least
+1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT — it checks that
+the string `prisma.<model>.deleteMany(` appears, never what `where` clause the call
+carries, so a filter matching nothing passes it. See `e2e/CLAUDE.md` for the measured
+before/after.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
