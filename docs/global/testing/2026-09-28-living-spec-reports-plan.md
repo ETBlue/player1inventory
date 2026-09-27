@@ -1,0 +1,320 @@
+# Living Spec Reports (Step 1) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
+> (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Publish Playwright and Vitest results as public HTML pages at
+`spec.player1inventory.etblue.tw` that non-developers can read.
+
+**Architecture:** A helper wraps every `async` page-object method in `test.step`, so the
+Playwright HTML report shows readable steps with no spec changes. A build script collects
+the three per-project Playwright reports and a filtered Vitest `html` report into one
+folder with a landing page. A publish script runs everything and uploads the folder with
+`wrangler pages deploy`.
+
+**Tech Stack:** Playwright 1.58 (`test.step`, HTML reporter), Vitest 4 (`html` reporter
+via `@vitest/ui`, already a dev dependency of `apps/web`), Node ESM script, bash,
+Cloudflare `wrangler`.
+
+**Design:** [2026-09-28-living-spec-reports-design.md](2026-09-28-living-spec-reports-design.md)
+
+---
+
+## File map
+
+| File | Action | Purpose |
+|---|---|---|
+| `e2e/pages/step.ts` | create | `withSteps(obj)` helper |
+| `e2e/pages/*.ts`, `e2e/pages/settings/*.ts` (13 files) | modify | call `withSteps(this)` in each constructor |
+| `e2e/playwright.config.ts` | modify | `screenshot: 'on'` only when `SPEC_REPORT=1` |
+| `scripts/spec/build.mjs` | create | copy reports into `spec-dist/`, write landing page |
+| `scripts/spec/publish.sh` | create | run tests, build, deploy, exit non-zero if tests failed |
+| `package.json` (root) | modify | `spec:vitest`, `spec:build`, `spec:publish` scripts; `wrangler` dev dependency |
+| `.gitignore` | modify | `spec-dist/`, `apps/web/spec-report/` |
+| `CLAUDE.md`, `e2e/CLAUDE.md` | modify | new commands, step helper rule |
+| design doc, `docs/INDEX.md` | modify | status, one-time Cloudflare setup |
+
+---
+
+### Task 1: Check the Vitest `html` report with a `-t` filter (decision gate)
+
+This task decides whether the design's Vitest choice holds. **Do not build on it until
+this task reports.**
+
+**Files:** none committed.
+
+- [ ] **Step 1: Generate the filtered report**
+
+```bash
+cd apps/web && pnpm exec vitest run -t "user (can|sees)" --reporter=html --outputFile.html=/tmp/p1i-vitest-spec/index.html
+```
+
+- [ ] **Step 2: Measure what the report contains**
+
+Also run the same filter with the JSON reporter and count:
+
+```bash
+cd apps/web && pnpm exec vitest run -t "user (can|sees)" --reporter=json --outputFile=/tmp/p1i-vitest-spec.json
+node -e "const r=require('/tmp/p1i-vitest-spec.json');const s={};for(const f of r.testResults)for(const a of f.assertionResults)s[a.status]=(s[a.status]||0)+1;console.log(r.numTotalTestSuites,s)"
+```
+
+Open `/tmp/p1i-vitest-spec/index.html` with `npx vite preview --outDir /tmp/p1i-vitest-spec`
+(the html reporter needs to be served over HTTP, not opened as a file) and take a
+screenshot of the main view with Playwright or describe it.
+
+- [ ] **Step 3: Report, then stop**
+
+Report:
+- passed / skipped / failed counts from Step 2
+- whether skipped (filtered-out) tests are visible in the UI by default, and whether the UI
+  can hide them
+- whether the report works from a static host (no dev server), and its total size
+- screenshots or a plain description of the first screen
+
+**Gate:** if filtered-out tests show as ~1,950 skipped rows by default, the main session
+brings this back to the user (custom page vs built-in reporter) before Task 3. Task 2 does
+not depend on this and may go ahead.
+
+---
+
+### Task 2: Step helper for page objects
+
+**Files:**
+- Create: `e2e/pages/step.ts`
+- Modify: every page object — `CookingPage`, `ItemPage`, `OnboardingPage`, `PantryPage`,
+  `SettingsPage`, `ShoppingPage`, `StockFormPage`, `StockPagerPage`,
+  `settings/RecipeDetailPage`, `settings/RecipesPage`, `settings/TagDetailPage`,
+  `settings/TagsPage`, `settings/VendorsPage`
+
+- [ ] **Step 1: Write the helper**
+
+```ts
+// e2e/pages/step.ts
+import { test } from '@playwright/test'
+
+// `checkRecipe` → `Check recipe`
+function toWords(name: string): string {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+// Show only simple values in the step name. A Locator or Page argument would
+// print as a long internal string, so it is left out.
+function formatArg(arg: unknown): string | null {
+  if (typeof arg === 'string') return `"${arg}"`
+  if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg)
+  return null
+}
+
+/**
+ * Wrap every async method of a page object in `test.step`, so the HTML report
+ * shows `Check recipe "Pasta"` instead of raw locator calls.
+ *
+ * Only async methods are wrapped. The `get…` methods return a Locator
+ * synchronously; wrapping them would make them return a Promise and break
+ * every caller.
+ *
+ * Call once, at the end of the constructor: `withSteps(this)`.
+ */
+export function withSteps<T extends object>(obj: T): T {
+  const proto = Object.getPrototypeOf(obj)
+  for (const key of Object.getOwnPropertyNames(proto)) {
+    if (key === 'constructor') continue
+    const fn = Object.getOwnPropertyDescriptor(proto, key)?.value
+    if (typeof fn !== 'function' || fn.constructor.name !== 'AsyncFunction') continue
+    Object.defineProperty(obj, key, {
+      configurable: true,
+      writable: true,
+      value(...args: unknown[]) {
+        const parts = args.map(formatArg).filter((p): p is string => p !== null)
+        const title = [toWords(key), ...parts].join(' ')
+        return test.step(title, () => fn.apply(obj, args), { box: true })
+      },
+    })
+  }
+  return obj
+}
+```
+
+**Check before trusting the `AsyncFunction` test:** Playwright transpiles TypeScript
+itself. Confirm that `async` methods keep `constructor.name === 'AsyncFunction'` after
+transpiling (Step 4 shows it: if no steps appear, they do not). If they do not, report it
+— do not switch to a name-based rule on your own.
+
+- [ ] **Step 2: Call it in every constructor**
+
+```ts
+constructor(page: Page) {
+  this.page = page
+  withSteps(this)
+}
+```
+
+For the `constructor(readonly page: Page) {}` form (`StockFormPage`, `StockPagerPage`),
+add the call in the body.
+
+Before editing, `grep -rn "new .*Page(" e2e/` and confirm no page object is created
+outside a test or hook (for example in a global setup). `test.step` throws outside a test.
+Report any such use.
+
+- [ ] **Step 3: Type-check and lint**
+
+```bash
+pnpm exec tsc --noEmit -p e2e   # if e2e has no tsconfig, report what type-checks e2e today
+(cd apps/web && pnpm check)
+```
+
+- [ ] **Step 4: Prove the steps appear**
+
+```bash
+PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/p1i-steps.json pnpm exec playwright test --config=e2e/playwright.config.ts --project=local e2e/tests/cooking.spec.ts --reporter=json
+node -e "const r=require('/tmp/p1i-steps.json');const t=[];const walk=s=>{for(const x of s.steps||[]){t.push(x.title);walk(x)}};for(const su of r.suites)for(const sp of (function f(s){return [...(s.specs||[]),...(s.suites||[]).flatMap(f)]})(su))for(const te of sp.tests)for(const re of te.results)walk(re);console.log([...new Set(t)].filter(x=>/^[A-Z][a-z]/.test(x)).slice(0,20))"
+```
+
+Expected: titles like `Navigate to`, `Check recipe "…"`. All cooking tests pass.
+
+- [ ] **Step 5: Mutation check**
+
+Remove the `withSteps(this)` call from `CookingPage` only, re-run Step 4: the
+`Check recipe` titles must disappear. Restore it and confirm they return. Report both
+results.
+
+- [ ] **Step 6: Run the E2E specs that use page objects, `local` project**
+
+```bash
+pnpm exec playwright test --config=e2e/playwright.config.ts --project=local
+```
+
+Expected: same pass count as `main` (170 passed / 5 skipped, measured 2026-09-24). Report
+the numbers. Any new failure is a stop.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add e2e/pages
+git commit -m "feat(e2e): show page-object methods as steps in the HTML report"
+```
+
+Then `git show --stat HEAD` and confirm all 14 files are in the commit (`lint-staged` can
+rewrite staged files; see root `CLAUDE.md`).
+
+---
+
+### Task 3: Screenshots for spec runs
+
+**Files:** Modify `e2e/playwright.config.ts`
+
+- [ ] **Step 1:** In the shared `use` block (or each project's `use` if there is none),
+add:
+
+```ts
+// Spec reports (`pnpm spec:publish`) attach a screenshot to every test, so a
+// non-developer can see the screen. Normal runs keep the default (off), which
+// keeps the report small and the run fast.
+screenshot: process.env.SPEC_REPORT === '1' ? 'on' : 'off',
+```
+
+- [ ] **Step 2:** Run one spec with `SPEC_REPORT=1` and confirm the HTML report shows an
+image per test. Run it without and confirm there are none. Report the report size for
+both.
+
+- [ ] **Step 3: Commit** — `feat(e2e): attach screenshots when building the spec report`
+
+---
+
+### Task 4: Build and publish scripts
+
+Starts only after the main session confirms the Task 1 gate.
+
+**Files:**
+- Create: `scripts/spec/build.mjs`, `scripts/spec/publish.sh`
+- Modify: root `package.json`, `.gitignore`
+
+- [ ] **Step 1: Root scripts and dependency**
+
+```bash
+pnpm add -Dw wrangler
+```
+
+```json
+"spec:vitest": "pnpm --filter web exec vitest run -t \"user (can|sees)\" --reporter=html --outputFile.html=spec-report/index.html",
+"spec:build": "node scripts/spec/build.mjs",
+"spec:publish": "bash scripts/spec/publish.sh"
+```
+
+`.gitignore`: add `spec-dist/` and `apps/web/spec-report/`.
+
+- [ ] **Step 2: `scripts/spec/build.mjs`**
+
+Behavior:
+1. Delete and recreate `spec-dist/`.
+2. Copy `playwright-report/local`, `/cloud`, `/pwa` to `spec-dist/local`, `/cloud`,
+   `/pwa`. A missing report is not an error: skip it and mark the link "not run" on the
+   landing page.
+3. Copy `apps/web/spec-report/` to `spec-dist/features/`.
+4. Write `spec-dist/index.html`: title "Player 1 Inventory — Spec", four links with a
+   one-line description each (Local mode, Cloud mode, Offline (PWA), Feature tests), the
+   build date (ISO, UTC), and the commit from `git rev-parse --short HEAD` plus a "dirty"
+   note if `git status --porcelain` is not empty. Plain HTML with inline CSS, readable on
+   a phone, light and dark via `prefers-color-scheme`.
+5. Print the folder size.
+
+No dependencies beyond Node built-ins (`node:fs`, `node:child_process`, `node:path`).
+
+- [ ] **Step 3: `scripts/spec/publish.sh`**
+
+```bash
+#!/usr/bin/env bash
+# Build the living spec site and upload it to Cloudflare Pages.
+#
+# It publishes even when tests fail: a failing test is something the reader
+# should see. It still exits non-zero at the end, so a caller (a future CI job)
+# can tell.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+
+export SPEC_REPORT=1
+failed=0
+pnpm spec:vitest    || failed=1
+pnpm test:e2e:all   || failed=1
+pnpm spec:build     || exit 1   # nothing to publish
+pnpm exec wrangler pages deploy spec-dist --project-name "${SPEC_PAGES_PROJECT:-p1i-spec}" --branch main || exit 1
+exit $failed
+```
+
+- [ ] **Step 4: Verify the build without deploying**
+
+Run `pnpm spec:vitest`, then one small Playwright spec per project with the
+`PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/<project>` layout `run-all.sh` uses, then
+`pnpm spec:build`. Serve `spec-dist/` with `npx vite preview --outDir spec-dist` and check
+with Playwright that all four links open a working report. Report the checks.
+
+Do **not** run `wrangler pages deploy` — it needs the user's Cloudflare login.
+
+- [ ] **Step 5: Commit** — `feat(spec): build and publish script for the living spec site`
+
+---
+
+### Task 5: Documentation
+
+**Files:** root `CLAUDE.md`, `e2e/CLAUDE.md`, design doc, `docs/INDEX.md`
+
+- [ ] Root `CLAUDE.md` Commands block: add `pnpm spec:build` and `pnpm spec:publish`
+  with one-line comments.
+- [ ] `e2e/CLAUDE.md`: a short section "Page-object steps" — new page objects must call
+  `withSteps(this)`; `get…` methods stay synchronous; method names become step names, so
+  name them as actions.
+- [ ] Design doc: status, any change from the plan, and **one-time setup** for the user:
+  `pnpm exec wrangler login`; create Pages project `p1i-spec` (direct upload); add custom
+  domain `spec.player1inventory.etblue.tw`.
+- [ ] `docs/INDEX.md`: row status.
+- [ ] Commit — `docs(testing): living spec reports usage and setup`
+
+---
+
+### Task 6: Final gate (main session)
+
+- [ ] The full Verification Gate from root `CLAUDE.md`, including `pnpm test:e2e:all`.
+- [ ] The user runs the one-time setup, then `pnpm spec:publish`, and checks the site.
