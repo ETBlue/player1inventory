@@ -16,7 +16,8 @@ pnpm test:web     # Run web tests only
 pnpm test:server  # Run server tests only
 pnpm test:watch   # Run web tests in watch mode
 pnpm test:ui      # Run web tests with UI browser interface
-pnpm test:e2e      # Run E2E tests with Playwright (headless)
+pnpm test:e2e      # Run E2E tests with Playwright (headless) — ONE project at a time, or narrowed by path
+pnpm test:e2e:all  # THE GATE — runs local, cloud and pwa as three separate invocations
 pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome
@@ -382,6 +383,17 @@ A narrowed run is for the fast loop while you work. The final phase runs everyth
   failure sets and each named test passes when run on its own. Do not run the suite
   concurrently with `pnpm build` or E2E; re-run it alone, and only then believe it.
 - E2E failures on the final phase are a hard stop — fix before finishing the branch; the branch must not be pushed until all E2E tests pass
+- **Measure your own baseline. Never subtract a count written in a doc or a brief.**
+  Counts in this file, in `e2e/CLAUDE.md` and in task briefs were all true when
+  written and go stale on their own. Two examples from one week: `e2e/CLAUDE.md`
+  said `a11y.spec.ts` carries **39** pre-existing `TS2559` errors — it carries
+  **63**, so a before/after subtraction would have reported 24 new type errors
+  that did not exist. A task brief gave a web-suite baseline of **2219**; the real
+  number was **2259**, because another PR had merged in between. Both mistakes
+  produce the same thing: invented failures that send the next person hunting a
+  bug nobody wrote. Run the check on the unmodified tree first — `git stash push
+  -u -m "<tag>"`, or a second worktree — and diff the two outputs rather than the
+  two numbers.
 
 **Applies to:** all implementation workflows and any session where code changes are made, regardless of whether a formal plan exists.
 
@@ -616,7 +628,7 @@ git status
 - Design docs and plans are part of the feature and should be in the PR
 - A clean working tree ensures nothing is left behind
 
-**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run the whole suite with `pnpm test:e2e` (no `--grep` — see the Verification Gate for why `--grep` silently skips whole spec files) — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
+**Completeness audit (mandatory):** When the `finishing-a-development-branch` skill is invoked, it automatically audits 6 areas using the branch diff: (1) CLAUDE.md — architecture/pattern updates; (2) Storybook stories — `.stories.tsx` for new/modified components and page-level routes (`.tsx` files in `src/routes/` that render visible UI, excluding layout wrappers and generated files); (3) Tests — `.test.ts`/`.test.tsx` for new/modified behaviors; (4) Design docs — whether implementation matches the plan (N/A if no plan file); (5) Inline comments — no stale references; (6) E2E tests — audit `e2e/tests/*.spec.ts` for changed routes/pages (add or update specs as needed), then run the whole suite with `pnpm test:e2e:all` (**not** the bare `pnpm test:e2e`, and no `--grep` — see the Verification Gate for both reasons) — any failure is a hard stop and the branch must not be pushed until fixed. Gaps must be fixed or explicitly skipped (type "skip") before merge/PR/cleanup options are presented.
 
 **Advanced: Git Worktrees**
 
